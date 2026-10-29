@@ -13,7 +13,7 @@ const shot = async (name, settle = true) => {
   await writeFile(path.join(output, `${name}.png`), Buffer.from(value.data, 'base64'));
 };
 async function open(query, width, height, theme, lang) {
-  const url = `${base}new-model-trial.html?polish=1&lang=${lang}&theme=${theme}&${query}${transport === 'console' ? '&transport=console' : ''}`;
+  const url = `${base}new-model-trial.html?polish=1&native=1&lang=${lang}&theme=${theme}&${query}${transport === 'console' ? '&transport=console' : ''}`;
   await client.send('Page.enable');
   await client.send('Runtime.enable');
   await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
@@ -63,7 +63,11 @@ try {
         const numeric=state==='valid'||state==='zero';
         await waitFor(client,`document.querySelector('.trust-release')?.dataset.releaseState===${JSON.stringify(numeric?'available':'unavailable')}`);
         const value=await evaluate(client,`document.querySelector('.trust-release').textContent`);
-        if(numeric) assert.ok(value.includes(lang==='zh'?`解除 ${state==='zero'?0:5} 次`:`${state==='zero'?0:5} protections released`),value);
+        if(numeric) {
+          assert.ok(value.includes(lang==='zh'?`解除 ${state==='zero'?0:5} 次`:`${state==='zero'?0:5} protections released`),value);
+          assert.ok(value.includes(lang==='zh'?'本轮重新按难度选择模型':'this turn selects a model based on difficulty'),value);
+          assert.doesNotMatch(value,/allowing Regular to continue|允许新模型继续/);
+        }
         else {assert.ok(value.includes('—'),value);assert.ok(!/5 protections|解除 5/.test(value),value);}
         if(!['valid','zero','missing'].includes(state)) await waitFor(client,`!!document.querySelector('.routing-observations')`);
         const reasons={partial:lang==='zh'?'覆盖不完整':'incomplete coverage',plan:lang==='zh'?'路由范围不同':'different route scope',revision:lang==='zh'?'路由版本不同':'different route version',time:lang==='zh'?'时间范围不同':'different time range',branch:lang==='zh'?'分支范围不同':'different branches'};

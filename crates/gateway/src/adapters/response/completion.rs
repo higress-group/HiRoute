@@ -69,6 +69,7 @@ impl DecoderCore {
                             .cloned()
                             .unwrap_or_default(),
                         status: item_status,
+                        final_phase: None,
                     })
                 }
                 MutableResponseBlock::Reasoning(text) if !finished_reasoning.contains(index) => {
@@ -83,6 +84,7 @@ impl DecoderCore {
                         index: *index,
                         text: text.clone(),
                         status: item_status,
+                        final_phase: None,
                     })
                 }
                 _ => None,
@@ -107,6 +109,12 @@ impl DecoderCore {
             .map(
                 |(index, logical_id, tool_kind, namespace, name, arguments)| {
                     Ok(ModelEvent::ToolCallFinished {
+                        encrypted_function_args: (tool_kind == ToolKindV1::Function
+                            && self.function_encoding_projection
+                                == super::super::FunctionEncodingProjection::Plaintext
+                            && self.responses_client
+                            && self.owner.upstream_protocol != IngressProtocol::Responses)
+                            .then(Vec::new),
                         index,
                         logical_id: logical_id.clone(),
                         tool_kind,

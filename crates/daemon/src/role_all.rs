@@ -67,8 +67,7 @@ pub struct RoleAllConfig {
     /// Standalone exposes only the current public release manifest at Local Control.
     pub released_commands_only: bool,
     /// Progress only on the inherited native readiness pipe; it grants no control authority.
-    pub upgrade_progress:
-        Option<std::sync::mpsc::Sender<hiroute_host_runtime::StorageUpgradePhase>>,
+    pub upgrade_progress: Option<hiroute_host_runtime::StorageUpgradeProgress>,
 }
 
 #[derive(Clone, Debug)]

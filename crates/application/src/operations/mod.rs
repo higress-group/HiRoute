@@ -273,12 +273,18 @@ where
                 && self.reconcile_terminal_rollback(&operation).is_ok()
             {
                 operation.transition(OperationState::RolledBack)?;
-                self.control.finish_operation(&mut operation)?;
+                self.external
+                    .finish_local_operation(self.control, &mut operation)?;
                 self.external.finish_publication_activation(&operation)?;
+                self.control.complete_operation_finalization(&operation)?;
             }
             return Ok(operation);
         }
         if operation.state.is_terminal() {
+            if self.control.operation_finalization_pending(&operation)? {
+                self.external.finish_publication_activation(&operation)?;
+                self.control.complete_operation_finalization(&operation)?;
+            }
             return Ok(operation);
         }
         if operation.state == OperationState::RollingBack {
@@ -357,8 +363,10 @@ where
             }
         }
         operation.transition(OperationState::Succeeded)?;
-        self.control.finish_operation(&mut operation)?;
+        self.external
+            .finish_local_operation(self.control, &mut operation)?;
         self.external.finish_publication_activation(&operation)?;
+        self.control.complete_operation_finalization(&operation)?;
         Ok(operation)
     }
 
@@ -572,7 +580,8 @@ where
                     operation.transition(OperationState::NeedsAttention)?;
                     operation.safe_error_code =
                         Some("PUBLICATION_OWNERSHIP_UNCONFIRMED".to_owned());
-                    self.control.finish_operation(&mut operation)?;
+                    self.external
+                        .finish_local_operation(self.control, &mut operation)?;
                     return Ok(operation);
                 }
             }
@@ -648,8 +657,10 @@ where
         } else {
             operation.transition(OperationState::RolledBack)?;
         }
-        self.control.finish_operation(&mut operation)?;
+        self.external
+            .finish_local_operation(self.control, &mut operation)?;
         self.external.finish_publication_activation(&operation)?;
+        self.control.complete_operation_finalization(&operation)?;
         Ok(operation)
     }
 
@@ -943,6 +954,10 @@ fn apply_request_digest(request: &ApplyRequestV1) -> Result<CanonicalDigest, Tra
 pub enum TransactionError {
     #[error("typed plan content preparation failed: {0:?}")]
     PlanContent(hiroute_application_api::ErrorCode),
+    #[error("Agent settings preparation failed: {0:?}")]
+    AgentSettings(hiroute_application_api::ErrorCode),
+    #[error("Agent settings facts unavailable: {0:?}")]
+    AgentSettingsRead(crate::control::ControlReadError),
     #[error("invalid transaction arguments")]
     InvalidArguments,
     #[error("cash budget behavior is not enabled in P0")]
@@ -1021,7 +1036,8 @@ impl TransactionError {
             {
                 ErrorCode::QoderModelBudgetConflict
             }
-            Self::PlanContent(code) => *code,
+            Self::PlanContent(code) | Self::AgentSettings(code) => *code,
+            Self::AgentSettingsRead(error) => crate::map_control_error(*error),
             Self::FeatureNotEnabled
             | Self::Preparation(ChangePreparationError::FeatureNotEnabled) => {
                 ErrorCode::FeatureNotEnabled

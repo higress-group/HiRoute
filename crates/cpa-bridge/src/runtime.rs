@@ -35,6 +35,7 @@ use crate::process::{
 use crate::state::{load_account_state, merge_accounts, save_account_state};
 
 mod admission;
+mod catalog_recovery;
 mod oauth;
 mod recovery;
 mod routing_batch;
@@ -154,6 +155,7 @@ pub(crate) struct RuntimeInner {
     restart_count: u64,
     oauth_state: Option<String>,
     oauth_callback_submitted: bool,
+    catalog_recovery: catalog_recovery::CatalogRecovery,
 }
 
 pub(crate) struct LiveRuntime {

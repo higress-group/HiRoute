@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '../host/index.ts';
-import type { AgentSnapshot } from '../agents';
 import {
   beginDomainRead,
   failDomainRead,
@@ -19,12 +18,13 @@ import type {
 import type { ManagementSnapshot } from '../features/models/types';
 import {
   projectHomeActivity,
-  projectHomeAgents,
+  projectHomeAgentSummary,
   projectHomeCompute,
   projectHomePlans,
   projectHomeService,
   projectHomeValue,
   type DesktopSnapshot,
+  type AgentHomeSummary,
   type ObservationSessionPage,
   type ObservationValueSummary,
 } from './home-projections';
@@ -59,23 +59,43 @@ export function useDesktopHome() {
   const [activity, setActivity] = useState<DomainReadSlot<HomeActivity>>(loading);
   const [value, setValue] = useState<DomainReadSlot<HomeValue>>(loading);
   const [desktopSnapshot, setDesktopSnapshot] = useState<DesktopSnapshot | null>(null);
-  const [agentSnapshot, setAgentSnapshot] = useState<AgentSnapshot | null>(null);
+  const [agentDirectory, setAgentDirectory] = useState<AgentHomeSummary['agents'] | null>(null);
   const sequence = useRef(0);
   const activeDesktopRequest = useRef<string | null>(null);
+  const activeAgentsRequest = useRef<string | null>(null);
+  const invalidatedCatalog = useRef({ agents: false, compute: false });
+  const [catalogInvalidation, setCatalogInvalidation] = useState(0);
+  const startupSequence = useRef(0);
 
   const requestId = useCallback((domain: keyof HomeReads) =>
     `home/${domain}/${++sequence.current}`, []);
+
+  const invalidateService = useCallback((connectionLost = false) => {
+    activeDesktopRequest.current = null;
+    setService({
+      requestId: null,
+      targetKey: HOME_TARGET,
+      read: connectionLost
+        ? { status: 'ready', data: { daemon: 'unavailable', gateway: 'unknown', recoveryReady: false, nativeConnectionLost: true } }
+        : { status: 'loading' },
+    });
+  }, []);
 
   const refreshDesktop = useCallback(async () => {
     const serviceRequest = requestId('service');
     const plansRequest = requestId('plans');
     activeDesktopRequest.current = serviceRequest;
-    setService(current => beginDomainRead(current, serviceRequest, HOME_TARGET));
+    setService(current => beginDomainRead(
+      current.read.status === 'error' ? { ...current, read: { status: 'loading' } } : current,
+      serviceRequest,
+      HOME_TARGET,
+    ));
     setPlans(current => beginDomainRead(current, plansRequest, HOME_TARGET));
     try {
       const snapshot = await invoke<DesktopSnapshot>('desktop_snapshot');
-      setStartup({ state: 'ready', recovery_available: false });
       if (activeDesktopRequest.current !== serviceRequest) return;
+      startupSequence.current++;
+      setStartup({ state: 'ready', recovery_available: false });
       setDesktopSnapshot(snapshot);
       setService(current => resolveDomainRead(
         current,
@@ -105,15 +125,18 @@ export function useDesktopHome() {
       const code = errorCode(error);
       setService(current => failDomainRead(current, serviceRequest, HOME_TARGET, code));
       setPlans(current => failDomainRead(current, plansRequest, HOME_TARGET, code));
-      try {
-        setStartup(await invoke('startup_status'));
-      } catch {
-        setStartup({ state: 'failed', code, recovery_available: false });
+      const startupRequest = ++startupSequence.current;
+      const report = await invoke<NonNullable<typeof startup>>('startup_status').catch(() => ({
+        state: 'failed' as const, code, recovery_available: false,
+      }));
+      if (activeDesktopRequest.current === serviceRequest && startupSequence.current === startupRequest) {
+        setStartup(report);
       }
     }
   }, [requestId]);
 
   const refreshCompute = useCallback(async () => {
+    invalidatedCatalog.current.compute = false;
     const request = requestId('compute');
     setCompute(current => beginDomainRead(current, request, HOME_TARGET));
     try {
@@ -137,17 +160,21 @@ export function useDesktopHome() {
 
   const refreshAgents = useCallback(async () => {
     const request = requestId('agents');
+    invalidatedCatalog.current.agents = false;
+    activeAgentsRequest.current = request;
     setAgents(current => beginDomainRead(current, request, HOME_TARGET));
     try {
-      const snapshot = await invoke<AgentSnapshot>('agent_snapshot');
-      setAgentSnapshot(snapshot);
+      const snapshot = await invoke<AgentHomeSummary>('agent_home_summary');
+      if (activeAgentsRequest.current !== request) return;
+      setAgentDirectory(snapshot.agents);
       setAgents(current => resolveDomainRead(
         current,
         request,
         HOME_TARGET,
-        projectHomeAgents(snapshot),
+        projectHomeAgentSummary(snapshot),
       ));
     } catch (error) {
+      if (activeAgentsRequest.current === request) setAgentDirectory(null);
       setAgents(current => failDomainRead(
         current,
         request,
@@ -156,6 +183,24 @@ export function useDesktopHome() {
       ));
     }
   }, [requestId]);
+
+  // A mutation invalidates background summaries; it does not synchronously
+  // scan every Agent or subscription before the active editor can confirm.
+  const invalidateCatalog = useCallback(() => {
+    invalidatedCatalog.current = { agents: true, compute: true };
+    activeAgentsRequest.current = requestId('agents');
+    setAgentDirectory(null);
+    setAgents(current => beginDomainRead(current, activeAgentsRequest.current!, HOME_TARGET));
+    const computeRequest = requestId('compute');
+    setCompute(current => beginDomainRead(current, computeRequest, HOME_TARGET));
+    setCatalogInvalidation(value => value + 1);
+  }, [requestId]);
+  const refreshInvalidatedCatalog = useCallback(async () => {
+    await Promise.allSettled([
+      ...(invalidatedCatalog.current.agents ? [refreshAgents()] : []),
+      ...(invalidatedCatalog.current.compute ? [refreshCompute()] : []),
+    ]);
+  }, [refreshAgents, refreshCompute]);
 
   const refreshActivity = useCallback(async () => {
     const request = requestId('activity');
@@ -247,10 +292,13 @@ export function useDesktopHome() {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
+      const startupRequest = ++startupSequence.current;
       try {
         const report = await invoke<NonNullable<typeof startup>>('startup_status');
         if (cancelled) return;
-        setStartup(current => current?.state === 'ready' ? current : report);
+        if (startupSequence.current === startupRequest) {
+          setStartup(current => current?.state === 'ready' ? current : report);
+        }
         if (report.state === 'starting') timer = setTimeout(() => void poll(), 500);
       } catch {
         if (!cancelled) timer = setTimeout(() => void poll(), 1000);
@@ -271,13 +319,17 @@ export function useDesktopHome() {
       value: value.read,
     } satisfies HomeReads,
     desktopSnapshot,
-    agentSnapshot,
+    agentDirectory,
     refreshAll,
     refreshDesktop,
+    invalidateService,
     refreshCompute,
     refreshAgents,
     refreshActivity,
     refreshValue,
     refreshDomain,
+    invalidateCatalog,
+    refreshInvalidatedCatalog,
+    catalogInvalidation,
   };
 }

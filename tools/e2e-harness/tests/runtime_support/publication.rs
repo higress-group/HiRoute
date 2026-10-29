@@ -12,6 +12,7 @@ use super::{
 #[derive(Clone, Copy)]
 pub(super) enum PublicationRouteMode<'a> {
     Ordered,
+    OrderedAllProtocols,
     ClassifiedLocal,
     ClassifiedRest {
         endpoint_override: Option<&'a str>,
@@ -28,17 +29,24 @@ pub(super) fn snapshot(
     overall_timeout_ms: u64,
     route_mode: PublicationRouteMode<'_>,
 ) -> GatewayPublicationSnapshotV3 {
-    let classified_route = !matches!(route_mode, PublicationRouteMode::Ordered);
+    let classified_route = !matches!(
+        route_mode,
+        PublicationRouteMode::Ordered | PublicationRouteMode::OrderedAllProtocols
+    );
     let (classifier_endpoint_override, classifier_timeout_ms) = match route_mode {
         PublicationRouteMode::ClassifiedRest {
             endpoint_override,
             timeout_ms,
         } => (endpoint_override, timeout_ms),
-        PublicationRouteMode::Ordered | PublicationRouteMode::ClassifiedLocal => {
+        PublicationRouteMode::Ordered
+        | PublicationRouteMode::OrderedAllProtocols
+        | PublicationRouteMode::ClassifiedLocal => {
             (None, hiroute_domain::DEFAULT_REST_CLASSIFIER_TIMEOUT_MS)
         }
     };
     let rest_classifier = matches!(route_mode, PublicationRouteMode::ClassifiedRest { .. });
+    let all_protocols =
+        rest_classifier || matches!(route_mode, PublicationRouteMode::OrderedAllProtocols);
     if let Some(endpoints) = endpoints {
         assert_eq!(endpoints.len(), providers.len());
     }
@@ -73,7 +81,7 @@ pub(super) fn snapshot(
                 })
                 .unwrap_or_else(|| provider.authority());
             let key_count = key_counts.map_or(1, |counts| counts[index]);
-            let profiles = if rest_classifier {
+            let profiles = if all_protocols {
                 vec![
                     (IngressProtocol::Responses, upstream),
                     (IngressProtocol::ChatCompletions, upstream),
@@ -190,7 +198,7 @@ pub(super) fn snapshot(
         served_model_id: MODEL.into(),
         purpose: "runtime listener verification".into(),
         agent_plan_revision: 91,
-        protocols: if rest_classifier {
+        protocols: if all_protocols {
             vec![
                 IngressProtocol::Responses,
                 IngressProtocol::ChatCompletions,
@@ -227,7 +235,7 @@ pub(super) fn snapshot(
         71,
         "runtime-renderer/v1",
         aliases,
-        if rest_classifier {
+        if all_protocols {
             [
                 (IngressProtocol::Responses, TOKEN),
                 (IngressProtocol::ChatCompletions, CHAT_TOKEN),

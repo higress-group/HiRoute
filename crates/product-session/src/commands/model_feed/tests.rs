@@ -110,6 +110,7 @@ async fn refresh_with_concurrent_reads(replace_session: bool) {
         id: "feed-test",
         confirmations: &broker,
         active: &|| true,
+        visible: &|| true,
         notify: None,
     };
     let input = ClientEmptyRequestV1::default();

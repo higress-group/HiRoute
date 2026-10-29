@@ -475,7 +475,34 @@ def verify_disposable_source(checkout):
         raise ValueError("Unknown ignored files retained; save or remove them before cleanup")
 
 
-def cleanup_checkout(root, result):
+def cleanup_capture(root, result, checkout):
+    """Resolve the latest stopped source without relabeling the owner's run."""
+    revision = command(["git", "-C", str(checkout), "rev-parse", "HEAD"])
+    state_path = root / ("checkout-" + result["id"] + ".json")
+    current = result
+    if os.path.lexists(state_path):
+        if state_path.is_symlink():
+            raise ValueError("Checkout state is a link")
+        state = json.loads(state_path.read_text())
+        current = checkout_run(root, state["run_id"])
+        if state.get("sha") != revision:
+            raise ValueError("Checkout source differs from its recorded state")
+    if (current.get("sha") != revision or current.get("status") not in TERMINAL_STATUSES
+            or current.get("checkout_owner", current["id"]) != result["id"]
+            or not current.get("checkout") or Path(current["checkout"]).resolve(strict=True) != checkout
+            or current["id"] != result["id"] and worker_alive(current.get("worker_pid"))):
+        raise ValueError("Cleanup requires the latest stopped, recorded owner checkout")
+    if current["id"] != result["id"] and "evidence_export" in current:
+        reporting().verify_run_evidence(root / "runs" / current["id"], current)
+    # The owner still owns its private scratch; borrowers export their own scratch.
+    capture = dict(current, checkout_owner=result["id"])
+    capture.pop("temporary_directory", None)
+    if result.get("temporary_directory"):
+        capture["temporary_directory"] = result["temporary_directory"]
+    return capture
+
+
+def cleanup_checkout(root, result, current_worker=False):
     """Remove one terminal, generated checkout without ever accepting an arbitrary path."""
     checkout_text = result.get("checkout")
     if not checkout_text:
@@ -487,6 +514,7 @@ def cleanup_checkout(root, result):
         lease = checkout_lease(root, result["id"])
     except RunBlocked as error:
         return {"state": "retained", "path": str(checkout), "error": str(error)}
+    evidence_export = None
     try:
         repo = root / "repository.git"
         if not checkout.exists():
@@ -503,13 +531,16 @@ def cleanup_checkout(root, result):
         if "evidence_export" in result:
             try:
                 verify_disposable_source(resolved)
-                # Re-export under the lease, including later evidence from retained runs.
-                # A retained owner may have advanced; bind exported bytes to its actual source.
-                revision = command(["git", "-C", str(resolved), "rev-parse", "HEAD"])
-                result["evidence_export"] = reporting().preserve_evidence(
-                    root / "runs" / result["id"], dict(result, sha=revision))
+                capture = cleanup_capture(root, result, resolved)
+                run = root / "runs" / result["id"]
+                if current_worker and capture["id"] == result["id"]:
+                    # The finishing worker just exported under this lease. Verify
+                    # its immutable export again without duplicating ordinary runs.
+                    evidence_export = reporting().preserve_evidence(run, capture)
+                else:
+                    evidence_export = reporting().preserve_cleanup_evidence(run, capture, result)
             except Exception as error:
-                result["evidence_export"] = dict(state="failed", error=str(error))
+                evidence_export = dict(state="failed", error=str(error))
                 raise
         status = subprocess.run(["git", "-C", str(resolved), "status", "--porcelain"],
                                 text=True, capture_output=True, check=True).stdout.splitlines()
@@ -524,9 +555,11 @@ def cleanup_checkout(root, result):
             raise RuntimeError("worktree remains after Git reported successful removal")
         return {"state": "removed", "path": str(resolved),
                 "method": "git-worktree-remove-force" if status else "git-worktree-remove",
-                "untracked_or_modified": status}
+                "untracked_or_modified": status,
+                **({"evidence_export": evidence_export} if evidence_export else {})}
     except Exception as error:
-        return {"state": "retained", "path": str(checkout), "error": str(error)}
+        return {"state": "retained", "path": str(checkout), "error": str(error),
+                **({"evidence_export": evidence_export} if evidence_export else {})}
     finally:
         lease.close()
 
@@ -560,13 +593,21 @@ def cleanup_terminal_run(root, run_id, current_worker=False):
         raise RuntimeError("Run worker is still alive; refusing cleanup")
     # Worktree removal and ref deletion serialize with fetch/worktree-add operations.
     with lock(root / "repository.lock"):
-        checkout = cleanup_checkout(root, result)
+        checkout = cleanup_checkout(root, result, current_worker=current_worker)
         validation_ref = cleanup_validation_ref(root, run_id,
             "removed" if result.get("checkout_owner") and result["checkout_owner"] != run_id else checkout["state"])
-    temporary = (cleanup_temp_directory(result.get("temporary_directory"))
-                 if result.get("evidence_export", {}).get("state") != "failed"
-                 else {"state": "retained", "reason": "Evidence export failed"})
+    borrowed = bool(result.get("checkout_owner") and result["checkout_owner"] != run_id)
+    evidence_export = checkout.pop("evidence_export", None)
+    export_failed = (result.get("evidence_export", {}).get("state") == "failed"
+                     and (evidence_export or {}).get("state") != "saved")
+    temporary = ({"state": "retained", "reason": "Owner checkout cleanup was refused"}
+                 if (checkout["state"] == "retained" and not borrowed or export_failed)
+                 and result.get("temporary_directory") and os.path.lexists(result["temporary_directory"]["path"])
+                 else cleanup_temp_directory(result.get("temporary_directory")))
+    complete = (borrowed or checkout["state"] in ("removed", "absent")) and all(
+        item["state"] in ("removed", "absent") for item in (temporary, validation_ref))
     result["cleanup"] = {
+        "state": "removed" if complete else "retained",
         "policy": result.get("retention", "always"),
         "requested_at": time.time(),
         "checkout": checkout,
@@ -574,6 +615,8 @@ def cleanup_terminal_run(root, run_id, current_worker=False):
         "validation_ref": validation_ref,
         "run_logs_preserved": True,
     }
+    if evidence_export:
+        result["cleanup"]["evidence_export"] = evidence_export
     save(result_path, result)
     return result["cleanup"]
 
@@ -626,7 +669,8 @@ def gc_terminal_runs(root, older_than_days, apply, include_retained):
         if apply:
             try:
                 candidate["cleanup"] = cleanup_terminal_run(root, run_id)
-                cleaned.append(candidate)
+                if candidate["cleanup"]["state"] == "removed":
+                    cleaned.append(candidate)
             except Exception as error:
                 candidate["error"] = str(error)
     return {"apply": apply, "older_than_days": older_than_days,
@@ -981,13 +1025,18 @@ def main():
         return
     if len(sys.argv) in (3, 4) and sys.argv[1] == "_cleanup":
         root = Path.home() / workbench_path(sys.argv[3] if len(sys.argv) == 4 else ROOT)
-        print(json.dumps(cleanup_terminal_run(root, sys.argv[2]), indent=2, ensure_ascii=False))
+        cleanup = cleanup_terminal_run(root, sys.argv[2])
+        print(json.dumps(cleanup, indent=2, ensure_ascii=False))
+        if cleanup["state"] != "removed":
+            raise SystemExit(1)
         return
     if len(sys.argv) in (5, 6) and sys.argv[1] == "_gc":
         root = Path.home() / workbench_path(sys.argv[5] if len(sys.argv) == 6 else ROOT)
-        print(json.dumps(gc_terminal_runs(root, int(sys.argv[2]),
-                                          sys.argv[3] == "apply", sys.argv[4] == "include-retained"),
-                         indent=2, ensure_ascii=False))
+        collected = gc_terminal_runs(root, int(sys.argv[2]),
+                                     sys.argv[3] == "apply", sys.argv[4] == "include-retained")
+        print(json.dumps(collected, indent=2, ensure_ascii=False))
+        if collected["apply"] and len(collected["cleaned"]) != len(collected["candidates"]):
+            raise SystemExit(1)
         return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", help="Override host from ~/.config/hiroute/remote-rust.json")
@@ -1108,6 +1157,8 @@ def main():
         source = command(["git", "show", executor_sha + ":scripts/remote-rust.py"]) + "\n"
         payload = dict(mode="maintenance", workbench=workbench, driver_args=driver_args, executor_sha=executor_sha,
                        executor_digest=hashlib.sha256(source.encode()).hexdigest(), source=source)
+        report_source = command(["git", "show", executor_sha + ":scripts/validation-report.py"]) + "\n"
+        payload.update(report_source=report_source, report_digest=hashlib.sha256(report_source.encode()).hexdigest())
         remote = "source ~/.bashrc >/dev/null 2>&1; exec python3 -c " + shlex.quote(BOOTSTRAP)
         subprocess.run(["ssh", "-o", "BatchMode=yes", args.host, "bash -lc " + shlex.quote(remote)],
                        input=json.dumps(payload), text=True, check=True)

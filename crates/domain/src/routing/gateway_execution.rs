@@ -8,6 +8,15 @@ use super::materialized::{AttemptOwnedCandidateV1, CompiledPlanError};
 
 pub const GATEWAY_OPERATIONAL_TARGET_SCHEMA_V1: &str = "hiroute.gateway-operational-target/v1";
 
+/// A bidirectional translator contract, not an inference from a provider name or auth kind.
+pub const STANDARD_RESPONSES_JSON_ADAPTER_V1: &str = "adapter.standard-responses-json.v1@1";
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponsesDialectV1 {
+    StandardJson,
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GatewayOperationalTargetV1 {

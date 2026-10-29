@@ -74,12 +74,24 @@ exposing channel IDs; unobserved live session selection remains unknown. Auxilia
 model slots stay under native control.
 
 The managed provider's API key contains the same scoped local model grant as its
-`X-HiRoute-Token` header. Hermes auxiliary Chat calls bypass request middleware;
-the existing Chat bearer channel lets them authenticate without changing Gateway
-admission. Keep this credential in that provider, never global model headers that
-can reach another auxiliary provider. Existing Responses/Messages header rules
-remain unchanged. Protected restore records retain their exact prior provider
-values, including older placeholder keys.
+`X-HiRoute-Token` header. Hermes auxiliary calls bypass request middleware: Chat
+uses the standard bearer channel, and Messages can use one `x-api-key` containing
+the same issued grant when both higher-priority headers are absent. Gateway still
+verifies the current grant, protocol, alias and revocation without inferring input
+origin; see the [request-routing contract](../../../../../issue-spec/specs/request-routing/spec.md).
+Keep this credential in that provider, never global model headers that can reach
+another auxiliary provider. Protected restore records retain their exact prior
+provider values, including older placeholder keys.
+
+The native auxiliary API does not currently expose its task name through the
+main-request middleware. Without a native session or purpose marker, its request
+remains independently authorized and classifiable, with request-scoped observation
+and no main-conversation history association. It is not labelled as a known
+auxiliary merely because middleware metadata is absent: the same absence can
+occur when a main-request adapter fails. This preserves main routing availability
+and excludes unassociated summaries from later main-stage evaluation, at the cost
+of an extra classification and unavailable auxiliary-to-parent attribution.
+Do not install global auxiliary-purpose headers or infer purpose from summary text.
 
 The plugin matches the exact saved provider definition, alias, native address and
 transport; it carries the token and the actual native session ID through existing
@@ -87,10 +99,42 @@ SDK headers. It preserves unrelated request parameters and headers. Invalid or
 missing IDs do not remove authorization. Gateway treats identity as Hermes only
 for a digest-bound managed consumer, then scopes it to that connection; equal
 content never supplies missing Hermes identity.
+Current public whole-turn hooks cannot establish human provenance: Hermes 0.20
+feeds native async delegation notifications into the same input queue as real
+input. Gateway retains observed classification, actual execution history and
+cross-turn evaluation with explicit uncertainty, including for older adapters'
+freshness flags. Source uncertainty does not permanently pin requests to Primary.
+
+The current middleware emits optional routing-context v2 with the native session,
+whole-turn ID and per-call API request ID when available, plus `observed_batch` input
+semantics. It does not register an input callback or emit `X-Hermes-Observed-Input`.
+The public callback sees clean input before native memory, persistence, voice and
+reminder composition. A unique match can therefore identify an old `continue`
+instead of the decorated current event. Retained v1 text hints are diagnostic
+compatibility inputs only; they cannot select an earlier User or demote later Users.
+All transports retain the complete latest wire User envelope, including every
+content part, with explicit source uncertainty. A trailing reminder can reduce
+intent precision; the adapter does not reconstruct a clean original prompt.
+
+Optional lineage failure preserves the already prepared purpose/session/turn/request
+context and authorization. Older SDKs without `register_hook` still use ordinary
+request middleware. API request IDs correlate calls; they do not deduplicate
+execution or identify a logical task. Child sessions stay independent, and child
+output consumed by a parent is external context rather than parent execution.
+Gateway restart discards capture, so older missing model/tool output remains
+unavailable. Complete new A followed by B can recover stage evaluation and
+protection in the same conversation. Async notifications still lack a reliable
+origin-turn relationship; successful routing does not establish accurate scoring.
+
 Optional compression ancestry comes from the selected profile's read-only native
-SessionDB interfaces. Missing or unsupported evidence leaves a continuation gap;
-it never blocks the model call. Observation owns the verified relation and scoped
-analysis, preserving each physical session and its receipts.
+SessionDB interfaces. At most 32 ancestor rows are read; the adapter validates
+compression closure and the unique live child, rejecting cycles and ordinary forks.
+Hermes 0.20's unbounded lineage enumerator is never invoked. Four profile workers,
+64 pending sessions per worker, 128 cached proofs per worker and the bounded request
+wait limit the optional work. Missing, locked, replaced or unsupported evidence
+leaves a continuation gap; it never blocks the model call. Valid lineage supplies
+only candidate continuity: actual-history inheritance still requires the Gateway's
+captured exact boundary. Observation preserves each physical session and receipt.
 
 Source import is separate from model connection. The shared V2 scan/prepare flow
 groups equal native scope/provider/address/protocol/authentication branches, then

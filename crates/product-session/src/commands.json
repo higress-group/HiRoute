@@ -479,11 +479,45 @@
     "host_only": false
   },
   {
+    "name": "trial_setup_snapshot",
+    "args": [],
+    "result": "Result<TrialSetupSnapshotV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "agent_model_associations",
+    "args": [],
+    "result": "Result<AgentModelAssociations, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "agent_home_summary",
+    "args": [],
+    "result": "Result<AgentHomeSummary, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "trial_agent_choices",
+    "args": [],
+    "result": "Result<TrialAgentChoices, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "trial_agent_model",
+    "args": [{ "name": "context_id", "type": "String" }],
+    "result": "Result<TrialAgentModel, DesktopFailure>",
+    "host_only": false
+  },
+  {
     "name": "agent_snapshot",
     "args": [
       {
         "name": "native_targets",
         "type": "Option<Vec<hiroute_domain::AgentNativeTargetV1>>"
+      },
+      {
+        "name": "context_id",
+        "type": "Option<String>"
       }
     ],
     "result": "Result<AgentSnapshot, DesktopFailure>",

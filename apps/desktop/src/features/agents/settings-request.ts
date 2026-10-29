@@ -50,7 +50,7 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
         };
         break;
       case 'opencode':
-        settings = { mode: 'opencode_additional', allowed_plan_ids: values.allowedPlanIds, plan_protocols: Object.fromEntries(values.allowedPlanIds.map(id => [id, values.planProtocols?.[id] ?? 'responses'])) };
+        settings = { mode: 'opencode_additional', ...(values.routingMetadata === false ? { routing_metadata: false } : {}), allowed_plan_ids: values.allowedPlanIds, plan_protocols: Object.fromEntries(values.allowedPlanIds.map(id => [id, values.planProtocols?.[id] ?? 'responses'])) };
         break;
       case 'dsh':
         settings = { mode: 'dsh_additional', allowed_plan_ids: values.allowedPlanIds, plan_protocols: Object.fromEntries(values.allowedPlanIds.map(id => [id, values.planProtocols?.[id] ?? 'responses'])) };

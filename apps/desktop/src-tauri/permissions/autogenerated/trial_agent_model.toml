@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-trial-agent-model"
+description = "Enables the trial_agent_model command without any pre-configured scope."
+commands.allow = ["trial_agent_model"]
+
+[[permission]]
+identifier = "deny-trial-agent-model"
+description = "Denies the trial_agent_model command without any pre-configured scope."
+commands.deny = ["trial_agent_model"]

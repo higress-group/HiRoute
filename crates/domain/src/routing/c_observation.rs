@@ -123,13 +123,10 @@ impl RoutingObservationV1 {
             .as_ref()
             .and_then(Number::as_f64)
             .is_some_and(|s| s < f64::from(self.competence_floor_millis) / 1000.0);
-        let simple = self
-            .simple_probability
-            .as_ref()
-            .and_then(Number::as_f64)
-            .is_some_and(|p| p >= f64::from(self.simple_threshold_millis) / 1000.0);
-        self.protocol == super::SYSTEM_ONE_C_V1
-            && CanonicalDigest::parse(self.content_digest.as_str()).is_ok()
+        matches!(
+            self.protocol.as_str(),
+            super::SYSTEM_ONE_C_V1 | super::SYSTEM_ONE_C_V2
+        ) && CanonicalDigest::parse(self.content_digest.as_str()).is_ok()
             && CanonicalDigest::parse(self.bundle_digest.as_str()).is_ok()
             && text(&self.provider, 128)
             && text(&self.model, 256)
@@ -160,7 +157,7 @@ impl RoutingObservationV1 {
             ) || (self.eligibility == ProtectionEligibilityV1::Eligible
                 && self.target_complete
                 && low
-                && simple))
+                && self.simple_probability.is_some()))
             && (self.protection_action != HistoricalProtectionActionV1::Suppressed
                 || self
                     .applicability_probability

@@ -389,7 +389,6 @@ impl QueuedAdmission {
             let panicked = value.is_err();
             let io_completed_at = Instant::now();
             drop(running);
-            drop(child);
             let completion = match value {
                 Ok(value) => Ok(JobCompletion {
                     value,
@@ -422,6 +421,9 @@ impl QueuedAdmission {
                     started_at.saturating_duration_since(queued_at),
                 );
             }
+            // Joining this scope also joins rejected-result cleanup and the
+            // terminal observation, not only the callback's return.
+            drop(child);
         }))?;
 
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -678,8 +680,14 @@ impl ChildScope {
         }
         self.cancel();
         let wait = async {
-            while self.active.load(Ordering::Acquire) != 0 {
-                self.notify.notified().await;
+            loop {
+                // A worker may finish between the counter read and the await.
+                // notify_waiters covers a Notified future from its creation.
+                let notified = self.notify.notified();
+                if self.active.load(Ordering::Acquire) == 0 {
+                    break;
+                }
+                notified.await;
             }
         };
         tokio::time::timeout(join_timeout, wait)

@@ -4,6 +4,11 @@ use hiroute_domain::{
     AgentOperationInputView, AgentOperationRead, AgentPlanReadV1, OperationStepKind,
 };
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static DECODE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Clone, Debug)]
 pub struct SucceededAgentOperationV1 {
     pub operation_id: OperationId,
@@ -12,15 +17,40 @@ pub struct SucceededAgentOperationV1 {
     pub accepted_digest: CanonicalDigest,
     pub state: OperationState,
     pub plan: AgentPlanReadV1,
-    steps: Vec<OperationStepV1>,
+    grant_effects: Vec<OwnedEffectV1>,
+    service_publication_revision: Option<u64>,
 }
 
 impl SucceededAgentOperationV1 {
-    pub fn step(&self, kind: OperationStepKind) -> &OperationStepV1 {
-        &self.steps[OperationStepKind::ALL
-            .iter()
-            .position(|k| *k == kind)
-            .expect("fixed journal")]
+    /// Effects needed for the current grant join, after the entire succeeded
+    /// journal has been verified. This read projection cannot replay or restore.
+    pub fn grant_effects(&self) -> &[OwnedEffectV1] {
+        &self.grant_effects
+    }
+
+    pub fn service_publication_revision(&self) -> Option<u64> {
+        self.service_publication_revision
+    }
+
+    pub(super) fn accounted_bytes(&self) -> usize {
+        // Large publication rollback bodies were validated but are not retained.
+        // Budget the actual immutable projection, with conservative JSON/node
+        // overhead; do not charge discarded input or silently raise the limit.
+        serde_json::to_vec(&(
+            &self.operation_id,
+            &self.workspace_id,
+            &self.idempotency,
+            &self.accepted_digest,
+            self.plan.spec(),
+            self.plan.control(),
+            self.plan.external(),
+            self.plan.agent_access_grants(),
+            &self.grant_effects,
+            self.service_publication_revision,
+        ))
+        .map_or(usize::MAX, |bytes| {
+            bytes.len().saturating_mul(8).saturating_add(64 * 1024)
+        })
     }
 }
 
@@ -44,13 +74,89 @@ impl AgentOperationRead for SucceededAgentOperationV1 {
     }
 }
 
+/// The strict decoder accepts either the live store or one captured, operation-bound closure.
+/// The source cannot execute operations or provide secret material.
+pub(super) trait AgentReadSource: payloads::PayloadRead {
+    fn identity(&self, durable: &DurableOperation) -> PortResult<bool>;
+    fn indexed_steps(&self, operation_id: &str) -> PortResult<Vec<IndexedStep>>;
+}
+
+#[derive(Clone)]
+pub(super) struct IndexedStep {
+    pub(super) number: usize,
+    pub(super) kind: String,
+    pub(super) state: String,
+    pub(super) encoded: String,
+}
+
+impl AgentReadSource for Connection {
+    fn identity(&self, durable: &DurableOperation) -> PortResult<bool> {
+        self.query_row(
+            "SELECT EXISTS(SELECT 1 FROM operations WHERE operation_id=?1 AND workspace_id=?2
+         AND principal=?3 AND operation_kind=?4 AND idempotency_key=?5 AND request_digest=?6
+         AND accepted_change_digest=?7 AND state='succeeded' AND generation=?8)",
+            params![
+                durable.operation_id.as_str(),
+                durable.workspace_id.as_str(),
+                durable.idempotency.principal,
+                durable.idempotency.operation_kind,
+                durable.idempotency.key,
+                durable.request_digest.as_str(),
+                durable.accepted_digest.as_str(),
+                durable.generation
+            ],
+            |r| r.get(0),
+        )
+        .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.identity"))
+    }
+
+    fn indexed_steps(&self, operation_id: &str) -> PortResult<Vec<IndexedStep>> {
+        let mut statement = self.prepare(
+            "SELECT step_no,step_kind,state,step_json FROM operation_steps WHERE operation_id=?1 ORDER BY step_no LIMIT 7"
+        ).map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.steps"))?;
+        let rows = statement
+            .query_map([operation_id], |r| {
+                Ok(IndexedStep {
+                    number: r.get(0)?,
+                    kind: r.get(1)?,
+                    state: r.get(2)?,
+                    encoded: r.get(3)?,
+                })
+            })
+            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.steps"))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|_| port(PortErrorCode::Corrupt, "control.agent-read.journal"))
+    }
+}
+
 pub(super) fn decode_succeeded_agent(
     connection: &Connection,
     encoded: &str,
 ) -> PortResult<SucceededAgentOperationV1> {
+    decode_selected_agent(connection, encoded, None)
+}
+
+pub(super) fn decode_selected_agent(
+    connection: &Connection,
+    encoded: &str,
+    selected: Option<&super::agent_history_cache::AgentHistoryRow>,
+) -> PortResult<SucceededAgentOperationV1> {
+    decode_from_source(connection, encoded, selected)
+}
+
+pub(super) fn decode_from_source(
+    source: &impl AgentReadSource,
+    encoded: &str,
+    selected: Option<&super::agent_history_cache::AgentHistoryRow>,
+) -> PortResult<SucceededAgentOperationV1> {
+    #[cfg(test)]
+    DECODE_COUNT.with(|count| count.set(count.get() + 1));
     let invalid = || port(PortErrorCode::Corrupt, "control.agent-read.journal");
+    let expanded = payloads::expand(source, encoded)?;
+    let encoded = expanded.as_str();
     let durable: DurableOperation = serde_json::from_str(encoded).map_err(|_| invalid())?;
-    if durable.schema_version != hiroute_domain::OPERATION_SCHEMA_VERSION
+    if selected.is_some_and(|row| !row.matches(&durable))
+        || durable.schema_version != hiroute_domain::OPERATION_SCHEMA_VERSION
         || durable.state != OperationState::Succeeded
         || OperationId::derive(
             &durable.workspace_id,
@@ -130,43 +236,47 @@ pub(super) fn decode_succeeded_agent(
     {
         return Err(invalid());
     }
-    let identity: bool = connection
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM operations WHERE operation_id=?1 AND workspace_id=?2
-         AND principal=?3 AND operation_kind=?4 AND idempotency_key=?5 AND request_digest=?6
-         AND accepted_change_digest=?7 AND state='succeeded' AND generation=?8)",
-            params![
-                durable.operation_id.as_str(),
-                durable.workspace_id.as_str(),
-                durable.idempotency.principal,
-                durable.idempotency.operation_kind,
-                durable.idempotency.key,
-                durable.request_digest.as_str(),
-                durable.accepted_digest.as_str(),
-                durable.generation
-            ],
-            |r| r.get(0),
-        )
-        .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.identity"))?;
-    if !identity {
+    if !source.identity(&durable)? {
         return Err(invalid());
     }
-    let mut statement = connection.prepare("SELECT step_no,step_kind,state,step_json FROM operation_steps WHERE operation_id=?1 ORDER BY step_no")
-        .map_err(|_| port(PortErrorCode::Unavailable,"control.agent-read.steps"))?;
-    let rows = statement
-        .query_map([durable.operation_id.as_str()], |r| {
-            Ok((
-                r.get::<_, usize>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, String>(3)?,
-            ))
-        })
-        .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.steps"))?;
+    validate_indexed_steps(source, durable.operation_id.as_str(), &raw)?;
+    Ok(SucceededAgentOperationV1 {
+        service_publication_revision: durable.steps[5]
+            .terminal_result
+            .as_deref()
+            .and_then(hiroute_domain::SettingsServiceCompletionV1::parse)
+            .map(|receipt| receipt.publication_revision),
+        operation_id: durable.operation_id,
+        workspace_id: durable.workspace_id,
+        idempotency: durable.idempotency,
+        accepted_digest: durable.accepted_digest,
+        state: durable.state,
+        plan,
+        grant_effects: durable
+            .steps
+            .into_iter()
+            .find(|step| step.kind == OperationStepKind::ApplySecrets)
+            .expect("validated fixed journal")
+            .effects,
+    })
+}
+
+pub(super) fn validate_indexed_steps(
+    source: &impl AgentReadSource,
+    operation_id: &str,
+    raw: &Value,
+) -> PortResult<()> {
+    let invalid = || port(PortErrorCode::Corrupt, "control.agent-read.journal");
+    let rows = source.indexed_steps(operation_id)?;
     let mut count = 0;
     for row in rows {
-        let (number, kind, state, encoded) = row.map_err(|_| invalid())?;
-        let step: Value = serde_json::from_str(&encoded).map_err(|_| invalid())?;
+        let IndexedStep {
+            number,
+            kind,
+            state,
+            encoded,
+        } = row;
+        let step = payloads::expand_step_record(source, operation_id, &encoded)?;
         if number != count
             || number >= 6
             || step.as_object().is_none_or(|o| o.len() != 2)
@@ -182,15 +292,7 @@ pub(super) fn decode_succeeded_agent(
     if count != 6 {
         return Err(invalid());
     }
-    Ok(SucceededAgentOperationV1 {
-        operation_id: durable.operation_id,
-        workspace_id: durable.workspace_id,
-        idempotency: durable.idempotency,
-        accepted_digest: durable.accepted_digest,
-        state: durable.state,
-        plan,
-        steps: durable.steps,
-    })
+    Ok(())
 }
 
 impl ControlStore {
@@ -201,31 +303,12 @@ impl ControlStore {
         &self,
         workspace: &WorkspaceId,
     ) -> PortResult<(Vec<SucceededAgentOperationV1>, u64)> {
-        let connection = self.connection.borrow();
-        let mut statement = connection
-            .prepare(
-                "SELECT operation_json FROM operations WHERE workspace_id=?1
-             AND operation_kind='ApplyAgentConnectionChange' AND state='succeeded'
-             ORDER BY rowid DESC",
-            )
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.query"))?;
-        let rows = statement
-            .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.query"))?;
-        let mut verified = Vec::new();
-        let mut rejected = 0_u64;
-        for row in rows {
-            let encoded =
-                row.map_err(|_| port(PortErrorCode::Corrupt, "control.agent-read.row"))?;
-            match decode_succeeded_agent(&connection, &encoded) {
-                Ok(operation) => verified.push(operation),
-                Err(error) if error.code == PortErrorCode::Corrupt => {
-                    rejected = rejected.saturating_add(1);
-                }
-                Err(error) => return Err(error),
-            }
-        }
-        Ok((verified, rejected))
+        let (facts, rejected) =
+            self.read_verified_agent_history(workspace, &["ApplyAgentConnectionChange"], false)?;
+        Ok((
+            facts.into_iter().map(|fact| (*fact).clone()).collect(),
+            rejected,
+        ))
     }
 
     pub fn succeeded_agent_operations_for_kind(
@@ -240,35 +323,22 @@ impl ControlStore {
         workspace: &WorkspaceId,
         kinds: &[&str],
     ) -> PortResult<Vec<SucceededAgentOperationV1>> {
-        if kinds.is_empty()
-            || kinds.len() > 2
-            || kinds.iter().any(|kind| {
-                !matches!(
-                    *kind,
-                    "ApplyAgentConnectionChange" | "ApplyAgentConnectionRestore"
-                )
-            })
-        {
-            return Err(port(PortErrorCode::InvalidData, "control.agent-read.kinds"));
-        }
-        let placeholders = vec!["?"; kinds.len()].join(",");
-        let connection = self.connection.borrow();
-        let mut statement = connection.prepare(&format!("SELECT operation_json FROM operations WHERE workspace_id=? AND operation_kind IN ({placeholders}) AND state='succeeded' ORDER BY rowid DESC"))
-            .map_err(|_| port(PortErrorCode::Unavailable,"control.agent-read.query"))?;
-        let rows = statement
-            .query_map(
-                rusqlite::params_from_iter(
-                    std::iter::once(workspace.as_str()).chain(kinds.iter().copied()),
-                ),
-                |r| r.get::<_, String>(0),
-            )
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.agent-read.query"))?;
-        rows.map(|row| {
-            decode_succeeded_agent(
-                &connection,
-                &row.map_err(|_| port(PortErrorCode::Corrupt, "control.agent-read.row"))?,
+        self.verified_agent_history_for_kinds(workspace, kinds)
+            .map(|facts| facts.into_iter().map(|fact| (*fact).clone()).collect())
+    }
+}
+
+pub(super) fn validate_kinds(kinds: &[&str]) -> PortResult<()> {
+    if kinds.is_empty()
+        || kinds.len() > 2
+        || kinds.iter().any(|kind| {
+            !matches!(
+                *kind,
+                "ApplyAgentConnectionChange" | "ApplyAgentConnectionRestore"
             )
         })
-        .collect()
+    {
+        return Err(port(PortErrorCode::InvalidData, "control.agent-read.kinds"));
     }
+    Ok(())
 }

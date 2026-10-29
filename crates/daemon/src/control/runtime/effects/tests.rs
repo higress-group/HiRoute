@@ -548,6 +548,8 @@ fn permission_effect_hardens_only_pinned_identity_and_never_reverts_mode() {
             hiroute_application::prices::PriceSnapshotSlot::default(),
         ),
         publication_diagnostics: Mutex::new(Default::default()),
+        publication_marker_cache: Mutex::new(None),
+        settings_publication_candidate: Mutex::new(None),
         stores: Mutex::new(stores),
         delegation_digest_authority: hiroute_observation::DigestAuthority::new([8; 32]),
         delegation_observation: Arc::new(

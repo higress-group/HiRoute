@@ -3,8 +3,25 @@ use sha2::{Digest, Sha256};
 
 use super::{
     IngressProtocol, ModelError, ModelIrError, NativeTerminalOutcome, ProjectionMetadata,
-    ProtocolAdapterError,
+    ProtocolAdapterError, ToolKindV1,
 };
+
+/// Web search uses an item ID rather than the callable tool's call ID. Keep
+/// those native carriers distinct even though both project to Function in IR.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum NativeToolCarrier {
+    Call(ToolKindV1),
+    WebSearch,
+}
+
+impl NativeToolCarrier {
+    pub(super) fn kind(self) -> ToolKindV1 {
+        match self {
+            Self::Call(kind) => kind,
+            Self::WebSearch => ToolKindV1::Function,
+        }
+    }
+}
 
 impl ProjectionMetadata {
     pub(super) fn opaque() -> Self {
@@ -99,9 +116,13 @@ pub(super) fn unowned_extension(protocol: IngressProtocol, event: &str) -> bool 
 }
 
 pub(super) fn digest_item(item: &Map<String, Value>) -> [u8; 32] {
-    // A complete output_item.done is bounded by the SSE event limit. Hashing
-    // it avoids retaining a second copy of the native response body.
-    Sha256::digest(serde_json::to_vec(item).expect("JSON object serializes")).into()
+    // JSON object order carries no model semantics, including when another
+    // consumer enables serde_json/preserve_order. Stream the complete value into
+    // the digest; unknown fields and array order still participate in equality.
+    let mut digest = Sha256::new();
+    crate::replay::write_canonical_object(&mut digest, item)
+        .expect("JSON object writes to an infallible digest");
+    digest.finalize().into()
 }
 
 pub(super) fn response_item_identity(item: &Map<String, Value>) -> Option<[u8; 32]> {

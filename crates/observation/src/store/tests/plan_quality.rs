@@ -9,9 +9,12 @@ use crate::query_v2::ObservationReaderContext;
 
 use super::support::{Fixture, fact_channel, offer_fact, open_store, writer};
 
+mod composite;
+mod history_membership;
 mod routing_observations;
 mod routing_observations_released;
 mod routing_timeline_protection;
+mod stage_admission;
 mod summary;
 mod trust;
 
@@ -74,6 +77,7 @@ fn finished_for_model_with_status(
     status: AgentTurnStatusV1,
 ) -> ExecutionFactV1 {
     ExecutionFactV1::AgentTurnFinished {
+        history_membership: None,
         opening_cause: None,
         branch_execution: None,
         agent_turn_id: turn.into(),
@@ -114,6 +118,7 @@ fn assessment_for_model(
     model: &str,
 ) -> ExecutionFactV1 {
     ExecutionFactV1::BranchAssessmentRecorded {
+        history_membership: None,
         segment_id: segment.into(),
         plan_id: AgentPlanId::parse(PLAN).unwrap(),
         plan_revision: 17,

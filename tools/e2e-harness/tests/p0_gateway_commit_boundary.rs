@@ -29,8 +29,11 @@ fn real_listener_precommit_disconnect_reaches_next_frozen_candidate() {
 }
 
 #[test]
-fn real_listener_persists_mechanical_failure_before_next_request() {
-    let first = NativeProvider::start(vec![ProviderReply::CloseBeforeSemantic]);
+fn real_listener_keeps_mechanical_failure_local_to_each_request() {
+    let first = NativeProvider::start(vec![
+        ProviderReply::CloseBeforeSemantic,
+        ProviderReply::CloseBeforeSemantic,
+    ]);
     let second = NativeProvider::start(vec![
         ProviderReply::Complete {
             status: 200,
@@ -40,24 +43,27 @@ fn real_listener_persists_mechanical_failure_before_next_request() {
         ProviderReply::Complete {
             status: 200,
             error_kind: None,
-            body: br#"{"id":"skipped-cooled-binding","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"second"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#,
+            body: br#"{"id":"fallback-after-second-disconnect","model":"runtime-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"second"}]}],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}"#,
         },
     ]);
     let fixture = RuntimeFixture::launch(&[&first, &second], 2);
 
     let first_response = fixture.request();
-    let second_response = fixture.request();
+    // A different first user also excludes the generic API's inferred hold
+    // preference; this assertion measures health rather than same-turn affinity.
+    let second_response = fixture
+        .request_body(br#"{"model":"runtime-model","input":"independent request","stream":false}"#);
 
     assert_eq!(first_response.status, 200);
     assert_eq!(second_response.status, 200);
     assert_eq!(
         first.calls(),
-        1,
-        "the disconnected binding must be cooling down"
+        2,
+        "the independent request must try its first frozen candidate again"
     );
     assert_eq!(second.calls(), 2);
     let document: serde_json::Value = serde_json::from_slice(&second_response.body).unwrap();
-    assert_eq!(document["id"], "skipped-cooled-binding");
+    assert_eq!(document["id"], "fallback-after-second-disconnect");
 }
 
 #[test]
@@ -87,6 +93,10 @@ fn fixed_postcommit_disconnect_never_retries_keys_or_enters_another_plan() {
         fixture.request_body(br#"{"model":"runtime-model","input":"hello","stream":true}"#);
 
     assert_eq!(response.status, 200);
+    assert!(
+        !response.http_entity_complete,
+        "post-commit failure must remain an incomplete HTTP entity"
+    );
     let body = String::from_utf8_lossy(&response.body);
     assert!(body.contains("fixed-prefix"));
     assert!(!body.contains("forbidden-"));
@@ -121,6 +131,10 @@ fn real_listener_postcommit_disconnect_never_creates_another_attempt() {
 
     assert_eq!(response.status, 200);
     assert!(
+        !response.http_entity_complete,
+        "provider disconnect must reach the downstream HTTP boundary"
+    );
+    assert!(
         response
             .body
             .windows(b"semantic-prefix".len())
@@ -132,4 +146,27 @@ fn real_listener_postcommit_disconnect_never_creates_another_attempt() {
         0,
         "downstream semantic commit must permanently close fallback"
     );
+}
+
+#[test]
+fn real_listener_postcommit_deadline_preserves_prefix_without_successful_eof() {
+    let prefix = b"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"deadline-prefix\",\"model\":\"runtime-native\"}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"content_index\":0,\"delta\":\"deadline-prefix\"}\n\n";
+    let first = NativeProvider::start(vec![ProviderReply::StreamDrip {
+        status: 200,
+        chunks: vec![prefix.to_vec(), b": still waiting\n\n".to_vec()],
+        interval: Duration::from_millis(1_500),
+    }]);
+    let second = NativeProvider::start(vec![ProviderReply::Complete {
+        status: 200,
+        error_kind: None,
+        body: br#"{"id":"forbidden-after-deadline"}"#,
+    }]);
+    let fixture = RuntimeFixture::launch_with_replay_timeout(&[&first, &second], 2, 64 * 1024, 800);
+    let response = fixture
+        .request_body(br#"{"model":"runtime-model","input":"deadline check","stream":true}"#);
+    assert_eq!(response.status, 200);
+    assert!(!response.http_entity_complete);
+    assert!(String::from_utf8_lossy(&response.body).contains("deadline-prefix"));
+    assert!(!String::from_utf8_lossy(&response.body).contains("response.completed"));
+    assert_eq!((first.calls(), second.calls()), (1, 0));
 }

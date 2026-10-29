@@ -11,9 +11,43 @@ different lifetimes.
 ### Requirement: Startup preserves damaged or unsupported data
 
 Startup MUST distinguish stale socket, unready service, and unreadable local stores.
-Damaged control/runtime/secrets/observation state stops business startup and retains
-original directories. It cannot silently reset, overwrite with an empty database,
-or claim migration did not happen merely because the service later failed.
+Ordinary current-format startup MUST strictly validate the complete dependency
+closure of current business state and unresolved recovery work before admitting
+business traffic. This includes current, prepared and last-known-good publications,
+current Plan heads and their versions, exact active Secret grant proofs, versions
+held by live Workers or continuations, and operations whose required completion
+has not settled. Parked native-file tails, NeedsAttention operations and operations
+marked Succeeded with required finalization outstanding remain unresolved work;
+membership does not authorize automatic retries of parked user-file changes.
+
+Damaged, unreadable, unsupported or incomplete state needed to establish that
+closure stops affected business startup and retains original directories. The
+membership and completeness of current dependencies and unresolved work MUST be
+established from the authoritative storage and recovery boundaries; an empty
+index, missing completion marker or absent writer claim alone is not proof that
+there is nothing to recover. All production writes and supported conversions MUST
+preserve this invariant atomically with the state they describe. Existing content,
+ownership, generation, authorization, revocation and epoch checks remain required.
+Optional Observation attribution remains distinct from admission authority:
+unavailable attribution stays explicitly unassociated under its existing bounded
+diagnostics policy and cannot fabricate a proof or become a new startup blocker.
+
+Damage confined to historical records outside this dependency closure MUST NOT
+block unrelated current work. Access to those records or a full audit MUST verify
+the relevant stored content and references and report actual corruption or
+unavailability, never substitute empty history or successful verification. Ordinary
+startup admission MUST NOT depend on scanning, decoding or replaying all unrelated
+completed history, nor certify the integrity of unchecked historical data.
+Detected database structural errors or an unprovable current dependency closure
+remain failures; no claim is made that a bounded startup detects every damaged
+page or historical record. Full-store audits and the complete initial conversion
+of supported older representations SHALL be identified separately from ordinary
+startup, with their actual scope, progress and result. Incomplete conversion,
+missing required recovery members or incompatible writers cannot enable a fast
+path or initialize an empty current state.
+
+Startup cannot silently reset, overwrite with an empty database, or claim migration
+did not happen merely because the service later failed.
 Only a genuinely fresh root may initialize; an incomplete existing three-store set,
 unknown files indicating prior state, or recovery backup prevents fresh initialization.
 The real bootstrap diagnostics directory may already exist without being discarded.
@@ -24,6 +58,111 @@ backup requires whole-group restoration with its corresponding complete old bina
 not deletion of storage or a single database replacement. Archive/restart recovery
 retains actual backup ownership and package identity. A changing filesystem device
 number after reboot cannot alone invalidate logically intact supported store identity.
+
+#### Scenario: Startup ownership follows the actual store lifetime
+
+- **WHEN** current stores are transferred to independent owners and an unrelated Unix child or duplicate descriptor retains a copy of their startup-lock handle
+- **THEN** each retained Control, Runtime or Secrets store continues to exclude another writer; releasing the last actual store relinquishes startup ownership without waiting for the unrelated descriptor to close or exec, preserving current storage and ordinary lock-conflict diagnostics.
+
+#### Scenario: Independent historical damage does not disable current routing
+
+- **WHEN** current dependencies and unresolved recovery work are verified, but an unrelated retained historical publication is damaged
+- **THEN** normal startup and unrelated current routing remain available; a read or audit of that publication reports its actual failure and preserves the original data, without describing unchecked history as healthy.
+
+#### Scenario: A historical version is still a current dependency
+
+- **WHEN** a current or prepared publication, last-known-good state, active Secret proof, live hold or unresolved operation depends on an older record
+- **THEN** that record remains inside the required validation closure, and its missing or invalid content blocks the affected admission or recovery; age alone cannot exempt it.
+
+#### Scenario: Explicit native targets do not require historical replay
+
+- **WHEN** an Agent target has several retained settings operations
+- **THEN** ordinary discovery and startup validate the current explicit target owner and complete target membership, including pending work, without decoding superseded unrelated settings history. Supported conversion establishes those references once without changing the old journal bytes. Missing current owners or coverage remain failures; target hints do not grant execution authority.
+
+#### Scenario: Native restore history is distinct from required recovery material
+
+- **WHEN** completed Agent configuration operations leave superseded restore markers or backups
+- **THEN** ordinary startup authenticates the current workspace/target owners and unresolved operations' exact direct restore inputs, including the current model's catalog, without visiting optional historical Restore menu entries or recursively retaining settled reconfiguration ancestors. Access to an old restore point still authenticates its original journal, marker and protected backup; unrelated damage is not reported as verified healthy.
+- **AND** settled file ownership verifies the original immutable input, exact current identity and file receipt without requiring optional attribution proof from unrelated completed steps. Admission, owner replacement and direct restore reads use this same boundary; the entire unresolved operation remains strictly verified.
+- **AND** admission captures the exact previous owner, and a successful receipt updates or retires the owner in the same transaction as the terminal journal and writer release. Selecting an old restore point cannot bypass this comparison; rollback keeps the prior owner. Missing current owners, membership, receipts or required backups remain failures. Supported initial conversion establishes this projection atomically from authenticated old journals without rewriting them.
+
+#### Scenario: A settled idempotent retry cannot repeat old cleanup
+
+- **WHEN** a completed removal is retried with its original idempotency identity after a new installation at the same target
+- **THEN** the exact authenticated terminal Operation returns its original result without replaying settled cleanup against the new installation. Only an authoritative durable pending-finalization obligation can request its callback again; missing or inconsistent membership remains an error. A crash after local terminal commit but before required finalization retains that obligation for recovery.
+
+#### Scenario: Current model checks do not scan replaced declarations
+
+- **WHEN** publication admission checks installed model budgets or an active Agent access view checks the current configuration
+- **THEN** those reads use authenticated current managed-configuration owners, retaining immutable admission, exact file and grant-step receipts, current Secret and budget checks, without decoding superseded unrelated settings journals. Missing optional completed service provenance does not block these reads or confer session attribution. A malformed current owner, required file or grant proof remains a failure. Explicit historical Restore reads retain their original strict validation.
+
+#### Scenario: An empty recovery lookup cannot prove completion
+
+- **WHEN** recovery membership is missing, inconsistent or incomplete, including an operation marked Succeeded whose required finalization is outstanding
+- **THEN** startup refuses affected business admission and preserves recovery material rather than treating an empty lookup as no work; parked native-file tails retain their explicit retry policy.
+
+#### Scenario: First conversion and full audit are distinct from ordinary startup
+
+- **WHEN** supported older data needs a complete initial conversion or a full-store integrity audit is performed
+- **THEN** the existing coordinated recovery boundary preserves the source and reports the actual work separately; interruption cannot publish partial current-state coverage or turn unchecked historical data into a successful integrity result.
+
+#### Scenario: Admitted v32 adds the current Agent locator
+
+- **WHEN** the original verified three-store backup group has exact source version 32 and the immutable migration target is version 33
+- **THEN** the locator is built and published atomically from the admitted current and recovery coverage; final validation checks all three SQLite structures, the strict current and unresolved closure, and complete locator coverage without claiming an audit of unrelated history.
+- **AND** missing or damaged source identity, coverage, current owners or unresolved work remains a failure. Lower source versions, other target batches and unprovable source groups retain their original full conversion and audit rules. An interrupted batch retains its original backup, identity and matching-binary recovery path.
+
+#### Scenario: Diagnose a current Agent read
+
+- **WHEN** debug diagnostics are enabled for an Agent read
+- **THEN** closed operation categories distinguish total time, storage lock wait and hold, snapshot and locator work, lock-free validation, native checks, final fence and current grant authentication. Aggregate operation and payload counts and byte lengths do not contain paths, user content or credential material. Diagnostics do not scan history or change the read result.
+
+#### Scenario: Completed upgrade backup is retained without reopening history
+
+- **WHEN** the durable completion record names the current target format and agrees with the current three-store identities and secret binding
+- **THEN** ordinary reopen validates current dependencies and unfinished work without reading the retired backup contents or auditing unrelated history. Damage in that retired backup remains a failure when it is explicitly opened for recovery; it is never reported as verified healthy.
+- **AND** incomplete batches, older targets, malformed completion records, missing current stores and mismatched identities retain strict recovery admission. A current format number or an existing backup path alone cannot prove completion.
+
+#### Scenario: Upgrade status follows entered work
+
+- **WHEN** startup enters backup publication, data conversion, final current-data validation and service recovery
+- **THEN** it reports the corresponding bounded phases on the existing readiness channel, without rescanning history for progress. Completing an older batch before the current batch does not repeat or regress visible phases. A failed stage remains the last entered phase; no later stage or ready result is fabricated. Ordinary current-format restart emits no upgrade phases and retains its normal readiness deadline.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/249#issuecomment-6461279980
+
+### Requirement: Journal progress does not rewrite immutable payloads
+
+Current Operations SHALL store their immutable admitted input and large compensation
+payloads separately from mutable journal progress. The storage representation MUST
+preserve the domain input, accepted digest, step order, ownership and recovery
+semantics. A reference is not execution authority: cold reads authenticate payload
+bytes and reconstruct the typed input; warm updates compare their exact committed
+input, generation, identity and both journal copies in the same transaction.
+Missing, substituted or changed required bytes SHALL fail validation. Supported
+retained inline journals keep their original bytes and existing recovery checks;
+ordinary startup does not rewrite completed history into the new representation.
+
+The successful local Plan head/version/draft change and terminal journal SHALL
+commit in one Control transaction under existing writer and admission guards.
+Required external completion remains explicitly pending until its real callback
+succeeds. Restart SHALL recover that completion without inferring it from a terminal
+journal label, and SHALL preserve the explicit retry policy for parked native tails.
+
+#### Scenario: Large immutable payload survives repeated progress updates
+
+- **WHEN** an admitted Operation with a large immutable input or compensation payload updates attempts or state
+- **THEN** only the compact progress changes, the payload bytes remain unchanged, and a later cold read reconstructs the same typed Operation.
+
+#### Scenario: Required payload is damaged after an earlier successful read
+
+- **WHEN** required retained payload bytes are removed or altered while their reference remains
+- **THEN** both currentness validation and cold recovery reject the damaged value; an earlier in-memory value cannot authorize the update.
+
+#### Scenario: Final local transaction or external completion is interrupted
+
+- **WHEN** a Plan operation stops before its local terminal transaction commits or before required external finalization completes
+- **THEN** head/version/draft and journal do not expose a partial local commit, and required external work stays in the durable recovery set until confirmed complete.
 
 ### Requirement: Supported upgrades use one three-store coordinator
 
@@ -145,6 +284,12 @@ HiRoute SHALL store repeated retained content and common observation metadata th
 
 - **WHEN** equal bytes appear in distinct logical conversations or authorization scopes
 - **THEN** physical reuse does not merge identities, grant access, change visibility, or assign one occurrence the other occurrence's execution facts.
+
+#### Scenario: Resolve an incoming sequence without rescanning expired gap ranges
+
+- **WHEN** a fact or content event arrives while retained gaps grow across producer epochs, streams and earlier sequences
+- **THEN** gap lookup seeks within that exact channel/producer/epoch/stream past ranges ending before the event, without scanning unrelated or already-ended gaps for each event; all overlapping gaps are resolved with their original scope, known-loss status and reason, preserving acknowledgement, replay and completeness semantics.
+- **AND** reopening an existing current-format store may install a derived lookup index without rewriting historical evidence or changing its format version; repeated reopen preserves the index and historical receipts.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248901316
@@ -340,6 +485,11 @@ HiRoute SHALL allow the local installation owner to save or disable one durable 
 
 - **WHEN** continued writes, contention or failed or ineffective release keeps usage above the threshold
 - **THEN** maintenance yields and backs off between bounded passes, reports pending/blocked overage, and never continuously consumes CPU or drops acknowledged writes to force the limit.
+
+#### Scenario: Logical retirement precedes physical cleanup
+
+- **WHEN** capacity retention commits a request's logical retirement and its physical cleanup is interrupted or deferred, including across restart
+- **THEN** fresh Plan-quality reads immediately omit stages ending in that request and omit assessments triggered by it from samples, filters and summary scores; existing quality cursors become stale, while unrelated retained evidence remains unchanged and physical cleanup resumes in bounded passes. Content-only deletion retains current request membership, stages and scores.
 
 #### Scenario: Physical release is reported honestly
 

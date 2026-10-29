@@ -48,6 +48,43 @@ fn publication_readiness_requires_complete_identity_and_resumed_requests() {
 }
 
 #[test]
+fn warm_publication_proof_does_not_cache_live_readiness_or_reproject_unchanged_bytes() {
+    let root = tempfile::tempdir().unwrap();
+    let target = GatewayPublicationAdapter::new(Arc::new(
+        GatewayPublicationInstaller::open(root.path().join("lkg.json")).unwrap(),
+    ));
+    let first = record(1);
+    target.activate_verified(&first).unwrap();
+    target.resume_requests().unwrap();
+    for _ in 0..20 {
+        assert!(target.observes_verified(Some(&first)).unwrap());
+    }
+    assert_eq!(target.projection_builds.load(Ordering::Relaxed), 1);
+    {
+        let _busy_proof = target.expected.lock().unwrap();
+        assert_eq!(
+            target.observes_verified(Some(&first)),
+            Err(PublicationTargetError::Unavailable)
+        );
+    }
+    target.suspend_requests().unwrap();
+    assert!(!target.observes_verified(Some(&first)).unwrap());
+    assert!(target.verify_installed(&first).unwrap());
+    target.resume_requests().unwrap();
+    assert!(target.observes_verified(Some(&first)).unwrap());
+    assert_eq!(target.projection_builds.load(Ordering::Relaxed), 1);
+    let next = record(2);
+    target.activate_verified(&next).unwrap();
+    assert!(!target.observes_verified(Some(&first)).unwrap());
+    assert!(target.observes_verified(Some(&next)).unwrap());
+    assert_eq!(target.projection_builds.load(Ordering::Relaxed), 2);
+    let mut tampered = next.clone();
+    std::sync::Arc::make_mut(&mut tampered.bytes).push(b' ');
+    assert!(target.observes_verified(Some(&tampered)).is_err());
+    assert!(target.observes_verified(Some(&next)).unwrap());
+}
+
+#[test]
 fn restored_execution_lkg_reattaches_pricing_from_verified_product_record() {
     let root = tempfile::tempdir().unwrap();
     let lkg = root.path().join("lkg.json");

@@ -164,8 +164,10 @@ sys.exit(101 if bad else 0)
                     self.assertFalse(Path(result['temporary_directory']['path']).exists())
                     saved = json.loads((run / 'result.json').read_text())
                     self.assertEqual((saved['status'], saved['process_exit']), ('failed', 101))
-                    self.assertEqual(saved['evidence_export']['state'], 'saved')
-                    self.assertEqual((run / 'artifacts/e2e/report.json').read_text(), '{"observed":"fixture"}')
+                    self.assertEqual(saved['evidence_export']['state'], 'failed')
+                    self.assertEqual(saved['cleanup']['evidence_export']['state'], 'saved')
+                    manifest = Path(saved['cleanup']['evidence_export']['manifest'])
+                    self.assertEqual((manifest.parent / 'artifacts/e2e/report.json').read_text(), '{"observed":"fixture"}')
                     continue
                 if mode != 'blocked':
                     self.assertTrue((run / 'artifacts/e2e/report.json').is_file())
@@ -186,6 +188,7 @@ sys.exit(101 if bad else 0)
                         self.assertFalse((run / 'artifacts' / path).exists())
                 if retention == 'never':
                     self.assertEqual(result['cleanup']['checkout']['state'], 'removed')
+                    self.assertFalse((run / 'cleanup-evidence').exists())
                     self.assertNotIn(key, subprocess.check_output(
                         ['git', '--git-dir', str(root / 'repository.git'), 'worktree', 'list', '--porcelain'], text=True))
 
@@ -211,6 +214,8 @@ p=pathlib.Path.cwd()/'target'
 if 'metadata' in sys.argv:
  print(json.dumps({'target_directory':str(p)}));sys.exit(0)
 profile=sys.argv[sys.argv.index('--profile')+1] if '--profile' in sys.argv else 'debug'
+p.mkdir(exist_ok=True)
+(p/'.rustc_info.json').write_text(json.dumps(sys.argv[1:]))
 folder=p/profile
 folder.mkdir(parents=True,exist_ok=True)
 (folder/'.cargo-lock').touch()
@@ -248,9 +253,18 @@ folder.mkdir(parents=True,exist_ok=True)
                     self.assertFalse((run / 'artifacts/debug').exists())
                     self.assertEqual((run / 'artifacts/e2e/debug/diagnostic.log').read_text(), 'unique runtime evidence')
                     self.assertTrue((root / 'worktrees' / first / 'target/ci/binary').is_file())
+                    if not index:
+                        original_manifest = (run / 'evidence.json').read_bytes()
                     if index:
                         self.assertEqual(result['cleanup']['checkout']['state'], 'retained')
                         self.assertFalse(Path(result['temporary_directory']['path']).exists())
+                cleanup = runner.cleanup_terminal_run(root, first)
+                self.assertEqual(cleanup['state'], 'removed')
+                self.assertFalse((root / 'worktrees' / first).exists())
+                self.assertEqual((root / 'runs' / first / 'evidence.json').read_bytes(), original_manifest)
+                snapshot = Path(cleanup['evidence_export']['manifest'])
+                self.assertEqual(json.loads(snapshot.read_text())['run_id'], key)
+                self.assertEqual(json.loads((snapshot.parent / 'artifacts/.rustc_info.json').read_text()), ['check'])
 
     def test_separate_workbench_submission_readback_and_maintenance_keep_the_selected_root(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -268,6 +282,7 @@ folder.mkdir(parents=True,exist_ok=True)
                     payload = json.loads(ssh.call_args.kwargs['input'])
                     self.assertEqual(payload['workbench'], '.local/share/github-workbench')
                     self.assertEqual(payload['driver_args'][-1], '.local/share/github-workbench')
+                    self.assertEqual(payload['report_digest'], hashlib.sha256(payload['report_source'].encode()).hexdigest())
                 else:
                     self.assertIn('github-workbench', ssh.call_args.args[0][-1])
                 with patch.object(runner, 'CONFIG', config), \
@@ -927,6 +942,8 @@ runner.admit_cache_server(root,env,handles=[handle])
                 mode="maintenance", driver_args=["_cleanup", "20260905-010203-abcdef12"],
                 source=source, executor_sha="b" * 40,
                 executor_digest=hashlib.sha256(source.encode()).hexdigest(),
+                report_source="# matching report helper\n",
+                report_digest=hashlib.sha256(b"# matching report helper\n").hexdigest(),
             )
             with patch("pathlib.Path.home", return_value=Path(directory)), \
                  patch("sys.stdin", io.StringIO(json.dumps(payload))), \
@@ -937,6 +954,8 @@ runner.admit_cache_server(root,env,handles=[handle])
             command = invoke.call_args.args[0]
             self.assertEqual(command[-2:], ["_cleanup", "20260905-010203-abcdef12"])
             self.assertFalse((Path(directory) / runner.ROOT / "runs").exists())
+            helper = Path(directory) / runner.ROOT / "controllers" / ("b" * 40 + "-report.py")
+            self.assertEqual(helper.read_text(), payload['report_source'])
 
     def test_home_symlink_but_not_shared_target(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1205,6 +1224,243 @@ sys.exit(int((home/'exit-code').read_text()))
                                                      text=True, check=True).stdout)
             self.assertNotIn("performance_goal_met", format_check)
             self.assertNotIn("tests", format_check)
+
+
+class CleanupEvidence(unittest.TestCase):
+    """Real Git, leases, exports and maintenance entry; no compiler is needed."""
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory(dir='/tmp')
+        self.addCleanup(directory.cleanup)
+        self.base = Path(directory.name).resolve()
+        self.home = self.base / 'home'
+        self.root = self.home / 'workbench'
+        self.root.mkdir(parents=True)
+        source = self.base / 'source'
+        self.git('init', '-q', str(source))
+        (source / '.gitignore').write_text('target/\nunknown.private\n')
+        self.git('-C', str(source), 'add', '.')
+        self.git('-C', str(source), 'commit', '-qm', 'base')
+        self.sha = self.git('-C', str(source), 'rev-parse', 'HEAD')
+        (source / 'tracked').write_text('candidate')
+        self.git('-C', str(source), 'add', 'tracked')
+        self.git('-C', str(source), 'commit', '-qm', 'candidate')
+        self.candidate = self.git('-C', str(source), 'rev-parse', 'HEAD')
+        bare = self.root / 'repository.git'
+        self.git('clone', '-q', '--bare', str(source), str(bare))
+        self.owner, self.borrower = '20261028-010201-abcdef01', '20261028-010202-abcdef02'
+        self.checkout = self.root / 'worktrees' / self.owner
+        self.checkout.parent.mkdir()
+        self.git('--git-dir', str(bare), 'worktree', 'add', '-q', '--detach', str(self.checkout), self.sha)
+        self.git('--git-dir', str(bare), 'update-ref', 'refs/validation/' + self.owner, self.sha)
+        self.metadata = self.checkout / 'target/.rustc_info.json'
+        self.metadata.parent.mkdir()
+        self.metadata.write_text('owner compiler metadata')
+        system = self.base / 'scratch'
+        system.mkdir()
+        self.scratch = system / 'hr-fixture'
+        self.scratch.mkdir(mode=0o700)
+        (self.scratch / 'diagnostic.log').write_text('owner failure evidence')
+        self.run = self.root / 'runs' / self.owner
+        self.run.mkdir(parents=True)
+        self.common = dict(origin=str(source), ref='refs/heads/fixture', plan='cleanup-evidence',
+                           executor_sha=self.sha, executor_digest='driver', report_digest='report')
+        self.original = dict(self.common, id=self.owner, checkout_owner=self.owner,
+                             sha=self.sha, status='failed', retention='always', worker_pid=None,
+                             checkout=str(self.checkout), process_exit=101, scenario='expected_red',
+                             command=['cargo', 'check'], finished_at=0,
+                             temporary_directory=dict(path=str(self.scratch), system_directory=str(system)))
+        self.original['evidence_export'] = runner.reporting().preserve_evidence(self.run, self.original)
+        runner.save(self.run / 'result.json', self.original)
+        runner.save(self.run / 'validation-report.json', dict(sha=self.sha, process_exit=101))
+        runner.save(self.root / ('checkout-' + self.owner + '.json'), dict(run_id=self.owner, sha=self.sha))
+        self.original_manifest = (self.run / 'evidence.json').read_bytes()
+        self.original_report = (self.run / 'validation-report.json').read_bytes()
+
+    def git(self, *arguments):
+        return subprocess.check_output(['git', '-c', 'core.hooksPath=/dev/null',
+            '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+            '-c', 'commit.gpgsign=false', *arguments], text=True, stderr=subprocess.PIPE).strip()
+
+    def advance(self, advanced=True, changed=True):
+        sha = self.candidate if advanced else self.sha
+        request = dict(self.common, id=self.borrower, sha=sha)
+        lease = runner.checkout_lease(self.root, self.owner)
+        try:
+            with runner.lock(self.root / 'repository.lock'):
+                if advanced:
+                    runner.continue_checkout(self.root, dict(request, continue_checkout=self.owner), self.owner)
+                else:
+                    runner.verify_reused_checkout(self.root, dict(request, reuse_checkout=self.owner))
+                runner.save(self.root / ('checkout-' + self.owner + '.json'), dict(run_id=self.borrower, sha=sha))
+            if changed:
+                self.metadata.write_text('borrower compiler metadata')
+            later = dict(self.original, id=self.borrower, sha=sha, command=['cargo', 'test'])
+            later.pop('temporary_directory')
+            run = self.root / 'runs' / self.borrower
+            run.mkdir()
+            later['evidence_export'] = runner.reporting().preserve_evidence(run, later)
+            runner.save(run / 'result.json', later)
+            self.borrower_bytes = (run / 'result.json').read_bytes()
+            self.borrower_manifest = (run / 'evidence.json').read_bytes()
+        finally:
+            lease.close()
+
+    def invoke(self, *arguments):
+        bootstrap = ('import pathlib,runpy,sys; script,root,*args=sys.argv[1:]; '
+                     'pathlib.Path.home=classmethod(lambda cls:pathlib.Path(root)); '
+                     'sys.argv=[script,*args]; runpy.run_path(script,run_name="__main__")')
+        return subprocess.run([sys.executable, '-c', bootstrap, runner.__file__, str(self.home), *arguments],
+                              capture_output=True, text=True)
+
+    def cleanup(self, expected=0):
+        result = self.invoke('_cleanup', self.owner, 'workbench')
+        self.assertEqual(result.returncode, expected, result.stderr or result.stdout)
+        return json.loads(result.stdout)
+
+    def assert_original_preserved(self):
+        saved = json.loads((self.run / 'result.json').read_text())
+        for key in ('sha', 'status', 'process_exit', 'scenario', 'evidence_export'):
+            self.assertEqual(saved[key], self.original[key])
+        self.assertEqual((self.run / 'evidence.json').read_bytes(), self.original_manifest)
+        self.assertEqual((self.run / 'validation-report.json').read_bytes(), self.original_report)
+        self.assertEqual((self.run / 'artifacts/.rustc_info.json').read_text(), 'owner compiler metadata')
+
+    def assert_retained(self):
+        cleanup = self.cleanup(expected=1)
+        self.assertEqual(cleanup['state'], 'retained')
+        self.assertTrue(self.checkout.is_dir())
+        self.assertTrue(self.scratch.is_dir())
+        self.assertEqual(cleanup['validation_ref']['state'], 'retained')
+        self.assert_original_preserved()
+        return cleanup
+
+    def test_cleanup_original_source_is_idempotent_and_preserves_failure_verdict(self):
+        first = self.cleanup()
+        self.assertEqual(first['state'], 'removed')
+        saved = first['evidence_export']
+        manifest = Path(saved['manifest'])
+        self.assertTrue(manifest.is_file())
+        self.assertEqual(json.loads(manifest.read_text())['run_id'], self.owner)
+        self.assertFalse(self.checkout.exists())
+        self.assertFalse(self.scratch.exists())
+        again = self.cleanup()
+        self.assertEqual(again['checkout']['state'], 'absent')
+        self.assertEqual(len(list((self.run / 'cleanup-evidence').iterdir())), 1)
+        self.assert_original_preserved()
+
+    def test_same_sha_reuse_retires_owner_without_modifying_either_run(self):
+        self.advance(advanced=False)
+        self.assert_capture_and_retirement(self.sha, 'borrower compiler metadata')
+
+    def test_advanced_source_exports_a_separate_current_generation(self):
+        self.advance()
+        self.assert_capture_and_retirement(self.candidate, 'borrower compiler metadata')
+
+    def test_advanced_source_with_unchanged_bytes_keeps_original_source_identity(self):
+        self.advance(changed=False)
+        self.assert_capture_and_retirement(self.candidate, 'owner compiler metadata')
+
+    def assert_capture_and_retirement(self, sha, contents):
+        cleanup = self.cleanup()
+        self.assertEqual(cleanup['checkout']['state'], 'removed')
+        self.assert_original_preserved()
+        manifest = Path(cleanup['evidence_export']['manifest'])
+        value = runner.reporting().verify_evidence(manifest.parent, cleanup['evidence_export'])
+        self.assertEqual((value['source_revision'], value['run_id'], value['checkout_owner']),
+                         (sha, self.borrower, self.owner))
+        self.assertEqual((manifest.parent / 'artifacts/.rustc_info.json').read_text(), contents)
+        self.assertEqual((manifest.parent / 'evidence/temporary/diagnostic.log').read_text(), 'owner failure evidence')
+        self.assertFalse(self.checkout.exists())
+        self.assertFalse(self.scratch.exists())
+        self.assertEqual(cleanup['validation_ref']['state'], 'removed')
+        self.assert_original_preserved()
+        run = self.root / 'runs' / self.borrower
+        self.assertEqual((run / 'result.json').read_bytes(), self.borrower_bytes)
+        self.assertEqual((run / 'evidence.json').read_bytes(), self.borrower_manifest)
+
+    def test_active_lease_or_latest_worker_refuses_all_owner_resource_removal(self):
+        lease = runner.checkout_lease(self.root, self.owner)
+        try:
+            self.assert_retained()
+        finally:
+            lease.close()
+        self.advance()
+        latest = self.root / 'runs' / self.borrower / 'result.json'
+        record = json.loads(latest.read_text())
+        runner.save(latest, dict(record, worker_pid=os.getpid()))
+        self.assert_retained()
+        runner.save(latest, record)
+        self.cleanup()
+
+    def test_dirty_unknown_or_unrecorded_source_keeps_evidence_and_resources(self):
+        for path in (self.checkout / 'untracked', self.checkout / 'unknown.private', self.checkout / '.gitignore'):
+            with self.subTest(path=path.name):
+                original = path.read_bytes() if path.exists() else None
+                path.write_text('unknown source material')
+                self.assert_retained()
+                if original is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(original)
+        self.git('-C', str(self.checkout), 'checkout', '-q', '--detach', self.candidate)
+        self.assert_retained()
+
+    def test_links_altered_exports_and_missing_manifest_refuse_cleanup_with_nonzero_exit(self):
+        link = self.checkout / 'target/link'
+        link.symlink_to(self.metadata)
+        cleanup = self.assert_retained()
+        self.assertEqual(cleanup['evidence_export']['state'], 'failed')
+        link.unlink()
+        exported = self.run / 'artifacts/.rustc_info.json'
+        exported.write_text('tampered')
+        cleanup = self.cleanup(expected=1)
+        self.assertIn('differs', cleanup['checkout']['error'])
+        self.assertTrue(self.checkout.exists())
+        self.assertTrue(self.scratch.exists())
+        exported.write_text('owner compiler metadata')
+        (self.run / 'evidence.json').unlink()
+        cleanup = self.cleanup(expected=1)
+        self.assertIn('manifest is missing', cleanup['checkout']['error'])
+        self.assertTrue(self.scratch.exists())
+        (self.run / 'evidence.json').write_bytes(self.original_manifest)
+        self.assert_original_preserved()
+
+    def test_failed_removal_can_retry_without_overwriting_committed_capture(self):
+        execute = runner.subprocess.run
+        def refuse(arguments, **kwargs):
+            if 'worktree' in arguments and 'remove' in arguments:
+                raise subprocess.CalledProcessError(1, arguments)
+            return execute(arguments, **kwargs)
+        with patch.object(runner.subprocess, 'run', side_effect=refuse):
+            first = runner.cleanup_terminal_run(self.root, self.owner)
+        self.assertEqual(first['state'], 'retained')
+        manifest = Path(first['evidence_export']['manifest'])
+        original = manifest.read_bytes()
+        self.assertTrue(self.scratch.exists())
+        second = self.cleanup()
+        self.assertNotEqual(first['evidence_export']['generation'], second['evidence_export']['generation'])
+        self.assertEqual(manifest.read_bytes(), original)
+        self.assert_original_preserved()
+
+    def test_changed_latest_borrower_export_refuses_owner_cleanup(self):
+        self.advance()
+        artifact = self.root / 'runs' / self.borrower / 'artifacts/.rustc_info.json'
+        artifact.write_text('changed exported borrower evidence')
+        cleanup = self.assert_retained()
+        self.assertIn('Previously exported evidence differs', cleanup['checkout']['error'])
+        artifact.write_text('borrower compiler metadata')
+        self.cleanup()
+
+    def test_gc_refusal_is_not_reported_as_cleaned_and_propagates_nonzero(self):
+        (self.checkout / 'unknown').write_text('source')
+        result = self.invoke('_gc', '0', 'apply', 'include-retained', 'workbench')
+        self.assertEqual(result.returncode, 1, result.stderr)
+        value = json.loads(result.stdout)
+        self.assertEqual(len(value['candidates']), 1)
+        self.assertEqual(value['cleaned'], [])
+        self.assertTrue(self.checkout.exists())
+        self.assertTrue(self.scratch.exists())
+        self.assert_original_preserved()
 
 
 if __name__ == "__main__":

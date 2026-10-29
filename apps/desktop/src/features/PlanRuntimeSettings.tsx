@@ -6,22 +6,25 @@ import { Disclosure, UiIcon } from '../ui';
 
 type CapabilityIssue = Extract<NonNullable<Options['codex_capabilities']>, { state: 'unavailable' }>['issues'][number];
 
-export function PlanRuntimeSettings({ limits, options, language, editingMemory, onChange }: {
+export function PlanRuntimeSettings({ limits, options, previewAgent: fixedPreviewAgent, language, editingMemory, onChange }: {
   limits: Editor['limits'];
   options: Options | null;
+  previewAgent?: 'codex' | 'claude' | 'dsh' | 'other';
   language: 'zh' | 'en';
   editingMemory: PlanEditorMemory;
   onChange(limits: Editor['limits']): void;
 }) {
   const en = language === 'en';
   const text = (zh: string, eng: string) => en ? eng : zh;
-  const [previewAgent, setPreviewAgent] = useState<'codex' | 'claude'>('codex');
+  const [selectedPreviewAgent, setPreviewAgent] = useState<'codex' | 'claude'>('codex');
+  const previewAgent = fixedPreviewAgent ?? selectedPreviewAgent;
   const bounds = options?.context_window;
   const custom = limits.context_window_tokens !== undefined;
   const windowError = contextWindowError(limits.context_window_tokens, bounds, language);
   const timeoutError = requestTimeoutError(limits.request_timeout_ms, limits.attempt_timeout_ms, language);
   const codex = options?.codex_capabilities;
   const claude = options?.claude_capabilities;
+  const dsh = options?.dsh_capabilities;
   const format = (tokens: number) => tokens.toLocaleString(en ? 'en-US' : 'zh-CN');
   const compact = (tokens: number) => tokens >= 1000 && tokens % 1000 === 0 ? `${tokens / 1000}K` : format(tokens);
   const bindings = (ids: string[]) => ids.map(id => options?.candidates.find(candidate => candidate.binding_id === id)?.display_name ?? id).join(text('、', ', '));
@@ -87,11 +90,11 @@ export function PlanRuntimeSettings({ limits, options, language, editingMemory, 
       </div>
     </div>
     <div className="plan-capability-preview">
-      <label className="plan-preview-target"><span className="field-label">{text('目标 Agent 能力预览', 'Target Agent capability preview')}</span>
+      {fixedPreviewAgent ? <div className="plan-preview-target"><span className="field-label">{text('目标 Agent 能力预览', 'Target Agent capability preview')}</span><strong>{previewAgent === 'dsh' ? 'DeepSeek Harness' : previewAgent === 'codex' ? 'Codex' : previewAgent === 'claude' ? 'Claude Code' : text('所选 Agent', 'Selected Agent')}</strong></div> : <label className="plan-preview-target"><span className="field-label">{text('目标 Agent 能力预览', 'Target Agent capability preview')}</span>
         <select className="select" value={previewAgent} onChange={event => setPreviewAgent(event.target.value as 'codex' | 'claude')}>
           <option value="codex">Codex</option><option value="claude">Claude Code</option>
         </select>
-      </label>
+      </label>}
       {previewAgent === 'codex' && codex && <div className="codex-capability-summary" data-codex-capability-state={codex.state}>
         {codex.state === 'available' ? <>
           <div className="plan-capability-value" data-codex-capability-summary>
@@ -116,6 +119,10 @@ export function PlanRuntimeSettings({ limits, options, language, editingMemory, 
         : <p className="field-help">{claude?.state === 'unavailable' && claude.reason === 'context_window_below_minimum'
           ? text('Claude Code 自动压缩窗口最低为 100K；请调整计划窗口或使用 Codex。', 'Claude Code requires an auto-compact window of at least 100K. Adjust the plan window or use Codex.')
           : text('当前候选或窗口尚不能用于 Claude Code；需要可用的 Messages 入口和有效窗口。', 'The current candidates or window are unavailable for Claude Code. A usable Messages ingress and valid window are required.')}</p>)}
+      {previewAgent === 'dsh' && (dsh?.state === 'available' ? <div className="plan-capability-value" data-dsh-capability-state="available"><strong>{text(`上下文 ${format(dsh.context_window)} tokens · 最长输出 ${format(dsh.max_output_tokens)} tokens`, `Context ${format(dsh.context_window)} tokens · Maximum output ${format(dsh.max_output_tokens)} tokens`)}</strong><span>{text('按当前组合预览，发布和映射时再次核实。', 'Preview of the current combination; checked again on publication and mapping.')}</span></div>
+        : dsh?.state === 'unavailable' ? <p className="oc-inline-error" role="alert" data-dsh-capability-state={dsh.reason}>{dsh.reason === 'invalid_plan' ? text('请先修正当前路由配置。', 'Correct the current route configuration first.') : dsh.reason === 'responses_unavailable' ? text('当前组合尚不能形成完整的 DSH Responses 预览。', 'The current combination cannot yet produce a complete DSH Responses preview.') : text('当前组合缺少可确认的 DSH 上下文或输出预算。', 'The current combination lacks a verifiable DSH context or output budget.')}</p>
+          : <p className="field-help" role="status">{text('正在核实当前组合的能力。', 'Checking the current combination.')}</p>)}
+      {previewAgent === 'other' && <p className="field-help">{text('此 Agent 暂无能力预览；映射时会核实兼容性。', 'A capability preview is not available for this Agent; compatibility is checked when mapping.')}</p>}
       <Disclosure className="native-details plan-capability-details" label={text('能力依据与生效方式', 'Capability details and applying changes')} language={language}>
         <p className="field-help">{text('默认最多使用 272,000 tokens，受候选共同上界约束。较大的窗口可能增加上下文与缓存费用。', 'The default is at most 272,000 tokens, bounded by the shared candidate limit. Larger windows may increase context and cache costs.')}</p>
         <p className="field-help">{text('已接入的 Agent 需重新保存模型设置并重新启动，才能加载更新后的窗口；进行中的会话不会立即改变。', 'Save the Agent model settings again and restart the client to load the updated window. Running sessions do not change immediately.')}</p>
@@ -125,7 +132,7 @@ export function PlanRuntimeSettings({ limits, options, language, editingMemory, 
             <strong>{text('HiRoute 当前固定使用串行工具调用', 'HiRoute currently uses serial tool calls')}</strong>
             <p>{text('这是当前实现限制，不由任何候选模型造成。', 'This is a fixed implementation limit, not a candidate-model limitation.')}</p>
           </div></div>}
-        </> : <p className="field-help">{text('作用于整个 Claude Code 进程；接入多个计划时取最小窗口，原生模型可能更早压缩。接入时会核对窗口、配置冲突和请求能力。', 'Applies to the whole Claude Code process. Multiple plans share the smallest window; native models may compact earlier. Connection checks window constraints, configuration conflicts and request capabilities.')}</p>}
+        </> : previewAgent === 'claude' ? <p className="field-help">{text('作用于整个 Claude Code 进程；接入多个计划时取最小窗口，原生模型可能更早压缩。接入时会核对窗口、配置冲突和请求能力。', 'Applies to the whole Claude Code process. Multiple plans share the smallest window; native models may compact earlier. Connection checks window constraints, configuration conflicts and request capabilities.')}</p> : <p className="field-help">{text('预览不代表授权或已完成映射；发布和映射仍会执行检查。', 'A preview does not authorize or confirm mapping; publication and mapping still perform their checks.')}</p>}
       </Disclosure>
     </div>
   </section>;

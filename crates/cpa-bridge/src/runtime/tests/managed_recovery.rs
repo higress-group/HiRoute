@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "managed_recovery/catalog_recovery_tests.rs"]
+mod catalog_recovery_tests;
+
 fn runtime(
     root: &crate::private_test_support::TempDir,
     backend: Arc<FakeBackend>,

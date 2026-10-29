@@ -16,6 +16,7 @@ pub(super) fn ordered_facts(
     let mut previous_sequence = 0;
     let mut event_ids = BTreeSet::new();
     let mut route_seen = false;
+    let mut input_selection_seen = false;
     let mut candidates: BTreeMap<String, &CandidateDecisionFactV1> = BTreeMap::new();
     let mut attempts = BTreeMap::new();
     let mut finished_attempts = BTreeMap::new();
@@ -38,6 +39,12 @@ pub(super) fn ordered_facts(
         }
         previous_sequence = envelope.sequence;
         match &envelope.fact {
+            ExecutionFactV1::RequestInputSelection(_) => {
+                if input_selection_seen {
+                    return Err(FactProjectionError::ImmutableConflict);
+                }
+                input_selection_seen = true;
+            }
             ExecutionFactV1::RouteDecision(route) => {
                 if route_seen
                     || route.plan_id != envelope.trust.agent_plan_id
@@ -58,7 +65,9 @@ pub(super) fn ordered_facts(
             }
             ExecutionFactV1::CredentialLease { .. }
             | ExecutionFactV1::RuntimeState { .. }
+            | ExecutionFactV1::AgentTurnAdmitted(_)
             | ExecutionFactV1::AgentTurnFinished { .. }
+            | ExecutionFactV1::StageAssessmentRecorded(_)
             | ExecutionFactV1::BranchAssessmentRecorded { .. } => {}
             ExecutionFactV1::AttemptStarted {
                 ordinal,

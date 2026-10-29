@@ -104,6 +104,8 @@ impl ProductionGatewayRuntime {
                 }]],
             })],
             assessment_target: Some(AssessmentTarget {
+                evaluation_scope: None,
+                history_membership: None,
                 branch_execution: Some(hiroute_domain::BranchExecutionV1 {
                     policy: protocol.execution_policy(id, &judgment, name),
                     group: hiroute_domain::ExecutionGroupV1::Regular,
@@ -140,8 +142,9 @@ impl ProductionGatewayRuntime {
         replay
             .prevalidate(&[])
             .map_err(|_| ClassifierDiagnosticError::Integrity)?;
-        let prepared = system_one::request_template(&classifier, &diagnostic_request(), &history)
-            .map_err(CallFailure::diagnostic)?;
+        let prepared =
+            system_one::request_template(&classifier, &diagnostic_request(), &history, false)
+                .map_err(CallFailure::diagnostic)?;
         let count = match &protocol.decision {
             hiroute_domain::DecisionDefinitionV1::Ordinal { .. } => 3,
             hiroute_domain::DecisionDefinitionV1::Categorical { options, .. } => {

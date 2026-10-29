@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use super::*;
 
@@ -19,6 +19,7 @@ struct VerifiedRecord {
     bytes: Arc<Vec<u8>>,
     digest: CanonicalDigest,
     publication: GatewayPublicationV1,
+    gateway: OnceLock<Result<Arc<GatewayPublicationSnapshotProjectionV3>, PublicationError>>,
 }
 
 impl PartialEq for PublicationRecordV1 {
@@ -88,16 +89,13 @@ impl PublicationRecordV1 {
                 bytes,
                 digest,
                 publication,
+                gateway: OnceLock::new(),
             }),
         }
     }
 
     pub fn verify(&self) -> Result<GatewayPublicationV1, PublicationError> {
-        if Arc::ptr_eq(&self.bytes, &self.verified.bytes)
-            && self.digest == self.verified.digest
-            && self.workspace_id == self.verified.publication.workspace_id
-            && self.publication_revision == self.verified.publication.publication_revision
-        {
+        if self.matches_proof() {
             return Ok(self.verified.publication.clone());
         }
         authenticate(
@@ -106,6 +104,29 @@ impl PublicationRecordV1 {
             &self.digest,
             &self.bytes,
         )
+    }
+
+    fn matches_proof(&self) -> bool {
+        Arc::ptr_eq(&self.bytes, &self.verified.bytes)
+            && self.digest == self.verified.digest
+            && self.workspace_id == self.verified.publication.workspace_id
+            && self.publication_revision == self.verified.publication.publication_revision
+    }
+
+    /// Reuse a pure projection of these authenticated immutable bytes. This says
+    /// nothing about current installation, suspension, grants or recovery state.
+    /// Detached/mutated record fields never inherit the original projection.
+    pub fn gateway_snapshot(
+        &self,
+    ) -> Result<Arc<GatewayPublicationSnapshotProjectionV3>, PublicationError> {
+        if self.matches_proof() {
+            return self
+                .verified
+                .gateway
+                .get_or_init(|| self.verified.publication.gateway_snapshot().map(Arc::new))
+                .clone();
+        }
+        self.verify()?.gateway_snapshot().map(Arc::new)
     }
 
     pub fn verify_current(&self) -> Result<GatewayPublicationV1, PublicationError> {

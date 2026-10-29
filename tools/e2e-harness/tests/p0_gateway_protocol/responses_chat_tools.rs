@@ -7,13 +7,13 @@ data: {"id":"chat-tool-round","object":"chat.completion.chunk","model":"chat-nat
 
 data: {"id":"chat-tool-round","object":"chat.completion.chunk","model":"chat-native","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
 
-data: {"id":"chat-tool-round","object":"chat.completion.chunk","model":"chat-native","choices":[],"usage":{"prompt_tokens":17,"completion_tokens":9,"total_tokens":26}}
+data: {"id":"chat-tool-round","object":"chat.completion.chunk","model":"chat-native","choices":[],"usage":{"prompt_tokens":17,"completion_tokens":9,"total_tokens":26,"prompt_tokens_details":{"cached_tokens":3,"cache_write_tokens":7}}}
 
 data: [DONE]
 
 "#;
 
-const CHAT_FINAL_PROVIDER_JSON: &[u8] = br#"{"id":"chat-final","object":"chat.completion","model":"chat-native","choices":[{"index":0,"message":{"role":"assistant","content":"tools complete"},"finish_reason":"stop"}],"usage":{"prompt_tokens":29,"completion_tokens":3,"total_tokens":32}}"#;
+const CHAT_FINAL_PROVIDER_JSON: &[u8] = br#"{"id":"chat-final","object":"chat.completion","model":"chat-native","choices":[{"index":0,"message":{"role":"assistant","content":"tools complete"},"finish_reason":"stop"}],"usage":{"prompt_tokens":29,"completion_tokens":3,"total_tokens":32,"prompt_tokens_details":{"cached_tokens":2,"cache_write_tokens":0}}}"#;
 const RESPONSES_GRAMMAR_FALLBACK_JSON: &[u8] = br#"{"id":"grammar-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"grammar fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
 const RESPONSES_COLLISION_FALLBACK_JSON: &[u8] = br#"{"id":"collision-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"collision fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
 const RESPONSES_OPTIONS_FALLBACK_JSON: &[u8] = br#"{"id":"options-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"options fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
@@ -189,7 +189,8 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
         .unwrap();
     assert_eq!(
         completed.1["response"]["usage"],
-        json!({"input_tokens":17,"output_tokens":9,"total_tokens":26})
+        json!({"input_tokens":17,"output_tokens":9,"total_tokens":26,
+            "input_tokens_details":{"cached_tokens":3,"cache_write_tokens":7}})
     );
 
     let second = request(
@@ -406,6 +407,22 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
                 .and_then(Value::as_str)
                 == Some("responses")
     }));
+    for write in [0, 7] {
+        assert!(
+            facts.iter().any(|record| {
+                record.pointer("/fact/kind").and_then(Value::as_str) == Some("usage_and_cache")
+                    && record
+                        .pointer("/fact/cache_write_tokens")
+                        .and_then(Value::as_u64)
+                        == Some(write)
+                    && record
+                        .pointer("/fact/cache_write_provenance")
+                        .and_then(Value::as_str)
+                        == Some("reported")
+            }),
+            "reported cache-write usage {write} must survive the real Gateway"
+        );
+    }
     let content = wait_for_observation_content(&observation_root, 6);
     let response_events = decoded_response_events(&content);
     assert!(response_events.iter().any(|event| {

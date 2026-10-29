@@ -7,6 +7,7 @@
 //! or `HOME` implicitly, and never lets a diagnostics failure change business execution:
 //! queue overflow, disk errors and unsafe paths degrade the report instead.
 
+pub mod agent_read;
 pub mod context;
 pub mod correlation;
 pub mod error;

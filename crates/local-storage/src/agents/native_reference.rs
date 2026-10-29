@@ -6,15 +6,22 @@ use hiroute_domain::{
 };
 
 fn accepts(intent: &ExternalEffectIntentV1) -> bool {
-    matches!(
+    let native_adapter = intent.effect_id() == "agent-connection-native-routing-adapter"
+        && matches!(
+            intent.desired()["subject"]["agent_id"].as_str(),
+            Some("agent_pi_default" | "agent_dsh_default" | "agent_opencode_default")
+        )
+        && intent.desired()["payload"]["schema"] == "hiroute.settings-native-plugin-file/v1";
+    let hermes_plugin = matches!(
         intent.effect_id(),
         "agent-connection-hermes-plugin-module" | "agent-connection-hermes-plugin-manifest"
-    ) && intent.kind() == OwnedEffectKind::AgentArtifact
+    ) && intent.desired()["subject"]["agent_id"] == "agent_hermes_default"
+        && intent.desired()["payload"]["schema"] == "hiroute.settings-hermes-plugin-file/v1";
+    (native_adapter || hermes_plugin)
+        && intent.kind() == OwnedEffectKind::AgentArtifact
         && !intent.sensitive()
         && intent.desired_mode() == 0o644
-        && intent.desired()["subject"]["agent_id"] == "agent_hermes_default"
         && intent.desired()["transaction"] == "settings"
-        && intent.desired()["payload"]["schema"] == "hiroute.settings-hermes-plugin-file/v1"
 }
 fn effect(
     operation: &OperationId,

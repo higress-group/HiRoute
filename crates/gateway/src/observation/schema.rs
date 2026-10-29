@@ -135,8 +135,12 @@ pub struct ExecutionFactEnvelopeV1 {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)] // Stable wire fact enum; keep its typed payloads inline.
 pub enum ExecutionFactV1 {
+    AgentTurnAdmitted(hiroute_domain::AgentTurnAdmissionV1),
+    RequestInputSelection(hiroute_domain::RequestInputSelectionV1),
     RouteDecision {
         planner_version: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        native_auxiliary: bool,
         plan_id: Option<String>,
         route: hiroute_domain::ModelRequestRouteV2,
         input_digest: String,
@@ -227,6 +231,8 @@ pub enum ExecutionFactV1 {
     },
     AgentTurnFinished {
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        history_membership: Option<hiroute_domain::HistoryMembershipV1>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         opening_cause: Option<hiroute_domain::AgentTurnOpeningCauseV1>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch_execution: Option<hiroute_domain::BranchExecutionV1>,
@@ -248,6 +254,8 @@ pub enum ExecutionFactV1 {
         last_request_id: Option<String>,
     },
     BranchAssessmentRecorded {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        history_membership: Option<hiroute_domain::HistoryMembershipV1>,
         segment_id: String,
         plan_id: String,
         plan_revision: u64,
@@ -263,6 +271,7 @@ pub enum ExecutionFactV1 {
         partial: bool,
         reason: Option<String>,
     },
+    StageAssessmentRecorded(hiroute_domain::StageAssessmentRecordedV1),
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

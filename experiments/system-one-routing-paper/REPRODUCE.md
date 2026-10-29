@@ -43,6 +43,12 @@ latency cells remain reproducible through `report`; they are a separate metric.
 
 ## What is reproduced
 
+Sections 5.8–5.9 have a separate [mathematical supplement](supplements/mathematics-history/README.md)
+with its own manifest, semantic response archive and offline replay. It reports
+the 136-record independent panel, 48-record dependency-state panel and 44-record
+chronological panel separately. Follow its commands to reproduce those tables;
+the main `report` command below retains the original main-study results.
+
 - Matched engineering direct/three actions, component scores, cohorts, language
   results, and paired workflow intervals.
 - Independent engineering three/two/legacy comparisons, separate original,

@@ -116,6 +116,7 @@ fn default_two_domain_smoke() {
             .collect::<Vec<_>>(),
         [
             "control_build",
+            "control_storage_prepare",
             "control_ready",
             "system_status",
             "client_service_status",
@@ -139,6 +140,7 @@ fn default_two_domain_smoke() {
             .collect::<Vec<_>>(),
         [
             "control_build",
+            "control_storage_prepare",
             "embedded_catalog_ready",
             "storage_catalog_ignored",
             "embedded_catalog_cleanup",
@@ -165,10 +167,45 @@ fn default_two_domain_smoke() {
             assert_eq!(case.unclassified_ms, 0);
         }
     }
+    // Both control journeys must actually finish cold setup through the verified
+    // daemon before the ordinary startup/CLI steps. Keep its cost visible without
+    // adding a field to the strict report schema or classifying it as compilation.
+    let private = std::path::Path::new(value["report"].as_str().unwrap())
+        .parent()
+        .unwrap()
+        .join("private");
+    let daemon = report
+        .artifacts
+        .iter()
+        .find(|a| a.binary == "hirouted")
+        .unwrap();
+    for case in [&report.cases[1], &report.cases[2]] {
+        let bytes =
+            std::fs::read(private.join(&case.id).join("control-storage-prepare.json")).unwrap();
+        let prepared: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(prepared["role"], "control");
+        assert_eq!(prepared["executable_sha256"], daemon.sha256);
+        assert_eq!(prepared["outcome"], "completed");
+        assert!(prepared["reason"].is_null());
+        assert_eq!(prepared["timeout_ms"], 45_000);
+        let elapsed = prepared["elapsed_ms"].as_u64().unwrap();
+        assert!(elapsed < 45_000);
+        assert!(u128::from(elapsed) <= case.execution_ms);
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            case.steps[1].evidence_digest,
+            format!("sha256:{:x}", Sha256::digest(&bytes))
+        );
+    }
+    assert_eq!(report.scenario_timeout_ms, 30_000);
+    assert_eq!(report.step_timeout_ms, 10_000);
     // A real report loses structural validity when required observed steps disappear.
     let mut incomplete = report.clone();
     incomplete.cases[1].steps.pop();
     assert!(incomplete.verify().is_err());
+    let mut missing_preparation = report.clone();
+    missing_preparation.cases[1].steps.remove(1);
+    assert!(missing_preparation.verify().is_err());
     let mut wrong_scope = report.clone();
     wrong_scope.cases[0].scope = "desktop".into();
     assert!(wrong_scope.verify().is_err());

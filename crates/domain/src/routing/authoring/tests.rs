@@ -259,9 +259,12 @@ fn released_defaults_move_only_at_next_publication_without_editor_controls() {
     let before = serde_json::to_vec(&editor).unwrap();
     let current = editor.effective().unwrap();
     let j = current.assessment_scopes()[SMART_SAVING_SCOPE_ID];
+    let protocol = NativeProtocolV1::default();
+    let mut expected = JudgmentSettingsV1::default();
+    protocol.current_assessment(&mut expected);
     assert_eq!(
-        composed_assessment(Some(&NativeProtocolV1::default()), j),
-        stock_c_questions()["q1"]
+        composed_assessment(Some(&protocol), j),
+        composed_assessment(Some(&protocol), &expected)
     );
     assert_eq!(j.competence.standard, Some(AssessmentStandardV1::Default));
     assert_eq!(
@@ -312,6 +315,114 @@ fn released_defaults_move_only_at_next_publication_without_editor_controls() {
     let next = reopened.editor(None).unwrap().effective().unwrap();
     assert!(next.native_protocol().is_some());
     assert_eq!(serde_json::to_vec(&legacy).unwrap(), old);
+}
+
+#[test]
+fn retained_native_operation_validates_its_original_default_and_new_edit_uses_current_text() {
+    use crate::*;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../fixtures/baseline-c-default-publication.json"
+    ))
+    .unwrap();
+    let old: JudgmentSettingsV1 = serde_json::from_value(fixture["judgment"].clone()).unwrap();
+    let editor = native_editor();
+    let mut frozen = editor.effective().unwrap();
+    let AgentPlanStrategyV2::SmartSaving {
+        judgment,
+        native_protocol,
+        ..
+    } = &mut frozen.strategy
+    else {
+        unreachable!()
+    };
+    *native_protocol = Some(NativeProtocolSelectionV1 {
+        schema: SYSTEM_ONE_C_V1.into(),
+        prior_context_max_turns: 8,
+    });
+    *judgment = old.clone();
+    let before = serde_json::to_vec(&frozen).unwrap();
+    assert_eq!(
+        editor.effective_for_frozen_validation(&frozen).unwrap(),
+        frozen
+    );
+    assert_eq!(serde_json::to_vec(&frozen).unwrap(), before);
+    let current = editor.effective().unwrap();
+    assert_eq!(current.native_protocol().unwrap().schema, SYSTEM_ONE_C_V2);
+    assert_ne!(
+        current.assessment_scopes()[SMART_SAVING_SCOPE_ID]
+            .competence
+            .instructions,
+        old.competence.instructions
+    );
+    let mut custom = editor.clone();
+    custom.smart.judgment.competence.standard = Some(AssessmentStandardV1::Custom);
+    custom.smart.judgment.competence.instructions = "Custom user text".into();
+    assert_ne!(
+        custom.effective_for_frozen_validation(&frozen).unwrap(),
+        frozen
+    );
+}
+
+#[test]
+fn retained_native_branch_operation_preserves_default_and_override_stock_questions() {
+    use crate::*;
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../fixtures/baseline-c-default-publication.json"
+    ))
+    .unwrap();
+    let old: JudgmentSettingsV1 = serde_json::from_value(fixture["judgment"].clone()).unwrap();
+    let mut editor = native_editor();
+    editor.mode = PlanEditorMode::CustomBranches;
+    editor.branch_routing = Some(BranchRoutingEditorV1 {
+        classifier: editor.smart.classifier.clone(),
+        default_branch_id: "general".into(),
+        judgment: JudgmentSettingsV1::default(),
+        reselect_on_user_message: false,
+        branches: [
+            ("code", Some(JudgmentSettingsV1::default())),
+            ("general", None),
+        ]
+        .into_iter()
+        .map(|(id, judgment)| RouteBranchV1 {
+            id: id.into(),
+            name: id.into(),
+            condition: format!("Handle {id}"),
+            candidates: editor.candidates.clone(),
+            primary_candidates: vec![],
+            judgment,
+        })
+        .collect(),
+    });
+    let mut frozen = editor.effective().unwrap();
+    let AgentPlanStrategyV2::Branches { routing } = &mut frozen.strategy else {
+        unreachable!()
+    };
+    routing.native_protocol = Some(NativeProtocolSelectionV1 {
+        schema: SYSTEM_ONE_C_V1.into(),
+        prior_context_max_turns: 8,
+    });
+    routing.judgment = old.clone();
+    routing.branches[0].judgment = Some(old);
+    assert_eq!(
+        editor.effective_for_frozen_validation(&frozen).unwrap(),
+        frozen
+    );
+    let next = editor.effective().unwrap();
+    assert_eq!(next.native_protocol().unwrap().schema, SYSTEM_ONE_C_V2);
+    assert_ne!(
+        next.assessment_scopes()["default"].competence.instructions,
+        frozen.assessment_scopes()["default"]
+            .competence
+            .instructions
+    );
+    assert_ne!(
+        next.assessment_scopes()["branch/code"]
+            .competence
+            .instructions,
+        frozen.assessment_scopes()["branch/code"]
+            .competence
+            .instructions
+    );
 }
 
 #[test]
@@ -378,7 +489,7 @@ fn inherited_defaults_and_independent_custom_overrides_resolve_separately() {
     let internal = serde_json::to_value(&authored).unwrap();
     assert_eq!(
         internal["strategy"]["routing"]["native_protocol"]["schema"],
-        SYSTEM_ONE_C_V1
+        SYSTEM_ONE_C_V2
     );
     let editor = serde_json::to_value(authored.editor(None).unwrap()).unwrap();
     assert!(

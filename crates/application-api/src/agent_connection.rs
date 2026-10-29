@@ -16,6 +16,9 @@ pub const AGENT_CONNECTION_STATUS_SCHEMA_V1: &str = "hiroute.agent-connection-st
 #[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentScanRequestV1 {
+    /// Exact selected-context refresh. Omission preserves the released full scan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub native_target: Option<hiroute_domain::AgentNativeTargetV1>,
 }

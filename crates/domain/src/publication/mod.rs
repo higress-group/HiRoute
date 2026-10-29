@@ -26,6 +26,10 @@ pub use stored::*;
 mod snapshot;
 #[cfg(test)]
 mod validation_tests;
+#[cfg(test)]
+thread_local! {
+    static AGGREGATE_VALIDATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 pub use plan_state::GATEWAY_PUBLICATION_SCHEMA_V3;
 use projection::*;
 pub use snapshot::{
@@ -370,6 +374,8 @@ impl GatewayPublicationV1 {
     }
 
     pub fn validate(&self) -> Result<(), PublicationError> {
+        #[cfg(test)]
+        AGGREGATE_VALIDATIONS.with(|calls| calls.set(calls.get() + 1));
         if self.schema != LEGACY_GATEWAY_PUBLICATION_SCHEMA_V2
             && self.schema != GATEWAY_PUBLICATION_SCHEMA_V3
         {
@@ -558,7 +564,7 @@ impl GatewayPublicationV1 {
 
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, PublicationError> {
         self.validate()?;
-        serde_json::to_vec(&StoredPublicationV1::freeze(self)?)
+        serde_json::to_vec(&StoredPublicationV1::freeze_validated(self)?)
             .map_err(|_| PublicationError::Encoding)
     }
 
@@ -655,7 +661,11 @@ impl GatewayPublicationV1 {
         let stored: StoredPublicationV1 =
             serde_json::from_slice(bytes).map_err(|_| PublicationError::Decoding)?;
         let publication = stored.build()?;
-        if publication.canonical_bytes()?.as_slice() != bytes {
+        // build authenticated both the base and final head/grant projections. This
+        // unchanged local value only needs deterministic encoding for the byte check.
+        let canonical = serde_json::to_vec(&StoredPublicationV1::freeze_validated(&publication)?)
+            .map_err(|_| PublicationError::Encoding)?;
+        if canonical.as_slice() != bytes {
             return Err(PublicationError::NonCanonicalEncoding);
         }
         Ok(publication)

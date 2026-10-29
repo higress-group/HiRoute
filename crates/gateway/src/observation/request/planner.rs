@@ -10,7 +10,12 @@ use super::super::schema::{CandidateDecisionFactV1, ExecutionFactV1};
 use super::{CandidateObservation, RequestObservation};
 
 impl RequestObservation {
-    pub fn record_planner(&self, input: &PlannerInputV1, output: &PlannerOutputV1) {
+    pub fn record_planner(
+        &self,
+        input: &PlannerInputV1,
+        output: &PlannerOutputV1,
+        native_auxiliary: bool,
+    ) {
         if !self.tracks_attempts() {
             return;
         }
@@ -32,6 +37,7 @@ impl RequestObservation {
         self.emit_execution(
             ExecutionFactV1::RouteDecision {
                 planner_version: output.planner_version.clone(),
+                native_auxiliary,
                 plan_id,
                 route: self.inner.metadata.route.clone(),
                 input_digest: output.input_digest.clone(),

@@ -5,6 +5,55 @@ use crate::server::core_runtime::observation::wire_diagnostic;
 use hiroute_diagnostics::{correlation::CorrelationDomain, event::DiagnosticEvent};
 
 impl RequestObservation {
+    /// The producer supplies only closed projection facts. Correlation and ingress
+    /// are bound here; diagnostics never become captured conversation/score facts.
+    pub(crate) fn request_projection(
+        &self,
+        stable_binding_id: &str,
+        mut event: hiroute_diagnostics::event::RequestProjection,
+    ) {
+        event.request_token = self.inner.request_token;
+        event.binding_token = self
+            .inner
+            .context
+            .token(CorrelationDomain::Binding, stable_binding_id);
+        event.ingress_protocol = self.ingress_protocol();
+        self.emit_diagnostic(DiagnosticEvent::RequestProjection(event));
+    }
+
+    /// Main native projection evidence, not optional canonical capture status.
+    pub(crate) fn native_completion_unknown(
+        &self,
+        upstream_protocol: hiroute_diagnostics::event::IngressProtocol,
+        evidence: hiroute_diagnostics::event::NativeCompletionEvidence,
+    ) {
+        let state = self.lock_state();
+        let attempt = state
+            .accepted_attempt
+            .as_ref()
+            .or(state.current_attempt.as_ref())
+            .or(state.pending_attempt.as_ref());
+        let attempt_index = u64::from(
+            attempt
+                .map(|a| a.ordinal)
+                .filter(|ordinal| *ordinal != 0)
+                .unwrap_or(state.next_attempt_ordinal),
+        );
+        let attempt_token = attempt
+            .filter(|a| !a.attempt_id.is_empty())
+            .and_then(|a| self.attempt_token(&a.attempt_id));
+        drop(state);
+        self.emit_diagnostic(DiagnosticEvent::NativeCompletionUnknown(
+            hiroute_diagnostics::event::NativeCompletionUnknown {
+                request_token: self.inner.request_token,
+                attempt_index,
+                attempt_token,
+                upstream_protocol,
+                evidence,
+            },
+        ));
+    }
+
     #[cfg(test)]
     pub(crate) fn response_failure(
         &self,
@@ -83,8 +132,34 @@ impl RequestObservation {
                 field,
                 frame_index: position.map(|p| p.0).filter(|n| *n != 0),
                 received_bytes: position.map(|p| p.1),
+                capture: None,
             },
         ));
+    }
+
+    /// Called at materialization, before this attempt is promoted. Keep its
+    /// ordinal even if the off-path capture worker runs after a later fallback.
+    pub(in crate::server::core_runtime::observation) fn capture_response_failure_context(
+        &self,
+    ) -> hiroute_diagnostics::event::ResponseFailure {
+        hiroute_diagnostics::event::ResponseFailure {
+            request_token: self.inner.request_token,
+            attempt_index: u64::from(self.lock_state().next_attempt_ordinal),
+            stage: hiroute_diagnostics::event::ResponseFailureStage::Decode,
+            reason: hiroute_diagnostics::event::ResponseFailureReason::OtherProtocol,
+            attempt_token: None,
+            field: None,
+            frame_index: None,
+            received_bytes: None,
+            capture: None,
+        }
+    }
+
+    pub(in crate::server::core_runtime::observation) fn capture_response_failure(
+        &self,
+        failure: hiroute_diagnostics::event::ResponseFailure,
+    ) {
+        self.emit_diagnostic(DiagnosticEvent::ResponseFailure(failure));
     }
 
     pub(in crate::server::core_runtime::observation) fn wire_diagnostic(
@@ -121,8 +196,9 @@ impl RequestObservation {
     ) {
         let mut event = wire_diagnostic::response(headers, status, &self.inner.context);
         if self.lock_state().managed_cpa {
-            event.cpa_execution =
-                Some(super::super::provider::cpa_execution::from_headers(headers));
+            event.cpa_execution = Some(super::super::provider::cpa_execution::from_headers(
+                headers, status,
+            ));
         }
         if let Some(error) = event.provider_error {
             self.lock_state().provider_error = Some(error);

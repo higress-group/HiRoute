@@ -4,9 +4,7 @@ use super::protocol::{assessment_definition_result, latest_user_wire_value};
 use super::system_one::{base_questions, question_id};
 use super::{CallFailure, PreparedDecisionRequest};
 use crate::agent_turn_history::{AgentTurnHistorySnapshot, ExecutionAttribution, VisibleAgentTurn};
-use crate::server::core_runtime::{
-    adapters::prepare_replay_json_template, model_ir::ModelRequestIRV1,
-};
+use crate::server::core_runtime::adapters::prepare_replay_json_template;
 use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 use hiroute_domain::{
     ApplicabilityReasonV1 as R, ApplicabilityStateV1 as S, HistoricalProtectionActionV1 as A,
@@ -17,18 +15,20 @@ use std::sync::Arc;
 
 pub(super) const MAX_REQUEST_BYTES: usize = 256 * 1024;
 
-pub(super) fn request_template(
+pub(super) fn request_template<'a>(
     authority: &RestBranchClassifierAuthorityV1,
-    request: &ModelRequestIRV1,
+    request: impl Into<super::DecisionInput<'a>>,
     history: &AgentTurnHistorySnapshot,
+    current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, CallFailure> {
     let protocol = authority
         .native_protocol
         .as_ref()
         .ok_or(CallFailure::RejectedInput)?;
     let mut refs = Vec::new();
-    let latest =
-        latest_user_wire_value(request, &mut refs).map_err(|_| CallFailure::RejectedInput)?;
+    let mut latest = latest_user_wire_value(request, &mut refs, current_input_origin_unverified)
+        .map_err(|_| CallFailure::RejectedInput)?;
+    super::protocol::disclose_history_evidence(&mut latest, history);
     let target_result = assessment_definition_result(history, authority);
     let omitted_eligibility = target_result.as_ref().err().copied().unwrap_or(E::Unrated);
     let target = target_result.ok();
@@ -36,12 +36,8 @@ pub(super) fn request_template(
     let scope = history
         .assessment_target
         .as_ref()
-        .and_then(|t| match &t.attribution {
-            ExecutionAttribution::Single {
-                executed_branch_id, ..
-            } => protocol.scopes.get(executed_branch_id),
-            _ => None,
-        });
+        .and_then(|t| t.evaluation_policy())
+        .and_then(|(branch, _)| protocol.scopes.get(branch));
     if target.is_some() {
         let scope = scope.ok_or(CallFailure::RejectedInput)?;
         let id = question_id(&questions);
@@ -53,7 +49,13 @@ pub(super) fn request_template(
             .assessment_target
             .as_ref()
             .is_none_or(|t| t.target_partial);
-    if target.is_some() && !initially_partial {
+    if target.is_some()
+        && !initially_partial
+        && history
+            .assessment_target
+            .as_ref()
+            .is_some_and(|target| matches!(target.attribution, ExecutionAttribution::Single { .. }))
+    {
         let id = question_id(&questions);
         questions.insert(id.clone(), protocol.protocol.fixed.applicability.clone());
         bindings.applicability = Some(id);

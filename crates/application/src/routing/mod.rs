@@ -8,6 +8,8 @@ pub use drafts::*;
 mod lifecycle;
 pub use lifecycle::*;
 mod authoring;
+#[cfg(test)]
+pub(crate) use authoring::tests::retained_v1_operation_plan;
 pub use authoring::*;
 mod editor_options;
 pub(crate) use editor_options::prepare_authoring;

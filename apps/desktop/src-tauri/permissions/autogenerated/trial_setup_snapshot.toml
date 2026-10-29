@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-trial-setup-snapshot"
+description = "Enables the trial_setup_snapshot command without any pre-configured scope."
+commands.allow = ["trial_setup_snapshot"]
+
+[[permission]]
+identifier = "deny-trial-setup-snapshot"
+description = "Denies the trial_setup_snapshot command without any pre-configured scope."
+commands.deny = ["trial_setup_snapshot"]

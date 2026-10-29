@@ -1,3 +1,4 @@
+import { trialAgentRead } from './trial-agent-fixture';
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from './host-mock';
@@ -173,6 +174,7 @@ const control = {
   mutations: 0,
   operations: [] as { operation: { operation_id: string; state: string }; presentation: { kind: string; target: string } }[],
   refresh: () => {},
+  setActive: (_active: boolean) => {},
   reset: () => {},
   remount: () => {},
   registered,
@@ -200,7 +202,12 @@ mockIPC(async (command, payload) => {
   if (control.handlers[command]) return control.handlers[command](args);
   switch (command) {
     case 'cli_entry_status': return { state: 'valid', command_resolves_to_app_cli: true, path_contains_entry_directory: true };
-    case 'agent_snapshot': return structuredClone(control.agents);
+    case 'trial_agent_model': return trialAgentRead(control.agents, command, args);
+    case 'agent_snapshot': {
+      const result = structuredClone(control.agents);
+      if (args.contextId) result.agents = result.agents.filter(agent => agent.context_id === args.contextId);
+      return result;
+    }
     case 'preview_agent_settings': {
       return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } };
     }
@@ -216,6 +223,8 @@ function Harness() {
   const theme = presentation.get('theme') === 'light' ? 'light' : 'dark';
   const [generation, setGeneration] = useState(0);
   const [refresh, setRefresh] = useState(0);
+  const [active, setActive] = useState(true);
+  control.setActive = setActive;
   const [operation, setOperation] = useState<OperationReference | null>(null);
   control.refresh = () => setRefresh(value => value + 1);
   control.remount = () => setGeneration(value => value + 1);
@@ -227,6 +236,7 @@ function Harness() {
     control.mutations = 0;
     control.operations = [];
     setOperation(null);
+    setActive(true);
     setRefresh(0);
     setGeneration(value => value + 1);
   };
@@ -234,7 +244,7 @@ function Harness() {
     <div className="app-window">
       <div role="note" style={{ gridColumn: '1 / -1', gridRow: 1 }}>组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实安装。</div>
       <main className="main" style={{ gridColumn: '1 / -1', gridRow: 2 }}>
-      <Agents key={generation} language={language} refreshVersion={refresh} operation={operation} mutationAllowed onMutation={() => { control.mutations += 1; }} onOperation={(operation, presentation) => { control.operations.push({ operation, presentation }); setOperation(operation); }} />
+      <Agents key={generation} language={language} active={active} refreshVersion={refresh} operation={operation} mutationAllowed onMutation={() => { control.mutations += 1; }} onOperation={(operation, presentation) => { control.operations.push({ operation, presentation }); setOperation(operation); }} />
     </main></div>
   </PresentationRoot>;
 }

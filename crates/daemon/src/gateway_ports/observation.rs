@@ -115,11 +115,20 @@ impl<W: ObservationCommitPort> ObservationRecordSink for GatewayExecutionFactSin
 /// rich ACK/NACK is returned without an adapter-owned checkpoint or acknowledgement cache.
 pub struct GatewayConversationContentSink<W> {
     writer: Arc<W>,
+    #[cfg(feature = "integration-test-hooks")]
+    fail_once: std::sync::atomic::AtomicBool,
 }
 
 impl<W> GatewayConversationContentSink<W> {
     pub fn new(writer: Arc<W>) -> Self {
-        Self { writer }
+        Self {
+            writer,
+            #[cfg(feature = "integration-test-hooks")]
+            fail_once: std::sync::atomic::AtomicBool::new(
+                std::env::var("HIROUTE_TEST_OBSERVATION_CONTENT_SINK").as_deref()
+                    == Ok("fail_once"),
+            ),
+        }
     }
 }
 
@@ -135,6 +144,16 @@ impl<W: ObservationCommitPort> ObservationRecordSink for GatewayConversationCont
             } else {
                 let envelope = project_content_payload(record.payload())?;
                 ensure_content_stamp(record, &envelope)?;
+                // Exercise the actual Product persistence boundary, not the separate E2E
+                // plaintext collector. Invalid records and recovery heartbeats do not
+                // consume this process-local, one-shot injection.
+                #[cfg(feature = "integration-test-hooks")]
+                if self
+                    .fail_once
+                    .swap(false, std::sync::atomic::Ordering::AcqRel)
+                {
+                    return Err(DeliveryError::ReceiverUnavailable(true));
+                }
                 self.writer.ingest_content(&envelope, &[])
             }
             .map_err(store_error)?;

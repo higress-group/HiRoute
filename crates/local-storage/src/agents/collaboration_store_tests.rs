@@ -54,6 +54,7 @@ fn collaboration_store_reopens_revocation_with_same_operation_and_no_old_grant()
         .store_collaboration_grant(&enable.operation_id, 0, &grant)
         .unwrap();
     enable.state = OperationState::Succeeded;
+    add_component_file_receipts(&mut enable);
     control.finish_operation(&mut enable).unwrap();
     let revoke = begin(&control, "collab-revoke");
     let checkpoint = grant
@@ -182,6 +183,7 @@ fn collaboration_skill_refs_survive_reopen_and_stale_cleanup_cannot_restore_them
         .store_skill_installation(&workspace, &install.operation_id, 0, &first)
         .unwrap();
     install.state = OperationState::Succeeded;
+    add_component_file_receipts(&mut install);
     control.finish_operation(&mut install).unwrap();
     let remove = begin(&control, "skill-remove");
     let mut next = first.clone();

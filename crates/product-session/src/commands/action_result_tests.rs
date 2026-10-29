@@ -49,8 +49,23 @@ fn action_results_and_failures_classify_without_business_text() {
     );
     assert_eq!(
         native("RESIDENT_UNAVAILABLE").event_code(),
-        EventErrorCode::ExternalError
+        EventErrorCode::ResidentUnavailable
     );
+    for (source, expected) in [
+        (
+            "CLIENT_CONTEXT_INVALID",
+            EventErrorCode::ClientContextInvalid,
+        ),
+        ("READ_SNAPSHOT_CHANGED", EventErrorCode::ReadSnapshotChanged),
+        ("CONFIRMATION_STALE", EventErrorCode::ConfirmationStale),
+        ("RESPONSE_DATA_MISSING", EventErrorCode::ResponseDataMissing),
+        (
+            "PRIVATE_UNRECOGNIZED_FAILURE",
+            EventErrorCode::ExternalError,
+        ),
+    ] {
+        assert_eq!(native(source).event_code(), expected);
+    }
     let transport = DesktopFailure::Transport {
         failure: ClientFailure::before_send(FailureCode::TransportUnavailable),
     };

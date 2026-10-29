@@ -26,7 +26,7 @@ families in tests remain governed by the subject path rules.
 inventory entry, a multi-version production family not classified by one subject, or a registered
 legacy token outside its allowed paths. This catches both producer and consumer drift without
 treating arbitrary prose or third-party fixtures as production contracts. It also pins database
-schema V31 from the single production declaration
+schema V32 from the single production declaration
 `LATEST_SCHEMA_VERSION` in `crates/local-storage/src/migrations/mod.rs`, and retains the
 unversioned `control.sock` endpoint. The schema gate accepts exactly one plain, unattributed
 top-level constant declaration in that source. Conditional declarations (including nested
@@ -72,3 +72,16 @@ Trust reports, threshold replay and routing timelines project retained execution
 rewriting it. Added query/command contracts are registered as current boundaries. The previous-routing
 query consumes existing typed Agent journals and performs a normal settings edit; it introduces no
 second restore journal or persistent trial state.
+
+Control schema 32 establishes authoritative unresolved-operation membership and
+finalization coverage in the existing coordinated migration transaction. All current
+journal writes preserve the membership/count with the same transaction; missing
+coverage is not an empty recovery set. New operations reference separately stored
+immutable input and large compensation payloads, authenticated on cold reads and
+exactly checked on warm writes. Supported inline journals retain their original
+bytes and recovery writer; conversion does not rewrite unrelated completed history.
+Ordinary startup verifies current/prepared/LKG publications, current/held Plan
+versions, active Secret dependencies and unresolved work. Full-store audit and the
+initial conversion are separate work and do not imply unchecked history is healthy.
+Runtime and Secret stores join the same schema32 coordination with no independent
+migration path. Observation's format is unchanged.

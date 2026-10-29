@@ -94,7 +94,7 @@ class BundleIdentityTests(unittest.TestCase):
 
     def test_cpa_is_explicitly_signed_before_release_probe(self):
         events = []
-        release = ("CLIProxyAPI Version: 8.0.4-hiroute.8, Commit: "
+        release = ("CLIProxyAPI Version: 8.0.4-hiroute.9, Commit: "
                    "a270e7b9e57aaecd8f82555f44c2108518ad2330, "
                    "BuiltAt: 2026-09-29T00:00:00Z")
         with patch.object(package, "sign", side_effect=lambda *_: events.append("sign")), \
@@ -102,6 +102,39 @@ class BundleIdentityTests(unittest.TestCase):
                              events.append("probe") or release):
             self.assertEqual(package.sign_and_probe_cpa(self.cpa, "-"), release)
         self.assertEqual(events, ["sign", "probe"])
+
+    def test_component_preparation_uses_the_release_measurement_owner(self):
+        import json
+        upstream = {"commit": package.CPA_COMMIT, "patch_sha256": "pinned-patch"}
+        measured = {"sha256": package.digest(self.cpa), "size": self.cpa.stat().st_size,
+                    "dynamic_dependencies": ["/usr/lib/libSystem.B.dylib"]}
+        version = (f"CLIProxyAPI Version: {package.CPA_VERSION}, Commit: {package.CPA_COMMIT}, "
+                   "BuiltAt: 2026-09-29T00:00:00Z")
+        output = Path(self.temp.name)
+        with patch.object(package, "acquire_cpa", return_value=upstream) as acquire, \
+                patch.object(package, "sign_and_probe_cpa", return_value=version) as probe, \
+                patch.object(package, "inspect_binary", return_value=measured), \
+                patch.object(package, "signature", return_value="TeamIdentifier=not set"), \
+                patch.object(package, "run", return_value="Mach-O 64-bit executable arm64"):
+            source, manifest, path = package.prepare_cpa_artifact(
+                "arm64", Path("fixture-source"), output, self.cpa.parent,
+                self.app / "Contents/Resources", "-")
+        self.assertEqual(source, upstream)
+        acquire.assert_called_once()
+        probe.assert_called_once_with(self.cpa, "-")
+        self.assertIs(manifest["development_only"], False)
+        self.assertEqual(manifest["artifacts"][0]["sha256"], package.digest(self.cpa))
+        self.assertEqual(manifest["artifacts"][0]["size"], self.cpa.stat().st_size)
+        self.assertEqual(json.loads(path.read_text()), manifest)
+
+    def test_rejected_component_version_cannot_produce_a_release_manifest(self):
+        with patch.object(package, "acquire_cpa", return_value={}), \
+                patch.object(package, "sign_and_probe_cpa", return_value="unverified version"):
+            with self.assertRaisesRegex(ValueError, "version/commit mismatch"):
+                package.prepare_cpa_artifact(
+                    "arm64", Path("fixture-source"), Path(self.temp.name), self.cpa.parent,
+                    self.app / "Contents/Resources", "-")
+        self.assertFalse((Path(self.temp.name) / "cpa-artifacts.json").exists())
 
     def test_missing_or_extra_component_rejected(self):
         extra = self.cpa.with_name("unexpected")

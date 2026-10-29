@@ -61,6 +61,8 @@ pub enum ModelEvent {
         text: String,
         annotations: Vec<super::UrlCitationV1>,
         status: ResponseItemStatus,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        final_phase: Option<FinalMessagePhaseV1>,
     },
     ReasoningFinished {
         index: u32,
@@ -71,6 +73,8 @@ pub enum ModelEvent {
         index: u32,
         text: String,
         status: ResponseItemStatus,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        final_phase: Option<FinalMessagePhaseV1>,
     },
     WebSearch {
         index: u32,
@@ -128,6 +132,8 @@ pub enum ModelEvent {
         namespace: Option<String>,
         name: String,
         arguments: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        encrypted_function_args: Option<Vec<String>>,
         status: ResponseItemStatus,
     },
     ProviderState {
@@ -146,6 +152,15 @@ pub enum ModelEvent {
     ResponseFailed {
         error: ModelError,
     },
+}
+
+/// Authoritative message metadata at item completion. An absent envelope keeps
+/// released events' start-phase semantics; an envelope with no value clears a
+/// provisional phase. This never changes item identity or accepted content.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FinalMessagePhaseV1 {
+    pub value: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -271,6 +286,8 @@ pub enum ResponseBlock {
         namespace: Option<String>,
         name: String,
         arguments: Value,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        encrypted_function_args: Option<Vec<String>>,
         status: ResponseItemStatus,
     },
 }
@@ -406,6 +423,7 @@ pub(crate) enum MutableResponseBlock {
         name: String,
         owner: Box<ExactProviderPathV1>,
         arguments: String,
+        encrypted_function_args: Option<Vec<String>>,
         finished: bool,
     },
 }
@@ -495,6 +513,7 @@ impl ResponseAccumulator {
                     name,
                     owner,
                     arguments,
+                    encrypted_function_args,
                     finished,
                 } => {
                     if !finished {
@@ -523,6 +542,7 @@ impl ResponseAccumulator {
                         namespace,
                         name,
                         arguments,
+                        encrypted_function_args,
                         status: self.item_statuses.remove(&index).ok_or_else(|| {
                             ModelIrError::InvalidResponseLifecycle(format!(
                                 "tool block {index} lacks an item status"

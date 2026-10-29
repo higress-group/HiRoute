@@ -68,6 +68,7 @@ fn delegation_permit_original_writer_cas_idempotency_and_reopen() {
         Err(DelegationErrorV1::Conflict)
     );
     operation.state = OperationState::Succeeded;
+    add_component_file_receipts(&mut operation);
     control.finish_operation(&mut operation).unwrap();
     let next = begin(&control, "permit-change");
     let mut change = DelegationPermitMutationV1 {

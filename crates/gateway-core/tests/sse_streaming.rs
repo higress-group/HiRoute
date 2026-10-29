@@ -18,6 +18,9 @@ use hiroute_gateway_core::runtime::sse::{
 use proptest::prelude::*;
 use static_assertions::assert_not_impl_any;
 
+#[path = "sse_streaming/eof.rs"]
+mod eof;
+
 assert_not_impl_any!(OwnedSseEvent: Clone);
 assert_not_impl_any!(SseEventView<'static>: Clone, Copy, Send, Sync);
 

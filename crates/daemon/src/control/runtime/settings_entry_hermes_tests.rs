@@ -456,7 +456,32 @@ fn model_resources_rehydrate_after_restart_and_restore_without_touching_skill() 
             .iter()
             .any(|a| a["agent_id"] == "agent_hermes_default")
     );
+    let selected = fixture.service.dispatch_wire(request(
+        "ScanAgents",
+        json!({"context_id":fixture.context}),
+        None,
+    ));
+    assert!(selected.error.is_none(), "{selected:?}");
+    let selected = selected.data.unwrap();
+    assert_eq!(selected["agents"].as_array().unwrap().len(), 1);
+    assert_eq!(selected["agents"][0]["context_id"], fixture.context);
+    assert_eq!(
+        selected["agents"][0]["native_target"]["config_root"],
+        fixture.profile.to_str().unwrap()
+    );
     let spec = fixture.restore();
+    assert!(spec.get("native_target").is_none());
+    let preview = fixture.service.dispatch_wire(request(
+        "PreviewAgentConnectionRestore",
+        json!({"spec":spec}),
+        None,
+    ));
+    assert!(preview.error.is_none(), "{preview:?}");
+    assert_eq!(
+        preview.data.unwrap()["spec"]["native_target"]["config_root"],
+        fixture.profile.to_str().unwrap()
+    );
+    // Released callers can submit their original intent with the confirmed digest.
     apply(
         &fixture.service,
         &fixture.runtime,

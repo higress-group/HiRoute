@@ -518,6 +518,8 @@ const BASE_SCHEMA_V2: &str = r#"
     );
     CREATE INDEX IF NOT EXISTS requests_session
         ON logical_requests(workspace_id, session_id, started_at_ms);
+    CREATE INDEX IF NOT EXISTS requests_observation_fields
+        ON logical_requests(workspace_id, request_id, session_id, started_at_ms);
 
     CREATE TABLE IF NOT EXISTS attempts (
         workspace_id TEXT NOT NULL,
@@ -590,6 +592,8 @@ const AUXILIARY_SCHEMA_V2: &str = r#"
     );
     CREATE INDEX IF NOT EXISTS observation_gaps_scope
         ON observation_gaps(workspace_id, session_id, channel);
+    CREATE INDEX IF NOT EXISTS observation_gaps_stream_end
+        ON observation_gaps(channel, producer_id, producer_epoch, stream_id, last_sequence);
     "#;
 
 const EXECUTION_FACT_SCHEMA_V3: &str = r#"

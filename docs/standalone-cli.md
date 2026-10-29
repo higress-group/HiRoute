@@ -311,7 +311,7 @@ files for diagnosis. Only references enter ordinary JSON; the key stays on FD 3.
 set -eu
 umask 077
 KEY_FILE='/absolute/private/openrouter-key'
-work=$(mktemp -d)
+work=$(mktemp -d "${TMPDIR:-/tmp}/hiroute-connection.XXXXXXXX")
 candidate="candidate/native/openrouter-$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
 hiroute schema show --command-id compute.connection.test --include-schema --output json > "$work/contract.json"
 hiroute compute connection options --output json > "$work/options.json"
@@ -1455,10 +1455,26 @@ The legacy explicit-reference report remains available with its original respons
 hiroute value show --routing PLAN_ID --period 7d --basis api-equivalent --reference-binding PRIMARY_BINDING --currency CNY --output json
 ```
 
-It has no day grouping. Ordinary `value show` retains its historical valuation meaning.
+It has no day grouping. A complete full-scope routed estimate can be displayed independently when
+reference evidence is missing; the reference total and difference still require complete pairs for
+the entire scope. Comparison coverage and paired subtotals describe those complete pairs. Ordinary
+`value show` retains its historical valuation meaning.
 
 For missing rates, read the installed `prices.effective` and `prices.override.preview` schemas. Query the exact Binding locator with currency and `valuation_kind: "api_equivalent"`; copy the returned `edit_context` revisions into a price Preview. Manual `rates` use integer currency micros per million tokens, with separate input/output/cache rates. Use verified prices or ask for these non-secret values; do not invent them. Apply the exact returned spec/digest/revisions with one retained key. Before changing a price, retain its prior setting and give fully populated price-restore Preview/Apply commands; `follow_catalog` restores catalog lookup when no manual override existed. API-equivalent prices can be set for subscriptions without changing their entitlement or ordinary billing class. Free, subscription, paid and unknown remain distinct.
 
 When cache creation is charged at the ordinary input rate, set its reference rate equal to input. The amount then does not depend on an unreported input/creation split; HiRoute can combine equal-rate calculation buckets without filling or rewriting recorded usage. Different rates still require the missing count.
+
+New historical valuations can also combine an unreported split when the attempt's own frozen
+input and cache-write prices are equal and inclusion and exclusivity are established. The amount
+may be complete while the individual cache-write tokens remain unknown. For retained older records,
+the session timeline can derive that amount from matching frozen evidence without modifying the
+original settlement; older settled totals and expired records are not automatically recalculated.
+
+If the full-scope routed amount is known, input and cache reads are reported, and the input/cache
+inclusion and exclusivity are established, a reference with an unreported cache-write split may
+show bounds. The same-usage scenario assumes reference input and reads match the observed values
+and places unreported writes between zero and input minus reads. These are estimates at the selected
+reference prices, not the reference model's observed cache, output or bill; comparison coverage
+remains incomplete. Missing other necessary usage, prices or scope evidence prevents the bounds.
 
 Custom-extension routes return the category/group decision directly and publish no HiRoute judgment policy. Parked draft settings return when a built-in connection is selected. Optional extension scores are observation-only.

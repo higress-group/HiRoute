@@ -465,6 +465,13 @@ impl AgentConnectionControlPort for LocalControlAdapter {
         self.agent_settings_status(request)
     }
 
+    fn settings_summary(
+        &self,
+        request: &hiroute_application_api::AgentSettingsSummaryRequestV1,
+    ) -> Result<hiroute_application_api::AgentSettingsSummaryV1, ControlReadError> {
+        self.agent_settings_summary(request)
+    }
+
     fn settings_facts(
         &self,
         spec: &hiroute_application_api::AgentSettingsSpecV2,
@@ -727,6 +734,8 @@ mod tests {
                 hiroute_application::prices::PriceSnapshotSlot::default(),
             ),
             publication_diagnostics: Mutex::new(Default::default()),
+            publication_marker_cache: Mutex::new(None),
+            settings_publication_candidate: Mutex::new(None),
             stores: Mutex::new(stores),
             delegation_digest_authority: hiroute_observation::DigestAuthority::new([7; 32]),
             delegation_observation: Arc::new(

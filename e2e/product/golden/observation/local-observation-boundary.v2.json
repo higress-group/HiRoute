@@ -5,7 +5,7 @@
   "production_evidence": "installed-standalone-headless-management-loop",
   "composition_owner": "TASK-142003",
   "execution_fact_schema": "hiroute.observation.product-execution-envelope/v2",
-  "execution_fact_port_digest": "sha256:5f42929cdb812799e4e4a10885324debb21e6489bde5e935599de57b54b8ab23",
+  "execution_fact_port_digest": "sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295",
   "conversation_content_schema": "hiroute.observation.conversation-content-envelope/v2",
   "conversation_content_port_digest": "sha256:6f17cd772a0fb322d25dd31dc95e34325cbabbd68912b32f5bb9bed526adfe44",
   "acknowledgement_schema": "hiroute.observation.ack/v2",

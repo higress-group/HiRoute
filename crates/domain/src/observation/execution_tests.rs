@@ -4,6 +4,15 @@ use crate::{AgentPlanId, CanonicalDigest, WorkspaceId};
 
 use super::*;
 
+#[path = "agent_turn_admission_tests.rs"]
+mod agent_turn_admission_tests;
+
+#[path = "merged_contract_tests.rs"]
+mod merged_contract_tests;
+
+#[path = "stage_evaluation_tests.rs"]
+mod stage_evaluation_tests;
+
 #[test]
 fn credential_denial_extension_keeps_released_outcomes_and_rejects_unknown_values() {
     // The three original outcomes were verified at supported v0.2.0/v0.3.0/v0.3.1 sources.
@@ -593,8 +602,47 @@ fn envelope(
     }
 }
 
+#[test]
+fn native_auxiliary_marker_is_optional_for_retained_route_facts() {
+    let original = route();
+    let bytes = serde_json::to_value(&original).unwrap();
+    assert!(bytes.get("native_auxiliary").is_none());
+    assert_eq!(
+        serde_json::from_value::<RouteDecisionFactV1>(bytes.clone()).unwrap(),
+        original
+    );
+    let mut marked = bytes;
+    marked["native_auxiliary"] = serde_json::json!(true);
+    assert!(
+        serde_json::from_value::<RouteDecisionFactV1>(marked)
+            .unwrap()
+            .native_auxiliary
+    );
+
+    // Exact contract emitted by the retained pre-auxiliary producer. Recovery
+    // authenticates its original bytes without inventing purpose evidence.
+    let mut old = envelope(1, ExecutionFactV1::RouteDecision(Box::new(route())), None);
+    old.schema_digest = CanonicalDigest::parse(
+        "sha256:3cb9b100385c1f05a92097c2f28eb5c47d61ca495d32d41a8528b7227c81a465",
+    )
+    .unwrap();
+    let original = serde_json::to_vec(&old).unwrap();
+    assert!(old.validate().is_err());
+    old.validate_persisted_contract().unwrap();
+    let decoded: ExecutionFactEnvelopeV1 = serde_json::from_slice(&original).unwrap();
+    assert_eq!(serde_json::to_vec(&decoded).unwrap(), original);
+    if let ExecutionFactV1::RouteDecision(route) = &mut old.fact {
+        route.native_auxiliary = true;
+    }
+    assert_eq!(
+        old.validate_persisted_contract(),
+        Err(ExecutionFactError::InvalidFact)
+    );
+}
+
 fn route() -> RouteDecisionFactV1 {
     RouteDecisionFactV1 {
+        native_auxiliary: false,
         planner_version: "planner-v1".to_owned(),
         plan_id: Some(AgentPlanId::parse("plan/coding").unwrap()),
         route: crate::ModelRequestRouteV2::Plan {

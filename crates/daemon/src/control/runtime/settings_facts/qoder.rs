@@ -10,6 +10,8 @@ impl LocalControlAdapter {
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         let discovery = if class == SettingsAgentClass::OpenCode {
             self.scanner.opencode_settings_discovery()
+        } else if class == SettingsAgentClass::DshDesktop {
+            self.scanner.dsh_desktop_settings_discovery()
         } else if class == SettingsAgentClass::Dsh {
             self.scanner.dsh_settings_discovery()
         } else if class == SettingsAgentClass::Pi {
@@ -20,6 +22,48 @@ impl LocalControlAdapter {
                 AgentFacetIntent::Configure { .. }
             ))
         };
+        #[cfg(all(test, unix))]
+        if matches!(class, SettingsAgentClass::Pi | SettingsAgentClass::Qoder) {
+            use std::os::unix::fs::MetadataExt;
+            let (executable, skill) = if class == SettingsAgentClass::Pi {
+                (
+                    self.scanner.pi_executable_target(),
+                    self.scanner.pi_user_skill_target(),
+                )
+            } else {
+                (
+                    self.scanner.qoder_executable_target(),
+                    self.scanner.qoder_user_skill_target(),
+                )
+            };
+            for (role, path) in [
+                ("native_executable", executable),
+                ("native_skill_parent", skill.parent().map(Path::to_path_buf)),
+                ("native_skill", Some(skill)),
+            ] {
+                if role == "native_executable"
+                    && let Some(path) = path.as_ref()
+                {
+                    diagnostics::record_executable(path);
+                }
+                let metadata = path.and_then(|path| std::fs::symlink_metadata(path).ok());
+                diagnostics::record(
+                    role,
+                    &serde_json::json!({
+                        "exists": metadata.is_some(),
+                        "dev": metadata.as_ref().map(|m| m.dev()),
+                        "ino": metadata.as_ref().map(|m| m.ino()),
+                        "uid": metadata.as_ref().map(|m| m.uid()),
+                        "gid": metadata.as_ref().map(|m| m.gid()),
+                        "mode": metadata.as_ref().map(|m| m.mode()),
+                        "nlink": metadata.as_ref().map(|m| m.nlink()),
+                        "len": metadata.as_ref().map(|m| m.len()),
+                        "mtime": metadata.as_ref().map(|m| (m.mtime(), m.mtime_nsec())),
+                        "ctime": metadata.as_ref().map(|m| (m.ctime(), m.ctime_nsec())),
+                    }),
+                );
+            }
+        }
         let AgentDiscoveryOutcomeV1::Supported { installation } = discovery.outcome else {
             return Err(ControlReadError::NotFound);
         };
@@ -137,7 +181,7 @@ impl LocalControlAdapter {
                 )
             })
             .collect();
-        let dependency_digest = CanonicalDigest::of(&serde_json::json!({
+        let dependency_facts = serde_json::json!({
             "schema":"qoder-collaboration-facts/v1",
             "context":spec.context_id,
             "observation":installation.observation_digest,
@@ -148,7 +192,11 @@ impl LocalControlAdapter {
             "revisions":expected_revisions,"restores":restore_points,
             "worker_channel":"local_trust_v1","collaboration_state":collaboration_state,
             "collaboration_file_conflict":collaboration_file_conflict,
-        })).map_err(|_| ControlReadError::Corrupt)?;
+        });
+        #[cfg(test)]
+        diagnostics::record("additional_collaboration", &dependency_facts);
+        let dependency_digest =
+            CanonicalDigest::of(&dependency_facts).map_err(|_| ControlReadError::Corrupt)?;
         let capabilities =
             AgentCapabilitySet::new(installation.capability_evidence.iter().cloned().map(
                 |mut item| {

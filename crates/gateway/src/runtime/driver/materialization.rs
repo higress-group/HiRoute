@@ -46,8 +46,8 @@ use super::{
     MATERIALIZATION_KEY_DISABLED, MATERIALIZATION_PROTOCOL_FAILED, MATERIALIZATION_SOURCE_DISABLED,
     MechanicalFailureSignal, PermitAvailability, ProductionAttemptState, ProductionLogicalRequest,
     ProductionProvider, ProductionReplaySeedEnvelope, RUNTIME_STATE_AUTHORITY_FAILED,
-    RuntimeCooldownPolicy, StatePermit, acquire_target_permit_status, confirm_success, label,
-    record_failure, safe_error, validate_attempt_permits,
+    RequestReasoningProjection, RuntimeCooldownPolicy, StatePermit, acquire_target_permit_status,
+    confirm_success, label, record_failure, safe_error, validate_attempt_permits,
 };
 
 pub(super) struct ProductionStateAdapter {
@@ -108,6 +108,16 @@ impl ProductionProvider {
             }),
             cooldowns: RuntimeCooldownPolicy::default(),
             target_resolver: TargetResolver::new(),
+        }
+    }
+
+    pub(crate) fn for_gateway_model_execution(ports: &ProductionPorts) -> Self {
+        Self {
+            // Agent grants and verified Workers share target keys, including
+            // unmarked auxiliary calls. Only the Gateway composition selects
+            // request-local soft feedback; the runtime default stays shared.
+            cooldowns: RuntimeCooldownPolicy::for_gateway_model_execution(),
+            ..Self::new(ports)
         }
     }
 }
@@ -469,10 +479,12 @@ pub(super) async fn materialize_attempt(
     let capture = crate::runtime::stream_capture::Capture::begin(
         profile,
         prepared.chat_tool_projection.as_ref(),
+        prepared.function_encoding_projection,
         prepared.wire_len,
         streaming,
     );
     let chat_tool_projection = prepared.chat_tool_projection.take();
+    let function_encoding_projection = prepared.function_encoding_projection;
     let body = adapters::sequential_attempt_body(
         prepared.clone(),
         logical.replay.clone(),
@@ -534,6 +546,13 @@ pub(super) async fn materialize_attempt(
     let body = PreparedAttemptBody::from_reader(body, lease).map_err(safe_error)?;
     if let Some(observation) = crate::server::core_runtime::observation::active_request() {
         observation.prepared_request_diagnostic(&headers, &prepared.bytes);
+    }
+    let fields_removed = adapters::reasoning_loss::request_loss(
+        ir,
+        profile.capability.upstream_protocol,
+        cleanup_prefix,
+    );
+    let request_reasoning_projection = (fields_removed > 0).then(|| {
         use hiroute_diagnostics::event::ReasoningCleanupReason;
         let reason = if cleanup_prefix.is_none() {
             ReasoningCleanupReason::RequestProtocolProjection
@@ -546,16 +565,12 @@ pub(super) async fn materialize_attempt(
         } else {
             ReasoningCleanupReason::SuccessfulPrefixReuse
         };
-        observation.reasoning_cleanup(
+        RequestReasoningProjection {
             reason,
-            adapters::reasoning_loss::request_loss(
-                ir,
-                profile.capability.upstream_protocol,
-                cleanup_prefix,
-            ),
-            cleanup_prefix,
-        );
-    }
+            fields_removed,
+            cleaned_prefix_len: cleanup_prefix,
+        }
+    });
     Ok((
         PreparedAttemptHttpRequest {
             head: PreparedRequestHead {
@@ -566,6 +581,8 @@ pub(super) async fn materialize_attempt(
             body,
         },
         ProductionAttemptState {
+            request_reasoning_projection,
+            request_projection_loss: prepared.request_projection_loss,
             managed_cpa: execution.connector_runtime
                 == hiroute_domain::ConnectorRuntimeKind::CpaBridge
                 && !resolved_target.addresses.is_empty()
@@ -586,6 +603,7 @@ pub(super) async fn materialize_attempt(
             native_output,
             omit_thinking: ir.requested_reasoning.messages_omit_thinking,
             chat_tool_projection,
+            function_encoding_projection,
             chat_tool_projection_budget,
             decoder: None,
             renderer,

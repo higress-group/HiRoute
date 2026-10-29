@@ -60,6 +60,12 @@ retain that marker and are excluded from averages. Neither is treated as zero or
 triggers low-score protection. A saved old score does not become a fresh low score
 on later turns. A writing score does not upgrade a review task.
 
+With valid difficulty, HiRoute evaluates an eligible low score regardless of whether
+the task is simple or complex. Native applicability below 0.5 releases the
+historical constraint; the difficulty result still determines the group, so complex
+work remains Primary. Unavailable applicability retains protection. The previous
+actual stage may itself have used Primary; that never creates a third group.
+
 Each new user message is decided again and may choose either group. Tool
 continuations and same-turn replay reuse the frozen decision only when HiRoute can
 recognize the same turn and that decision remains reusable. Discontinuous

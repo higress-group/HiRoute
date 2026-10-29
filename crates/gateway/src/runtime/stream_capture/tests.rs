@@ -67,7 +67,7 @@ async fn sealed_correlation_survives_process_termination() {
         "runtime::stream_capture::tests::sealed_correlation_survives_process_termination";
     if let Some(root) = std::env::var_os("HIROUTE_CAPTURE_INTERRUPT_ROOT") {
         let root = PathBuf::from(root);
-        let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+        let capture = Capture::open(&root, &profile(), None, Default::default(), 2, true).unwrap();
         capture.record(1, b"{}");
         capture.record(2, &[]);
         capture.record(3, &200u16.to_le_bytes());
@@ -123,7 +123,7 @@ async fn sealed_correlation_survives_process_termination() {
 #[test]
 fn promoted_failure_appends_only_one_bounded_correlation_without_reopening_content() {
     let root = setup();
-    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    let capture = Capture::open(&root, &profile(), None, Default::default(), 2, true).unwrap();
     capture.record(1, b"{}");
     capture.record(2, &[]);
     capture.record(3, &200u16.to_le_bytes());
@@ -166,7 +166,7 @@ fn sealed_correlation_respects_original_bounds_and_file_identity() {
         "identity",
     ] {
         let root = setup();
-        let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+        let capture = Capture::open(&root, &profile(), None, Default::default(), 2, true).unwrap();
         capture.record(1, b"{}");
         capture.record(2, &[]);
         capture.failed();
@@ -217,7 +217,7 @@ fn sealed_correlation_respects_original_bounds_and_file_identity() {
 fn open_after_capture_release(root: &Path, mut on_blocked: impl FnMut()) -> Capture {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        match Capture::open(root, &profile(), None, 2, true) {
+        match Capture::open(root, &profile(), None, Default::default(), 2, true) {
             Ok(capture) => return capture,
             Err(error)
                 if error.kind() == io::ErrorKind::WouldBlock && Instant::now() < deadline =>
@@ -233,13 +233,13 @@ fn open_after_capture_release(root: &Path, mut on_blocked: impl FnMut()) -> Capt
 #[test]
 fn completed_capture_waits_for_inherited_lock_descriptor_release() {
     let root = setup();
-    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    let capture = Capture::open(&root, &profile(), None, Default::default(), 2, true).unwrap();
     // A descriptor duplicate models the same open-file description inherited
     // across fork, even when the originating writer has already been dropped.
     let inherited = capture.0.lock().unwrap()._lock.try_clone().unwrap();
     drop(capture);
     assert_eq!(
-        Capture::open(&root, &profile(), None, 2, true)
+        Capture::open(&root, &profile(), None, Default::default(), 2, true)
             .err()
             .unwrap()
             .kind(),
@@ -275,7 +275,15 @@ async fn capture_preserves_bytes_and_replays_request_bound_tools_across_chunks()
     let ir = adapters::decode_ingress_request(IngressProtocol::Messages, &request).unwrap();
     let tools = adapters::ChatToolProjection::for_request(&ir).unwrap();
     let body = serde_json::to_vec(&request).unwrap();
-    let capture = Capture::open(&root, &profile(), Some(&tools), body.len(), true).unwrap();
+    let capture = Capture::open(
+        &root,
+        &profile(),
+        Some(&tools),
+        Default::default(),
+        body.len(),
+        true,
+    )
+    .unwrap();
     capture.record(1, &body[..9]);
     capture.record(1, &body[9..]);
     capture.record(2, &[]);
@@ -321,7 +329,7 @@ async fn capture_preserves_bytes_and_replays_request_bound_tools_across_chunks()
         assert!(!result.to_string().contains("unknown_secret_tool"));
     }
     assert!(
-        Capture::open(&root, &profile(), None, 2, true).is_err(),
+        Capture::open(&root, &profile(), None, Default::default(), 2, true).is_err(),
         "first failure stops further captures"
     );
     fs::remove_dir_all(root).unwrap();
@@ -330,9 +338,9 @@ async fn capture_preserves_bytes_and_replays_request_bound_tools_across_chunks()
 #[tokio::test]
 async fn bounded_capture_is_fail_closed_without_mutating_business_input() {
     let root = setup();
-    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    let capture = Capture::open(&root, &profile(), None, Default::default(), 2, true).unwrap();
     assert!(
-        Capture::open(&root, &profile(), None, 2, true).is_err(),
+        Capture::open(&root, &profile(), None, Default::default(), 2, true).is_err(),
         "one writer per session"
     );
     {
@@ -371,7 +379,7 @@ fn capture_redacts_transport_headers_and_enforces_expiry() {
             .required_headers
             .push(("x-api-key".into(), "SECRET_CREDENTIAL".into()));
     }
-    let capture = Capture::open(&root, &profile, None, 2, true).unwrap();
+    let capture = Capture::open(&root, &profile, None, Default::default(), 2, true).unwrap();
     {
         let mut writer = capture.0.lock().unwrap();
         writer.expires_at = now() - 1;
@@ -390,7 +398,17 @@ async fn capture_limits_and_partial_request_cannot_produce_replay_evidence() {
     // EOF: an early upstream error is allowed to seal an incomplete capture.
     for request in [b"{".as_slice(), b"{}".as_slice()] {
         let root = setup();
-        assert!(Capture::open(&root, &profile(), None, MAX_FILE as usize, true).is_err());
+        assert!(
+            Capture::open(
+                &root,
+                &profile(),
+                None,
+                Default::default(),
+                MAX_FILE as usize,
+                true
+            )
+            .is_err()
+        );
         assert!(root.join("active.lock").exists());
         let capture = open_after_capture_release(&root, || {});
         capture.record(1, request);
@@ -410,7 +428,7 @@ async fn capture_limits_and_partial_request_cannot_produce_replay_evidence() {
     for _ in 0..MAX_ATTEMPTS {
         drop(open_after_capture_release(&root, || {}));
     }
-    assert!(Capture::open(&root, &profile(), None, 2, true).is_err());
+    assert!(Capture::open(&root, &profile(), None, Default::default(), 2, true).is_err());
     assert!(root.join("active.lock").exists());
     fs::remove_dir_all(root).unwrap();
 
@@ -419,12 +437,12 @@ async fn capture_limits_and_partial_request_cannot_produce_replay_evidence() {
         .unwrap()
         .set_len(MAX_TOTAL)
         .unwrap();
-    assert!(Capture::open(&root, &profile(), None, 2, true).is_err());
+    assert!(Capture::open(&root, &profile(), None, Default::default(), 2, true).is_err());
     assert!(root.join("active.lock").exists());
     fs::remove_dir_all(root).unwrap();
 
     let root = setup();
-    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    let capture = Capture::open(&root, &profile(), None, Default::default(), 2, true).unwrap();
     capture.0.lock().unwrap().records = MAX_RECORDS;
     capture.record(1, b"{}");
     drop(capture);
@@ -462,7 +480,8 @@ async fn replay_uses_final_head_and_rejects_paths_without_decoder_equivalence() 
             if native {
                 profile.ingress_protocol = profile.capability.upstream_protocol;
             }
-            let capture = Capture::open(&root, &profile, None, body.len(), true).unwrap();
+            let capture =
+                Capture::open(&root, &profile, None, Default::default(), body.len(), true).unwrap();
             capture.record(1, body);
             capture.record(2, &[]);
             for head in heads {
@@ -495,7 +514,7 @@ async fn replay_uses_final_head_and_rejects_paths_without_decoder_equivalence() 
 #[test]
 fn sealed_capture_correlation_accepts_accessible_directory_and_file_modes() {
     let root = setup();
-    let capture = Capture::open(&root, &profile(), None, 2, true).unwrap();
+    let capture = Capture::open(&root, &profile(), None, Default::default(), 2, true).unwrap();
     capture.record(1, b"{}");
     capture.record(2, &[]);
     capture.failed();

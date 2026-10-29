@@ -13,6 +13,8 @@ export function HomeNavigation({
   serviceTitle: providedServiceTitle,
   serviceLabel,
   serviceReady = false,
+  serviceCheckFailed = false,
+  onRetryService,
   onNavigate,
   onOpenSettings,
   routingAttention = false,
@@ -23,6 +25,8 @@ export function HomeNavigation({
   serviceTitle?: string;
   serviceLabel?: string;
   serviceReady?: boolean;
+  serviceCheckFailed?: boolean;
+  onRetryService?: () => void;
   routingAttention?: boolean;
   onNavigate: (id: string) => void;
   onOpenSettings?: () => void;
@@ -58,7 +62,7 @@ export function HomeNavigation({
       <div className="sidebar-foot">
         {serviceLabel && <div className="sidebar-health">
           <i className={`status-dot ${serviceReady ? 'good' : 'warn'}`} aria-hidden="true" />
-          <div><strong>{serviceTitle}</strong><span>{serviceLabel}</span></div>
+          <div><strong>{serviceTitle}</strong><span>{serviceLabel}</span>{serviceCheckFailed && onRetryService && <button className="sidebar-health-retry" type="button" onClick={onRetryService}>{language === 'zh' ? '重试' : 'Retry'}</button>}</div>
         </div>}
         {onOpenSettings && <button
           className={`nav-item ${current === 'settings' ? 'active' : ''}`}

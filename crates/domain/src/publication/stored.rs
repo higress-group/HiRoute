@@ -20,6 +20,14 @@ pub struct StoredPublicationV1 {
 impl StoredPublicationV1 {
     pub fn freeze(publication: &GatewayPublicationV1) -> Result<Self, PublicationError> {
         publication.validate()?;
+        Self::freeze_validated(publication)
+    }
+
+    /// Only this module's validated local values may use this projection. It carries
+    /// no durable proof, and public entry points still authenticate mutable callers.
+    pub(super) fn freeze_validated(
+        publication: &GatewayPublicationV1,
+    ) -> Result<Self, PublicationError> {
         Ok(Self {
             schema: STORED_PUBLICATION_SCHEMA.into(),
             workspace_id: publication.workspace_id.clone(),
@@ -64,7 +72,7 @@ impl StoredPublicationV1 {
         publication.aliases =
             materialize_aliases(&publication.plans, &publication.enabled_grants()?)?;
         publication.validate()?;
-        if Self::freeze(&publication)? != *self {
+        if Self::freeze_validated(&publication)? != *self {
             return Err(PublicationError::InvalidExecutableProjection);
         }
         Ok(publication)

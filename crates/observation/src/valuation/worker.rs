@@ -131,7 +131,7 @@ pub(super) fn settle_one(
             record.unknown_attempt_count += 1;
             continue;
         };
-        let Some(quote) = &pricing.quote else {
+        let Some(_) = &pricing.quote else {
             record.unknown_attempt_count += 1;
             continue;
         };
@@ -153,13 +153,20 @@ pub(super) fn settle_one(
                 .clone()
                 .map(|reference| (reference, usage.clone()));
         }
-        match value_attempt(quote, &usage) {
+        match value_recorded_attempt(&pricing, &raw) {
             Ok(attempt) => record.attempts.push(attempt),
             Err(_) => {
                 record.unknown_attempt_count += 1;
                 record.facts_partial = true;
             }
         }
+    }
+    if record
+        .attempts
+        .iter()
+        .any(|attempt| attempt.algorithm == EQUAL_RATE_VALUATION_ALGORITHM)
+    {
+        record.algorithm = EQUAL_RATE_VALUATION_ALGORITHM.into();
     }
     let mut groups: BTreeMap<(String, PriceValuationKindV1), ValuationAmountV2> = BTreeMap::new();
     let mut overflowed = std::collections::BTreeSet::new();
@@ -174,10 +181,11 @@ pub(super) fn settle_one(
                 coverage: MetricCoverage::Complete,
                 missing_attempt_count: record.unknown_attempt_count,
             });
-        if attempt
-            .components
-            .iter()
-            .any(|component| component.missing == Some(ValuationMissingReason::ArithmeticOverflow))
+        if (attempt.algorithm == EQUAL_RATE_VALUATION_ALGORITHM
+            && attempt.known_sum_micros.is_none())
+            || attempt.components.iter().any(|component| {
+                component.missing == Some(ValuationMissingReason::ArithmeticOverflow)
+            })
         {
             overflowed.insert(key.clone());
         }

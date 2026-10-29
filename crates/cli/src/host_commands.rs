@@ -336,6 +336,7 @@ fn agent_update_status(
         let status = query(
             "GetAgentConnectionStatus",
             json!(AgentSettingsStatusRequestV2 {
+                projection: Default::default(),
                 effective: None,
                 include_skills: true,
                 native_target: None,

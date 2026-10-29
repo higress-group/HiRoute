@@ -4,6 +4,7 @@ pub(super) const UTF8_BOM: &[u8] = b"\xef\xbb\xbf";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EofPolicy {
+    /// Reject unfinished fields; a comment-only tail has no pending event.
     Strict,
     DropIncompleteObserver,
     ProviderFinalEvent,
@@ -547,7 +548,18 @@ impl SseFramer {
         if self.pending.bytes.is_empty() {
             return Ok(FeedProgress::Complete);
         }
-        if self.pending_scan.finish_boundary_at_eof() {
+        // A comment-only tail carries no event data or control fields awaiting a
+        // separator. Use the shared field parser, then the same bounded dispatch
+        // path: NeedDrain retains this charged buffer and retries it unchanged.
+        let complete = self.pending_scan.finish_boundary_at_eof()
+            || SseEventView {
+                raw: &self.pending.bytes,
+                strip_bom: self.first_event && self.pending.bytes.starts_with(UTF8_BOM),
+                _not_send: PhantomData,
+            }
+            .fields()
+            .all(|field| field.comment);
+        if complete {
             let first_event = self.first_event;
             match dispatch_event(
                 &self.pending.bytes,
@@ -569,6 +581,7 @@ impl SseFramer {
             }
             self.first_event = false;
             self.pending.clear_and_release();
+            self.pending_scan = ScanState::default();
             return Ok(FeedProgress::Complete);
         }
         match self.limits.eof_policy {

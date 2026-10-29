@@ -69,10 +69,7 @@ impl PublicationTargetPort for AtomicPublicationTarget {
         }
         match record {
             Some(record) => {
-                let publication = record
-                    .verify()
-                    .map_err(|_| PublicationTargetError::VerificationFailed)?;
-                publication
+                record
                     .gateway_snapshot()
                     .map_err(|_| PublicationTargetError::VerificationFailed)?;
                 self.verify_installed(record)

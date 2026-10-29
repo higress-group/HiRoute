@@ -64,7 +64,7 @@ pub use subscription::{
 /// Stock CPA release whose CLI/config/management contract this implementation was grounded on.
 pub const STOCK_CPA_CONTRACT_VERSION: &str = "7.2.140";
 /// Exact managed binary: upstream protocol contract plus the private parent-pipe bootstrap.
-pub const MANAGED_CPA_ARTIFACT_VERSION: &str = "8.0.4-hiroute.8";
+pub const MANAGED_CPA_ARTIFACT_VERSION: &str = "8.0.4-hiroute.9";
 /// The management PATCH synchronously refreshes upstream models before local pin checks.
 /// Its whole-flow budget must leave room beyond CPA's five-second upstream deadline.
 pub const MANAGED_CPA_CONTROL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);

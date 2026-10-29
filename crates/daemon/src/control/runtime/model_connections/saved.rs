@@ -1172,14 +1172,16 @@ mod tests {
         let connection = rusqlite::Connection::open(storage.join("live/control.db")).unwrap();
         let owner = "op_50505050505050505050505050505050";
         let owner_digest = CanonicalDigest::of_bytes(b"descriptor-mismatch-owner");
+        // This synthetic terminal owner has no outstanding recovery/finalization work.
+        // It is deliberately not an executable operation journal.
         connection
             .execute(
                 "INSERT INTO operations(
                     operation_id,workspace_id,principal,operation_kind,idempotency_key,
                     request_digest,accepted_change_digest,state,generation,operation_json,
-                    created_at,updated_at
+                    created_at,updated_at,finalization_pending
                  ) VALUES (?1,?2,'desktop','fixture.management','descriptor-mismatch',
-                           ?3,?3,'succeeded',0,'{}',0,0)",
+                           ?3,?3,'succeeded',0,'{}',0,0,0)",
                 rusqlite::params![
                     owner,
                     WorkspaceId::default().as_str(),

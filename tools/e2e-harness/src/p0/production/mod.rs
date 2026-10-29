@@ -30,6 +30,7 @@ mod legacy_inputs;
 
 #[cfg(test)]
 mod tests {
+    use super::collector::CURRENT_EXECUTION_FACT_COUNT;
     use super::types::{CURRENT_AGGREGATE_PORT_DIGEST, CURRENT_EXECUTION_SCHEMA_DIGEST};
     use hiroute_gateway::server::core_runtime::observation::{
         EXECUTION_FACT_PORT_DIGEST, GATEWAY_PORT_SET_DIGEST,
@@ -44,11 +45,20 @@ mod tests {
         let read = |name| -> Value {
             serde_json::from_slice(&std::fs::read(schema_root.join(name)).unwrap()).unwrap()
         };
+        let collector = read("current-production-collector.schema.json");
+        let execution = &collector["properties"]["execution_fact"]["properties"];
         assert_eq!(
-            read("current-production-collector.schema.json")["properties"]["execution_fact"]["properties"]
-                ["records"]["items"]["properties"]["schema_digest"]["const"],
+            execution["records"]["items"]["properties"]["schema_digest"]["const"],
             CURRENT_EXECUTION_SCHEMA_DIGEST
         );
+        for value in [
+            &execution["last_sequence"]["const"],
+            &execution["record_count"]["const"],
+            &execution["records"]["minItems"],
+            &execution["records"]["maxItems"],
+        ] {
+            assert_eq!(value.as_u64(), Some(CURRENT_EXECUTION_FACT_COUNT as u64));
+        }
         assert_eq!(
             read("current-gateway-result.schema.json")["properties"]["aggregate_port_digest"]["const"],
             CURRENT_AGGREGATE_PORT_DIGEST

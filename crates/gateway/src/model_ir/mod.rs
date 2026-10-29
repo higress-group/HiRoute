@@ -5,6 +5,7 @@
 //! cannot represent; text conversion and silent omission are not available.
 
 mod error;
+mod native_history;
 mod request;
 mod response;
 mod search;

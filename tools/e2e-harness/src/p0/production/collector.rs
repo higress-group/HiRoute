@@ -10,6 +10,23 @@ use super::types::*;
 use crate::p0::canonical::sha256_hex;
 
 const MAX_CHANNEL_BYTES: u64 = 16 * 1024 * 1024;
+pub(super) const SEALED_EXECUTION_ORDER: [&str; 14] = [
+    "route_decision",
+    "candidate_decision",
+    "runtime_state",
+    "credential_lease",
+    "runtime_state",
+    "runtime_state",
+    "runtime_state",
+    "runtime_state",
+    "runtime_state",
+    "attempt_started",
+    "semantic_commit",
+    "attempt_finished",
+    "request_finished",
+    "usage_and_cache",
+];
+pub(super) const CURRENT_EXECUTION_FACT_COUNT: usize = SEALED_EXECUTION_ORDER.len() + 1;
 
 pub(crate) async fn wait_for_independent_terminals(
     directory: &Path,
@@ -401,23 +418,7 @@ fn validate_execution(
         .iter()
         .filter_map(|record| record.pointer("/fact/kind").and_then(Value::as_str))
         .collect::<Vec<_>>();
-    let exact_kinds = [
-        "route_decision",
-        "candidate_decision",
-        "runtime_state",
-        "credential_lease",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "attempt_started",
-        "semantic_commit",
-        "attempt_finished",
-        "request_finished",
-        "usage_and_cache",
-    ];
-    if !valid_execution_kind_order(&kinds, &exact_kinds, current) {
+    if !valid_execution_kind_order(&kinds, &SEALED_EXECUTION_ORDER, current) {
         return Err(collector(
             "execution fact sequence is not the exact green smoke",
         ));
@@ -472,6 +473,11 @@ fn validate_execution(
             .and_then(|record| record.get("fact"))
             .ok_or_else(|| collector("required execution fact is missing"))
     };
+    if current && !valid_smoke_input_selection(fact("request_input_selection")?) {
+        return Err(collector(
+            "execution input selection is not the observed unverified smoke input",
+        ));
+    }
     let route = fact("route_decision")?;
     let candidate = fact("candidate_decision")?;
     let attempt = fact("attempt_started")?;
@@ -519,6 +525,14 @@ fn valid_execution_kind_order(kinds: &[&str], sealed_order: &[&str; 14], current
     if !current {
         return kinds == sealed_order;
     }
+    // The current Gateway records the request-local input selection before
+    // routing. It is not evidence of human authorship.
+    if kinds.len() != CURRENT_EXECUTION_FACT_COUNT
+        || kinds.first().copied() != Some("request_input_selection")
+    {
+        return false;
+    }
+    let kinds = &kinds[1..];
     // Current canonical delivery can report usage immediately before or after
     // the request terminal. Same-protocol Native delivery owns usage in the
     // main projector, so provider completion records it before attempt finish.
@@ -530,6 +544,13 @@ fn valid_execution_kind_order(kinds: &[&str], sealed_order: &[&str; 14], current
                 | ["attempt_finished", "usage_and_cache", "request_finished"]
                 | ["usage_and_cache", "attempt_finished", "request_finished"]
         )
+}
+
+fn valid_smoke_input_selection(fact: &Value) -> bool {
+    fact.get("version").and_then(Value::as_u64) == Some(1)
+        && fact.get("evidence").and_then(Value::as_str) == Some("wire_observed")
+        && fact.get("message_ordinal").and_then(Value::as_u64) == Some(0)
+        && fact.get("source_unverified").and_then(Value::as_bool) == Some(true)
 }
 
 fn validate_content(
@@ -743,39 +764,38 @@ fn collector(message: &'static str) -> ProductionError {
 
 #[cfg(test)]
 mod execution_order_tests {
-    use super::valid_execution_kind_order;
-
-    const SEALED: [&str; 14] = [
-        "route_decision",
-        "candidate_decision",
-        "runtime_state",
-        "credential_lease",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "runtime_state",
-        "attempt_started",
-        "semantic_commit",
-        "attempt_finished",
-        "request_finished",
-        "usage_and_cache",
-    ];
+    use super::{
+        SEALED_EXECUTION_ORDER as SEALED, valid_execution_kind_order, valid_smoke_input_selection,
+    };
+    use serde_json::json;
 
     #[test]
     fn current_order_accepts_each_single_usage_authority_position() {
-        assert!(valid_execution_kind_order(&SEALED, &SEALED, true));
+        let current = |order: &[&'static str]| {
+            std::iter::once("request_input_selection")
+                .chain(order.iter().copied())
+                .collect::<Vec<_>>()
+        };
+        assert!(valid_execution_kind_order(&current(&SEALED), &SEALED, true));
         let mut before_completion = SEALED;
         before_completion.swap(12, 13);
         assert!(valid_execution_kind_order(
-            &before_completion,
+            &current(&before_completion),
             &SEALED,
             true
         ));
         let mut native_provider_completion = SEALED;
         native_provider_completion[11..].rotate_right(1);
         assert!(valid_execution_kind_order(
-            &native_provider_completion,
+            &current(&native_provider_completion),
+            &SEALED,
+            true
+        ));
+        assert!(!valid_execution_kind_order(&SEALED, &SEALED, true));
+        let mut duplicated_selection = current(&SEALED);
+        duplicated_selection.insert(0, "request_input_selection");
+        assert!(!valid_execution_kind_order(
+            &duplicated_selection,
             &SEALED,
             true
         ));
@@ -792,10 +812,28 @@ mod execution_order_tests {
         ));
         let mut attempt_after_request = SEALED;
         attempt_after_request.swap(11, 12);
-        assert!(!valid_execution_kind_order(
-            &attempt_after_request,
-            &SEALED,
-            true
-        ));
+        let current = std::iter::once("request_input_selection")
+            .chain(attempt_after_request)
+            .collect::<Vec<_>>();
+        assert!(!valid_execution_kind_order(&current, &SEALED, true));
+    }
+
+    #[test]
+    fn current_smoke_input_selection_preserves_source_uncertainty() {
+        let mut selection = json!({
+            "version": 1,
+            "evidence": "wire_observed",
+            "message_ordinal": 0,
+            "source_unverified": true,
+        });
+        assert!(valid_smoke_input_selection(&selection));
+        selection["source_unverified"] = json!(false);
+        assert!(!valid_smoke_input_selection(&selection));
+        selection["source_unverified"] = json!(true);
+        selection["evidence"] = json!("native_matched");
+        assert!(!valid_smoke_input_selection(&selection));
+        selection["evidence"] = json!("wire_observed");
+        selection["message_ordinal"] = json!(1);
+        assert!(!valid_smoke_input_selection(&selection));
     }
 }

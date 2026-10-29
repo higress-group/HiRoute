@@ -26,8 +26,8 @@ mod stream;
 mod windows_acl;
 
 pub use stream::ReplayReader;
-pub(crate) use stream::write_canonical_json;
 use stream::{ReplayStream, ReplayStreamBuilder};
+pub(crate) use stream::{write_canonical_json, write_canonical_object};
 
 // Spill before a single large JSON string and serde's decode scratch can
 // compete for the same 8 MiB request memory budget.
@@ -128,7 +128,14 @@ pub struct ReplayWriter {
 pub struct ReplayContentWriter {
     store: ReplayStore,
     builder: Option<ReplayStreamBuilder>,
-    ranges: Vec<ContentRef>,
+    ranges: Vec<ReplayRange>,
+}
+
+/// Provenance belongs to an exact registered range, never its locator spelling.
+/// The existing per-range metadata reservation covers this bounded record.
+struct ReplayRange {
+    reference: ContentRef,
+    canonical_json: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -215,6 +222,12 @@ impl ReplayStore {
         lock(&self.inner.streams)
             .get(&reference.stream_ordinal())
             .is_some_and(|stream| stream.contains(reference))
+    }
+
+    pub(crate) fn is_canonical_json(&self, reference: &ContentRef) -> bool {
+        lock(&self.inner.streams)
+            .get(&reference.stream_ordinal())
+            .is_some_and(|stream| stream.is_canonical_json(reference))
     }
 
     /// Validates every live backing through the exact file handle retained at
@@ -408,22 +421,27 @@ impl ReplayContentWriter {
             .as_mut()
             .ok_or(ReplayError::AfterTerminal)?
             .append_range(bytes)?;
-        self.ranges.push(reference.clone());
+        self.ranges.push(ReplayRange {
+            reference: reference.clone(),
+            canonical_json: false,
+        });
         Ok(reference)
     }
 
-    pub fn append_json(
+    pub fn append_canonical_json(
         &mut self,
         value: &serde_json::Value,
-        canonical: bool,
     ) -> Result<ContentRef, ReplayError> {
         self.reserve_range()?;
         let reference = self
             .builder
             .as_mut()
             .ok_or(ReplayError::AfterTerminal)?
-            .append_json_range(value, canonical)?;
-        self.ranges.push(reference.clone());
+            .append_json_range(value)?;
+        self.ranges.push(ReplayRange {
+            reference: reference.clone(),
+            canonical_json: true,
+        });
         Ok(reference)
     }
 

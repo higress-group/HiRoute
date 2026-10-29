@@ -66,6 +66,7 @@ impl Context {
             id: &self.id,
             confirmations: &self.confirmations,
             active: &active,
+            visible: &|| true,
             notify: None,
         };
         let state = CommandState(&self.session, &self.error, &self.epoch, &self.diagnostics);

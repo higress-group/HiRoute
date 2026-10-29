@@ -7,16 +7,21 @@ use super::protocol::{ClassifierAssessment, ClassifierResponse};
 use super::{CallFailure, PreparedDecisionRequest};
 use crate::agent_turn_history::{AgentTurnHistorySnapshot, ExecutionAttribution};
 use crate::server::core_runtime::adapters::{ProtocolAdapterError, prepare_replay_json_template};
-use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 
-pub(super) fn request_template(
-    request: &ModelRequestIRV1,
+pub(super) fn request_template<'a>(
+    request: impl Into<super::DecisionInput<'a>>,
     history: &AgentTurnHistorySnapshot,
     authority: &RestBranchClassifierAuthorityV1,
+    current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, ProtocolAdapterError> {
     let mut refs = Vec::new();
-    let latest_user = super::protocol::latest_user_wire_value(request, &mut refs)?;
+    let mut latest_user = super::protocol::latest_user_wire_value(
+        request,
+        &mut refs,
+        current_input_origin_unverified,
+    )?;
+    super::protocol::disclose_history_evidence(&mut latest_user, history);
     let route = match &authority.decision {
         DecisionDefinitionV1::Ordinal { .. } => {
             json!({"kind":"smart_saving","groups":["regular","primary"]})

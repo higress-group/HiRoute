@@ -1,4 +1,4 @@
-//! Real coordinator and three stores; SQLite faults are limited to exact deletion checkpoints.
+//! Real coordinator and three stores; failures target exact deletion and terminal checkpoints.
 use super::lifecycle::{edit, saved};
 use super::*;
 use hiroute_application_api::ComputeManagementEditV1;
@@ -103,9 +103,9 @@ fn compute_delete_failure_after_secret_activation_rolls_back_all_stores_and_surv
             // Activation deletes Secret entries before trying the Control row. Failure here
             // exercises real coordinator compensation of already-activated credential deletes.
             stores.control().with_connection(|connection| connection.execute_batch(
-            "CREATE TRIGGER fail_connection_delete BEFORE DELETE ON compute_management_sources BEGIN SELECT RAISE(ABORT, 'fixture_delete_failure'); END;").unwrap());
+            "CREATE TEMP TRIGGER fail_connection_delete BEFORE DELETE ON main.compute_management_sources BEGIN SELECT RAISE(ABORT, 'fixture_delete_failure'); END;").unwrap());
             if terminal_failure {
-                stores.control().with_connection(|connection| connection.execute_batch("CREATE TRIGGER fail_rollback_terminal BEFORE UPDATE OF state ON operations WHEN NEW.state='rolled_back' BEGIN SELECT RAISE(ABORT, 'fixture_rollback_terminal'); END;").unwrap());
+                let _fault = crate::control::terminal_fault::inject(OperationState::RolledBack);
                 assert!(coordinator.run(&operation_id).is_err());
             } else {
                 let completed = coordinator.run(&operation_id).unwrap();
@@ -189,10 +189,10 @@ fn compute_delete_failure_after_secret_activation_rolls_back_all_stores_and_surv
                     .unwrap()
             });
             stores.control().with_connection(|connection| {
-            connection
-                .execute_batch("DROP TRIGGER fail_connection_delete; DROP TRIGGER IF EXISTS fail_rollback_terminal;")
-                .unwrap()
-        });
+                connection
+                    .execute_batch("DROP TRIGGER fail_connection_delete;")
+                    .unwrap()
+            });
         }
         let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
         let runtime = TransactionRuntime::default();
@@ -351,7 +351,7 @@ fn compute_key_edit_rollback_preserves_authority_and_restores_forward_references
         };
         assert!(secrets.iter().all(|secret| secret.kind() == expected_kind));
         // Fail the desired activation, while allowing the distinct forward compensation revision.
-        stores.control().with_connection(|connection| connection.execute_batch(&format!("CREATE TRIGGER fail_source_edit BEFORE UPDATE ON compute_management_sources WHEN NEW.revision={} BEGIN SELECT RAISE(ABORT, 'fixture_source_edit'); END;", before.revision + 1)).unwrap());
+        stores.control().with_connection(|connection| connection.execute_batch(&format!("CREATE TEMP TRIGGER fail_source_edit BEFORE UPDATE ON main.compute_management_sources WHEN NEW.revision={} BEGIN SELECT RAISE(ABORT, 'fixture_source_edit'); END;", before.revision + 1)).unwrap());
         assert_eq!(
             coordinator
                 .run(&accepted.operation().operation_id)
@@ -438,9 +438,9 @@ fn compute_delete_activated_before_terminal_journal_failure_completes_once_on_st
             )
             .unwrap();
         operation_id = accepted.operation().operation_id.clone();
-        stores.control().with_connection(|connection| connection.execute_batch(
-            "CREATE TRIGGER fail_delete_terminal BEFORE UPDATE OF state ON operations WHEN NEW.state='succeeded' BEGIN SELECT RAISE(ABORT, 'fixture_terminal_failure'); END;").unwrap());
+        let fault = crate::control::terminal_fault::inject(OperationState::Succeeded);
         assert!(coordinator.run(&operation_id).is_err());
+        drop(fault);
         assert!(
             stores
                 .control()
@@ -448,11 +448,6 @@ fn compute_delete_activated_before_terminal_journal_failure_completes_once_on_st
                 .unwrap()
                 .is_none()
         );
-        stores.control().with_connection(|connection| {
-            connection
-                .execute_batch("DROP TRIGGER fail_delete_terminal;")
-                .unwrap()
-        });
     }
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
     let runtime = TransactionRuntime::default();
@@ -578,8 +573,9 @@ fn model_defaults_activated_before_terminal_failure_complete_once_on_startup() {
             .operation()
             .operation_id
             .clone();
-        stores.control().with_connection(|c| c.execute_batch("CREATE TRIGGER fail_defaults_terminal BEFORE UPDATE OF state ON operations WHEN NEW.state='succeeded' BEGIN SELECT RAISE(ABORT, 'fixture_terminal_failure'); END;").unwrap());
+        let fault = crate::control::terminal_fault::inject(OperationState::Succeeded);
         assert!(coordinator.run(&operation_id).is_err());
+        drop(fault);
         assert_eq!(
             stores
                 .control()
@@ -589,10 +585,6 @@ fn model_defaults_activated_before_terminal_failure_complete_once_on_startup() {
         );
         revision = saved(&stores).revision;
         assert_eq!(revision, before.revision + 1);
-        stores.control().with_connection(|c| {
-            c.execute_batch("DROP TRIGGER fail_defaults_terminal;")
-                .unwrap()
-        });
     }
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
     let runtime = TransactionRuntime::default();

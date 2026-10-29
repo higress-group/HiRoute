@@ -293,6 +293,10 @@ mod tests {
 
 #[derive(Debug, Error, Eq, PartialEq)]
 pub enum TransportError {
+    /// The request owner observed cancellation, independently of whether an
+    /// upstream attempt or a downstream response had started.
+    #[error("request was cancelled")]
+    Cancelled,
     #[error("transport I/O failed: {0}")]
     Io(Arc<str>),
     #[error("transport metadata is invalid: {0}")]

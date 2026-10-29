@@ -178,6 +178,11 @@ fn unavailable_opencode_context_does_not_block_other_agents_or_control_startup()
         )
         .unwrap(),
     );
+    assert!(
+        scanner
+            .native_routing_adapter_target(hiroute_domain::AgentKindV1::OpenCode)
+            .is_none()
+    );
     let runtime = ProductionControlRuntime::prepare_for_role_all_with_scanner(
         &root.path().join("storage"),
         crate::release_catalog::fixture_catalog(),

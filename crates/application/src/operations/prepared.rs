@@ -1,6 +1,6 @@
 //! Sealed admission for command-specific typed planners.
 //!
-//! Application either reproduces a typed plan or seals a one-shot ordinary-publication
+//! Application either reproduces a typed plan or seals a one-shot current-facts
 //! constructor that runs inside the writer. The production adapter may carry it to this coordinator, but cannot deserialize or
 //! manufacture one. Admission therefore retains the exact generic ordering and the single
 //! operation-journal writer boundary.
@@ -39,9 +39,33 @@ pub struct PreparedTransactionV1 {
 enum PreparedPlan {
     Reproduced(Box<TransactionPlanV1>),
     Publication(Box<dyn FnOnce() -> Result<TransactionPlanV1, TransactionError> + Send>),
+    AgentSettings(Box<dyn FnOnce() -> Result<TransactionPlanV1, TransactionError> + Send>),
 }
 
 impl PreparedTransactionV1 {
+    /// Bind the accepted intent now; capture current native facts and seal its effects once,
+    /// inside the same writer that validates revisions, authority and durable admission.
+    pub(crate) fn for_current_agent_settings(
+        request: ApplyRequestV1,
+        build: impl FnOnce() -> Result<TransactionPlanV1, TransactionError> + Send + 'static,
+    ) -> Result<Self, TransactionError> {
+        if request.spec.command_id != "agents.settings.apply" {
+            return Err(TransactionError::InvalidArguments);
+        }
+        let operation_kind = if settings_restore_plan(&request.spec) {
+            "ApplyAgentConnectionRestore"
+        } else {
+            "ApplyAgentConnectionChange"
+        };
+        Ok(Self {
+            reproduced_digest: request.accept_digest.clone(),
+            request,
+            plan: PreparedPlan::AgentSettings(Box::new(build)),
+            operation_kind: operation_kind.into(),
+            revalidate: None,
+            discovery_guards: Vec::new(),
+        })
+    }
     /// A composition owner may add a current-facts fence to a sealed plan. Existing checks
     /// always run first; this cannot replace the planner's authority or recovery validation.
     pub fn with_current_facts_check(
@@ -76,24 +100,6 @@ impl PreparedTransactionV1 {
             discovery_guards: Vec::new(),
         })
     }
-    /// The registered restore descriptor has its own confirmation and idempotency scope.
-    /// Only an exact restore-only settings plan can use that authority.
-    pub(crate) fn for_agent_settings_restore(
-        request: ApplyRequestV1,
-        reproduced_digest: CanonicalDigest,
-        plan: TransactionPlanV1,
-    ) -> Result<Self, TransactionError> {
-        if !settings_restore_plan(plan.spec()) {
-            return Err(TransactionError::InvalidArguments);
-        }
-        let mut prepared = Self::for_setup(request, reproduced_digest, plan)?;
-        prepared.operation_kind = command_by_id("agents.restore.apply")
-            .filter(|descriptor| descriptor.kind == CommandKind::Apply)
-            .ok_or(TransactionError::InvalidArguments)?
-            .operation_id;
-        Ok(prepared)
-    }
-
     /// The source-level management API has a distinct public operation identity while reusing
     /// the registered compute connection command and its sealed transaction plan.
     pub(crate) fn for_compute_management(
@@ -258,6 +264,49 @@ where
             discovery_guards,
         } = prepared;
         let plan = match plan {
+            PreparedPlan::AgentSettings(build) => {
+                let expected_kind = if settings_restore_plan(&request.spec) {
+                    "ApplyAgentConnectionRestore"
+                } else {
+                    "ApplyAgentConnectionChange"
+                };
+                if revalidate.is_some()
+                    || !discovery_guards.is_empty()
+                    || operation_kind != expected_kind
+                    || request.spec.command_id != "agents.settings.apply"
+                {
+                    return Err(TransactionError::InvalidArguments);
+                }
+                return self
+                    .accept_with_prepared_request(
+                        workspace,
+                        principal,
+                        &operation_kind,
+                        request,
+                        move |_current, request| {
+                            // The typed planner confirms the original intent against current facts,
+                            // then seals its normalized form (for example a known Hermes target or
+                            // preserved Codex models). Keep the existing normalized journal identity.
+                            let plan = build()?;
+                            if plan.spec().command_id != request.spec.command_id
+                                || plan.spec().resource_id != request.spec.resource_id
+                                || settings_restore_plan(plan.spec())
+                                    != settings_restore_plan(&request.spec)
+                            {
+                                return Err(TransactionError::ChangePreviewStale);
+                            }
+                            self.validate_prepared_external(&plan)?;
+                            request.spec = plan.spec().clone();
+                            Ok((reproduced_digest, plan))
+                        },
+                    )
+                    .map_err(|error| match error {
+                        TransactionError::RevisionConflict(_) => {
+                            TransactionError::ChangePreviewStale
+                        }
+                        error => error,
+                    });
+            }
             PreparedPlan::Publication(build) => {
                 if revalidate.is_some()
                     || !discovery_guards.is_empty()
@@ -479,6 +528,32 @@ where
             &ApplyRequestV1,
         ) -> Result<(CanonicalDigest, TransactionPlanV1), TransactionError>,
     {
+        self.accept_with_prepared_request(
+            workspace,
+            principal,
+            operation_kind,
+            request,
+            |current, request| reproduce(current, request),
+        )
+    }
+
+    // Only the Application-owned Agent settings planner may replace the request's spec
+    // with its freshly confirmed canonical form. Ordinary planners receive an immutable
+    // request through accept_with_reproduced_plan and retain the exact equality fence.
+    fn accept_with_prepared_request<F>(
+        &self,
+        workspace: &WorkspaceId,
+        principal: &VerifiedPrincipal,
+        operation_kind: &str,
+        mut request: ApplyRequestV1,
+        reproduce: F,
+    ) -> Result<AcceptedApply, TransactionError>
+    where
+        F: FnOnce(
+            &RevisionSetV1,
+            &mut ApplyRequestV1,
+        ) -> Result<(CanonicalDigest, TransactionPlanV1), TransactionError>,
+    {
         let _writer = self.admission.lock_writer()?;
         if !self
             .admission
@@ -499,8 +574,6 @@ where
             operation_kind,
             request.idempotency_key.clone(),
         )?;
-        let request_digest = apply_request_digest(&request)?;
-
         if let Some(existing) = self.control.operation_for_idempotency(workspace, &scope)? {
             if existing.accepted_digest == request.accept_digest {
                 return Ok(AcceptedApply {
@@ -558,10 +631,11 @@ where
             )
         };
 
-        let (reproduced_digest, plan) = reproduce(&current, &request)?;
+        let (reproduced_digest, plan) = reproduce(&current, &mut request)?;
         if reproduced_digest != request.accept_digest || plan.spec() != &request.spec {
             return Err(TransactionError::ChangePreviewStale);
         }
+        let request_digest = apply_request_digest(&request)?;
         let operation_id = OperationId::derive(workspace, &scope, &request_digest);
         let operation = OperationV1::new(
             operation_id,

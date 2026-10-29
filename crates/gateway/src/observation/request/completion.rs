@@ -196,7 +196,9 @@ impl RequestObservation {
             if let Some(attempt) = attempt {
                 let (outcome, error_class, retryable) = match observation.downstream {
                     AttemptDownstreamOutcome::Completed if model_failed => {
-                        ("rejected", Some("provider_rejected"), Some(false))
+                        // Acceptance records delivery, not model success. The
+                        // request and history stage still finish as failed.
+                        ("accepted", Some("provider_rejected"), Some(false))
                     }
                     AttemptDownstreamOutcome::Completed => ("accepted", None, None),
                     AttemptDownstreamOutcome::Failed => (
@@ -478,10 +480,18 @@ impl RequestObservation {
             })),
             Some(&attempt.attempt_id),
         );
+        // Operational error reporting keeps the model failure even though the
+        // persisted transport identity above records accepted delivery.
+        let diagnostic_outcome =
+            if outcome == "accepted" && error_class == Some("provider_rejected") {
+                "rejected"
+            } else {
+                outcome
+            };
         emit_attempt_span(
             self,
             OtelAttempt::from_observation(&attempt),
-            outcome,
+            diagnostic_outcome,
             error_class,
         );
         self.emit_lifecycle(LifecycleFactV1::AttemptFinished {
@@ -501,7 +511,7 @@ impl RequestObservation {
                     .and_then(|wire| wire.upstream_request_token),
             )
         };
-        if let Some(outcome) = attempt_outcome(outcome, timed_out) {
+        if let Some(outcome) = attempt_outcome(diagnostic_outcome, timed_out) {
             let provider_result = provider
                 .and_then(|facts| facts.model_event.as_ref())
                 .and_then(|event| match event.as_str() {

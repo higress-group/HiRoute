@@ -8,6 +8,9 @@ use crate::server::core_runtime::adapters::ToolIdProjection;
 use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
 use crate::server::request_plan::IngressProtocol;
 
+#[path = "native_tool_metadata_tests.rs"]
+mod tool_metadata;
+
 fn profile(protocol: IngressProtocol) -> CandidateProtocolProfile {
     CandidateProtocolProfile::exact_portable_path(
         protocol,
@@ -452,10 +455,10 @@ fn opaque_extension_and_control_tail_keep_wire_without_certifying_completion() {
     let mut stream = projector(IngressProtocol::Responses, true);
     let mut wire = opaque.to_vec();
     wire.extend(terminal);
-    wire.extend_from_slice(b": trailing heartbeat\n\n");
+    wire.extend_from_slice(b"event: response.future_control\n\n");
     let units = stream.feed(&wire, false).unwrap();
     assert_eq!(units[0].bytes, opaque);
-    assert_eq!(units[2].bytes, b": trailing heartbeat\n\n");
+    assert_eq!(units[2].bytes, b"event: response.future_control\n\n");
     assert_eq!(units[1].terminal, None);
     assert_eq!(units[2].terminal, None);
     assert_eq!(

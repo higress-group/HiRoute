@@ -10,6 +10,101 @@ pub use hiroute_domain::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Internal Home projection: it records locator coverage, not native or grant proof.
+pub const AGENT_SETTINGS_SUMMARY_OPERATION_V1: &str = "GetAgentSettingsSummary";
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSettingsSummaryRequestV1 {
+    pub context_ids: Vec<String>,
+}
+impl AgentSettingsSummaryRequestV1 {
+    pub fn valid(&self) -> bool {
+        self.context_ids.len() <= 128
+            && self
+                .context_ids
+                .iter()
+                .all(|id| !id.is_empty() && id.len() <= 256)
+            && self
+                .context_ids
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                == self.context_ids.len()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSettingsSummaryStateV1 {
+    Absent,
+    Recorded,
+    Pending,
+    NeedsAttention,
+    Unavailable,
+    NotReady,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSettingsSummaryCoverageV1 {
+    Complete,
+    Unavailable,
+    NotReady,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSettingsRecordedActionV1 {
+    Configure,
+    Restore,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSettingsFacetSummaryV1 {
+    pub state: AgentSettingsSummaryStateV1,
+    pub coverage: AgentSettingsSummaryCoverageV1,
+    pub action: Option<AgentSettingsRecordedActionV1>,
+    pub native_checked: bool,
+}
+
+impl AgentSettingsFacetSummaryV1 {
+    /// This hint is deliberately weaker than a native or grant status. Reject
+    /// contradictory coverage instead of letting it describe an empty setup.
+    pub fn valid(&self) -> bool {
+        use AgentSettingsSummaryCoverageV1 as Coverage;
+        use AgentSettingsSummaryStateV1 as State;
+        !self.native_checked
+            && matches!(
+                (self.state, self.coverage, self.action),
+                (State::Recorded, Coverage::Complete, Some(_))
+                    | (
+                        State::Absent | State::Pending | State::NeedsAttention,
+                        Coverage::Complete,
+                        None,
+                    )
+                    | (State::Unavailable, Coverage::Unavailable, None)
+                    | (State::NotReady, Coverage::NotReady, None)
+            )
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSettingsSummaryEntryV1 {
+    pub context_id: String,
+    pub model: AgentSettingsFacetSummaryV1,
+    pub collaboration: AgentSettingsFacetSummaryV1,
+    pub management_skill: AgentSettingsFacetSummaryV1,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentSettingsSummaryV1 {
+    pub entries: Vec<AgentSettingsSummaryEntryV1>,
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsApplyV2 {
@@ -101,6 +196,11 @@ pub struct AgentSettingsPreviewRequestV2 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSettingsStatusRequestV2 {
+    #[serde(
+        default,
+        skip_serializing_if = "AgentSettingsStatusProjectionV2::is_full"
+    )]
+    pub projection: AgentSettingsStatusProjectionV2,
     #[serde(default, skip_serializing_if = "is_false")]
     pub include_skills: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -109,6 +209,23 @@ pub struct AgentSettingsStatusRequestV2 {
     pub context_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effective: Option<crate::AgentEffectiveStateRequestV1>,
+}
+
+/// A narrow read reuses the same model proof without evaluating unrelated facets.
+/// Omission preserves the published V2 aggregate behavior, including include_skills.
+#[derive(
+    schemars::JsonSchema, Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentSettingsStatusProjectionV2 {
+    #[default]
+    Full,
+    Model,
+}
+impl AgentSettingsStatusProjectionV2 {
+    fn is_full(&self) -> bool {
+        *self == Self::Full
+    }
 }
 
 fn is_false(value: &bool) -> bool {
@@ -287,7 +404,10 @@ impl AgentModelSettingsStatusV2 {
             AgentModelSelectionV2::HermesDefault { .. } => {
                 *surface == AgentModelSurfaceV2::HermesCli
             }
-            AgentModelSelectionV2::DshAdditional { .. } => *surface == AgentModelSurfaceV2::DshCli,
+            AgentModelSelectionV2::DshAdditional { .. } => matches!(
+                surface,
+                AgentModelSurfaceV2::DshCli | AgentModelSurfaceV2::DshDesktop
+            ),
             AgentModelSelectionV2::OpenCodeAdditional { .. } => {
                 *surface == AgentModelSurfaceV2::OpenCodeCli
             }

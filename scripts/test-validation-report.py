@@ -9,6 +9,7 @@ from pathlib import Path
 import tempfile
 import types
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("report", Path(__file__).with_name("validation-report.py"))
 report = importlib.util.module_from_spec(spec)
@@ -412,6 +413,130 @@ class Storage(unittest.TestCase):
             values = report.smoke_timings('', checkout, 'a' * 40, 1, 2)
             self.assertEqual([v['run_id'] for v in values], ['current'])
             self.assertEqual(report.smoke_timings('', checkout, 'a' * 40), [])
+
+
+class CleanupExports(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        self.checkout, self.run = root / 'checkout', root / 'run'
+        self.source = self.checkout / 'target/.rustc_info.json'
+        self.source.parent.mkdir(parents=True)
+        self.source.write_text('compiler metadata A')
+        self.run.mkdir()
+        self.original = dict(id='owner', checkout_owner='owner', sha='a' * 40,
+                             checkout=str(self.checkout), command=['cargo', 'check'])
+        self.original['evidence_export'] = report.preserve_evidence(self.run, self.original)
+        self.manifest = (self.run / 'evidence.json').read_bytes()
+        self.current = dict(self.original, id='borrower', command=['cargo', 'test'])
+
+    def capture(self):
+        return report.preserve_cleanup_evidence(self.run, self.current, self.original)
+
+    def test_same_revision_captures_have_distinct_generations_and_complete_manifests(self):
+        self.source.write_text('compiler metadata B')
+        first = self.capture()
+        first_manifest = Path(first['manifest']).read_bytes()
+        self.source.write_text('compiler metadata C')
+        second = self.capture()
+        self.assertNotEqual(first['generation'], second['generation'])
+        self.assertEqual(Path(first['manifest']).read_bytes(), first_manifest)
+        for exported, contents in ((first, 'compiler metadata B'), (second, 'compiler metadata C')):
+            directory = Path(exported['manifest']).parent
+            value = report.verify_evidence(directory, exported)
+            self.assertEqual((value['run_id'], value['checkout_owner']), ('borrower', 'owner'))
+            self.assertEqual(value['export_generation'], exported['generation'])
+            self.assertEqual(value['source_revision'], self.original['sha'])
+            self.assertEqual((directory / 'artifacts/.rustc_info.json').read_text(), contents)
+        self.assertEqual((self.run / 'evidence.json').read_bytes(), self.manifest)
+        self.assertEqual((self.run / 'artifacts/.rustc_info.json').read_text(), 'compiler metadata A')
+
+    def test_advanced_revision_with_identical_bytes_never_relabels_original_manifest(self):
+        self.current['sha'] = 'b' * 40
+        saved = self.capture()
+        self.assertEqual(json.loads(Path(saved['manifest']).read_text())['source_revision'], 'b' * 40)
+        self.assertEqual((self.run / 'evidence.json').read_bytes(), self.manifest)
+        with self.assertRaisesRegex(ValueError, 'manifest differs'):
+            report.preserve_evidence(self.run, dict(self.original, sha='b' * 40))
+        self.source.unlink()
+        with self.assertRaisesRegex(ValueError, 'manifest differs'):
+            report.preserve_evidence(self.run, self.original)
+        self.assertEqual((self.run / 'evidence.json').read_bytes(), self.manifest)
+
+    def test_altered_or_missing_historical_bytes_prevent_new_capture(self):
+        exported = self.run / 'artifacts/.rustc_info.json'
+        exported.write_text('tampered')
+        with self.assertRaisesRegex(ValueError, 'Previously exported evidence differs'):
+            self.capture()
+        exported.unlink()
+        with self.assertRaises(FileNotFoundError):
+            self.capture()
+        self.assertTrue(self.source.is_file())
+        self.assertFalse((self.run / 'cleanup-evidence').exists())
+
+    def test_manifest_hash_paths_and_links_are_verified_for_legacy_exports_too(self):
+        value = json.loads(self.manifest)
+        value['source_revision'] = 'b' * 40
+        (self.run / 'evidence.json').write_text(json.dumps(value))
+        with self.assertRaisesRegex(ValueError, 'manifest differs'):
+            self.capture()
+        # Legacy exports have no manifest digest, but still enforce path containment.
+        self.original['evidence_export'].pop('manifest_sha256')
+        value['source_revision'] = 'a' * 40
+        value['files']['target/.rustc_info.json']['path'] = '../outside'
+        (self.run / 'evidence.json').write_text(json.dumps(value))
+        with self.assertRaisesRegex(ValueError, 'escapes'):
+            self.capture()
+        (self.run / 'evidence.json').write_bytes(self.manifest)
+        outside = self.run.parent / 'outside'
+        outside.mkdir()
+        (outside / '.rustc_info.json').write_text('compiler metadata A')
+        exported = self.run / 'artifacts'
+        (exported / '.rustc_info.json').unlink()
+        exported.rmdir()
+        exported.symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'link'):
+            self.capture()
+        self.assertEqual((outside / '.rustc_info.json').read_text(), 'compiler metadata A')
+
+    def test_failed_copy_is_unpublished_and_retry_keeps_old_evidence(self):
+        def interrupted(directory, record):
+            (directory / 'partial').write_text('incomplete copy')
+            raise OSError('interrupted export')
+        with patch.object(report, 'preserve_evidence', side_effect=interrupted):
+            with self.assertRaisesRegex(OSError, 'interrupted export'):
+                self.capture()
+        self.assertEqual(list((self.run / 'cleanup-evidence').iterdir()), [])
+        # Simulate a process killed before its TemporaryDirectory could unwind.
+        pending = self.run / 'cleanup-evidence' / ('.pending-' + 'f' * 32 + '-abcdefgh')
+        pending.mkdir()
+        (pending / 'partial').write_text('unpublished interrupted copy')
+        self.source.write_text('later evidence')
+        saved = self.capture()
+        self.assertTrue(Path(saved['manifest']).is_file())
+        self.assertTrue(pending.is_dir())
+        self.assertEqual((self.run / 'evidence.json').read_bytes(), self.manifest)
+
+    def test_file_change_during_copy_or_saved_capture_corruption_is_refused(self):
+        original_lstat = Path.lstat
+        reads = 0
+        def changed(path, *args, **kwargs):
+            nonlocal reads
+            if path == self.source:
+                reads += 1
+                if reads == 2:
+                    self.source.write_text('changed while being copied')
+            return original_lstat(path, *args, **kwargs)
+        with patch.object(Path, 'lstat', changed):
+            with self.assertRaisesRegex(ValueError, 'Evidence changed during export'):
+                self.capture()
+        self.assertEqual(list((self.run / 'cleanup-evidence').iterdir()), [])
+        saved = self.capture()
+        (Path(saved['manifest']).parent / 'artifacts/.rustc_info.json').write_text('altered capture')
+        with self.assertRaisesRegex(ValueError, 'Previously exported evidence differs'):
+            self.capture()
+        self.assertEqual((self.run / 'evidence.json').read_bytes(), self.manifest)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,181 @@
+{
+  "schema": "hiroute.math-history-manifest/v1",
+  "hash_algorithm": "SHA-256",
+  "scope": "Public mathematics-history supplement; manifest does not hash itself. Parent dependencies are relative to the surrounding system-one-routing-paper package.",
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 22,
+      "sha256": "c29139b29ad82144d7630b972251e9a8016bbdf7cc26abc0f25f1afc8751ecae"
+    },
+    {
+      "path": "DATA-CARD.md",
+      "bytes": 10303,
+      "sha256": "5701e8e8d5c0a023a6aa329ea9bf5d0198e9a240cdac686a7cc3c265473c6d12"
+    },
+    {
+      "path": "README.md",
+      "bytes": 5626,
+      "sha256": "22638cfe3e89224edcddaa7511a759d42721b1ef02c1e8c64c2d6dadba043d78"
+    },
+    {
+      "path": "datasets/chronological-inputs.jsonl",
+      "bytes": 32482,
+      "sha256": "282a93fe013b449bc48f66b48991122915f7c7098c0f4d7c0e067f39cef63a8e"
+    },
+    {
+      "path": "datasets/chronological-labels.jsonl",
+      "bytes": 23926,
+      "sha256": "2c9e6a81a5180871aa1f5ef7ce7319afc5a88e70ff8fabeafec79117a9282d30"
+    },
+    {
+      "path": "datasets/confirmation-inputs.jsonl",
+      "bytes": 161807,
+      "sha256": "4286c5ef4acc7270468bfe9cd17e8d2d12f6159bad448dae5b9460e3d191644c"
+    },
+    {
+      "path": "datasets/confirmation-labels.jsonl",
+      "bytes": 252186,
+      "sha256": "7b8aa0af0417c37c757ece478d014c0f6213c88f3b6aecf8f2cd41065d9ddbd2"
+    },
+    {
+      "path": "datasets/targeted-inputs.jsonl",
+      "bytes": 36078,
+      "sha256": "f34513640dade8aa26877907b5f36c759f3b138bc6985beb68a60e7927a64f49"
+    },
+    {
+      "path": "datasets/targeted-labels.jsonl",
+      "bytes": 21121,
+      "sha256": "3920eb37b40bbd7ad1119a8370f87f2ae345a34f6a264bad66fd1772cd6b90b1"
+    },
+    {
+      "path": "execution/requests.jsonl.gz",
+      "bytes": 2311133,
+      "sha256": "09c568029db19874f735cf73643e31ff355564d00afac2e538b4fdc3a2cc0517"
+    },
+    {
+      "path": "execution/studies.json",
+      "bytes": 1894,
+      "sha256": "8c36f6cf31c1a2a479c13d9a1a5f1d837449354376ed1185ffdc370870016fec"
+    },
+    {
+      "path": "provenance/source-hashes.json",
+      "bytes": 1920,
+      "sha256": "8c2b3625f15fa9559b22c389df3ebf7d6955a8289bbc93fcedcaf03a49ac0672"
+    },
+    {
+      "path": "questions/concise-direct.json",
+      "bytes": 10502,
+      "sha256": "00ac7420b01274845a493e97c94cba3ed18a501c999cdeb01cb0f78930fe7f45"
+    },
+    {
+      "path": "questions/concise-three.json",
+      "bytes": 6880,
+      "sha256": "d0eb7caeadd2348ee25f2baf7c1433a062947a3137e07ff6ee1490dd7f1802fb"
+    },
+    {
+      "path": "questions/existing-direct.json",
+      "bytes": 12141,
+      "sha256": "d822b8ffe24e241a9aa4100f3b60374228f6e13d415308541a5cbde481c0c21d"
+    },
+    {
+      "path": "questions/existing-three.json",
+      "bytes": 8519,
+      "sha256": "c45539e182fc26c6db18048ea954518dfe83ae0e75792ad22e1b07d1314a39e3"
+    },
+    {
+      "path": "reference-results.json",
+      "bytes": 242690,
+      "sha256": "9f8767458be94c9b337b89e16429a6275754d103a20dfe64e280d82a2d421534"
+    },
+    {
+      "path": "replay.py",
+      "bytes": 19751,
+      "sha256": "abf17ab0fd83c7af7f5645bbeb0da9c2a657f0d26c0595f3af04d9d49f667fd5"
+    },
+    {
+      "path": "responses/answers.jsonl.gz",
+      "bytes": 140661,
+      "sha256": "c27800d6aea3351268af694add5aaf22435fdf5ffcfcef3382408325ae59dad6"
+    },
+    {
+      "path": "reviews/README.md",
+      "bytes": 2868,
+      "sha256": "8794dc6e45033690a604141c4ad2bc79f96af07aeff33174b495ba87a5b60218"
+    },
+    {
+      "path": "reviews/anonymous-labeling-brief.md",
+      "bytes": 3535,
+      "sha256": "62b7c20a088b7a7b3df17fb1c2b5d647158190635cae662716f4d03a8e1b5e4b"
+    },
+    {
+      "path": "reviews/confirmation-author-audit.json",
+      "bytes": 5181,
+      "sha256": "90ce00d56adc1711d746c6a1fc459ea84d57dc844fc120702a94ea2888cfaf8c"
+    },
+    {
+      "path": "reviews/confirmation-author-labels.jsonl",
+      "bytes": 277282,
+      "sha256": "2a229900df3ec31b05e7116b901686b00ade62d75d02bc8f23bffbc7b3cd6dd8"
+    },
+    {
+      "path": "reviews/extension-adjudication.jsonl",
+      "bytes": 42540,
+      "sha256": "0c444676d9866f93f0675ac849d4f30b663484f654c13a91361eb035a5d1f560"
+    },
+    {
+      "path": "reviews/extension-author-labels.jsonl",
+      "bytes": 65541,
+      "sha256": "b50ed7a3f909705b28040d50ce5d6af8767f7511e35e058bea3d1ccdbd69ff6c"
+    },
+    {
+      "path": "reviews/extension-initial-labels.jsonl",
+      "bytes": 33135,
+      "sha256": "eb52a96206b79b65a141453c0c8ef92689eda259b959168f573bc6b9c82d71b0"
+    },
+    {
+      "path": "reviews/extension-review-summary.json",
+      "bytes": 1378,
+      "sha256": "94b556a16fd808b9c8ec8e17bcf42a6e8cc80481f927a1b9bb891883f3a4caae"
+    },
+    {
+      "path": "tests/test_replay.py",
+      "bytes": 5419,
+      "sha256": "8f3c105c4c8a2b88a8ab4e94ae37540f52802d4534611f33bd726cfdebd7c321"
+    }
+  ],
+  "public_dependencies": [
+    {
+      "path": "analysis/fair_methods.py",
+      "sha256": "fbe290b1da47e49f3fa8efb32b963dd366e19744e697cc9523b1c8423257c2aa"
+    },
+    {
+      "path": "analysis/methods.py",
+      "sha256": "e727e760a9ece0c3999289eece60afdc31224e78ae270ace858206340f6fd79d"
+    },
+    {
+      "path": "analysis/context_eval.py",
+      "sha256": "5bddb535ae387e81b5567b806122f574201986043cad51f1cbf1075d726ae33a"
+    },
+    {
+      "path": "policies/engineering-direct-policy.txt",
+      "sha256": "305ca3ec7ae1976e7da1e1127099b6aae4d088c1704da4dfb683d0991c228b2e"
+    },
+    {
+      "path": "policies/engineering-three-questions.json",
+      "sha256": "50ffefc958c455c18094e19da2f8926cdb92f4b203e1210e89815cd86c003742"
+    },
+    {
+      "path": "policies/legacy-questions.json",
+      "sha256": "0a1b33fdbd4c5f85e6323295fb1ce9cbc756fdd7e94aca6717b45c5c323796c5"
+    },
+    {
+      "path": "policies/partition-only-questions.json",
+      "sha256": "32fd65284f938d32d6057f6a0a08886855edfe8c873f7e58e3b863e6e9c77230"
+    },
+    {
+      "path": "policies/minus-cross-target-questions.json",
+      "sha256": "22f551f17928763e4ef845501903886a71f336fd354189e0e0623427770f0e6e"
+    }
+  ]
+}

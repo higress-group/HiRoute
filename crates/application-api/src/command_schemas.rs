@@ -181,6 +181,10 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             ]),
             response!(hiroute_domain::RoutingReceiptV1, ObservationFactsPageV2),
         ),
+        "sessions.timeline" => (
+            observation_request(&["routing_timeline"]),
+            response!(RoutingTimelinePageV1),
+        ),
         "sessions.status" => (
             request!(ClientEmptyRequestV1),
             response!(hiroute_domain::ObservationStatusV1),
@@ -533,4 +537,51 @@ fn specialize_change(value: &mut Value, desired: &Value) {
         }
     }
     walk(value, desired, "");
+}
+
+#[cfg(test)]
+mod timeline_tests {
+    use super::*;
+
+    fn object_with_property<'a>(value: &'a Value, name: &str) -> Option<&'a Value> {
+        if value.get("properties").and_then(|p| p.get(name)).is_some() {
+            return Some(value);
+        }
+        match value {
+            Value::Object(object) => object
+                .values()
+                .find_map(|child| object_with_property(child, name)),
+            Value::Array(values) => values
+                .iter()
+                .find_map(|child| object_with_property(child, name)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn timeline_machine_schema_describes_optional_presentation() {
+        let schemas = command_schemas("sessions.timeline").unwrap();
+        let query = object_with_property(&schemas.request, "include_presentation").unwrap();
+        assert_eq!(
+            query["properties"]["include_presentation"]["type"],
+            "boolean"
+        );
+        assert!(
+            !query["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == "include_presentation")
+        );
+        let turn = object_with_property(&schemas.response, "presentation").unwrap();
+        assert!(
+            !turn["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == "presentation")
+        );
+        assert!(object_with_property(&schemas.response, "request_models").is_some());
+        assert!(object_with_property(&schemas.response, "execution_attribution").is_some());
+    }
 }
