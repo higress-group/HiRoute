@@ -30,11 +30,16 @@ impl LocalControlAdapter {
         }
         // This only verifies the committed save; its consumed validation is never
         // returned as fresh approval. Check/Preview/Apply still run normally.
-        let retained = self
-            .retained_subscription_candidate_for_source(&saved)?
+        let (record, stored) = self
+            .committed_subscription_validation(&saved)?
             .ok_or(Error::Conflict)?;
-        if retained.candidate.candidate_ref != saved.last_candidate_ref
-            || retained.candidate.candidate_revision != saved.last_candidate_revision
+        if !matches!(
+            &saved.provenance,
+            hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned {
+                connector_id, account_ref
+            } if connector_id == &stored.connector_id && account_ref == &stored.account_ref
+        ) || stored.checked_candidate.candidate_ref != saved.last_candidate_ref
+            || stored.checked_candidate.candidate_revision != saved.last_candidate_revision
         {
             return Err(Error::Conflict);
         }
@@ -42,8 +47,7 @@ impl LocalControlAdapter {
             .subscription_source_for_candidate(&saved.last_candidate_ref)?
             .ok_or(Error::Unavailable)?;
         if subscription_candidate_ref(&owner)? != saved.last_candidate_ref
-            || self.committed_subscription_evidence(&saved)?.as_ref()
-                != Some(owner.evidence_digest())
+            || &self.subscription_source_evidence(&record, &stored)? != owner.evidence_digest()
         {
             return Err(Error::Conflict);
         }

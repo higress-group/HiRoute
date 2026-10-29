@@ -139,7 +139,7 @@ try {
     assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
   });
   await run('confirmed-save-after-agent-change-finishes-recovery',async()=>{
-    await open('reuse-lost=1');await source();await click('.trial-reuse-connection button','Check and add');
+    await open('reuse-lost=1&agent-family=dsh');await source();await click('.trial-reuse-connection button','Check and add');
     await waitFor(client,`[...document.querySelectorAll('.trial-reuse-connection button')].some(e=>e.textContent.includes('Refresh result'))`);
     await click('.trial-reuse-connection button','Back to trial');
     await waitFor(client,`!document.querySelector('.trial-reuse-connection')`);

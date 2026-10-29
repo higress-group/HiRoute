@@ -741,6 +741,7 @@ choices. Other trial selections, explicit route name and exact trust remain inta
 - **WHEN** both native and independently authorized subscription sign-ins are available
 - **THEN** saved-source reuse locates only the persisted source's original candidate and credential owner, bound to its current source revision; it does not choose the first provider match or request a different sign-in
 - **AND** the original owner still performs a new Check and the normal Preview/Apply; consumed saved validation is not reused as new approval
+- **AND** normal saved-source renaming, model removal and prior targeted appends do not invalidate the credential-owner lookup when its account, candidate, committed validation and successful-save identity remain valid
 
 #### Scenario: Selection changes while a save is unconfirmed
 

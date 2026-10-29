@@ -39,6 +39,9 @@ use super::super::{LocalControlAdapter, ProductionControlRuntime, RuntimeOpenOve
 #[path = "discovery_tests.rs"]
 mod discovery_tests;
 
+#[path = "reuse_tests.rs"]
+mod reuse_tests;
+
 mod routing_lock_tests;
 mod trial_snapshot_tests;
 
@@ -59,6 +62,9 @@ impl Fixture {
         // This fixture consumes the current executable catalog, whose Claude
         // subscription models no longer include Sonnet 4.6.
         .replace("else 'claude-sonnet-4-6'", "else 'claude-sonnet-5'")
+        // Lifecycle regressions expose several actual inventory members through the
+        // same external fixture. The default one-model inventory is unchanged.
+        .replace("[{'id': data['prefix'] + '/' + model}]", "[{'id': data['prefix'] + '/' + item} for item in model.split(',')]")
         // Record every authenticated readiness/status request as well as the
         // catalog calls, so exact sibling queries cannot hide extra probes.
         .replace("name = query.get('name', [''])[0]", "name = query.get('name', [''])[0]\n            record_catalog('credentials', name=name)")
@@ -250,9 +256,20 @@ impl Fixture {
         &self,
         session: &ComputeSubscriptionLoginSessionV1,
     ) -> ComputeSubscriptionCheckResultV2 {
+        self.check_candidate(
+            session.candidate.clone().unwrap(),
+            &format!("check-{}", session.login_ref),
+        )
+    }
+
+    fn check_candidate(
+        &self,
+        candidate: hiroute_application_api::ComputeCandidateRefV2,
+        key: &str,
+    ) -> ComputeSubscriptionCheckResultV2 {
         let preview = self
             .adapter()
-            .preview_subscription_check(session.candidate.clone().unwrap())
+            .preview_subscription_check(candidate)
             .unwrap();
         let prepared = self
             .adapter()
@@ -261,7 +278,7 @@ impl Fixture {
                     spec: preview.spec,
                     accept_digest: preview.accept_digest,
                     expected_revisions: preview.expected_revisions,
-                    idempotency_key: format!("check-{}", session.login_ref),
+                    idempotency_key: key.into(),
                 },
                 None,
             )
