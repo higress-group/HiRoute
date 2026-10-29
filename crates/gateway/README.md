@@ -342,6 +342,14 @@ timeline does not manufacture pending user turns. Older unmarked facts remain
 visible under their original conservative interpretation.
 Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
 commits are branch-scoped; optional cache misses cannot discard execution capture.
+Transient history-metadata contention waits for the in-memory checkpoint/admission
+transition rather than dropping that request's assessment. No request, external
+call or streaming lifetime holds the mutex. Incoming projection and transcript
+measurement run outside it. [Idle maintenance](src/agent_turn_history/store/maintenance.rs)
+visits at most 32 indexed entries plus the current scope's 32 heads; current-scope
+TTL remains exact and protects pending requests and pinned snapshots. The
+[contention and expiry regressions](src/agent_turn_history/admission_contention_tests.rs)
+cover both admission entrances, unrelated growth and eventual reclamation.
 Freezing request membership does not prove that the stage ended. The store keeps
 capture coverage, actual provider outcomes and stage-closure proof independently.
 A known successful tool response can leave its stage open; an unknown provider
@@ -756,3 +764,7 @@ bytes. It still respects write quantum, exact declared length and release rules.
 exercise the same parser/encoder with memory and disk backing. Benchmark timings
 cover those local operations; actual request summaries also include history,
 observation capture and scheduling, and are not CPU-time measurements.
+Canonical JSON range construction coalesces the existing serializer's small writes
+through a fixed 8 KiB stack buffer. It seals a range only after a successful final
+flush; partial writes, interruptions and errors retain the existing Replay failure
+semantics. It adds no heap admission, retained body or alternative serializer.

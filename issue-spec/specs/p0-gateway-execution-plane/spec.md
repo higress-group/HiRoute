@@ -263,7 +263,15 @@ request already in flight SHALL NOT serialize or displace another request. Witho
 a unique strong predecessor, an admitted request may evaluate a retained completed
 stage as explicitly uncertain context; that target is not a proven parent. Known
 missing execution remains partial, while source or association uncertainty alone
-does not make a complete target partial. An exhausted/busy history store loses only
+does not make a complete target partial. Transient contention of the accepted-history
+metadata mutex SHALL NOT discard admission or assessment. Only bounded in-memory
+state transitions synchronize; incoming request projection, Replay reads and
+transcript fingerprinting run outside that mutex, and no external request or
+streaming lifetime holds it. Routine idle expiry visits at most 32 indexed entries
+plus the current scope's at most 32 branch heads per admission. Current-scope TTL
+remains exact; pending requests and pinned snapshots cannot expire. Optional
+affinity lookup and decision publication may still miss or defer under contention.
+A genuinely exhausted history store loses only
 unavailable history/assessment and decision inheritance; a usable current input
 still classifies independently. Only unavailable classification, including a request
 without usable current input, uses the existing temporary decision fallback.

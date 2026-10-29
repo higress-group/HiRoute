@@ -34,6 +34,8 @@ use records::*;
 mod branches;
 #[path = "store/evaluation.rs"]
 mod evaluation;
+#[path = "store/maintenance.rs"]
+mod maintenance;
 #[path = "store/opening.rs"]
 mod opening;
 #[path = "store/retry.rs"]
@@ -58,6 +60,7 @@ pub(super) struct StoreInner {
     next_id: u64,
     accounted_bytes: usize,
     peak_accounted_bytes: usize,
+    expiry_cursor: Option<AgentTurnHistoryKey>,
 }
 
 struct SessionEntry {
@@ -238,6 +241,7 @@ impl AgentTurnHistoryStore {
                 next_id: 1,
                 accounted_bytes: store_fixed_bytes(),
                 peak_accounted_bytes: store_fixed_bytes(),
+                expiry_cursor: None,
             })),
         }
     }
@@ -322,15 +326,15 @@ impl AgentTurnHistoryStore {
             return Err(AgentTurnHistoryError::NoUserTurn);
         }
         let gap_epoch = self.capture_gap_epoch(&key).load(Ordering::Acquire);
-        let mut inner = self
-            .inner
-            .try_lock()
-            .ok_or(AgentTurnHistoryError::Resource)?;
-        inner.purge_expired(now, self.idle_ttl);
+        // Contention is not capacity exhaustion. Only this in-memory admission
+        // is serialized; projection/Replay reads happened before taking the lock
+        // and the request's external execution never owns it.
+        let mut inner = self.inner.lock();
+        inner.purge_expired(now, self.idle_ttl, &key);
         self.observe_capture_gap_epoch(&mut inner, &key, gap_epoch);
         // Projection ran before either cache lock. Validate and reserve the
         // checkpoint before changing active turns, tool outcomes or snapshots.
-        // The callback must not wait: both stores use try_lock admission.
+        // The callback must not wait or acquire the history lock again.
         let Some(admission) = admit() else {
             inner.note_capture_gap(&key);
             return Ok(None);
