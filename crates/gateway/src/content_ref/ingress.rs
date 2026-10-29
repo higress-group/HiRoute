@@ -516,7 +516,15 @@ fn valid_json_argument(
         Err(ReplayError::Body(_)) => return Ok(true),
         Err(error) => return Err(error),
     };
-    let mut reader = replay.reader(reference)?;
+    // Serde's IoRead asks for individual bytes. Keep the mandatory Replay
+    // reader admitted first; optional buffering must not create a new refusal.
+    let source = replay.reader(reference)?;
+    let capacity = reference.byte_len().min(8 * 1024) as usize;
+    let buffer = replay
+        .budget()
+        .reserve(MemoryRole::ModelIrBacking, capacity)
+        .ok();
+    let mut reader = BufReader::with_capacity(if buffer.is_some() { capacity } else { 0 }, source);
     // Validate with the same number/string semantics as serde_json::Value,
     // without materializing a second copy of a large tool argument.
     let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
@@ -524,7 +532,7 @@ fn valid_json_argument(
         .and_then(|_| deserializer.end())
         .is_ok();
     drop(deserializer);
-    reader.verify_terminal()?;
+    reader.get_mut().verify_terminal()?;
     Ok(valid)
 }
 
@@ -896,14 +904,24 @@ impl Compactor<'_> {
             Err(ReplayError::Body(_)) => return Ok(()),
             Err(error) => return Err(error),
         };
-        let mut reader = self.replay.reader(&reference)?;
+        let source = self.replay.reader(&reference)?;
+        let capacity = reference.byte_len().min(8 * 1024) as usize;
+        let buffer = self
+            .replay
+            .budget()
+            .reserve(MemoryRole::ModelIrBacking, capacity)
+            .ok();
+        let mut reader =
+            BufReader::with_capacity(if buffer.is_some() { capacity } else { 0 }, source);
         let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
         let parsed = Value::deserialize(&mut deserializer).and_then(|value| {
             deserializer.end()?;
             Ok(value)
         });
         drop(deserializer);
-        reader.verify_terminal()?;
+        reader.get_mut().verify_terminal()?;
+        drop(reader);
+        drop(buffer);
         let Ok(parsed) = parsed else {
             // Syntax-only validation must never turn a native raw argument
             // into a request failure if Value rejects its numeric shape.

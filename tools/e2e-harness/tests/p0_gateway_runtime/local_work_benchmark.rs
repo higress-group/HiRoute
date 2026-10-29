@@ -24,7 +24,16 @@ fn measure_complete_local_work_with_continuity_and_capture() {
         })).chain(std::iter::once(json!({"role":"user","content":"Return 42."}))).collect::<Vec<_>>() }),
     };
     let original = wire["messages"].as_array().expect("Chat messages");
+    let backing = std::env::var("HIROUTE_LOCAL_WORK_BACKING").ok();
+    assert!(
+        backing
+            .as_deref()
+            .is_none_or(|v| matches!(v, "memory" | "disk"))
+    );
     for (variant, threshold) in [("memory", 1024 * 1024), ("disk", 16 * 1024)] {
+        if backing.as_deref().is_some_and(|value| value != variant) {
+            continue;
+        }
         let regular = NativeProvider::start(vec![
             ProviderReply::StreamComplete {
                 status: 200,
