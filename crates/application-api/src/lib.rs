@@ -20,6 +20,8 @@ pub use previous_routing::*;
 mod classifier_diagnostic;
 mod classifier_diagnostic_c;
 pub use classifier_diagnostic_c::*;
+mod decision_connections;
+pub use decision_connections::*;
 mod client_access;
 mod work_plans;
 pub use work_plans::*;

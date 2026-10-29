@@ -22,6 +22,15 @@ pub struct DecisionServiceSaveInput {
     secret: Option<String>,
 }
 
+/// The plaintext value is accepted only for independent authentication and is
+/// registered with the existing protected-input authority before the Operation.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionServiceSaveInputV2 {
+    pub change: hiroute_application_api::DecisionServiceChangeV2,
+    pub secret: Option<String>,
+}
+
 pub async fn decision_services(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
