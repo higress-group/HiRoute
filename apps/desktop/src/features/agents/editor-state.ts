@@ -13,6 +13,7 @@ export type AgentEditorValues = {
   fixedModels: AgentFixedModel[];
   nativeModelMode: CodexNativeModelMode;
   allowedPlanIds: string[];
+  routingMetadata?: boolean;
   planProtocols: Record<string, 'responses' | 'messages'>;
   defaultChoice: AgentDefaultChoice;
   claudePresets: AgentClaudePresetMappings;
@@ -26,7 +27,7 @@ export function withModelSelection(values: AgentEditorValues, selection: import(
   if (selection.mode === 'claude_launcher') return { ...values, fixedModels: selection.fixed_models, claudePresets: selection.preset_mappings };
   if (selection.mode === 'hermes_default') return { ...values, hermesPlanId: selection.plan_id, hermesProtocol: selection.protocol };
   if (selection.mode === 'codex_default') return { ...values, fixedModels: selection.fixed_models, nativeModelMode: selection.native_model_mode, allowedPlanIds: selection.allowed_plan_ids, defaultChoice: selection.default_selection };
-  return { ...values, allowedPlanIds: selection.allowed_plan_ids, planProtocols: selection.plan_protocols ?? {} };
+  return { ...values, allowedPlanIds: selection.allowed_plan_ids, planProtocols: selection.plan_protocols ?? {}, routingMetadata: selection.mode === 'opencode_additional' ? selection.routing_metadata : undefined };
 }
 
 export const EMPTY_EDITOR_VALUES: AgentEditorValues = {
@@ -54,6 +55,7 @@ export function editorFingerprint(value: AgentEditorValues): string {
     nativeModelMode: value.nativeModelMode,
     allowedPlanIds: [...value.allowedPlanIds].sort(),
     planProtocols: value.planProtocols,
+    routingMetadata: value.routingMetadata !== false,
     defaultChoice: value.defaultChoice,
     claudePresets: value.claudePresets,
     triggerMode: value.triggerMode,
@@ -114,6 +116,7 @@ export function agentEditorSeed(
     hermesPlanId: currentModel?.mode === 'hermes_default' ? currentModel.plan_id : initialPlan && ecosystem === 'hermes' ? initialPlan : '',
     hermesProtocol: currentModel?.mode === 'hermes_default' ? currentModel.protocol : 'responses',
     planProtocols: qoder?.plan_protocols ?? {},
+    routingMetadata: currentModel?.mode === 'opencode_additional' ? currentModel.routing_metadata : undefined,
     fixedModels: currentModel && 'fixed_models' in currentModel ? currentModel.fixed_models : [],
     nativeModelMode: codex?.native_model_mode ?? 'hiroute_only',
     allowedPlanIds: codex?.allowed_plan_ids ?? qoder?.allowed_plan_ids

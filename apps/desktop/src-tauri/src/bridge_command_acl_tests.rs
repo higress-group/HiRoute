@@ -1,4 +1,8 @@
 const MODEL_CONNECTION_COMMANDS: &[&str] = &[
+    "agent_home_summary",
+    "agent_model_associations",
+    "trial_agent_choices",
+    "trial_agent_model",
     "compute_management_snapshot",
     "compute_key_masks",
     "compute_scan",

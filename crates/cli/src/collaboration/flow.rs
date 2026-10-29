@@ -135,6 +135,7 @@ fn workflow(
             client,
             "GetAgentConnectionStatus",
             json!(AgentSettingsStatusRequestV2 {
+                projection: Default::default(),
                 effective: None,
                 include_skills: true,
                 native_target: None,
@@ -153,6 +154,7 @@ fn workflow(
                 client,
                 "GetAgentConnectionStatus",
                 json!(AgentSettingsStatusRequestV2 {
+                    projection: Default::default(),
                     effective: None,
                     include_skills: true,
                     native_target: None,

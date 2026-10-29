@@ -49,6 +49,9 @@ def prompt(product, command, text, selector=None, env=None, timeout=190):
             selected = json.dumps([provider,model],separators=(',',':'))
             option = next(o for o in session['configOptions'] if o.get('category')=='model' or o.get('id')=='model')
             request('session/set_config_option',{'sessionId':session['sessionId'],'configId':option['id'],'value':selected})
+        if text is None:
+            # A real native startup/session roundtrip without model inference.
+            return b'', session['sessionId']
         result = request('session/prompt',{'sessionId':session['sessionId'],'prompt':[{'type':'text','text':text}]})
         assert result['stopReason']=='end_turn', 'native ACP did not complete normally'
         output = ''.join(u.get('content',{}).get('text','') for u in updates if u.get('sessionUpdate')=='agent_message_chunk')

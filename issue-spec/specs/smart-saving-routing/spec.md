@@ -23,15 +23,15 @@ while retaining their parked edits. Custom extensions directly select regular or
 
 Related source specifications:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6236473660
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
-#### Scenario: Existing route uses the Familiar threshold
+#### Scenario: Existing route retains its exact threshold
 
 - **WHEN** using a built-in decision connection, a saved smart-saving route with threshold 0.80 is opened
-- **THEN** the editor MUST display Difficulty routing and Familiar without changing
-  the stored mode, candidate ordering or selected decision source.
+- **THEN** the editor displays Difficulty routing and the continuous control with threshold 0.80, without changing stored mode, candidate ordering or selected decision source.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
+- https://github.com/higress-group/HiRoute/issues/227#issuecomment-6446412837
 
 ### Requirement: Degree and competence thresholds are independent
 
@@ -115,41 +115,47 @@ coverage, and drill-down follow [session history](../session-history/spec.md).
 
 ### Requirement: Trust levels express a routing choice, separately from evidence
 
-Built-in difficulty routing and two-group categories MUST offer Trial 0.90, Familiar 0.80,
-Trusted 0.65 and Hands-off 0.50 from one shared level definition. The existing 0.80
-threshold displays Familiar. A nonmatching value remains an exact Custom value;
-reading or opening an editor MUST NOT round it. Heuristic routing and custom extensions offer no trust
-levels. The stored mode remains `smart_saving`, the editor keeps its `economy` candidate field,
-and the execution group remains `regular`. Existing Economy references name this same group.
-
-Changing a level changes only the simple-probability threshold. It MUST NOT alter
-competence floors, permissions, tool approvals or sandbox settings. The editor
-states the active revision's evidence separately and explicitly identifies zero
-samples. Keeping a level is a normal choice, not incomplete onboarding.
-
-The safety-net explanation follows the selected judgment settings. With System One native judgment, a complete Regular score below the competence floor protects the next turn when the earlier problem still matters; unavailable applicability conservatively retains protection, while a fixed or unrelated problem allows simple tasks to remain with Regular. Custom extensions own their decision policy; HiRoute does not apply low-score protection to their decisions. Published routing follows its frozen settings; editor explanations describe the next publication.
+Built-in difficulty routing and two-group categories MUST expose continuous manual trust adjustment over the entire finite simple-probability threshold range 0..1, using the existing integer-millisecond precision without snapping to named presets. More trust lowers the threshold; the maximum-trust endpoint is exactly zero. The control retains directly clickable presets Trial 0.90, Familiar 0.80, Trusted 0.65 and Hands-off 0.50, and adds Entrusted 0.00. The zero endpoint is labelled Entrusted. Preset clicks set the exact value in the draft; the slider remains continuously adjustable between and beyond presets without snapping. Only an exact preset match is selected; intermediate values do not highlight a nearest preset. One live numeric simple-probability threshold appears below the slider; presets use short names without per-preset explanations, repeated numeric captions or a Custom-value badge. Existing values remain exact on read/open/save until explicitly edited. Default thresholds remain 0.80 for ordinary authoring and 0.90 for trial authoring. Heuristic routing and custom extensions expose no trust threshold controls. Stored smart_saving mode, economy candidate field and regular execution identity are unchanged.
+Changing trust changes only the simple-probability threshold, never competence floors, judgment prompts, permissions, tool approvals, sandbox settings or automatic publication. At zero, every valid simple probability satisfies the difficulty threshold, but applicable low-score protection, unavailable judgment handling and availability relay remain independently effective. The maximum-trust label must not promise bypassing these safeguards. Evidence is separate from the chosen threshold; zero samples are explicit and retaining any value is a normal choice.
+The protection explanation follows the selected decision settings: System One retains protection for an eligible complete low score while the prior problem remains applicable, conservatively retains it when applicability is unavailable, and releases it for fixed/unrelated history. The affected model need not be Regular. Custom extensions own their policy and receive no HiRoute low-score protection. Published behavior follows frozen settings; editor explanations describe the next publication.
+Existing evidence-based recommendation anchors and eligibility rules remain unchanged; they are optional proposed numeric values, not the manual slider range or snap points. A missing recommendation neighbour cannot invent a jump to zero. Manual presets reuse the existing names and values plus the explicit zero shortcut; this does not add zero to evidence-based recommendation anchors or change their eligibility. Replay remains historical, backend-computed, scoped and model-free; rapid edits must not issue a request for every movement or display stale results as belonging to the latest threshold.
 
 Related source specifications:
 - https://github.com/higress-group/HiRoute/issues/140#issuecomment-6235185303
+- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
 
-#### Scenario: Custom threshold and adjacent suggestions
+#### Scenario: Exact continuous editing and endpoints
 
-- **WHEN** using a built-in decision connection, a route has threshold 0.72
-- **THEN** it displays Custom 0.72 until an explicit edit; an upward suggestion is
-  0.65 and a downward suggestion is 0.80, without silently replacing the value.
+- **WHEN** an editor opens saved 0.723, then the user moves the slider to maximum trust and to the opposite endpoint
+- **THEN** opening preserves 0.723 exactly; maximum trust is 0 and the opposite endpoint is 1; the numeric caption updates immediately, without snapping, automatic save or publication; no preset is selected at 0.723.
 
-#### Scenario: Native safety-net explanation
+#### Scenario: Zero retains independent protection
 
-- **WHEN** using a built-in decision connection, the selected decision connection is System One
-- **THEN** the editor explains that relevant low-score history protects the next turn, unavailable applicability retains protection, and fixed or unrelated history allows simple tasks to remain with Regular.
+- **WHEN** a built-in route uses threshold zero with valid probability zero
+- **THEN** difficulty eligibility includes Regular at equality; an applicable complete low score still selects Primary through the unchanged protection policy, and unavailable judgments are not fabricated as zero.
 
-#### Scenario: Custom extension has no HiRoute safety net
+#### Scenario: Default and unsupported modes
 
-- **WHEN** the selected decision connection is a custom extension
-- **THEN** the editor explains direct extension group selection and observation-only scores, with no HiRoute threshold or low-score protection controls.
+- **WHEN** ordinary/trial authoring opens or a heuristic/custom-extension decision source is selected
+- **THEN** ordinary and trial defaults remain 0.80 and 0.90; unsupported modes hide the control while preserving parked values and custom policy authority.
+
+#### Scenario: Optional recommendations are not manual stops
+
+- **WHEN** a route at 0.72 receives an evidence-qualified recommendation
+- **THEN** existing neighbouring recommendation values remain 0.65 and 0.80; manual editing accepts other thousandths including zero without qualification, and recommendations require explicit acceptance.
+
+#### Scenario: Accessible bounded replay
+
+- **WHEN** pointer or keyboard edits rapidly select multiple thresholds on a published route
+- **THEN** keyboard endpoints and incremental editing work, accessible values describe the actual threshold and direction, replay requests are debounced and superseded work cancelled/ignored, stale scope or threshold results are never presented as current, and no model call occurs.
+
+#### Scenario: Preset clicks coexist with continuous editing
+
+- **WHEN** the user clicks Trial, Familiar, Trusted, Hands-off or Entrusted, then drags to 0.723
+- **THEN** the draft and slider first select exactly 0.90, 0.80, 0.65, 0.50 or 0.00 respectively; dragging preserves 0.723 with no selected preset, while the single threshold caption updates immediately. All presets are keyboard-accessible buttons; no save, publication or policy change occurs until explicitly requested.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
+- https://github.com/higress-group/HiRoute/issues/227#issuecomment-6446412837
 
 ### Requirement: Threshold replay previews recorded stages
 
@@ -208,6 +214,14 @@ MUST NOT appear as no suggestion. Home, navigation and Plan-list indicators use
 the same suggestion result. Applying a suggestion opens an ordinary editable
 change; it never silently publishes.
 
+Work deferred by the bounded suggestion-read budget MUST be disclosed as pending,
+separately from actual unavailable/oversized reads and a complete empty result.
+The visible view SHALL continue pending reads automatically with bounded backoff,
+retaining the normal budget, current-evidence checks and actionable real errors.
+Completed work may be reused only under the existing reader, revision, visibility
+and evidence bindings. Hidden clients and inactive suggestion subscriptions SHALL
+NOT continue polling.
+
 #### Scenario: High rate with incomplete coverage or only old-version evidence
 
 - **WHEN** historical competence is high but coverage is below 60%, fewer than
@@ -251,11 +265,30 @@ Source SPEC comments:
 
 ### Requirement: The trust view distinguishes released historical protection
 
-The Plan model-performance protection card MUST show how many historical low-score protections were released because the previous problem was fixed or unrelated and Regular continued. This count describes retained routing decisions and remains separate from the trust report's protected-stage count. A numeric count is permitted only when routing-observation coverage is complete and its Plan, published-revision selection, effective time interval and branch scopes match the protection card's trust report. Model and score filters must not relabel a Plan-wide count as a filtered-model count. Cohorts may be aggregated only within the matching branch scopes. A complete matching recorded cohort with no releases shows zero. Missing observations, incomplete coverage or any unproven scope alignment MUST show an unavailable value and a plain-language reason; unknown evidence MUST NOT become zero. The observation disclosure remains available with its own scope when a count cannot be placed beside protections. The release explanation uses capability language and MUST NOT display internal protocol labels, digests or question identifiers. No route, assessment, suggestion threshold or stored record changes through this view.
+The Plan model-performance protection card MUST show how many historical low-score protections were released because the previous problem was fixed or unrelated. Release removes that historical constraint; the current difficulty still determines the base group, and complex work may remain Primary. This count describes retained routing decisions and remains separate from the trust report's protected-stage count. A numeric count is permitted only when routing-observation coverage is complete and its Plan, published-revision selection, effective time interval and branch scopes match the protection card's trust report. Model and score filters must not relabel a Plan-wide count as a filtered-model count. Cohorts may be aggregated only within the matching branch scopes. A complete matching recorded cohort with no releases shows zero. Missing observations, incomplete coverage or any unproven scope alignment MUST show an unavailable value and a plain-language reason; unknown evidence MUST NOT become zero. The observation disclosure remains available with its own scope when a count cannot be placed beside protections. The release explanation uses capability language and MUST NOT display internal protocol labels, digests or question identifiers. No route, assessment, suggestion threshold or stored record changes through this view.
 
 The view MUST offer last-24-hours, default last-seven-days and all-retained scopes. For every period, the stage and routing-decision reads MUST use the same captured explicit interval with its lower bound inside the retention boundary and a bounded read margin. Reads taken at different instants MUST NOT make an otherwise complete matching release count unavailable at the normal seven-day edge. Actual effective-interval mismatches still show unavailable. Changing the displayed period does not narrow the full active-revision evidence used for suggestions.
 
 The routing release aggregate SHALL remain the result of the base read paired with the trust report. Later detail score/model filters and pagination SHALL NOT replace it with a separately clipped aggregate, even after the bounded read margin has elapsed. A grouping, period or revision change, explicit refresh or retry SHALL capture a fresh interval and reread both sources together. Actual scope mismatches remain unavailable.
+
+Every Plan-performance entry SHALL use the same publication selection for both reads. A loaded publication revision pins both reads to that revision. An entry without it SHALL resolve the active revision before reading current-version quality; unresolved active selection SHALL NOT silently mean all retained versions. Explicit historical and all-version selections retain their own scopes. Responses from an earlier revision or refresh SHALL NOT populate the replacement scope, including its base routing aggregate.
+
+A protection opportunity is a non-inherited valid C observation with an eligible complete finite low score and recorded Applied, RetainedUnavailable or Suppressed action, independently of simple probability. Suppressed counts only actual suppression in those opportunities. Zero ratio denominators remain unavailable. Old complex/not_needed records do not become opportunities. Threshold replay preserves recorded protected stages as Primary without applying the current algorithm to old unprotected records.
+
+Statistics use protection actions recorded under the rules active at the time. A retained scope may contain records from different rule versions; these counts and rates do not establish a uniform-policy effectiveness comparison. Do not invent a rule version from dates or Plan identity, relabel old events, or backfill hypothetical protection opportunities.
+
+Related source specifications:
+- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253018308
+
+#### Scenario: Session entry has no loaded publication revision
+
+- **WHEN** the session timeline opens Plan performance without a loaded revision and the active publication has complete matching observations with zero releases
+- **THEN** the entry resolves that publication, reads its exact quality scope and displays zero; a failed active-revision read stays unavailable and retry can recover without recreating the view or broadening its scope.
+
+#### Scenario: Publication and retained-version changes preserve pairing
+
+- **WHEN** the loaded or resolved active revision changes, the user selects a historical revision or all retained versions, or an earlier read finishes after refresh
+- **THEN** quality and trust evidence use the selected common revision scope and interval; earlier responses cannot replace the new scope, and genuine revision mismatches remain unavailable.
 
 #### Scenario: Inspect every period inside the retention boundary
 
@@ -265,7 +298,7 @@ The routing release aggregate SHALL remain the result of the base read paired wi
 #### Scenario: Aligned complete evidence
 
 - **WHEN** a trust report and complete routing observations match Plan, revision, time and branches and matching cohorts contain five released protections
-- **THEN** the protection card shows five releases separately from its protected-stage count and explains that Regular continued after the earlier problem stopped mattering
+- **THEN** the protection card shows five releases separately from its protected-stage count and explains that the earlier problem no longer constrained routing while the current difficulty still selected the actual group
 
 #### Scenario: Incomplete or mismatched scope
 
@@ -282,8 +315,23 @@ The routing release aggregate SHALL remain the result of the base read paired wi
 - **WHEN** the default seven-day or all-retained view remains open for more than one minute, then the user selects low-score stages and loads another page
 - **THEN** the release count stays bound to the original paired base read; grouping afterward refreshes both sources with one new interval.
 
+#### Scenario: Actual opportunity population
+
+- **WHEN** the scope contains simple Applied, complex Applied, complex Suppressed, RetainedUnavailable, old complex NotNeeded and an inherited duplicate
+- **THEN** opportunities=4 and suppressed=1 with ratio 1/4 when coverage is complete; old and inherited entries are excluded.
+
+#### Scenario: Scope remains paired
+
+- **WHEN** detail filters/pagination occur after a paired retained read, or the period/revision changes
+- **THEN** detail navigation preserves the pair; scope changes reread both; unproven alignment remains unavailable.
+
+#### Scenario: Replay preserves old facts
+
+- **WHEN** new complex protection and an old complex/not_needed stage are replayed at another threshold
+- **THEN** the protected stage remains Primary and the old stage is not rewritten or relabelled protected.
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/140#issuecomment-6253018308
+- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6440838906
 
 ## Implementation references
 

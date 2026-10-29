@@ -36,6 +36,7 @@ pub struct CaseReport {
     pub reason: Option<String>,
     pub steps: Vec<Step>,
     pub build_ms: u128,
+    /// Non-build case wall time, including prerequisite setup and integrity checks.
     pub execution_ms: u128,
     /// Measured outer integrity checks; a subset of execution_ms, not additive.
     #[serde(default)]

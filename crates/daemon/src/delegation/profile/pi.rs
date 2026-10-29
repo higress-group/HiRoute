@@ -20,6 +20,13 @@ pub(super) fn render(
         native_model_id: format!("{provider}/{}", input.alias),
         files: vec![
             RunMaterialFile {
+                relative_path: "hiroute-routing.mjs".into(),
+                contents: Zeroizing::new(
+                    hiroute_integrations::PI_ROUTING_ADAPTER.as_bytes().to_vec(),
+                ),
+                executable: false,
+            },
+            RunMaterialFile {
                 relative_path: "pi-worker-bridge.mjs".into(),
                 contents: Zeroizing::new(include_bytes!("pi_worker_bridge.mjs").to_vec()),
                 executable: false,

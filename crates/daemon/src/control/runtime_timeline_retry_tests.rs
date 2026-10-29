@@ -34,6 +34,7 @@ fn review_timeline_and_quality_dispatch_exhaust_real_readers_then_recover() {
     let application = ApplicationService::new(runtime.application_ports());
     let query = ObservationReadRequestV2::new(ObservationReadIntentV2::RoutingTimeline(
         RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: "session-timeline-readers".into(),
             after_watermark: None,
             limit: 50,

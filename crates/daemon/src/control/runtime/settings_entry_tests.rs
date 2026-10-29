@@ -280,6 +280,22 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
     };
     let configured_references = references();
     assert_eq!(configured_references.references.len(), 2);
+    let service_revision = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .active_publication(&WorkspaceId::default())
+        .unwrap()
+        .unwrap()
+        .publication_revision
+        .get();
+    assert!(
+        configured_references
+            .references
+            .iter()
+            .all(|reference| reference.revision == service_revision)
+    );
     assert!(configured_references.references.iter().any(|reference|
         reference.kind == hiroute_domain::AgentPlanReferenceKind::DefaultModel));
     // Explicit fixture capabilities cover the journal/facet join here. This does not claim
@@ -845,8 +861,16 @@ fn apply(
     } else {
         "ApplyAgentConnectionChange"
     };
+    let diagnostics = crate::control::runtime::settings_facts::diagnostics::Scope::begin(key);
+    diagnostics.operation(preview_operation);
     let preview = service.dispatch_wire(request(preview_operation, json!({"spec":spec}), None));
-    assert!(preview.error.is_none(), "{preview:?}");
+    if preview.error.is_some() {
+        diagnostics.print_failure();
+    }
+    assert!(
+        preview.error.is_none(),
+        "{key} {preview_operation}: {preview:?}"
+    );
     let preview = preview.data.unwrap();
     assert_eq!(preview["applicable"], true, "{preview}");
     let mut payload = json!({"spec":spec,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],
@@ -867,8 +891,15 @@ fn apply(
             api::ErrorCode::CapabilityDenied
         );
     }
+    diagnostics.operation(apply_operation);
     let response = service.dispatch_wire(request(apply_operation, payload.clone(), None));
-    assert!(response.error.is_none(), "{response:?}");
+    if response.error.is_some() {
+        diagnostics.print_failure();
+    }
+    assert!(
+        response.error.is_none(),
+        "{key} {apply_operation}: {response:?}"
+    );
     let reference = response
         .operation
         .as_ref()
@@ -1145,6 +1176,7 @@ fn record_attributed_session(
     };
     let request_id = LogicalRequestId::parse(format!("request-{suffix}")).unwrap();
     let fact = ExecutionFactV1::AgentTurnFinished {
+        history_membership: None,
         opening_cause: Some(AgentTurnOpeningCauseV1::NoComparableHistory),
         branch_execution: None,
         agent_turn_id: format!("agent-turn-{suffix}"),

@@ -40,14 +40,162 @@ function seedLater(control, at) {
 }
 function seedUserText(control, request, textValue) {
   const contentId = `${request.request_id}/user`;
-  control.catalog[request.request_id] = [{ content_id: contentId, role: 'user', kind: 'text', state: 'complete', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1, part_ordinal: 1 }];
+  control.catalog[request.request_id] = [{ content_id: contentId, role: 'user', kind: 'text', state: 'complete', direction: 'request_input', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1, part_ordinal: 1 }];
+  control.inputSelections[request.request_id] = { version: 1, evidence: 'native_matched', message_ordinal: 1, source_unverified: true };
   control.texts[contentId] = textValue;
 }
 
 const emptySummary = { models: [], scored_stage_count: 0, unrated_stage_count: 0, session_count: 0, available_revisions: [] };
 const openQuality = () => { const disclosure = document.querySelector('.session-model-performance summary'); if (disclosure && !disclosure.parentElement.open) disclosure.click(); };
 
+function qualityScope(query, activeRevision = 1) {
+  const revision = query.revision === 'active' ? activeRevision : query.revision === 'all' ? null : query.revision ?? query.plan_revision;
+  const suppressed = revision === 1 ? 0 : 3;
+  const counts = { executed: 2, complete: 2, meets_floor: 1, partial: 0, awaiting_assessment: 0, unscored: 0, sessions: 1 };
+  const branch = { branch_id: 'smart_saving', threshold_millis: 900, full_history: counts, upward_cohort: counts,
+    upward_from_ms: query.from_ms, suggestion: { kind: 'keep', missing: ['complete_stages', 'sessions'] },
+    replay: { included: 2, excluded_by_reason: {}, recorded_share_at_current: 1, estimate_only: true, thresholds: [] } };
+  const trust = { plan_id: query.plan_id, active_revision: activeRevision, revision: query.revision,
+    from_ms: query.from_ms, to_ms: query.to_ms, rows: [{ branch_id: 'smart_saving', group: 'regular',
+      model_configuration_id: 'model/flash', reasoning_profile_id: 'low', attribution: 'single', executor: null,
+      identity_stability: 'pinned', counts, competence_rate: .5, scoring_coverage: 1, execution_share: 1,
+      protections: [], availability_relays: 0, duration_p50_ms: null, duration_p90_ms: null, output_tokens_per_second: null }],
+    branches: [branch], sessions: [{ session_id: 'observation-session/simple', stages: 2 }], session_total: 1,
+    executors: [], announcements: [], cost: { kind: 'unavailable', reason: 'comparison basis not available' } };
+  const routing = { plan_id: query.plan_id, session_id: null, plan_revision: query.plan_revision,
+    requested_from_ms: query.from_ms, requested_to_ms: query.to_ms, covered_from_ms: query.from_ms, covered_to_ms: query.to_ms,
+    coverage: 'complete', scan_limited: false, retained_decisions: 11, known_non_c_decisions: 0,
+    legacy_or_unknown_decisions: 0, unknown_scope_decisions: 0, missing_projection_events: 0,
+    cohorts: [{ cohort: { protocol: 'system_one_c', scope_id: 'smart_saving', provider: 'fixture', model: 'jev',
+      standard: 'default', content_digest: 'sha256:fixture', bundle_digest: 'sha256:fixture' }, counts: {
+      c_decisions: 11, requested: 10, unavailable: 0, no_target_omissions: 1, partial_target_omissions: 0,
+      inherited: 0, required_question_missing: 0, gate_opportunities: suppressed, suppressed,
+      unavailable_per_requested: 0, suppressed_per_opportunity: suppressed ? 1 : null, suppressed_per_c_decision: suppressed / 11 } }] };
+  return { trust, page: { samples: [], summary: { ...emptySummary, scored_stage_count: 2, session_count: 1, available_revisions: [2, 1] },
+    routing_observations: routing, next_cursor: null } };
+}
+const versionSelect = () => [...document.querySelectorAll('.plan-quality select')].find(element => element.querySelector('option[value="current"]'));
+const selectVersion = async value => { const select = versionSelect(); assert(select, 'Route version selector missing'); select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })); await tick(); };
+
 const scenarios = [
+  ['session performance modal pairs active, historical and all-version evidence', async () => {
+    let activeRevision = 1;
+    await fresh(control => {
+      seedSimple(control);
+      const request = control.requests['observation-session/simple'][0];
+      seedUserText(control, request, 'The actual current question');
+      control.views.routing_timeline = () => ({ complete: true, watermark: 'fixture/current', turns: [{
+        turn_id: 'turn/current', agent_turn_id: 'turn/current', segment_id: 'stage/current',
+        plan_id: 'plan/quality', plan_revision: 1, branch_id: 'smart_saving', model_configuration_id: 'model/flash',
+        reasoning_profile_id: 'low', group: 'regular', started_at_ms: request.started_at_ms,
+        finished_at_ms: request.started_at_ms + 1, boundary: 'new_user_message', status: 'completed',
+        selection: { execution_group: 'regular', simple_probability: 1, simple_threshold_millis: 900, selection_reason: 'simple_task' },
+        tool_continuations: 0, relays: [], transitions: [], assessment_state: 'pending', assessment: null,
+        competence_floor_millis: 500, protected_turn_ids: [], evidence_partial: false, content_digest: 'fixture',
+        requests: [{ request_id: request.request_id, started_at_ms: request.started_at_ms, native_model: 'flash', outcome: 'accepted',
+          duration_ms: 1, input_tokens: null, output_tokens: null, cache_read_tokens: null, cache_read_share: null, costs: [] }], cost_by_model: [],
+      }] });
+      control.views.plan_trust = query => qualityScope(query, activeRevision).trust;
+      control.views.plan_quality = query => qualityScope(query, activeRevision).page;
+    });
+    await until(() => rows().length === 1, 'session performance row');
+    rows()[0].click();
+    await until(() => button('查看模型表现'), 'actual session timeline performance entry');
+    button('查看模型表现').click();
+    await until(() => document.querySelector('[role="dialog"] .routing-observations'), 'modal routing evidence');
+    const release = () => document.querySelector('[role="dialog"] .trust-release');
+    assert(release()?.dataset.releaseState === 'available' && release().textContent.includes('解除 0 次'), 'One-version modal falsely reports a revision mismatch instead of actual zero');
+    assert(reads('plan_quality').filter(call => queryOf(call).plan_id === 'plan/quality').every(call => queryOf(call).plan_revision === 1), 'Active modal read all retained revisions');
+    activeRevision = 2; c().bumpRefresh();
+    await until(() => release()?.dataset.releaseState === 'available' && release().textContent.includes('解除 3 次'), 'refreshed active revision');
+    assert(queryOf(reads('plan_quality').at(-1)).plan_revision === 2, 'Active revision change did not reach quality query');
+    await selectVersion('1');
+    await until(() => release()?.dataset.releaseState === 'available' && release().textContent.includes('解除 0 次'), 'explicit historical revision');
+    assert(queryOf(reads('plan_trust').at(-1)).revision === 1 && queryOf(reads('plan_quality').at(-1)).plan_revision === 1, 'Historical reads have different scopes');
+    await selectVersion('all');
+    await until(() => release()?.dataset.releaseState === 'available' && release().textContent.includes('解除 3 次'), 'explicit retained versions');
+    assert(queryOf(reads('plan_trust').at(-1)).revision === 'all' && queryOf(reads('plan_quality').at(-1)).plan_revision === null, 'All-version reads have different scopes');
+  }],
+  ['known performance revision stays paired and late earlier responses cannot replace it', async () => {
+    await fresh(control => {
+      seedSimple(control);
+      control.views.plan_trust = query => qualityScope(query).trust;
+      control.views.plan_quality = query => qualityScope(query).page;
+    });
+    c().showQualityPlan();
+    await until(() => document.querySelector('.trust-release')?.dataset.releaseState === 'available', 'known revision evidence');
+    assert(queryOf(reads('plan_trust').at(-1)).revision === 1, 'Known version was paired with a moving active scope');
+    const oldTrust = deferred(); let trustQuery;
+    c().views.plan_trust = query => { trustQuery = query; return oldTrust.promise; };
+    c().bumpRefresh();
+    try {
+      // Keep one of the two production reader slots free for the replacement.
+      await until(() => trustQuery, 'old trust scope read in flight');
+      c().views.plan_trust = query => qualityScope(query, 2).trust;
+      c().views.plan_quality = query => qualityScope(query, 2).page;
+      c().qualityPlanRevision = 2; c().bumpRefresh();
+      await until(() => document.querySelector('.trust-release')?.textContent.includes('解除 3 次'), 'new explicit revision');
+    } finally { oldTrust.resolve(qualityScope(trustQuery).trust); }
+    await tick();
+    assert(document.querySelector('.trust-release')?.dataset.releaseState === 'available' && document.querySelector('.trust-release').textContent.includes('解除 3 次'), 'Late older trust scope overwrote paired evidence');
+    assert(queryOf(reads('plan_trust').at(-1)).revision === 2 && queryOf(reads('plan_quality').at(-1)).plan_revision === 2, 'Known version refresh drifted');
+    const oldQuality = deferred(); let qualityQuery;
+    c().views.plan_quality = query => { qualityQuery = query; return oldQuality.promise; };
+    c().bumpRefresh();
+    try {
+      await until(() => qualityQuery, 'old quality scope read in flight');
+      c().views.plan_quality = query => qualityScope(query).page;
+      c().views.plan_trust = query => qualityScope(query).trust;
+      c().qualityPlanRevision = 1; c().bumpRefresh();
+      await until(() => document.querySelector('.trust-release')?.dataset.releaseState === 'available' && document.querySelector('.trust-release').textContent.includes('解除 0 次'), 'replacement quality scope');
+    } finally { oldQuality.resolve(qualityScope(qualityQuery, 2).page); }
+    await tick();
+    assert(document.querySelector('.trust-release')?.dataset.releaseState === 'available' && document.querySelector('.trust-release').textContent.includes('解除 0 次'), 'Late older quality scope overwrote paired evidence');
+  }],
+  ['unresolved performance revision never broadens on lookup failure and retry recovers', async () => {
+    let fails = true;
+    await fresh(control => {
+      seedSimple(control); control.qualityPlanRevision = null;
+      control.views.plan_trust = query => { if (fails) throw { code: 'RECOVERY_REQUIRED' }; return qualityScope(query).trust; };
+      control.views.plan_quality = query => qualityScope(query).page;
+    });
+    c().showQualityPlan();
+    await until(() => document.querySelector('.plan-quality [data-error-code="RECOVERY_REQUIRED"]'), 'active-version lookup error');
+    assert(!reads('plan_quality').some(call => queryOf(call).plan_id === 'plan/quality'), 'Unknown active version silently broadened to all retained data');
+    assert(!document.querySelector('.trust-release[data-release-state="available"]'), 'Unknown evidence became zero');
+    fails = false;
+    document.querySelector('.plan-quality [data-error-code="RECOVERY_REQUIRED"] button').click();
+    await until(() => document.querySelector('.trust-release')?.dataset.releaseState === 'available', 'lookup retry without remount');
+    assert(document.querySelector('.trust-release').textContent.includes('解除 0 次') && queryOf(reads('plan_quality').at(-1)).plan_revision === 1, 'Recovered active scope failed to show actual zero');
+  }],
+  ['supported Agent names appear in both the session list and selected heading', async () => {
+    const agents = [
+      ['codex', 'Codex'], ['claude', 'Claude Code'], ['dsh', 'DeepSeek Harness'],
+      ['pi', 'Pi'], ['qoder', 'Qoder'], ['hermes', 'Hermes'], ['opencode', 'OpenCode'],
+      ['unknown', null], [null, null],
+    ];
+    for (const language of ['zh', 'en']) for (const [family, name] of agents) {
+      const expected = name ?? (family
+        ? language === 'zh' ? '本机 Agent' : 'Local Agent'
+        : language === 'zh' ? '未关联 Agent' : 'Unlinked Agent');
+      await fresh(control => {
+        control.language = language;
+        seedSimple(control);
+        control.views.sessions = query => {
+          const page = control.defaultRead('sessions', query);
+          return { ...page, sessions: page.sessions.map(row => ({ ...row,
+            agent_id: family ? `agent_${family}_default` : '',
+          })) };
+        };
+      });
+      await until(() => rows().length === 1, `${language} ${family} session row`);
+      assert(rows()[0].textContent.includes(expected), `${language} ${family} list lacks ${expected}`);
+      rows()[0].click();
+      await until(() => document.querySelector('.transcript-head p'), 'selected session heading');
+      assert(document.querySelector('.transcript-head p').textContent.includes(expected),
+        `${language} ${family} heading lacks ${expected}`);
+    }
+  }],
   ['replayed history keeps attribution while reading skips hidden response pages', async () => {
     await fresh(control => {
       seedSimple(control, Date.now() - 60_000, { final_native_model: 'glm-5.3', within_request_fallback: true });
@@ -638,6 +786,110 @@ const scenarios = [
     assert(latest.only_model_switch === true, 'Filter was not applied by the query');
     assert(!text().includes('没有匹配的会话'), 'Filter was reported as an empty search');
   }],
+  ['request excerpt distinguishes pending reads from missing or deleted content', async () => {
+    const id = 'request/quote-loading';
+    const pending = deferred();
+    await fresh(control => {
+      seedSimple(control);
+      control.views.catalog = query => query.request_id === id ? pending.promise : control.defaultRead('catalog', query);
+      control.texts['quote-body'] = '后来读取到的真实消息';
+    });
+    c().showRequestExcerpt(id);
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('正在读取消息'), 'pending quote is not missing or cleared');
+    assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Pending quote claimed deletion');
+    pending.resolve({ contents: [{ content_id: 'quote-body', role: 'user', kind: 'text', state: 'complete', direction: 'request_input', media_type: 'text/plain', message_occurrence_id: '1', message_ordinal: 1 }], roots_partial: false, next_cursor: null,
+      input_selection: { version: 1, evidence: 'native_matched', message_ordinal: 1, source_unverified: true } });
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('后来读取到的真实消息'), 'loaded quote replaces pending state');
+  }],
+  ['request excerpt requires explicit deletion evidence for a cleared label', async () => {
+    for (const state of ['empty', 'failed', 'deleted']) {
+      const id = `request/quote-${state}`;
+      await fresh(control => {
+        seedSimple(control);
+        control.views.catalog = query => {
+          if (query.request_id !== id) return control.defaultRead('catalog', query);
+          if (state === 'failed') throw { code: 'DAEMON_UNAVAILABLE' };
+          return { contents: state === 'deleted' ? [{ content_id: 'deleted-quote', role: 'user', kind: 'text', state: 'deleted', direction: 'ingress', media_type: 'text/plain', message_occurrence_id: '1' }] : [], roots_partial: false, next_cursor: null };
+        };
+      });
+      c().showRequestExcerpt(id);
+      await until(() => document.querySelector('.routing-quote')?.textContent.includes(state === 'deleted' ? '正文已清理' : '这一轮的消息暂不可用'), `quote ${state} state`);
+      if (state !== 'deleted') assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Unavailability claimed deletion');
+    }
+  }],
+  ['session title skips proven auxiliary requests before selecting main title and model', async () => {
+    await fresh(control => {
+      const id = 'observation-session/aux-title';
+      const at = Date.now() - 60_000;
+      const auxiliary = control.makeRequest(id, 0, at, { native_auxiliary: true, final_native_model: 'auxiliary-model' });
+      const main = control.makeRequest(id, 1, at + 1, { final_native_model: 'main-model' });
+      auxiliary.routing_context.display_name = '辅助路由';
+      main.routing_context.display_name = '主任务路由';
+      control.requests[id] = [auxiliary, main];
+      seedUserText(control, auxiliary, 'Generate a session title from this auxiliary prompt');
+      seedUserText(control, main, '修复真实任务的路由');
+    });
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent.includes('修复真实任务的路由'), 'main title after auxiliary');
+    assert(rows()[0].textContent.includes('main-model') && rows()[0].textContent.includes('主任务路由'), 'Auxiliary model or route replaced main request metadata');
+    assert(!rows()[0].textContent.includes('auxiliary-model'), 'Auxiliary model labelled the session');
+  }],
+  ['auxiliary-only session has a neutral title and its original request is readable', async () => {
+    const prompt = 'Auxiliary title prompt must remain in request details';
+    await fresh(control => {
+      const id = 'observation-session/only-aux';
+      const request = control.makeRequest(id, 0, Date.now() - 60_000, { native_auxiliary: true });
+      control.requests[id] = [request];
+      seedUserText(control, request, prompt);
+    });
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent === '会话记录', 'neutral auxiliary-only title');
+    assert(!rows()[0].textContent.includes('正文已清理'), 'Auxiliary filtering was misreported as content cleanup');
+    rows()[0].click();
+    await until(() => [...document.querySelectorAll('.message-content')].some(node => node.textContent.includes(prompt)), 'original auxiliary request details');
+    assert(rows()[0].querySelector('.session-item-title').textContent === '会话记录', 'The auxiliary detail prompt became the session title after loading');
+  }],
+  ['session title skips an auxiliary-only first page without changing the timeline window', async () => {
+    const id = 'observation-session/aux-title-paged';
+    await fresh(control => {
+      const at = Date.now() - 120_000;
+      control.requests[id] = Array.from({ length: 51 }, (_, index) => {
+        const request = control.makeRequest(id, index, at + index, index < 50 ? { native_auxiliary: true } : {});
+        seedUserText(control, request, index < 50 ? 'Auxiliary prompt' : '跨页后的主任务输入');
+        return request;
+      });
+    });
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent.includes('跨页后的主任务输入'), 'main title beyond auxiliary page');
+    const pages = reads('timeline').filter(call => queryOf(call).session_id === id);
+    const second = pages.findIndex(call => queryOf(call).cursor);
+    assert(second > 0, 'Title scan did not follow the raw timeline cursor');
+    const first = pages.slice(0, second).findLast(call => !queryOf(call).cursor && queryOf(call).to_ms === queryOf(pages[second]).to_ms);
+    assert(first && queryOf(first).to_ms === queryOf(pages[second]).to_ms, 'Auxiliary filtering changed the cursor-bound window');
+  }],
+  ['missing purpose keeps legacy title-like user text visible', async () => {
+    const prompt = 'Generate a session title is my actual task';
+    await fresh(control => {
+      seedSimple(control);
+      seedUserText(control, control.requests['observation-session/simple'][0], prompt);
+    });
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent.includes(prompt), 'unmarked request remains visible');
+  }],
+  ['auxiliary filtering never calls missing or still loading main content cleared', async () => {
+    const id = 'observation-session/aux-main-loading';
+    const pending = deferred();
+    await fresh(control => {
+      const at = Date.now() - 60_000;
+      const auxiliary = control.makeRequest(id, 0, at, { native_auxiliary: true });
+      const main = control.makeRequest(id, 1, at + 1);
+      control.requests[id] = [auxiliary, main];
+      seedUserText(control, auxiliary, 'Auxiliary title prompt');
+      control.views.catalog = query => query.request_id === main.request_id ? pending.promise : control.defaultRead('catalog', query);
+    });
+    await until(() => rows().length === 1 && reads('catalog').some(call => queryOf(call).request_id.endsWith('/1')), 'main catalog loading');
+    assert(!rows()[0].textContent.includes('正文已清理'), 'Loading was reported as cleanup');
+    pending.resolve({ contents: [], roots_partial: true, next_cursor: null });
+    await tick();
+    await until(() => rows()[0]?.querySelector('.session-item-title')?.textContent === '会话记录', 'neutral missing-main title');
+    assert(!rows()[0].textContent.includes('正文已清理'), 'Missing main content was reported as cleanup');
+  }],
   ['session title skips an injected environment block and uses later real input', async () => {
     await fresh(control => {
       const sessionId = 'observation-session/title';
@@ -823,6 +1075,91 @@ const scenarios = [
     assert(!document.querySelector('.session-detail')?.innerText.includes('functions.exec'), 'Tool metadata expanded as an answer');
     assert(document.querySelector('.transcript-context'), 'Canonical tool fields lacked a context disclosure');
   }],
+  ['turn excerpt follows the retained input position and never a late context envelope', async () => {
+    for (const state of ['matched', 'literal-prefix', 'legacy', 'unavailable']) {
+      const id = `request/native-position-${state}`;
+      const question = state === 'literal-prefix'
+        ? 'Time sampled while preparing is text I want you to explain.' : 'Add --since to the export command.';
+      await fresh(control => {
+        seedSimple(control);
+        const item = (content_id, message_ordinal) => ({ content_id, message_ordinal,
+          message_occurrence_id: content_id, part_ordinal: 0, role: 'user', kind: 'text',
+          state: 'complete', direction: 'request_input', media_type: 'text/plain' });
+        const contents = [item('actual-question', 1), item('runtime-supplement', 2), item('time-supplement', 3)];
+        Object.assign(control.texts, { 'actual-question': question,
+          'runtime-supplement': 'Current runtime context. Current working directory: /work/example',
+          'time-supplement': 'Time sampled while preparing turn 1, step 1: Browser time zone: example' });
+        control.views.catalog = query => query.request_id !== id ? control.defaultRead('catalog', query) : {
+          contents, roots_partial: false, next_cursor: null,
+          ...(state === 'legacy' ? {} : { input_selection: { version: 1,
+            evidence: state === 'unavailable' ? 'unavailable' : 'native_matched',
+            message_ordinal: state === 'unavailable' ? null : 1, source_unverified: true } }),
+        };
+      });
+      c().showRequestExcerpt(id);
+      const expected = ['legacy', 'unavailable'].includes(state) ? '本轮输入位置未记录' : question;
+      await until(() => document.querySelector('.routing-quote')?.textContent.includes(expected), `excerpt ${state}`);
+      const quote = document.querySelector('.routing-quote').textContent;
+      assert(!quote.includes('Current runtime context') && !quote.includes('Browser time zone'), 'Supplement became the turn question');
+      assert(reads('catalog').some(call => queryOf(call).request_id === id && queryOf(call).include_input_selection === true), 'Position evidence was not explicitly requested');
+      assert(!reads('content').some(call => ['runtime-supplement', 'time-supplement'].includes(queryOf(call).content_id)), 'Excerpt read unrelated context bodies');
+      assert(c().texts['time-supplement'].startsWith('Time sampled'), 'Original context was rewritten');
+    }
+  }],
+  ['joint quality stays scored without creating an individual model average', async () => {
+    await fresh(control => {
+      seedSimple(control);
+      control.views.plan_quality = () => ({ samples: [], next_cursor: null, summary: {
+        models: [{ execution: { plan_revision: 1, selected_branch_id: 'smart_saving',
+          executed_branch_id: null, group: null, candidate_index: null,
+          model_configuration_id: null, profile_digest: null, attribution: 'mixed' },
+          native_model: null, reasoning_profile_id: null, average_score: null,
+          scored_stage_count: 1, unrated_stage_count: 0 }],
+        scored_stage_count: 1, unrated_stage_count: 0, session_count: 1, available_revisions: [1],
+      } });
+    });
+    c().showQualityPlan();
+    await until(() => document.querySelector('.quality-model-average')?.textContent.includes('不归属单模型'), 'joint attribution remains explicit');
+    assert(document.querySelector('.quality-scope-meta').textContent.includes('1 已评分'), 'Joint stage was declared unrated');
+    assert(document.querySelector('.quality-model-name').textContent.includes('多个执行模型'), 'One model was invented');
+    assert(!document.querySelector('.quality-model-average strong'), 'Joint score became a model capability average');
+  }],
+  ['initial decision stays Regular after an actual Primary relay and composite grading', async () => {
+    const session = 'observation-session/initial-versus-actual';
+    await fresh(control => {
+      const request = control.makeRequest(session, 0, Date.now() - 1000,
+        { final_native_model: 'actual-primary-model', within_request_fallback: true });
+      control.requests[session] = [request];
+      seedUserText(control, request, 'The real opening question');
+      control.views.routing_timeline = () => ({ complete: true, watermark: 'mixed-grade', turns: [{
+        turn_id: request.request_id, agent_turn_id: 'turn/mixed', segment_id: 'segment/mixed',
+        started_at_ms: request.started_at_ms, finished_at_ms: Date.now(), boundary: 'new_user_message',
+        plan_id: 'plan/fixture', plan_revision: 1, branch_id: 'smart_saving', model_configuration_id: null,
+        reasoning_profile_id: null, group: null,
+        selection: { execution_group: 'regular', simple_probability: 1, simple_threshold_millis: 900,
+          selection_reason: 'simple_task', historical_protection: { outcome: 'suppressed', previous_score: 0.11,
+            competence_floor_millis: 500, applicability_probability: 0.26, applicability_boundary_millis: 500 } },
+        tool_continuations: 0, relays: [{ request_id: request.request_id, from_model: 'initial-regular-model', to_model: 'actual-primary-model' }],
+        assessment_state: 'scored', assessment: { score: 0.94, partial: false, target_from_turn_id: 'turn/mixed',
+          target_through_turn_id: 'turn/mixed', target_from_ordinal: 1, target_through_ordinal: 1 },
+        competence_floor_millis: 500, protected_turn_ids: [], status: 'completed',
+        requests: [{ request_id: request.request_id, started_at_ms: request.started_at_ms, duration_ms: 10,
+          native_model: 'actual-primary-model', input_tokens: 1, output_tokens: 1, cache_read_tokens: 0,
+          cache_read_share: 0, costs: [], outcome: 'accepted' }],
+        transitions: [], cost_by_model: [], evidence_partial: false, content_digest: 'mixed-membership',
+      }] });
+    });
+    await until(() => rows().length === 1, 'mixed session'); rows()[0].click();
+    await until(() => document.querySelector('.routing-judgments strong'), 'initial decision explanation');
+    const arrow = document.querySelector('.routing-judgments strong').textContent;
+    assert(arrow.includes('常规') && !arrow.includes('主力') && !arrow.includes('actual-primary-model'), 'Eventual execution overwrote the initial decision');
+    assert(document.querySelector('.routing-detail-head').textContent.includes('actual-primary-model'), 'Actual accepted executor was hidden');
+    assert(document.querySelector('.routing-detail-facts').textContent.includes('1 次请求内接力'), 'Real relay was removed');
+    assert(document.querySelector('.routing-turn-detail').textContent.includes('不计入单模型能力'), 'Composite quality was presented as one model capability');
+    document.querySelector('.routing-quote').scrollIntoView({ block: 'center' });
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('The real opening question'), 'actual opening excerpt');
+  }],
+
 ];
 
 export const sessionWindowScenarioCount = scenarios.length;

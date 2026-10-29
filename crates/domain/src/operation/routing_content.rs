@@ -5,6 +5,11 @@ use crate::{PlanHeadV1, PlanLifecycleV1, PlanVersionV1, PublicationRecordV1};
 const CONTROL_SCHEMA: &str = "hiroute.routing-control/v2";
 const EFFECT_SCHEMA: &str = "hiroute.routing-publication-effect/v2";
 
+#[cfg(test)]
+thread_local! {
+    static CONTENT_DECODES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConsumedPlanDraftV1 {
@@ -336,20 +341,18 @@ pub(super) fn validate_plan(
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }
     let intent = &external[0];
-    let effect = decode_external(
-        &intent.effect_id,
-        intent.kind,
-        &intent.target,
-        &intent.desired,
-        intent.desired_mode,
-        intent.sensitive,
-    )?;
+    // Only validated private constructors can create or replace these immutable
+    // inputs. Cold storage still authenticates the whole effect in that constructor.
+    let effect = intent
+        .content_publication
+        .as_ref()
+        .ok_or(OperationValidationError::UnregisteredEffectPlan)?;
     let control: PlanContentControlV2 = serde::Deserialize::deserialize(control)
         .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
     if effect.control != control || effect.change_spec != *spec {
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }
-    // decode_external validated these exact immutable inputs; the joins above bind the
+    // The constructor validated these exact immutable inputs; the joins above bind the
     // independently supplied Plan fields without revalidating all nested publications.
     Ok(())
 }
@@ -372,6 +375,8 @@ pub(super) fn decode_external(
     mode: u32,
     sensitive: bool,
 ) -> Result<ContentEffectV2, OperationValidationError> {
+    #[cfg(test)]
+    CONTENT_DECODES.with(|count| count.set(count.get() + 1));
     if id != "routing-publication"
         || kind != OwnedEffectKind::Publication
         || target != "publication/current"
@@ -401,3 +406,7 @@ pub(super) fn record(
         .map(|effect| effect.publication_record.clone())
         .ok_or(OperationValidationError::UnregisteredEffectPlan)
 }
+
+#[cfg(test)]
+#[path = "routing_content_tests.rs"]
+mod tests;

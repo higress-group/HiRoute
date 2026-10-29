@@ -14,6 +14,7 @@ pub mod managed_text;
 pub mod query;
 pub mod query_v2;
 pub mod receipt;
+mod request_purpose;
 pub mod store;
 pub mod text_index;
 pub mod valuation;

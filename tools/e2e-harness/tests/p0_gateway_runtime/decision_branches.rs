@@ -5,6 +5,9 @@ use serde_json::{Value, json};
 #[path = "decision_branches/chat_history.rs"]
 mod chat_history;
 
+#[path = "decision_branches/responses_chat_history.rs"]
+mod responses_chat_history;
+
 #[path = "decision_branches/extension.rs"]
 mod extension;
 
@@ -14,6 +17,12 @@ fn reply(body: &'static [u8]) -> ProviderReply {
         error_kind: None,
         body,
     }
+}
+
+fn hermes_context(session: &str, turn: &str) -> String {
+    json!({"version":1,"agent":"hermes","session_id":session,"purpose":"main",
+        "turn_id":turn,"continuation_requires_existing_turn":false})
+    .to_string()
 }
 
 #[test]
@@ -120,7 +129,7 @@ fn primary_relay_stays_in_this_turn_but_new_users_decide_again() {
     assert_turn_routing(false);
 }
 #[test]
-fn hermes_native_turns_reuse_only_their_own_tool_decision() {
+fn hermes_native_turns_keep_tools_and_restore_observed_user_routing() {
     assert_turn_routing(true);
 }
 fn assert_turn_routing(hermes: bool) {
@@ -140,9 +149,12 @@ fn assert_turn_routing(hermes: bool) {
                 reply(RESPONSES_OK),
                 reply(RESPONSES_OK),
             ]);
-                let primary =
-                    NativeProvider::start(vec![reply(RESPONSES_TOOL_CALL), reply(RESPONSES_OK)]);
-                let decider = NativeProvider::start(vec![reply(simple), reply(simple)]);
+                let primary = NativeProvider::start(vec![
+                    reply(RESPONSES_TOOL_CALL),
+                    reply(RESPONSES_OK),
+                    reply(RESPONSES_OK),
+                ]);
+                let decider = NativeProvider::start(vec![reply(simple); 3]);
                 let fixture =
                     RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], smart);
                 if hermes || c {
@@ -166,10 +178,27 @@ fn assert_turn_routing(hermes: bool) {
                     }
                     fixture.publish(&mut publication);
                 }
-                let send = |input: &[Value], instructions: &str| {
-                    let response = request(fixture.address, "POST", "/v1/responses", &[
-                    ("X-HiRoute-Token", TOKEN), (if hermes { "x-hermes-session-id" } else { "session-id" }, "relay-turn-boundary"),
-                ], &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"instructions":instructions,"input":input})).unwrap());
+                let send = |input: &[Value], instructions: &str, turn: &str| {
+                    let context = hermes_context("relay-turn-boundary", turn);
+                    let mut headers = vec![
+                        ("X-HiRoute-Token", TOKEN),
+                        (
+                            if hermes {
+                                "x-hermes-session-id"
+                            } else {
+                                "session-id"
+                            },
+                            "relay-turn-boundary",
+                        ),
+                    ];
+                    if hermes {
+                        headers.extend([
+                            ("x-hiroute-agent", "hermes"),
+                            ("x-hiroute-routing-context", context.as_str()),
+                        ]);
+                    }
+                    let response = request(fixture.address, "POST", "/v1/responses", &headers,
+                        &serde_json::to_vec(&json!({"model":MODEL,"stream":false,"instructions":instructions,"input":input})).unwrap());
                     assert_eq!(
                         response.status,
                         200,
@@ -179,7 +208,7 @@ fn assert_turn_routing(hermes: bool) {
                     serde_json::from_slice::<Value>(&response.body).unwrap()
                 };
                 let mut history = vec![json!({"role":"user","content":"Look up the record."})];
-                let first = send(&history, "Use the lookup tool.");
+                let first = send(&history, "Use the lookup tool.", "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
                     (1, 1, 1)
@@ -191,19 +220,24 @@ fn assert_turn_routing(hermes: bool) {
                 } else {
                     "Use the lookup tool."
                 };
-                let continued = send(&history, instructions);
+                let continued = send(&history, instructions, "real-user-1");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
                     (1, 2, 1),
-                    "same-turn relay must not retry regular, even when instructions invalidate the candidate hold"
+                    "the same actual tool execution inherits its primary relay even when request-local instructions change"
                 );
                 history.extend(continued["output"].as_array().unwrap().iter().cloned());
                 history.push(json!({"role":"user","content":"A new simple task: say hello."}));
-                send(&history, instructions);
+                send(&history, instructions, "real-user-2");
                 assert_eq!(
                     (regular.calls(), primary.calls(), decider.calls()),
                     (2, 2, 2),
-                    "the next real user message must decide again, without a persistent primary floor"
+                    "{}",
+                    if hermes {
+                        "a real new question must restore routing without asserting human-origin proof"
+                    } else {
+                        "the next real user message must decide again, without a persistent primary floor"
+                    }
                 );
             }
         }
@@ -538,15 +572,25 @@ fn builtin_decision_reselects_groups_and_observes_actual_execution_in_both_modes
     }
 }
 
-fn enable_c(fixture: &RuntimeFixture) -> hiroute_domain::FrozenNativeProtocolV1 {
+fn enable_c(
+    fixture: &RuntimeFixture,
+    protocol: &hiroute_domain::NativeProtocolV1,
+) -> hiroute_domain::FrozenNativeProtocolV1 {
     let mut publication = fixture.publication();
-    let protocol = enable_c_in_publication(&mut publication);
+    let protocol = enable_c_in_publication_with(&mut publication, protocol);
     fixture.publish(&mut publication);
     protocol
 }
 
 fn enable_c_in_publication(
     publication: &mut hiroute_gateway::server::publication::GatewayPublicationSnapshotV3,
+) -> hiroute_domain::FrozenNativeProtocolV1 {
+    enable_c_in_publication_with(publication, &hiroute_domain::NativeProtocolV1::default())
+}
+
+fn enable_c_in_publication_with(
+    publication: &mut hiroute_gateway::server::publication::GatewayPublicationSnapshotV3,
+    protocol: &hiroute_domain::NativeProtocolV1,
 ) -> hiroute_domain::FrozenNativeProtocolV1 {
     use hiroute_domain::*;
     use hiroute_gateway::server::publication::AliasRequestOwnedRouteV1;
@@ -561,12 +605,12 @@ fn enable_c_in_publication(
             native_protocol,
             ..
         } => {
-            let p = NativeProtocolV1::default();
+            let p = protocol;
             let judgment = judgment.as_mut().unwrap();
             p.stock_assessment(judgment);
             *native_protocol = Some(
                 FrozenNativeProtocolV1::freeze(
-                    &p,
+                    p,
                     judgment.degree.definition().into(),
                     [(SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
                 )
@@ -579,13 +623,13 @@ fn enable_c_in_publication(
             native_protocol,
             ..
         } => {
-            let p = NativeProtocolV1::default();
+            let p = protocol;
             for b in branches.iter_mut() {
                 p.stock_assessment(b.judgment.as_mut().unwrap());
             }
             *native_protocol = Some(
                 FrozenNativeProtocolV1::freeze(
-                    &p,
+                    p,
                     branch_decision_definition(branches, default_branch_id),
                     branches
                         .iter()
@@ -634,31 +678,49 @@ fn c_answer(smart: bool, applicable: bool) -> &'static [u8] {
         (false,false) => br#"{"answers":{"q0":{"type":"choice","choice":"code"},"q1":{"type":"score","probabilities":{"0":0.9,"1":0.1}},"q2":{"type":"score","score":0.2},"q3":{"type":"choice","probabilities":{"applicable":0.1,"not_established":0.9}}}}"#,
     }
 }
+fn c_complex_answer(smart: bool, applicable: bool) -> &'static [u8] {
+    match (smart, applicable) {
+        (true, true) => br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.7,"1":0.3}},"q1":{"type":"score","score":0.2},"q2":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#,
+        (true, false) => br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.7,"1":0.3}},"q1":{"type":"score","score":0.2},"q2":{"type":"choice","probabilities":{"applicable":0.1,"not_established":0.9}}}}"#,
+        (false, true) => br#"{"answers":{"q0":{"type":"choice","choice":"code"},"q1":{"type":"score","probabilities":{"0":0.7,"1":0.3}},"q2":{"type":"score","score":0.2},"q3":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#,
+        (false, false) => br#"{"answers":{"q0":{"type":"choice","choice":"code"},"q1":{"type":"score","probabilities":{"0":0.7,"1":0.3}},"q2":{"type":"score","score":0.2},"q3":{"type":"choice","probabilities":{"applicable":0.1,"not_established":0.9}}}}"#,
+    }
+}
 #[test]
 fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_listeners() {
-    for smart in [true, false] {
+    for (protocol, smart) in [
+        hiroute_domain::NativeProtocolV1::c_v1(),
+        hiroute_domain::NativeProtocolV1::c_v2(),
+    ]
+    .into_iter()
+    .flat_map(|protocol| [true, false].map(move |smart| (protocol.clone(), smart)))
+    {
         let plain: &'static [u8] = if smart {
             br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#
         } else {
             br#"{"answers":{"q0":{"type":"choice","choice":"code"},"q1":{"type":"score","probabilities":{"0":0.9,"1":0.1}}}}"#
         };
         let regular = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
-        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 3]);
+        let primary = NativeProvider::start(vec![reply(RESPONSES_OK); 4]);
         let decider = NativeProvider::start(vec![
             reply(plain),
             reply(c_answer(smart, true)),
             reply(c_answer(smart, false)),
             reply(c_answer(smart, true)),
+            reply(c_complex_answer(smart, false)),
+            reply(c_complex_answer(smart, true)),
         ]);
         let fixture =
             RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &decider], smart);
-        let frozen = enable_c(&fixture);
+        let frozen = enable_c(&fixture, &protocol);
         let mut input = Vec::new();
         for (index, text) in [
             "Provide the requested title.",
             "The title is still missing. Deliver it now.",
             "I saved the corrected title. Now correct an unrelated typo.",
             "The same required constraint is still not satisfied. Retry the required work.",
+            "I fixed the issue. Now carry out the complex follow-up.",
+            "That result is still unsatisfactory. Retry the complex follow-up.",
         ]
         .iter()
         .enumerate()
@@ -683,7 +745,14 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
                 "{}",
                 String::from_utf8_lossy(&response.body)
             );
-            let expected = [(1, 0, 1), (1, 1, 2), (2, 1, 3), (2, 2, 4)][index];
+            let expected = [
+                (1, 0, 1),
+                (1, 1, 2),
+                (2, 1, 3),
+                (2, 2, 4),
+                (2, 3, 5),
+                (2, 4, 6),
+            ][index];
             assert_eq!(
                 (regular.calls(), primary.calls(), decider.calls()),
                 expected
@@ -719,8 +788,14 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
             assert!(body["state"].get("assessment_stage").is_some());
             let applicability = if smart { "q2" } else { "q3" };
             assert_eq!(body["questions"].get(applicability).is_some(), i > 0);
+            if i > 0 {
+                assert_eq!(
+                    body["questions"][applicability],
+                    protocol.fixed.applicability
+                );
+            }
         }
-        let facts = wait_execution_facts(&fixture, 4);
+        let facts = wait_execution_facts(&fixture, 6);
         let actions: Vec<_> = facts
             .iter()
             .filter_map(|f| {
@@ -730,7 +805,36 @@ fn c_protocol_rejudges_current_work_and_observes_protection_and_release_on_real_
             .collect();
         assert_eq!(
             actions,
-            ["not_considered", "applied", "suppressed", "applied"]
+            [
+                "not_considered",
+                "applied",
+                "suppressed",
+                "applied",
+                "suppressed",
+                "applied"
+            ]
+        );
+        let decisions: Vec<_> = facts
+            .iter()
+            .filter_map(|f| {
+                f.pointer("/fact/complexity/routing_observation/protection_action")
+                    .map(|_| &f["fact"]["complexity"])
+            })
+            .collect();
+        assert_eq!(decisions[4]["execution_group"], "primary");
+        assert_eq!(decisions[4]["selection_reason"], "complex_task");
+        assert!(
+            decisions[4]
+                .get("competence_trigger")
+                .is_none_or(Value::is_null)
+        );
+        assert_eq!(decisions[5]["execution_group"], "primary");
+        assert_eq!(decisions[5]["selection_reason"], "low_competence");
+        assert_eq!(decisions[5]["competence_trigger"]["from_group"], "primary");
+        assert!(
+            decisions
+                .iter()
+                .all(|decision| decision["routing_observation"]["protocol"] == protocol.schema)
         );
         assert!(
             facts

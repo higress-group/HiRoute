@@ -7,6 +7,8 @@ use hiroute_domain::{
 use rusqlite::{Connection, OpenFlags, params};
 use serde::{Deserialize, Serialize};
 
+use crate::request_purpose as purpose;
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Cursor {
@@ -199,6 +201,7 @@ impl LocalObservationStore {
                                 native_turn_id: None,
                                 relation_conflicted: row.get(7)?,
                                 routing_context: ObservationRoutingContextV1::unavailable(),
+                                native_auxiliary: None,
                                 attempted_model_count: row.get(8)?,
                                 within_request_fallback: {
                                     let count: u32 = row.get(8)?;
@@ -221,6 +224,7 @@ impl LocalObservationStore {
         };
         let more = rows.len() > usize::from(query.limit);
         let mut requests = Vec::with_capacity(usize::from(query.limit));
+        let mut purpose_bytes = purpose::QUERY_CARRIER_BYTES;
         for (mut request, link_body, receipt_body, receipt_digest, safe_fact_body) in
             rows.into_iter().take(usize::from(query.limit))
         {
@@ -257,6 +261,13 @@ impl LocalObservationStore {
                 receipt_body.as_deref(),
                 receipt_digest.as_deref(),
                 safe_fact_body.as_deref(),
+            );
+            request.native_auxiliary = purpose::native_auxiliary(
+                &transaction,
+                reader.workspace().as_str(),
+                &request.session_id,
+                &request.request_id,
+                &mut purpose_bytes,
             );
             requests.push(request);
         }

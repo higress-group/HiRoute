@@ -113,7 +113,7 @@ impl LocalControlAdapter {
         self.coordinator()
             .reconcile_startup_and_open()
             .and_then(|_| {
-                self.reconcile_plan_content_heads()
+                self.reconcile_pending_operation_finalization()
                     .map_err(TransactionError::Port)
             })
             .map_err(|error| {
@@ -148,9 +148,29 @@ impl LocalControlAdapter {
         &self,
     ) -> Result<Vec<hiroute_integrations::FilesystemAgentDiscoveryV1>, String> {
         let discoveries = self.scanner.scan();
-        let findings = discoveries
-            .iter()
-            .filter_map(|discovery| discovery.permission_hardening.clone())
+        self.install_discovery_inputs(
+            discoveries
+                .iter()
+                .filter_map(|discovery| discovery.discovered_credential.clone()),
+            discoveries
+                .iter()
+                .filter_map(|discovery| discovery.permission_hardening.clone()),
+        )?;
+        Ok(discoveries)
+    }
+
+    pub(super) fn prime_discovery(&self) -> Result<(), String> {
+        let (credential, finding) = self.scanner.claude_protected_configuration_inputs();
+        self.install_discovery_inputs(credential, finding)
+    }
+
+    fn install_discovery_inputs(
+        &self,
+        credentials: impl IntoIterator<Item = hiroute_integrations::DiscoveredCredentialRefV1>,
+        findings: impl IntoIterator<Item = hiroute_integrations::PermissionHardeningRequiredV1>,
+    ) -> Result<(), String> {
+        let findings = findings
+            .into_iter()
             .map(|finding| (finding.discovered_source_ref.clone(), finding))
             .collect::<std::collections::BTreeMap<_, _>>();
         let native_sources = self
@@ -171,10 +191,7 @@ impl LocalControlAdapter {
             .lock()
             .map_err(|_| "protected discovery registry is unavailable".to_owned())?;
         inputs.clear();
-        for descriptor in discoveries
-            .iter()
-            .filter_map(|discovery| discovery.discovered_credential.clone())
-        {
+        for descriptor in credentials {
             let slot = protected_input_slot(&descriptor)?;
             if inputs.insert(slot, descriptor).is_some() {
                 return Err("protected discovery slot collision".to_owned());
@@ -192,7 +209,7 @@ impl LocalControlAdapter {
             .permission_findings
             .lock()
             .map_err(|_| "permission discovery registry is unavailable".to_owned())? = findings;
-        Ok(discoveries)
+        Ok(())
     }
 }
 
@@ -337,6 +354,18 @@ impl ControlRepositoryPort for LocalControlAdapter {
 
     fn writer_recovery_required(&self) -> PortResult<bool> {
         self.stores_lock()?.control().writer_recovery_required()
+    }
+
+    fn operation_finalization_pending(&self, operation: &OperationV1) -> PortResult<bool> {
+        self.stores_lock()?
+            .control()
+            .operation_requires_finalization(operation)
+    }
+
+    fn complete_operation_finalization(&self, operation: &OperationV1) -> PortResult<()> {
+        self.stores_lock()?
+            .control()
+            .finish_operation_finalization(operation)
     }
 
     fn save_operation(&self, operation: &mut OperationV1) -> PortResult<()> {

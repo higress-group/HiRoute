@@ -44,7 +44,7 @@ pub enum SettingsModelTargetFacts {
         provider_id: String,
         endpoint: String,
         model: hiroute_domain::AdditionalAgentModelV1,
-        plugins: Vec<super::HermesPluginFileFacts>,
+        plugins: Vec<super::NativePluginFileFacts>,
     },
     Codex {
         provider_id: String,
@@ -55,6 +55,7 @@ pub enum SettingsModelTargetFacts {
         kind: hiroute_domain::AgentKindV1,
         pi_settings_content: Option<CanonicalDigest>,
         additional_dependencies: Option<CanonicalDigest>,
+        routing_adapter: Option<super::NativePluginFileFacts>,
         provider_id: String,
         endpoint: String,
         models: Vec<hiroute_domain::AdditionalAgentModelV1>,
@@ -144,6 +145,7 @@ impl AgentSettingsPlanningInput {
                         kind,
                         pi_settings_content,
                         additional_dependencies,
+                        routing_adapter: _,
                         provider_id,
                         endpoint,
                         models,
@@ -314,6 +316,18 @@ impl AgentSettingsPlanningInput {
             "skill_reference_change":&skill.reference_change,
             "collaboration":self.collaboration_state,
         });
+        if matches!(
+            &self.model_file,
+            Some(SettingsModelFileFacts {
+                target: SettingsModelTargetFacts::Additional {
+                    routing_adapter: Some(_),
+                    ..
+                },
+                ..
+            })
+        ) {
+            mutations["native_routing_adapter_file_change"] = json!(true);
+        }
         if !matches!(
             preview.spec.skill_intent_for(additional_facet),
             AgentFacetIntent::Keep
@@ -355,11 +369,24 @@ impl AgentSettingsPlanningInput {
                             };
                             if matches!(change, super::HermesModelFileAction::Configure { .. }) {
                                 for facts in plugins {
-                                    external.push(super::settings_hermes_plugin_file_intent(
+                                    external.push(super::settings_native_plugin_file_intent(
                                         control,
                                         &self.facts.context_id,
                                         facts,
-                                        &change,
+                                        &match &change {
+                                            super::HermesModelFileAction::Configure {
+                                                previous_operation,
+                                                ..
+                                            } => super::NativePluginFileAction::Configure {
+                                                previous_operation: previous_operation.clone(),
+                                                content: facts.content.into(),
+                                            },
+                                            super::HermesModelFileAction::Restore {
+                                                original_operation,
+                                            } => super::NativePluginFileAction::Restore {
+                                                original_operation: original_operation.clone(),
+                                            },
+                                        },
                                     )?);
                                 }
                             }
@@ -372,11 +399,24 @@ impl AgentSettingsPlanningInput {
                             )?);
                             if matches!(change, super::HermesModelFileAction::Restore { .. }) {
                                 for facts in plugins {
-                                    external.push(super::settings_hermes_plugin_file_intent(
+                                    external.push(super::settings_native_plugin_file_intent(
                                         control,
                                         &self.facts.context_id,
                                         facts,
-                                        &change,
+                                        &match &change {
+                                            super::HermesModelFileAction::Configure {
+                                                previous_operation,
+                                                ..
+                                            } => super::NativePluginFileAction::Configure {
+                                                previous_operation: previous_operation.clone(),
+                                                content: facts.content.into(),
+                                            },
+                                            super::HermesModelFileAction::Restore {
+                                                original_operation,
+                                            } => super::NativePluginFileAction::Restore {
+                                                original_operation: original_operation.clone(),
+                                            },
+                                        },
                                     )?);
                                 }
                             }
@@ -412,6 +452,39 @@ impl AgentSettingsPlanningInput {
                             additional_dependencies,
                             change,
                         ) => {
+                            let SettingsModelTargetFacts::Additional {
+                                routing_adapter, ..
+                            } = &file.target
+                            else {
+                                return Err(invalid());
+                            };
+                            let resource_action =
+                                routing_adapter.as_ref().map(|facts| match &change {
+                                    super::AdditionalModelFileAction::Configure {
+                                        previous_operation,
+                                        ..
+                                    } => super::NativePluginFileAction::Configure {
+                                        previous_operation: previous_operation.clone(),
+                                        content: facts.content.into(),
+                                    },
+                                    super::AdditionalModelFileAction::Restore {
+                                        original_operation,
+                                    } => super::NativePluginFileAction::Restore {
+                                        original_operation: original_operation.clone(),
+                                    },
+                                });
+                            if let (
+                                Some(facts),
+                                Some(action @ super::NativePluginFileAction::Configure { .. }),
+                            ) = (routing_adapter, &resource_action)
+                            {
+                                external.push(super::settings_native_plugin_file_intent(
+                                    control,
+                                    &self.facts.context_id,
+                                    facts,
+                                    action,
+                                )?);
+                            }
                             external.push(super::settings_additional_model_file_intent(
                                 control,
                                 &self.facts.context_id,
@@ -421,6 +494,18 @@ impl AgentSettingsPlanningInput {
                                 pi_settings_content,
                                 additional_dependencies,
                             )?);
+                            if let (
+                                Some(facts),
+                                Some(action @ super::NativePluginFileAction::Restore { .. }),
+                            ) = (routing_adapter, &resource_action)
+                            {
+                                external.push(super::settings_native_plugin_file_intent(
+                                    control,
+                                    &self.facts.context_id,
+                                    facts,
+                                    action,
+                                )?);
+                            }
                         }
                         SettingsModelAction::Claude(change) => {
                             external.push(settings_claude_model_file_intent(
@@ -643,6 +728,10 @@ fn claude_native_change(
             })),
         ),
         ("hiroute.auth_environment".to_owned(), None),
+        (
+            "env.CLAUDE_CODE_GATEWAY_HINT_HEADERS".to_owned(),
+            Some(json!("1")),
+        ),
         ("env.ANTHROPIC_BASE_URL".to_owned(), Some(json!(endpoint))),
     ]);
     for (name, value) in [

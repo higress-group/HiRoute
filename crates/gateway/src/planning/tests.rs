@@ -18,6 +18,7 @@ fn request(protocol: IngressProtocol, text: &str) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: None,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: protocol,
         responses_options: None,

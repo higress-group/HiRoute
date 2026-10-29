@@ -98,6 +98,9 @@ impl FilesystemAgentScannerV1 {
                 fields.insert(path.to_owned(), json!(value));
             }
         }
+        if let Some(value) = env.gateway_hints.as_ref() {
+            fields.insert("env.CLAUDE_CODE_GATEWAY_HINT_HEADERS".into(), json!(value));
+        }
         if user.settings.api_key_helper_present {
             fields.insert("apiKeyHelper".to_owned(), json!({"configured":true}));
         }

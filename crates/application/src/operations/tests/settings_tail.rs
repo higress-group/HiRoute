@@ -264,6 +264,93 @@ fn coordinator<'a>(
 }
 
 #[test]
+fn current_settings_are_prepared_once_after_authority_and_revision_checks() {
+    use std::sync::{Arc, atomic::AtomicUsize};
+    let ports = MemoryPorts::default();
+    let runtime = TransactionRuntime::default();
+    let coordinator = open(&ports, &runtime);
+    let plan = settings_plan();
+    let publication = plan
+        .external()
+        .iter()
+        .find(|intent| is_settings_publication(intent))
+        .unwrap();
+    ports.state.borrow_mut().external_fingerprints.insert(
+        publication.target().to_owned(),
+        CanonicalDigest::of_bytes(b"publication-source"),
+    );
+    let digest = CanonicalDigest::of_bytes(b"current-settings");
+    let mut request = ApplyRequestV1 {
+        schema_version: CHANGE_SPEC_SCHEMA_V1,
+        spec: plan.spec().clone(),
+        accept_digest: digest.clone(),
+        expected_revisions: ports.current_revisions(&WorkspaceId::default()).unwrap(),
+        idempotency_key: "current-settings".into(),
+        apply_capability: Some("current-settings-cap".into()),
+    };
+    let canonical_digest = apply_request_digest(&request).unwrap();
+    // The settings planner clears this caller-provided list and derives it from current facts.
+    // The journal must retain the same canonical identity as the previous sealed-plan path.
+    request.spec.desired_state["protected_native_model_ids"] = json!(["caller-placeholder"]);
+    assert_ne!(apply_request_digest(&request).unwrap(), canonical_digest);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let prepare = |request| {
+        let calls = calls.clone();
+        let plan = plan.clone();
+        crate::PreparedTransactionV1::for_current_agent_settings(request, move || {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok(plan)
+        })
+        .unwrap()
+    };
+    assert!(
+        coordinator
+            .accept_prepared(
+                &WorkspaceId::default(),
+                &principal(),
+                prepare(request.clone())
+            )
+            .is_err()
+    );
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        0,
+        "unauthorized input must not prepare native effects"
+    );
+    ports.grant_for(
+        "current-settings-cap",
+        &digest,
+        &request.expected_revisions,
+        "ApplyAgentConnectionChange",
+    );
+    let mut stale = request.clone();
+    stale.expected_revisions.target += 1;
+    assert!(matches!(
+        coordinator.accept_prepared(&WorkspaceId::default(), &principal(), prepare(stale)),
+        Err(TransactionError::ChangePreviewStale)
+    ));
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    for replay in [false, true] {
+        let accepted = coordinator
+            .accept_prepared(
+                &WorkspaceId::default(),
+                &principal(),
+                prepare(request.clone()),
+            )
+            .unwrap();
+        assert_eq!(accepted.existing, replay);
+        assert_eq!(accepted.operation().request_digest, canonical_digest);
+        assert_eq!(accepted.operation().plan.spec(), plan.spec());
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "idempotent replay must not repeat preparation"
+        );
+    }
+    assert_eq!(ports.state.borrow().operations.len(), 1);
+}
+
+#[test]
 fn restore_only_settings_require_restore_authority_before_journal_admission() {
     let ports = MemoryPorts::default();
     let runtime = TransactionRuntime::default();
@@ -305,6 +392,15 @@ fn restore_only_settings_require_restore_authority_before_journal_admission() {
         coordinator.accept_prepared(&WorkspaceId::default(), &principal(), wrong),
         Err(TransactionError::InvalidArguments)
     ));
+    let wrong_current =
+        crate::PreparedTransactionV1::for_current_agent_settings(request.clone(), || {
+            panic!("Change authority cannot prepare a Restore plan")
+        })
+        .unwrap();
+    assert!(matches!(
+        coordinator.accept_prepared(&WorkspaceId::default(), &principal(), wrong_current),
+        Err(TransactionError::CapabilityDenied)
+    ));
     assert_eq!(ports.counters(), before);
     assert!(ports.state.borrow().operations.is_empty());
     assert!(ports.state.borrow().writer.is_none());
@@ -321,13 +417,12 @@ fn restore_only_settings_require_restore_authority_before_journal_admission() {
         "ApplyAgentConnectionRestore",
     );
     for replay in [false, true] {
-        let prepared = crate::PreparedTransactionV1::for_agent_settings_restore(
-            request.clone(),
-            digest.clone(),
-            plan.clone(),
-        )
-        .unwrap()
-        .with_revalidation(|| Ok(()));
+        let current_plan = plan.clone();
+        let prepared =
+            crate::PreparedTransactionV1::for_current_agent_settings(request.clone(), move || {
+                Ok(current_plan)
+            })
+            .unwrap();
         let accepted = coordinator
             .accept_prepared(&WorkspaceId::default(), &principal(), prepared)
             .unwrap();

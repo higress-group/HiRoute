@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { ContentExcerpt } from '../Sessions';
 import { agentDisplayName } from '../agents/ecosystems';
-import { formatMoney } from '../../ui';
+import { Disclosure } from '../../ui';
 import { trustLevelLabel } from './levels';
+import { formatPresentedCostAmount, presentTrustCost, trustCostUnavailableReason } from './cost-presentation';
+import { qualityBranchLabel, type PlanQualityModel } from '../plan-quality-state';
 import type { TrustBranch, TrustCounts, TrustReport, TrustRow } from './types';
 import './trust.css';
 
@@ -14,11 +16,21 @@ const sum = (rows: TrustRow[], pick: (row: TrustRow) => number) => rows.reduce((
 type SuggestionBanner = { tone: string; badge: string; title: string; body: string; extra: string; action: ReactNode; threshold?: string; replay?: string; newlyRegular?: string };
 
 /** One banner per routed branch: the suggestion, the facts behind it and an optional draft action. */
-export function TrustSuggestions({ report, language, onThreshold, onDivision, onOpenAgent }: {
-  report: TrustReport; language: Language; onThreshold?(branch: string, threshold: number): void; onDivision?(branch: string): void; onOpenAgent?(agent: string): void;
+export function TrustSuggestions({ report, language, currentModels = [], onThreshold, onDivision, onOpenAgent }: {
+  report: TrustReport; language: Language; currentModels?: readonly PlanQualityModel[]; onThreshold?(branch: string, threshold: number): void; onDivision?(branch: string): void; onOpenAgent?(agent: string): void;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   const named = report.branches.length > 1;
+  const configuredByBranch = new Map<string, PlanQualityModel[]>();
+  for (const model of currentModels) {
+    if (model.plan_revision !== report.active_revision || model.group !== 'regular') continue;
+    const configured = configuredByBranch.get(model.branch_id) ?? [];
+    configured.push(model); configuredByBranch.set(model.branch_id, configured);
+  }
+  // Announcements cover the report's whole catalog, while editor options can omit
+  // published bindings or contain newer model IDs. Only an empty global list proves
+  // that no model-update cutoff applies without the published per-branch identities.
+  const noModelUpdates = report.announcements.length === 0;
   function facts(counts: TrustCounts, upward: boolean) {
     return t(`完整评分阶段 ${counts.complete}（要求 ≥30）· 胜任率 ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)}（${upward ? '要求 ≥85%' : '低于 70% 时建议下调'}）· 评分覆盖 ${ratio(counts.complete, counts.executed)}${upward ? '（要求 ≥60%）' : ''} · 来自 ${counts.sessions} 个会话${upward ? '（要求 ≥3）' : ''}`,
       `${counts.complete} fully scored stages (≥30 required) · ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)} competence (${upward ? '≥85% required' : 'below 70% suggests stepping down'}) · ${ratio(counts.complete, counts.executed)} scored${upward ? ' (≥60% required)' : ''} · ${counts.sessions} sessions${upward ? ' (≥3 required)' : ''}`);
@@ -31,8 +43,6 @@ export function TrustSuggestions({ report, language, onThreshold, onDivision, on
     const replay = 'threshold_millis' in s ? branch.replay.thresholds.find(row => row.threshold_millis === s.threshold_millis) : undefined;
     const replayText = replay?.regular_share != null ? t(`按你的记录回放，这一档约 ${Math.round(replay.regular_share * 100)}% 的阶段会交给常规模型，${replay.protected_as_primary} 个仍由主力保护。`, `Replaying your records, about ${Math.round(replay.regular_share * 100)}% of stages would go to Regular; ${replay.protected_as_primary} stay protected by Primary.`) : '';
     const fresh = replay && replay.newly_regular > 0 ? t(`${replay.newly_regular} 个阶段之前由主力处理，没有常规模型的胜任证据。`, `${replay.newly_regular} of them were handled by Primary and carry no Regular competence evidence.`) : '';
-    const scope = (s.kind === 'step_up' || s.kind === 'explore_division') && report.announcements.length > 0 && branch.upward_from_ms > 0
-      ? t(`升档只看 ${new Date(branch.upward_from_ms).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 模型更新公告之后的记录；更早的记录仍用于判断是否下调。`, `Stepping up uses only records after the ${new Date(branch.upward_from_ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} model update announcement; earlier records still inform stepping down.`) : '';
     if (s.kind === 'keep') {
       const need: Record<string, string> = {
         complete_scores: t(`至少 30 个评分完整的阶段（现在 ${branch.upward_cohort.complete}）`, `at least 30 fully scored stages (now ${branch.upward_cohort.complete})`),
@@ -41,13 +51,13 @@ export function TrustSuggestions({ report, language, onThreshold, onDivision, on
       };
       const missing = s.missing.filter(code => need[code]).map(code => need[code]);
       return { tone: '', badge: t('保持当前档位', 'Keep this level'), title: s.missing.includes('active_revision_only') ? t('建议只针对当前生效的版本', 'Suggestions cover only the active version') : missing.length ? t('证据还不够，暂不建议调整', 'Not enough evidence to suggest a change') : t('当前档位合适，保持即可', 'The current level fits; keeping it is fine'),
-        body: missing.length ? t(`升档需要${missing.join('、')}。`, `Stepping up needs ${missing.join(', ')}.`) : facts(branch.full_history, true), extra: '', action: null };
+        body: missing.length ? t(`升档需要${missing.join('、')}。`, `Stepping up needs ${missing.join(', ')}.`) : facts(branch.upward_cohort, true), extra: '', action: null };
     }
-    if (s.kind === 'step_up') return { tone: 'info', badge: t('可以上调', 'Step up'), title: t(`可以调到「${level}」`, `You can move to ${level}`), body: facts(branch.upward_cohort, true), threshold, replay: replayText, newlyRegular: fresh, extra: scope,
+    if (s.kind === 'step_up') return { tone: 'info', badge: t('可以上调', 'Step up'), title: t(`可以调到「${level}」`, `You can move to ${level}`), body: facts(branch.upward_cohort, true), threshold, replay: replayText, newlyRegular: fresh, extra: '',
       action: onThreshold && <button type="button" className="btn btn-primary" onClick={() => onThreshold(branch.branch_id, s.threshold_millis)}>{t('按建议打开草稿', 'Open draft with this level')}</button> };
     if (s.kind === 'step_down') return { tone: 'warn', badge: t('建议下调', 'Step down'), title: t(`建议调回「${level}」`, `Consider lowering trust to ${level}`), body: facts(branch.full_history, false), threshold, replay: replayText, extra: '',
       action: onThreshold && <button type="button" className="btn btn-primary" onClick={() => onThreshold(branch.branch_id, s.threshold_millis)}>{t('按建议打开草稿', 'Open draft with this level')}</button> };
-    if (s.kind === 'explore_division') return { tone: 'cyan', badge: t('可以分工', 'Divide work'), title: t('已经放手，可以试试按任务分工', 'Hands-off already; you can try dividing work by task'), body: facts(branch.upward_cohort, true), extra: scope,
+    if (s.kind === 'explore_division') return { tone: 'cyan', badge: t('可以分工', 'Divide work'), title: t('已经放手，可以试试按任务分工', 'Hands-off already; you can try dividing work by task'), body: facts(branch.upward_cohort, true), extra: '',
       action: onDivision && <button type="button" className="btn btn-primary" onClick={() => onDivision(branch.branch_id)}>{t('查看分工草稿', 'Review division draft')}</button> };
     if (s.kind === 'return_to_previous_routing') return { tone: 'bad', badge: t('建议回退', 'Go back'), title: t('常规模型胜任率偏低，可以回到之前的路由', 'Regular competence is low. You can return to previous routing'), body: facts(branch.full_history, false), extra: '',
       action: <>{(report.previous_routing ?? []).map(target => <button type="button" className="btn btn-primary" key={`${target.agent}/${target.presets.join(',')}`} disabled={!onOpenAgent} onClick={() => onOpenAgent?.(target.agent)}>{t('查看之前的路由', 'Review previous routing')} · {agentDisplayName(target.agent, language)}</button>)}</> };
@@ -55,11 +65,24 @@ export function TrustSuggestions({ report, language, onThreshold, onDivision, on
   }
   return <>{report.branches.map(branch => {
     const b = banner(branch);
+    const configured = configuredByBranch.get(branch.branch_id) ?? [];
+    const category = configured.find(model => model.branch_name)?.branch_name
+      ?? (branch.branch_id === 'smart_saving' ? qualityBranchLabel(branch.branch_id, language) : branch.branch_id);
+    const fromDate = new Date(branch.upward_from_ms);
+    const from = Number.isSafeInteger(branch.upward_from_ms) && branch.upward_from_ms > 0 && Number.isFinite(fromDate.getTime())
+      ? fromDate.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US') : null;
     return <section key={branch.branch_id} className={`trust-suggestion ${b.tone}`} aria-label={t('档位建议', 'Level suggestion')}>
       <div className="trust-suggestion-main">
         <div className="trust-suggestion-line"><span className={`badge no-dot ${b.tone}`}>{b.badge}</span><strong>{named ? `${branch.branch_id} · ` : ''}{b.title}</strong></div>
         {b.threshold && <p className="trust-suggestion-note trust-suggestion-threshold">{b.threshold}</p>}
         <p>{b.body}</p>
+        <p className="trust-suggestion-sample"><strong>{t(`升档样本：${branch.upward_cohort.complete} / 30`, `Step-up samples: ${branch.upward_cohort.complete} / 30`)}</strong><span>{t(`当前版本 · ${category} · 常规组 · 完整评分`, `Active revision · ${category} · Regular · Fully scored`)}</span></p>
+        <Disclosure className="trust-evidence-scope" label={t('样本范围', 'Evidence scope')} language={language}>
+          <p>{t('升档使用当前生效版本、本分类常规组的保留记录，与页面展示的时间筛选无关。下调也只使用该版本和分类的保留记录。', 'Step-up uses retained records for the active revision and this category’s Regular group, independently of the page’s display period. Step-down also uses retained records for that revision and category.')}</p>
+          {noModelUpdates ? <p>{t('此报告没有模型更新公告；升档范围受保留期限制。', 'No model-update announcements are present in this report; retention bounds the step-up scope.')}</p>
+            : <p>{t('模型更新是否适用于本分类尚未确认；实际起点已包含保留期和可能适用的更新截点。', 'Model-update basis is unconfirmed for this category; the effective start includes retention and any applicable update cutoff.')}</p>}
+          <p>{from ? t(`升档样本实际起点：${from}。`, `Effective step-up sample start: ${from}.`) : t('升档样本从可用保留记录的起点开始。', 'Step-up samples begin at the start of available retained records.')}</p>
+        </Disclosure>
         {b.replay && <p className="trust-suggestion-replay">{b.replay}</p>}
         {b.newlyRegular && <p className="trust-suggestion-newly-regular">{b.newlyRegular}</p>}
         {b.extra && <p className="trust-suggestion-note">{b.extra}</p>}
@@ -80,13 +103,14 @@ export function TrustTiles({ report, language }: { report: TrustReport; language
   const eligible = sum(regular, row => row.counts.competence_eligible ?? row.counts.complete);
   const unscored = executed - complete;
   const protections = sum(report.rows, row => row.protections.length), relays = sum(report.rows, row => row.availability_relays);
-  const cost = report.cost.kind === 'available' ? report.cost.comparison : null;
-  const money = (micros: number | null | undefined) => cost && micros != null ? formatMoney(cost.currency, (micros / 1_000_000).toFixed(2)) : '—';
+  const cost = presentTrustCost(report.cost);
+  const money = (entry: Extract<typeof cost, { kind: 'available' }>['routed'], signed = false) => cost.kind === 'available'
+    ? `${formatPresentedCostAmount(entry, cost.currency, language, signed)}${entry.kind === 'range' ? t('（范围）', ' (Range)') : ''}` : '';
   return <div className="trust-tiles">
     <div className="trust-tile"><span>{t('交给常规模型的阶段', 'Stages given to Regular')}</span><strong>{ratio(executed, total)}</strong><small>{executed} / {total}</small></div>
     <div className="trust-tile"><span>{t('常规模型胜任率', 'Regular competence')}</span><strong>{ratio(meets, eligible)}</strong><small>{t(`${meets} / ${eligible} 达到下限 · ${unscored} 未完整评分`, `${meets} / ${eligible} meet the floor · ${unscored} not fully scored`)}</small></div>
     <div className="trust-tile"><span>{t('低分保护', 'Low-score protection')}</span><strong>{t(`${protections} 次`, String(protections))}</strong><small>{t(`另有 ${relays} 次故障接力，不算没做好`, `${relays} availability relays are not counted as failures`)}</small></div>
-    <div className="trust-tile"><span>{t('常规模型阶段估算费用', 'Estimated Regular cost')}</span><strong>{money(cost?.routed_estimate_micros)}</strong><small>{cost ? t(`同样用量按主力估算 ${money(cost.reference_estimate_micros)}`, `Same usage at Primary prices: ${money(cost.reference_estimate_micros)}`) : t('费用对比暂不可用', 'Cost comparison unavailable')}</small></div>
+    <div className="trust-tile"><span>{t('常规模型阶段估算费用', 'Estimated Regular cost')}</span>{cost.kind === 'available' ? <><strong>{money(cost.routed)}</strong><small>{t(`同样用量的主力参考：${money(cost.reference)}`, `Primary reference for the same usage: ${money(cost.reference)}`)}</small><small>{t(`估算差额：${money(cost.difference, true)}`, `Estimated difference: ${money(cost.difference, true)}`)}</small></> : <small>{t('费用对比暂不可用：', 'Cost comparison unavailable: ')}{trustCostUnavailableReason(cost.reason, language)}</small>}</div>
   </div>;
 }
 

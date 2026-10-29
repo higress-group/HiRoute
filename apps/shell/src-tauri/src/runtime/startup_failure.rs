@@ -51,10 +51,13 @@ pub(super) fn command_result(success: bool, value: Value) -> Result<Value, &'sta
 mod tests {
     use super::*;
     use hiroute_diagnostics::{
-        Component, DiagnosticRuntime, RuntimeConfig,
+        Component, DiagnosticRuntime, EmitOutcome, RuntimeConfig,
         event::{DiagnosticEvent, ProcessRole, StartupEnd, StartupFailureCode, StartupOutcome},
+        files::{CURRENT_LOG_FILE, WRITER_LOCK_FILE},
+        record::DiagnosticRecordV1,
     };
     use hiroute_host_runtime::{StorageRecoveryAction as Action, StorageRecoveryCause as Cause};
+    use std::time::{Duration, Instant};
 
     fn write_failure(diagnostics: &Path, code: StartupFailureCode) {
         let runtime = DiagnosticRuntime::start(RuntimeConfig {
@@ -64,11 +67,65 @@ mod tests {
             parent_session_id: None,
             level_override: None,
         });
-        runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
-            outcome: StartupOutcome::Failure { code },
-            elapsed_ms: 1,
-        }));
+        let boot = runtime
+            .boot_id()
+            .expect("fixture diagnostics must be enabled");
+        let role = runtime.role_dir().expect("fixture diagnostics role");
+        assert_eq!(
+            runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
+                outcome: StartupOutcome::Failure { code },
+                elapsed_ms: 1,
+            })),
+            EmitOutcome::Queued
+        );
+        // Diagnostics intentionally have a bounded, lossy shutdown. Establish
+        // the fixture's current fact before testing the Shell's cause mapping.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let written = role
+                .open_read(CURRENT_LOG_FILE)
+                .ok()
+                .flatten()
+                .and_then(|mut file| file.read_tail(64 * 1024).ok())
+                .filter(|bytes| bytes.ends_with(b"\n"))
+                .is_some_and(|bytes| {
+                    bytes.split(|byte| *byte == b'\n').any(|line| {
+                        serde_json::from_slice::<DiagnosticRecordV1>(line)
+                            .ok()
+                            .is_some_and(|record| {
+                                record.boot_id == boot
+                                    && matches!(record.event, DiagnosticEvent::StartupEnd(end)
+                                        if matches!(end.outcome, StartupOutcome::Failure { code: actual } if actual == code))
+                            })
+                    })
+                });
+            if written {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "fixture failure was not written: {:?}, {:?}",
+                runtime.status(),
+                runtime.queue_snapshot()
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
         runtime.shutdown();
+        // The next fixture runtime uses this same role. Do not race a writer
+        // that is still releasing its lock after the bounded shutdown returned.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let lock = role.open_lock(WRITER_LOCK_FILE).expect("fixture role lock");
+            if lock.try_lock_exclusive().is_ok() {
+                lock.unlock().expect("release fixture role lock");
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "fixture writer did not release its role"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]

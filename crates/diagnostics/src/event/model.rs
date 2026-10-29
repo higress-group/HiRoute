@@ -123,6 +123,71 @@ pub struct ResponseFailure {
     /// Bytes supplied to the decoder, an upper bound rather than a token offset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub received_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture: Option<ResponseCaptureFailure>,
+}
+
+/// Optional observation-side failure, separate from authoritative provider processing.
+/// Every field is closed or numeric; no source text or identifier is retained.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResponseCaptureFailure {
+    pub ingress_protocol: IngressProtocol,
+    pub upstream_protocol: IngressProtocol,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_event: Option<ResponseEventShape>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResponseEventShape {
+    pub event: ResponseEventKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sse_event: Option<ResponseEventKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_index: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_index: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_index: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item: Option<ResponseItemKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_parts: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary_parts: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseEventKind {
+    ResponseStarted,
+    OutputItemAdded,
+    OutputItemDone,
+    ContentPartAdded,
+    ContentPartDone,
+    TextDelta,
+    TextDone,
+    ReasoningPartAdded,
+    ReasoningPartDone,
+    ReasoningDelta,
+    ReasoningDone,
+    ToolArgumentsDelta,
+    ToolArgumentsDone,
+    Terminal,
+    Error,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseItemKind {
+    Message,
+    Reasoning,
+    FunctionCall,
+    CustomToolCall,
+    WebSearchCall,
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -351,7 +416,51 @@ pub enum CpaExecution {
         unauthorized_responses: u8,
         auth_recovery_attempts: u8,
         auth_recovery_successes: u8,
+        /// First/last actual transport observations at downstream header commit.
+        /// Old v1 evidence and historical records have no inference detail.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inference: Option<CpaInferenceObservation>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CpaInferenceObservation {
+    pub downstream_status: u16,
+    pub first: Option<CpaInferenceAttempt>,
+    pub last: Option<CpaInferenceAttempt>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CpaInferenceAttempt {
+    pub ordinal: u8,
+    pub upstream_status: Option<u16>,
+    pub phase: CpaInferencePhase,
+    pub error: CpaInferenceError,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CpaInferencePhase {
+    Started,
+    Headers,
+    Transport,
+    Body,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CpaInferenceError {
+    None,
+    Cancelled,
+    Timeout,
+    Eof,
+    UnexpectedEof,
+    Dns,
+    Tls,
+    Network,
+    Other,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

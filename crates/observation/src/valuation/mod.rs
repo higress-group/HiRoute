@@ -5,7 +5,9 @@ mod arithmetic;
 mod comparison;
 mod reference_usage;
 pub use comparison::{ReferenceComparisonV2, compare_reference};
-pub(crate) use reference_usage::{reference_usage, reference_usage_semantics};
+pub(crate) use reference_usage::{
+    reference_bounds_semantics, reference_usage, reference_usage_semantics,
+};
 mod ingest;
 mod retention;
 mod schema;
@@ -22,8 +24,10 @@ use hiroute_domain::{FrozenPriceQuoteV1, PriceValuationKindV1};
 use serde::{Deserialize, Serialize};
 
 pub use arithmetic::value_attempt;
-pub(crate) use arithmetic::{amount_only, validate_quote};
+pub(crate) use arithmetic::{amount_only, validate_quote, value_recorded_attempt};
 pub const VALUATION_ALGORITHM: &str = "hiroute.valuation/2-micros-half-up-per-attempt";
+pub(crate) const EQUAL_RATE_VALUATION_ALGORITHM: &str =
+    "hiroute.valuation/3-equal-rate-micros-half-up-per-attempt";
 
 pub(crate) const CACHE_HIT_ARCHIVE_SCHEMA: &str = "cache_hit_schema_v1";
 pub(crate) const CACHE_HIT_TOTAL_ATTEMPTS: &str = "cache_hit_total_attempts";
@@ -75,6 +79,8 @@ pub struct AttemptValuationV2 {
     pub valuation_kind: PriceValuationKindV1,
     pub quote: FrozenPriceQuoteV1,
     pub known_sum_micros: Option<u64>,
+    /// Coverage of the amount. Individual token components can remain unknown
+    /// when equal frozen rates make the combined amount determinable.
     pub coverage: MetricCoverage,
     pub components: Vec<ValuationComponentV2>,
 }

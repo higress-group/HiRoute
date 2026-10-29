@@ -5,7 +5,7 @@ import { mockIPC } from './host-mock';
 import { ModelManagementPage } from '../../../src/product/ModelManagementPage';
 import { RoutingPage } from '../../../src/product/RoutingPage';
 import { PresentationRoot, parseTextScale } from '../../../src/ui';
-import { dailyPlan, mockProductInvoke, readyDesktop, readyManagement } from './product-fixtures';
+import { dailyPlan, fixturePlanAuthoring, mockProductInvoke, readyDesktop, readyManagement } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
 const params = new URLSearchParams(location.search);
@@ -28,8 +28,15 @@ const snapshot = {
   catalog_error: warning ? 'SCROLL_FIXTURE_UNAVAILABLE' : null,
   trusted_authority: !warning,
 };
-mockIPC((command, payload) => command === 'compute_management_snapshot'
-  ? management : mockProductInvoke(command, payload as Record<string, any> | undefined, 'ready'));
+mockIPC(async (command, payload) => {
+  if (command === 'compute_management_snapshot') return management;
+  const response = await mockProductInvoke(command, payload as Record<string, any> | undefined, 'ready');
+  const input = payload && 'input' in payload ? payload.input : undefined;
+  const authoring = input && typeof input === 'object' && 'authoring' in input ? input.authoring : undefined;
+  const planId = authoring && typeof authoring === 'object' && 'plan_id' in authoring ? authoring.plan_id : undefined;
+  const plan = command === 'plan_editor_options' && typeof planId === 'string' ? plans.find(item => item.agent_plan_id === planId) : undefined;
+  return plan ? { ...response, authoring: fixturePlanAuthoring(plan) } : response;
+});
 
 createRoot(document.getElementById('root')!).render(
   <PresentationRoot language="en" theme="dark" textScale={parseTextScale(params.get('scale'))}>
@@ -40,7 +47,7 @@ createRoot(document.getElementById('root')!).render(
         {page === 'models'
           ? <ModelManagementPage language="en" active trustedAuthority={!warning} refreshVersion={0}
               onOperation={() => undefined} onRecoveryRefresh={() => undefined} onChanged={() => undefined} />
-          : <RoutingPage language="en" snapshot={snapshot} loading={false} busy={false}
+          : <RoutingPage language="en" snapshot={snapshot} loading={false} busy={false} mutationAllowed={Boolean(snapshot.trusted_authority && snapshot.service.mutation_available)}
               onRefresh={async () => undefined} onOperation={() => undefined} />}
       </div></main>
     </div>

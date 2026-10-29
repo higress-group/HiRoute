@@ -12,6 +12,16 @@ pub(super) fn note(stage: Stage, reason: Reason) {
     report(stage, reason, None, None);
 }
 
+pub(super) fn native_completion(
+    projector: &mut crate::server::core_runtime::adapters::NativeResponseProjector,
+) {
+    if let Some((protocol, evidence)) = projector.take_completion_diagnostic()
+        && let Some(observation) = crate::server::core_runtime::observation::active_request()
+    {
+        observation.native_completion_unknown(protocol, evidence);
+    }
+}
+
 fn report(stage: Stage, reason: Reason, field: Option<Field>, position: Option<(u64, u64)>) {
     if let Some(observation) = crate::server::core_runtime::observation::active_request() {
         observation.response_failure_detail(stage, reason, field, position);
@@ -113,7 +123,8 @@ pub(crate) fn category(error: &ProtocolAdapterError) -> (Reason, Option<Field>) 
             ModelIrError::ResponsesPreviousResponseIdUnsupported
             | ModelIrError::ResponsesConversationUnsupported => Reason::UnsupportedValue,
         },
-        ProtocolAdapterError::ClientUnrepresentable(_) => Reason::Unrepresentable,
+        ProtocolAdapterError::ClientUnrepresentable(_)
+        | ProtocolAdapterError::RequestUnrepresentable { .. } => Reason::Unrepresentable,
         ProtocolAdapterError::Capability(_) => Reason::Capability,
         ProtocolAdapterError::Context(_) => Reason::ContextProjection,
         ProtocolAdapterError::Serialization(_) => Reason::Serialization,

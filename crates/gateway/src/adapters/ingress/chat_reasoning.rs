@@ -27,7 +27,7 @@ pub(super) fn canonical_reasoning<'a>(
         || !alias_is_text
         || content.is_some_and(|content| !same_text(content, alias, context.replay))
     {
-        context.native_only.set(true);
+        context.mark_native_only();
         return content;
     }
     content.or(Some(alias))

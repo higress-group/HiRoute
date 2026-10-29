@@ -1,5 +1,6 @@
 import type { Agent, AgentSnapshot } from '../agents';
 import { agentHasNoModelConnection, agentModelStatus } from '../features/agents/status.ts';
+import { agentBrand, agentDisplayName, agentEcosystem, agentSupportsCollaboration, agentSupportsModelRouting } from '../features/agents/ecosystems.ts';
 import type {
   HomeActivity,
   HomeAgents,
@@ -184,18 +185,11 @@ function facet(state: string | undefined): HomeFacetState {
 
 function projectAgent(agent: Agent): HomeAgents['agents'][number] {
   const model = agentModelStatus(agent);
-  const normalized = agent.agent_id.toLowerCase();
-  const brand = normalized.includes('codex')
-    ? 'codex'
-    : normalized.includes('claude') ? 'claude-code' : normalized.includes('qoder') ? 'qoder' : 'agent';
   return {
     agentId: agent.agent_id,
     contextId: agent.context_id ?? undefined,
-    displayName: agent.agent_id === 'agent_codex_default'
-      ? 'Codex'
-      : agent.agent_id === 'agent_claude_default' ? 'Claude Code'
-        : agent.agent_id === 'agent_qoder_default' ? 'Qoder' : agent.agent_id,
-    brand,
+    displayName: agentEcosystem(agent.agent_id) ? agentDisplayName(agent.agent_id, 'en') : agent.agent_id,
+    brand: agentBrand(agent.agent_id),
     model: agentHasNoModelConnection(agent) ? 'unsupported'
       : model ? facet(model.state) : 'unknown',
     collaboration: facet(agent.settings?.collaboration?.state),
@@ -205,6 +199,43 @@ function projectAgent(agent: Agent): HomeAgents['agents'][number] {
 
 export function projectHomeAgents(snapshot: AgentSnapshot): HomeAgents {
   return { agents: snapshot.agents.map(projectAgent) };
+}
+
+type AgentHomeFacet = {
+  state: 'absent' | 'recorded' | 'pending' | 'needs_attention' | 'unavailable' | 'not_ready';
+  coverage: 'complete' | 'unavailable' | 'not_ready';
+  action: 'configure' | 'restore' | null;
+  native_checked: boolean;
+};
+export type AgentHomeSummary = {
+  trusted_authority: boolean;
+  agents: {
+    agent_id: string;
+    configuration_state: string;
+    context_id: string | null;
+    facets: { context_id: string; model: AgentHomeFacet; collaboration: AgentHomeFacet; management_skill: AgentHomeFacet } | null;
+  }[];
+};
+
+function recordedFacet(value: AgentHomeFacet | undefined): HomeFacetState {
+  if (!value || value.coverage === 'not_ready') return 'unknown';
+  if (value.coverage !== 'complete' || value.native_checked) return 'unavailable';
+  if (value.state === 'absent') return 'unconfigured';
+  if (value.state === 'recorded') return value.action === 'configure' ? 'recorded' : value.action === 'restore' ? 'restored' : 'unknown';
+  if (value.state === 'pending') return 'pending';
+  if (value.state === 'needs_attention') return 'degraded';
+  return value.state === 'unavailable' ? 'unavailable' : 'unknown';
+}
+
+export function projectHomeAgentSummary(summary: AgentHomeSummary): HomeAgents {
+  return { agents: summary.agents.map(agent => ({
+    agentId: agent.agent_id,
+    contextId: agent.context_id ?? undefined,
+    displayName: agentEcosystem(agent.agent_id) ? agentDisplayName(agent.agent_id, 'en') : agent.agent_id,
+    brand: agentBrand(agent.agent_id),
+    model: agentSupportsModelRouting(agent.agent_id) ? recordedFacet(agent.facets?.model) : 'unsupported',
+    collaboration: agentSupportsCollaboration(agent.agent_id) ? recordedFacet(agent.facets?.collaboration) : 'unsupported',
+  })) };
 }
 
 function dateTimeLabel(milliseconds: number): string {
@@ -221,17 +252,15 @@ function dateTimeLabel(milliseconds: number): string {
 }
 
 export function projectHomeActivity(page: ObservationSessionPage): HomeActivity {
-  const agentName = (id: string) => id.toLocaleLowerCase().includes('codex')
-    ? 'Codex'
-    : id.toLocaleLowerCase().includes('claude')
-      ? 'Claude Code'
-      : 'Agent';
   return {
     sessions: page.sessions.map(session => ({
       sessionId: session.session_id || null,
+      agentId: session.agent_id || undefined,
       title: '',
       requestCount: session.request_count,
-      agentName: session.agent_id ? agentName(session.agent_id) : undefined,
+      agentName: session.agent_id
+        ? agentEcosystem(session.agent_id) ? agentDisplayName(session.agent_id, 'en') : 'Agent'
+        : undefined,
       occurredAtMs: session.last_request_at_ms,
       occurredAtLabel: dateTimeLabel(session.last_request_at_ms),
       modelSwitch: session.fallback_request_count > 0,

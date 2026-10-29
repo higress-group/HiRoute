@@ -1,7 +1,9 @@
 import type { Agent } from '../../agents';
+export type DeviceScanAgent = Pick<Agent, 'agent_id' | 'configuration_state'>;
 import type { SubscriptionCandidate } from '../subscriptions/types';
 import { BrandIcon, UiIcon } from '../../ui';
 import { agentBrandFromId } from '../../ui/BrandIcon';
+import { agentDisplayName as agentName } from '../agents/ecosystems';
 
 export type ComputeScanItem = {
   agent_id: string;
@@ -27,16 +29,6 @@ export type ComputeScanResult = {
   connections: ComputeScanItem[];
   diagnostics: { agent_id: string; reason: string; native_provider_id?: string; model_id?: string }[];
 };
-
-function agentName(agentId: string, language: 'zh' | 'en') {
-  if (agentId.includes('claude')) return 'Claude Code';
-  if (agentId.includes('codex')) return 'Codex';
-  if (agentId === 'agent_dsh_default') return 'DeepSeek Harness';
-  if (agentId === 'agent_pi_default') return 'Pi';
-  if (agentId === 'agent_hermes_default') return 'Hermes';
-  if (agentId.includes('qoder')) return 'Qoder';
-  return language === 'zh' ? '本机 Agent' : 'Local agent';
-}
 
 function connectionName(optionId: string | undefined, language: 'zh' | 'en') {
   if (!optionId) return language === 'zh' ? '本机模型配置' : 'Local model configuration';
@@ -64,7 +56,7 @@ function configurationMessage(item: ComputeScanItem, language: 'zh' | 'en') {
   return language === 'zh' ? '已检测到配置，但当前无法安全复用。' : 'Configuration found, but it cannot be reused safely yet.';
 }
 
-function agentScanState(agent: Agent, language: 'zh' | 'en') {
+function agentScanState(agent: DeviceScanAgent, language: 'zh' | 'en') {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   if (agent.configuration_state === 'executable_not_runnable') {
     return {
@@ -126,7 +118,7 @@ export function DeviceScanList({
   language: 'zh' | 'en';
   subscriptions: SubscriptionCandidate[];
   computeItems: ComputeScanItem[];
-  agents: Agent[];
+  agents?: DeviceScanAgent[];
   subscriptionScanFailed: boolean;
   subscriptionRuntimeUnavailable: boolean;
   computeScanFailed: boolean;
@@ -138,7 +130,7 @@ export function DeviceScanList({
   onOpenDiscoveredConfiguration(item: ComputeScanItem): void;
 }) {
   const configurations = computeItems.filter(item => item.connection_option_id || item.native_provider_id);
-  const detectedAgents = agents.filter(agent => agent.configuration_state !== 'not_found_in_scope');
+  const detectedAgents = agents?.filter(agent => agent.configuration_state !== 'not_found_in_scope');
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   return <div className="oc-scan-list">
     <p className="v3-select-intro">{text('逐项查看和接入，不改变 Agent 的现有路由设置。', 'Review and connect each source without changing the agents’ routing settings.')}</p>
@@ -181,7 +173,7 @@ export function DeviceScanList({
     {computeScanFailed && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{text('暂时无法读取本机 API 配置，请重试。', 'Local API configurations could not be read. Try again.')}</span></div>}
 
     <h3 className="oc-section-label">{text('已发现的 Agent', 'Detected agents')}</h3>
-    {detectedAgents.map(agent => {
+    {detectedAgents?.map(agent => {
       const state = agentScanState(agent, language);
       return <div className="oc-status-row" key={agent.agent_id}>
         <BrandIcon kind={agentBrandFromId(agent.agent_id)} label={agentName(agent.agent_id, language)} />
@@ -189,7 +181,8 @@ export function DeviceScanList({
         {state.label && <span className={`badge ${state.tone} no-dot`}>{state.label}</span>}
       </div>;
     })}
-    {!detectedAgents.length && <p className="oc-meta">{text('尚未发现可接入的 Agent。', 'No compatible agent was detected.')}</p>}
+    {!detectedAgents && <p className="oc-meta" role="status">{text('Agent 列表暂不可用。', 'The agent list is not currently available.')}</p>}
+    {detectedAgents && !detectedAgents.length && <p className="oc-meta">{text('尚未发现可接入的 Agent。', 'No compatible agent was detected.')}</p>}
     <p className="oc-meta">{text('未能安全复用的 API，可通过“连接 API”手动添加。', 'APIs that cannot be reused safely can be added manually through Connect an API.')}</p>
   </div>;
 }

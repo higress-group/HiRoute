@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn baseline_c_default_publication_remains_valid_without_replacing_frozen_questions() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/baseline-c-default-publication.json")).unwrap();
+    let judgment: JudgmentSettingsV1 = serde_json::from_value(fixture["judgment"].clone()).unwrap();
+    let frozen: FrozenNativeProtocolV1 = serde_json::from_value(fixture["frozen"].clone()).unwrap();
+    frozen.validate_smart(&judgment).unwrap();
+    assert_eq!(serde_json::to_value(&frozen).unwrap(), fixture["frozen"]);
+    assert_eq!(
+        frozen.scopes[super::super::SMART_SAVING_SCOPE_ID].assessment,
+        stock_c_questions()["q1"]
+    );
+    let mut changed = judgment.clone();
+    changed.competence.instructions.push_str(" changed");
+    assert_eq!(
+        frozen.validate_smart(&changed),
+        Err(NativeProtocolError::ContentMismatch)
+    );
+}
+
+#[test]
 fn stock_questions_and_composition_are_the_public_frozen_c_full() {
     let p = NativeProtocolV1::default();
     let mut j = JudgmentSettingsV1::default();
@@ -15,6 +35,89 @@ fn stock_questions_and_composition_are_the_public_frozen_c_full() {
         CanonicalDigest::of(&stock_c_questions()).unwrap().as_str(),
         format!("sha256:{C_FULL_CHECKSUM}")
     );
+}
+
+#[test]
+fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
+    let old_questions = stock_c_questions();
+    let new_questions = stock_c_v2_questions();
+    assert_eq!(old_questions["q0"], new_questions["q0"]);
+    assert_eq!(old_questions["q1"], new_questions["q1"]);
+    assert_ne!(old_questions["q2"], new_questions["q2"]);
+    assert_eq!(
+        CanonicalDigest::of(&old_questions).unwrap().as_str(),
+        format!("sha256:{C_FULL_CHECKSUM}")
+    );
+    assert_eq!(
+        CanonicalDigest::of(&new_questions).unwrap().as_str(),
+        format!("sha256:{C_V2_FULL_CHECKSUM}")
+    );
+    let old = NativeProtocolV1::c_v1();
+    let new = NativeProtocolV1::default();
+    assert_eq!(new.schema, SYSTEM_ONE_C_V2);
+    for protocol in [&old, &new] {
+        protocol.validate().unwrap();
+        let selection = super::super::NativeProtocolSelectionV1 {
+            schema: protocol.schema.clone(),
+            prior_context_max_turns: protocol.prior_context_max_turns,
+        };
+        assert_eq!(selection.resolve().unwrap(), *protocol);
+    }
+    for (schema, fixed) in [
+        (SYSTEM_ONE_C_V1, new.fixed.clone()),
+        (SYSTEM_ONE_C_V2, old.fixed.clone()),
+    ] {
+        let mismatched = NativeProtocolV1 {
+            schema: schema.into(),
+            fixed,
+            prior_context_max_turns: 8,
+        };
+        assert_eq!(
+            mismatched.validate(),
+            Err(NativeProtocolError::FixedContent)
+        );
+    }
+    let mut unknown = new.clone();
+    unknown.schema = "hiroute.system-one-c/v99".into();
+    assert_eq!(unknown.validate(), Err(NativeProtocolError::Unsupported));
+    let selection = super::super::NativeProtocolSelectionV1 {
+        prior_context_max_turns: 7,
+        ..Default::default()
+    };
+    assert_eq!(selection.resolve(), Err(NativeProtocolError::HistoryCap));
+
+    let judgment = JudgmentSettingsV1::default();
+    let freeze = |protocol: &NativeProtocolV1| {
+        FrozenNativeProtocolV1::freeze(
+            protocol,
+            judgment.degree.definition().into(),
+            [(super::super::SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
+        )
+        .unwrap()
+    };
+    let old_frozen = freeze(&old);
+    let new_frozen = freeze(&new);
+    assert_ne!(old_frozen.digest, new_frozen.digest);
+    assert_ne!(
+        old_frozen.execution_policy(super::super::SMART_SAVING_SCOPE_ID, &judgment, "same"),
+        new_frozen.execution_policy(super::super::SMART_SAVING_SCOPE_ID, &judgment, "same")
+    );
+    let mut stock = judgment.clone();
+    old.stock_assessment(&mut stock);
+    stock.competence.standard = Some(super::super::AssessmentStandardV1::Default);
+    let direct_new = FrozenNativeProtocolV1::freeze(
+        &new,
+        stock.degree.definition().into(),
+        [(super::super::SMART_SAVING_SCOPE_ID.into(), stock)],
+    )
+    .unwrap();
+    assert_ne!(
+        direct_new.scopes[super::super::SMART_SAVING_SCOPE_ID].assessment,
+        old_questions["q1"]
+    );
+    let mut tampered = new_frozen;
+    tampered.protocol.fixed.applicability = old.fixed.applicability;
+    assert_eq!(tampered.validate(), Err(NativeProtocolError::FixedContent));
 }
 
 #[test]
@@ -187,7 +290,13 @@ fn direct_freezing_resolves_default_intent_and_preserves_explicit_custom_bytes()
         .unwrap()
     };
     let default = freeze(original.clone());
+    let mut current = original.clone();
+    protocol.current_assessment(&mut current);
     assert_eq!(
+        default.scopes[super::super::SMART_SAVING_SCOPE_ID].assessment,
+        composed_assessment(Some(&protocol), &current)
+    );
+    assert_ne!(
         default.scopes[super::super::SMART_SAVING_SCOPE_ID].assessment,
         stock_c_questions()["q1"]
     );

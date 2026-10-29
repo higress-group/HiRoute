@@ -1,205 +1,215 @@
-use serde_json::Value;
 use thiserror::Error;
 
 const MAX_ALIAS_BYTES: usize = 128;
+// A JSON escape uses at most six wire bytes per decoded ASCII byte.
+const MAX_MODEL_TOKEN_BYTES: usize = MAX_ALIAS_BYTES * 6 + 2;
+const MAX_KEY_TOKEN_BYTES: usize = 5 * 6 + 2;
+const MAX_DEPTH: usize = 128;
 
-/// Bounded incremental extractor for the top-level `model` selector. It stops
-/// as soon as that string closes and never materializes unrelated body values.
+/// Locates the first top-level model without retaining or rescanning its prefix.
+/// Full JSON and protocol validation still belongs to the canonical decoder.
 #[derive(Debug)]
 pub struct ModelSelector {
-    bytes: Vec<u8>,
+    state: State,
+    token: [u8; MAX_MODEL_TOKEN_BYTES],
+    token_len: usize,
+    token_overflow: bool,
+    escaped: bool,
+    model_key: bool,
+    stack: [u8; MAX_DEPTH],
+    depth: usize,
+    observed: usize,
     limit: usize,
+    selected: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum State {
+    Start,
+    Key,
+    Colon,
+    Value,
+    AfterValue,
+    String(StringKind),
+    Nested,
+    Primitive,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum StringKind {
+    Key,
+    Model,
+    Skipped,
+    Nested,
 }
 
 impl ModelSelector {
+    // Includes the fixed state, bounded alias and serde's bounded token scratch.
+    pub(crate) const MEMORY_BYTES: usize = 4 * 1024;
+
     pub fn new(limit: usize) -> Self {
         Self {
-            bytes: Vec::with_capacity(limit.min(4_096)),
+            state: State::Start,
+            token: [0; MAX_MODEL_TOKEN_BYTES],
+            token_len: 0,
+            token_overflow: false,
+            escaped: false,
+            model_key: false,
+            stack: [0; MAX_DEPTH],
+            depth: 0,
+            observed: 0,
             limit,
+            selected: None,
         }
     }
 
     pub fn feed(&mut self, chunk: &[u8]) -> Result<Option<String>, SelectorError> {
-        let remaining = self.limit.saturating_sub(self.bytes.len());
-        self.bytes
-            .extend_from_slice(&chunk[..chunk.len().min(remaining)]);
-        match extract_top_level_model(&self.bytes)? {
-            Extract::Found(model) => return validate_model(model).map(Some),
-            Extract::NeedMore => {}
+        if let Some(model) = &self.selected {
+            return Ok(Some(model.clone()));
         }
-        if chunk.len() > remaining || self.bytes.len() == self.limit {
+        for &byte in chunk {
+            if self.observed == self.limit {
+                return Err(SelectorError::LimitExceeded(self.limit));
+            }
+            self.observed += 1;
+            self.step(byte)?;
+            if let Some(model) = &self.selected {
+                return Ok(Some(model.clone()));
+            }
+        }
+        if self.observed == self.limit {
             return Err(SelectorError::LimitExceeded(self.limit));
         }
         Ok(None)
     }
 
     pub fn finish(&self) -> Result<String, SelectorError> {
-        if let Extract::Found(model) = extract_top_level_model(&self.bytes)? {
-            return validate_model(model);
-        }
-        let value: Value =
-            serde_json::from_slice(&self.bytes).map_err(|_| SelectorError::Invalid)?;
-        let model = value
-            .as_object()
-            .and_then(|object| object.get("model"))
-            .and_then(Value::as_str)
-            .ok_or(SelectorError::Missing)?;
-        validate_model(model.to_owned())
+        self.selected.clone().ok_or(SelectorError::Invalid)
     }
-}
 
-fn validate_model(model: String) -> Result<String, SelectorError> {
-    if model.is_empty() || model.len() > MAX_ALIAS_BYTES {
-        Err(SelectorError::InvalidModel)
-    } else {
-        Ok(model)
-    }
-}
-
-#[derive(Debug)]
-enum Extract {
-    Found(String),
-    NeedMore,
-}
-
-fn extract_top_level_model(bytes: &[u8]) -> Result<Extract, SelectorError> {
-    let mut index = skip_whitespace(bytes, 0);
-    if bytes.get(index) != Some(&b'{') {
-        return if index == bytes.len() {
-            Ok(Extract::NeedMore)
-        } else {
-            Err(SelectorError::Invalid)
-        };
-    }
-    index += 1;
-    loop {
-        index = skip_whitespace(bytes, index);
-        if index == bytes.len() {
-            return Ok(Extract::NeedMore);
+    fn step(&mut self, byte: u8) -> Result<(), SelectorError> {
+        match self.state {
+            State::String(kind) => return self.string_byte(kind, byte),
+            State::Nested => {
+                match byte {
+                    b'"' => self.start_string(StringKind::Nested),
+                    b'{' | b'[' => self.push(byte)?,
+                    b'}' | b']' => {
+                        let expected = if byte == b'}' { b'{' } else { b'[' };
+                        if self.depth == 0 || self.stack[self.depth - 1] != expected {
+                            return Err(SelectorError::Invalid);
+                        }
+                        self.depth -= 1;
+                        if self.depth == 0 {
+                            self.state = State::AfterValue;
+                        }
+                    }
+                    _ => {}
+                }
+                return Ok(());
+            }
+            State::Primitive => {
+                return match byte {
+                    b',' => {
+                        self.state = State::Key;
+                        Ok(())
+                    }
+                    b'}' => Err(SelectorError::Missing),
+                    _ => Ok(()),
+                };
+            }
+            _ if byte.is_ascii_whitespace() => return Ok(()),
+            _ => {}
         }
-        if bytes[index] == b'}' {
-            return Err(SelectorError::Missing);
-        }
-        let Some((key, next)) = parse_string(bytes, index)? else {
-            return Ok(Extract::NeedMore);
-        };
-        index = skip_whitespace(bytes, next);
-        if index == bytes.len() {
-            return Ok(Extract::NeedMore);
-        }
-        if bytes[index] != b':' {
-            return Err(SelectorError::Invalid);
-        }
-        index = skip_whitespace(bytes, index + 1);
-        if index == bytes.len() {
-            return Ok(Extract::NeedMore);
-        }
-        if key == "model" {
-            let Some((model, _)) = parse_string(bytes, index)? else {
-                return Ok(Extract::NeedMore);
-            };
-            return Ok(Extract::Found(model));
-        }
-        let Some(next) = skip_json_value(bytes, index)? else {
-            return Ok(Extract::NeedMore);
-        };
-        index = skip_whitespace(bytes, next);
-        match bytes.get(index) {
-            Some(b',') => index += 1,
-            Some(b'}') => return Err(SelectorError::Missing),
-            None => return Ok(Extract::NeedMore),
+        match (self.state, byte) {
+            (State::Start, b'{') => self.state = State::Key,
+            (State::Key, b'"') => self.start_string(StringKind::Key),
+            (State::Key, b'}') | (State::AfterValue, b'}') => {
+                return Err(SelectorError::Missing);
+            }
+            (State::Colon, b':') => self.state = State::Value,
+            (State::Value, b'"') => self.start_string(if self.model_key {
+                StringKind::Model
+            } else {
+                StringKind::Skipped
+            }),
+            (State::Value, _) if self.model_key => return Err(SelectorError::Invalid),
+            (State::Value, b'{' | b'[') => {
+                self.push(byte)?;
+                self.state = State::Nested;
+            }
+            (State::Value, b',' | b'}') => return Err(SelectorError::Invalid),
+            (State::Value, _) => self.state = State::Primitive,
+            (State::AfterValue, b',') => self.state = State::Key,
             _ => return Err(SelectorError::Invalid),
         }
+        Ok(())
     }
-}
 
-fn parse_string(bytes: &[u8], start: usize) -> Result<Option<(String, usize)>, SelectorError> {
-    if bytes.get(start) != Some(&b'"') {
-        return Err(SelectorError::Invalid);
+    fn push(&mut self, byte: u8) -> Result<(), SelectorError> {
+        if self.depth == MAX_DEPTH {
+            return Err(SelectorError::Invalid);
+        }
+        self.stack[self.depth] = byte;
+        self.depth += 1;
+        Ok(())
     }
-    let mut index = start + 1;
-    let mut escaped = false;
-    while let Some(byte) = bytes.get(index).copied() {
-        if escaped {
-            escaped = false;
+
+    fn start_string(&mut self, kind: StringKind) {
+        self.state = State::String(kind);
+        self.escaped = false;
+        self.token_len = 1;
+        self.token[0] = b'"';
+        self.token_overflow = false;
+    }
+
+    fn string_byte(&mut self, kind: StringKind, byte: u8) -> Result<(), SelectorError> {
+        if matches!(kind, StringKind::Key | StringKind::Model) {
+            let limit = if matches!(kind, StringKind::Key) {
+                MAX_KEY_TOKEN_BYTES
+            } else {
+                MAX_MODEL_TOKEN_BYTES
+            };
+            if self.token_len < limit {
+                self.token[self.token_len] = byte;
+                self.token_len += 1;
+            } else if matches!(kind, StringKind::Model) {
+                return Err(SelectorError::InvalidModel);
+            } else {
+                // A longer key cannot decode to "model". Do not retain it.
+                self.token_overflow = true;
+            }
+        }
+        if self.escaped {
+            self.escaped = false;
         } else if byte == b'\\' {
-            escaped = true;
+            self.escaped = true;
         } else if byte == b'"' {
-            let value = serde_json::from_slice::<String>(&bytes[start..=index])
-                .map_err(|_| SelectorError::Invalid)?;
-            return Ok(Some((value, index + 1)));
+            self.state = match kind {
+                StringKind::Key => {
+                    self.model_key = !self.token_overflow
+                        && serde_json::from_slice::<String>(&self.token[..self.token_len])
+                            .map_err(|_| SelectorError::Invalid)?
+                            == "model";
+                    State::Colon
+                }
+                StringKind::Model => {
+                    let model = serde_json::from_slice::<String>(&self.token[..self.token_len])
+                        .map_err(|_| SelectorError::Invalid)?;
+                    if model.is_empty() || model.len() > MAX_ALIAS_BYTES {
+                        return Err(SelectorError::InvalidModel);
+                    }
+                    self.selected = Some(model);
+                    State::AfterValue
+                }
+                StringKind::Skipped => State::AfterValue,
+                StringKind::Nested => State::Nested,
+            };
         } else if byte < 0x20 {
             return Err(SelectorError::Invalid);
         }
-        index += 1;
+        Ok(())
     }
-    Ok(None)
-}
-
-fn skip_json_value(bytes: &[u8], start: usize) -> Result<Option<usize>, SelectorError> {
-    if start == bytes.len() {
-        return Ok(None);
-    }
-    if bytes[start] == b'"' {
-        return parse_string(bytes, start).map(|value| value.map(|(_, next)| next));
-    }
-    if !matches!(bytes[start], b'{' | b'[') {
-        let mut index = start;
-        while let Some(byte) = bytes.get(index) {
-            if matches!(byte, b',' | b'}') {
-                return if skip_whitespace(bytes, start) == index {
-                    Err(SelectorError::Invalid)
-                } else {
-                    Ok(Some(index))
-                };
-            }
-            index += 1;
-        }
-        return Ok(None);
-    }
-    let mut stack = vec![bytes[start]];
-    let mut index = start + 1;
-    let mut in_string = false;
-    let mut escaped = false;
-    while let Some(byte) = bytes.get(index).copied() {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if byte == b'\\' {
-                escaped = true;
-            } else if byte == b'"' {
-                in_string = false;
-            }
-        } else {
-            match byte {
-                b'"' => in_string = true,
-                b'{' | b'[' => stack.push(byte),
-                b'}' if stack.last() == Some(&b'{') => {
-                    stack.pop();
-                }
-                b']' if stack.last() == Some(&b'[') => {
-                    stack.pop();
-                }
-                b'}' | b']' => return Err(SelectorError::Invalid),
-                _ => {}
-            }
-            if stack.is_empty() {
-                return Ok(Some(index + 1));
-            }
-        }
-        index += 1;
-    }
-    Ok(None)
-}
-
-fn skip_whitespace(bytes: &[u8], mut index: usize) -> usize {
-    while bytes
-        .get(index)
-        .is_some_and(|byte| byte.is_ascii_whitespace())
-    {
-        index += 1;
-    }
-    index
 }
 
 #[derive(Debug, Error, Eq, PartialEq)]
@@ -215,53 +225,5 @@ pub enum SelectorError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn selector_stops_before_later_secret_and_ignores_nested_model() {
-        let mut selector = ModelSelector::new(64);
-        let body = br#"{"metadata":{"model":"wrong"},"model":"plan-fast","secret":"later"}"#;
-        assert_eq!(selector.feed(body).unwrap(), Some("plan-fast".into()));
-    }
-
-    #[test]
-    fn selector_is_incremental_and_bounded() {
-        let mut selector = ModelSelector::new(32);
-        assert_eq!(selector.feed(br#"{"model":"plan-"#).unwrap(), None);
-        assert_eq!(
-            selector.feed(br#"fast","input":"#).unwrap(),
-            Some("plan-fast".into())
-        );
-        assert_eq!(
-            ModelSelector::new(8).feed(br#"{"input":"too late"}"#),
-            Err(SelectorError::LimitExceeded(8))
-        );
-    }
-
-    #[test]
-    fn selector_waits_when_a_model_value_has_not_arrived() {
-        let mut selector = ModelSelector::new(64);
-        for chunk in [
-            br#"{"m"#.as_slice(),
-            b"ode",
-            br#"l":"#.as_slice(),
-            br#""wi"#.as_slice(),
-        ] {
-            assert_eq!(selector.feed(chunk).unwrap(), None);
-        }
-        assert_eq!(
-            selector.feed(br#"re-protocol"}"#).unwrap(),
-            Some("wire-protocol".into())
-        );
-
-        assert_eq!(
-            ModelSelector::new(32).feed(br#"{"model":   "#).unwrap(),
-            None
-        );
-        assert_eq!(
-            ModelSelector::new(32).feed(br#"{"model":1}"#),
-            Err(SelectorError::Invalid)
-        );
-    }
-}
+#[path = "selector_tests.rs"]
+mod tests;

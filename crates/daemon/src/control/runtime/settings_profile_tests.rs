@@ -95,13 +95,22 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     let preserved_profile = fs::read(&profile).unwrap();
     let misplaced_skill = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
         "model":{"intent":"keep"},"collaboration":{"intent":"configure","settings":{"trigger_mode":"explicit"}}});
+    // Keep every unrelated admission precondition current so this case reaches the
+    // collaboration-context denial, rather than failing the revision fence first.
+    let current = runtime
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .current_revisions(&WorkspaceId::default())
+        .unwrap();
     for operation in ["PreviewAgentConnectionChange", "ApplyAgentConnectionChange"] {
         let payload = if operation.starts_with("Preview") {
             json!({"spec":misplaced_skill})
         } else {
             let digest = CanonicalDigest::of_bytes(b"misplaced-skill");
             json!({"spec":misplaced_skill,"accept_digest":digest,"dependency_digest":digest,
-                "expected_revisions":{"target":0,"dependencies":{}},"idempotency_key":"misplaced-skill"})
+                "expected_revisions":current,"idempotency_key":"misplaced-skill"})
         };
         let rejected = service.dispatch_wire(request(operation, payload, None));
         let error = rejected.error.unwrap();
@@ -169,6 +178,48 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
             .unwrap()
             .contains("user_edit = true")
     );
+    // The active access projection must not authenticate an unrelated replaced journal.
+    let journal = rusqlite::Connection::open(dir.path().join("live/control.db")).unwrap();
+    let (old_id, old_json): (String, String) = journal.query_row(
+        "SELECT operation_id,operation_json FROM operations WHERE idempotency_key='create-profile'",
+        [], |row| Ok((row.get(0)?, row.get(1)?)),
+    ).unwrap();
+    journal
+        .execute(
+            "UPDATE operations SET operation_json='unrelated old damage' WHERE operation_id=?1",
+            [&old_id],
+        )
+        .unwrap();
+    let current_access = runtime.adapter.codex_access_view();
+    journal
+        .execute(
+            "UPDATE operations SET operation_json=?2 WHERE operation_id=?1",
+            rusqlite::params![old_id, old_json],
+        )
+        .unwrap();
+    let current_access = current_access.expect("current access must ignore replaced history");
+    assert!(current_access.slot_occupied && !current_access.access_revoked);
+    assert!(current_access.conflict_fields.is_empty());
+    journal
+        .execute(
+            "CREATE TEMP TABLE saved_optional_steps AS SELECT * FROM operation_steps
+        WHERE operation_id=?1 AND step_kind='activate'",
+            [edited["operation_id"].as_str().unwrap()],
+        )
+        .unwrap();
+    journal.execute_batch("DELETE FROM operation_steps WHERE operation_id IN (SELECT operation_id FROM saved_optional_steps)
+        AND step_kind='activate';").unwrap();
+    let current_access = runtime.adapter.codex_access_view();
+    journal
+        .execute_batch(
+            "INSERT INTO operation_steps SELECT * FROM saved_optional_steps;
+        DROP TABLE saved_optional_steps;",
+        )
+        .unwrap();
+    let current_access =
+        current_access.expect("optional service provenance must not disable current access");
+    assert!(current_access.slot_occupied && !current_access.access_revoked);
+    assert!(current_access.conflict_fields.is_empty());
     let operation: OperationId = serde_json::from_value(edited["operation_id"].clone()).unwrap();
     let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&operation)}});
     // A profile revoke needs neither the original metadata directory nor a valid root file.
@@ -290,6 +341,28 @@ fn codex_discovery_keeps_desktop_in_default_profile_mode() {
         .find(|a| a["agent_id"] == "agent_codex_default")
         .unwrap();
     assert_eq!(codex["codex_access"]["selected_mode"], "profile");
+    let selected = service.dispatch_wire(request(
+        "ScanAgents",
+        json!({"context_id":codex["context_id"]}),
+        None,
+    ));
+    assert!(selected.error.is_none(), "{selected:?}");
+    let selected = selected.data.unwrap();
+    assert_eq!(selected["agents"].as_array().unwrap().len(), 1);
+    assert_eq!(selected["agents"][0]["context_id"], codex["context_id"]);
+    assert_eq!(
+        selected["agents"][0]["codex_access"]["selected_mode"],
+        "profile"
+    );
+    let stale_root = service.dispatch_wire(request(
+        "ScanAgents",
+        json!({"context_id":codex["codex_access"]["root_context_id"]}),
+        None,
+    ));
+    assert!(
+        stale_root.error.is_some(),
+        "a root context must not silently bind to the selected profile"
+    );
     let surfaces = codex["available_surfaces"].as_array().unwrap();
     assert!(surfaces.contains(&json!("codex_cli")));
     assert!(surfaces.contains(&json!("codex_desktop")));

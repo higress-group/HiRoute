@@ -185,6 +185,7 @@ fn validate_payload(payload: &ClaudeModelFilePayload) -> Result<(), OperationVal
                             | "env.ANTHROPIC_DEFAULT_OPUS_MODEL"
                             | "env.ANTHROPIC_DEFAULT_SONNET_MODEL"
                             | "env.ANTHROPIC_DEFAULT_HAIKU_MODEL"
+                            | "env.CLAUDE_CODE_GATEWAY_HINT_HEADERS"
                             | "env.CLAUDE_CODE_AUTO_COMPACT_WINDOW"
                             | "env.CLAUDE_CODE_MAX_CONTEXT_TOKENS"
                     )

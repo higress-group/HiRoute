@@ -19,7 +19,7 @@ mod compute_state_tests;
 
 pub struct RuntimeStore {
     pub(crate) connection: RefCell<Connection>,
-    pub(crate) startup_lock: Option<std::sync::Arc<std::fs::File>>,
+    pub(crate) startup_lock: Option<std::sync::Arc<crate::migrations::StartupLock>>,
 }
 
 impl RuntimeStore {

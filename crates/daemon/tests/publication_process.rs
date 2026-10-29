@@ -15,6 +15,12 @@ fn real_process_c_routing_execution_and_retained_observations() {
     run_script_case("decision_services_product.py", Some("routed"));
 }
 
+/// Inject at the real Product content sink, preserving output and later history/C.
+#[test]
+fn real_process_content_sink_failure_is_consumed_once_and_recovers() {
+    run_script("observation_content_fault_product.py");
+}
+
 /// Current released CLI point scan/preparation shares the native multi-model exact-save boundary.
 #[test]
 fn released_cli_connection_points_prepare_and_save_exact_models() {

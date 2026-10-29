@@ -43,6 +43,9 @@ pub(crate) fn migrate(db: &mut Connection) -> rusqlite::Result<()> {
         ("first_request_id", "TEXT"),
         ("last_request_id", "TEXT"),
         ("membership_conflict", "INTEGER NOT NULL DEFAULT 0"),
+        ("membership_revision", "INTEGER NOT NULL DEFAULT 0"),
+        ("branch_id", "TEXT"),
+        ("admission_digest", "TEXT"),
     ] {
         let present:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM pragma_table_info('observation_analysis_turns_v1') WHERE name=?1)",[column],|r|r.get(0))?;
         if !present {
@@ -52,6 +55,15 @@ pub(crate) fn migrate(db: &mut Connection) -> rusqlite::Result<()> {
             rebuild_turns = true;
         }
     }
+    let membership_version: Option<String> = tx
+        .query_row(
+            "SELECT value FROM observation_analysis_meta_v1 WHERE key='turn_membership_version'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    rebuild_turns |= membership_version.as_deref() != Some("3");
+    tx.execute("INSERT INTO observation_analysis_meta_v1(key,value) VALUES('turn_membership_version','3') ON CONFLICT(key) DO UPDATE SET value=excluded.value", [])?;
     if rebuild_turns {
         tx.execute_batch(
             "INSERT OR IGNORE INTO observation_analysis_dirty_v1(workspace_id,request_id,sequence)
@@ -239,6 +251,7 @@ CREATE TABLE IF NOT EXISTS observation_analysis_turns_v1(
  workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,agent_turn_id TEXT NOT NULL,
  ordinal INTEGER NOT NULL,producer_epoch TEXT NOT NULL,partial INTEGER NOT NULL,segment_id TEXT,first_request_id TEXT,last_request_id TEXT,
  membership_conflict INTEGER NOT NULL DEFAULT 0,
+ membership_revision INTEGER NOT NULL DEFAULT 0,branch_id TEXT,admission_digest TEXT,
  PRIMARY KEY(workspace_id,request_id));
 CREATE TABLE IF NOT EXISTS observation_analysis_models_v1(
  workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,ordinal INTEGER NOT NULL,

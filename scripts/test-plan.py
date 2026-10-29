@@ -35,9 +35,12 @@ DIAGNOSTIC_CONTRACTS = (
     "crates/diagnostics/src/identity.rs", "crates/diagnostics/src/error.rs",
 )
 SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py"}
+NATIVE_SCOPE_TOOLING = {"scripts/native-agent-scope.py", "scripts/test-native-agent-scope.py",
+                        "scripts/native-agent-supervisor.py", "scripts/test-native-agent-supervisor.py"}
 PILOT_CONSUMER_INPUTS = SELECTION_TOOLING | {
     "scripts/pilot-builds.py", "scripts/test-pilot-builds.py",
     "apps/desktop/src-tauri/build.rs", "apps/desktop/src-tauri/src/development_cpa.rs",
+    "apps/desktop/src-tauri/src/cpa_manifest.rs",
     "apps/desktop/src-tauri/development-cpa-artifacts.v1.json",
 }
 LOCAL_GC_TOOLING = {"scripts/local-rust-gc.py", "scripts/test-local-rust-gc.py"}
@@ -163,6 +166,49 @@ def desktop_compile_checks(paths):
         "evidence_limit": "Compile production and test consumers on the configured Mac; "
                           "does not execute tests or prove native product behavior.",
     }]
+
+
+# These wire/history owners feed actual native clients as well as protocol fixtures.
+# Full backend expansion cannot execute a client, and an ACP journey cannot prove
+# DSH's Web/Cordis isolated LLM service. Keep those obligations explicit.
+NATIVE_GATEWAY_PREFIXES = (
+    "crates/gateway/src/adapters/", "crates/gateway/src/model_ir/",
+    "crates/gateway/src/agent_turn_history/", "crates/gateway/src/context_hold/",
+    "crates/gateway/src/core_runtime/decision_history", "crates/gateway/src/runtime/driver",
+)
+NATIVE_GATEWAY_PATHS = {"crates/gateway/src/core_runtime.rs"}
+NATIVE_AGENT_HARNESSES = ("codex", "claude", "qoder", "pi", "dsh", "opencode", "hermes")
+NATIVE_ADAPTER_TESTS = {
+    "scripts/tests/" + name + "-routing-adapter.test.mjs": name
+    for name in ("pi", "dsh", "opencode")
+}
+
+
+def native_agent_checks(paths):
+    selected = {name: set() for name in NATIVE_AGENT_HARNESSES}
+    for path in paths:
+        if path.endswith(".md"):
+            continue
+        if path in NATIVE_GATEWAY_PATHS or path.startswith(NATIVE_GATEWAY_PREFIXES):
+            for triggers in selected.values():
+                triggers.add(path)
+        for harness in NATIVE_AGENT_HARNESSES:
+            if path.startswith("assets/agents/" + harness + "/") or NATIVE_ADAPTER_TESTS.get(path) == harness:
+                selected[harness].add(path)
+    return [{
+        "id": harness + ".native-gateway", "harnesses": [harness], "platform": "macos",
+        "trigger_paths": sorted(triggers), "guide": "docs/test-selection.md#explicit-native-agent-product-gates",
+        "command_template": ["python3", "scripts/native-agent-scope.py", "--harness", harness,
+                             "--root", "<fresh-independent-root>", "--read-only", "<installed-runtime>",
+                             "--execute", "--", "<native-acceptance-command>"],
+        "required_cases": ["saved-route-native-request", "same-session-followup",
+                           "tool-continuation", "auxiliary-call", "independent-restore"] +
+                          (["web-cordis-isolated-llm-main-and-title"] if harness == "dsh" else []),
+        "missing_environment": "fail",
+        "evidence_limit": "Actual installed client through the candidate Gateway, with independent "
+                          "HOME/config/session/project/ports and OS file/signal containment. "
+                          "Preparation, --version, fixtures and ACP alone do not prove these cases.",
+    } for harness, triggers in selected.items() if triggers]
 
 
 # One registration per explicit product entry. The ordinary commands only compile ignored
@@ -331,6 +377,9 @@ def e2e_consumers(path):
     if path == "tools/e2e-harness/tests/p0_gateway_runtime.rs" or path.startswith("tools/e2e-harness/tests/p0_gateway_runtime/"):
         return [("hiroute-e2e", "p0_gateway_runtime"), ("hiroute-e2e", "p0_gateway_protocol"),
                 ("hiroute-e2e", "p0_gateway_matrix_coverage")]
+    if path == "tools/e2e-harness/tests/p0_gateway_context_hold.rs" or path.startswith("tools/e2e-harness/tests/p0_gateway_context_hold/"):
+        return [("hiroute-e2e", "p0_gateway_context_hold"), ("hiroute-e2e", "p0_gateway_protocol"),
+                ("hiroute-e2e", "p0_gateway_matrix_coverage")]
     if path == "tools/e2e-harness/tests/p0_gateway_protocol.rs" or path.startswith("tools/e2e-harness/tests/p0_gateway_protocol/"):
         return [("hiroute-e2e", "p0_gateway_protocol"), ("hiroute-e2e", "p0_gateway_matrix_coverage")]
     if path in ("tools/e2e-harness/tests/p0_gateway_matrix_coverage.rs", "e2e/matrix/p0-gateway-coverage.json",
@@ -347,7 +396,8 @@ def e2e_consumers(path):
     return []
 
 
-PROCESS_TARGETS = {"p0_gateway_native_sessions", "p0_gateway_runtime", "p0_gateway_protocol", "smoke_cli"}
+PROCESS_TARGETS = {"p0_gateway_native_sessions", "p0_gateway_runtime", "p0_gateway_protocol",
+                   "p0_gateway_context_hold", "smoke_cli"}
 
 
 def worker_product_checks(paths):
@@ -362,8 +412,14 @@ def worker_product_checks(paths):
             selected.add("opencode_delegation")
         elif path.startswith(DSH_PRODUCT_PREFIXES):
             selected.add("dsh_delegation")
+        elif path.startswith("assets/agents/dsh/") or NATIVE_ADAPTER_TESTS.get(path) == "dsh":
+            selected.add("dsh_delegation")
         elif path.startswith(PI_PRODUCT_PREFIXES):
             selected.add("pi_delegation")
+        elif path.startswith("assets/agents/pi/") or NATIVE_ADAPTER_TESTS.get(path) == "pi":
+            selected.add("pi_delegation")
+        elif path.startswith("assets/agents/opencode/") or NATIVE_ADAPTER_TESTS.get(path) == "opencode":
+            selected.add("opencode_delegation")
         elif path.startswith(ADDITIONAL_MODEL_PREFIXES):
             selected.update(("qoder_delegation", "pi_delegation", "dsh_delegation", "opencode_delegation"))
         elif path in QODER_PRODUCT_PATHS or path.startswith(QODER_PRODUCT_PREFIXES):
@@ -385,7 +441,8 @@ def select(paths, full=False):
     groups = set()
     frontend = full
     native_checks = desktop_compile_checks(paths)
-    native = bool(native_checks)
+    native = bool(native_checks)  # native_required is the established Desktop compilation flag.
+    native_checks.extend(native_agent_checks(paths))
     reasons = []
     selection_tooling = False
     worker_fixture_tooling = False
@@ -414,6 +471,8 @@ def select(paths, full=False):
             continue  # Navigation-only guide; not embedded in a product binary.
         if path in WORKER_FIXTURE_TOOLING:
             worker_fixture_tooling = True
+            continue
+        if path in NATIVE_SCOPE_TOOLING:
             continue
         if path in RELEASE_CONTRACT_TOOLING or path.startswith("contracts/releases/"):
             release_contract_tooling = True
@@ -507,6 +566,7 @@ def select(paths, full=False):
         # #94: ACP enables preserve_order in the full backend graph. Keep this
         # known fixture-sensitive combination in focused runtime checks too.
         runtime_context = bool(pending & {("hiroute-e2e", "p0_gateway_runtime"),
+                                          ("hiroute-e2e", "p0_gateway_context_hold"),
                                           ("hiroute-e2e", "p0_gateway_native_sessions")})
         feature_flags = ["--features", "serde_json/preserve_order"]
         if runtime_context:
@@ -521,7 +581,7 @@ def select(paths, full=False):
                 continue
             flags = ["--lib"] if target == "lib" else ["--test", target]
             commands.append(["cargo", "test", "--locked", "-p", package, "--all-features", *flags] +
-                            (feature_flags if target in {"p0_gateway_runtime", "p0_gateway_native_sessions"} else []) +
+                            (feature_flags if target in {"p0_gateway_runtime", "p0_gateway_native_sessions", "p0_gateway_context_hold"} else []) +
                             (["--", "--test-threads=1"] if target in PROCESS_TARGETS else []))
     rust = bool(commands)
     if full or any(path.startswith(("assets/agent-profiles/", "assets/release-facts/",
@@ -543,6 +603,9 @@ def select(paths, full=False):
         commands.append(["python3", "scripts/test-test-plan.py"])
     if full or "scripts/test-ci-setup.py" in paths:
         commands.append(["python3", "scripts/test-ci-setup.py"])
+    if full or NATIVE_SCOPE_TOOLING.intersection(paths):
+        commands.append(["python3", "scripts/test-native-agent-scope.py"])
+        commands.append(["python3", "scripts/test-native-agent-supervisor.py"])
     if full or windows_validation_tooling:
         commands.append(["python3", "scripts/test-windows-ci-report.py"])
         commands.append(["python3", "scripts/test-windows-native-artifacts.py"])
@@ -562,6 +625,10 @@ def select(paths, full=False):
                                    "crates/daemon/src/delegation/profile/pi")) for path in paths):
         commands.append(["node", "--test", PI_SDK_CONTRACT_TEST])
         commands.append(["node", "--test", PI_WORKER_BRIDGE_TEST])
+    if full or any(path.startswith("assets/agents/") or path.startswith("scripts/tests/test_hermes_")
+                   or path == "scripts/tests/native-routing-adapters.test.mjs" for path in paths):
+        commands.append(["node", "--test", "scripts/tests/native-routing-adapters.test.mjs"])
+        commands.append(["python3", "-m", "unittest", "discover", "-s", "scripts/tests", "-p", "test_hermes_*.py"])
     if full or release_contract_tooling:
         commands.extend([["python3", "scripts/test-release-contracts.py"],
                          ["python3", "scripts/test-release-contract-pr.py"],
@@ -599,11 +666,15 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
     for path in plan["paths"]:
         consumers = {t for p, t in e2e_consumers(path) if p == "hiroute-e2e"}
         selected = consumers & {"p0_gateway_matrix_coverage", "p0_gateway_protocol", "p0_gateway_runtime",
-                                "p0_gateway_native_sessions"}
+                                "p0_gateway_native_sessions", "p0_gateway_context_hold"}
         # These production adapters and the shared model IR feed the protocol matrix.
         # This only adds early checks; their conservative final package scope stays intact.
         if path.startswith(("crates/gateway/src/adapters/", "crates/gateway/src/model_ir/")):
             selected.update({"p0_gateway_protocol", "p0_gateway_matrix_coverage"})
+        if path == "crates/gateway/src/core_runtime.rs" or path.startswith((
+                "crates/gateway/src/context_hold/", "crates/gateway/src/agent_turn_history/",
+                "crates/gateway/src/core_runtime/decision_history", "crates/gateway/src/runtime/driver")):
+            selected.update({"p0_gateway_context_hold", "p0_gateway_matrix_coverage"})
         if path == "tools/e2e-harness/src/p0/coverage.rs":
             selected.add("p0_gateway_matrix_coverage")
         if selected:
@@ -623,7 +694,7 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
         context = broad[:] if broad else ["cargo", "test", "--locked", "-p", "hiroute-e2e", "--all-features"]
         if "--workspace" not in context and "hiroute-e2e" not in context:
             context.extend(["-p", "hiroute-e2e"])
-        if "--workspace" not in context and targets & {"p0_gateway_runtime", "p0_gateway_native_sessions"}:
+        if "--workspace" not in context and targets & {"p0_gateway_runtime", "p0_gateway_native_sessions", "p0_gateway_context_hold"}:
             context.extend(["--features", "serde_json/preserve_order"])
         # First expose stale generated receipts, before even short protocol/runtime tests.
         if "p0_gateway_matrix_coverage" in targets:
@@ -633,6 +704,32 @@ def integration_preflight(plan, collect_failures=False, context_plan=None):
             commands.append([*context, *(["--no-fail-fast"] if collect_failures else []),
                              *[arg for target in behavior for arg in ("--test", target)],
                              "--", "--test-threads=1"])
+    if any(path.startswith("crates/gateway/src/observation/") or path in {
+            "tools/e2e-harness/src/p0/production/types.rs",
+            "e2e/schema/current-production-collector.schema.json",
+            "e2e/schema/current-gateway-result.schema.json"}
+           for path in plan["paths"]):
+        target = "p0::production::tests::current_oracle_pins_match_producer_and_json_schemas"
+        targets.add("current_gateway_observation")
+        reasons.append("current Gateway observation ports: verify producer and Oracle schema pins early")
+        broad = next((c for c in context_plan["commands"] if c[:2] == ["cargo", "test"]
+                      and "--test" not in c and "--lib" not in c), None)
+        context = broad[:] if broad else ["cargo", "test", "--locked", "--all-features"]
+        if "--workspace" not in context and "hiroute-e2e" not in context:
+            context.extend(["-p", "hiroute-e2e"])
+        commands.append([*context, "--lib", target, "--", "--exact"])
+    if any(path.startswith("crates/domain/src/observation/") or path in {
+            "tools/product-e2e/tests/local_observation.rs",
+            "e2e/product/golden/observation/local-observation-boundary.v2.json"}
+           for path in plan["paths"]):
+        targets.add("local_observation")
+        reasons.append("observation ports: check the current Product boundary golden before final")
+        broad = next((c for c in context_plan["commands"] if c[:2] == ["cargo", "test"]
+                      and "--test" not in c and "--lib" not in c), None)
+        context = broad[:] if broad else ["cargo", "test", "--locked", "--all-features"]
+        if "--workspace" not in context and "hiroute-product-e2e" not in context:
+            context.extend(["-p", "hiroute-product-e2e"])
+        commands.append([*context, "--test", "local_observation"])
     if storage_startup:
         targets.update({"publication_process", "pre_gateway_compute_routing"})
         reasons.append("storage startup: exercise the production daemon initialization order")

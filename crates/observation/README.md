@@ -12,6 +12,25 @@
 
 Observation gaps must remain visible without changing the model request's execution result. Historical identity and price facts must not be inferred from current configuration. Deleted content remains unavailable through search, old references, and replay.
 
+`store/gap` resolves an arriving sequence within its exact channel, producer,
+epoch and stream. The stream/end-sequence index skips unrelated streams and
+already-ended gaps; every overlapping gap still retains its scope, loss status
+and reason when split. Current-store reopen installs this derived index without
+rewriting evidence, resetting history or changing the physical format version.
+
+`StageAssessmentRecordedV1` retains joint quality under one frozen native rubric
+without assigning a model or profile. It uses the existing nullable stage projection
+and immutable history membership. Complete joint assessments count as scored stages;
+single-model capability averages exclude them. The earlier model assessment format
+and authenticated historical fact readers retain their meaning.
+
+Catalog queries may opt in to `include_input_selection`. The request-local reader
+authenticates at most 128 metadata facts and a 64 KiB original carrier; missing,
+ambiguous, corrupt or deleted evidence yields no position. Existing calls omit this
+field and retain their cursor binding. No startup backfill or session-history scan
+is needed. Position evidence does not prove human authorship or complete input-batch
+coverage, and never changes stored conversation content.
+
 Managed content implementation details are described in
 [managed_text/README.md](src/managed_text/README.md). The executable storage, query,
 deletion and retention expectations are covered by this crate's tests and the product E2E
@@ -53,7 +72,10 @@ the next wait is also at least 100 times the actual elapsed pass cost, so a slow
 unit cannot turn into continuous CPU work. Oldest eligible completed requests
 retire toward 90% of the limit. Durable request/blob progress, shared-reference
 rechecks and incremental page release keep logical expiry separate from actual
-physical release. Busy,
+physical release. Plan-quality stages and assessments obey committed fact
+retirement immediately, including on reopen before physical cleanup. A content-only
+tombstone keeps current request membership and quality evidence; quality
+cursors and trust generations change at that same barrier. Busy,
 unreclaimable or protected data may keep usage above this soft threshold.
 Page release consumes each bounded incremental-vacuum result and yields to pinned
 readers before selecting more requests. Request cleanup starts from existing
@@ -67,3 +89,11 @@ query deadline. Existing pagination cursors still report stale visibility.
 The ignored `store::field_tests` acceptance entry accepts only an explicitly
 marked private stopped copy. It exercises current-format open/reopen and real
 maintenance cadence; it never authorizes mutation of a live source.
+
+Plan-quality reads resolve candidate metadata from a request-scoped partial
+index. Request/session/time checks share a small covering index, including page
+evidence checks. Accepted attempt and model-name lookups also use covering
+indexes. Optional routing summaries run first in the same read transaction so
+their ordered identity scan precedes stage drill-down. The readers retain the
+1 s deadline, streaming row/byte limits, and existing missing/deleted/corrupt evidence rules. These indexes are
+rebuildable; opening an existing current-format store does not rewrite history.

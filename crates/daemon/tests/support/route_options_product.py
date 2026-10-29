@@ -188,6 +188,19 @@ def unicode_case(product, upstream):
         assert len(upstream.requests) == network_before, 'Invalid ID was sent to the provider'
     native.publish_plan_and_agent(product, saved[0]['binding_id'], native_model_mode='hiroute_only')
     assert product.model_alias != MODEL, 'Route alias replaced the actual upstream ID'
+    candidates_only = native.control(product, 'GetPlanEditorOptions', {'preview_agent': 'dsh'})['data']
+    assert_legacy_options(candidates_only)
+    dsh = native.control(product, 'GetPlanEditorOptions', {'preview_agent': 'dsh', 'editor': product.editor})['data']
+    assert dsh['codex_capabilities'] is None and dsh['claude_capabilities'] is None
+    assert dsh['dsh_capabilities']['state'] == 'available', dsh
+    assert dsh['dsh_capabilities']['protocol'] == 'responses'
+    assert dsh['dsh_capabilities']['context_window'] > 0 and dsh['dsh_capabilities']['max_output_tokens'] > 0
+    published = native.control(product, 'GetPlanEditorOptions', {'preview_agent': 'dsh', 'published_plan': {'plan_id': product.plan_id, 'revision': 1}})['data']
+    assert published['dsh_capabilities'] == dsh['dsh_capabilities'], (published, dsh)
+    incomplete = dict(product.editor, display_name='')
+    invalid = native.control(product, 'GetPlanEditorOptions', {'preview_agent': 'dsh', 'editor': incomplete})['data']
+    assert invalid['dsh_capabilities'] == {'state': 'unavailable', 'reason': 'invalid_plan'}
+    native.control(product, 'GetPlanEditorOptions', {'preview_agent': 'dsh', 'published_plan': {'plan_id': product.plan_id, 'revision': 2}}, expected_error='REVISION_CONFLICT')
     native.gateway_request(product)
     with upstream.lock:
         posts = [row for row in upstream.requests if row['method'] == 'POST']

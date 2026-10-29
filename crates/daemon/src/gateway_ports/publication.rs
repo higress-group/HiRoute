@@ -18,6 +18,18 @@ pub struct GatewayPublicationAdapter {
     // Status uses try_lock: it never waits for an install's durable I/O.
     // Request pinning remains lock-free; this lock is only for publication mutations.
     mutation: Mutex<()>,
+    // Only the pure expected identity of one exact authenticated Product record.
+    // Live installation/suspension/durability are observed on every status read.
+    expected: Mutex<Option<(PublicationRecordV1, ExpectedPublication)>>,
+    #[cfg(test)]
+    projection_builds: std::sync::atomic::AtomicUsize,
+}
+
+#[derive(Clone)]
+struct ExpectedPublication {
+    workspace: String,
+    revision: u64,
+    digest: String,
 }
 
 impl GatewayPublicationAdapter {
@@ -28,12 +40,53 @@ impl GatewayPublicationAdapter {
             active: ArcSwapOption::new(active),
             suspended: AtomicBool::new(true),
             mutation: Mutex::new(()),
+            expected: Mutex::new(None),
+            #[cfg(test)]
+            projection_builds: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn installer(&self) -> &Arc<GatewayPublicationInstaller> {
         &self.installer
+    }
+
+    fn expected_identity(
+        &self,
+        record: &PublicationRecordV1,
+    ) -> Result<ExpectedPublication, PublicationTargetError> {
+        let mut cache = self
+            .expected
+            .try_lock()
+            .map_err(|_| PublicationTargetError::Unavailable)?;
+        if let Some((previous, expected)) = cache.as_ref()
+            && previous == record
+        {
+            return Ok(expected.clone());
+        }
+        *cache = None;
+        let projection = record
+            .gateway_snapshot()
+            .map_err(|_| PublicationTargetError::VerificationFailed)?;
+        let projected = hiroute_integrations::gateway::project_publication(&projection)
+            .map_err(|_| PublicationTargetError::VerificationFailed)?;
+        #[cfg(test)]
+        self.projection_builds.fetch_add(1, Ordering::Relaxed);
+        let expected = ExpectedPublication {
+            workspace: projected.workspace_id,
+            revision: projected.publication_revision,
+            digest: projected.payload_digest,
+        };
+        if record
+            .bytes
+            .len()
+            .saturating_mul(8)
+            .saturating_add(64 * 1024)
+            <= 64 * 1024 * 1024
+        {
+            *cache = Some((record.clone(), expected.clone()));
+        }
+        Ok(expected)
     }
 }
 
@@ -65,18 +118,11 @@ impl PublicationTargetPort for GatewayPublicationAdapter {
         if self.installer.durability_uncertain() {
             return Err(PublicationTargetError::Unavailable);
         }
-        let publication = record
-            .verify()
-            .map_err(|_| PublicationTargetError::VerificationFailed)?;
-        let projection = publication
-            .gateway_snapshot()
-            .map_err(|_| PublicationTargetError::VerificationFailed)?;
-        let expected = hiroute_integrations::gateway::project_publication(&projection)
-            .map_err(|_| PublicationTargetError::VerificationFailed)?;
+        let expected = self.expected_identity(record)?;
         Ok(self.active.load_full().is_some_and(|active| {
-            active.workspace_id() == expected.workspace_id
-                && active.publication_revision() == expected.publication_revision
-                && active.payload_digest() == expected.payload_digest
+            active.workspace_id() == expected.workspace
+                && active.publication_revision() == expected.revision
+                && active.payload_digest() == expected.digest
         }))
     }
     fn is_empty(&self) -> Result<bool, PublicationTargetError> {
@@ -108,10 +154,7 @@ impl PublicationTargetPort for GatewayPublicationAdapter {
         &self,
         record: &PublicationRecordV1,
     ) -> Result<(), PublicationTargetError> {
-        let publication = record
-            .verify()
-            .map_err(|_| PublicationTargetError::VerificationFailed)?;
-        let projection = publication
+        let projection = record
             .gateway_snapshot()
             .map_err(|_| PublicationTargetError::VerificationFailed)?;
         let snapshot = hiroute_integrations::gateway::project_publication(&projection)

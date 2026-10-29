@@ -215,6 +215,16 @@ pub(super) fn validate_effects(
     let mut allowed = required.clone();
     if !matches!(settings.model, AgentFacetIntent::Keep) {
         allowed.insert(AgentConnectionEffectRoleV1::ModelCatalog);
+        if matches!(
+            settings.context_id.split('/').nth(1),
+            Some("pi" | "dsh" | "opencode")
+        ) {
+            allowed.insert(AgentConnectionEffectRoleV1::NativeRoutingAdapter);
+        }
+        if object["state"]["mutations"]["native_routing_adapter_file_change"] == Value::Bool(true) {
+            required.insert(AgentConnectionEffectRoleV1::NativeRoutingAdapter);
+            allowed.insert(AgentConnectionEffectRoleV1::NativeRoutingAdapter);
+        }
         // A grant-creating configure can be the first resident-service connection, and the
         // last managed connection's restore releases the item this feature owns; whether the
         // login-item effect is rendered at all stays with the backend's ownership facts.

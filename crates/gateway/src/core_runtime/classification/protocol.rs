@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::adapters::{ProtocolAdapterError, ReplacementEncoding, RequestedReplacement};
-use super::super::model_ir::{ContentPart, ImageSource, MessageRole, ModelRequestIRV1};
+use super::super::model_ir::{ContentPart, ImageSource};
 use super::CallFailure;
-use crate::agent_turn_history::{AgentTurnHistorySnapshot, ExecutionAttribution};
+use crate::agent_turn_history::AgentTurnHistorySnapshot;
 use crate::content_ref::ContentValueExt;
 use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 
@@ -62,12 +62,11 @@ pub(super) fn assessment_definition_result(
         .assessment_from
         .filter(|i| *i < history.visible_conversation.len())
         .ok_or(E::InvalidBoundary)?;
-    let ExecutionAttribution::Single {
-        executed_branch_id, ..
-    } = &target.attribution
-    else {
-        return Err(E::AmbiguousAttribution);
+    let missing_scope = match &target.attribution {
+        crate::agent_turn_history::ExecutionAttribution::Single { .. } => E::Unrated,
+        _ => E::AmbiguousAttribution,
     };
+    let (executed_branch_id, frozen_policy) = target.evaluation_policy().ok_or(missing_scope)?;
     let (judgment, name) = if executed_branch_id == SMART_SAVING_SCOPE_ID {
         (
             authority.smart_judgment.as_ref().ok_or(E::Unrated)?,
@@ -77,7 +76,7 @@ pub(super) fn assessment_definition_result(
         let branch = authority
             .branch_policies
             .iter()
-            .find(|b| b.id == *executed_branch_id)
+            .find(|b| b.id == executed_branch_id)
             .ok_or(E::DifferentCategory)?;
         (
             branch.judgment.as_ref().ok_or(E::Unrated)?,
@@ -88,7 +87,7 @@ pub(super) fn assessment_definition_result(
         || judgment.execution_policy(name),
         |p| p.execution_policy(executed_branch_id, judgment, name),
     );
-    if target.branch_execution.as_ref().ok_or(E::Unrated)?.policy != policy {
+    if *frozen_policy != policy {
         return Err(E::DifferentPolicy);
     }
     Ok(AssessmentDefinition {
@@ -101,45 +100,69 @@ pub(super) fn assessment_definition_result(
     })
 }
 
-pub(super) fn latest_user_wire_value(
-    request: &ModelRequestIRV1,
+/// Evidence annotations use the existing v1 content vocabulary. They never
+/// change captured user facts, target eligibility or the number of model calls.
+pub(super) fn disclose_history_evidence(value: &mut Value, history: &AgentTurnHistorySnapshot) {
+    let Some(parts) = value.as_array_mut() else {
+        return;
+    };
+    let mut add = |source: &str| parts.push(json!({"kind":"unavailable", "source_kind":source}));
+    if history.history_partial {
+        add("prior_execution_history_missing");
+    }
+    if let Some(m) = history
+        .assessment_target
+        .as_ref()
+        .and_then(|t| t.history_membership.as_ref())
+    {
+        if m.association_unverified {
+            add("assessment_target_association_unverified");
+        }
+        if m.source_unverified {
+            add("assessment_target_input_origin_unverified");
+        }
+        if m.capture_partial || m.clipped {
+            add("assessment_target_capture_gap");
+        }
+    }
+}
+
+pub(super) fn latest_user_wire_value<'a>(
+    request: impl Into<super::DecisionInput<'a>>,
     refs: &mut Vec<RequestedReplacement>,
+    current_input_origin_unverified: bool,
 ) -> Result<Value, ProtocolAdapterError> {
-    let message = request
-        .messages
+    let parts = request.into().parts().ok_or_else(|| {
+        ProtocolAdapterError::Serialization("classification requires a current user message".into())
+    })?;
+    let mut values = parts
         .iter()
-        .rev()
-        .find(|message| {
-            message.role == MessageRole::User
-                && message.content.iter().any(|part| {
-                    matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. })
-                })
-        })
-        .ok_or_else(|| {
-            ProtocolAdapterError::Serialization(
-                "classification requires a current user message".into(),
-            )
-        })?;
-    let values = message
-        .content
-        .iter()
-        .filter_map(|part| match part {
-            ContentPart::Text { text } => Some(project_text(text, refs)),
+        .map(|part| match part {
+            ContentPart::Text { text } => project_text(text, refs),
             ContentPart::Image {
                 source: ImageSource::Url { .. },
-            } => Some(json!({"kind":"unavailable","source_kind":"image_url"})),
+            } => json!({"kind":"unavailable","source_kind":"image_url"}),
             ContentPart::Image {
                 source: ImageSource::Base64 { .. },
-            } => Some(json!({"kind":"unavailable","source_kind":"image_base64"})),
-            ContentPart::ToolCall { .. }
-            | ContentPart::ToolResult { .. }
-            | ContentPart::ProviderState { .. } => None,
+            } => json!({"kind":"unavailable","source_kind":"image_base64"}),
+            ContentPart::ToolCall { .. } => {
+                json!({"kind":"unavailable", "source_kind":"user_tool_call"})
+            }
+            ContentPart::ToolResult { .. } => {
+                json!({"kind":"unavailable", "source_kind":"user_tool_result"})
+            }
+            ContentPart::ProviderState { .. } => {
+                json!({"kind":"unavailable", "source_kind":"user_provider_state"})
+            }
         })
         .collect::<Vec<_>>();
     if values.is_empty() {
         return Err(ProtocolAdapterError::Serialization(
             "classification current user message is empty".into(),
         ));
+    }
+    if current_input_origin_unverified {
+        values.push(json!({"kind":"unavailable","source_kind":"unverified_request_user_origin"}));
     }
     Ok(Value::Array(values))
 }

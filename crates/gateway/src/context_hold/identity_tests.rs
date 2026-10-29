@@ -1,8 +1,53 @@
 use super::*;
+use crate::context_hold::NativeUserOrigin;
 use crate::server::core_runtime::model_ir::{
     CanonicalMessage, MODEL_REQUEST_IR_SCHEMA, RequestedReasoningControl,
     ResponsesRequestOptionsV1, ToolChoice,
 };
+
+#[test]
+fn conflicting_native_identity_loses_association_without_disabling_later_requests() {
+    let mut identity = reliable(
+        "codex_thread_session",
+        vec!["child".into(), "session".into()],
+        false,
+    );
+    identity.apply_routing(super::super::routing::RoutingFacts {
+        identity_conflict: true,
+        root: Some("untrusted-root".into()),
+        native: super::super::routing::NativeCheckpoint {
+            turn: Some([1; 32]),
+            branch_leaf: Some([2; 32]),
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    assert_eq!(identity.session_scope(), "request_scoped");
+    assert!(identity.hold_identity().is_none());
+    assert!(identity.observation_identity().is_none());
+    assert!(identity.observed_routing_lane());
+    assert!(!identity.requires_captured_input());
+    assert!(identity.routing.track);
+    assert!(identity.native_checkpoint().turn.is_none());
+    assert!(identity.native_checkpoint().branch_leaf.is_none());
+
+    // Missing optional proof must not invalidate the next independent request.
+    let mut recovered = reliable(
+        "codex_thread_session",
+        vec!["child".into(), "session".into()],
+        false,
+    );
+    recovered.apply_routing(super::super::routing::RoutingFacts {
+        native: super::super::routing::NativeCheckpoint {
+            user_origin: NativeUserOrigin::Observed,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    assert_eq!(recovered.session_scope(), "conversation");
+    assert!(recovered.hold_identity().is_some());
+    assert!(recovered.observed_routing_lane());
+}
 
 #[test]
 fn worker_continue_keeps_conversation_identity_without_joining_other_tasks() {
@@ -101,6 +146,42 @@ fn managed_hermes_requires_its_real_identity_and_never_infers_equal_content() {
 }
 
 #[test]
+fn legacy_hermes_fresh_flag_cannot_prove_human_or_async_user_origin() {
+    let authorized = managed_plan(Some(hiroute_domain::AgentModelConsumerV1::Hermes));
+    for content in [
+        "Actual new human question",
+        "[ASYNC DELEGATION BATCH COMPLETE] child results",
+    ] {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-hiroute-agent", "hermes".parse().unwrap());
+        headers.insert("x-hermes-session-id", "parent".parse().unwrap());
+        headers.insert(
+            "x-hiroute-routing-context",
+            serde_json::json!({"version":1,"agent":"hermes","session_id":"parent",
+                "purpose":"main","turn_id":"new-turn",
+                "continuation_requires_existing_turn":false})
+            .to_string()
+            .parse()
+            .unwrap(),
+        );
+        let facts = identity_facts(
+            &authorized,
+            IngressProtocol::Responses,
+            &headers,
+            &serde_json::json!({}),
+            &request(content),
+            &[1; 32],
+            &[2; 32],
+        );
+        assert_eq!(facts.session_scope(), "conversation");
+        assert_eq!(
+            facts.native_checkpoint().user_origin,
+            NativeUserOrigin::Observed
+        );
+    }
+}
+
+#[test]
 fn claimed_hermes_user_agent_does_not_establish_managed_consumer_authority() {
     let authorized = managed_plan(None);
     assert!(!authorized.is_hermes_consumer());
@@ -122,6 +203,7 @@ fn request(text: &str) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        native_history: None,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
         served_model_id: "agent/test".into(),
@@ -219,20 +301,6 @@ fn inferred_anchor_uses_complete_user_and_rejects_public_wrappers() {
     }
 }
 
-#[test]
-fn claude_metadata_extracts_only_bounded_json_session() {
-    assert!(matches!(
-        claude_metadata_identity(&serde_json::json!({
-            "metadata":{"user_id":"{\"session_id\":\"claude-session\",\"device_id\":\"ignored\"}"}
-        })),
-        Field::Value(value) if value == "claude-session"
-    ));
-    assert!(matches!(
-        claude_metadata_identity(&serde_json::json!({"metadata":{"user_id":"not-json"}})),
-        Field::Invalid
-    ));
-}
-
 fn native(
     headers: &[(&'static str, &str)],
     ingress: IngressProtocol,
@@ -261,38 +329,6 @@ fn assert_native(field: Field<NativeIdentity>, kind: &str, expected: &[&str]) {
         }
         Field::Absent | Field::Invalid => panic!("native identity was not accepted"),
     }
-}
-
-#[test]
-fn claude_header_and_metadata_share_the_released_namespace_and_require_agreement() {
-    let metadata = serde_json::json!({"metadata":{"user_id":"{\"session_id\":\"native\"}"}});
-    for document in [serde_json::json!({}), metadata.clone()] {
-        assert_native(
-            native(
-                &[("X-Claude-Code-Session-Id", "native")],
-                IngressProtocol::Messages,
-                document,
-            ),
-            "claude_metadata_session",
-            &["native"],
-        );
-    }
-    assert!(matches!(
-        native(
-            &[("x-claude-code-session-id", "other")],
-            IngressProtocol::Messages,
-            metadata
-        ),
-        Field::Invalid
-    ));
-    assert!(matches!(
-        native(
-            &[("x-claude-code-session-id", "native")],
-            IngressProtocol::Messages,
-            serde_json::json!({"metadata":{"user_id":"not-json"}})
-        ),
-        Field::Invalid
-    ));
 }
 
 #[test]

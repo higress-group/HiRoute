@@ -20,6 +20,13 @@ pub(crate) fn native_endpoint_state_key(
 pub(crate) struct RuntimeCooldownPolicy {
     pub credential_quota: Duration,
     pub binding: Duration,
+    binding_failure_feedback: BindingFailureFeedback,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BindingFailureFeedback {
+    Shared,
+    RequestLocal,
 }
 
 impl Default for RuntimeCooldownPolicy {
@@ -27,6 +34,20 @@ impl Default for RuntimeCooldownPolicy {
         Self {
             credential_quota: Duration::from_secs(60),
             binding: Duration::from_secs(15),
+            binding_failure_feedback: BindingFailureFeedback::Shared,
+        }
+    }
+}
+
+impl RuntimeCooldownPolicy {
+    /// Gateway model execution includes unmarked native auxiliary calls and
+    /// delegated Workers sharing the same target keys. Their soft failures
+    /// cannot establish shared target health for another independent request.
+    /// Credential/quota authority remains shared.
+    pub(crate) fn for_gateway_model_execution() -> Self {
+        Self {
+            binding_failure_feedback: BindingFailureFeedback::RequestLocal,
+            ..Self::default()
         }
     }
 }
@@ -176,7 +197,16 @@ pub(crate) async fn record_failure_at(
     scope: &ExecutionScope,
     now: Instant,
 ) -> Result<(), StateAccessError> {
-    let Some(state_scope) = failure.state_scope() else {
+    let state_scope = failure.state_scope();
+    if state_scope != Some(FailureStateScope::Credential)
+        && policy.binding_failure_feedback == BindingFailureFeedback::RequestLocal
+    {
+        for target in std::iter::once(permits.binding).chain(permits.credential) {
+            release_failed_probe(store, target, scope).await?;
+        }
+        return Ok(());
+    }
+    let Some(state_scope) = state_scope else {
         return Ok(());
     };
     let (key, permit) = match state_scope {
@@ -228,6 +258,46 @@ pub(crate) async fn record_failure_at(
         }
         CasOutcome::Applied { .. } => Err(StateAccessError::Conflict),
         CasOutcome::Conflict => Err(StateAccessError::Conflict),
+    }
+}
+
+async fn release_failed_probe(
+    store: &dyn RuntimeStateStore,
+    (key, permit): (&RuntimeStateKey, StatePermit),
+    scope: &ExecutionScope,
+) -> Result<(), StateAccessError> {
+    if !permit.probe {
+        return Ok(());
+    }
+    let current = scoped_read(store, key, scope).await?;
+    if current.generation != permit.generation
+        || current.probe_lease_until.is_none()
+        || !matches!(current.health, RuntimeHealth::CoolingDown { .. })
+    {
+        return Err(StateAccessError::Conflict);
+    }
+    let next_generation = current
+        .generation
+        .checked_add(1)
+        .ok_or(StateAccessError::InvalidTransition)?;
+    // A failed auxiliary/unknown request is neither a recovery success nor a
+    // new shared failure. Release only its exact probe, retaining the previous
+    // cooldown instant and backoff step so another request can probe at once.
+    let outcome = scope
+        .run(store.compare_and_swap(
+            key,
+            permit.generation,
+            RuntimeStateEntry {
+                generation: next_generation,
+                probe_lease_until: None,
+                ..current
+            },
+            scope,
+        ))
+        .await??;
+    match outcome {
+        CasOutcome::Applied { generation } if generation == next_generation => Ok(()),
+        CasOutcome::Applied { .. } | CasOutcome::Conflict => Err(StateAccessError::Conflict),
     }
 }
 

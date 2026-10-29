@@ -7,6 +7,23 @@ to their production owners and executable contracts.
 
 ## Responsibilities and state
 
+After a model or token mutation, the page uses the existing `trial_agent_model`
+exact-context model projection. Its fresh file/grant/publication join and service
+fences confirm the model state without repeating version diagnostics or reading
+unchanged Skills. Discovery metadata remains a hint. Unread Skill state is explicit;
+opening its ordinary editor performs the full scoped read before seeding the draft.
+Codex access-mode/root metadata and Hermes native targets retain the full scoped
+`agent_snapshot` path, as do Skill changes and explicit discovery. Other retained
+Agents become unverified and are read when selected. An inactive page defers global
+refresh invalidations until activation; background summaries do not scan during
+save confirmation.
+
+Home uses the recorded-only [summary](../../product/home-projections.ts) and
+never treats it as native or model verification. The visible routing editor reads
+model associations separately; a failed or incomplete read remains unknown rather
+than claiming that no Agent uses a route. Full Agent details continue to own their
+verified settings and actions.
+
 | Entry | Responsibility |
 | --- | --- |
 | [types.ts](types.ts) | WebView projections and current serialized model choices. These describe the existing native/API contract, not a second capability authority. |

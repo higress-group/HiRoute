@@ -7,6 +7,11 @@ const [port, base, output] = process.argv.slice(2);
 const client = await connectPage(Number(port));
 const keepAlive = setInterval(() => {}, 1000);
 const results = [];
+await client.send('Page.addScriptToEvaluateOnNewDocument', { source: `
+  window.fixtureBrowserErrors = [];
+  addEventListener('error', event => window.fixtureBrowserErrors.push({ message: event.message, file: event.filename, line: event.lineno, target: event.target?.tagName, source: event.target?.src }), true);
+  addEventListener('unhandledrejection', event => window.fixtureBrowserErrors.push({ rejection: String(event.reason) }));
+` });
 const settled = async () => {
   await evaluate(client, `Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity).map(animation => animation.finished.catch(() => undefined))).then(() => true)`);
   await evaluate(client, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
@@ -47,9 +52,14 @@ const backToCatalog = async () => {
   await waitFor(client, `document.querySelectorAll('.connection-provider-card').length > 0`);
 };
 const run = async (name, task) => {
+  if (process.env.HIROUTE_CONNECTION_CASE && process.env.HIROUTE_CONNECTION_CASE !== name) return;
   const started = performance.now();
   try { await task(); results.push({ name, state: 'green', elapsedMs: performance.now() - started }); }
-  catch (error) { await screenshot(`failure-${results.length}`).catch(() => undefined); results.push({ name, state: 'red', error: error.stack || String(error), elapsedMs: performance.now() - started }); }
+  catch (error) {
+    await screenshot(`failure-${results.length}`).catch(() => undefined);
+    const browser = await evaluate(client, `({url:location.href,ready:document.readyState,root:document.querySelector('#root')?.innerHTML.slice(0,500),errors:window.fixtureBrowserErrors})`).catch(() => null);
+    results.push({ name, state: 'red', error: error.stack || String(error), browser, elapsedMs: performance.now() - started });
+  }
 };
 try {
   await mkdir(output, { recursive: true });
@@ -96,7 +106,10 @@ try {
     await click('.modal-foot button', '检查并继续'); await waitFor(client, `Boolean(document.querySelector('.model-selection'))`);
     await click('.model-selection input[type=checkbox]');
     await screenshot('models');
-    await click('.modal-foot button', '保存连接'); await waitFor(client, `!document.querySelector('.modal')`);
+    await click('.modal-foot button', '保存连接');
+    await waitFor(client, `Boolean(document.querySelector('.discard-dialog[open]'))`);
+    await click('.discard-dialog button', '放弃修改');
+    await waitFor(client, `!document.querySelector('.modal')`);
     const trace = await evaluate(client, 'window.connectionFlowTrace');
     assert.deepEqual(trace.registered, ['a', 'b']);
     assert.deepEqual(trace.checks.map(item => item.display_name), ['团队 · 生产', '个人 · 备用']);
@@ -287,6 +300,7 @@ try {
     assert.ok(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').placeholder.includes('••')`));
     await screenshot('api-failure');
   });
+  if (!results.length) throw new Error('No connection scenario was selected');
   const report = { evidence: 'Production React components and mock IPC; native effects are a separate acceptance gate', tests: results.length, passed: results.filter(item=>item.state==='green').length, results };
   await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));

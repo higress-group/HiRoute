@@ -23,7 +23,7 @@ pub use standalone::*;
 pub use upgrade::*;
 
 mod storage_progress;
-pub use storage_progress::StorageUpgradePhase;
+pub use storage_progress::{StorageUpgradePhase, StorageUpgradeProgress};
 
 mod subscription_proxy;
 pub use subscription_proxy::*;

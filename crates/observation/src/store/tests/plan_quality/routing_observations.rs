@@ -281,6 +281,178 @@ fn impossible_applicability_combinations_are_rejected() {
 }
 
 #[test]
+fn recorded_opportunities_include_complex_actions_but_not_old_or_inherited_decisions() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let fixture = Fixture::new("mixed-protection-rules");
+    let channel = fact_channel(&fixture, 1024 * 1024);
+    let writer = writer(&store);
+    for (index, (variant, probability, inherited)) in [
+        (2, 0.9, false), // simple, applied
+        (2, 0.7, false), // complex, applied
+        (3, 0.7, false), // complex, suppressed
+        (4, 0.7, false), // complex, retained after unavailable applicability
+        (7, 0.7, false), // historical complex decision that did not enter the gate
+        (2, 0.7, true),  // inherited duplicate
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut o = observation(variant);
+        o.simple_probability = serde_json::Number::from_f64(probability);
+        if variant == 7 {
+            o.score = serde_json::Number::from_f64(0.1);
+        }
+        assert!(o.validate(), "{o:?}");
+        let mut fact = route_decision(PLAN);
+        let ExecutionFactV1::RouteDecision(decision) = &mut fact else {
+            unreachable!()
+        };
+        let selection = decision.complexity.as_mut().unwrap();
+        selection.decision_protocol = Some(DecisionProtocolV1::SystemOneC);
+        selection.routing_observation = Some(o);
+        selection.simple_probability = serde_json::Number::from_f64(probability);
+        selection.decision_source = if inherited {
+            ComplexityDecisionSourceV1::Inherited
+        } else {
+            ComplexityDecisionSourceV1::ExternalClassifier
+        };
+        selection.complexity_score = None;
+        selection.threshold = None;
+        selection.classification_duration_micros = Some(1);
+        let mut request = fixture.clone();
+        request.request = LogicalRequestId::parse(format!("mixed-protection-{index}")).unwrap();
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                request.fact(index as u64 + 1, fact, 1000 + index as i64)
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    let mut q = query(Some(17));
+    q.include_routing_observations = true;
+    let summary = store
+        .observed_plan_quality_samples(&reader(), &q, 5000)
+        .unwrap()
+        .routing_observations
+        .unwrap();
+    assert_eq!(summary.coverage, "complete");
+    assert_eq!(summary.cohorts.len(), 1);
+    let counts = &summary.cohorts[0].counts;
+    assert_eq!(
+        (
+            counts.c_decisions,
+            counts.gate_opportunities,
+            counts.suppressed,
+            counts.inherited
+        ),
+        (5, 4, 1, 1)
+    );
+    assert_eq!(counts.suppressed_per_opportunity, Some(0.25));
+    assert_eq!(counts.suppressed_per_c_decision, Some(0.2));
+}
+
+#[test]
+fn supported_v1_and_v2_observations_remain_readable_in_distinct_cohorts() {
+    let baseline: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../domain/src/routing/fixtures/baseline-c-default-publication.json"
+    ))
+    .unwrap();
+    let legacy: FrozenNativeProtocolV1 =
+        serde_json::from_value(baseline["frozen"].clone()).unwrap();
+    legacy.validate().unwrap();
+    let mut old = observation(2);
+    old.protocol = legacy.protocol.schema.clone();
+    old.content_digest = legacy.digest.clone();
+    old.bundle_digest = CanonicalDigest::of(&legacy.protocol.fixed).unwrap();
+    let new = observation(3);
+    assert_eq!(old.protocol, SYSTEM_ONE_C_V1);
+    assert_eq!(new.protocol, SYSTEM_ONE_C_V2);
+    assert!(old.validate() && new.validate());
+    let old_bytes = serde_json::to_vec(&old).unwrap();
+
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let fixture = Fixture::new("versioned-c-observation");
+    let channel = fact_channel(&fixture, 1024 * 1024);
+    let writer = writer(&store);
+    for (index, observation) in [old.clone(), new.clone()].into_iter().enumerate() {
+        let mut fact = route_decision(PLAN);
+        let ExecutionFactV1::RouteDecision(decision) = &mut fact else {
+            unreachable!()
+        };
+        let selection = decision.complexity.as_mut().unwrap();
+        selection.decision_protocol = Some(DecisionProtocolV1::SystemOneC);
+        selection.routing_observation = Some(observation);
+        selection.decision_source = ComplexityDecisionSourceV1::ExternalClassifier;
+        selection.complexity_score = None;
+        selection.threshold = None;
+        selection.classification_duration_micros = Some(1);
+        let mut request = fixture.clone();
+        request.request = LogicalRequestId::parse(format!("versioned-c-{index}")).unwrap();
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                request.fact(index as u64 + 1, fact, 1000 + index as i64)
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    let mut q = query(Some(17));
+    q.include_routing_observations = true;
+    let summary = store
+        .observed_plan_quality_samples(&reader(), &q, 5000)
+        .unwrap()
+        .routing_observations
+        .unwrap();
+    assert_eq!(summary.coverage, "complete");
+    assert_eq!(summary.cohorts.len(), 2);
+    assert!(
+        summary
+            .cohorts
+            .iter()
+            .any(|c| c.cohort.protocol == SYSTEM_ONE_C_V1
+                && c.cohort.content_digest == old.content_digest)
+    );
+    assert!(
+        summary
+            .cohorts
+            .iter()
+            .any(|c| c.cohort.protocol == SYSTEM_ONE_C_V2
+                && c.cohort.content_digest == new.content_digest)
+    );
+    let facts = store
+        .observed_facts(
+            &reader(),
+            &ObservationFactsQueryV2 {
+                include_routing_observations: true,
+                request_id: LogicalRequestId::parse("versioned-c-0").unwrap(),
+                limit: 10,
+                cursor: None,
+            },
+            5000,
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::to_vec(
+            &facts.facts[0]
+                .routing_observation
+                .as_ref()
+                .unwrap()
+                .observation
+        )
+        .unwrap(),
+        old_bytes
+    );
+    let mut unsupported = new;
+    unsupported.protocol = "hiroute.system-one-c/v99".into();
+    assert!(!unsupported.validate());
+}
+
+#[test]
 fn known_current_non_c_protocol_keeps_mixed_revision_rates_complete() {
     let directory = tempfile::tempdir().unwrap();
     let store = open_store(directory.path());

@@ -301,6 +301,37 @@ pub(crate) fn test_writer_barrier() -> SingleWriterBackupBarrier {
 }
 
 impl BackupSet {
+    /// A completed current-format batch is a retained recovery point, not an
+    /// input to ordinary startup. Read its bounded completion/identity record;
+    /// opening it for Restore still authenticates every original backup byte.
+    pub(crate) fn completed_current_sources(
+        root: &Path,
+        target: u32,
+    ) -> Result<Option<[BackupManifest; 3]>, LocalStorageError> {
+        let path = set_manifest_path(root);
+        validate_owner_file(&path)?;
+        if fs::metadata(&path)?.len() > 64 * 1024 {
+            return Err(LocalStorageError::InvalidData);
+        }
+        let manifest: BackupSetManifest =
+            serde_json::from_slice(&fs::read(path)?).map_err(|_| LocalStorageError::InvalidData)?;
+        validate_set_manifest_shape(&manifest)?;
+        if manifest.phase != BackupSetPhase::Completed || manifest.target_schema_version != target {
+            return Ok(None);
+        }
+        let sources = [manifest.control, manifest.runtime, manifest.secrets];
+        if sources.iter().any(|source| {
+            source.schema != BACKUP_MANIFEST_SCHEMA
+                || !(23..=target).contains(&source.schema_version)
+                || source.store_uuid.is_empty()
+                || source.store_uuid == "legacy-unbound"
+        }) {
+            // Older unbound identities still require the original coordinator.
+            return Ok(None);
+        }
+        Ok(Some(sources))
+    }
+
     /// Saves the complete stopped storage authority beside this verified three-store backup.
     /// The caller must retain the startup barrier and directory ownership until publication ends.
     pub fn publish_stopped_source(

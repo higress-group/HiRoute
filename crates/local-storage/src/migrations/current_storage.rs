@@ -4,7 +4,28 @@ use hiroute_domain::*;
 
 pub(super) const MARKER_SQL: &str = "CREATE TABLE stable_storage_format(singleton INTEGER PRIMARY KEY CHECK(singleton=1), format_version INTEGER NOT NULL CHECK(format_version=1), converted INTEGER NOT NULL CHECK(converted IN (0,1))); INSERT INTO stable_storage_format VALUES(1,1,1);";
 
-pub(crate) fn acquire_startup_lock(root: &Path) -> Result<std::fs::File, LocalStorageError> {
+#[cfg(unix)]
+pub(crate) struct StartupLock {
+    file: std::fs::File,
+    owner_pid: u32,
+}
+
+#[cfg(unix)]
+impl Drop for StartupLock {
+    fn drop(&mut self) {
+        // The shared guard outlives every actual store, including into_parts.
+        // An incidental fork/dup descriptor must not extend that ownership
+        // until its eventual close/exec. File close remains the fallback.
+        if self.owner_pid == std::process::id() {
+            let _ = fs2::FileExt::unlock(&self.file);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub(crate) type StartupLock = std::fs::File;
+
+pub(crate) fn acquire_startup_lock(root: &Path) -> Result<StartupLock, LocalStorageError> {
     use fs2::FileExt;
     let path = root.join("startup.lock");
     #[cfg(windows)]
@@ -67,10 +88,42 @@ pub(crate) fn acquire_startup_lock(root: &Path) -> Result<std::fs::File, LocalSt
             LocalStorageError::Io(error)
         }
     })?;
-    Ok(file)
+    #[cfg(unix)]
+    {
+        Ok(StartupLock {
+            file,
+            owner_pid: std::process::id(),
+        })
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(file)
+    }
 }
 
+#[cfg(all(test, unix))]
+#[path = "startup_lock_tests.rs"]
+mod startup_lock_tests;
+
+mod dependencies;
+
 pub(crate) fn validate_current_storage(
+    control: &crate::ControlStore,
+    runtime: &crate::RuntimeStore,
+    secrets: &crate::LocalSecretStore,
+) -> Result<(), LocalStorageError> {
+    let version: u32 =
+        control
+            .connection
+            .borrow()
+            .pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version < 32 {
+        return audit_current_storage(control, runtime, secrets);
+    }
+    dependencies::validate(control, runtime, secrets)
+}
+
+pub(crate) fn audit_current_storage(
     control: &crate::ControlStore,
     runtime: &crate::RuntimeStore,
     secrets: &crate::LocalSecretStore,
@@ -140,17 +193,32 @@ pub(crate) fn validate_current_storage(
     // Cross-store grant/publication equality is checked only after Operation recovery.
     // Each store's format and integrity must already be valid before recovery writes.
     let secret_connection = secrets.connection.borrow();
-    for store in [
-        &*connection,
-        &*runtime.connection.borrow(),
-        &*secret_connection,
-    ] {
+    let runtime_connection = runtime.connection.borrow();
+    validate_sqlite_integrity([&connection, &runtime_connection, &secret_connection])
+}
+
+fn validate_sqlite_integrity(stores: [&Connection; 3]) -> Result<(), LocalStorageError> {
+    for store in stores {
         let result: String = store.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
         if result != "ok" {
             return Err(LocalStorageError::InvalidData);
         }
     }
     Ok(())
+}
+
+/// The same structural checks used by the explicit full audit, without claiming
+/// that unrelated historical business content was semantically authenticated.
+pub(crate) fn validate_sqlite_structure(
+    control: &crate::ControlStore,
+    runtime: &crate::RuntimeStore,
+    secrets: &crate::LocalSecretStore,
+) -> Result<(), LocalStorageError> {
+    validate_sqlite_integrity([
+        &control.connection.borrow(),
+        &runtime.connection.borrow(),
+        &secrets.connection.borrow(),
+    ])
 }
 
 /// Validate every retained publication, retaining only one decoded runtime object at a time.
@@ -188,6 +256,14 @@ pub(crate) fn validate_recovered_grant_publications(
     control: &crate::ControlStore,
     secrets: &crate::LocalSecretStore,
 ) -> Result<(), LocalStorageError> {
+    let version: u32 =
+        control
+            .connection
+            .borrow()
+            .pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if version >= 32 {
+        return dependencies::validate_grant_publications(control, secrets);
+    }
     let secret_connection = secrets.connection.borrow();
     let mut statement=secret_connection.prepare("SELECT v.grant_id,v.generation,v.scope_json,v.material_sha256 FROM agent_access_grant_heads h JOIN agent_access_grant_versions v ON v.connection_id=h.connection_id AND v.generation=h.active_version_generation")?;
     let mut unmatched = Vec::new();

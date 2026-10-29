@@ -39,7 +39,7 @@ export type CollaborationStatus = {
   restore_point_ref: string | null;
   current_selection?: { trigger_mode: AgentCollaborationTriggerMode } | null;
 };
-export type AgentModelSurface = 'codex_cli' | 'codex_desktop' | 'claude_cli' | 'qoder_cli' | 'pi_cli' | 'dsh_cli' | 'hermes_cli' | 'opencode_cli';
+export type AgentModelSurface = 'codex_cli' | 'codex_desktop' | 'claude_cli' | 'qoder_cli' | 'pi_cli' | 'dsh_cli' | 'dsh_desktop' | 'hermes_cli' | 'opencode_cli';
 export type AgentReasoningSelection =
   | { kind: 'profile'; profile: string }
   | { kind: 'toggle'; enabled: boolean }
@@ -91,7 +91,7 @@ export type QoderModelSelection = {
 };
 export type PiModelSelection = { mode: 'pi_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
 export type DshModelSelection = { mode: 'dsh_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
-export type OpenCodeModelSelection = { mode: 'opencode_additional'; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
+export type OpenCodeModelSelection = { mode: 'opencode_additional'; routing_metadata?: boolean; plan_protocols?: Record<string, 'responses' | 'messages'>; allowed_plan_ids: string[] };
 export type AgentNativeTarget = { kind: 'hermes'; config_root: string };
 export type HermesModelSelection = { mode: 'hermes_default'; plan_id: string; protocol: 'chat_completions' | 'responses' | 'messages' };
 export type SkillResourceStatus = {
@@ -153,6 +153,8 @@ export type Agent = {
   available_surfaces?: AgentModelSurface[];
   native_model_catalog?: AgentNativeModelCatalog | null;
   settings: AgentSettingsStatus | null;
+  /** Model readback does not certify unchanged skill facets or rediscover metadata. */
+  settings_scope?: 'model';
   status_error: string | null;
 };
 export type AgentSnapshot = {

@@ -23,7 +23,7 @@ impl ObservationControl {
         };
         // A fresh current-price query already supplies its capture intent. Keep
         // scope creation and evaluation in one reader/transaction, rather than
-        // opening a second cold reader within the same total 500 ms budget.
+        // opening a second cold reader within the same total 1 s budget.
         if q.analysis_scope.is_none()
             && q.cursor.is_none()
             && q.view.monetary()

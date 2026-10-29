@@ -10,6 +10,13 @@ pub use hiroute_gateway::server::test_control::{
     TestTlsStream, sealed_native_candidate, write_dial_config, write_dial_config_with_dns_failures,
 };
 
+/// Decode delivered HTTP chunk bytes without treating a disconnected prefix as
+/// a complete entity. Model-protocol terminal evidence remains independent.
+pub fn decode_chunked_response_body(wire: &[u8]) -> std::io::Result<(Vec<u8>, bool)> {
+    crate::http::decode_chunked_prefix(wire)
+        .map_err(|error| Error::new(ErrorKind::InvalidData, error.to_string()))
+}
+
 pub fn read_complete_http_request(
     stream: &mut TestTlsStream,
     timeout: Duration,

@@ -304,8 +304,15 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
     record_attributed_session(&runtime, &grant, "parked-service-proof", &plan);
     assert_attributed_session(&runtime, "parked-service-proof");
 
-    // A crash before the receipt cannot prove ownership yet, but cannot prevent
-    // the journal from completing. Remove the mapping to test absence of evidence.
+    // This unit fixture rewinds a completed journal solely to probe attribution.
+    // It does not rewind the already committed file-head transition, so it is not
+    // a restartable crash image. Real pre-receipt crash/restart and post-recovery
+    // attribution are exercised by publication_process's after_target/after_active
+    // Agent settings cases, using the actual unfinished transaction.
+    let service_receipt = operation
+        .step(OperationStepKind::Activate)
+        .terminal_result
+        .clone();
     operation
         .step_mut(OperationStepKind::Activate)
         .terminal_result = None;
@@ -316,8 +323,6 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
         .control()
         .save_operation(&mut operation)
         .unwrap();
-    // Unlike a parked file tail, a real crash before the service receipt still
-    // holds the writer claim. Recreate that part of the isolated crash fixture.
     runtime
         .adapter
         .stores_lock()
@@ -326,30 +331,23 @@ fn parked_native_tail_requires_a_current_authenticated_service_receipt() {
         .reclaim_operation_writer(&current)
         .unwrap();
     clear_grant_mappings(root.path());
-    let scanner = runtime.adapter.scanner.clone();
-    drop(runtime);
-    let runtime = open_with_scanner(root.path(), scanner);
     runtime.adapter.restore_active_publication().unwrap();
-    record_attributed_session(&runtime, &grant, "before-service-recovery", &plan);
-    assert_unlinked_session(&runtime, "before-service-recovery");
-    runtime.adapter.reconcile_startup_and_open().unwrap();
+    record_attributed_session(&runtime, &grant, "parked-without-service-proof", &plan);
+    assert_unlinked_session(&runtime, "parked-without-service-proof");
+    // Restore only the exact original service receipt in this attribution fixture.
+    // Availability of valid proof authorizes future writes, never retroactive identity.
+    operation
+        .step_mut(OperationStepKind::Activate)
+        .terminal_result = service_receipt;
     runtime
         .adapter
-        .finish_startup_publication_recovery()
+        .stores_lock()
+        .unwrap()
+        .control()
+        .save_operation(&mut operation)
         .unwrap();
-    assert_eq!(
-        runtime
-            .adapter
-            .stores_lock()
-            .unwrap()
-            .control()
-            .load_operation(&current)
-            .unwrap()
-            .unwrap()
-            .state,
-        hiroute_domain::OperationState::Succeeded,
-    );
-    record_attributed_session(&runtime, &grant, "after-service-recovery", &plan);
-    assert_attributed_session(&runtime, "after-service-recovery");
-    assert_unlinked_session(&runtime, "before-service-recovery");
+    runtime.adapter.restore_active_publication().unwrap();
+    record_attributed_session(&runtime, &grant, "parked-proof-restored", &plan);
+    assert_attributed_session(&runtime, "parked-proof-restored");
+    assert_unlinked_session(&runtime, "parked-without-service-proof");
 }

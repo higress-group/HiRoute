@@ -186,10 +186,15 @@ pub(crate) fn recoverable(lock: &mut File, runtime: &Path) -> Result<bool, Strin
         Err(_) => return Ok(false),
     };
     if !same_owned_nodes(&old, &current) {
+        #[cfg(test)]
+        eprintln!("ownership recovery refused changed node identities");
         return Ok(false);
     }
     // A reused PID or permission error is conservative: never signal or reclaim it.
-    if kill(Pid::from_raw(old.pid as i32), None) != Err(Errno::ESRCH) {
+    let process_state = kill(Pid::from_raw(old.pid as i32), None);
+    if process_state != Err(Errno::ESRCH) {
+        #[cfg(test)]
+        eprintln!("ownership recovery process state: {process_state:?}");
         return Ok(false);
     }
     for path in paths(runtime) {
@@ -211,7 +216,10 @@ pub(crate) fn recoverable(lock: &mut File, runtime: &Path) -> Result<bool, Strin
         )
         .map_err(|_| "RESIDENT_ENDPOINT_UNAVAILABLE")?;
         let address = UnixAddr::new(&path).map_err(|_| "RESIDENT_ENDPOINT_INVALID")?;
-        if connect(fd.as_raw_fd(), &address) != Err(Errno::ECONNREFUSED) {
+        let endpoint_state = connect(fd.as_raw_fd(), &address);
+        if endpoint_state != Err(Errno::ECONNREFUSED) {
+            #[cfg(test)]
+            eprintln!("ownership recovery endpoint state: {endpoint_state:?}");
             return Ok(false);
         }
     }

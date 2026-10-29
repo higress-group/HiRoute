@@ -14,12 +14,16 @@ use crate::server::core_runtime::profiles::{
 };
 use crate::server::request_plan::IngressProtocol;
 
-use super::{ProtocolAdapterError, client_can_represent_message_phase, responses_terminal};
+use super::{
+    ProtocolAdapterError, client_can_represent_message_phase, responses_terminal,
+    synthetic_responses_item_id,
+};
 
 pub(super) fn render_responses_output_block(
+    response_id: &str,
     block: &ResponseBlock,
 ) -> Result<Value, ProtocolAdapterError> {
-    responses::render_responses_block(block)
+    responses::render_responses_block(response_id, block)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -558,6 +562,7 @@ fn chat_tool_calls(response: &ModelResponseIRV1) -> Result<Vec<Value>, ProtocolA
 }
 
 fn append_responses_state(
+    response_id: &str,
     output: &mut Vec<Value>,
     state: &[OpaqueProviderState],
 ) -> Result<(), ProtocolAdapterError> {
@@ -584,7 +589,7 @@ fn append_responses_state(
                 ));
             }
         } else {
-            output.push(json!({"type":"reasoning","id":format!("state_{state_index}"),"summary":[],"encrypted_content":state.value}));
+            output.push(json!({"type":"reasoning","id":synthetic_responses_item_id(response_id, "state", state_index as u32),"summary":[],"encrypted_content":state.value}));
         }
     }
     Ok(())
@@ -690,16 +695,24 @@ fn collect_refusal(response: &ModelResponseIRV1) -> String {
         .collect()
 }
 
+pub(super) fn openai_cache_details(usage: &ModelUsage) -> Option<Value> {
+    let mut details = Map::new();
+    if let Some(tokens) = usage.cache_read_tokens {
+        details.insert("cached_tokens".into(), tokens.into());
+    }
+    if let Some(tokens) = usage.cache_write_tokens {
+        details.insert("cache_write_tokens".into(), tokens.into());
+    }
+    (!details.is_empty()).then_some(Value::Object(details))
+}
+
 fn responses_usage(usage: &ModelUsage) -> Value {
     let mut value = json!({"input_tokens":usage.input_tokens.unwrap_or(0),"output_tokens":usage.output_tokens.unwrap_or(0),"total_tokens":usage.input_tokens.unwrap_or(0).saturating_add(usage.output_tokens.unwrap_or(0))});
     let object = value
         .as_object_mut()
         .expect("Responses usage renderer creates an object");
-    if let Some(tokens) = usage.cache_read_tokens {
-        object.insert(
-            "input_tokens_details".into(),
-            json!({"cached_tokens":tokens}),
-        );
+    if let Some(details) = openai_cache_details(usage) {
+        object.insert("input_tokens_details".into(), details);
     }
     if let Some(tokens) = usage.reasoning_tokens {
         object.insert(
@@ -715,11 +728,8 @@ fn chat_usage(usage: &ModelUsage) -> Value {
     let object = value
         .as_object_mut()
         .expect("Chat usage renderer creates an object");
-    if let Some(tokens) = usage.cache_read_tokens {
-        object.insert(
-            "prompt_tokens_details".into(),
-            json!({"cached_tokens":tokens}),
-        );
+    if let Some(details) = openai_cache_details(usage) {
+        object.insert("prompt_tokens_details".into(), details);
     }
     if let Some(tokens) = usage.reasoning_tokens {
         object.insert(
@@ -802,6 +812,16 @@ fn validate_projection(
     response: &ModelResponseIRV1,
     streaming: bool,
 ) -> Result<(), ProtocolAdapterError> {
+    if protocol != IngressProtocol::Responses
+        && response.blocks.iter().any(|block| {
+            matches!(block,
+        ResponseBlock::ToolCall { encrypted_function_args: Some(paths), .. } if !paths.is_empty())
+        })
+    {
+        return Err(ProtocolAdapterError::ClientUnrepresentable(
+            "encrypted function arguments require native Responses".into(),
+        ));
+    }
     if response.completed != response.error.is_none() {
         return Err(ProtocolAdapterError::ClientUnrepresentable(
             "canonical terminal state is inconsistent".into(),
@@ -933,19 +953,6 @@ fn validate_projection(
         return Err(ProtocolAdapterError::ClientUnrepresentable(
             "P0 client projection requires exact input and output usage".into(),
         ));
-    }
-    match protocol {
-        IngressProtocol::Responses | IngressProtocol::ChatCompletions
-            if response.usage.cache_write_tokens.is_some() =>
-        {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "client protocol cannot represent cache-write usage".into(),
-            ));
-        }
-        // Messages has no separate reasoning-token counter. As in the
-        // incremental renderer, retain the billable output total; the canonical
-        // usage still records its reasoning breakdown for observation.
-        _ => {}
     }
     if protocol == IngressProtocol::ChatCompletions {
         let reasoning_blocks = response

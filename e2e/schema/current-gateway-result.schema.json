@@ -38,7 +38,7 @@
       "maxLength": 71
     },
     "aggregate_port_digest": {
-      "const": "sha256:5a9ae6752cd57cd2309fb35cf81722af195214be5379d7b675482554ee92c5a8"
+      "const": "sha256:b3378fb8850456bc003d8696698fa0320adab25c9a38ebe2673c5700800575d4"
     },
     "schema_digests": {
       "type": "object",

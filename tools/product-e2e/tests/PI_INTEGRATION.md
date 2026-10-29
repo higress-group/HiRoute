@@ -116,3 +116,67 @@ the native context/Continue journey with `HIROUTE_PRODUCT_AGENT_PROTOCOL=respons
 and `HIROUTE_PRODUCT_AGENT_PROTOCOL=messages` to cover both frozen Worker routes.
 This selector changes fixture inputs, never the production protocol or native CLI.
 Record both protocol outcomes explicitly; one successful default run is insufficient.
+
+The saved-model journey also runs ordinary Pi with native extension autoload and
+one persisted session. The selected custom decision service must assess the first
+task's actual accepted execution in the next turn's exact target, with membership
+containing that execution and excluding the current request. Both submissions
+must classify and capture, and the journey must select two distinct model groups.
+Gateway restart must not revive accepted history from process memory; fresh A/B
+in the same session must recover capture and evaluation. After model Restore,
+verify the original default model, removal of owned adapter/registration and an
+actual default provider request through the restored controlled source. Startup
+alone does not prove restored inference. No explicit `-e` load may stand in for
+ordinary autoload acceptance.
+
+## Ordinary routing metadata
+
+The installed adapter delegates managed physical Responses and Messages providers
+through Pi's public model registry and provider registration. It preserves the
+original stream implementation, request authentication, payload, callbacks,
+native retry and cancellation. Provider execution is called exactly once even
+when optional metadata fails. It writes `options.headers` at that seam because
+the native runtime has already consumed `transformHeaders`.
+
+Compaction and requested nonempty tree summaries bind their actual operation's
+AbortSignal to immutable purpose/session/branch evidence. Serial summary calls
+and retries keep that binding without a timeout or terminal callback. Other
+signals remain independent. Navigation without a summary and summaries supplied
+by another extension cannot mark later ordinary calls. A summary that fails or is
+cancelled retains native failure semantics while subsequent ordinary input can
+recover immediately.
+
+Ordinary calls attach this extension's cursor only when `options.sessionId`
+matches its live native session. A missing or unsupported signal is `unknown`,
+and an unmatched SDK session receives no cursor. The v2 input is an observed batch:
+the native projection can identify a cursor event or known compression, but cannot
+prove final wire positions after arbitrary extension transformations. Branch
+evidence includes both the leaf and ordered path digest, so a shared user entry
+does not identify divergent tree branches. Summary text never becomes captured
+prior task execution.
+
+Setup, model selection and request context discovery refresh managed wrappers.
+The public retained registration identity prevents repeated provider facade
+recomposition from stacking delegates; a replacement provider retains its own
+new delegate. If that public identity interface is unavailable, the provider
+remains usable without exact adapter metadata. Native extension disposal owns
+registration removal; no saved user provider is rewritten to install a wrapper.
+Managed cache warming remains suppressed. Unmanaged and unsupported APIs stay
+with their original provider.
+
+Acceptance separates pure adapter tests, installed public SDK fixtures and actual
+CLI loading through Gateway. Use actual independent CLI sessions and native tree
+branches; stock Pi 1.0.2 has no native subagent feature. An arbitrary SDK host
+sharing and independently unloading one mutable provider registry is outside the
+exact metadata contract. Third-party virtual routes and summary implementations
+that replace native signals also require separate capability evidence.
+
+Required native cases include real compaction lasting longer than five minutes,
+serial two-call compaction, summary retry/cancellation, overflow and threshold
+compaction; tree summary success/failure/cancellation, no-summary navigation and
+extension-supplied summary; tools, repeated input, branch/context rewrites and
+concurrent independent sessions; reload, provider replacement, missing signal,
+metadata/classifier/capture faults and same-session recovery; separate Gateway
+and client restarts; complete Restore and default inference on both protocols.
+Advancing a clock in a component fixture does not satisfy the real-duration case.
+Record unsupported native capabilities and injected faults explicitly.

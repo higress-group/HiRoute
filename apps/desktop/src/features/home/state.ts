@@ -11,7 +11,7 @@ import type {
   HomeSubscriptionCheck,
 } from './types';
 
-export type HomePrimaryMode = 'loading' | 'first-use' | 'partial' | 'configured-empty' | 'daily';
+export type HomePrimaryMode = 'loading' | 'unavailable' | 'first-use' | 'partial' | 'configured-empty' | 'daily';
 
 export type DomainReadSlot<T> = {
   requestId: string | null;
@@ -24,7 +24,9 @@ export function beginDomainRead<T>(
   requestId: string,
   targetKey: string,
 ): DomainReadSlot<T> {
-  const previous = current.read.status === 'ready' ? current.read.data : current.read.previous;
+  const previous = current.targetKey === targetKey
+    ? current.read.status === 'ready' ? current.read.data : current.read.previous
+    : undefined;
   return {
     requestId,
     targetKey,
@@ -68,21 +70,42 @@ export function deriveHomeServiceStatus(read: HomeRead<HomeService>): {
   operational: boolean;
 } {
   if (read.status !== 'ready') {
-    return { state: read.status === 'error' ? 'unavailable' : 'unknown', operational: false };
+    // A failed page read does not establish that the service stopped. Only an
+    // actual service response may describe it as unavailable.
+    return { state: 'unknown', operational: false };
   }
   const service = read.data;
   const running = service.daemon === 'running'
     && ['ready', 'empty', 'no_new_calls'].includes(service.gateway);
   return {
     state: service.nativeConnectionLost ? 'connection_lost' : service.daemon === 'read_only' ? 'read_only'
-      : service.daemon === 'unavailable' ? 'unavailable'
+      : service.daemon === 'unavailable' || service.gateway === 'unavailable' ? 'unavailable'
         : running ? 'ready' : 'unknown',
     operational: running && Boolean(service.recoveryReady) && !service.nativeConnectionLost,
   };
 }
 
+// A previous result is only presentation while a read for the same target is
+// in flight. It is never passed to deriveHomeServiceStatus for authorization.
+export function deriveHomeServicePresentation(read: HomeRead<HomeService>): {
+  state: ReturnType<typeof deriveHomeServiceStatus>['state'];
+  refreshing: boolean;
+  checkFailed: boolean;
+} {
+  const refreshing = read.status === 'loading';
+  const checkFailed = read.status === 'error';
+  const data = read.status === 'ready' ? read.data : refreshing ? read.previous : undefined;
+  if (!data) return { state: 'unknown', refreshing, checkFailed };
+  const status = deriveHomeServiceStatus({ status: 'ready', data });
+  return {
+    state: status.state === 'ready' && !status.operational ? 'unknown' : status.state,
+    refreshing,
+    checkFailed,
+  };
+}
+
 function configuredFacet(state: HomeFacetState): boolean {
-  return state !== 'unconfigured' && state !== 'unknown' && state !== 'unsupported';
+  return state !== 'unconfigured' && state !== 'restored' && state !== 'unknown' && state !== 'unavailable' && state !== 'unsupported';
 }
 
 function hasAnyConfiguration(compute?: HomeCompute, plans?: HomePlans, agents?: HomeAgents): boolean {
@@ -115,7 +138,12 @@ export function deriveHomePrimaryMode(reads: HomeReads): HomePrimaryMode {
 
   if (requiredUnresolved) return 'loading';
   const configured = hasAnyConfiguration(compute, plans, agents);
-  if (!configured) return 'first-use';
+  if (!configured) {
+    const incompleteAgentCoverage = agents?.agents.some(agent =>
+      ['unknown', 'unavailable'].includes(agent.model) || ['unknown', 'unavailable'].includes(agent.collaboration),
+    );
+    return incompleteAgentCoverage ? 'unavailable' : 'first-use';
+  }
   if (activity && (activity.sessions.length > 0 || activity.tasks.length > 0)) return 'daily';
   if (!hasCompleteRoute(compute, plans, agents)) return 'partial';
   return 'configured-empty';

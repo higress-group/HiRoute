@@ -242,10 +242,10 @@ where
         match result {
             Ok(reuse) => cleanup
                 .map(|()| reuse)
-                .map_err(|error| TransportError::Io(error.to_string().into())),
+                .map_err(GatewayExecutionError::into_transport_error),
             Err(error) => {
                 let _ = cleanup;
-                Err(TransportError::Io(error.to_string().into()))
+                Err(error.into_transport_error())
             }
         }
     }
@@ -366,10 +366,10 @@ where
         match result {
             Ok(reuse) => cleanup
                 .map(|()| reuse)
-                .map_err(|error| TransportError::Io(error.to_string().into())),
+                .map_err(GatewayExecutionError::into_transport_error),
             Err(error) => {
                 let _ = cleanup;
-                Err(TransportError::Io(error.to_string().into()))
+                Err(error.into_transport_error())
             }
         }
     }
@@ -567,11 +567,9 @@ pub(super) fn attempt_completion_from_result<T>(
     cleanup: AttemptCleanupOutcome,
     result: &Result<T, GatewayExecutionError>,
 ) -> ProviderAttemptCompletion {
-    let cancelled = matches!(
-        result,
-        Err(GatewayExecutionError::Cancelled)
-            | Err(GatewayExecutionError::Attempt(AttemptError::Cancelled))
-    );
+    let cancelled = result
+        .as_ref()
+        .is_err_and(GatewayExecutionError::is_cancelled);
     let semantic_started = commits.downstream_semantic != CommitFence::Clear;
     let stream = if semantic_started && result.is_err() {
         AttemptStreamOutcome::StreamStartedNoRetry

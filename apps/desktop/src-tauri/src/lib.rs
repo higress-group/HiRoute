@@ -5,6 +5,8 @@ pub mod bootstrap;
 pub mod bridge;
 #[cfg(unix)]
 mod cli_entry;
+#[cfg(unix)]
+mod cpa_manifest;
 pub use hiroute_product_session::{confirmation, failure, operation_observation, session};
 #[cfg(unix)]
 mod development_cpa;

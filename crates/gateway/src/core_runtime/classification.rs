@@ -32,13 +32,16 @@ mod extension;
 mod group_policy;
 #[path = "classification/protocol.rs"]
 mod protocol;
+#[cfg(test)]
+#[path = "classification/resource_tests.rs"]
+mod resource_tests;
 #[path = "classification/system_one.rs"]
 mod system_one;
 pub(super) use group_policy::{apply as apply_group_policy, execution_position};
 
 use super::ProductionGatewayRuntime;
 use super::adapters::{PreparedReplayTemplate, sequential_replay_body};
-use super::model_ir::{ContentPart, MessageRole, ModelRequestIRV1};
+use super::model_ir::{ContentPart, ModelRequestIRV1};
 use super::profiles::{
     BranchDecisionV1, ClassifierFallbackReasonV1, CompiledClassifierKindV1,
     CompiledComplexityStrategyV1, ComplexityDecisionSourceV1, ComplexityReasonCodeV1, ComplexityV1,
@@ -109,6 +112,11 @@ pub(super) enum ClassificationError {
 
 pub(super) struct ClassificationRequest<'a> {
     pub(super) request: &'a ModelRequestIRV1,
+    pub(super) current_input: Option<&'a [ContentPart]>,
+    /// A recognized auxiliary call or continuation has no independent current input.
+    pub(super) native_user_unavailable: bool,
+    /// Missing source evidence is disclosed to judgment; usable input stays enabled.
+    pub(super) current_input_origin_unverified: bool,
     pub(super) replay: &'a ReplayStore,
     pub(super) classifier: Option<&'a Arc<RestBranchClassifierAuthorityV1>>,
     pub(super) history: &'a AgentTurnHistorySnapshot,
@@ -117,6 +125,33 @@ pub(super) struct ClassificationRequest<'a> {
     pub(super) overall_deadline: Instant,
     pub(super) cancellation: CancellationToken,
     pub(super) started_at: Instant,
+}
+
+/// Current input is an independent descriptor; selecting it never rewrites the
+/// original transcript or demotes other User envelopes to instructions.
+#[derive(Clone, Copy)]
+pub(super) struct DecisionInput<'a> {
+    request: &'a ModelRequestIRV1,
+    current: Option<&'a [ContentPart]>,
+}
+
+impl<'a> From<&'a ModelRequestIRV1> for DecisionInput<'a> {
+    fn from(request: &'a ModelRequestIRV1) -> Self {
+        Self {
+            request,
+            current: None,
+        }
+    }
+}
+
+impl<'a> DecisionInput<'a> {
+    fn parts(self) -> Option<&'a [ContentPart]> {
+        self.current.or_else(|| {
+            super::native_routing_view::observed_input_index(self.request)
+                .and_then(|index| self.request.messages.get(index))
+                .map(|message| message.content.as_slice())
+        })
+    }
 }
 
 struct PreparedDecisionRequest {
@@ -262,6 +297,9 @@ impl ProductionGatewayRuntime {
                 &strategy,
                 ClassificationRequest {
                     request: &request,
+                    current_input: None,
+                    native_user_unavailable: false,
+                    current_input_origin_unverified: false,
                     replay: &replay,
                     classifier: Some(&classifier),
                     history: &history,
@@ -327,7 +365,21 @@ impl ProductionGatewayRuntime {
         let call_deadline = fixed_deadline.min(request.overall_deadline);
         let fixed_timeout_wins = fixed_deadline < request.overall_deadline;
 
-        let latest_user = resolve_latest_user(request.request, request.replay)?;
+        let (latest_user, local_input_unavailable) = if request.native_user_unavailable {
+            (None, true)
+        } else {
+            match resolve_latest_user(
+                DecisionInput {
+                    request: request.request,
+                    current: request.current_input,
+                },
+                request.replay,
+            ) {
+                Ok(user) => (user, false),
+                Err(ClassificationError::Resource) => (None, true),
+                Err(error) => return Err(error),
+            }
+        };
         ensure_source_active(request.overall_deadline, &request.cancellation)?;
         let (local_decision, facts) = ComplexityV1::decide(
             latest_user.as_ref().map(|value| value.text.as_str()),
@@ -335,6 +387,7 @@ impl ProductionGatewayRuntime {
             strategy,
         )
         .map_err(|_| ClassificationError::Integrity)?;
+        drop(latest_user);
 
         if local_decision.decision_source == ComplexityDecisionSourceV1::Inherited
             || strategy.classifier_kind == CompiledClassifierKindV1::LocalRules
@@ -348,63 +401,92 @@ impl ProductionGatewayRuntime {
         }
 
         let mut routing_observation = None;
-        let result = match request.classifier {
-            Some(classifier) => {
-                let prepared = if classifier.system_one_model.is_some() {
-                    system_one::request_template(classifier, request.request, request.history)
-                } else {
-                    extension::request_template(request.request, request.history, classifier)
+        let result = if local_input_unavailable {
+            // Optional judgment projection must not consume the model request's
+            // remaining memory or reject content that Replay can still forward.
+            Err(CallFailure::Unavailable)
+        } else {
+            match request.classifier {
+                Some(classifier) => {
+                    let prepared = if classifier.system_one_model.is_some() {
+                        system_one::request_template(
+                            classifier,
+                            DecisionInput {
+                                request: request.request,
+                                current: request.current_input,
+                            },
+                            request.history,
+                            request.current_input_origin_unverified,
+                        )
+                    } else {
+                        extension::request_template(
+                            DecisionInput {
+                                request: request.request,
+                                current: request.current_input,
+                            },
+                            request.history,
+                            classifier,
+                            request.current_input_origin_unverified,
+                        )
                         .map_err(|_| CallFailure::RejectedInput)
-                };
-                match prepared {
-                    Err(error) => Err(error),
-                    Ok(prepared) => {
-                        routing_observation = prepared.routing_observation.clone();
-                        if let Some(o) = routing_observation.as_mut()
-                            && o.applicability_requested
-                        {
-                            o.applicability_requested = false;
-                            o.applicability_state =
-                                hiroute_domain::ApplicabilityStateV1::NotRequested;
-                            o.applicability_reason =
-                                hiroute_domain::ApplicabilityReasonV1::DispatchNotStarted;
-                        }
-                        let target_trimmed = prepared.target_partial;
-                        match ensure_call_active(
-                            call_deadline,
-                            request.overall_deadline,
-                            &request.cancellation,
-                        ) {
-                            Ok(()) => {
-                                let result = self
-                                    .call_classifier(
-                                        classifier,
-                                        prepared,
-                                        &mut routing_observation,
-                                        request.replay,
-                                        request.publication_revision,
-                                        call_deadline,
-                                        request.overall_deadline,
-                                        fixed_timeout_wins,
-                                        request.cancellation.clone(),
-                                    )
-                                    .await?;
-                                result.map(|mut response| {
-                                    if let Some(assessment) = response.assessment.as_mut() {
-                                        assessment.partial |= target_trimmed;
-                                    }
-                                    response
-                                })
+                    };
+                    match prepared {
+                        Err(error) => Err(error),
+                        Ok(prepared) => {
+                            routing_observation = prepared.routing_observation.clone();
+                            if let Some(o) = routing_observation.as_mut()
+                                && o.applicability_requested
+                            {
+                                o.applicability_requested = false;
+                                o.applicability_state =
+                                    hiroute_domain::ApplicabilityStateV1::NotRequested;
+                                o.applicability_reason =
+                                    hiroute_domain::ApplicabilityReasonV1::DispatchNotStarted;
                             }
-                            Err(ClassificationError::Deadline) if fixed_timeout_wins => {
-                                Err(CallFailure::Timeout)
+                            let target_trimmed = prepared.target_partial;
+                            match ensure_call_active(
+                                call_deadline,
+                                request.overall_deadline,
+                                &request.cancellation,
+                            ) {
+                                Ok(()) => {
+                                    let result = match self
+                                        .call_classifier(
+                                            classifier,
+                                            prepared,
+                                            &mut routing_observation,
+                                            request.replay,
+                                            request.publication_revision,
+                                            call_deadline,
+                                            request.overall_deadline,
+                                            fixed_timeout_wins,
+                                            request.cancellation.clone(),
+                                        )
+                                        .await
+                                    {
+                                        Ok(result) => result,
+                                        Err(ClassificationError::Resource) => {
+                                            Err(CallFailure::Unavailable)
+                                        }
+                                        Err(error) => return Err(error),
+                                    };
+                                    result.map(|mut response| {
+                                        if let Some(assessment) = response.assessment.as_mut() {
+                                            assessment.partial |= target_trimmed;
+                                        }
+                                        response
+                                    })
+                                }
+                                Err(ClassificationError::Deadline) if fixed_timeout_wins => {
+                                    Err(CallFailure::Timeout)
+                                }
+                                Err(error) => return Err(error),
                             }
-                            Err(error) => return Err(error),
                         }
                     }
                 }
+                None => Err(CallFailure::Unavailable),
             }
-            None => Err(CallFailure::Unavailable),
         };
         ensure_source_active(request.overall_deadline, &request.cancellation)?;
         let classification_duration_micros =
@@ -937,11 +1019,11 @@ fn ensure_call_active(
     }
 }
 
-fn resolve_latest_user(
-    request: &ModelRequestIRV1,
+fn resolve_latest_user<'a>(
+    request: impl Into<DecisionInput<'a>>,
     replay: &ReplayStore,
 ) -> Result<Option<ResolvedLatestUser>, ClassificationError> {
-    let Some(parts) = latest_user_parts(request) else {
+    let Some(parts) = latest_user_parts(request.into()) else {
         return Ok(None);
     };
     let byte_len = joined_text_len(&parts).map_err(|_| ClassificationError::Integrity)?;
@@ -977,16 +1059,9 @@ fn resolve_latest_user(
     }))
 }
 
-fn latest_user_parts(request: &ModelRequestIRV1) -> Option<Vec<&str>> {
-    let message = request.messages.iter().rev().find(|message| {
-        message.role == MessageRole::User
-            && message
-                .content
-                .iter()
-                .any(|part| matches!(part, ContentPart::Text { .. } | ContentPart::Image { .. }))
-    })?;
-    let parts = message
-        .content
+fn latest_user_parts(request: DecisionInput<'_>) -> Option<Vec<&str>> {
+    let parts = request
+        .parts()?
         .iter()
         .filter_map(|part| match part {
             ContentPart::Text { text } => Some(text.as_str()),

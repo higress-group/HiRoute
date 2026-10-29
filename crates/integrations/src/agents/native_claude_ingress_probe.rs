@@ -168,6 +168,7 @@ impl ClaudeNativeIngressProbe {
             .env("HOME", &home)
             .env("CLAUDE_CONFIG_DIR", &config)
             .env("TMPDIR", &workspace)
+            .env("CLAUDE_CODE_TMPDIR", &workspace)
             .env("PATH", super::native_ingress_probe::native_probe_path())
             .current_dir(&workspace);
         #[cfg(unix)]
@@ -339,6 +340,10 @@ impl ClaudeIngressEvidence {
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
+
+#[cfg(all(test, unix))]
+#[path = "native_claude_probe_environment_tests.rs"]
+mod environment_tests;
 
 #[cfg(all(test, unix))]
 mod tests {

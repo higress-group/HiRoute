@@ -110,7 +110,7 @@ impl ManagedCpaRuntime {
                 })
             });
             if needs_account_recovery {
-                self.discover_materializations_locked(&mut inner, None)?;
+                self.recover_saved_catalog_locked(&mut inner)?;
                 if !inner.live.as_ref().is_some_and(|live| {
                     live.accounts
                         .iter()

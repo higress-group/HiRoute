@@ -30,7 +30,7 @@ turns[14].transitions = [{ kind: 'unknown', request_id: 'request-15', previous_r
 if (scenario === 'extension-late-assessment') {
   Object.assign(turns[13], {
     group: 'regular',
-    selection: { selection_reason: 'extension_decision', extension_reason: 'Extension chose regular', simple_probability: null, simple_threshold_millis: null },
+    selection: { execution_group: 'regular', selection_reason: 'extension_decision', extension_reason: 'Extension chose regular', simple_probability: null, simple_threshold_millis: null },
     assessment_state: 'unrated', assessment: null, competence_floor_millis: null,
   });
 }

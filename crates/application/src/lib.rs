@@ -70,6 +70,10 @@ impl ApplicationService {
             return failed(ErrorCode::FeatureNotEnabled, request.request_id);
         }
 
+        if request.operation_id == hiroute_application_api::GET_TRIAL_SETUP_SNAPSHOT_OPERATION_V1 {
+            return client_access::dispatch(self, request);
+        }
+
         if compute_management::is_compute_management_operation(&request.operation_id) {
             return compute_management::dispatch_compute_management(self, request);
         }
@@ -79,6 +83,10 @@ impl ApplicationService {
             WORKER_SETTINGS_GET_OPERATION_V1 | WORKER_SETTINGS_SET_OPERATION_V1
         ) {
             return delegation::tasks::dispatch(self, request);
+        }
+
+        if request.operation_id == hiroute_application_api::AGENT_SETTINGS_SUMMARY_OPERATION_V1 {
+            return control_plane::agent_settings::summary(self, request);
         }
 
         let Some(descriptor) = command_by_operation(&request.operation_id) else {
@@ -270,17 +278,35 @@ impl ApplicationService {
         else {
             return failed(ErrorCode::InvalidArguments, request.request_id);
         };
-        if input.native_target.is_some() && request.operation_id != "ScanAgents" {
+        if (input.native_target.is_some() || input.context_id.is_some())
+            && request.operation_id != "ScanAgents"
+        {
             return failed(ErrorCode::InvalidArguments, request.request_id);
         }
         let Some(ports) = self.ports.as_ref() else {
             return failed(ErrorCode::DaemonUnavailable, request.request_id);
         };
-        let result = match &input.native_target {
-            Some(target) if target.validate().is_ok() => ports.discovery.discover_target(target),
-            Some(_) => return failed(ErrorCode::InvalidArguments, request.request_id),
-            None if request.operation_id == "ListAgents" => ports.discovery.list(),
-            None => ports.discovery.discover(),
+        if input
+            .native_target
+            .as_ref()
+            .is_some_and(|target| target.validate().is_err())
+            || input
+                .context_id
+                .as_ref()
+                .is_some_and(|context| context.is_empty() || context.len() > 256)
+        {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        }
+        let result = if let Some(context) = &input.context_id {
+            ports
+                .discovery
+                .discover_context(context, input.native_target.as_ref())
+        } else {
+            match &input.native_target {
+                Some(target) => ports.discovery.discover_target(target),
+                None if request.operation_id == "ListAgents" => ports.discovery.list(),
+                None => ports.discovery.discover(),
+            }
         };
         match result {
             Ok(agents) => succeeded(

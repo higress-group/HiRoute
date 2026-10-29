@@ -95,6 +95,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
                 | SettingsAgentClass::Pi
                 | SettingsAgentClass::Dsh
+                | SettingsAgentClass::DshDesktop
                 | SettingsAgentClass::OpenCode
         ) {
             return Ok(());
@@ -127,6 +128,7 @@ impl LocalControlAdapter {
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
+            | SettingsAgentClass::DshDesktop
             | SettingsAgentClass::OpenCode
             | SettingsAgentClass::Hermes => {
                 return Err(error());
@@ -145,6 +147,7 @@ impl LocalControlAdapter {
                 SettingsAgentClass::Qoder
                 | SettingsAgentClass::Pi
                 | SettingsAgentClass::Dsh
+                | SettingsAgentClass::DshDesktop
                 | SettingsAgentClass::OpenCode
                 | SettingsAgentClass::Hermes => {
                     return Err(error());

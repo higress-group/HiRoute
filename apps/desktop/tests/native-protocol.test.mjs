@@ -1,17 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import stock from '../../../crates/domain/src/routing/fixtures/system_one_c_v1.json' with { type: 'json' };
+import guidance from '../../../assets/decision-services/default-assessment-guidance.json' with { type: 'json' };
 import { defaultJudgment } from '../src/features/decision-services/types.ts';
 import { stockAssessment, resolveAssessment, assessmentStandard } from '../src/features/decision-services/native-protocol.ts';
 
-test('native default resolves released assessment text without mutating the old input or thresholds', () => {
+test('native default adds feedback guidance without mutating old input or thresholds', () => {
   const original = structuredClone(defaultJudgment);
   original.degree.simple_threshold_millis = 819;
   original.competence.floor_millis = 317;
   const before = structuredClone(original), current = resolveAssessment(original, true);
   assert.equal(assessmentStandard(current), 'default');
   assert.deepEqual(current.competence.criteria, stock.q1.criteria);
-  assert.ok(stock.q1.instructions.endsWith(' ' + current.competence.instructions));
+  assert.ok(current.competence.instructions.endsWith(guidance.feedback));
+  const wrapper = stock.q1.instructions.split(' Distinguish those meanings')[0];
+  assert.equal(current.competence.instructions, `${stock.q1.instructions.slice(wrapper.length + 1)} ${guidance.feedback}`);
   assert.equal(current.degree.simple_threshold_millis, 819);
   assert.equal(current.competence.floor_millis, 317);
   assert.deepEqual(original, before);

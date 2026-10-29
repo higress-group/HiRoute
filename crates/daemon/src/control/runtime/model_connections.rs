@@ -86,8 +86,29 @@ pub(super) fn registered_endpoint_matches_saved_extra(
         && endpoint.base_url.strip_prefix("https://") == Some(saved.target.authority.as_str())
         && endpoint.request_path == saved.target.request_path
         && endpoint.protocol == saved.target.upstream_protocol
-        && endpoint.adapter_ref == saved.target.protocol_profile_id
-        && endpoint.adapter_revision == saved.target.protocol_profile_revision
+        && registered_saved_adapter_matches(
+            endpoint,
+            &saved.target.protocol_profile_id,
+            saved.target.protocol_profile_revision,
+        )
+}
+
+/// Retained Token Plan sources keep their originally selected native Responses dialect.
+/// This accepts an old choice; it never upgrades that choice to plaintext negotiation.
+pub(super) fn registered_saved_adapter_matches(
+    endpoint: &ProtocolEndpointV1,
+    adapter: &str,
+    revision: u64,
+) -> bool {
+    (endpoint.adapter_ref == adapter && endpoint.adapter_revision == revision)
+        || (endpoint.protocol_endpoint_id == "endpoint.bailian.token-plan.cn.v1.responses"
+            && endpoint.protocol == hiroute_domain::UpstreamProtocol::Responses
+            && endpoint.base_url == "https://token-plan.cn-beijing.maas.aliyuncs.com"
+            && endpoint.request_path == "/compatible-mode/v1/responses"
+            && endpoint.adapter_ref == "adapter.standard-responses-json.v1"
+            && endpoint.adapter_revision == 1
+            && adapter == "adapter.openai-responses.v1"
+            && revision == 1)
 }
 
 fn native_registered_authentication(

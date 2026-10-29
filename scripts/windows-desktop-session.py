@@ -375,17 +375,26 @@ def codex_call_evidence(stdout, expected, directory_token):
                                and directory_token in item.get('aggregated_output', '') for item in items))
 
 
-def codex_process(run, command, environment):
+def codex_process(run, command, environment, stem='codex'):
     try:
         done = subprocess.run(command, cwd=run, stdin=subprocess.DEVNULL, capture_output=True,
                               timeout=150, env=environment, creationflags=0x08000000)
     except subprocess.TimeoutExpired as error:
-        (run / 'codex.stdout').write_bytes(error.stdout or b'')
-        (run / 'codex.stderr').write_bytes(error.stderr or b'')
+        (run / (stem + '.stdout')).write_bytes(error.stdout or b'')
+        (run / (stem + '.stderr')).write_bytes(error.stderr or b'')
         raise
-    (run / 'codex.stdout').write_bytes(done.stdout)
-    (run / 'codex.stderr').write_bytes(done.stderr)
+    (run / (stem + '.stdout')).write_bytes(done.stdout)
+    (run / (stem + '.stderr')).write_bytes(done.stderr)
     return done
+
+
+def codex_thread_id(stdout):
+    events = [json.loads(line) for line in stdout.decode('utf-8-sig').splitlines() if line.strip()]
+    threads = [event.get('thread_id') for event in events if event.get('type') == 'thread.started']
+    if len(threads) != 1 or not isinstance(threads[0], str) or not re.fullmatch(
+            r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', threads[0]):
+        raise ValueError('A single native Codex session identity is required')
+    return threads[0]
 
 
 def codex_call(run, request, helper):
@@ -396,6 +405,9 @@ def codex_call(run, request, helper):
         raise ValueError('Native acceptance requires saved configuration without auth or routing environment overrides')
     import tomllib  # This optional native scenario requires the configured Python 3.11+ runtime.
     profile = request.get('codex_profile')
+    two_turn = request.get('desktop_action') == 'codex-two-turn'
+    if two_turn and profile != 'hiroute':
+        raise ValueError('Two-turn validation requires the separate HiRoute Codex profile')
     config = helper.plain(codex_config_path(Path.home(), profile))
     if config.stat().st_size > 4 * 1024 * 1024:
         raise ValueError('Native configuration exceeds evidence bound')
@@ -411,8 +423,8 @@ def codex_call(run, request, helper):
     identity = dict(binary_sha256=checksum, client_version=version.stdout.decode('utf-8-sig').strip(),
                     profile=profile, gateway_endpoint=endpoint)
     (run / 'codex-input.json').write_text(json.dumps(identity, indent=2), encoding='utf-8')
-    expected = 'HiRoute-Windows-' + request['run_id'] + ':ok'
-    inference_only = request.get('desktop_action') == 'codex-inference'
+    expected = 'HiRoute-Windows-' + request['run_id'] + ('-a:ok' if two_turn else ':ok')
+    inference_only = request.get('desktop_action') in ('codex-inference', 'codex-two-turn')
     prompt = (('Do not use any tools or read or modify files. Reply with exactly ' if inference_only else
                'Do not read or modify any files or change directories. Use your shell tool to run '
                'the read-only PowerShell command Get-Location in the current working directory. '
@@ -422,8 +434,27 @@ def codex_call(run, request, helper):
     if profile:
         command += ['--profile', profile]
     command.append(prompt)
-    done = codex_process(run, command, environment)
+    done = (codex_process(run, command, environment, 'codex-a') if two_turn
+            else codex_process(run, command, environment))
     evidence = codex_call_evidence(done.stdout, expected, run.name)
+    if two_turn:
+        if helper.digest(binary) != checksum or done.returncode != 0 or not all(
+                evidence[key] for key in ('turn_completed', 'answer')):
+            raise RuntimeError('First native Codex turn did not complete; no follow-up was sent')
+        thread = codex_thread_id(done.stdout)
+        next_expected = 'HiRoute-Windows-' + request['run_id'] + '-b:ok'
+        followup = ('The previous reply was correct. Do not use any tools or read or modify files. '
+                    'Reply with exactly ' + next_expected)
+        resumed = codex_process(run, command[:-1] + ['resume', thread, followup], environment, 'codex-b')
+        second = codex_call_evidence(resumed.stdout, next_expected, run.name)
+        if (helper.digest(binary) != checksum or resumed.returncode != 0
+                or codex_thread_id(resumed.stdout) != thread
+                or not all(second[key] for key in ('turn_completed', 'answer'))):
+            raise RuntimeError('The resumed native Codex turn did not complete in the same session')
+        result = dict(identity, scope='two_turn_inference', native_entry='configured Codex exec and exact-session resume; read-only sandbox',
+                      thread_id=thread, first=evidence, second=second, exit_codes=[done.returncode, resumed.returncode])
+        (run / 'codex-two-turn.json').write_text(json.dumps(result, indent=2), encoding='utf-8')
+        return result
     evidence.update(identity, exit_code=done.returncode,
                     scope='inference_only' if inference_only else 'tool_and_inference',
                     native_entry='configured Codex exec; read-only sandbox')
@@ -832,7 +863,7 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
     if activity.get('administrator_groups') is not False:
         raise ValueError('Native Desktop evidence requires a standard account, not a filtered administrator')
     action = request['desktop_action']
-    if action not in ('install', 'installer-resume', 'installer-quarantine', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'):
+    if action not in ('install', 'installer-resume', 'installer-quarantine', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'codex-two-turn', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'):
         raise ValueError('Unknown native Desktop action')
     if action == 'recovery-lock-ui':
         return locked_startup_ui(request,run,product,pm,helper,activity,root)
@@ -884,7 +915,7 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
     roots, facts, shell = installed(helper, product, pm)
     if action == 'network-probe':
         return network_probe(request, run, roots)
-    if action in ('codex-call', 'codex-inference'):
+    if action in ('codex-call', 'codex-inference', 'codex-two-turn'):
         return codex_call(run, request, helper)
     if action == 'launch':
         child = subprocess.Popen([str(shell)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

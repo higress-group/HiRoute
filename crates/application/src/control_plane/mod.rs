@@ -512,6 +512,11 @@ pub(crate) fn replay_apply(
     digest: &hiroute_domain::CanonicalDigest,
     request_id: &str,
 ) -> Option<MachineEnvelopeV2<Value>> {
+    // This is caller input, not a failed read of durable state. Validate before
+    // the early lookup so every typed Apply reports the same domain constraint.
+    if hiroute_domain::validate_idempotency_key(key).is_err() {
+        return Some(failed(ErrorCode::InvalidArguments, request_id.to_owned()));
+    }
     match control.operation_for_idempotency(
         &hiroute_domain::WorkspaceId::default(),
         principal,

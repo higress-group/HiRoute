@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from './host-mock';
 import { PlanQuality, type PlanQualityModel } from '../../../src/features/PlanQuality';
-import { Sessions } from '../../../src/features/Sessions';
+import { ContentExcerpt, Sessions } from '../../../src/features/Sessions';
 import { Home, HomeNavigation } from '../../../src/features/home';
 import type { HomeReads } from '../../../src/features/home/types';
 import { projectHomeActivity } from '../../../src/product/home-projections';
@@ -11,7 +11,7 @@ import '../../../src/occami/styles.css';
 
 type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; first_request_at_ms: number; last_request_at_ms: number; unknown_model_request_count: number; correlation_kind: string; content_completeness: string };
 type RoutingContext = { state: 'recorded'; display_name: string; name_state: 'recorded'; plan_id: string; plan_revision: string };
-type RequestRow = { content_completeness: string; request_id: string; session_id: string; started_at_ms: number; outcome: string | null; attempted_model_count: number; final_native_model: string | null; within_request_fallback: boolean | null; between_turn_model_change: boolean | null; routing_context: RoutingContext | null };
+type RequestRow = { content_completeness: string; request_id: string; session_id: string; started_at_ms: number; outcome: string | null; attempted_model_count: number; final_native_model: string | null; within_request_fallback: boolean | null; between_turn_model_change: boolean | null; routing_context: RoutingContext | null; native_auxiliary?: boolean | null };
 type Hit = { session_id: string; request_id: string; content_id: string; original_text_offset: number };
 type Handler = (payload: Record<string, any>) => unknown;
 
@@ -22,6 +22,7 @@ const control = {
   language: 'zh' as 'zh' | 'en',
   requests: {} as Record<string, RequestRow[]>,
   catalog: {} as Record<string, any[]>,
+  inputSelections: {} as Record<string, { version: number; evidence: string; message_ordinal: number | null; source_unverified: boolean }>,
   texts: {} as Record<string, string>,
   hits: [] as Hit[],
   views: {} as Record<string, (query: Record<string, any>) => unknown>,
@@ -45,7 +46,9 @@ const control = {
   showHome: () => {},
   showSessions: () => {},
   showQualityPlan: () => {},
+  showRequestExcerpt: (_request: string) => {},
   qualityModels: [] as PlanQualityModel[],
+  qualityPlanRevision: 1 as number | null,
   reset: () => {},
 };
 
@@ -103,7 +106,8 @@ function observationRead(view: string, query: Record<string, any>) {
       const { page, next_cursor } = paginate(rows, query, digest);
       return { next_cursor, requests: page };
     }
-    case 'catalog': return { contents: control.catalog[query.request_id] ?? [], transcript_roots: [], roots_partial: false, next_cursor: null };
+    case 'catalog': return { contents: control.catalog[query.request_id] ?? [], transcript_roots: [], roots_partial: false, next_cursor: null,
+      ...(query.include_input_selection && control.inputSelections[query.request_id] ? { input_selection: control.inputSelections[query.request_id] } : {}) };
     case 'content': return { state: 'complete', chunks: [{ text: control.texts[query.content_id] ?? '', original_byte_offset: 0 }], next_cursor: null };
     case 'facts': return { facts: [], projection_partial: false, next_cursor: null };
     case 'plan_quality': return { samples: [], summary: { models: [], scored_stage_count: 0, unrated_stage_count: 0, session_count: 0, available_revisions: [] }, next_cursor: null };
@@ -159,22 +163,27 @@ function Harness() {
   const [refresh, setRefresh] = useState(0);
   const [qualityVisible, setQualityVisible] = useState(false);
   const [homeVisible, setHomeVisible] = useState(false);
+  const [requestExcerpt, setRequestExcerpt] = useState<string | null>(null);
   control.bumpRefresh = () => setRefresh(value => value + 1);
   control.showHome = () => setHomeVisible(true);
   control.showSessions = () => { setHomeVisible(false); setQualityVisible(false); };
   control.showQualityPlan = () => { setHomeVisible(false); setQualityVisible(true); };
+  control.showRequestExcerpt = request => setRequestExcerpt(request);
   control.reset = () => {
     control.requests = {};
     control.catalog = {};
+    control.inputSelections = {};
     control.texts = {};
     control.hits = [];
     control.views = {};
     control.handlers = {};
     control.commands = [];
     control.qualityModels = [];
+    control.qualityPlanRevision = 1;
     control.language = 'zh';
     setQualityVisible(false);
     setHomeVisible(false);
+    setRequestExcerpt(null);
     setRefresh(0);
     setGeneration(value => value + 1);
   };
@@ -201,8 +210,9 @@ function Harness() {
       <main className="main"><div>
         <p className="sr-only">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实数据。</p>
         {homeVisible && <Home language="zh" reads={homeReads} onAction={() => {}} />}
-        {qualityVisible && <PlanQuality key={'quality-' + generation} planId="plan/quality" planRevision={1} currentModels={control.qualityModels} active={!homeVisible} refreshVersion={refresh} language="zh" />}
-        <div hidden={homeVisible || qualityVisible}><Sessions key={generation} active={!homeVisible && !qualityVisible} language={control.language} refreshVersion={refresh} onOpenAgents={() => {}} /></div>
+        {qualityVisible && <PlanQuality key={'quality-' + generation} planId="plan/quality" planRevision={control.qualityPlanRevision} currentModels={control.qualityModels} active={!homeVisible} refreshVersion={refresh} language={control.language} />}
+        {requestExcerpt && <blockquote className="routing-quote"><ContentExcerpt request={requestExcerpt} language={control.language} fallback="这一轮的消息暂不可用" /></blockquote>}
+        <div hidden={homeVisible || qualityVisible || requestExcerpt !== null}><Sessions key={generation} active={!homeVisible && !qualityVisible && requestExcerpt === null} language={control.language} refreshVersion={refresh} onOpenAgents={() => {}} /></div>
       </div></main>
     </div>
   </PresentationRoot>;

@@ -1,6 +1,6 @@
 //! Amount-only normalization for an explicitly selected current-price comparison.
 //! Equal-rate buckets can be combined algebraically; stored usage is never filled in.
-use super::{RawUsage, UsageBucketsV2};
+use super::{MetricCoverage, RawUsage, UsageBucketsV2, amount_only};
 use hiroute_domain::{
     ExecutionPricingEvidenceV1, FrozenPriceQuoteV1, InputUsageMeaningV1, TokenRateV1,
     UsageFrameKindV1,
@@ -56,4 +56,40 @@ pub(crate) fn reference_usage_semantics(
         }
     }
     usage
+}
+
+/// Bounds a same-usage reference when only the exclusive creation split is
+/// missing. These are calculation scenarios, never reported usage facts.
+pub(crate) fn reference_bounds_semantics(
+    semantics: hiroute_domain::UsageSemanticsV1,
+    raw: &RawUsage,
+    quote: &FrozenPriceQuoteV1,
+) -> Option<(u64, u64)> {
+    let exact = amount_only(quote, &reference_usage_semantics(semantics, raw, quote));
+    if exact.coverage == MetricCoverage::Complete {
+        let amount = exact.known_sum_micros?;
+        return Some((amount, amount));
+    }
+    if raw.write.is_some()
+        || semantics.frame_kind == UsageFrameKindV1::Unknown
+        || semantics.input != InputUsageMeaningV1::IncludesExclusiveCache
+        || !semantics.cache_buckets_exclusive
+    {
+        return None;
+    }
+    let remaining = raw.input?.checked_sub(raw.read?)?;
+    let mut scenario = raw.clone();
+    let mut amount_for = |write| {
+        scenario.write = Some(write);
+        let result = amount_only(
+            quote,
+            &reference_usage_semantics(semantics, &scenario, quote),
+        );
+        (result.coverage == MetricCoverage::Complete)
+            .then_some(result.known_sum_micros)
+            .flatten()
+    };
+    let zero = amount_for(0)?;
+    let all = amount_for(remaining)?;
+    Some((zero.min(all), zero.max(all)))
 }

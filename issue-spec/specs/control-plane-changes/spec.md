@@ -112,6 +112,115 @@ Operation JSON. Failed journal writes cannot advance the in-memory committed vie
 Cold loads, independent recovery, changed objects, or invalidated context perform
 full durable-input validation rather than trusting matching Operation ID/generation.
 Dynamic dependencies are always rechecked at their original boundaries.
+Cold reconstruction MAY retain the authenticated immutable publication effect for
+registry admission and its separately supplied Plan/control join, so those checks
+do not repeatedly decode the same full publication. Changed persisted bytes still
+enter complete authentication; this proof does not cover mutable journal state.
+
+Completed provenance reads MAY reuse a bounded decoded Operation only after
+comparing the complete current journal and all retained payload bytes in the same
+SQLite snapshot. This memo contains decoded content, not a currentness verdict;
+selected indexed receipts, current identity, native files and grants SHALL still
+be checked at their existing boundaries. Changed or missing bytes and nonterminal
+operations take the cold path. Caller transactions compare actual bytes on every
+lookup, including after rollback; reopening does not retain the memo. No stored
+format or migration is introduced for this optimization.
+
+A publication marker's parsed immutable record MAY be shared while the exact
+compensation object and all effect identity fields are unchanged. Mutable caller
+copies, replacement records and changed effect identities SHALL be revalidated.
+Every use still joins the marker to its owning Operation and current durable
+checkpoint; a cached record never establishes current installation or permission.
+
+Read-only successful Agent projections used by status, installed-model budget
+checks and restored grant attribution MAY share verified immutable facts after
+checking exact current row identity, raw journal and indexed steps in one storage
+snapshot. Budget reads retain strict rejection; startup attribution counts and
+skips unverifiable candidates without inventing an association or blocking startup.
+Current grants, publication membership, pending operations and authorization are
+not cached. This reuse does not authorize execution or replace recovery's strict
+journal reader.
+
+Successful read projections SHALL retain only the validated facts consumed by
+status, grant joins and service publication references, not unused publication
+rollback payloads. The entire
+original journal, including discarded steps and payloads, remains part of their
+validation closure. Memory accounting SHALL describe the retained projection.
+Unrelated database commits invalidate unchanged-byte proofs but MAY preserve
+decoded facts for reuse after exact closure comparison. A bounded cache SHALL
+admit a newly requested current fact by replacing an older entry when necessary;
+bulk history scans SHALL NOT continually evict the current working set.
+
+Within the same live storage connection, already verified immutable facts MAY be
+reused without hashing the entire raw closure again when an owned read transaction
+proves that the database snapshot has not changed. The proof SHALL account for
+external commits, same-connection writes and schema changes. Unknown or invalidated
+proof falls back to exact row/step/payload validation. It is process-local and SHALL
+NOT survive connection replacement or reopening. Caller-owned transactions SHALL
+use the exact-byte path and SHALL NOT publish a shortcut proof: rollback, savepoint
+rollback or an interrupted read cannot make their temporary facts authoritative
+on a subsequent read. The proof and facts belong to the same established read
+snapshot, never a newer token read after that snapshot ends.
+
+Current Agent status and settings preparation MAY stop at the newest authenticated
+fact that decides the requested facet or exact current grant. Older facts after that
+match are not dependencies of that answer. Every visited row, its indexed identity
+and raw dependency closure still require snapshot-bound validation or the unchanged
+snapshot proof above; a corrupt visited
+row is not a no-match. Explicit history/restore-list reads retain their full strict
+scope. Ordering a history query SHALL NOT require sorting complete retained payloads
+before the first selected fact can be read.
+Single-current-fact reads SHALL release unmatched facts as they traverse history,
+rather than retaining a full result list until the lookup ends.
+
+#### Scenario: Background commits and growing history do not reconstruct unchanged facts
+
+- **WHEN** an unrelated external commit occurs or a newer current operation is added to a full in-memory cache
+- **THEN** the next read revalidates the exact relevant closure before reusing immutable facts, can retain the newer current fact within the existing bound, and does not retain every unmatched history object; damage to a discarded journal step still fails strict status reads.
+
+#### Scenario: Current fact without historical payload work
+
+- **WHEN** a current Agent facet has a verified latest matching operation
+- **THEN** its status/settings preparation does not reconstruct older irrelevant
+  operations; changed bytes or indexed identity of the selected operation are rejected
+  on the next read, including after a warm read, while an explicit history query still
+  checks every requested member.
+
+#### Scenario: Multiple current reads of an unchanged history
+
+- **WHEN** multiple Agent facets read the same verified successful operations with
+  no intervening database change
+- **THEN** they share immutable validation without rereading and hashing the full
+  journal closure for each facet; a local write, external commit or schema change
+  invalidates the shortcut, and a caller transaction's temporary result is rejected
+  after rollback if it does not match the committed bytes.
+
+#### Scenario: Status observation while a writer owns an operation
+
+- **WHEN** the durable writer claim is present
+- **THEN** service status reports mutation/recovery unavailability without expanding
+  the in-progress plan solely to report busy; this does not authorize execution or
+  recovery, which retain complete current-operation checks. After release, any parked
+  native-file tail still requires its authenticated service-completion receipt.
+
+#### Scenario: Select multiple routes from one publication
+
+- **WHEN** one Agent settings selection includes multiple published Plans
+- **THEN** the immutable publication catalog is authenticated/projected once for the
+  selection, while each route retains its own active-state, ingress, revision and
+  semantic-digest binding; adding a selection does not repeat whole-publication work
+  for every selected route.
+
+#### Scenario: Publication checks other pending operations
+
+- **WHEN** activation checks for conflicting recoverable operations while holding
+  its committed current operation
+- **THEN** one SQLite snapshot verifies recovery membership coverage and the exact
+  current journal, including its indexed steps and immutable inputs, before excluding
+  that operation from decoding. All other pending operations remain strictly decoded
+  and checked by every applicable conflict guard. Stale current facts, damaged
+  coverage or a damaged pending operation fail the check; independent recovery still
+  decodes the complete unresolved set.
 
 ### Requirement: Durable business identity survives implementation changes
 

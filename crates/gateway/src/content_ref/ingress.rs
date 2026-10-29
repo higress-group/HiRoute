@@ -10,6 +10,7 @@ use crate::replay::{ReplayContentWriter, ReplayError, ReplayReader, ReplayStore}
 use crate::server::request_plan::IngressProtocol;
 
 use super::MARKER_PREFIX;
+mod schema;
 
 const MAX_JSON_DEPTH: usize = 128;
 const INLINE_CONTENT_BYTES: usize = 8 * 1024;
@@ -632,6 +633,9 @@ impl Compactor<'_> {
             return Err(ReplayError::StructureLimit);
         }
         if field.is_some_and(|field| whole_json_field(self.protocol, field, depth, value)) {
+            if matches!(field, Some("parameters" | "input_schema")) {
+                return self.schema(value, depth);
+            }
             return self.externalize_json(value);
         }
         match value {
@@ -819,7 +823,7 @@ impl Compactor<'_> {
         let stats = scanner.finish()?;
         let reference = match stats.reserve_workspace(self.replay, value.len() as u64) {
             Ok(_scratch) => match serde_json::from_str::<Value>(value) {
-                Ok(parsed) => self.pool()?.append_json(&parsed, true)?,
+                Ok(parsed) => self.pool()?.append_canonical_json(&parsed)?,
                 Err(_) => return Ok(()),
             },
             Err(ReplayError::Body(_)) => self.pool()?.append(value.as_bytes())?,
@@ -853,7 +857,7 @@ impl Compactor<'_> {
             // into a request failure if Value rejects its numeric shape.
             return Ok(());
         };
-        let canonical = self.pool()?.append_json(&parsed, true)?.wire_marker();
+        let canonical = self.pool()?.append_canonical_json(&parsed)?.wire_marker();
         self.generated_markers.remove(&(value.as_ptr() as usize));
         *value = canonical;
         self.generated_markers.insert(value.as_ptr() as usize);
@@ -863,7 +867,7 @@ impl Compactor<'_> {
     fn externalize_json(&mut self, value: &mut Value) -> Result<(), ReplayError> {
         // ContextHold hashes these request-local JSON ranges as canonical
         // bytes, independent of the caller's object insertion order.
-        let reference = self.pool()?.append_json(value, true)?;
+        let reference = self.pool()?.append_canonical_json(value)?;
         *value = reference.json_marker();
         Ok(())
     }

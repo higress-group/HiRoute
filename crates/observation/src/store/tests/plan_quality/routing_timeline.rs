@@ -2,6 +2,67 @@ use super::*;
 use hiroute_domain::RoutingTimelineQueryV1;
 
 #[test]
+fn known_native_auxiliary_keeps_receipts_without_manufacturing_a_user_turn() {
+    use super::super::support;
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let main = Fixture::new("native-main");
+    let mut title = Fixture::new("native-title");
+    title.session = main.session.clone();
+    title.fact_stream = main.fact_stream.clone();
+    let channel = fact_channel(&main, 256 * 1024);
+    let writer = writer(&store);
+    let mut auxiliary = support::route_decision(PLAN);
+    if let ExecutionFactV1::RouteDecision(route) = &mut auxiliary {
+        route.native_auxiliary = true;
+    }
+    for (index, (fixture, fact)) in [(&main, support::route_decision(PLAN)), (&title, auxiliary)]
+        .into_iter()
+        .enumerate()
+    {
+        assert!(matches!(
+            offer_fact(
+                &writer,
+                &channel,
+                fixture.fact(index as u64 + 1, fact, 1000 + index as i64)
+            ),
+            WriterCycleOutcome::Ack(_)
+        ));
+    }
+    let query = RoutingTimelineQueryV1 {
+        include_presentation: false,
+        session_id: main.session.to_string(),
+        after_watermark: None,
+        limit: 100,
+    };
+    let page = store
+        .observed_routing_timeline(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(page.turns.len(), 1);
+    assert_eq!(page.turns[0].requests[0].request_id, main.request.as_str());
+    let retained: i64 = store
+        .connection
+        .lock()
+        .query_row("SELECT COUNT(*) FROM logical_requests", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        retained, 2,
+        "auxiliary request accounting and receipts remain retained"
+    );
+    drop(writer);
+    drop(store);
+    let reopened = open_store(directory.path());
+    assert_eq!(
+        reopened
+            .observed_routing_timeline(&reader(), &query, 5000)
+            .unwrap()
+            .turns
+            .len(),
+        1
+    );
+}
+
+#[test]
 fn native_timeline_identity_uses_the_executed_candidate_not_the_last_evaluated_one() {
     use super::super::support;
     for primary in [false, true] {
@@ -38,6 +99,7 @@ fn native_timeline_identity_uses_the_executed_candidate_not_the_last_evaluated_o
             ));
         }
         let query = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: fixture.session.to_string(),
             after_watermark: None,
             limit: 100,
@@ -188,6 +250,7 @@ fn timeline_pages_replay_late_scores_without_losing_or_repeating_changes() {
         ));
     }
     let mut query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 1,
@@ -290,6 +353,7 @@ fn timeline_refuses_oversized_stored_fact_before_deserializing_it() {
         store.observed_routing_timeline(
             &reader(),
             &RoutingTimelineQueryV1 {
+                include_presentation: false,
                 session_id: fixture.session.to_string(),
                 after_watermark: None,
                 limit: 100,
@@ -308,6 +372,7 @@ fn timeline_incremental_pending_and_late_range_match_cold_projection() {
     let channel = fact_channel(&first, 256 * 1024);
     let writer = writer(&store);
     let mut query = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 200,
@@ -463,6 +528,7 @@ fn timeline_long_session_read_cost() {
         )
         .unwrap();
         let mut q = RoutingTimelineQueryV1 {
+            include_presentation: false,
             session_id: first.session.to_string(),
             after_watermark: None,
             limit: 200,
@@ -626,6 +692,7 @@ fn timeline_other_session_changes_advance_scan_without_reading_this_session() {
         WriterCycleOutcome::Ack(_)
     ));
     let mut q = RoutingTimelineQueryV1 {
+        include_presentation: false,
         session_id: f.session.to_string(),
         after_watermark: None,
         limit: 50,

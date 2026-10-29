@@ -82,6 +82,35 @@ pub(crate) fn dispatch(
             Err(error) => failed(map_control_error(error), request.request_id),
         };
     }
+    if request.operation_id == GET_TRIAL_SETUP_SNAPSHOT_OPERATION_V1 {
+        if serde_json::from_value::<ClientEmptyRequestV1>(request.payload).is_err() {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        }
+        let result = (|| {
+            let port = ports.routing.as_ref().ok_or(ErrorCode::DaemonUnavailable)?;
+            let capture = port
+                .trial_routing_snapshot(&WorkspaceId::default())
+                .map_err(map_control_error)?;
+            let options = editor_options::build_options(
+                ports,
+                PlanEditorOptionsRequestV1 {
+                    authoring: Some(PlanAuthoringRequestV1::default()),
+                    include_unavailable: true,
+                    ..Default::default()
+                },
+                capture.routing,
+            )?;
+            Ok(TrialSetupSnapshotV1 {
+                schema: TRIAL_SETUP_SNAPSHOT_SCHEMA_V1.into(),
+                options,
+                management: capture.management,
+            })
+        })();
+        return match result {
+            Ok(value) => succeeded(value, request.request_id),
+            Err(error) => failed(error, request.request_id),
+        };
+    }
     if request.operation_id == "GetPlanEditorOptions" {
         return editor_options::dispatch(ports, request);
     }

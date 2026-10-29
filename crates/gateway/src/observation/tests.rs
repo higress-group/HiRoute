@@ -1,3 +1,6 @@
+#[path = "content/request_json_replay_tests.rs"]
+mod request_json_replay;
+
 #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
 #[path = "tests/usage_order.rs"]
 mod usage_order;
@@ -415,6 +418,19 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
         hiroute_diagnostics::event::ResponseFailureStage::NativeProjection,
         hiroute_diagnostics::event::ResponseFailureReason::ResourceLimit,
     );
+    let before_unknown = request.lock_state().accepted_attempt_unknown;
+    request.native_completion_unknown(
+        hiroute_diagnostics::event::IngressProtocol::OpenAiResponses,
+        hiroute_diagnostics::event::NativeCompletionEvidence {
+            reason: hiroute_diagnostics::event::NativeCompletionReason::ItemSnapshot,
+            frame_index: Some(95),
+            event: None,
+        },
+    );
+    assert_eq!(
+        request.lock_state().accepted_attempt_unknown,
+        before_unknown
+    );
     assert_eq!(
         request
             .lock_state()
@@ -435,6 +451,7 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
         "request_end",
         "model_stage",
         "response_failure",
+        "native_completion_unknown",
         "upstream_wire",
     ] {
         assert!(
@@ -479,6 +496,12 @@ fn request_lifecycle_records_typed_diagnostics_without_raw_identities() {
     let token = &payload(&begin, "attempt_begin").unwrap()["attempt_token"];
     assert!(!token.is_null());
     for record in &records {
+        if let Some(unknown) = payload(record, "native_completion_unknown") {
+            assert_eq!(unknown["attempt_index"], 1);
+            assert_eq!(&unknown["attempt_token"], token);
+            assert_eq!(unknown["evidence"]["reason"], "item_snapshot");
+            assert_eq!(unknown["evidence"]["frame_index"], 95);
+        }
         if let Some(cleanup) = payload(record, "reasoning_cleanup") {
             assert_eq!(cleanup["attempt_index"], 1);
             assert!(!cleanup["binding_token"].is_null());
@@ -1482,7 +1505,12 @@ fn cpa_execution_metadata_is_trusted_only_for_verified_managed_target() {
     use hiroute_diagnostics::event::CpaExecution;
     let observation = request(OtelContentPolicy::Disabled);
     let mut headers = http::HeaderMap::new();
-    headers.insert("x-hiroute-cpa-execution", "v1;2;1;1;1".parse().unwrap());
+    headers.insert(
+        "x-hiroute-cpa-execution",
+        "v2;2;1;1;1;200;1,401,headers,none;2,200,headers,none"
+            .parse()
+            .unwrap(),
+    );
     observation.response_head_diagnostic(&headers, 200);
     assert!(
         observation
@@ -1505,6 +1533,10 @@ fn cpa_execution_metadata_is_trusted_only_for_verified_managed_target() {
         Some(CpaExecution::Known {
             inference_attempts: 2,
             auth_recovery_successes: 1,
+            inference: Some(hiroute_diagnostics::event::CpaInferenceObservation {
+                downstream_status: 200,
+                ..
+            }),
             ..
         })
     ));

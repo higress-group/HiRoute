@@ -1,5 +1,11 @@
 use super::*;
 
+#[path = "trust_cost_auxiliary_tests.rs"]
+mod auxiliary;
+
+#[path = "trust_cost_purpose_work_tests.rs"]
+mod purpose_work;
+
 fn trial_request(
     store: &LocalObservationStore,
     suffix: &str,
@@ -16,10 +22,22 @@ fn trial_request_with(
     group: ExecutionGroupV1,
     edit: impl FnOnce(&mut ExecutionFactV1),
 ) -> Fixture {
+    trial_request_with_facts(store, suffix, revision, group, edit, |_| {})
+}
+
+fn trial_request_with_facts(
+    store: &LocalObservationStore,
+    suffix: &str,
+    revision: u64,
+    group: ExecutionGroupV1,
+    edit: impl FnOnce(&mut ExecutionFactV1),
+    edit_fact: impl Fn(&mut ExecutionFactV1),
+) -> Fixture {
     let f = Fixture::new(suffix);
     let mut all = facts(&f, UsageFrameKindV1::Cumulative);
     let mut terminal = all.pop().unwrap();
-    for e in all {
+    for mut e in all {
+        edit_fact(&mut e.fact);
         store.ingest_fact(&e, &[]).unwrap();
     }
     let mut turn = trial_turn(&f, revision, group);
@@ -39,9 +57,101 @@ fn trial_request_with(
     f
 }
 
+#[test]
+fn trial_shows_full_routed_estimate_when_only_reference_cache_write_is_unknown() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = open_store(dir.path());
+    let f = trial_request_with_facts(
+        &store,
+        "unknown-cache-write",
+        17,
+        ExecutionGroupV1::Regular,
+        |_| {},
+        |fact| {
+            if let ExecutionFactV1::UsageAndCache {
+                cache_write_tokens,
+                cache_write_provenance,
+                ..
+            } = fact
+            {
+                *cache_write_tokens = None;
+                *cache_write_provenance = UsageProvenanceV1::Unknown;
+            }
+        },
+    );
+    let frozen = serde_json::to_value(latest(&store, &f)).unwrap();
+    let scope = TrustCostScopeV1 {
+        plan_id: "plan/codex-daily".into(),
+        revision: Some(17),
+        branch_id: Some("smart_saving".into()),
+        group: ExecutionGroupV1::Regular,
+        from_ms: 0,
+        to_ms: 1000,
+        currency: "USD".into(),
+    };
+    // The source bills cache creation at the same rate as uncached input.
+    // The reference's different creation rate needs the unreported split.
+    let actual = current_price("actual", "model-a", 1_000_000);
+    let mut reference = current_price("reference", "model-ref", 4_000_000);
+    reference.quote.rates.cache_write = TokenRateV1::known(5_000_000);
+    reference.quote.quote_digest = reference.quote.computed_digest().unwrap();
+    let report = store
+        .observed_trust_cost(
+            &reader(),
+            &scope,
+            &reference,
+            std::slice::from_ref(&actual),
+            1000,
+        )
+        .unwrap();
+    assert_eq!(
+        (report.request_count, report.compared_request_count),
+        (1, 0)
+    );
+    assert_eq!(report.coverage, ObservationMetricCoverageV2::Unknown);
+    assert_eq!(report.routed_estimate_micros, Some(125));
+    assert_eq!(report.reference_estimate_micros, None);
+    assert_eq!(report.estimated_savings_micros, None);
+    assert_eq!(report.compared_routed_subtotal_micros, None);
+    assert_eq!(
+        report.same_usage_bounds,
+        Some(ApiEquivalentBoundsV1 {
+            reference_min_micros: 500,
+            reference_max_micros: 560,
+            difference_min_micros: -435,
+            difference_max_micros: -375,
+        })
+    );
+    assert_eq!(serde_json::to_value(latest(&store, &f)).unwrap(), frozen);
+
+    // Changing the source price so that creation differs makes the source
+    // amount unknown too; no unreported usage is rewritten as zero.
+    let mut unequal = actual.clone();
+    unequal.quote.rates.cache_write = TokenRateV1::known(2_000_000);
+    unequal.quote.quote_digest = unequal.quote.computed_digest().unwrap();
+    let unknown = store
+        .observed_trust_cost(&reader(), &scope, &reference, &[unequal], 1000)
+        .unwrap();
+    assert_eq!(unknown.routed_estimate_micros, None);
+    assert_eq!(unknown.same_usage_bounds, None);
+
+    // If both quotes permit equal-rate aggregation the paired difference
+    // recovers without changing the captured execution.
+    reference.quote.rates.cache_write = TokenRateV1::known(4_000_000);
+    reference.quote.quote_digest = reference.quote.computed_digest().unwrap();
+    let recovered = store
+        .observed_trust_cost(&reader(), &scope, &reference, &[actual], 1000)
+        .unwrap();
+    assert_eq!(recovered.coverage, ObservationMetricCoverageV2::Complete);
+    assert_eq!(recovered.estimated_savings_micros, Some(375));
+    assert_eq!(recovered.same_usage_bounds, None);
+    assert_eq!(serde_json::to_value(latest(&store, &f)).unwrap(), frozen);
+}
+
 fn trial_turn(f: &Fixture, revision: u64, group: ExecutionGroupV1) -> ExecutionFactV1 {
     let suffix = f.request.as_str();
     ExecutionFactV1::AgentTurnFinished {
+        history_membership: None,
         opening_cause: None,
         branch_execution: Some(BranchExecutionV1 {
             policy: BranchExecutionPolicyV1 {

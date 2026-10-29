@@ -125,12 +125,51 @@ def model_settings_spec_v2(product, allowed_plan_ids, default_plan_id=None,
     }
 
 
+class AgentSettingsPreviewBlocked(AssertionError):
+    """Retain bounded typed diagnostics, never configuration or native/model identifiers."""
+    REASONS = frozenset((
+        'qoder_default_in_use', 'additional_default_in_use',
+        'native_routing_adapter_restore_required', 'native_routing_adapter_external_resource',
+        'qoder_model_file_conflict', 'hermes_model_file_conflict', 'codex_context_override',
+        'claude_context_override', 'claude_plan_capability_unavailable',
+        'claude_context_window_unsupported', 'capability_unavailable', 'model_plan_unavailable',
+        'native_model_coverage_unavailable', 'native_default_invalid',
+        'restore_native_model_invalid', 'restore_point_unavailable', 'skill_file_conflict'))
+    FACETS = frozenset(('model', 'collaboration', 'management_skill'))
+    CAPABILITIES = frozenset(('effective_configuration', 'atomic_managed_replace',
+        'ingress_authentication', 'model_catalog', 'skill_loading', 'trusted_cli_execution',
+        'isolated_verification'))
+    CAPABILITY_REASONS = frozenset(('unknown', 'unavailable', 'stale'))
+
+    def __init__(self, blockers):
+        super().__init__('agent_settings_preview_blocked')
+        self.reason_codes = []
+        self.diagnostic_blockers = []
+        for item in blockers[:16] if isinstance(blockers, list) else []:
+            if not isinstance(item, dict) or not isinstance(item.get('reason'), str):
+                continue
+            if item['reason'] not in self.REASONS:
+                continue
+            self.reason_codes.append(item['reason'])
+            row = {'reason': item['reason']}
+            if isinstance(item.get('facet'), str) and item['facet'] in self.FACETS:
+                row['facet'] = item['facet']
+            caps = item.get('capabilities')
+            row['capabilities'] = [{'capability': cap['capability'], 'reason': cap['reason']}
+                for cap in (caps[:7] if isinstance(caps, list) else [])
+                if isinstance(cap, dict) and isinstance(cap.get('capability'), str)
+                and cap['capability'] in self.CAPABILITIES and isinstance(cap.get('reason'), str)
+                and cap['reason'] in self.CAPABILITY_REASONS]
+            self.diagnostic_blockers.append(row)
+
+
 def prepare_agent_settings_v2(product, spec, key):
     agent_id = getattr(product, 'agent_settings_agent_id', None)
     if agent_id is not None:
         ensure_native_model_evidence(product, agent_id)
     preview = product.preview('agents connect preview', {'spec': spec})
-    assert preview['applicable'], preview.get('blockers')
+    if not preview['applicable']:
+        raise AgentSettingsPreviewBlocked(preview.get('blockers', []))
     body = {
         # Seal the exact normalized full-state selection shown by Preview. This mirrors the
         # Desktop confirmation payload and prevents a sparse fixture input from dropping models.

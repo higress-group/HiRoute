@@ -10,6 +10,11 @@ use std::collections::BTreeSet;
 pub(crate) struct ProjectedComparison {
     pub total: u64,
     pub compared: u64,
+    /// Full-scope routed estimate, independent of reference-price coverage.
+    pub routed_full: Option<u64>,
+    pub routed_overflow: bool,
+    /// Full-scope reference bounds under the explicit same-usage scenario.
+    pub reference_bounds: Option<(u64, u64)>,
     pub actual: Option<u64>,
     pub baseline: Option<u64>,
     pub used: BTreeSet<String>,
@@ -67,12 +72,40 @@ pub(super) fn aggregate(data: comparison::Comparison) -> ProjectedComparison {
     let mut result = ProjectedComparison {
         total: data.requests.len() as u64,
         compared: 0,
+        routed_full: Some(0),
+        routed_overflow: false,
+        reference_bounds: Some((0, 0)),
         actual: Some(0),
         baseline: Some(0),
         used: data.used,
         excluded: data.excluded,
     };
     for c in data.requests.into_values() {
+        if c.complete && c.known_seen {
+            if let Some(known) = c.known {
+                if let Some(sum) = result.routed_full {
+                    result.routed_full = sum.checked_add(known);
+                    result.routed_overflow |= result.routed_full.is_none();
+                }
+            } else {
+                result.routed_full = None;
+                result.routed_overflow = true;
+            }
+        } else {
+            result.routed_full = None;
+        }
+        if c.complete && c.known_seen && c.known.is_some() {
+            result.reference_bounds = result.reference_bounds.zip(c.reference_bounds).and_then(
+                |((lower, upper), (request_lower, request_upper))| {
+                    Some((
+                        lower.checked_add(request_lower)?,
+                        upper.checked_add(request_upper)?,
+                    ))
+                },
+            );
+        } else {
+            result.reference_bounds = None;
+        }
         if c.complete && c.reference.is_some() && c.known.is_some() {
             result.compared += 1;
             result.actual = result.actual.and_then(|s| s.checked_add(c.known?));

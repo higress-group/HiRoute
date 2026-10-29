@@ -2,14 +2,14 @@ import { readCurrentCatalog } from '../model-feed/catalog-read';
 import { useEffect, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import type { Plan } from '../../plan-editor';
-import { UiIcon } from '../../ui';
+import { Disclosure, UiIcon } from '../../ui';
 import type { AvailableModel, ModelAvailabilityResult } from '../model-feed/types';
 import { FeedDisclosure } from '../model-feed/FeedDisclosure';
 import { factTags, modelSubtitle, rollingIdentity, shortDate } from '../model-feed/presentation';
 import { modelAnnouncements } from '../model-feed/announcements';
 import './trial.css';
 
-type Entry = { key: string; model: AvailableModel; kind: 'new_model' | 'model_update'; headline: string; note: string; includedOn: string };
+type Entry = { key: string; model: AvailableModel; kind: 'new_model' | 'model_update'; headline: string; includedOn: string };
 
 export function NewModels({ language, active, plans, refreshVersion, onTry, onOpenPlan, mutable = true }: {
   language: 'zh' | 'en'; active: boolean; mutable?: boolean; plans: Plan[]; refreshVersion: number; onTry(modelId?: string): void; onOpenPlan?(planId: string): void;
@@ -34,7 +34,7 @@ export function NewModels({ language, active, plans, refreshVersion, onTry, onOp
   const announcements = data ? modelAnnouncements(data) : null;
   const entries: Entry[] = announcements?.entries.slice(0, 6).flatMap(entry => {
     const model = data!.models.find(m => m.model_configuration_id === entry.model_configuration_id);
-    return model ? [{ key: entry.id, model, kind: entry.kind, headline: entry.headline[language], note: entry.note[language], includedOn: entry.included_on }] : [];
+    return model ? [{ key: entry.id, model, kind: entry.kind, headline: entry.headline[language], includedOn: entry.included_on }] : [];
   }) ?? [];
   const fromFeed = announcements?.fromFeed ?? false;
   function state(model: AvailableModel) {
@@ -53,21 +53,21 @@ export function NewModels({ language, active, plans, refreshVersion, onTry, onOp
     </header>
     {error && <div className="callout warn" role="alert"><span>{t('模型目录暂时无法刷新，请重试后开始试用。', 'The model catalog could not refresh. Retry before starting a trial.')}</span><button className="btn" onClick={() => setRetry(n => n + 1)}>{t('重试', 'Retry')}</button></div>}
     {!!data && fromFeed && <FeedDisclosure language={language} mutable={mutable} />}
-    {entries.length > 0 && <div className="new-model-grid">{entries.map(({ key, model, kind, headline, note, includedOn }) => {
+    {entries.length > 0 && <div className="new-model-grid">{entries.map(({ key, model, kind, headline, includedOn }) => {
       const s = state(model);
       const tags = factTags(model.facts, language);
       return <article key={key} className="new-model-card">
         <div className="new-model-meta"><span>{modelSubtitle(model, language)} · {t(`公告收录 ${shortDate(includedOn, language)}`, `Announcement added ${shortDate(includedOn, language)}`)}</span><span className="badge info no-dot">{kind === 'model_update' ? t('模型更新', 'Update') : t('新模型', 'New')}</span></div>
         <h3>{headline || model.display_name}</h3>
         {tags.length > 0 && <div className="model-fact-tags">{tags.map(tag => <span key={tag} className="badge no-dot">{tag}</span>)}</div>}
-        {note && <p className="new-model-note">{note}</p>}
+        <p className="new-model-note">{t('从范围明确的小任务开始试用，并观察实际表现。', 'Start with a well-scoped task and observe the results.')}</p>
         <div className="new-model-foot">
           <span className={`badge no-dot ${s.tone}`}>{s.label}</span>
           <button className={`btn${s.primary ? ' btn-primary' : ''}`} disabled={error || !s.run} onClick={s.run}>{s.action}</button>
         </div>
       </article>;
     })}</div>}
-    {entries.some(e => rollingIdentity(e.model.identity_stability)) && <p className="field-help">{t('同名模型可能被供应商更新；收录日期不代表实际执行的版本。', 'Providers may update a model behind the same name; the date added does not identify the version that runs.')}</p>}
+    {entries.length > 0 && <Disclosure className="native-details" label={t('版本与来源', 'Version and source')} language={language}><p className="field-help">{entries.some(e => rollingIdentity(e.model.identity_stability)) ? t('同名模型可能被供应商更新；收录日期不代表实际执行的版本。', 'Providers may update a model behind the same name; the date added does not identify the version that runs.') : t('公告收录日期不代表实际部署的版本。', 'The announcement date does not identify the version actually deployed.')}</p></Disclosure>}
     {!error && data && !entries.length && <p className="field-help">{t('暂无推荐；仍可从目录选择模型试用。', 'No featured models. You can still choose a model from the catalog.')}</p>}
   </section>;
 }

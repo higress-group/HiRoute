@@ -1,0 +1,29 @@
+{
+  "connection": {
+    "source_id": "source/agent-3c547228e7234bb16676a2bc",
+    "source_revision": 1,
+    "binding_id": "binding/agent-ebe07aa9e610fcb8e85b9742",
+    "binding_revision": 1,
+    "model_configuration_id": "model.zhipu.glm-5.3",
+    "display_name": "Zhipu · Coding Plan"
+  },
+  "candidate": {
+    "binding_id": "binding/agent-ebe07aa9e610fcb8e85b9742",
+    "model_configuration_id": "model.zhipu.glm-5.3",
+    "display_name": "GLM-5.3",
+    "reasoning": {
+      "kind": "fixed",
+      "profile": "provider-default"
+    },
+    "billing_class": "subscription",
+    "routable": true,
+    "ingress_protocols": [
+      "responses",
+      "chat_completions",
+      "messages"
+    ],
+    "native_ingress_protocols": [
+      "messages"
+    ]
+  }
+}

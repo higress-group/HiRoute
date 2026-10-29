@@ -344,8 +344,8 @@ fn registered_native_protocol_profiles(
                 },
                 credential_destination_ref: saved.target.credential_destination().ok()?,
             }),
-            adapter_ref: Some(endpoint.adapter_ref.clone()),
-            adapter_revision: Some(endpoint.adapter_revision),
+            adapter_ref: Some(saved.target.protocol_profile_id.clone()),
+            adapter_revision: Some(saved.target.protocol_profile_revision),
         });
     }
     protocol_profiles(
