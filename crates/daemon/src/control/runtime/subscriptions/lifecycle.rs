@@ -9,6 +9,23 @@ impl LocalControlAdapter {
         source: &hiroute_domain::ComputeManagementSourceV2,
     ) -> Result<Option<CanonicalDigest>, hiroute_application::control::ComputeManagementControlError>
     {
+        let Some((record, stored)) = self.committed_subscription_validation(source)? else {
+            return Ok(None);
+        };
+        self.subscription_source_evidence(&record, &stored)
+            .map(Some)
+    }
+
+    pub(super) fn committed_subscription_validation(
+        &self,
+        source: &hiroute_domain::ComputeManagementSourceV2,
+    ) -> Result<
+        Option<(
+            ComputeSubscriptionValidationRecordV1,
+            StoredSubscriptionValidationV1,
+        )>,
+        hiroute_application::control::ComputeManagementControlError,
+    > {
         let Some(validation) = source.validation.as_ref() else {
             return Ok(None);
         };
@@ -56,8 +73,7 @@ impl LocalControlAdapter {
         {
             return Err(hiroute_application::control::ComputeManagementControlError::Corrupt);
         }
-        self.subscription_source_evidence(&record, &stored)
-            .map(Some)
+        Ok(Some((record, stored)))
     }
 
     pub(super) fn subscription_source_evidence(

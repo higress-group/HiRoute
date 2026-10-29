@@ -734,19 +734,27 @@ impl ApplicationService {
         )
         .with_prices(ports.prices.clone())
         .with_routing(ports.routing.clone());
-        let read_details = matches!(
-            request
-                .payload
-                .get("intent")
-                .and_then(|intent| intent.get("view"))
-                .and_then(Value::as_str),
-            Some("analysis" | "routing_timeline")
-        ) || matches!(operation, ObservationOperation::PlanQuality)
+        let read_details = (request.payload.get("schema").and_then(Value::as_str)
+            == Some("hiroute.observation.query/v2")
             && request
                 .payload
-                .pointer("/intent/query/include_routing_observations")
+                .get("read_failure_details")
                 .and_then(Value::as_bool)
-                == Some(true);
+                == Some(true))
+            || matches!(
+                request
+                    .payload
+                    .get("intent")
+                    .and_then(|intent| intent.get("view"))
+                    .and_then(Value::as_str),
+                Some("analysis" | "routing_timeline")
+            )
+            || matches!(operation, ObservationOperation::PlanQuality)
+                && request
+                    .payload
+                    .pointer("/intent/query/include_routing_observations")
+                    .and_then(Value::as_bool)
+                    == Some(true);
         let result = match operation {
             ObservationOperation::CapacityRead | ObservationOperation::CapacityUpdate => control
                 .capacity(

@@ -50,6 +50,8 @@ fn envelope_data<T: Serialize>(envelope: MachineEnvelopeV2<T>) -> Result<T, Desk
 pub async fn compute_subscriptions(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
+    source_id: Option<String>,
+    expected_source_revision: Option<u64>,
 ) -> Result<WebComputeSubscriptionCandidatesV2, DesktopFailure> {
     main_window(window)?;
     let client = state
@@ -60,7 +62,27 @@ pub async fn compute_subscriptions(
         .ok_or("RESIDENT_UNAVAILABLE")?
         .client
         .clone();
-    envelope_data(client.compute_subscriptions(&crate::random_id()?).await?).map(Into::into)
+    match (source_id, expected_source_revision) {
+        (None, None) => {
+            envelope_data(client.compute_subscriptions(&crate::random_id()?).await?).map(Into::into)
+        }
+        (Some(source_id), Some(expected_source_revision)) => {
+            let value: hiroute_application_api::ComputeSubscriptionCandidatesV2 =
+                crate::session::query(
+                    &client,
+                    hiroute_application_api::LIST_COMPUTE_SUBSCRIPTIONS_OPERATION_V2,
+                    &hiroute_application_api::ComputeSubscriptionCandidatesQueryV1 {
+                        source: Some(hiroute_application_api::ComputeSavedSubscriptionSourceV1 {
+                            source_id,
+                            expected_source_revision,
+                        }),
+                    },
+                )
+                .await?;
+            Ok(value.into())
+        }
+        _ => Err("REQUEST_INVALID".into()),
+    }
 }
 
 pub async fn check_subscription(
@@ -296,6 +318,7 @@ pub async fn prepare_discovered_model_connection(
 pub async fn compute_connection_options(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
+    include_request_model_ids: Option<bool>,
 ) -> Result<ComputeConnectionOptionsResultV1, DesktopFailure> {
     main_window(window)?;
     let client = state
@@ -309,7 +332,10 @@ pub async fn compute_connection_options(
     crate::session::query(
         &client,
         "ListConnectionOptions",
-        &ComputeConnectionOptionsRequestV1 { candidate: None },
+        &ComputeConnectionOptionsRequestV1 {
+            candidate: None,
+            include_request_model_ids: include_request_model_ids.unwrap_or(false),
+        },
     )
     .await
 }

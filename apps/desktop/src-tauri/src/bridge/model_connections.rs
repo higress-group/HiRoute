@@ -3,6 +3,8 @@ use super::*;
 pub async fn compute_subscriptions(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
+    source_id: Option<String>,
+    expected_source_revision: Option<u64>,
 ) -> Result<WebComputeSubscriptionCandidatesV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -30,7 +32,13 @@ pub async fn compute_subscriptions(
         &state.2,
         &state.3,
     );
-    hiroute_product_session::commands::compute_subscriptions(&context, &product_state).await
+    hiroute_product_session::commands::compute_subscriptions(
+        &context,
+        &product_state,
+        source_id,
+        expected_source_revision,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn check_subscription(
@@ -361,6 +369,7 @@ pub async fn prepare_discovered_model_connection(
 pub async fn compute_connection_options(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
+    include_request_model_ids: Option<bool>,
 ) -> Result<ComputeConnectionOptionsResultV1, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -388,7 +397,12 @@ pub async fn compute_connection_options(
         &state.2,
         &state.3,
     );
-    hiroute_product_session::commands::compute_connection_options(&context, &product_state).await
+    hiroute_product_session::commands::compute_connection_options(
+        &context,
+        &product_state,
+        include_request_model_ids,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn register_protected_model_input(

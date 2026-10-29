@@ -174,6 +174,10 @@ pub struct ComputeConnectionOptionsRequestV1 {
     /// Opt in to the existing candidate registry's exact, non-secret public view.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate: Option<crate::ComputeCandidateRefV2>,
+    /// Return exact catalog-to-request IDs only to callers that opt in. Ordinary
+    /// responses retain their original shape for strict released readers.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub include_request_model_ids: bool,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -181,6 +185,8 @@ pub struct ComputeConnectionOptionsRequestV1 {
 pub struct ComputeConnectionOptionV1 {
     pub endpoints: Vec<hiroute_domain::ProtocolEndpointV1>,
     pub known_models: std::collections::BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_model_ids: Option<std::collections::BTreeMap<String, Vec<String>>>,
     pub connection_option_id: String,
     pub display_name: String,
     pub connector_id: String,
@@ -270,4 +276,20 @@ pub struct ComputeConnectionPlannerPayloadV1 {
     pub explicit_materialization: bool,
     pub expected_source_revision: u64,
     pub projection: hiroute_domain::PreparedComputeProjectionV1,
+}
+
+#[cfg(test)]
+mod connection_options_compatibility_tests {
+    use super::*;
+
+    #[test]
+    fn request_model_defaults_are_opt_in_and_keep_old_request_bytes() {
+        let old: ComputeConnectionOptionsRequestV1 =
+            serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(!old.include_request_model_ids);
+        assert_eq!(serde_json::to_value(old).unwrap(), serde_json::json!({}));
+        let opted: ComputeConnectionOptionsRequestV1 =
+            serde_json::from_value(serde_json::json!({"include_request_model_ids": true})).unwrap();
+        assert!(opted.include_request_model_ids);
+    }
 }

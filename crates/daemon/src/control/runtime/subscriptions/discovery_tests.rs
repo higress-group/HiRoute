@@ -27,6 +27,98 @@ fn save_login(
     login
 }
 
+#[test]
+fn saved_reuse_resolves_original_owner_among_multiple_logins() {
+    if isolated_discovery("saved_reuse_resolves_original_owner_among_multiple_logins") {
+        return;
+    }
+    for provider in [
+        SubscriptionLoginProviderV1::Codex,
+        SubscriptionLoginProviderV1::Claude,
+    ] {
+        let fixture = Fixture::new();
+        let original = save_login(&fixture, provider);
+        let other = fixture.authorize(provider);
+        assert_ne!(original.candidate, other.candidate);
+        let snapshot = fixture.snapshot();
+        let source = snapshot.sources.first().unwrap();
+        let general = fixture.adapter().compute_subscriptions().unwrap();
+        assert!(
+            general
+                .candidates
+                .iter()
+                .filter(
+                    |candidate| candidate.existing_source_id.as_deref() == Some(&source.source_id)
+                )
+                .count()
+                >= 2
+        );
+        let query = hiroute_application_api::ComputeSavedSubscriptionSourceV1 {
+            source_id: source.source_id.clone(),
+            expected_source_revision: source.revision,
+        };
+        let exact = fixture
+            .adapter()
+            .saved_subscription_candidate(query.clone())
+            .unwrap();
+        assert_eq!(exact.candidates.len(), 1);
+        assert_eq!(
+            exact.candidates[0].candidate.candidate_ref,
+            source.last_candidate_ref
+        );
+        assert_eq!(
+            exact.candidates[0].existing_source_id.as_deref(),
+            Some(source.source_id.as_str())
+        );
+        let application = ApplicationService::new(fixture.runtime().application_ports());
+        let request = |payload| LocalControlRequestV2 {
+            schema_version: LOCAL_CONTROL_SCHEMA_V2,
+            request_id: "saved-owner-query".into(),
+            principal: PrincipalV1::interactive_user(),
+            operation_id: "ListComputeSubscriptions".into(),
+            payload,
+            protected_grant: None,
+        };
+        let before_spawns = fixture.spawns();
+        let response = application.dispatch(request(serde_json::json!({"source":query})));
+        assert_eq!(response.status, MachineStatus::Succeeded, "{response:?}");
+        let public: hiroute_application_api::ComputeSubscriptionCandidatesV2 =
+            serde_json::from_value(response.data.unwrap()).unwrap();
+        assert_eq!(
+            public.candidates[0].candidate.candidate_ref,
+            source.last_candidate_ref
+        );
+        assert_eq!(
+            fixture.spawns(),
+            before_spawns,
+            "metadata lookup cannot check a login or start CPA"
+        );
+        assert_eq!(
+            application
+                .dispatch(request(
+                    serde_json::json!({"source":{"source_id":source.source_id}})
+                ))
+                .status,
+            MachineStatus::UsageError
+        );
+        assert_eq!(application.dispatch(request(serde_json::json!({"source":{"source_id":source.source_id,"expected_source_revision":0}}))).status, MachineStatus::UsageError);
+        assert_eq!(
+            fixture.snapshot(),
+            snapshot,
+            "metadata lookup must not rewrite saved credentials or models"
+        );
+        assert!(matches!(
+            fixture.adapter().saved_subscription_candidate(
+                hiroute_application_api::ComputeSavedSubscriptionSourceV1 {
+                    expected_source_revision: source.revision + 1,
+                    ..query
+                }
+            ),
+            Err(hiroute_application::control::ComputeManagementControlError::Conflict)
+        ));
+    }
+}
+
 fn source_for(fixture: &Fixture, kind: CpaAccountKind) -> CpaRegisteredSourceV1 {
     // The old aggregate API is intentionally used only to locate both initially
     // healthy fixtures. The regression exercises unchanged public daemon ports.

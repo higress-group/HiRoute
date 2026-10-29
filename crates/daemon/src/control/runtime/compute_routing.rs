@@ -408,9 +408,41 @@ impl ComputeFactsPort for LocalControlAdapter {
                             })
                     })
                     .collect();
+                let mut request_model_ids =
+                    std::collections::BTreeMap::<String, Vec<String>>::new();
+                for capability in &catalog.model_data().model_endpoint_capabilities {
+                    if capability.connector_id == option.connector_id
+                        && capability.connector_revision == option.connector_revision
+                        && capability.endpoint_profile_id == option.endpoint_profile_id
+                        && capability.endpoint_profile_revision == option.endpoint_profile_revision
+                        && option
+                            .model_configuration_ids
+                            .contains(&capability.model_configuration_id)
+                        && resolved
+                            .endpoint_profile
+                            .protocol_endpoints
+                            .iter()
+                            .any(|endpoint| {
+                                endpoint.authentication_semantics.is_some()
+                                    && endpoint.protocol_endpoint_id
+                                        == capability.protocol_endpoint_id
+                                    && endpoint.protocol == capability.upstream_protocol
+                            })
+                    {
+                        request_model_ids
+                            .entry(capability.model_configuration_id.clone())
+                            .or_default()
+                            .push(capability.upstream_model_id.clone());
+                    }
+                }
+                for ids in request_model_ids.values_mut() {
+                    ids.sort();
+                    ids.dedup();
+                }
                 Ok(ComputeConnectionOptionV1 {
                     endpoints: resolved.endpoint_profile.protocol_endpoints.clone(),
                     known_models,
+                    request_model_ids: Some(request_model_ids),
                     connection_option_id: option.connection_option_id,
                     display_name: option.display_name,
                     connector_id: option.connector_id,

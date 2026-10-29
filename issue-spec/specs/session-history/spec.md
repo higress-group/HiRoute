@@ -360,6 +360,16 @@ distinct reasons and bounded retry hints, never empty success. This does not
 increase the read deadline, reader count or automatic retries. Omitted/false
 retains the released strict failure shape.
 
+Current observation v2 callers may explicitly request `read_failure_details=true`
+to receive the same typed bounded-read failures, including Home sessions and usage.
+Omitted/false retains each view's released failure shape and canonical request
+identity. The option participates in the exact protected request digest; it grants
+no access and changes neither reader limits nor data semantics. Home shares the
+bounded observation queue, retries only reader-busy failures at most twice after
+the initial attempt, and cancels obsolete queued/retry work when refreshed or
+unmounted. Genuine failures and exhausted retries retain the last loaded data and
+an explicit per-domain Retry action; unavailable reads never become empty success.
+
 Extension scores without a floor MUST NOT be classified as below-floor or meets-floor and MUST NOT be relabelled unscored solely because no floor exists. Their valid complete scores still contribute to mean scores and scoring coverage.
 
 #### Scenario: Read routing evidence beside unrelated retained facts

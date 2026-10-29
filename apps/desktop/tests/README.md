@@ -130,6 +130,18 @@ recover failed active-revision resolution and reject late earlier trust/quality
 responses while respecting the production reader capacity. Unknown and genuinely
 mismatched evidence keep the existing unavailable-state assertions above.
 
+The targeted trial connection-reuse cases run with
+`node tests/v3/visual/new-model-trial.mjs /path/to/evidence --trial-reuse`.
+The same production-component group checks several available subscription logins
+against a source/revision-scoped lookup and confirms a saved original operation
+after later model or Agent changes without overwriting those choices.
+They retain the chosen model while reusing an API/subscription, verify exact saved
+binding reuse without writes, one-target append and automatic selection, editable
+or missing defaults, failure and original-save recovery, and localized form geometry.
+Production components and styles use controlled IPC; these are not provider or
+native persistence evidence. The `ListConnectionOptions` mapping is opt-in and
+catalog-only; ordinary responses preserve their released shape.
+
 The [trial interaction refinements](v3/visual/new-model-trial-polish-active.mjs)
 run with `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --polish`.
 They cover cached trust-level replay, precise-value debounce, shared reason labels,
@@ -269,3 +281,18 @@ readback covers exact model proof, delayed/wrong-context responses, unrefreshed
 Skill states and fresh Skill editor selection. Readback captures use production
 styles in Chinese/dark and English/light at 1200×813 and 755×600. Native save
 confirmation and latency still require the normal Release app and real data.
+
+Home bounded-read regressions in `v3/browser/home-startup-scenarios.mjs` exercise
+shared queue capacity, typed busy recovery/exhaustion, terminal failures and
+superseded retries through the production hook. They remain React/mock-IPC
+evidence; native first-open/focus reads and retained data require the real Desktop.
+
+`desktop.trial.connected-models-and-models-return` runs the actual DesktopApp
+navigation from the saved-model control to Models and back, preserving exact
+binding, route name and trust without writes. The existing setup append cases
+now enter through the connection-point choice in Connect here and retain their
+exact API/subscription source, candidate, append-only and no-key-edit assertions.
+`--trial-identity` checks compact reasoning-control geometry, disclosure, keyboard
+choice, localization and unchanged submitted profiles in both themes and sizes.
+All of these browser paths use controlled IPC; native business effects remain
+separate acceptance.

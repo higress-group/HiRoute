@@ -134,6 +134,16 @@ backup journals keep their writing, committed and final checkpoints. This follow
 and [handle-relative rename](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_rename_info).
 Process interruption tests do not establish behavior under hardware power loss.
 
+`durable::sync_unpublished_copy` is limited to unpublished complete-source snapshot
+copies. macOS flushes each copied file's bytes and permissions with POSIX `fsync`,
+then the snapshot owner retains `directory_barrier` (`F_FULLFSYNC`) at each completed
+directory and before manifest/stage publication. The final device flush includes
+the preceding file writes; no incomplete stage becomes a recovery source. This
+avoids one device-cache flush per small body without omitting files, hashes,
+permissions or recovery validation. General key/journal writes, Linux file syncs
+and Windows descriptor-bound copying are unchanged. See Apple's
+[fsync and full-device flush contract](https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html).
+
 Native configuration restoration has a separate sealed-file namespace operation.
 It opens an already flushed source without requesting data-write access, retains
 its read-only facts, and asks the kernel to check `WRITE_ATTRIBUTES` when replacing

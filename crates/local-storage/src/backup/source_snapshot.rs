@@ -3,6 +3,8 @@ use super::*;
 use crate::migrations::{prepare_storage_root as prepare_owner_directory, validate_owner_file};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+#[cfg(all(test, target_os = "macos"))]
+mod copy_benchmark;
 mod program_locations;
 mod seal;
 #[cfg(windows)]
@@ -97,7 +99,10 @@ fn copy_tree(source: &Path, target: &Path) -> Result<(), LocalStorageError> {
         {
             fs::copy(source, target)?;
             fs::set_permissions(target, metadata.permissions())?;
-            hiroute_platform::durable::sync_file(target)?;
+            // This copy is still inside source-staging. Completed directories
+            // and the final manifest/stage retain their full device barriers;
+            // macOS need not flush the entire drive cache after every body.
+            hiroute_platform::durable::sync_unpublished_copy(target)?;
         }
     } else {
         return Err(LocalStorageError::InvalidData);
