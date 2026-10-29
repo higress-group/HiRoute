@@ -28,12 +28,12 @@ export type NativeDraft = {
   savedShared: { source_id: string; lineage_digest: string } | null;
 };
 
-const presetProtocol: Record<string, DecisionWireProtocol | null> = { compatible: null };
-export const independentPresets: IndependentPreset[] = [
-  ...providers.filter(p => p.id.startsWith('bailian')),
-  { id: 'openai', endpoint: 'https://api.openai.com/v1/decisions', model: '', wire_protocol: 'openai_decisions' as const },
-  ...providers.filter(p => !p.id.startsWith('bailian')),
-].map(p => ({ id: p.id, endpoint: p.endpoint, model: p.model, wire_protocol: 'wire_protocol' in p ? p.wire_protocol : p.id in presetProtocol ? presetProtocol[p.id] : 'system_one' }));
+export const independentPresets: IndependentPreset[] = providers.map(preset => {
+  const protocol = preset.wire_protocol;
+  const wire_protocol: DecisionWireProtocol | null = protocol === 'openai_decisions' || protocol === 'system_one'
+    ? protocol : protocol === undefined && preset.id !== 'compatible' ? 'system_one' : null;
+  return { id: preset.id, endpoint: preset.endpoint, model: preset.model, wire_protocol };
+});
 
 export function presetName(id: string, language: 'zh' | 'en'): string {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
