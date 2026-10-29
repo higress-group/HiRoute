@@ -3,7 +3,7 @@ use hiroute_application::compute_management::ComputeSubscriptionMaintenanceScope
 use hiroute_application_api::{ComputeValidationRefV2, OperationReferenceV1};
 use hiroute_domain::ComputeManagementRepositoryPort;
 
-fn subscription(candidate_ref: &str) -> ComputeCandidateFactsV2 {
+pub(super) fn subscription(candidate_ref: &str) -> ComputeCandidateFactsV2 {
     let mut facts = candidate(candidate_ref, "unused-subscription-input");
     let digest = hiroute_domain::CanonicalDigest::of_bytes(candidate_ref.as_bytes());
     let validation = ComputeValidationRefV2 {
@@ -41,7 +41,7 @@ fn subscription(candidate_ref: &str) -> ComputeCandidateFactsV2 {
     facts
 }
 
-fn change(
+pub(super) fn change(
     stores: &LocalStorageSet,
     facts: &ComputeCandidateFactsV2,
     selected: &[&str],
@@ -64,7 +64,7 @@ fn change(
     }
 }
 
-fn register_verified_subscription(
+pub(super) fn register_verified_subscription(
     stores: &LocalStorageSet,
     registry: &TrustedComputeCandidateRegistry,
     facts: &ComputeCandidateFactsV2,

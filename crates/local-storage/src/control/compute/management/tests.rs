@@ -39,6 +39,7 @@ mod released_lifecycle;
 mod removal_guards;
 mod runtime_leases;
 mod subscription_selection;
+mod subscription_api;
 
 struct ProtectedInput;
 
