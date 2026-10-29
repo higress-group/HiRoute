@@ -292,13 +292,20 @@ impl RequestObservation {
             self.capture_request_fallback(request, replay);
             return;
         };
+        let Some((queue, reservation)) = self.content_work_reservation(bytes) else {
+            // Another request can occupy the optional snapshot allowance even
+            // when this snapshot fits alone. No content has been queued for
+            // this request yet: keep the original nonblocking encoder instead
+            // of declaring a gap merely because optional ownership was refused.
+            drop(lease);
+            drop(memory);
+            self.capture_request_fallback(request, replay);
+            return;
+        };
         let status = self
             .inner
             .async_content
             .get_or_init(|| Arc::new(ContentStatus::default()));
-        let Some((queue, reservation)) = self.reserve_content_work(status, bytes) else {
-            return;
-        };
         // Capture only the fields consumed by the existing observation encoder.
         // The native wire tree and routing/history metadata are never cloned.
         let snapshot = Box::new(RequestSnapshot {
@@ -421,26 +428,7 @@ impl RequestObservation {
         if status.failed.load(Ordering::Acquire) {
             return None;
         }
-        let Some(queue) = self
-            .inner
-            .channels
-            .content_work
-            .queue(&self.inner.channels.content)
-        else {
-            #[cfg(feature = "e2e-test-control")]
-            eprintln!(
-                "capture worker unavailable: bytes={bytes} state={:?}",
-                self.inner.channels.content.work_state()
-            );
-            self.fail_content_work(status, "content_capture_queue_unavailable");
-            return None;
-        };
-        let result = self
-            .inner
-            .channels
-            .content
-            .reserve_work(bytes.saturating_add(JOB_OVERHEAD))
-            .map(|reservation| (queue, reservation));
+        let result = self.content_work_reservation(bytes);
         if result.is_none() {
             #[cfg(feature = "e2e-test-control")]
             eprintln!(
@@ -450,6 +438,22 @@ impl RequestObservation {
             self.fail_content_work(status, "content_capture_queue_unavailable");
         }
         result
+    }
+
+    fn content_work_reservation(
+        &self,
+        bytes: usize,
+    ) -> Option<(Arc<WorkQueue>, ObservationWorkReservation)> {
+        let queue = self
+            .inner
+            .channels
+            .content_work
+            .queue(&self.inner.channels.content)?;
+        self.inner
+            .channels
+            .content
+            .reserve_work(bytes.saturating_add(JOB_OVERHEAD))
+            .map(|reservation| (queue, reservation))
     }
 
     fn send_content_work(

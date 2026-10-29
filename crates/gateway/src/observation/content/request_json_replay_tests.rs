@@ -712,6 +712,57 @@ fn optional_retention_pressure_preserves_the_original_synchronous_capture() {
 }
 
 #[test]
+fn queued_snapshot_pressure_falls_back_before_async_content_ownership() {
+    use crate::server::core_runtime::adapters::decode_ingress_request;
+    let fixture = ReplayFixture::new(1024 * 1024);
+    let text = "x".repeat(20 * 1024);
+    let input = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"route","input":text}),
+    )
+    .unwrap();
+    fixture.store.prevalidate(&[]).unwrap();
+    let before = fixture.store.budget().snapshot().unwrap().live;
+    let (sender, receiver) = mpsc::channel();
+    let observation = request_with_sinks_capacity(
+        OtelContentPolicy::Disabled,
+        DiagnosticsPort::default(),
+        true,
+        GatewayObservationSinks {
+            conversation_content: Arc::new(RecordSink(sender)),
+            ..GatewayObservationSinks::discard()
+        },
+        512 * 1024,
+    );
+    // A different request's queued snapshot fits, but leaves too little work
+    // credit for this one. The encoded original content still fits the channel.
+    let _other = observation
+        .inner
+        .channels
+        .content
+        .reserve_work(340 * 1024)
+        .unwrap();
+    observation.capture_request_async(&input, &fixture.store);
+    assert!(observation.inner.async_content.get().is_none());
+    assert_eq!(fixture.store.budget().snapshot().unwrap().live, before);
+    let mut captured = Vec::new();
+    loop {
+        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(record["loss_watermark"].is_null(), "{record}");
+        assert_ne!(record["phase"], "abort");
+        if record["phase"] == "append" {
+            captured.extend(decoded_base64(
+                record["canonical_bytes_base64"].as_str().unwrap(),
+            ));
+        }
+        if record["phase"] == "finish" {
+            break;
+        }
+    }
+    assert_eq!(captured, text.as_bytes());
+}
+
+#[test]
 fn active_snapshot_does_not_reduce_encoded_capacity_while_the_sink_is_blocked() {
     use crate::server::core_runtime::adapters::decode_ingress_request;
     struct SinkGate(Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>);
