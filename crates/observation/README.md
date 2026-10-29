@@ -18,6 +18,14 @@ already-ended gaps; every overlapping gap still retains its scope, loss status
 and reason when split. Current-store reopen installs this derived index without
 rewriting evidence, resetting history or changing the physical format version.
 
+`text_index/sources` coalesces newly eligible content into one earliest-row
+watermark in the existing metadata store. SQLite notifications commit with blob,
+reference and derived-index changes, including peer writers and late completion.
+Ordinary fact updates and references to already indexed bytes do not restart a
+history scan. The worker retains its bounded selection/processing limits and makes
+one bounded full pass after restart; opening the store only installs notifications.
+Missing or invalid source content still cannot publish a successful search hit.
+
 `StageAssessmentRecordedV1` retains joint quality under one frozen native rubric
 without assigning a model or profile. It uses the existing nullable stage projection
 and immutable history membership. Complete joint assessments count as scored stages;

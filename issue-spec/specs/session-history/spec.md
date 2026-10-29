@@ -204,6 +204,14 @@ Authorization is checked again when opening body. Query changes immediately clea
 old results and reject delayed responses; refresh/home links reopen the same session
 without fabricated identity.
 
+Background source selection SHALL avoid rescanning ready historical content for
+unrelated fact writes or new references to already indexed bytes. Newly eligible
+content, late completion, peer-connection writes and removal of a live source's
+derived index SHALL still reach bounded indexing. Source notification and its
+mutation SHALL commit or roll back together; a change behind an active scan SHALL
+remain discoverable. Restart SHALL recover interrupted selection through the
+existing bounded scan, without a startup history walk or rewriting source content.
+
 Released V2 occurrence `search` is a separate bounded scan/snapshot interface.
 Pages preserve the original query/scope and request/content/index window, keep seen
 gaps visible, and expose continuation while unscanned range remains even without a
