@@ -627,18 +627,48 @@ fn decision_header_is_reusable(
             (endpoint, header, compatible)
         }
     };
-    let origin = |endpoint: &str| -> Option<(String, String)> {
+    let origin = |endpoint: &str| -> Option<(String, String, u16)> {
         let uri = endpoint.parse::<http::Uri>().ok()?;
-        Some((
-            uri.scheme_str()?.to_ascii_lowercase(),
-            uri.authority()?.as_str().to_ascii_lowercase(),
-        ))
+        let scheme = uri.scheme_str()?.to_ascii_lowercase();
+        let default_port = match scheme.as_str() {
+            "http" => 80,
+            "https" => 443,
+            _ => return None,
+        };
+        let authority = uri.authority()?;
+        if authority.as_str().contains('@') {
+            return None;
+        }
+        let raw_host = authority.host();
+        if raw_host.is_empty() {
+            return None;
+        }
+        let suffix = authority.as_str().strip_prefix(raw_host)?;
+        let port = if suffix.is_empty() {
+            default_port
+        } else {
+            authority.port_u16()?
+        };
+        if port == 0 {
+            return None;
+        }
+        let host = raw_host
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+            .unwrap_or(raw_host);
+        let host = host
+            .parse::<std::net::IpAddr>()
+            .map_or_else(|_| host.to_ascii_lowercase(), |ip| ip.to_string());
+        Some((scheme, host, port))
     };
     compatible
         && old_header == Some(header)
         && origin(old_endpoint)
             .is_some_and(|before| Some(before) == origin(new.connection.transport().0))
 }
+
+#[cfg(test)]
+mod decision_tests;
 
 fn plan_classifier_header_secret(
     input: ClassifierHeaderSecretInputV1,
