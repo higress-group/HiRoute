@@ -28,7 +28,11 @@ that call, so the UI can compare it with refreshed state after the call.
 
 Save creates the next immutable service revision or deletes the service when
 `service` is null. Include each affected source's observed revision exactly
-once. `secret` is null for shared mode and deletion; a non-null independent
+once. Saving a shared revision affects only its selected source; switching from
+A to B includes B alone because retained revisions still own A's unchanged
+membership. Saving an independent or custom revision includes no source
+revisions. Whole-service deletion includes all sources in `related_sources`.
+`secret` is null for shared mode and deletion; a non-null independent
 input is registered with protected input and never returned. A saved independent
 header reference can be retained without re-entry only when its existing
 authentication identity and permitted origin still match. A newly entered
