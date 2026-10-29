@@ -97,6 +97,9 @@ pub(crate) enum ClassifierAuthenticationAuthorityV1 {
         name: Arc<str>,
         value_secret_ref: Arc<str>,
     },
+    SharedDecision {
+        binding: hiroute_domain::DecisionCredentialBindingV1,
+    },
 }
 
 /// Exact, publication-pinned authority for one external classification call.
@@ -107,6 +110,7 @@ pub(crate) struct RestBranchClassifierAuthorityV1 {
     pub(crate) plan_identity: Option<(String, u64)>,
     pub(crate) default_category: Option<String>,
     pub(crate) decision_provider: String,
+    pub(crate) wire_protocol: hiroute_domain::DecisionWireProtocolV2,
     pub(crate) native_protocol: Option<hiroute_domain::FrozenNativeProtocolV1>,
     pub(crate) endpoint: Arc<str>,
     pub(crate) http_authority: Arc<str>,

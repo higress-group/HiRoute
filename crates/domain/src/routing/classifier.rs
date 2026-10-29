@@ -34,6 +34,10 @@ pub enum ComplexityClassifierModeV1 {
     DecisionService {
         service: Box<super::DecisionServiceV1>,
     },
+    /// The distinct discriminator prevents V2 content from changing V1 semantics.
+    DecisionServiceV2 {
+        service: Box<super::DecisionServiceV2>,
+    },
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -57,6 +61,17 @@ impl ComplexityClassifierModeV1 {
                     revision: service.revision,
                 })
             }
+            Self::DecisionServiceV2 { service }
+                if matches!(
+                    service.connection,
+                    super::DecisionConnectionV2::Custom { .. }
+                ) =>
+            {
+                Some(super::DecisionExtensionIdentityV1 {
+                    id: service.id.clone(),
+                    revision: service.revision,
+                })
+            }
             _ => None,
         }
     }
@@ -65,6 +80,13 @@ impl ComplexityClassifierModeV1 {
         match self {
             Self::LocalRules => Ok(()),
             Self::DecisionService { service } => {
+                if service.validate() {
+                    Ok(())
+                } else {
+                    Err(ComplexityClassifierError::UnsupportedClassifier)
+                }
+            }
+            Self::DecisionServiceV2 { service } => {
                 if service.validate() {
                     Ok(())
                 } else {

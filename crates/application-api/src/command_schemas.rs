@@ -209,6 +209,14 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             request!(ClientEmptyRequestV1),
             response!(DecisionServicesListV1),
         ),
+        "decision.sources.list" => (
+            request!(ClientEmptyRequestV1),
+            response!(DecisionConnectionSourcesV1),
+        ),
+        "decision.connections.list" => (
+            request!(ClientEmptyRequestV1),
+            response!(DecisionServicesV2),
+        ),
         "agents.scan" | "agents.list" => (
             request!(AgentScanRequestV1),
             response!(AgentDiscoveryListV1),
@@ -335,7 +343,7 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             request!(OperationIdempotencyLookupV1),
             response!(OperationIdempotencyResultV1),
         ),
-        "decision.services.apply" => (
+        "decision.services.apply" | "decision.connections.apply" => (
             request!(PreviewRequestV1, ApplyRequestV1),
             response!(
                 PreviewResultV1,
@@ -347,6 +355,10 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             request!(ClassifierDecisionTestRequestV1),
             response!(ClassifierDecisionTestResultV1),
         ),
+        "decision.connections.test" => (
+            request!(DecisionServiceTestRequestV2),
+            response!(DecisionServiceTestResultV2),
+        ),
         _ => return None,
     };
     if command_id == "decision.services.apply" {
@@ -357,6 +369,16 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
         specialize_change(
             &mut response,
             &schema::<hiroute_domain::DecisionServiceChangeV1>(true),
+        );
+        remove_property(&mut request, "apply_capability");
+    } else if command_id == "decision.connections.apply" {
+        specialize_change(
+            &mut request,
+            &schema::<hiroute_domain::DecisionServiceOperationInputV2>(false),
+        );
+        specialize_change(
+            &mut response,
+            &schema::<hiroute_domain::DecisionServiceOperationInputV2>(true),
         );
         remove_property(&mut request, "apply_capability");
     } else if command_id == "compute.connection.apply" {

@@ -4,7 +4,6 @@ use super::protocol::{assessment_definition_result, latest_user_wire_value};
 use super::system_one::{base_questions, question_id};
 use super::{CallFailure, PreparedDecisionRequest};
 use crate::agent_turn_history::{AgentTurnHistorySnapshot, ExecutionAttribution, VisibleAgentTurn};
-use crate::server::core_runtime::adapters::prepare_replay_json_template;
 use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 use hiroute_domain::{
     ApplicabilityReasonV1 as R, ApplicabilityStateV1 as S, HistoricalProtectionActionV1 as A,
@@ -63,8 +62,8 @@ pub(super) fn request_template<'a>(
     let mut body = json!({"model":authority.system_one_model,"questions":questions,"state":{
         "latest_user":latest,"prior_context":[],"assessment_stage":[],"history_partial":false
     }});
-    let base = prepare_replay_json_template(&body, refs.clone())
-        .map_err(|_| CallFailure::RejectedInput)?;
+    let base =
+        super::openai_decisions::prepare_template(authority.wire_protocol, &body, refs.clone())?;
     let from = target.as_ref().map(|t| t.from);
     let stage = from.map_or(&[][..], |i| &history.visible_conversation[i..]);
     let background = from.map_or(history.visible_conversation.as_slice(), |i| {
@@ -106,8 +105,7 @@ pub(super) fn request_template<'a>(
             .map_err(|_| CallFailure::RejectedInput)?;
     body["state"]["history_partial"] =
         json!(history.history_partial || admitted_prior < background.len() || target_partial);
-    let template =
-        prepare_replay_json_template(&body, refs).map_err(|_| CallFailure::RejectedInput)?;
+    let template = super::openai_decisions::prepare_template(authority.wire_protocol, &body, refs)?;
     if template.wire_len > MAX_REQUEST_BYTES {
         return Err(CallFailure::RejectedInput);
     }

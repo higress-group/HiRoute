@@ -50,8 +50,8 @@ use super::{
     confirm_success, label, record_failure, safe_error, validate_attempt_permits,
 };
 
-pub(super) struct ProductionStateAdapter {
-    pub(super) inner: Arc<dyn ProductionStore>,
+pub(crate) struct ProductionStateAdapter {
+    pub(crate) inner: Arc<dyn ProductionStore>,
 }
 
 #[async_trait]

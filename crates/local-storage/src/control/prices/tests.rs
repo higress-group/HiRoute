@@ -136,6 +136,7 @@ fn management_source(source_id: &str, binding_id: &str) -> ComputeManagementSour
         }],
         native_recheck: None,
         additional_native_endpoints: Vec::new(),
+        decision_targets: Vec::new(),
         credentials: Vec::new(),
         validation: None,
         last_candidate_ref: "candidate.management".into(),

@@ -427,6 +427,16 @@ impl ControlRepositoryPort for LocalControlAdapter {
         self.stores_lock()?.control().compensate_control(effect)
     }
 
+    fn reconcile_compute_compensation(
+        &self,
+        operation: &OperationV1,
+        references: &[hiroute_domain::CredentialRefV1],
+    ) -> PortResult<()> {
+        self.stores_lock()?
+            .control()
+            .reconcile_compute_compensation(operation, references)
+    }
+
     fn finish_operation(&self, operation: &mut OperationV1) -> PortResult<u64> {
         self.finish_settings_collaboration(operation)?;
         self.stores_lock()?.control().finish_operation(operation)

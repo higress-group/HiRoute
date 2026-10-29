@@ -26,6 +26,8 @@ fn state() -> PlanAuthoringSnapshotV2 {
         draft: None,
         facts: compilation_facts(),
         decision_service: None,
+        decision_service_v2: None,
+        decision_source: None,
         expected_revisions: RevisionSetV1 {
             target: 1,
             dependencies: Default::default(),
@@ -94,6 +96,44 @@ fn publication_requires_the_exact_saved_decision_revision_for_both_modes() {
             Err(PlanPreviewError::InvalidDecisionService)
         );
     }
+}
+
+#[test]
+fn v2_publication_requires_exact_saved_content_without_reinterpreting_v1() {
+    let service = DecisionServiceV2 {
+        schema: DecisionServiceSchemaV2::V2,
+        id: "decision/authoring-v2".into(),
+        revision: 1,
+        name: "Saved V2 extension".into(),
+        connection: DecisionConnectionV2::Custom {
+            endpoint: "https://extension.example/v1/decisions".into(),
+            timeout_ms: 3000,
+            auth_header: None,
+        },
+    };
+    let mut change = change();
+    let mut state = state();
+    change.editor.mode = PlanEditorMode::SmartSaving;
+    change.editor.smart.economy = change.editor.candidates.clone();
+    change.editor.smart.primary = change.editor.candidates.clone();
+    change.editor.smart.classifier = ComplexityClassifierModeV1::DecisionServiceV2 {
+        service: Box::new(service.clone()),
+    };
+    assert_eq!(
+        preview_plan_content(&change, &state),
+        Err(PlanPreviewError::InvalidDecisionService)
+    );
+    state.decision_service_v2 = Some(service.clone());
+    let preview = preview_plan_content(&change, &state).unwrap();
+    assert_eq!(
+        preview.plan_version.configuration.decision_service_v2(),
+        Some(&service)
+    );
+    state.decision_service_v2.as_mut().unwrap().name = "Different saved content".into();
+    assert_eq!(
+        preview_plan_content(&change, &state),
+        Err(PlanPreviewError::InvalidDecisionService)
+    );
 }
 #[test]
 fn preview_is_read_only_and_seals_proposed_alias_and_registry() {

@@ -395,6 +395,21 @@ impl RuntimePublicationFeed for GatewayPublicationInstaller {
 pub trait CredentialResolver: Send + Sync {
     fn acquire(&self, credential_ref: &str) -> Result<CredentialLease, PortError>;
 
+    fn admit_decision_credentials(
+        &self,
+        _binding: &hiroute_domain::DecisionCredentialBindingV1,
+    ) -> Result<hiroute_domain::DecisionCredentialAdmissionV1, PortError> {
+        Err(PortError::Unavailable("DecisionCredentialResolver"))
+    }
+
+    async fn lease_decision_credential(
+        &self,
+        _request: &hiroute_domain::DecisionCredentialLeaseRequestV1,
+        _scope: &ExecutionScope,
+    ) -> Result<Option<crate::ports::CredentialLease>, PortError> {
+        Err(PortError::Unavailable("DecisionCredentialResolver"))
+    }
+
     /// Request admission only: current non-secret membership for this exact Native binding.
     fn current_credential_refs(
         &self,

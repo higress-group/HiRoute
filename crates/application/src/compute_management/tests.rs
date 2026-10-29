@@ -739,6 +739,7 @@ fn complete_management_source() -> hiroute_domain::ComputeManagementSourceV2 {
         native_recheck: None,
         credentials: Vec::new(),
         additional_native_endpoints: Vec::new(),
+        decision_targets: Vec::new(),
         validation: None,
         last_candidate_ref: "candidate/manual".into(),
         last_candidate_revision: 2,

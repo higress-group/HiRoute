@@ -3,7 +3,7 @@ use super::LocalControlAdapter;
 use hiroute_application::control::{ControlReadError, RoutingFactsPort};
 use hiroute_application::routing::PlanAuthoringSnapshotV2;
 use hiroute_application_api::{PlanContentChangeV2, PlanContentTargetV2};
-use hiroute_domain::{AliasRegistryV1, WorkspaceId};
+use hiroute_domain::{AliasRegistryV1, ComputeManagementRepositoryPort, WorkspaceId};
 
 impl LocalControlAdapter {
     pub(super) fn plan_content_snapshot(
@@ -21,11 +21,13 @@ impl LocalControlAdapter {
             None,
             None,
             || {
-                let selected_service = change
-                    .editor
-                    .effective()
-                    .ok()
+                let configuration = change.editor.effective().ok();
+                let selected_service = configuration
+                    .as_ref()
                     .and_then(|configuration| configuration.decision_service().cloned());
+                let selected_service_v2 = configuration
+                    .as_ref()
+                    .and_then(|configuration| configuration.decision_service_v2().cloned());
                 let local_before = self.routing_read_stamp()?;
                 let read_rows = || {
                     let stores = self.stores_lock().map_err(super::map_port)?;
@@ -61,9 +63,56 @@ impl LocalControlAdapter {
                         })
                         .transpose()?
                         .flatten();
-                    Ok::<_, ControlReadError>((head, draft, heads, decision_service))
+                    let decision_service_v2 = selected_service_v2
+                        .as_ref()
+                        .map(|service| {
+                            stores
+                                .control()
+                                .decision_service_record(workspace, &service.id, service.revision)
+                                .map_err(super::map_port)
+                                .and_then(|record| match record {
+                                    Some(hiroute_domain::DecisionServiceRecord::V2(service)) => {
+                                        Ok(Some(service))
+                                    }
+                                    Some(_) => Err(ControlReadError::Corrupt),
+                                    None => Ok(None),
+                                })
+                        })
+                        .transpose()?
+                        .flatten();
+                    let decision_source = match decision_service_v2
+                        .as_ref()
+                        .map(|service| &service.connection)
+                    {
+                        Some(hiroute_domain::DecisionConnectionV2::Native {
+                            authentication:
+                                hiroute_domain::DecisionAuthenticationV2::SharedSource {
+                                    source_id, ..
+                                },
+                            ..
+                        }) => stores
+                            .control()
+                            .compute_management_source(source_id)
+                            .map_err(super::map_port)?,
+                        _ => None,
+                    };
+                    Ok::<_, ControlReadError>((
+                        head,
+                        draft,
+                        heads,
+                        decision_service,
+                        decision_service_v2,
+                        decision_source,
+                    ))
                 };
-                let (mut current_head, draft, mut heads, decision_service) = read_rows()?;
+                let (
+                    mut current_head,
+                    draft,
+                    mut heads,
+                    decision_service,
+                    decision_service_v2,
+                    decision_source,
+                ) = read_rows()?;
                 let after = self.routing_compilation_snapshot(workspace)?;
                 // Plan rows and routing inputs are collected once. The routing collector
                 // validates CPA/source facts after capture; this wider local fence also
@@ -144,6 +193,8 @@ impl LocalControlAdapter {
                     draft,
                     facts: after.facts,
                     decision_service,
+                    decision_service_v2,
+                    decision_source,
                     expected_revisions: after.expected_revisions,
                 })
             },

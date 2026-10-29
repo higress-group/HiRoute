@@ -52,7 +52,7 @@ fn request(
 ) -> Result<(Value, &'static str, &'static str)> {
     let internal = |_| error(ErrorCode::Internal);
     match command {
-        "decision.services.apply" => {
+        "decision.services.apply" | "decision.connections.apply" => {
             let result: PreviewResultV1 =
                 serde_json::from_value(preview.clone()).map_err(internal)?;
             if !result.blockers.is_empty() {
@@ -67,8 +67,16 @@ fn request(
                     idempotency_key: key.into(),
                     apply_capability: None,
                 }),
-                "decision.services.apply",
-                "ApplyDecisionService",
+                if command == "decision.services.apply" {
+                    "decision.services.apply"
+                } else {
+                    "decision.connections.apply"
+                },
+                if command == "decision.services.apply" {
+                    "ApplyDecisionService"
+                } else {
+                    "ApplyDecisionServiceV2"
+                },
             ))
         }
         "routing.preview" if payload["change"]["schema"] == PLAN_CONTENT_CHANGE_SCHEMA_V2 => {

@@ -200,6 +200,7 @@ where
             validate_saved_validation(&source, change.validation.as_ref())?;
             source
         };
+        desired.schema = hiroute_domain::COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V4.into();
 
         let mut secret_mutations = Vec::new();
         let mut discovery_guards = Vec::new();
@@ -437,7 +438,7 @@ where
             )?,
         };
         Ok(ComputeManagementSourceV2 {
-            schema: hiroute_domain::COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2.into(),
+            schema: hiroute_domain::COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V4.into(),
             source_id: source_id.into(),
             revision,
             lineage_digest: lineage_digest.clone(),
@@ -460,6 +461,9 @@ where
             models,
             native_recheck: candidate.native_recheck.clone(),
             additional_native_endpoints: candidate.additional_native_endpoints.clone(),
+            decision_targets: current
+                .map(|source| source.decision_targets.clone())
+                .unwrap_or_default(),
             credentials: current
                 .map(|source| source.credentials.clone())
                 .unwrap_or_default(),

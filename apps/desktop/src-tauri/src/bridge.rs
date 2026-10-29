@@ -1,12 +1,12 @@
 use hiroute_application_api::*;
 use hiroute_product_session::commands::{
     ClassifierDecisionTestInput, ClassifierHeaderSecretSaveInput, DecisionServiceSaveInput,
-    ObservationDeleteInput, ProtectedModelInputRegistration, WebComputeCandidateViewV2,
-    WebComputeConnectionApplyRequestV1, WebComputeDiscoveryRefV1, WebComputeManagementChangeV2,
-    WebComputeSavePreviewV2, WebComputeSaveResultV2, WebComputeScanResultV2,
-    WebComputeSubscriptionCandidatesV2, WebComputeSubscriptionCheckResultV2, WebValidationRefV2,
-    WorkerDependencyConfirmationInput, WorkerDependencyConfirmationState,
-    WorkerDependencyConfirmationV1,
+    DecisionServiceSaveInputV2, ObservationDeleteInput, ProtectedModelInputRegistration,
+    WebComputeCandidateViewV2, WebComputeConnectionApplyRequestV1, WebComputeDiscoveryRefV1,
+    WebComputeManagementChangeV2, WebComputeSavePreviewV2, WebComputeSaveResultV2,
+    WebComputeScanResultV2, WebComputeSubscriptionCandidatesV2,
+    WebComputeSubscriptionCheckResultV2, WebValidationRefV2, WorkerDependencyConfirmationInput,
+    WorkerDependencyConfirmationState, WorkerDependencyConfirmationV1,
 };
 use tauri::Emitter;
 // WebView supplies explicit intent and renders prompts; native preview and typed policy own submission.
@@ -762,6 +762,10 @@ pub fn run() {
             test_classifier_decision,
             decision_services,
             save_decision_service,
+            decision_connection_sources,
+            decision_services_v2,
+            save_decision_service_v2,
+            test_decision_service_v2,
             save_classifier_header_secret,
             save_classifier_openapi,
             desktop_snapshot,

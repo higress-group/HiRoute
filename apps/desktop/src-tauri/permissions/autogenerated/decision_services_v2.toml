@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-decision-services-v2"
+description = "Enables the decision_services_v2 command without any pre-configured scope."
+commands.allow = ["decision_services_v2"]
+
+[[permission]]
+identifier = "deny-decision-services-v2"
+description = "Denies the decision_services_v2 command without any pre-configured scope."
+commands.deny = ["decision_services_v2"]

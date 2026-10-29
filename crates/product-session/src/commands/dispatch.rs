@@ -474,6 +474,42 @@ pub async fn dispatch(
             let value = worker_task_continue(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
+        "decision_connection_sources" | "decision_services_v2" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {}
+            let _: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            if name == "decision_connection_sources" {
+                serde_json::to_value(decision_connection_sources(window, state).await?)
+                    .map_err(|_| "RESPONSE_DATA_INVALID".into())
+            } else {
+                serde_json::to_value(decision_services_v2(window, state).await?)
+                    .map_err(|_| "RESPONSE_DATA_INVALID".into())
+            }
+        }
+        "save_decision_service_v2" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {
+                input: DecisionServiceSaveInputV2,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(save_decision_service_v2(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "test_decision_service_v2" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {
+                input: DecisionServiceTestRequestV2,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(test_decision_service_v2(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "decision_services" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]

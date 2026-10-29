@@ -85,6 +85,7 @@ mod native_model;
 mod observation_key;
 mod trust;
 use observation_key::observation_workspace_key;
+mod decision_connections;
 mod plan_content;
 mod plan_content_snapshot;
 mod plan_versions;
@@ -1083,6 +1084,41 @@ pub(crate) struct ControlNativeCredentialAuthority {
 }
 
 impl NativeCredentialAuthorityV1 for ControlNativeCredentialAuthority {
+    fn admit_decision_credentials(
+        &self,
+        binding: &hiroute_domain::DecisionCredentialBindingV1,
+    ) -> Result<
+        hiroute_domain::DecisionCredentialAdmissionV1,
+        hiroute_domain::NativeCredentialLeaseErrorV1,
+    > {
+        self.adapter
+            .stores
+            .lock()
+            .map_err(|_| {
+                PortError::new(
+                    PortErrorCode::Unavailable,
+                    "control.runtime.decision_pool_lock",
+                )
+            })?
+            .admit_decision_credentials(binding)
+    }
+
+    fn lease_decision_credential(
+        &self,
+        request: &hiroute_domain::DecisionCredentialLeaseRequestV1,
+    ) -> Result<Option<NativeCredentialLeaseV1>, hiroute_domain::NativeCredentialLeaseErrorV1> {
+        self.adapter
+            .stores
+            .lock()
+            .map_err(|_| {
+                PortError::new(
+                    PortErrorCode::Unavailable,
+                    "control.runtime.decision_lease_lock",
+                )
+            })?
+            .lease_decision_credential_exact(request)
+    }
+
     fn current_native_credential_refs(
         &self,
         request: &NativeCredentialLeaseRequestV1,
@@ -1696,6 +1732,9 @@ fn discovered_agent(
 }
 
 fn map_port(error: PortError) -> ControlReadError {
+    if error.context == "decision_service.client_version_required" {
+        return ControlReadError::ClientVersionRequired;
+    }
     match error.code {
         PortErrorCode::Conflict => ControlReadError::SnapshotChanged,
         PortErrorCode::NotFound => ControlReadError::NotFound,
