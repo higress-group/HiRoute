@@ -126,3 +126,10 @@
 
 .trial-required-mark { margin-inline-start: 4px; color: var(--accent); font-size: .82em; font-weight: 650; vertical-align: .08em; }
 .trial-required-hint { margin: 0 2px; color: var(--text-muted); font-size: calc(12px * var(--hr-text-scale)); }
+
+.trial-reuse-connection { display: grid; gap: 12px; min-width: 0; }
+.trial-reuse-connection h3, .trial-reuse-connection p { margin: 0; overflow-wrap: anywhere; }
+.trial-reuse-connection .field { display: grid; gap: 6px; min-width: 0; }
+.trial-reuse-connection .field-label { justify-content: flex-start; gap: 4px; }
+.trial-reuse-connection .input { width: 100%; min-width: 0; }
+.trial-reuse-connection .actions { flex-wrap: wrap; }

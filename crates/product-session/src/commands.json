@@ -269,7 +269,7 @@
   },
   {
     "name": "compute_connection_options",
-    "args": [],
+    "args": [{ "name": "include_request_model_ids", "type": "Option<bool>" }],
     "result": "Result<ComputeConnectionOptionsResultV1, DesktopFailure>",
     "host_only": false
   },

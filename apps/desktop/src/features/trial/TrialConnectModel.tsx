@@ -6,7 +6,7 @@ import { newModelConnectionDraft } from '../model-connections/new-draft';
 import { checkMatches } from '../model-connections/state';
 import { safeConnectionErrorCode } from '../model-connections/copy';
 import { saveFailureDefinitelyPreAdmission } from '../subscriptions/model';
-import type { ComputeCandidateRef, ComputeSaveResult, ModelConnectionBackend, ModelConnectionCheckView, OperationReference } from '../model-connections/types';
+import type { ComputeCandidateRef, ComputeConnectionOptions, ComputeSaveResult, ModelConnectionBackend, ModelConnectionCheckView, OperationReference } from '../model-connections/types';
 import type { TrialCatalogSnapshot, TrialManagementSnapshot } from './types';
 import type { AvailableModel } from '../model-feed/types';
 type ResolvedBinding = { bindingId: string; modelId: string; name: string; source: string; linked: boolean };
@@ -18,7 +18,7 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
   onReceipt(): void;
   onSaved(result: ComputeSaveResult, selection: ResolvedBinding, intent?: number): boolean; onSelectionIntent(): number; onBack(recoverable: boolean): void; onOperation(operation: OperationReference): void;
   onStateChange(state: TrialConnectionState): void;
-  onReuseSource?(sourceId: string): Promise<void>;
+  onReuseSource(sourceId: string, options?: ComputeConnectionOptions): Promise<void>;
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const [draft] = useState(() => newModelConnectionDraft('known'));
@@ -34,6 +34,7 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
   const previewed = useRef<{ acceptDigest: string; candidateKey: string; selectedRefs: Set<string> } | null>(null);
   const unknown = useRef<{ idempotency_key: string; candidate: ComputeCandidateRef } | null>(null);
   const checked = useRef(new Map<string, Set<string>>());
+  const connectionOptions = useRef<ComputeConnectionOptions | undefined>(undefined);
   const currentLanguage = useRef(language);
   currentLanguage.current = language;
   useEffect(() => () => { live.current = false; }, []);
@@ -49,7 +50,8 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
     return {
       ...owner,
       listConnectionOptions: async () => {
-        const options = await owner.listConnectionOptions();
+        const options = await invoke<ComputeConnectionOptions>('compute_connection_options', { includeRequestModelIds: true });
+        connectionOptions.current = options;
         return { ...options, options: options.options.filter(option => option.model_configuration_ids.includes(model.model_configuration_id)) };
       },
       checkRegisteredModelConnection: async request => {
@@ -186,8 +188,8 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
       const sourceId = event.currentTarget.value;
       if (!sourceId || reusing) return;
       setReusing(true);
-      void onReuseSource(sourceId).catch(() => { if (live.current) setError(text('暂时无法打开此接入，请重试。', 'This connection could not be opened. Retry.')); }).finally(() => { if (live.current) setReusing(false); });
-    }}><option value="">{text('新建接入', 'Create a new connection')}</option>{reusable.map((source, index) => <option key={source.source_id} value={source.source_id}>{source.display_name} · {source.access_kind === 'subscription' ? text('订阅', 'Subscription') : 'API'}{reusable.filter(other => other.display_name === source.display_name).length > 1 ? ` · ${index + 1}` : ''}{source.state === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</option>)}</select><span className="field-help">{text('已有接入可复用已保存的端点和凭据，无需再填 API Key。订阅由原来的订阅接入流程处理。', 'Reuse saved endpoints and credentials without entering the API key again. Subscriptions keep their existing connection flow.')}</span></label>}
+      void onReuseSource(sourceId, connectionOptions.current).catch(() => { if (live.current) setError(text('暂时无法打开此接入，请重试。', 'This connection could not be opened. Retry.')); }).finally(() => { if (live.current) setReusing(false); });
+    }}><option value="">{text('新建接入', 'Create a new connection')}</option>{reusable.map((source, index) => <option key={source.source_id} value={source.source_id}>{source.display_name} · {source.access_kind === 'subscription' ? text('订阅', 'Subscription') : 'API'}{reusable.filter(other => other.display_name === source.display_name).length > 1 ? ` · ${index + 1}` : ''}{source.state === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</option>)}</select><span className="field-help">{text('复用已保存的端点和凭据，继续接入当前模型。', 'Reuse saved endpoints and credentials for the selected model.')}</span></label>}
     onBack={() => onBack(false)} onCancel={() => { if (!uncertainRef.current) onBack(false); }}
     onSaveAccepted={operation => { accepted.current = operation; onOperation(operation); }}
     onSaveResult={result => { if (result.disposition === 'saved') { setSaved(result); onStateChange('saved'); void confirm(result); } else onStateChange('editing'); }}

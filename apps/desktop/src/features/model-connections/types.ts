@@ -89,6 +89,7 @@ export type ComputeCatalogProvenance = {
 export type ComputeConnectionOption = {
   endpoints?: { base_url: string; request_path: string; inventory_path?: string | null; protocol: UpstreamProtocol; authentication_semantics?: Authentication; stable_preference: number }[];
   known_models?: Record<string, string>;
+  request_model_ids?: Record<string, string[]> | null;
   connection_option_id: string;
   display_name: string;
   connector_id: string;
