@@ -1,5 +1,5 @@
 //! Journal ownership and keyed runtime projection for source-owned decision credentials.
-pub(super) const CONTROL: &str = r#"
+pub(crate) const CONTROL: &str = r#"
 CREATE TABLE decision_source_effects (
     operation_id TEXT NOT NULL REFERENCES operations(operation_id),
     workspace_id TEXT NOT NULL,
@@ -34,6 +34,64 @@ CREATE TABLE decision_consumer_runtime (
     FOREIGN KEY(workspace_id, source_id) REFERENCES decision_source_runtime(workspace_id, source_id) ON DELETE CASCADE
 );
 CREATE INDEX decision_consumer_service_idx ON decision_consumer_runtime(workspace_id, service_id, source_id);
+
+-- A deletion checks only the requested service. Populate historical versions and
+-- drafts once during migration, then maintain their references with each write.
+CREATE TABLE decision_plan_references (
+    workspace_id TEXT NOT NULL,
+    service_id TEXT NOT NULL,
+    owner_kind TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    owner_revision INTEGER NOT NULL,
+    PRIMARY KEY(workspace_id, service_id, owner_kind, owner_id, owner_revision)
+) WITHOUT ROWID;
+INSERT OR IGNORE INTO decision_plan_references
+SELECT v.workspace_id, json_extract(node.value, '$.service.id'), 'version', v.plan_id, v.content_revision
+FROM plan_versions v, json_tree(v.version_json) node
+WHERE node.type='object' AND json_extract(node.value, '$.kind') IN ('decision_service', 'decision_service_v2')
+  AND json_type(node.value, '$.service.id')='text';
+INSERT OR IGNORE INTO decision_plan_references
+SELECT d.workspace_id, json_extract(node.value, '$.service.id'), 'draft', d.draft_id, 0
+FROM plan_drafts d, json_tree(d.draft_json) node
+WHERE node.type='object' AND json_extract(node.value, '$.kind') IN ('decision_service', 'decision_service_v2')
+  AND json_type(node.value, '$.service.id')='text';
+CREATE TRIGGER decision_version_references_insert AFTER INSERT ON plan_versions BEGIN
+    INSERT OR IGNORE INTO decision_plan_references
+    SELECT NEW.workspace_id, json_extract(node.value, '$.service.id'), 'version', NEW.plan_id, NEW.content_revision
+    FROM json_tree(NEW.version_json) node
+    WHERE node.type='object' AND json_extract(node.value, '$.kind') IN ('decision_service', 'decision_service_v2')
+      AND json_type(node.value, '$.service.id')='text';
+END;
+CREATE TRIGGER decision_version_references_update AFTER UPDATE OF workspace_id, plan_id, content_revision, version_json ON plan_versions BEGIN
+    DELETE FROM decision_plan_references WHERE workspace_id=OLD.workspace_id AND owner_kind='version' AND owner_id=OLD.plan_id AND owner_revision=OLD.content_revision;
+    INSERT OR IGNORE INTO decision_plan_references
+    SELECT NEW.workspace_id, json_extract(node.value, '$.service.id'), 'version', NEW.plan_id, NEW.content_revision
+    FROM json_tree(NEW.version_json) node
+    WHERE node.type='object' AND json_extract(node.value, '$.kind') IN ('decision_service', 'decision_service_v2')
+      AND json_type(node.value, '$.service.id')='text';
+END;
+CREATE TRIGGER decision_version_references_delete AFTER DELETE ON plan_versions BEGIN
+    DELETE FROM decision_plan_references WHERE workspace_id=OLD.workspace_id AND owner_kind='version' AND owner_id=OLD.plan_id AND owner_revision=OLD.content_revision;
+END;
+CREATE TRIGGER decision_draft_references_insert AFTER INSERT ON plan_drafts BEGIN
+    INSERT OR IGNORE INTO decision_plan_references
+    SELECT NEW.workspace_id, json_extract(node.value, '$.service.id'), 'draft', NEW.draft_id, 0
+    FROM json_tree(NEW.draft_json) node
+    WHERE node.type='object' AND json_extract(node.value, '$.kind') IN ('decision_service', 'decision_service_v2')
+      AND json_type(node.value, '$.service.id')='text';
+END;
+CREATE TRIGGER decision_draft_references_update AFTER UPDATE OF workspace_id, draft_id, draft_json ON plan_drafts BEGIN
+    DELETE FROM decision_plan_references WHERE workspace_id=OLD.workspace_id AND owner_kind='draft' AND owner_id=OLD.draft_id AND owner_revision=0;
+    INSERT OR IGNORE INTO decision_plan_references
+    SELECT NEW.workspace_id, json_extract(node.value, '$.service.id'), 'draft', NEW.draft_id, 0
+    FROM json_tree(NEW.draft_json) node
+    WHERE node.type='object' AND json_extract(node.value, '$.kind') IN ('decision_service', 'decision_service_v2')
+      AND json_type(node.value, '$.service.id')='text';
+END;
+CREATE TRIGGER decision_draft_references_delete AFTER DELETE ON plan_drafts BEGIN
+    DELETE FROM decision_plan_references WHERE workspace_id=OLD.workspace_id AND owner_kind='draft' AND owner_id=OLD.draft_id AND owner_revision=0;
+END;
+CREATE INDEX decision_plan_reference_owner_idx ON decision_plan_references(workspace_id, owner_kind, owner_id, owner_revision);
 "#;
 
 /// The preceding locator was checked before the schema change. Advance only its
@@ -56,7 +114,7 @@ pub(super) fn refresh_locator(
 #[cfg(test)]
 mod tests {
     use super::super::{DatabaseKind, migration_sql};
-    use rusqlite::Connection;
+    use rusqlite::{Connection, params};
 
     #[test]
     fn upgrade_adds_keyed_decision_tables_without_rewriting_existing_rows() {
@@ -69,8 +127,59 @@ mod tests {
             "decision_source_effects",
             "decision_source_runtime",
             "decision_consumer_runtime",
+            "decision_plan_references",
         ] {
             assert!(db.prepare(&format!("SELECT * FROM {table}")).is_ok());
         }
+    }
+
+    #[test]
+    fn decision_reference_backfill_and_writes_keep_deletion_lookup_keyed() {
+        let db = Connection::open_in_memory().unwrap();
+        for version in 1..=33 {
+            db.execute_batch(migration_sql(DatabaseKind::Control, version).unwrap())
+                .unwrap();
+        }
+        let old_version = r#"{"nested":[{"kind":"decision_service","service":{"id":"old"}},{"kind":"decision_service_v2","service":{"id":"shared"}}]}"#;
+        let draft = r#"{"parked":{"kind":"decision_service_v2","service":{"id":"shared"}}}"#;
+        db.execute("INSERT INTO plan_versions(workspace_id,plan_id,content_revision,content_digest,version_json,state,owner_operation_id) VALUES('workspace','plan',1,'digest',?1,'published','owner')", [old_version]).unwrap();
+        db.execute("INSERT INTO plan_drafts(workspace_id,draft_id,revision,draft_json) VALUES('workspace','draft',1,?1)", [draft]).unwrap();
+        db.execute_batch(migration_sql(DatabaseKind::Control, 34).unwrap())
+            .unwrap();
+        let count = |workspace: &str, service: &str| -> i64 {
+            db.query_row("SELECT count(*) FROM decision_plan_references WHERE workspace_id=?1 AND service_id=?2", params![workspace, service], |row| row.get(0)).unwrap()
+        };
+        assert_eq!(count("workspace", "old"), 1);
+        assert_eq!(count("workspace", "shared"), 2);
+        assert_eq!(count("other", "shared"), 0);
+        let details: Vec<String> = db.prepare("EXPLAIN QUERY PLAN SELECT EXISTS(SELECT 1 FROM decision_plan_references WHERE workspace_id='workspace' AND service_id='shared')").unwrap().query_map([], |row| row.get(3)).unwrap().collect::<Result<_, _>>().unwrap();
+        assert!(
+            details
+                .iter()
+                .any(|line| line.contains("SEARCH decision_plan_references USING PRIMARY KEY")),
+            "{details:?}"
+        );
+        db.execute(
+            "UPDATE plan_drafts SET draft_json=?1 WHERE draft_id='draft'",
+            [r#"{"kind":"decision_service","service":{"id":"new"}}"#],
+        )
+        .unwrap();
+        assert_eq!(count("workspace", "shared"), 1);
+        assert_eq!(count("workspace", "new"), 1);
+        assert!(
+            db.execute(
+                "UPDATE plan_drafts SET draft_json='{' WHERE draft_id='draft'",
+                []
+            )
+            .is_err()
+        );
+        assert_eq!(count("workspace", "new"), 1);
+        db.execute("DELETE FROM plan_versions WHERE plan_id='plan'", [])
+            .unwrap();
+        db.execute("DELETE FROM plan_drafts WHERE draft_id='draft'", [])
+            .unwrap();
+        assert_eq!(count("workspace", "old"), 0);
+        assert_eq!(count("workspace", "shared"), 0);
+        assert_eq!(count("workspace", "new"), 0);
     }
 }

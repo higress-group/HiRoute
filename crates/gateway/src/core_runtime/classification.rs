@@ -764,7 +764,9 @@ impl ProductionGatewayRuntime {
                 .credentials
                 .lease_decision_credential(&request, &scope)
                 .await;
-            let Some(lease) = lease.ok().flatten() else {
+            let lease = if let Ok(Some(lease)) = lease {
+                lease
+            } else {
                 let failure = crate::attempt_outcome::AttemptFailure {
                     class: crate::attempt_outcome::AttemptFailureClass::Unclassified,
                     status: None,
@@ -778,8 +780,36 @@ impl ProductionGatewayRuntime {
                     &scope,
                 )
                 .await;
-                excluded.push(key.key_id.clone());
-                continue;
+                match lease {
+                    Err(crate::server::composition::PortError::CredentialDenied(
+                        hiroute_domain::NativeCredentialAccessDeniedV1::SourceDisabled,
+                    )) => {
+                        return active_failure_or_abort(
+                            CallFailure::SourceDisabled,
+                            call_deadline,
+                            overall_deadline,
+                            fixed_timeout_wins,
+                            &cancellation,
+                        );
+                    }
+                    Ok(None)
+                    | Err(crate::server::composition::PortError::CredentialDenied(
+                        hiroute_domain::NativeCredentialAccessDeniedV1::CredentialDisabled,
+                    )) => {
+                        excluded.push(key.key_id.clone());
+                        continue;
+                    }
+                    Err(_) => {
+                        return active_failure_or_abort(
+                            CallFailure::Unavailable,
+                            call_deadline,
+                            overall_deadline,
+                            fixed_timeout_wins,
+                            &cancellation,
+                        );
+                    }
+                    Ok(Some(_)) => unreachable!(),
+                }
             };
             let result = self
                 .call_classifier_attempt(
@@ -802,7 +832,13 @@ impl ProductionGatewayRuntime {
                         .await
                         .is_err()
                     {
-                        return Ok(Err(CallFailure::Unavailable));
+                        return active_failure_or_abort(
+                            CallFailure::Unavailable,
+                            call_deadline,
+                            overall_deadline,
+                            fixed_timeout_wins,
+                            &cancellation,
+                        );
                     }
                     return result;
                 }
@@ -823,7 +859,13 @@ impl ProductionGatewayRuntime {
                 .await
                 .is_err()
             {
-                return Ok(Err(CallFailure::Unavailable));
+                return active_failure_or_abort(
+                    CallFailure::Unavailable,
+                    call_deadline,
+                    overall_deadline,
+                    fixed_timeout_wins,
+                    &cancellation,
+                );
             }
             match result {
                 Ok(Err(
@@ -1373,6 +1415,114 @@ mod tests {
     use super::*;
     use crate::server::composition::ProductionPorts;
     use crate::server::publication::GatewayPublicationInstaller;
+
+    struct RevokedDecisionSource {
+        error: u8,
+        leases: std::sync::atomic::AtomicUsize,
+        revision: hiroute_domain::CanonicalDigest,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::server::composition::CredentialResolver for RevokedDecisionSource {
+        fn acquire(
+            &self,
+            _: &str,
+        ) -> Result<
+            crate::server::composition::CredentialLease,
+            crate::server::composition::PortError,
+        > {
+            Err(crate::server::composition::PortError::Rejected)
+        }
+
+        fn admit_decision_credentials(
+            &self,
+            _: &hiroute_domain::DecisionCredentialBindingV1,
+        ) -> Result<
+            hiroute_domain::DecisionCredentialAdmissionV1,
+            crate::server::composition::PortError,
+        > {
+            Ok(hiroute_domain::DecisionCredentialAdmissionV1 {
+                state: hiroute_domain::MaterializationState::Ready,
+                keys: ["key/one", "key/two"]
+                    .into_iter()
+                    .map(|key| hiroute_domain::DecisionCredentialKeyV1 {
+                        key_id: key.into(),
+                        generation: 1,
+                    })
+                    .collect(),
+                credential_state_revision: self.revision.clone(),
+            })
+        }
+
+        async fn lease_decision_credential(
+            &self,
+            _: &hiroute_domain::DecisionCredentialLeaseRequestV1,
+            _: &ExecutionScope,
+        ) -> Result<Option<CredentialLease>, crate::server::composition::PortError> {
+            self.leases
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(match self.error {
+                0 => crate::server::composition::PortError::CredentialDenied(
+                    hiroute_domain::NativeCredentialAccessDeniedV1::SourceDisabled,
+                ),
+                1 => crate::server::composition::PortError::Unavailable("fixture"),
+                _ => crate::server::composition::PortError::CredentialDenied(
+                    hiroute_domain::NativeCredentialAccessDeniedV1::CredentialDisabled,
+                ),
+            })
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn shared_decision_preserves_revocation_and_authority_failures_after_admission() {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-decision-revocation-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let service: hiroute_domain::DecisionServiceV2 = serde_json::from_value(serde_json::json!({
+            "schema": "hiroute.decision-service/v2", "id": "decision/shared", "revision": 1, "name": "fixture",
+            "connection": {"kind": "native", "provider": "openai", "wire_protocol": "openai_decisions", "model": "gpt-6-luna", "endpoint": "http://127.0.0.1:1/v1/decisions", "timeout_ms": 3000,
+                "authentication": {"kind": "shared_source", "source_id": "source/one", "source_lineage_digest": format!("sha256:{}", "1".repeat(64))}}
+        })).unwrap();
+        let mode = hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 {
+            service: Box::new(service),
+        };
+        for (error, expected, attempts) in [
+            (0, ClassifierDiagnosticError::SourceDisabled, 1),
+            (1, ClassifierDiagnosticError::Unavailable, 1),
+            (2, ClassifierDiagnosticError::NoUsableCredentials, 2),
+        ] {
+            let publications = Arc::new(
+                GatewayPublicationInstaller::open(root.join(format!("{error}.json"))).unwrap(),
+            );
+            let revision = hiroute_domain::CanonicalDigest::of(&"admitted").unwrap();
+            let credentials = Arc::new(RevokedDecisionSource {
+                error,
+                leases: std::sync::atomic::AtomicUsize::new(0),
+                revision: revision.clone(),
+            });
+            let mut ports = ProductionPorts::fail_closed(publications);
+            ports.credentials = credentials.clone();
+            ports.runtime_state = Arc::new(crate::ports::InMemoryRuntimeStateStore::default());
+            let runtime = ProductionGatewayRuntime::compose(ports);
+            let (result, admitted) = runtime
+                .test_classifier_decision_with_admitted_state(&mode)
+                .await;
+            assert_eq!(result.unwrap_err(), expected);
+            assert_eq!(admitted, Some(revision));
+            assert_eq!(
+                credentials.leases.load(std::sync::atomic::Ordering::SeqCst),
+                attempts
+            );
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn classifier_statuses_keep_request_rejection_distinct_from_unavailability() {

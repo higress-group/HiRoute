@@ -60,26 +60,8 @@ fn check_service(
         ));
     }
     if change.service.is_none() {
-        for sql in [
-            "SELECT version_json FROM plan_versions WHERE workspace_id=?1",
-            "SELECT draft_json FROM plan_drafts WHERE workspace_id=?1",
-        ] {
-            let mut statement = connection
-                .prepare(sql)
-                .map_err(|_| error(PortErrorCode::Unavailable, "decision.v2.references"))?;
-            let rows = statement
-                .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
-                .map_err(|_| error(PortErrorCode::Unavailable, "decision.v2.references"))?;
-            for row in rows {
-                let value: Value =
-                    serde_json::from_str(&row.map_err(|_| {
-                        error(PortErrorCode::Unavailable, "decision.v2.references")
-                    })?)
-                    .map_err(|_| error(PortErrorCode::Corrupt, "decision.v2.references"))?;
-                if super::decision_services::references(&value, &change.id) {
-                    return Err(error(PortErrorCode::Conflict, "decision_service.in_use"));
-                }
-            }
+        if super::decision_services::references(connection, workspace, &change.id)? {
+            return Err(error(PortErrorCode::Conflict, "decision_service.in_use"));
         }
     }
     Ok(())

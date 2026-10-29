@@ -35,7 +35,7 @@ mod compute_v8;
 mod convergence_v15;
 mod convergence_v17;
 mod decision_services_v28;
-mod decision_sources_v34;
+pub(crate) mod decision_sources_v34;
 mod delegation_native_lifecycle_v21;
 mod delegation_v10;
 #[cfg(test)]

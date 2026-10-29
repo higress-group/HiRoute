@@ -251,3 +251,115 @@ fn failed_decision_activation_restores_forward_secret_generations_and_old_routes
             .is_some()
     );
 }
+
+#[test]
+fn decision_activation_before_terminal_failure_completes_once_after_restart() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let operation_id;
+    let decision;
+    let activated;
+    {
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let before = saved(&stores);
+        decision = service(&before, "decision/interrupted", "decision-model");
+        let input = add(&before, decision.clone());
+        let external = NoExternal;
+        let protected = ProtectedInput;
+        let runtime = TransactionRuntime::default();
+        let coordinator = TransactionCoordinator::new(
+            stores.control(),
+            stores.secrets(),
+            stores.runtime(),
+            &external,
+            &protected,
+            &runtime,
+        );
+        coordinator.reconcile_startup_and_open().unwrap();
+        let spec = ChangeSpecV1 {
+            schema_version: CHANGE_SPEC_SCHEMA_V1,
+            command_id: "decision.connections.apply".into(),
+            resource_id: Some(decision.id.clone()),
+            desired_state: serde_json::to_value(input).unwrap(),
+        };
+        let preview = coordinator
+            .preview(&WorkspaceId::default(), PreviewRequestV1::new(spec))
+            .unwrap();
+        let accepted = coordinator
+            .accept(
+                &WorkspaceId::default(),
+                &VerifiedPrincipal::for_local_control(),
+                ApplyRequestV1 {
+                    schema_version: CHANGE_SPEC_SCHEMA_V1,
+                    spec: preview.normalized_spec,
+                    accept_digest: preview.change_digest,
+                    expected_revisions: preview.expected_revisions,
+                    idempotency_key: "decision-interrupted".into(),
+                    apply_capability: None,
+                },
+            )
+            .unwrap();
+        operation_id = accepted.operation().operation_id.clone();
+        let fault = crate::control::terminal_fault::inject(OperationState::Succeeded);
+        assert!(coordinator.run_accepted(accepted).is_err());
+        drop(fault);
+        activated = saved(&stores);
+        assert_eq!(activated.revision, before.revision + 1);
+        assert_eq!(activated.decision_targets[0].consumers.len(), 1);
+        assert!(
+            stores
+                .control()
+                .decision_service_record(&WorkspaceId::default(), &decision.id, 1)
+                .unwrap()
+                .is_none()
+        );
+    }
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let external = NoExternal;
+    let protected = ProtectedInput;
+    let runtime = TransactionRuntime::default();
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &protected,
+        &runtime,
+    );
+    for _ in 0..2 {
+        coordinator.reconcile_startup_and_open().unwrap();
+        assert_eq!(
+            stores
+                .control()
+                .load_operation(&operation_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            OperationState::Succeeded
+        );
+        assert_eq!(saved(&stores), activated);
+        assert_eq!(
+            stores
+                .control()
+                .decision_service_record(&WorkspaceId::default(), &decision.id, 1)
+                .unwrap(),
+            Some(hiroute_domain::DecisionServiceRecord::V2(decision.clone()))
+        );
+        let binding = DecisionCredentialBindingV1::for_service(&decision)
+            .unwrap()
+            .unwrap();
+        let admission = stores.admit_decision_credentials(&binding).unwrap();
+        let request = DecisionCredentialLeaseRequestV1 {
+            binding,
+            key_id: admission.keys[0].key_id.clone(),
+            admitted_keys: admission.keys,
+            excluded_key_ids: vec![],
+        };
+        assert!(
+            stores
+                .lease_decision_credential_exact(&request)
+                .unwrap()
+                .is_some()
+        );
+    }
+}
