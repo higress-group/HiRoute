@@ -236,6 +236,17 @@ support retirement with a viable upgrade/recovery path and registry/test updates
 
 Console mutations SHALL use the existing Preview/admission, idempotency, revision and recovery contracts. A destructive or authority-changing action that requires confirmation SHALL use a daemon-issued single-use challenge bound to the session, the exact previewed intent and an expiry; expired, reused or mismatched challenges SHALL be rejected without effect. Secrets submitted through the console SHALL enter the existing protected input path, SHALL NOT be echoed in responses, logs, diagnostics or browser storage, and SHALL be released when the request ends. Several console sessions, the CLI and a host shell MAY manage the same instance concurrently; a stale revision SHALL produce a conflict that identifies the changed object instead of overwriting it.
 
+Every admitted product command, including versioned names containing digits, SHALL
+retain its normal audit and dispatch behavior. Audit-field validation SHALL NOT
+turn a valid management session into an authentication failure. Command catalog
+admission, session expiry and revocation remain independent enforced checks.
+
+#### Scenario: Versioned API-save command retains its authenticated session
+
+- **WHEN** an authenticated owner checks an API connection and saves its selected models through an admitted versioned product command
+- **THEN** the console audits and dispatches the normal Preview/confirmation/Apply flow and preserves the valid session for saved-state readback.
+- **AND** malformed command arguments report their request error; absent or expired credentials still require authentication, and unregistered command versions remain unavailable.
+
 #### Scenario: Confirmation replay
 
 - **WHEN** a confirmed deletion challenge is submitted a second time or after the target changed

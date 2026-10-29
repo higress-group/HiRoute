@@ -19,6 +19,9 @@ pub(super) struct Admission {
 pub(super) struct AdmissionState {
     pub(super) source_management: BTreeMap<String, subscriptions::SourceManagementProjection>,
     pub(super) subscription_execution_suspended: bool,
+    // A failed runtime/catalog read suspends capabilities without establishing
+    // that the saved authorization was revoked. Never persisted or used to grant.
+    pub(super) preparation_unavailable: bool,
     pub(super) auth_generation: u64,
     pub(super) needs_account_validation: bool,
     // Revocation is immediate here; the lifecycle owner consumes it on its next
@@ -236,6 +239,10 @@ impl ManagedCpaRuntime {
             .live
             .as_ref()
             .map(|live| live.accounts.clone())
+    }
+
+    pub(crate) fn preparation_is_unavailable(&self) -> bool {
+        self.admission.state.lock().preparation_unavailable
     }
 
     pub(crate) fn prepare_native_subscription(

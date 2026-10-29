@@ -119,6 +119,10 @@ Protected uses and credential lifecycle changes are audited without credentials,
 secret input or conversation bodies. Closing or expiring a context releases its
 protected inputs and approvals.
 
+Versioned product commands use the same audit and confirmation flow as other
+commands. Invalid operation arguments are reported as request errors and keep a
+valid console session; authentication expiry and revocation still require sign-in.
+
 The browser exposes the shared model, routing, Agent, Worker, conversation and
 settings workflows. Host-only update, CLI-entry, quit, login-start and titlebar
 controls are absent. Directory actions show a path on the service host. OpenAPI

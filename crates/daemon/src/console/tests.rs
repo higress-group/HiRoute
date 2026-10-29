@@ -196,6 +196,46 @@ fn real_role_all_keeps_external_gate_and_console_auth_authority_separate() {
     );
     assert_eq!(status, 200);
     assert_eq!(snapshot["trusted_authority"], true);
+    let (status, invalid_preview, _) = http(
+        address,
+        "/api/console/v1/command/preview_compute_save_v3",
+        Some(json!({})),
+        Some(bearer),
+        "",
+    );
+    assert_eq!(
+        status, 400,
+        "invalid preview arguments must not invalidate authentication: {invalid_preview}"
+    );
+    assert_eq!(invalid_preview["code"], "REQUEST_INVALID");
+    assert_eq!(
+        http(address, "/api/console/v1/session", None, Some(bearer), "").0,
+        200
+    );
+    assert_eq!(
+        http(
+            address,
+            "/api/console/v1/command/preview_compute_save_v3",
+            Some(json!({})),
+            None,
+            ""
+        )
+        .0,
+        401,
+        "versioned commands still require authentication"
+    );
+    assert_eq!(
+        http(
+            address,
+            "/api/console/v1/command/preview_compute_save_v99",
+            Some(json!({})),
+            Some(bearer),
+            ""
+        )
+        .0,
+        404,
+        "audit syntax does not admit commands outside the installed catalog"
+    );
     // The same optional native-target arguments used by Desktop must reach the
     // shared session over HTTP, rather than being dropped by the host adapter.
     let missing_profile = directory.path().join("missing-hermes");
