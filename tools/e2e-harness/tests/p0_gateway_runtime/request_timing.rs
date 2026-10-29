@@ -9,23 +9,55 @@ pub(super) fn summaries(fixture: &RuntimeFixture, expected: usize) -> Vec<Value>
         .join("daemon/current.jsonl");
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let log = match std::fs::read_to_string(&path) {
+        let log = match std::fs::read(&path) {
             Ok(log) => log,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(error) => panic!("read request timing log: {error}"),
         };
-        let summaries: Vec<_> = log
-            .lines()
-            .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        let summaries: Vec<_> = complete_records(&log)
+            .expect("closed request timing records must be valid JSON")
+            .into_iter()
             .filter(|record| record["event"].get("request_timing_summary").is_some())
             .collect();
         if summaries.len() >= expected {
-            assert_eq!(summaries.len(), expected, "{log}");
+            assert_eq!(summaries.len(), expected, "{summaries:?}");
             return summaries;
         }
-        assert!(Instant::now() < deadline, "missing request summary: {log}");
+        assert!(
+            Instant::now() < deadline,
+            "missing request summary: {}",
+            String::from_utf8_lossy(&log)
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+pub(super) fn complete_records(log: &[u8]) -> Result<Vec<Value>, serde_json::Error> {
+    log.split_inclusive(|byte| *byte == b'\n')
+        .take_while(|line| line.ends_with(b"\n"))
+        .map(serde_json::from_slice)
+        .collect()
+}
+
+#[test]
+fn timing_reader_waits_for_open_utf8_tails_and_rejects_closed_corruption() {
+    let mut log = b"{\"ready\":1}\n{\"text\":\"".to_vec();
+    let unicode = "中".as_bytes();
+    log.extend_from_slice(&unicode[..1]);
+    assert_eq!(
+        complete_records(&log).unwrap(),
+        vec![serde_json::json!({"ready":1})]
+    );
+    log.extend_from_slice(&unicode[1..]);
+    log.extend_from_slice(b"\"}\n");
+    assert_eq!(
+        complete_records(&log).unwrap(),
+        vec![
+            serde_json::json!({"ready":1}),
+            serde_json::json!({"text":"中"})
+        ]
+    );
+    assert!(complete_records(b"{}\n{closed invalid JSON}\n").is_err());
 }
 
 fn assert_partition(record: &Value) {

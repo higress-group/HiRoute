@@ -213,19 +213,20 @@ fn measure_complete_local_work_with_continuity_and_capture() {
                 .as_array()
                 .is_some_and(|requests| requests.len() == 1)
         }));
-        let capture_backing: Vec<_> = std::fs::read_to_string(
+        let diagnostic_bytes = std::fs::read(
             fixture
                 .diagnostics_root
                 .as_ref()
                 .unwrap()
                 .join("daemon/current.jsonl"),
         )
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).unwrap())
-        .filter_map(|record| record["event"].get("spill_begin").cloned())
-        .map(|event| event["mode"].clone())
-        .collect();
+        .unwrap();
+        let capture_backing: Vec<_> = request_timing::complete_records(&diagnostic_bytes)
+            .unwrap()
+            .into_iter()
+            .filter_map(|record| record["event"].get("spill_begin").cloned())
+            .map(|event| event["mode"].clone())
+            .collect();
         assert_eq!(
             capture_backing.len(),
             count,
