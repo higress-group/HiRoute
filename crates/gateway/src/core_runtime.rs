@@ -960,7 +960,10 @@ impl ProductionGatewayRuntime {
             // reconstruct order from the publication candidate set.
             set_phase(LocalPhase::Plan);
             let plan_started = Instant::now();
-            let planner_output = match profiles::Planner.plan(&planner_input).map(Box::new) {
+            let planner_output = match profiles::Planner
+                .plan_published(&planner_input, &authorized.planner_facts())
+                .map(Box::new)
+            {
                 Ok(output) => output,
                 Err(_) => {
                     return write_typed_error_phase(
@@ -1055,31 +1058,20 @@ impl ProductionGatewayRuntime {
                 let configs = attempt.acquire_attempt_configs().map_err(|_| {
                     TransportError::Io("sealed candidate config acquisition failed".into())
                 })?;
-                let candidate: crate::server::publication::CandidateBindingV1 =
-                    serde_json::from_slice(
-                        &configs
-                            .value(config_id)
-                            .ok_or_else(|| {
-                                TransportError::Io("sealed candidate config is unavailable".into())
-                            })?
-                            .bytes,
-                    )
-                    .map_err(|_| TransportError::Io("sealed candidate config is invalid".into()))?;
-                let selected_profile =
-                    serde_json::to_value(&facts.protocol_profile).map_err(|_| {
-                        TransportError::Io("planner profile serialization failed".into())
+                let config = configs.value(config_id).ok_or_else(|| {
+                    TransportError::Io("sealed candidate config is unavailable".into())
+                })?;
+                let compiled = authorized
+                    .candidate_config(binding.local_id(), config)
+                    .ok_or_else(|| {
+                        TransportError::Io("sealed candidate config is invalid".into())
                     })?;
-                let profile_is_member = candidate.protocol_profiles.iter().any(|profile| {
-                    serde_json::to_value(profile)
-                        .ok()
-                        .and_then(|value| {
-                            serde_json::from_value::<profiles::CandidateProtocolProfile>(value).ok()
-                        })
-                        .and_then(|profile| {
-                            profile.for_request_reasoning(&planner_input.request).ok()
-                        })
-                        .and_then(|profile| serde_json::to_value(profile).ok())
-                        .is_some_and(|profile| profile == selected_profile)
+                let candidate = &compiled.binding;
+                let profile_is_member = compiled.profiles.values().any(|published| {
+                    published
+                        .protocol_profile
+                        .for_request_reasoning(&planner_input.request)
+                        .is_ok_and(|profile| profile == facts.protocol_profile)
                 });
                 if candidate.local_id != binding.local_id()
                     || candidate.stable_target_key != frozen.stable_binding_id
@@ -1091,16 +1083,16 @@ impl ProductionGatewayRuntime {
                 }
                 let execution = SealedCandidateExecutionV1 {
                     schema_version: SEALED_CANDIDATE_EXECUTION_SCHEMA_V1.into(),
-                    stable_target_key: candidate.stable_target_key,
-                    source_binding_id: candidate.source_binding_id,
-                    credential_destination_ref: candidate.credential_destination_ref,
-                    logical_endpoint: candidate.endpoint,
-                    upstream_model_id: candidate.upstream_model_id,
-                    native_transport_model: candidate.native_transport_model,
+                    stable_target_key: candidate.stable_target_key.clone(),
+                    source_binding_id: candidate.source_binding_id.clone(),
+                    credential_destination_ref: candidate.credential_destination_ref.clone(),
+                    logical_endpoint: candidate.endpoint.clone(),
+                    upstream_model_id: candidate.upstream_model_id.clone(),
+                    native_transport_model: candidate.native_transport_model.clone(),
                     connector_runtime: candidate.connector_runtime,
-                    operational_target: candidate.operational_target,
-                    operational_target_digest: candidate.operational_target_digest,
-                    protocol_set_digest: candidate.protocol_profile_digest,
+                    operational_target: candidate.operational_target.clone(),
+                    operational_target_digest: candidate.operational_target_digest.clone(),
+                    protocol_set_digest: candidate.protocol_profile_digest.clone(),
                     profile_digest: facts.profile_digest.clone(),
                     protocol_profile: facts.protocol_profile.clone(),
                 };

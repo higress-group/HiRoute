@@ -8,6 +8,12 @@ bind authority, prepare the canonical request and Replay, obtain a request-owned
 branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
+[Compiled candidate facts](src/publication/candidate.rs) retain typed profiles
+and their existing digests per execution. Requests still acquire current core
+configuration and compare its exact bytes/generation before consuming those
+facts. Planner reuses a digest only when every corresponding immutable field
+matches; its ordinary untrusted-input entry retains complete digest validation.
+Live credential/grant checks stay at their existing request/attempt boundaries.
 
 The [model selector](src/dispatch/selector.rs) and
 [structural scanner](src/content_ref/ingress/scanner.rs) skip ordinary string runs

@@ -153,6 +153,8 @@ pub struct AuthorizedRequestPlan {
     planner_policy: Arc<CompiledPlannerPolicyV1>,
     classifier: Option<Arc<RestBranchClassifierAuthorityV1>>,
     candidates: Arc<[ProviderCandidateAuthority]>,
+    candidate_configs:
+        Arc<std::collections::BTreeMap<u32, Arc<crate::server::publication::CompiledCandidate>>>,
     pricing_bindings: Arc<[RequestPriceBindingV1]>,
     core: RequestExecutionBinding,
 }
@@ -167,6 +169,9 @@ impl AuthorizedRequestPlan {
         planner_policy: Arc<CompiledPlannerPolicyV1>,
         classifier: Option<Arc<RestBranchClassifierAuthorityV1>>,
         candidates: Arc<[ProviderCandidateAuthority]>,
+        candidate_configs: Arc<
+            std::collections::BTreeMap<u32, Arc<crate::server::publication::CompiledCandidate>>,
+        >,
         pricing_bindings: Arc<[RequestPriceBindingV1]>,
         core: RequestExecutionBinding,
     ) -> Self {
@@ -180,6 +185,7 @@ impl AuthorizedRequestPlan {
             planner_policy,
             classifier,
             candidates,
+            candidate_configs,
             pricing_bindings,
             core,
         }
@@ -251,6 +257,24 @@ impl AuthorizedRequestPlan {
 
     pub fn candidates(&self) -> &[ProviderCandidateAuthority] {
         &self.candidates
+    }
+
+    pub(crate) fn candidate_config(
+        &self,
+        local_id: u32,
+        config: &hiroute_gateway_core::core::execution_plan::ImmutableConfig,
+    ) -> Option<&crate::server::publication::CompiledCandidate> {
+        let compiled = self.candidate_configs.get(&local_id)?;
+        (config.generation.0 == self.publication_revision()
+            && config.bytes.as_ref() == compiled.config_bytes.as_ref())
+        .then_some(compiled)
+    }
+
+    pub(crate) fn planner_facts(&self) -> crate::server::publication::PublishedPlannerFacts<'_> {
+        crate::server::publication::PublishedPlannerFacts::from_compiled(
+            &self.planner_policy,
+            &self.candidate_configs,
+        )
     }
 
     pub fn pricing_bindings(&self) -> &[RequestPriceBindingV1] {

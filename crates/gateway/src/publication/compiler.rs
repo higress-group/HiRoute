@@ -65,6 +65,7 @@ pub(crate) struct CompiledModelExecution {
     pub route: CompiledRoute,
     pub request_plan: CompiledRequestPlanHandle,
     pub candidates: Arc<[ProviderCandidateAuthority]>,
+    pub candidate_configs: Arc<BTreeMap<u32, Arc<super::CompiledCandidate>>>,
     pub pricing_bindings: Arc<[RequestPriceBindingV1]>,
 }
 
@@ -682,6 +683,14 @@ fn compile_execution(
         .collect::<Vec<_>>()
         .into();
     let pricing_bindings = compile_candidate_pricing(bindings, protocols)?;
+    let candidate_configs = bindings
+        .iter()
+        .map(|candidate| {
+            super::CompiledCandidate::compile(candidate)
+                .map(|compiled| (candidate.local_id, compiled))
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()?
+        .into();
     let planner_policy = Arc::new(planner_policy);
     let route = CompiledRoute {
         normalized_host: Arc::from("gateway.invalid"),
@@ -702,6 +711,7 @@ fn compile_execution(
         route,
         request_plan,
         candidates: candidate_authorities,
+        candidate_configs,
         pricing_bindings,
     })
 }

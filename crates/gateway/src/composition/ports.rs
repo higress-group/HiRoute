@@ -13,8 +13,8 @@ use crate::ports::{
 use crate::server::core_runtime::adapters;
 use crate::server::core_runtime::model_ir::{ModelIrError, ModelRequestIRV1};
 use crate::server::core_runtime::profiles::{
-    CandidateProtocolProfile, CapabilityError, CostClassV1, ExclusionReasonCodeV1,
-    PLANNER_INPUT_SCHEMA, PlannerCandidateFactsV1, PlannerInputV1,
+    CandidateProtocolProfile, CapabilityError, ExclusionReasonCodeV1, PLANNER_INPUT_SCHEMA,
+    PlannerCandidateFactsV1, PlannerInputV1,
 };
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
@@ -95,20 +95,14 @@ impl PublicationPlannerInputAuthority {
             .acquire_attempt_configs()
             .map_err(|_| PortError::Rejected)?;
         let config = configs.value(*config_id).ok_or(PortError::Rejected)?;
-        let candidate: crate::server::publication::CandidateBindingV1 =
-            serde_json::from_slice(&config.bytes).map_err(|_| PortError::Rejected)?;
-        let mut matching = candidate
-            .protocol_profiles
-            .iter()
-            .filter(|profile| profile.ingress_protocol == domain_protocol(ingress));
-        let canonical = matching.next().ok_or(PortError::Rejected)?;
-        if matching.next().is_some() {
-            return Err(PortError::Rejected);
-        }
-        let profile: CandidateProtocolProfile = serde_json::from_value(
-            serde_json::to_value(canonical).map_err(|_| PortError::Rejected)?,
-        )
-        .map_err(|_| PortError::Rejected)?;
+        let compiled = authorized
+            .candidate_config(binding.local_id(), config)
+            .ok_or(PortError::Rejected)?;
+        let profile = &compiled
+            .profiles
+            .get(&ingress)
+            .ok_or(PortError::Rejected)?
+            .protocol_profile;
         let selected = profile
             .select_native_reasoning(native, ingress)
             .map_err(|_| PortError::InvalidReasoningControl)?;
@@ -194,8 +188,10 @@ fn build_planner_input(
         if config.generation.0 != authorized.publication_revision() {
             return Err(PortError::Rejected);
         }
-        let candidate: crate::server::publication::CandidateBindingV1 =
-            serde_json::from_slice(&config.bytes).map_err(|_| PortError::Rejected)?;
+        let compiled = authorized
+            .candidate_config(binding.local_id(), config)
+            .ok_or(PortError::Rejected)?;
+        let candidate = &compiled.binding;
         let authority = authorities
             .get(&binding.local_id())
             .ok_or(PortError::Rejected)?;
@@ -218,20 +214,12 @@ fn build_planner_input(
         {
             return Err(PortError::Rejected);
         }
-        let ingress = domain_protocol(request.ingress_protocol);
-        let mut matching_profiles = candidate
-            .protocol_profiles
-            .iter()
-            .filter(|profile| profile.ingress_protocol == ingress);
-        let canonical_profile = matching_profiles.next().ok_or(PortError::Rejected)?;
-        if matching_profiles.next().is_some() {
-            return Err(PortError::Rejected);
-        }
-        let profile: CandidateProtocolProfile = serde_json::from_value(
-            serde_json::to_value(canonical_profile).map_err(|_| PortError::Rejected)?,
-        )
-        .map_err(|_| PortError::Rejected)?;
-        let profile = profile
+        let published = compiled
+            .profiles
+            .get(&request.ingress_protocol)
+            .ok_or(PortError::Rejected)?;
+        let profile = published
+            .protocol_profile
             .for_request_reasoning(&request)
             .map_err(|_| PortError::InvalidReasoningControl)?;
         let projection = project_candidate_facts(&request, &profile)?;
@@ -261,21 +249,22 @@ fn build_planner_input(
                 },
             );
         }
-        let mut candidate = PlannerCandidateFactsV1::seal(
-            candidate.stable_target_key.clone(),
-            candidate.stable_target_key,
-            profile,
-            projection.target_serialized_bytes,
-            None,
-            match candidate.billing_class {
-                Some(hiroute_domain::BillingClass::Free) => CostClassV1::Free,
-                Some(hiroute_domain::BillingClass::Subscription) => CostClassV1::Subscription,
-                Some(hiroute_domain::BillingClass::Paid) => CostClassV1::Paid,
-                _ => CostClassV1::Unknown,
-            },
-            None,
-        )
-        .map_err(|_| PortError::Rejected)?;
+        let mut candidate = if profile == published.protocol_profile {
+            let mut facts = published.clone();
+            facts.target_serialized_bytes = projection.target_serialized_bytes;
+            facts
+        } else {
+            PlannerCandidateFactsV1::seal(
+                candidate.stable_target_key.clone(),
+                candidate.stable_target_key.clone(),
+                profile,
+                projection.target_serialized_bytes,
+                None,
+                published.cost_class,
+                None,
+            )
+            .map_err(|_| PortError::Rejected)?
+        };
         candidate.statically_enabled = true;
         candidate.request_projection_exclusion = projection.exclusion;
         if let Some(prepared) = projection.template
@@ -300,14 +289,6 @@ fn build_planner_input(
         policy,
         candidates: facts,
     })
-}
-
-fn domain_protocol(protocol: IngressProtocol) -> hiroute_domain::UpstreamProtocol {
-    match protocol {
-        IngressProtocol::Responses => hiroute_domain::UpstreamProtocol::Responses,
-        IngressProtocol::ChatCompletions => hiroute_domain::UpstreamProtocol::ChatCompletions,
-        IngressProtocol::Messages => hiroute_domain::UpstreamProtocol::Messages,
-    }
 }
 
 struct CandidateProjectionFacts {
