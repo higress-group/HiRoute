@@ -134,26 +134,14 @@ pub(in crate::control) fn activate(
     if let Some(desired) = mutation.desired() {
         write_source(transaction, workspace, desired, operation_id)?;
         defaults::write(transaction, workspace, mutation.source_id(), &preferences)?;
-        api_link::apply_effect(
-            transaction,
-            workspace,
-            mutation.source_id(),
-            operation_id,
-            false,
-        )
+        api_link::apply_effect(transaction, workspace, &mutation, operation_id, false)
     } else {
         let deleted = transaction.execute("DELETE FROM compute_management_sources WHERE workspace_id=?1 AND source_id=?2 AND revision=?3", params![workspace.as_str(), mutation.source_id(), mutation.expected_revision()])
             .map_err(|_| port("compute.management.delete"))?;
         if deleted != 1 {
             return Err(conflict("compute.management.delete.cas"));
         }
-        api_link::apply_effect(
-            transaction,
-            workspace,
-            mutation.source_id(),
-            operation_id,
-            false,
-        )
+        api_link::apply_effect(transaction, workspace, &mutation, operation_id, false)
     }
 }
 
@@ -189,12 +177,7 @@ pub(in crate::control) fn current_matches(
     {
         return Ok(false);
     }
-    if !api_link::current_matches(
-        connection,
-        workspace,
-        mutation.source_id(),
-        operation_id.as_str(),
-    )? {
+    if !api_link::current_matches(connection, workspace, &mutation, operation_id.as_str())? {
         return Ok(false);
     }
     let current: Option<(String, String)> = connection
@@ -254,9 +237,7 @@ pub(in crate::control) fn compensate(
         }
         None => current.is_none() && deletion_owned(transaction, workspace, operation_id)?,
     };
-    if !owns
-        || !api_link::current_matches(transaction, workspace, mutation.source_id(), operation_id)?
-    {
+    if !owns || !api_link::current_matches(transaction, workspace, &mutation, operation_id)? {
         return Ok(false);
     }
     if let Some(expected) = mutation.expected() {
@@ -285,13 +266,7 @@ pub(in crate::control) fn compensate(
     if let Some(before) = defaults::effect(transaction, operation_id, true)? {
         defaults::write(transaction, workspace, mutation.source_id(), &before)?;
     }
-    api_link::apply_effect(
-        transaction,
-        workspace,
-        mutation.source_id(),
-        operation_id,
-        true,
-    )?;
+    api_link::apply_effect(transaction, workspace, &mutation, operation_id, true)?;
     Ok(true)
 }
 

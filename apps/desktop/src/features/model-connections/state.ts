@@ -114,6 +114,14 @@ export function defaultSelectedModelRefs(result: ModelConnectionCheckView): stri
     .map(model => model.model_ref);
 }
 
+/** The association flow supplies an explicit user selection, never a catalog default. */
+export function explicitApiModelSelection(checked: ModelConnectionCheckView, modelIds: readonly string[]): Set<string> {
+  const requested = new Set(modelIds);
+  return new Set(checked.candidate.models
+    .filter(model => requested.has(model.upstream_model_id) && modelCanBeSelected(checked, model, true))
+    .map(model => model.model_ref));
+}
+
 /** Carry explicit choices across a tool recheck, never across a connection edit. */
 export function selectedModelRefsAfterRecheck(
   previous: ModelConnectionCheckView | null,

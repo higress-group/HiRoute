@@ -120,6 +120,40 @@ fn effect(
         .flatten();
     value.map(|value| decode(&value)).transpose()
 }
+type LinkWitnesses = (
+    Option<ComputeSubscriptionApiLinkV1>,
+    Option<ComputeSubscriptionApiLinkV1>,
+);
+fn witnesses(
+    connection: &rusqlite::Connection,
+    operation: &str,
+    mutation: &ComputeManagementMutation,
+) -> PortResult<Option<LinkWitnesses>> {
+    match (
+        effect(connection, operation, true)?,
+        effect(connection, operation, false)?,
+    ) {
+        (None, None) if mutation.api_link_change().is_none() => Ok(None),
+        (Some(before), Some(after)) => {
+            for link in before.iter().chain(after.iter()) {
+                link.validate()
+                    .map_err(|_| corrupt("compute.api_link.effect_identity"))?;
+                if link.source_id != mutation.source_id() {
+                    return Err(corrupt("compute.api_link.effect_source"));
+                }
+            }
+            if let Some((expected_before, expected_after)) = mutation.api_link_change() {
+                if &before != expected_before || &after != expected_after {
+                    return Err(corrupt("compute.api_link.effect_proof"));
+                }
+            } else if after != mutation.desired().and(before.clone()) {
+                return Err(corrupt("compute.api_link.effect_retention"));
+            }
+            Ok(Some((before, after)))
+        }
+        _ => Err(corrupt("compute.api_link.effect_missing")),
+    }
+}
 fn write(
     connection: &rusqlite::Connection,
     workspace: &WorkspaceId,
@@ -149,23 +183,24 @@ fn write(
 pub(super) fn apply_effect(
     connection: &rusqlite::Connection,
     workspace: &WorkspaceId,
-    source: &str,
+    mutation: &ComputeManagementMutation,
     operation: &str,
     before: bool,
 ) -> PortResult<()> {
-    if let Some(link) = effect(connection, operation, before)? {
-        write(connection, workspace, source, link.as_ref())?;
+    if let Some((old, new)) = witnesses(connection, operation, mutation)? {
+        let link = if before { old } else { new };
+        write(connection, workspace, mutation.source_id(), link.as_ref())?;
     }
     Ok(())
 }
 pub(super) fn current_matches(
     connection: &rusqlite::Connection,
     workspace: &WorkspaceId,
-    source: &str,
+    mutation: &ComputeManagementMutation,
     operation: &str,
 ) -> PortResult<bool> {
-    match effect(connection, operation, false)? {
-        Some(after) => Ok(read(connection, workspace, source)? == after),
+    match witnesses(connection, operation, mutation)? {
+        Some((_, after)) => Ok(read(connection, workspace, mutation.source_id())? == after),
         None => Ok(true),
     }
 }

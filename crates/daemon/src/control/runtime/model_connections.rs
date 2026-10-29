@@ -688,9 +688,17 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         let catalog = self
             .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
-        self.validate_subscription_save_change(&change.change)?;
-        self.bind_saved_key_inputs(&change.change)?;
-        self.establish_save_defaults(&mut change, &catalog)?;
+        let metadata_only = change.api_link.is_some()
+            && matches!(
+                change.change.subject,
+                ComputeManagementSubjectV2::SavedSource { .. }
+            );
+        if !metadata_only {
+            self.validate_subscription_save_change(&change.change)?;
+            self.bind_saved_key_inputs(&change.change)?;
+            self.establish_save_defaults(&mut change, &catalog)?;
+        }
+        // The V4 planner restricts metadata-only edits to an exact source clone plus revision.
         let stores = self
             .stores_lock()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;
@@ -722,8 +730,20 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         let catalog = self
             .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
-        self.validate_subscription_save_change(&change)?;
-        self.bind_saved_key_inputs(&change)?;
+        let metadata_only = request
+            .spec
+            .desired_state
+            .get("schema")
+            .and_then(serde_json::Value::as_str)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+            && matches!(
+                change.subject,
+                ComputeManagementSubjectV2::SavedSource { .. }
+            );
+        if !metadata_only {
+            self.validate_subscription_save_change(&change)?;
+            self.bind_saved_key_inputs(&change)?;
+        }
         let stores = self
             .stores_lock()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;

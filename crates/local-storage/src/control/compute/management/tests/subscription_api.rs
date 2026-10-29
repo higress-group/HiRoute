@@ -400,3 +400,29 @@ fn subscription_api_current_schema_missing_table_fails_closed() {
         0
     );
 }
+
+#[test]
+fn subscription_api_effect_witness_tamper_is_rejected_without_changing_business_state() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let (_sub, preview) = connect(&stores, &registry, &api);
+    let mutation: ComputeManagementMutation =
+        serde_json::from_value(preview.1["compute_management_mutation"].clone()).unwrap();
+    let before = sources(&stores);
+    let association = links(&stores);
+    stores.control().with_connection(|db| {
+        let operation: String = db.query_row("SELECT operation_id FROM operations WHERE idempotency_key='link-initial'", [], |r| r.get(0)).unwrap();
+        let healthy: (Option<String>, Option<String>) = db.query_row("SELECT api_link_before,api_link_after FROM compute_management_effects WHERE operation_id=?1", [&operation], |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+        for corrupt in [None, Some("null"), Some("{\"source_id\":\"source/other\",\"api_source_id\":\"source/api\"}")] {
+            db.execute("UPDATE compute_management_effects SET api_link_after=?2 WHERE operation_id=?1", rusqlite::params![operation,corrupt]).unwrap();
+            assert!(super::super::api_link::current_matches(db, &WorkspaceId::default(), &mutation, &operation).is_err());
+        }
+        db.execute("UPDATE compute_management_effects SET api_link_before=?2,api_link_after=?3 WHERE operation_id=?1", rusqlite::params![operation,healthy.0,healthy.1]).unwrap();
+        assert!(super::super::api_link::current_matches(db, &WorkspaceId::default(), &mutation, &operation).unwrap());
+    });
+    assert_eq!(sources(&stores), before);
+    assert_eq!(links(&stores), association);
+}

@@ -112,6 +112,25 @@ impl LocalControlAdapter {
             // Forgetting a saved connection does not require or revoke a connector login.
             return Ok(());
         };
+        if envelope
+            .compute_management_mutation
+            .api_link_change()
+            .is_some()
+            && envelope
+                .compute_management_mutation
+                .expected()
+                .is_some_and(|before| {
+                    let mut unchanged = before.clone();
+                    let Some(revision) = before.revision.checked_add(1) else {
+                        return false;
+                    };
+                    unchanged.revision = revision;
+                    &unchanged == source
+                })
+        {
+            // Association metadata neither grants new subscription authority nor changes models.
+            return Ok(());
+        }
         let change = hiroute_application_api::saved_compute_change(
             operation.plan.spec().desired_state.clone(),
         )

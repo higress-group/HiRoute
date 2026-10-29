@@ -23,6 +23,7 @@ import {
   saveEligibility,
   selectedModelRefsForSave,
   selectedModelRefsAfterRecheck,
+  explicitApiModelSelection,
 } from './state';
 import type {
   ComputeCandidateRef,
@@ -687,10 +688,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       const retained = selectionRef.current;
       const nextSelection = selectedModelRefsAfterRecheck(retained?.result ?? null, retained?.refs ?? new Set(), checked);
       if (!retained && props.initialSelectedModelIds) {
-        const requested = new Set(props.initialSelectedModelIds);
-        for (const model of checked.candidate.models) {
-          if (requested.has(model.upstream_model_id) && modelCanBeSelected(checked, model, true)) nextSelection.add(model.model_ref);
-        }
+        for (const ref of explicitApiModelSelection(checked, props.initialSelectedModelIds)) nextSelection.add(ref);
       }
       setSelected(nextSelection);
       selectionRef.current = { result: checked, refs: nextSelection };
