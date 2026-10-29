@@ -1,5 +1,9 @@
 //! Independent content may reach SQLite after the execution terminal.
-use hiroute_domain::{ContentCompleteness, ContentMode, ObservationQueryPort, ReceiptId};
+use crate::WriterCycleOutcome;
+use hiroute_domain::{
+    AttemptId, ContentCompleteness, ContentId, ContentMode, ConversationContentDirectionV2,
+    EventId, MessageInstanceId, ObservationQueryPort, ReceiptId, TranscriptRoot,
+};
 
 use super::support::*;
 
@@ -23,6 +27,50 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
     // A finished request is not a tombstone for its independent content lane.
     let text = format!("late capture: {}", "escape \\\"\n路由🦀".repeat(2048));
     install_content(&store, &fixture, text.as_bytes(), 101);
+    let partial = store
+        .get_session(
+            &fixture.workspace,
+            &fixture.session,
+            ContentMode::MessagesAndTools,
+        )
+        .unwrap();
+    assert_eq!(
+        partial.summary.content_completeness,
+        ContentCompleteness::Partial
+    );
+    let parent = partial.turns[0].messages[0]
+        .transcript_root
+        .clone()
+        .unwrap();
+    let mut response = fixture.request_content_events(b"42", 104);
+    for event in &mut response {
+        event.sequence += 3;
+        event.event_id = EventId::parse(format!("late-response-{}", event.sequence)).unwrap();
+        event.direction = ConversationContentDirectionV2::ResponseDelivered;
+        event.attempt_id = Some(AttemptId::parse("accepted-attempt").unwrap());
+        event.fork_id = "response-fork".into();
+        event.parent_transcript_root = Some(parent.clone());
+        if event.message_instance_id.is_some() {
+            event.message_instance_id = Some(MessageInstanceId::parse("response-message").unwrap());
+            event.content_id = Some(ContentId::parse("response-content").unwrap());
+            event.message_role = Some("assistant".into());
+        }
+        if event.result_transcript_root.is_some() {
+            event.result_transcript_root =
+                Some(TranscriptRoot::parse(format!("transcript-{}", "42".repeat(32))).unwrap());
+        }
+    }
+    let persist_response = |store: &std::sync::Arc<crate::LocalObservationStore>| {
+        let writer = writer(store);
+        let channel = content_channel(&fixture, 128 * 1024);
+        for event in response.clone() {
+            assert!(matches!(
+                offer_content(&writer, &channel, event),
+                WriterCycleOutcome::Ack(_)
+            ));
+        }
+    };
+    persist_response(&store);
     let detail = store
         .get_session(
             &fixture.workspace,
@@ -35,6 +83,7 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
         ContentCompleteness::Complete
     );
     assert_eq!(detail.turns[0].messages[0].bytes, text.as_bytes());
+    assert_eq!(detail.turns[0].messages[1].bytes, b"42");
     assert_eq!(
         store.get_receipt(&fixture.workspace, &receipt_id).unwrap(),
         receipt
@@ -60,6 +109,7 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
     );
     // An idempotent replay after reopen retains the existing ACK/duplicate path.
     install_content(&reopened, &fixture, text.as_bytes(), 101);
+    persist_response(&reopened);
     assert_eq!(
         reopened
             .get_session(
