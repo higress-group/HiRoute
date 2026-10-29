@@ -100,6 +100,13 @@ save semantics remain replacement semantics; append/delete are explicit intents.
 
 ### Requirement: Raw upstream model IDs are opaque, not internal identifiers
 
+Connection options MAY provide an explicitly requested, source-product-scoped
+mapping from model configuration IDs to actual request IDs. It is a prefill hint,
+not runtime observation or authority to assign catalog identity. The mapping SHALL
+come from the current exact connector and endpoint-profile revisions and qualified
+protocol endpoints. Ordinary callers that do not opt in SHALL retain the existing
+response shape, including strict released readers.
+
 CLI/API, persistence, compilation, publication, and credential authorization MUST
 preserve an upstream ID exactly: nonempty, at most 512 UTF-8 bytes, no leading or
 trailing Unicode White_Space, and no Unicode Cc controls. Unicode, punctuation,
@@ -593,6 +600,8 @@ Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/246#issuecomment-6462728885
 
 ## Implementation references
+
+- [Retain the selected trial model when reusing a saved connection](https://github.com/higress-group/HiRoute/issues/263).
 
 - [Connection form ownership](../../../apps/desktop/src/features/model-connections/README.md)
   and [shared lifecycle planner](../../../crates/application/src/compute_management/mutations/lifecycle.rs).

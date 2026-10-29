@@ -4,7 +4,7 @@ let readers = 0;
 const queue: (() => void)[] = [];
 
 /** Shared bounded reader for every Desktop observation surface. */
-export async function observationRead<T>(view: string, query: object, signal?: AbortSignal): Promise<T> {
+export async function observationRead<T>(view: string, query: object, signal?: AbortSignal, readFailureDetails = false): Promise<T> {
   if (queue.length >= 32) throw new Error('OBSERVATION_QUERY_BUSY');
   if (readers >= 2) await new Promise<void>(resolve => queue.push(resolve));
   else readers++;
@@ -13,6 +13,7 @@ export async function observationRead<T>(view: string, query: object, signal?: A
     return await invoke<T>('observation_read', {
       request: {
         schema: 'hiroute.observation.query/v2',
+        ...(readFailureDetails ? { read_failure_details: true } : {}),
         intent: { view, query: view === 'facts' || view === 'plan_quality' ? { ...query, include_routing_observations: true } : query },
       },
     });

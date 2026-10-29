@@ -34,6 +34,13 @@ pub struct ObservationReadFailureV1 {
 pub struct ObservationReadRequestV2 {
     pub schema: ObservationReadSchemaV2,
     pub intent: ObservationReadIntentV2,
+    /// Opt into typed bounded-read errors. Omitted/false preserves released errors
+    /// and the canonical request bytes used by existing grants and cursors.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub read_failure_details: bool,
+}
+fn is_false(value: &bool) -> bool {
+    !value
 }
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum ObservationReadSchemaV2 {
@@ -73,6 +80,7 @@ impl ObservationReadRequestV2 {
         Self {
             schema: ObservationReadSchemaV2::V2,
             intent,
+            read_failure_details: false,
         }
     }
     pub fn operation(&self) -> &'static str {
@@ -234,5 +242,34 @@ mod capacity_tests {
             .max_active_bytes,
             Some(u64::MAX)
         );
+    }
+}
+
+#[cfg(test)]
+mod read_failure_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn detailed_errors_are_opt_in_without_changing_released_request_identity() {
+        let released = json!({"schema":"hiroute.observation.query/v2",
+            "intent":{"view":"status","query":{}}});
+        let request: ObservationReadRequestV2 = serde_json::from_value(released.clone()).unwrap();
+        assert!(!request.read_failure_details);
+        assert_eq!(serde_json::to_value(&request).unwrap(), released);
+        let old_digest = crate::CanonicalDigest::of(&released).unwrap();
+        assert_eq!(crate::CanonicalDigest::of(&request).unwrap(), old_digest);
+        let mut explicit_false = released.clone();
+        explicit_false["read_failure_details"] = json!(false);
+        let mut detailed: ObservationReadRequestV2 =
+            serde_json::from_value(explicit_false).unwrap();
+        assert_eq!(crate::CanonicalDigest::of(&detailed).unwrap(), old_digest);
+        detailed.read_failure_details = true;
+        assert_ne!(crate::CanonicalDigest::of(&detailed).unwrap(), old_digest);
+        for invalid in [json!(null), json!("true"), json!(1)] {
+            let mut wire = released.clone();
+            wire["read_failure_details"] = invalid;
+            assert!(serde_json::from_value::<ObservationReadRequestV2>(wire).is_err());
+        }
     }
 }

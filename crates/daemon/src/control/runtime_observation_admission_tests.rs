@@ -56,13 +56,25 @@ fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
             }))
             .unwrap(),
         ),
+        ObservationReadIntentV2::HomeValue(hiroute_application_api::ObservationHomeValueQueryV2 {
+            period: Some(hiroute_application_api::ValuePeriodV1::SevenDays),
+            session_id: None,
+            currency: Some("USD".into()),
+        }),
     ];
-    for (index, intent) in intents.into_iter().enumerate() {
-        let query = ObservationReadRequestV2::new(intent);
-        let detailed_error = matches!(
-            &query.intent,
-            ObservationReadIntentV2::PlanQuality(_) | ObservationReadIntentV2::RoutingTimeline(_)
-        );
+    let queries = intents.into_iter().flat_map(|intent| {
+        let original = ObservationReadRequestV2::new(intent);
+        let mut detailed = original.clone();
+        detailed.read_failure_details = true;
+        [original, detailed]
+    });
+    for (index, query) in queries.enumerate() {
+        let detailed_error = query.read_failure_details
+            || matches!(
+                &query.intent,
+                ObservationReadIntentV2::PlanQuality(_)
+                    | ObservationReadIntentV2::RoutingTimeline(_)
+            );
         let capability = format!("bounded-observation-test-capability-{index}");
         runtime
             .register_apply_capability(
@@ -91,6 +103,19 @@ fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
                 payload: serde_json::to_value(&query).unwrap(),
                 protected_grant: supplied_grant,
             };
+            if query.read_failure_details && request.protected_grant.is_some() {
+                let mut changed = request.clone();
+                changed
+                    .payload
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("read_failure_details");
+                assert_eq!(
+                    application.dispatch(changed).error.unwrap().code,
+                    hiroute_application_api::ErrorCode::CapabilityDenied,
+                    "the response option remains part of the exact granted request"
+                );
+            }
             let guard = runtime.adapter.stores.lock().unwrap();
             let app = application.clone();
             let (tx, rx) = std::sync::mpsc::channel();
