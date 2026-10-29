@@ -9,14 +9,20 @@ branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
 
-The [model selector](src/dispatch/selector.rs) and [structural scanner](src/content_ref/ingress/scanner.rs) skip ordinary string runs while preserving scalar escape, control and boundary transitions. The small memory-backed ingress path feeds the existing parser from a temporary,
-budgeted slice; disk-backed and pressured inputs retain the bounded reader.
+The [model selector](src/dispatch/selector.rs) and
+[structural scanner](src/content_ref/ingress/scanner.rs) skip ordinary string runs
+while preserving scalar escape, control and boundary transitions. Small
+memory-backed ingress and nested arguments feed the existing serde parser from a
+temporary, budgeted slice; disk-backed and pressured inputs retain the bounded reader.
 [Runtime fingerprints](src/runtime_fingerprint.rs) reuse complete normalized
 content within one request. MD5 here is an ephemeral equality check with framed
 domains; authorization, native proofs and persisted observation HMACs retain
 their cryptographic algorithms. [Prepared input](src/composition/prepared.rs)
 may retain bounded candidate templates until the selected attempt uses them;
 current authority/profile checks still run, and cleanup rebuilds the template.
+Template serialization borrows the existing JSON tree while expanding its wire
+markers. Replay serializes each canonical range under its existing memory gate
+and derives range lengths from the same checked stream counters.
 
 [Optional content encoding](src/observation/content_work.rs) uses one ordered,
 bounded worker per observation channel set. Its immutable snapshot retains only

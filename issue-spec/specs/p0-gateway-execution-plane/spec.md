@@ -434,6 +434,9 @@ protocol decoder. It SHALL leave conservative capacity for semantic backing and
 fall back to the bounded reader when optional scratch cannot be admitted. This
 scratch is released before subsequent request preparation; it is not another
 sealed body owner, a cache, a size limit, or permission to gather large disk input.
+Nested native JSON arguments MAY reuse this same optional small-memory path,
+retaining the existing Value-compatible syntax, number and terminal checks.
+Failure to admit optional scratch SHALL retain the bounded Reader path.
 
 Semantic JSON ranges have one canonical writer: object keys are ordered
 recursively, while values and array order remain significant. Canonical provenance
