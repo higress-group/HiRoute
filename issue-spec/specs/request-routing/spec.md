@@ -385,6 +385,12 @@ and cancellation remain authoritative; price/score/cache cannot re-rank at runti
 A failing held candidate uses the current frozen relay chain and is deduplicated,
 not the historical chain that originally established the hold.
 
+Temporary unavailability of a candidate's validated subscription runtime before an
+upstream Attempt SHALL advance to the next authorized candidate. It SHALL NOT be
+reported as a shared credential-authority failure that prevents the remaining plan
+from running. Rejected capability proofs, target mismatches and shared authority
+failures remain fail-closed. Preparation alone does not consume an upstream Attempt.
+
 Any upstream failure, including ordinary 400, unknown error, or failure after
 successful headers, may relay within the frozen Plan while no response body has
 started downstream. Ambiguous faults do not infer Key/Binding isolation. Once body

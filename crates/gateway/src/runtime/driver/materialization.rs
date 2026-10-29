@@ -632,7 +632,7 @@ pub(super) fn resolved_transport_target(
 
 pub(super) fn credential_materialization_error(
     error: PortError,
-    _connector_runtime: hiroute_domain::ConnectorRuntimeKind,
+    connector_runtime: hiroute_domain::ConnectorRuntimeKind,
 ) -> Arc<str> {
     Arc::from(match error {
         PortError::CredentialDenied(reason) => match reason {
@@ -643,6 +643,13 @@ pub(super) fn credential_materialization_error(
                 MATERIALIZATION_KEY_DISABLED
             }
         },
+        // CPA runtime availability belongs to this candidate. A native authority
+        // read failure or a rejected CPA capability still fails closed.
+        PortError::Unavailable(_)
+            if connector_runtime == hiroute_domain::ConnectorRuntimeKind::CpaBridge =>
+        {
+            MATERIALIZATION_BINDING_UNAVAILABLE
+        }
         _ => MATERIALIZATION_AUTHORITY_FAILED,
     })
 }
