@@ -18,6 +18,26 @@ pub fn sync_file(path: impl AsRef<Path>) -> io::Result<()> {
     file.sync_all()
 }
 
+/// Flush an unpublished snapshot copy to the filesystem. On macOS the snapshot
+/// owner MUST finish with `directory_barrier` before publishing the batch: that
+/// full device flush covers the preceding per-file fsyncs. This is not a durable
+/// publication by itself and must not replace key, journal or live-file writes.
+/// Other platforms retain their ordinary full file barrier.
+pub fn sync_unpublished_copy(path: impl AsRef<Path>) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let file = File::open(path)?;
+        loop {
+            match nix::unistd::fsync(&file) {
+                Err(nix::errno::Errno::EINTR) => continue,
+                result => return result.map_err(io::Error::from),
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    sync_file(path)
+}
+
 pub fn directory_barrier(path: impl AsRef<Path>) -> io::Result<()> {
     #[cfg(windows)]
     {

@@ -68,12 +68,37 @@ fn review_timeline_and_quality_dispatch_exhaust_real_readers_then_recover() {
         .remove("include_routing_observations");
     let mut disabled_request = quality_request.clone();
     disabled_request.payload["intent"]["query"]["include_routing_observations"] = json!(false);
+    let home_requests = [
+        (
+            "ListSessions",
+            json!({"view":"sessions","query":{
+                "from_ms":now-7*86_400_000, "to_ms":now,
+                "limit":6, "only_model_switch":false,
+            }}),
+        ),
+        (
+            "GetValue",
+            json!({"view":"home_value","query":{
+                "period":"seven_days", "session_id":null, "currency":"USD",
+            }}),
+        ),
+    ]
+    .map(|(operation, intent)| LocalControlRequestV2 {
+        request_id: format!("home-busy-{operation}"),
+        operation_id: operation.into(),
+        payload: json!({"schema":"hiroute.observation.query/v2", "intent":intent,
+            "read_failure_details":true}),
+        ..request.clone()
+    });
     for (request, detailed) in [
         (request, true),
         (quality_request, true),
         (legacy_request, false),
         (disabled_request, false),
-    ] {
+    ]
+    .into_iter()
+    .chain(home_requests.into_iter().map(|request| (request, true)))
+    {
         // Exercise real permit exhaustion and recovery through Application.
         // Released strict quality readers retain their original failure shape.
         runtime.observation.with_all_query_permits_for_test(|| {

@@ -269,3 +269,18 @@ readback covers exact model proof, delayed/wrong-context responses, unrefreshed
 Skill states and fresh Skill editor selection. Readback captures use production
 styles in Chinese/dark and English/light at 1200×813 and 755×600. Native save
 confirmation and latency still require the normal Release app and real data.
+
+Home bounded-read regressions in `v3/browser/home-startup-scenarios.mjs` exercise
+shared queue capacity, typed busy recovery/exhaustion, terminal failures and
+superseded retries through the production hook. They remain React/mock-IPC
+evidence; native first-open/focus reads and retained data require the real Desktop.
+
+`desktop.trial.connected-models-and-models-return` runs the actual DesktopApp
+navigation from the saved-model control to Models and back, preserving exact
+binding, route name and trust without writes. The existing setup append cases
+now enter through the connection-point choice in Connect here and retain their
+exact API/subscription source, candidate, append-only and no-key-edit assertions.
+`--trial-identity` checks compact reasoning-control geometry, disclosure, keyboard
+choice, localization and unchanged submitted profiles in both themes and sizes.
+All of these browser paths use controlled IPC; native business effects remain
+separate acceptance.

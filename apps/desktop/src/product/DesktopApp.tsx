@@ -116,7 +116,8 @@ export function DesktopApp() {
   const { language } = preferences;
   const home = useDesktopHome();
   const [trialIntent, setTrialIntent] = useState<{ modelId?: string; bindingId?: string } | null>(null);
-  const trialOpen = Boolean(trialIntent);
+  const [trialModelsOpen, setTrialModelsOpen] = useState(false);
+  const trialOpen = Boolean(trialIntent) && !trialModelsOpen;
   const [page, setPage] = useState<Page>('home');
   const [modelTab, setModelTab] = useState<'general' | 'decisions'>('general');
   const [decisionIntent, setDecisionIntent] = useState<DecisionIntent | null>(null);
@@ -349,12 +350,12 @@ export function DesktopApp() {
   async function openTrial(intent: { modelId?: string; bindingId?: string }) {
     const scope = editorScope(page);
     if (scope && !await requestEditorReplacement(scope)) return;
-    setTrialIntent(intent);
+    setTrialModelsOpen(false); setTrialIntent(intent);
   }
   async function leaveTrial() {
     if (!trialIntent) return true;
     if (!await requestEditorReplacement('models') || !await requestEditorReplacement('routing')) return false;
-    setTrialIntent(null);
+    setTrialModelsOpen(false); setTrialIntent(null);
     return true;
   }
 
@@ -461,12 +462,22 @@ export function DesktopApp() {
   }
 
   async function showModels(intent: Omit<ModelIntent, 'key'> = {}) {
-    if (!await allowPageChange('models', true)) return;
+    if (!await allowPageChange('models', true)) return false;
     setNotice('');
-    if (modelTab === 'decisions' && !await requestEditorReplacement('models')) return;
+    if (modelTab === 'decisions' && !await requestEditorReplacement('models')) return false;
     setModelTab('general');
     setModelIntent({ key: `models/${randomId()}`, ...intent });
     openPage('models');
+    return true;
+  }
+
+  async function addTrialModel() {
+    if (await showModels({ startAdding: true })) setTrialModelsOpen(true);
+  }
+
+  async function returnToTrial() {
+    if (!await requestEditorReplacement('models')) return;
+    setTrialModelsOpen(false);
   }
 
   async function showRouting(editor?: RoutingEditorIntent | null, routingNotice?: string) {
@@ -750,7 +761,7 @@ export function DesktopApp() {
           </div>
         </div>}
 
-        {trialIntent && <div className="trial-page-host"><TrialQuickStart onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={mutationAllowed} snapshot={home.desktopSnapshot} operation={operation} onRepresentedOperations={setTrialOperationIds} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); home.invalidateCatalog(); await home.refreshDesktop(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
+        {trialIntent && <div className="trial-page-host" hidden={trialModelsOpen}><TrialQuickStart active={!trialModelsOpen} onOpenModels={() => void addTrialModel()} onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={mutationAllowed} snapshot={home.desktopSnapshot} operation={operation} onRepresentedOperations={setTrialOperationIds} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); home.invalidateCatalog(); await home.refreshDesktop(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
         <div hidden={trialOpen || page !== 'home'}><Home
             language={language}
             reads={home.reads}
@@ -761,6 +772,7 @@ export function DesktopApp() {
             hasTasks={taskRead.status === 'ready' && taskRead.tasks.length > 0}
             onAction={handleHomeAction}
           /></div>
+        {trialIntent && trialModelsOpen && page === 'models' && <div className="trial-model-return" role="status"><span>{language === 'zh' ? '试用设置已保留，添加模型后可返回继续。' : 'Your trial setup is retained. Return after adding a model.'}</span><button type="button" className="btn" onClick={() => void returnToTrial()}>{language === 'zh' ? '返回试用' : 'Back to trial'}</button></div>}
         {visited.has('models') && <div hidden={trialOpen || page !== 'models' || modelTab !== 'general'}><ModelManagementPage
             key={modelIntent.key}
             language={language}

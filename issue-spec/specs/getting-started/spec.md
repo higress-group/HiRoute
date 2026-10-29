@@ -535,6 +535,35 @@ An action disabled by active loading/saving/reconciliation or unavailable author
 
 Trial setup SHALL offer selection of actual saved API and subscription models without recreating connections or re-entering their saved credentials. Exact source and binding identities, resolved through current routable candidates, govern selection; display names or absence of a catalog link do not establish or negate that executable identity. A catalog-linked registered selection retains its selected-model observation and catalog-admission requirements. An unlinked saved model may be explicitly selected as its actual configured identity with its catalog version unconfirmed; it SHALL NOT silently acquire the recommended model's catalog identity, verification or capabilities. Save completion and selected-model resolution are distinct: reconcile the original operation and exact returned bindings, preserve completed saves, perform bounded current-state rereads and never repeat Apply to repair lost replies or stale UI state.
 
+The trial's connected-model control SHALL list only actual persisted API/subscription
+bindings, with their source names and current availability. It SHALL NOT mix
+unconnected catalog entries into that chooser. Its Add a model action opens the
+normal Models tab; returning preserves the same trial instance, chosen bindings,
+route name and exact trust and refreshes current availability without selecting a
+new model implicitly. Catalog recommendations remain separately selectable and do
+not create a second recommendation card merely because an unlinked saved binding
+has the same display name.
+
+Connect here SHALL offer existing connection points inside the connection dialog,
+alongside creating a new connection. Selecting an existing API point uses the
+normal exact-source append/check/Preview/Apply flow and retains its credentials,
+existing models and enabled state. A subscription stays with its existing connector
+owner and authorization flow; it is never cloned into an API-key form. Protected
+input replacement still requires its existing guard, and the old connection dialog
+must close before the selected source's flow takes input ownership. Choosing a
+saved model is distinct from adding a model to an existing connection point.
+
+Trial section headings SHALL use consistent typography for peer model, decision
+and Agent sections. Required items use a small visual marker with an accessible
+required label and one shared explanation; missing values retain their existing
+inline errors and Review changes focus behavior.
+
+Adjustable reasoning SHALL use a compact bordered control next to its label, with
+an explicit disclosure affordance, keyboard focus and current value.
+Native profile names remain in English in both UI languages; the exact profile
+sent to Preview/Apply, provider defaults and reasoning policy remain unchanged. Fixed
+reasoning remains non-editable and invalid choices retain actionable field errors.
+
 The initial trial threshold defaults to 0.90 but is selectable before review using the shared continuous control and directly clickable presets, including Entrusted at zero. The chosen exact thousandth value SHALL survive connection detours, refresh, model/Agent changes, review/back/edit, ordinary save, publication and reopening. Review SHALL use the latest chosen/editor value rather than reset it to 0.90. Initial setup SHALL not show active-version evidence-loading copy or request historical replay. Custom extensions hide and park built-in controls. Existing ordinary authoring defaults, competence floors, English default prompts, protection, permissions and explicit publication remain unchanged.
 
 Protected connection editors SHALL pass their existing replacement guard before a saved-model choice would replace them. A rejected replacement retains the editor, temporary credentials, selected identities and selection context; a Primary selection SHALL NOT release an unrelated trial editor. A pending or uncertain save retains the original operation, accepted digest, idempotency key and candidate and SHALL block review with a visible same-operation read-only recovery action. A confirmed save awaiting binding selection remains recoverable across selection of another model and review/back, without a new Apply or empty new-source form.
@@ -548,6 +577,16 @@ Trial selection SHALL also offer an otherwise current and executable retained AP
 A failed descriptive recommendation read SHALL show a localized independent retry without treating the catalog as empty or blocking previously proven saved connections. Retry SHALL preserve selections and inputs, be single-flight, ignore stale/closed-flow responses, and not grant executable admission merely because recommendations load.
 
 Trial names SHALL satisfy the complete existing `AgentPlanDisplayName` domain validation, including Unicode scalar length, whitespace/control, URL and sensitive-marker restrictions. If an automatically generated combination is invalid, use a safe localized default; manually entered invalid text remains visible with a specific error and is never silently replaced. Setup and review SHALL preserve the same text and domain boundary, accept 128 Unicode scalar values including supplementary characters, explicitly reject 129, and never silently truncate by UTF-16 units. An invalid name cannot be published.
+
+#### Scenario: Add a model without restarting the trial
+
+- **WHEN** the user chooses Add a model in the connected-model control and later returns from the Models tab
+- **THEN** the original route name, exact trust and chosen bindings remain, current availability is reread, and browsing/returning causes no configuration write or inference. Any edited model form still passes its normal replacement guard.
+
+#### Scenario: Reuse a connection point from Connect here
+
+- **WHEN** the user chooses a saved API or subscription point inside the connection dialog
+- **THEN** the previous guarded form closes, only that exact source's normal append flow proceeds, and existing credentials/models remain owned by that source. Unknown or changed sources cannot silently fall back to creating a new connection or a different source.
 
 #### Scenario: Retained API candidate without V2 management ownership
 

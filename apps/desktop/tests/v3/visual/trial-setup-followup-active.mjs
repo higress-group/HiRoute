@@ -20,9 +20,10 @@ async function open(query, language='en', width=755, height=600) {
   await waitFor(client, `!!document.querySelector('.trial-agent-choice') && !!document.querySelector('.trial-footer')`);
 }
 async function click(selector, text = '') {
-  const expression = `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&!e.disabled&&e.textContent.includes(${JSON.stringify(text)}))`;
-  await waitFor(client, `!!(${expression})`);
-  await evaluate(client, `(${expression}).click();true`);
+  const expression = `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&!e.matches(':disabled')&&e.textContent.includes(${JSON.stringify(text)}))`;
+  // Check inherited fieldset disability and click in the same browser turn,
+  // rather than selecting just before a coherent refresh disables the form.
+  await waitFor(client, `(()=>{const element=${expression};if(!element)return false;element.click();return true;})()`);
 }
 async function field(selector, value) {
   await waitFor(client, `!!document.querySelector(${JSON.stringify(selector)})`);
@@ -68,20 +69,20 @@ try {
     await click('.trial-footer .btn-primary','Review changes');
     await waitFor(client, `!!document.querySelector('.trial-review')`);
     await click('.trial-review > .actions button','Back to setup');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     const source=await evaluate(client, `(()=>{const s=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Retained fixture API'));return s&&{text:s.textContent,buttons:[...s.querySelectorAll('button')].map(b=>b.textContent)};})()`);
     assert.ok(source && source.text.includes('Qwen'));
     assert.ok(source.buttons.every(text=>!/Add model|Review connection|edit/i.test(text)),JSON.stringify(source));
     await client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
     await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
     await click('.trial-model-card','Kimi');
-    await click('[data-trial-target=primary] button','Choose an existing connection');
+    await click('[data-trial-target=primary] button','Choose a connected model');
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Retained fixture API'));source.querySelector('.trial-choice').click();return true;})()`);
     await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=primary]')?.textContent.includes('Retained fixture API')`);
   });
   await run('review-r2.production-captured-api-selection', async () => {
     await open('production-capture=1');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     const row=await evaluate(client, `(()=>{const s=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Zhipu · Coding Plan'));return s&&{text:s.textContent,buttons:[...s.querySelectorAll('button')].map(b=>b.textContent)};})()`);
     assert.ok(row && row.text.includes('GLM-5.3'));
     assert.ok(row.buttons.every(text=>!/Add model|Review connection|edit/i.test(text)),JSON.stringify(row));
@@ -97,7 +98,7 @@ try {
       await click('.trial-footer .btn-primary','Review changes');
       await waitFor(client, `document.querySelector('.trial-validation-summary')?.textContent.includes('trial connection')`);
       assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
-      await click('[data-trial-target=trial] button','Choose an existing connection');
+      await click('[data-trial-connected-model]');
       const retained=await evaluate(client, `(()=>{const s=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Retained fixture API'));return s?.querySelector('.trial-choice')?.disabled;})()`);
       assert.equal(retained,true,'a mismatched or V2-owned retained description cannot grant selection');
     }
@@ -126,11 +127,11 @@ try {
     await click('.trial-footer button','Refresh availability');
     await waitFor(client, `!document.querySelector('.trial-setup')?.disabled`);
     assert.equal(await evaluate(client, `trialSetupControl.recommendationReads`),4,'page refresh must not start a concurrent recommendation read');
-    const selectedBefore=await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] strong')?.textContent`);
+    const selectedBefore=await evaluate(client, `document.querySelector('[data-trial-connected-model]')?.textContent`);
     await evaluate(client, `trialSetupControl.releaseRecommendation();true`);
     await waitFor(client, `!![...document.querySelectorAll('.trial-model-card')].find(e=>e.textContent.includes('Kimi'))`);
     assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'Kept trial name');
-    assert.equal(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] strong')?.textContent`),selectedBefore);
+    assert.equal(await evaluate(client, `document.querySelector('[data-trial-connected-model]')?.textContent`),selectedBefore);
   });
   await run('review-r2.recommendation-error-layout', async () => {
     for (const [language,theme,width,height] of [['en','light',755,600],['zh','dark',1200,813]]) {
@@ -151,15 +152,17 @@ try {
     await waitFor(client, `!!document.querySelector('.new-models button')`);
     await evaluate(client, `trialModel.display_name='Fresh fixture model';true`);
     await click('.new-models button','Try');
-    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true] strong')?.textContent==='Fresh fixture model'`);
+    await waitFor(client, `document.querySelector('[data-trial-connected-model]')?.dataset.trialBinding==='binding/bailian/qwen-coder'`);
+    const currentLabel = await evaluate(client, `document.querySelector('[data-trial-connected-model]').textContent`);
     await evaluate(client, `trialSetupControl.releaseRecommendation();true`);
     await waitFor(client, `trialSetupControl.pendingRecommendations.length===0`);
-    assert.equal(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] strong')?.textContent`),'Fresh fixture model');
+    assert.equal(await evaluate(client, `document.querySelector('[data-trial-connected-model]')?.textContent`),currentLabel);
+    assert.equal(await evaluate(client, `document.querySelector('[data-trial-connected-model]')?.dataset.trialBinding`),'binding/bailian/qwen-coder');
   });
   await run('review-r2.same-model-selection-wins', async () => {
     await open('additional-connection=1&same-names=1&saved-registered=1&saved-read-failure=1&same-model-save=1');
     await click('.trial-choice-list .trial-choice','GPT');
-    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
+    await click('[data-trial-target=trial] button','Connect another source'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
     await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
@@ -179,7 +182,7 @@ try {
   });
   await run('review-r2.same-model-selection-protects-draft', async () => {
     await open('additional-connection=1&same-names=1');
-    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
+    await click('[data-trial-target=trial] button','Connect another source'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-draft-key');
     const chooseSecond = `(()=>{const e=document.querySelector('[data-trial-target=trial] .trial-connection-field select');e.value='binding/bailian/qwen-second';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`;
@@ -187,7 +190,7 @@ try {
     await click('.discard-dialog button','Keep editing');
     assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=trial] .trial-connection-field select').value`),'binding/bailian/qwen-coder');
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`),'synthetic-draft-key');
-    await click('[data-trial-target=primary] button','Choose an existing connection'); await click('.trial-picker .trial-choice','GPT-6-Astra');
+    await click('[data-trial-target=primary] button','Choose a connected model'); await click('.trial-picker .trial-choice','GPT-6-Astra');
     await waitFor(client, `!document.querySelector('.trial-picker')`);
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`),'synthetic-draft-key');
     await evaluate(client, chooseSecond); await waitFor(client, `!!document.querySelector('.discard-dialog[open]')`);
@@ -254,20 +257,20 @@ try {
     await open('');
     await waitFor(client, `!!document.querySelector('[data-trial-target="trial-reasoning"]')`);
     await evaluate(client, `trialSetupControl.catalogAdmission=false;[...document.querySelectorAll('.trial-footer button')].find(e=>e.textContent.includes('Refresh availability')).click();true`);
-    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.toLowerCase().includes('catalog match unconfirmed')`);
+    await waitFor(client, `document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])')?.textContent.toLowerCase().includes('catalog match unconfirmed')`);
     await click('.trial-footer .btn-primary','Review changes');
     await waitFor(client, `document.querySelector('.trial-validation-summary')?.textContent.includes('trial connection')`);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='preview_plan_editor').length`),0);
   });
   await run('capture.unadmitted-user-binding-stays-unlinked', async () => {
     await open('catalog-unadmitted-user=1');
-    const selected = `.trial-model-card[aria-pressed=true]`;
+    const selected = `:is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])`;
     assert.equal(await evaluate(client, `!!document.querySelector(${JSON.stringify(selected)}+' .model-fact-tags')`),false,
       'descriptive facts cannot be attached to a source-local candidate without catalog admission');
     await click('.trial-model-card','Kimi');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     await click('.trial-picker .trial-choice','Qwen3-Coder-Plus');
-    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Qwen')`);
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])')?.textContent.includes('Qwen')`);
     assert.equal(await evaluate(client, `!!document.querySelector(${JSON.stringify(selected)}+' .model-fact-tags')`),false);
     assert.match(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent`),/catalog version unconfirmed/i);
   });
@@ -301,20 +304,20 @@ try {
     await open('saved-user-declared=1&saved-id-collision=1'); await saveConnection();
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
     await click('.trial-recovery button','Use this saved model');
-    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Saved synthetic model')`);
-    assert.equal(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] .model-fact-tags')`),null);
+    await waitFor(client, `document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])')?.textContent.includes('Saved synthetic model')`);
+    assert.equal(await evaluate(client, `document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model]) .model-fact-tags')`),null);
     assert.equal(await evaluate(client, `!!document.querySelector('.trial-model-facts')`),false);
     assert.match(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent`),/catalog version unconfirmed/i);
   });
   await run('picker.unlinked-collision-requires-explicit-choice', async () => {
     await open('unlinked-existing-collision=1');
     await click('.trial-model-card','Kimi K3');
-    assert.match(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true]').textContent`),/catalog match unconfirmed/i);
+    assert.match(await evaluate(client, `document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])').textContent`),/catalog match unconfirmed/i);
     assert.equal(await evaluate(client, `!!document.querySelector('[data-trial-target="trial-reasoning"]')`),false,'the catalog card cannot silently select an unlinked saved binding');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     await click('.trial-picker .trial-choice','Saved synthetic model');
-    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Saved synthetic model')`);
-    assert.equal(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] .model-fact-tags')`),null);
+    await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])')?.textContent.includes('Saved synthetic model')`);
+    assert.equal(await evaluate(client, `document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model]) .model-fact-tags')`),null);
     assert.match(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent`),/catalog version unconfirmed/i);
   });
   await run('save.custom-check-path', async () => {
@@ -389,11 +392,11 @@ try {
   await run('picker.exact-source-no-discovery', async () => {
     await open('same-names=1');
     const before=await evaluate(client, `trialTrace.length`);
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     await waitFor(client, `!!document.querySelector('.trial-picker')`);
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
     await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=trial]').textContent.includes('A second provider')`);
-    await click('[data-trial-target=primary] button','Choose an existing connection');
+    await click('[data-trial-target=primary] button','Choose a connected model');
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Codex'));[...source.querySelectorAll('.trial-choice')].find(e=>e.textContent.includes('GPT-5.6-Sol')).click();return true;})()`);
     await waitFor(client, `!document.querySelector('.trial-picker') && !!document.querySelector('[data-trial-target=primary] .trial-choice.selected')`);
     const commands=await evaluate(client, `trialTrace.slice(${before}).map(x=>x.command)`);
@@ -424,7 +427,7 @@ try {
   });
   await run('picker.changed-binding-and-cancelled-read', async () => {
     await open('');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     await waitFor(client, `!!document.querySelector('.trial-picker')`);
     await evaluate(client, `trialSetupControl.setTrialAvailability(false);true`);
     await click('.trial-picker-source .trial-choice','Qwen3-Coder-Plus');
@@ -436,7 +439,7 @@ try {
     await client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
     await waitFor(client, `!document.querySelector('.trial-picker')`);
     await open('same-names=1');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     await evaluate(client, `trialSetupControl.holdNextManagement=true;true`);
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
     await waitFor(client, `trialSetupControl.pending.length===1`);
@@ -445,14 +448,16 @@ try {
     await waitFor(client, `!document.querySelector('.trial-picker')`);
     await evaluate(client, `trialSetupControl.release();true`);
     await waitFor(client, `trialSetupControl.pending.length===0 && !document.querySelector('.trial-footer .btn-primary').disabled`);
-    assert.ok(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Qwen3-Coder-Plus')`),'a late read cannot replace the role after cancellation');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    assert.ok(await evaluate(client, `document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])')?.textContent.includes('Qwen3-Coder-Plus')`),'a late read cannot replace the role after cancellation');
+    await click('[data-trial-connected-model]');
     assert.ok(await evaluate(client, `!!document.querySelector('.trial-picker .trial-choice:not(:disabled)')`));
   });
   await run('picker.append-to-exact-saved-api', async () => {
     await open('append-fixture=1');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
-    await click('.trial-picker-source button','Add model to this connection');
+    await click('[data-trial-target=trial] button','Connect another source');
+    await waitFor(client, `!!document.querySelector('[data-trial-source-choice] option[value="source/bailian/coding"]')`);
+    await shot('connect-here-source-choice-en-755');
+    await evaluate(client, `(()=>{const e=document.querySelector('[data-trial-source-choice]');e.value='source/bailian/coding';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
     await waitFor(client, `document.querySelectorAll('[role=dialog]').length===2 && !!document.querySelector('.model-result-list input:not(:disabled)')`);
     await click('.model-result-list input:not(:disabled)');
     await click('[role=dialog] .modal-foot button','Add 1 models');
@@ -463,6 +468,8 @@ try {
     assert.deepEqual(change.selected_model_refs,['model-ref/append-new']);
     assert.deepEqual(change.key_edits,[]);
     await evaluate(client, `document.querySelector('[role=dialog] .modal-head .icon-btn').click();true`);
+    await waitFor(client, `!document.querySelector('[role=dialog]')`);
+    await click('[data-trial-connected-model]');
     await waitFor(client, `!!document.querySelector('.trial-picker') && [...document.querySelectorAll('.trial-picker .trial-choice')].some(e=>e.textContent.includes('Added synthetic model'))`);
     await click('.trial-picker .trial-choice','Added synthetic model');
     await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=trial]').textContent.includes('Added synthetic model')`);
@@ -472,8 +479,9 @@ try {
   });
   await run('picker.append-to-exact-saved-subscription', async () => {
     await open('subscription-append=1');
-    await click('[data-trial-target=primary] button','Choose an existing connection');
-    await click('.trial-picker-source button','Add model to this connection');
+    await click('[data-trial-target=trial] button','Connect another source');
+    await waitFor(client, `!!document.querySelector('[data-trial-source-choice]')`);
+    await evaluate(client, `(()=>{const e=document.querySelector('[data-trial-source-choice]');e.value=[...e.options].find(o=>o.textContent.includes('Codex')).value;e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
     await waitFor(client, `document.querySelectorAll('[role=dialog]').length===2 && [...document.querySelectorAll('[role=dialog] .modal-foot button')].some(e=>e.textContent.includes('Check subscription')&&!e.disabled)`);
     await click('[role=dialog] .modal-foot button','Check subscription');
     await waitFor(client, `[...document.querySelectorAll('.v3-catalog .check-row')].some(e=>e.textContent.includes('Added subscription model'))`);
@@ -483,6 +491,8 @@ try {
     const change=await evaluate(client, `trialSetupControl.appendChange`);
     assert.equal(change.edit.action,'append_models'); assert.deepEqual(change.selected_model_refs,['model-ref/sub-added']); assert.deepEqual(change.key_edits,[]);
     await evaluate(client, `document.querySelector('[role=dialog] .modal-head .icon-btn').click();true`);
+    await waitFor(client, `!document.querySelector('[role=dialog]')`);
+    await click('[data-trial-target=primary] button','Choose a connected model');
     await waitFor(client, `!!document.querySelector('.trial-picker') && [...document.querySelectorAll('.trial-picker .trial-choice')].some(e=>e.textContent.includes('Added subscription model'))`);
     await click('.trial-picker .trial-choice','Added subscription model');
     await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=primary]')?.textContent.includes('Added subscription model')`);
@@ -651,7 +661,7 @@ try {
       await field('.trial-review .trust-slider','500');
       await field('.trial-review .plan-identity-fields input','Edited trial route');
       await click('[data-route-group=primary] button.effort-select','high');
-      await click('[role=dialog] .segment','low'); await click('[role=dialog] button',language==='zh'?'应用':'Apply');
+      await click('[role=dialog] [data-reasoning-profile=low]'); await click('[role=dialog] button',language==='zh'?'应用':'Apply');
       await click('.trial-review summary',language==='zh'?'判断设置':'Judgment settings');
       await click('.trial-review summary',language==='zh'?'如何判断胜任':'How competence is assessed');
       await evaluate(client, `(()=>{const e=document.querySelector('.trial-review [data-decision-field$="-criterion-0"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Edited trial criterion');e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
@@ -660,7 +670,7 @@ try {
       await waitFor(client, `!!document.querySelector('.trial-setup .trust-slider')`);
       assert.match(await evaluate(client, `document.querySelector('.trial-setup .trust-threshold').textContent`),/0\.5$/);
       assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=name] input').value`),'Edited trial route');
-      assert.match(await evaluate(client, `document.querySelector('[data-trial-target="primary-reasoning"] button').textContent`),/low/);
+      assert.equal((await evaluate(client, `document.querySelector('[data-trial-target="primary-reasoning"] button').textContent`)).trim(),'low');
       await field('.trial-setup .trust-slider','277');
       await click('.trial-footer .btn-primary',language==='zh'?'检查改动':'Review changes');
       await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
@@ -690,19 +700,19 @@ try {
   });
   await run('review-repair.protected-existing-selection', async () => {
     await open('additional-connection=1&same-names=1');
-    await click('[data-trial-target=trial] button','Add a connection');
+    await click('[data-trial-target=trial] button','Connect another source');
     await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[maxlength="60"]','Edited synthetic connection');
     await field('#mc-connection-form input[type=password]','synthetic-draft-key');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
     await waitFor(client, `!!document.querySelector('.discard-dialog[open]')`);
     await shot('repair-guard-en-755');
     await click('.discard-dialog button','Keep editing');
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]').value`),'synthetic-draft-key');
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[maxlength="60"]').value`),'Edited synthetic connection');
-    assert.ok(await evaluate(client, `!!document.querySelector('.trial-picker') && document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent.includes('Qwen3')`));
+    assert.ok(await evaluate(client, `!!document.querySelector('.trial-picker') && document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])')?.textContent.includes('Qwen3')`));
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
     await waitFor(client, `!!document.querySelector('.discard-dialog[open]')`);
     await click('.discard-dialog button','Discard changes');
@@ -711,10 +721,10 @@ try {
   });
   await run('review-repair.primary-keeps-trial-editor', async () => {
     await open('additional-connection=1');
-    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
+    await click('[data-trial-target=trial] button','Connect another source'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-draft-key');
-    await click('[data-trial-target=primary] button','Choose an existing connection');
+    await click('[data-trial-target=primary] button','Choose a connected model');
     await click('.trial-picker .trial-choice','GPT-6-Astra');
     await waitFor(client, `!document.querySelector('.trial-picker')`);
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input[type=password]')?.value`),'synthetic-draft-key');
@@ -723,7 +733,7 @@ try {
   await run('review-repair.uncertain-save-blocks-review', async () => {
     await open('additional-connection=1&saved-user-declared=1&lost-apply=1');
     await click('.trial-choice-list .trial-choice','GPT');
-    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
+    await click('[data-trial-target=trial] button','Connect another source'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
     await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
@@ -743,7 +753,7 @@ try {
     for (const [theme,width,height] of [['dark',755,600],['light',1200,813]]) {
       await open(`additional-connection=1&saved-user-declared=1&lost-apply=1&theme=${theme}`,'zh',width,height);
       await click('.trial-choice-list .trial-choice','GPT');
-      await click('[data-trial-target=trial] button','新增接入'); await connectedService();
+      await click('[data-trial-target=trial] button','连接其他接入点'); await connectedService();
       await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
       await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
       await click('.modal-foot button','检查并继续'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
@@ -758,14 +768,14 @@ try {
   await run('review-repair.saved-result-survives-review', async () => {
     await open('additional-connection=1&saved-user-declared=1&same-names=1');
     await click('.trial-choice-list .trial-choice','GPT');
-    await click('[data-trial-target=trial] button','Add a connection'); await connectedService();
+    await click('[data-trial-target=trial] button','Connect another source'); await connectedService();
     await waitFor(client, `document.querySelector('#mc-connection-form')?.hidden===false`);
     await field('#mc-connection-form input[type=password]','synthetic-fixture-key');
     await click('.modal-foot button','Check and continue'); await waitFor(client, `!!document.querySelector('.model-selection input[type=checkbox]')`);
     await click('.model-selection input[type=checkbox]'); await click('.modal-foot button','Save connection');
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
     await click('.trial-recovery button','Back to trial');
-    await click('[data-trial-target=trial] button','Choose an existing connection');
+    await click('[data-trial-connected-model]');
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('A second provider'));source.querySelector('.trial-choice').click();return true;})()`);
     await waitFor(client, `!document.querySelector('.trial-picker') && document.querySelector('[data-trial-target=trial]').textContent.includes('A second provider')`);
     await click('.trial-footer .btn-primary','Review changes'); await waitFor(client, `!!document.querySelector('.trial-review')`);
@@ -784,7 +794,7 @@ try {
     await click('[data-trial-target=trial] button','Review connection result');
     await click('.trial-recovery button','Refresh result');
     await waitFor(client, `!document.querySelector('.trial-recovery') || !document.querySelector('.trial-recovery button:disabled')`);
-    assert.match(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true]')?.textContent`),/Qwen/,
+    assert.match(await evaluate(client, `document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])')?.textContent`),/Qwen/,
       'refreshing a retained result cannot replace the newer trial without an explicit choice');
     assert.match(await evaluate(client, `document.querySelector('.trial-recovery')?.textContent`),/Use this saved model/);
     await evaluate(client, `document.querySelector('.trial-recovery').scrollIntoView({block:'center'});true`);

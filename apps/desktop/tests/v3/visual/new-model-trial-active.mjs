@@ -123,6 +123,20 @@ async function trialIdentityChecks() {
   assert.match(await evaluate(client,`document.querySelector('.trial-page').textContent`),/trial-qwen3-coder-plus-[0-9a-f]{8}/);
   await shot(`trial-selection-${lang}-${theme}-${width}`);
   for(const node of await geometry('.trial-card,.trial-reasoning')) assert.ok(node.scroll<=node.width+1,`horizontal overflow: ${JSON.stringify(node)}`);
+  const controls = await evaluate(client, `Array.from(document.querySelectorAll('.trial-reasoning-control')).map(e=>{const r=e.getBoundingClientRect();return {width:r.width,height:r.height,hasPopup:e.getAttribute('aria-haspopup'),icon:!!e.querySelector('svg'),name:e.querySelector('span')?.textContent};})`);
+  assert.ok(controls.length > 0);
+  for (const control of controls) {
+    assert.ok(control.width <= 280 && control.height >= 32 && control.height <= 44, `reasoning must be a compact visible control: ${JSON.stringify(control)}`);
+    assert.equal(control.hasPopup, 'dialog'); assert.ok(control.icon);
+  }
+  assert.equal(controls.at(-1).name, 'low', 'both languages retain the authored English native profile');
+  const requiredHierarchy = await evaluate(client, `(()=>{const primary=document.querySelector('[data-trial-target=primary] > h3');const decision=document.querySelector('[data-trial-target=decision] > h3');return {primary:primary&&{font:getComputedStyle(primary).fontSize,weight:getComputedStyle(primary).fontWeight},decision:decision&&{font:getComputedStyle(decision).fontSize,weight:getComputedStyle(decision).fontWeight},marks:[...document.querySelectorAll('.trial-required-mark')].map(e=>({text:e.textContent,hidden:e.getAttribute('aria-hidden'),accessible:!!e.nextElementSibling?.classList.contains('sr-only')})),repeated:[...document.querySelectorAll('.trial-card h3,.trial-card .field-label')].some(e=>e.childNodes.length===1&&/必填|Required/.test(e.textContent))};})()`);
+  assert.deepEqual(requiredHierarchy.primary, requiredHierarchy.decision, 'peer section headings have matching typography');
+  assert.ok(requiredHierarchy.marks.length >= 4 && requiredHierarchy.marks.every(mark=>mark.text==='*'&&mark.hidden==='true'&&mark.accessible), 'required markers retain an accessible label');
+  assert.equal(requiredHierarchy.repeated,false,'required status does not repeat in visible section labels');
+  await evaluate(client, `document.querySelector('.trial-reasoning-control').scrollIntoView({block:'center'});true`);
+  await shot(`trial-reasoning-${lang}-${theme}-${width}`);
+
   await enter('.trial-footer .btn-primary');
   await waitFor(client,`!!document.querySelector('[data-dsh-capability-state="available"]') && !!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);
   assert.equal(await evaluate(client,`document.querySelector('[data-codex-capability-state]')`),null,'DSH never shows Codex capability results');

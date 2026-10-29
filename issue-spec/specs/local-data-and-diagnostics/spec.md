@@ -123,6 +123,12 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **THEN** ordinary reopen validates current dependencies and unfinished work without reading the retired backup contents or auditing unrelated history. Damage in that retired backup remains a failure when it is explicitly opened for recovery; it is never reported as verified healthy.
 - **AND** incomplete batches, older targets, malformed completion records, missing current stores and mismatched identities retain strict recovery admission. A current format number or an existing backup path alone cannot prove completion.
 
+#### Scenario: Publish a complete small-file backup without per-file device-cache flushes
+
+- **WHEN** a coordinated upgrade requires an independent complete-source copy containing many small files
+- **THEN** macOS may flush each unpublished copy's bytes and permissions to the filesystem and batch full device-cache barriers at completed directories and final manifest/stage publication. Every required file, original permission and hash remains verified before publication and migration; a failed flush or interrupted stage cannot become a completed recovery source.
+- **AND** general live-file, key and journal durability, released recovery formats, Linux file barriers and Windows descriptor-bound copying remain unchanged. This does not replace whole-group recovery with partial snapshots or claim hardware power-loss acceptance from a timing fixture.
+
 #### Scenario: Upgrade status follows entered work
 
 - **WHEN** startup enters backup publication, data conversion, final current-data validation and service recovery

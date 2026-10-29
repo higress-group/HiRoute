@@ -382,6 +382,8 @@ export type ModelConnectionBackend = {
 };
 
 export type ModelConnectionFormProps = {
+  /** A caller-owned connection-source choice; the ordinary form still owns inputs/save. */
+  connectionChoice?: import('react').ReactNode;
   allowCustom?: boolean;
   /** The caller has already scoped the options to an explicitly selected trial model. */
   singleProductShortcut?: boolean;
