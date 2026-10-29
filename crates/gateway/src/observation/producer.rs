@@ -40,6 +40,11 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
+    #[cfg(feature = "e2e-test-control")]
+    pub(super) fn work_state(&self) -> Option<(usize, usize, usize)> {
+        self.inner.as_ref().map(|producer| producer.work_state())
+    }
+
     #[cfg(test)]
     pub(super) fn wait_until_credit_blocked(&self) {
         self.inner.as_ref().unwrap().wait_until_credit_blocked();

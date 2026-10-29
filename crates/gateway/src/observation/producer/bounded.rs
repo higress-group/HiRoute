@@ -201,6 +201,15 @@ enum ProducerMessage {
 }
 
 impl ByteBoundedObservationProducer {
+    #[cfg(feature = "e2e-test-control")]
+    pub(super) fn work_state(&self) -> (usize, usize, usize) {
+        (
+            self.shared.queued_bytes.load(Ordering::Acquire),
+            self.shared.work_bytes.load(Ordering::Acquire),
+            self.shared.capacity_bytes,
+        )
+    }
+
     fn work_capacity(&self) -> usize {
         // Keep an encoded-record window inside the same byte ceiling. Queued
         // optional jobs must not consume every byte needed by their own worker.

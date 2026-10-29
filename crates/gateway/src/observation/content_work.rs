@@ -267,6 +267,12 @@ impl RequestObservation {
             return;
         }
         let bytes = snapshot_bytes(request);
+        #[cfg(feature = "e2e-test-control")]
+        eprintln!(
+            "capture snapshot bytes={bytes} queue_slots={} state={:?}",
+            queue_storage_bytes(),
+            self.inner.channels.content.work_state()
+        );
         if !self.inner.channels.content.work_can_fit(
             bytes
                 .saturating_add(JOB_OVERHEAD)
@@ -427,6 +433,11 @@ impl RequestObservation {
             .content_work
             .queue(&self.inner.channels.content)
         else {
+            #[cfg(feature = "e2e-test-control")]
+            eprintln!(
+                "capture worker unavailable: bytes={bytes} state={:?}",
+                self.inner.channels.content.work_state()
+            );
             self.fail_content_work(status, "content_capture_queue_unavailable");
             return None;
         };
@@ -437,6 +448,11 @@ impl RequestObservation {
             .reserve_work(bytes.saturating_add(JOB_OVERHEAD))
             .map(|reservation| (queue, reservation));
         if result.is_none() {
+            #[cfg(feature = "e2e-test-control")]
+            eprintln!(
+                "capture work reservation refused: bytes={bytes} state={:?}",
+                self.inner.channels.content.work_state()
+            );
             self.fail_content_work(status, "content_capture_queue_unavailable");
         }
         result
