@@ -462,9 +462,10 @@ fn native_raw_ranges_decline_noncompact_lengths_and_prefix_cleanup() {
 #[test]
 fn native_raw_messages_preserve_tool_argument_normalization_between_flat_text_spans() {
     use crate::replay::native_json::RawJsonIndex;
+    let arguments = format!(r#"{{ "n" : 1, "payload" : "{}" }}"#, "x".repeat(20000));
     let wire = json!({"model":"alias","messages":[
         {"role":"user","content":"a路由\\\"\n".repeat(8000)},
-        {"role":"assistant","content":null,"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup","arguments":"{ \"n\" : 1 }"}}]},
+        {"role":"assistant","content":null,"tool_calls":[{"id":"call-1","type":"function","function":{"name":"lookup","arguments":arguments}}]},
         {"role":"tool","tool_call_id":"call-1","content":"result".repeat(5000)},
         {"role":"user","content":"continue"}
     ]});
