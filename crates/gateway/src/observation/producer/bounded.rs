@@ -95,7 +95,7 @@ impl Drop for ObservationWorkReservation {
 }
 
 impl ObservationWorkReservation {
-    pub(super) fn shrink_to(&mut self, bytes: usize) {
+    pub(in super::super) fn shrink_to(&mut self, bytes: usize) {
         let retained = bytes.min(self.bytes);
         release_bytes(&self.shared, self.bytes - retained);
         self.bytes = retained;
