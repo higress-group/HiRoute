@@ -14,17 +14,16 @@ fn undersized_capture_queue_reports_loss_without_waiting_or_poisoning_the_next_r
         &[&provider],
         1,
         ObservationFaults {
-            lifecycle_mode: "slow_once:1000",
             queue_bytes: 512,
             ..ObservationFaults::healthy()
         },
     );
-    let started = Instant::now();
     let response = fixture.request();
     assert_eq!(response.status, 200);
     assert_eq!(response_tool_logical_id(&response.body), "call-22008");
-    assert!(started.elapsed() < Duration::from_millis(750));
     let root = fixture.observation_root.as_deref().unwrap();
+    // This ceiling cannot fit even one envelope. Slot saturation and stalled
+    // sinks have separate cases; intrinsic size refusal must stay explicit.
     for file in ["lifecycle.jsonl", "conversation-content.jsonl"] {
         let records = wait_for_gap(root, file);
         assert!(
@@ -32,7 +31,7 @@ fn undersized_capture_queue_reports_loss_without_waiting_or_poisoning_the_next_r
                 record
                     .pointer("/loss_watermark/reason")
                     .and_then(Value::as_str)
-                    == Some("queue_bytes_exceeded")
+                    == Some("event_too_large")
             }),
             "{file}: {records:#?}"
         );
