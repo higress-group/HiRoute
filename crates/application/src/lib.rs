@@ -180,6 +180,10 @@ impl ApplicationService {
                 self.apply_change(request, "decision.services.apply")
             }
             "ApplyDecisionService" => self.preview_change(request, "decision.services.apply"),
+            "ApplyDecisionServiceV2" if request.payload.get("accept_digest").is_some() => {
+                self.apply_change(request, "decision.connections.apply")
+            }
+            "ApplyDecisionServiceV2" => self.preview_change(request, "decision.connections.apply"),
             "ScanAgents" | "ListAgents" => self.list_agents(request),
             "PreviewAgentConnectionChange" => {
                 control_plane::dispatch_preview_agent_connection(self, request)

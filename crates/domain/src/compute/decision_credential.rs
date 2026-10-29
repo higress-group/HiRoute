@@ -62,6 +62,7 @@ pub struct DecisionCredentialKeyV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionCredentialAdmissionV1 {
+    pub state: crate::MaterializationState,
     pub keys: Vec<DecisionCredentialKeyV1>,
     pub credential_state_revision: CanonicalDigest,
 }

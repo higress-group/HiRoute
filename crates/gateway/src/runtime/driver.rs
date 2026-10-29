@@ -44,7 +44,7 @@ mod response;
 pub(crate) mod response_diagnostics;
 mod selection;
 
-pub(crate) use materialization::TargetResolver;
+pub(crate) use materialization::{ProductionStateAdapter, TargetResolver};
 pub(crate) use selection::PreparationFailure;
 pub use selection::{ProductionDecisionSession, ProductionSelection};
 

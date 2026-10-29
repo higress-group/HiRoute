@@ -877,6 +877,15 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Save a decision service version or delete an unreferenced service with revision checking."
     ),
     command!(
+        "decision.connections.apply",
+        ["decision", "connections", "apply"],
+        "ApplyDecisionServiceV2",
+        [],
+        Released,
+        Apply,
+        "Save a versioned decision connection with exact source and credential revisions."
+    ),
+    command!(
         "decision.services.test",
         ["decision", "services", "test"],
         "TestClassifierDecision",

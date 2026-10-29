@@ -104,11 +104,6 @@ impl crate::LocalStorageSet {
         binding: &DecisionCredentialBindingV1,
     ) -> Result<DecisionCredentialAdmissionV1, NativeCredentialLeaseErrorV1> {
         let (state, keys) = self.read_decision_binding(binding)?;
-        if state == MaterializationState::Disabled {
-            return Err(NativeCredentialLeaseErrorV1::Denied(
-                NativeCredentialAccessDeniedV1::SourceDisabled,
-            ));
-        }
         let revision = CanonicalDigest::of(&(
             &binding.source_id,
             &binding.source_lineage_digest,
@@ -119,6 +114,7 @@ impl crate::LocalStorageSet {
         ))
         .map_err(|_| denied("decision.runtime.state_digest"))?;
         Ok(DecisionCredentialAdmissionV1 {
+            state,
             keys: keys
                 .iter()
                 .filter(|key| key.enabled && state == MaterializationState::Ready)

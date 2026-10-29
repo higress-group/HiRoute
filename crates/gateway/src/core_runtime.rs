@@ -766,6 +766,7 @@ impl ProductionGatewayRuntime {
                         overall_deadline: authorized.deadline(),
                         cancellation: classification_cancellation.clone(),
                         started_at: classification_started,
+                        admitted_credential_state: None,
                     },
                 ));
                 let classification_result = tokio::select! {

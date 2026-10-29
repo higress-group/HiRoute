@@ -50,6 +50,30 @@
     "host_only": false
   },
   {
+    "name": "decision_connection_sources",
+    "args": [],
+    "result": "Result<hiroute_application_api::DecisionConnectionSourcesV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "decision_services_v2",
+    "args": [],
+    "result": "Result<hiroute_application_api::DecisionServicesV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "save_decision_service_v2",
+    "args": [{ "name": "input", "type": "DecisionServiceSaveInputV2" }],
+    "result": "Result<ApplyResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "test_decision_service_v2",
+    "args": [{ "name": "input", "type": "hiroute_application_api::DecisionServiceTestRequestV2" }],
+    "result": "Result<hiroute_application_api::DecisionServiceTestResultV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
     "name": "decision_services",
     "args": [],
     "result": "Result<crate::session::DecisionServiceList, DesktopFailure>",

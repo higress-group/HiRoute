@@ -27,6 +27,7 @@ fn state() -> PlanAuthoringSnapshotV2 {
         facts: compilation_facts(),
         decision_service: None,
         decision_service_v2: None,
+        decision_source: None,
         expected_revisions: RevisionSetV1 {
             target: 1,
             dependencies: Default::default(),

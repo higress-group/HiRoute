@@ -31,6 +31,68 @@ pub struct DecisionServiceSaveInputV2 {
     pub secret: Option<String>,
 }
 
+pub async fn decision_connection_sources(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+) -> Result<hiroute_application_api::DecisionConnectionSourcesV1, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .decision_connection_sources()
+        .await
+}
+
+pub async fn decision_services_v2(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+) -> Result<hiroute_application_api::DecisionServicesV2, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .decision_services_v2()
+        .await
+}
+
+pub async fn save_decision_service_v2(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: DecisionServiceSaveInputV2,
+) -> Result<ApplyResultV1, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_mut()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .save_decision_service_v2(input.change, input.secret.map(zeroize::Zeroizing::new))
+        .await
+}
+
+pub async fn test_decision_service_v2(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: hiroute_application_api::DecisionServiceTestRequestV2,
+) -> Result<hiroute_application_api::DecisionServiceTestResultV2, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .test_decision_service_v2(input)
+        .await
+}
+
 pub async fn decision_services(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,

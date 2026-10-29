@@ -97,6 +97,9 @@ pub(crate) enum ClassifierAuthenticationAuthorityV1 {
         name: Arc<str>,
         value_secret_ref: Arc<str>,
     },
+    SharedDecision {
+        binding: hiroute_domain::DecisionCredentialBindingV1,
+    },
 }
 
 /// Exact, publication-pinned authority for one external classification call.
