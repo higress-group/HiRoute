@@ -118,13 +118,14 @@ impl ChannelProducer {
         T: Serialize,
         F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
     {
-        self.publish_with_credit(timing, None, build);
+        self.publish_with_credit(timing, None, 0, build);
     }
 
     pub(super) fn publish_with_credit<T, F>(
         &self,
         timing: Option<super::latency::RequestLatency>,
         deadline: Option<std::time::Instant>,
+        credit_bytes: usize,
         build: F,
     ) -> bool
     where
@@ -137,7 +138,7 @@ impl ChannelProducer {
             return true;
         };
         matches!(
-            inner.publish_timed(timing, deadline, move |stamp| {
+            inner.publish_timed(timing, deadline, credit_bytes, move |stamp| {
                 let producer = descriptor(&stamp, &component, &revision);
                 let loss = stamp.loss_watermark.map(loss_watermark);
                 serde_json::to_vec(&build(producer, stamp.sequence, loss)).unwrap_or_else(|_| {

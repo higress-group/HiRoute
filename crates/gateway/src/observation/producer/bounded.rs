@@ -334,7 +334,7 @@ impl ByteBoundedObservationProducer {
     where
         F: FnOnce(ObservationSequenceStamp) -> Vec<u8>,
     {
-        self.publish_timed(timing, None, build)
+        self.publish_timed(timing, None, 0, build)
     }
 
     /// Only the single optional content worker may wait. Foreground callers
@@ -343,6 +343,7 @@ impl ByteBoundedObservationProducer {
         &self,
         timing: Option<super::super::latency::RequestLatency>,
         credit_deadline: Option<Instant>,
+        credit_bytes: usize,
         build: F,
     ) -> ObservationPublishOutcome
     where
@@ -355,7 +356,7 @@ impl ByteBoundedObservationProducer {
         // the envelope is encoded. Larger envelopes retain nonblocking admission.
         let mut credit = credit_deadline.and_then(|deadline| {
             self.record_credit(
-                self.shared.capacity_bytes - self.work_capacity(),
+                credit_bytes.min(self.shared.capacity_bytes - self.work_capacity()),
                 Some(deadline),
             )
         });

@@ -191,10 +191,12 @@ fn optional_worker_parks_for_credit_without_spinning_and_ack_releases_it() {
     let worker = producer.clone();
     let (sender, receiver) = std::sync::mpsc::channel();
     let thread = std::thread::spawn(move || {
-        let result =
-            worker.publish_timed(None, Some(Instant::now() + Duration::from_secs(1)), |_| {
-                vec![1; 8192]
-            });
+        let result = worker.publish_timed(
+            None,
+            Some(Instant::now() + Duration::from_secs(1)),
+            8192 + RECORD_ACCOUNTING_BYTES,
+            |_| vec![1; 8192],
+        );
         sender.send(result).unwrap();
     });
     producer.wait_until_credit_blocked();
@@ -238,9 +240,12 @@ fn background_record_credit_leaves_room_for_a_concurrent_foreground_job() {
     let thread = std::thread::spawn(move || {
         for _ in 0..8 {
             assert!(matches!(
-                worker.publish_timed(None, Some(Instant::now() + Duration::from_secs(1)), |_| {
-                    vec![b'x'; 32 * 1024]
-                }),
+                worker.publish_timed(
+                    None,
+                    Some(Instant::now() + Duration::from_secs(1)),
+                    32 * 1024 + RECORD_ACCOUNTING_BYTES,
+                    |_| { vec![b'x'; 32 * 1024] }
+                ),
                 ObservationPublishOutcome::Enqueued { .. }
             ));
         }
@@ -290,9 +295,12 @@ fn background_credit_wait_does_not_claim_the_sequence_needed_to_drain() {
     ));
     let worker = producer.clone();
     let thread = std::thread::spawn(move || {
-        worker.publish_timed(None, Some(Instant::now() + Duration::from_secs(1)), |_| {
-            vec![1; 90 * 1024]
-        })
+        worker.publish_timed(
+            None,
+            Some(Instant::now() + Duration::from_secs(1)),
+            90 * 1024 + RECORD_ACCOUNTING_BYTES,
+            |_| vec![1; 90 * 1024],
+        )
     });
     producer.wait_until_credit_blocked();
     let foreground = producer.try_publish(|_| vec![2; 32 * 1024]);
@@ -333,7 +341,12 @@ fn exhausted_background_credit_deadline_keeps_explicit_loss_and_releases_work() 
     let work = producer.reserve_work(producer.work_capacity()).unwrap();
     producer.try_publish(|_| vec![0; 8192]);
     assert!(matches!(
-        producer.publish_timed(None, Some(Instant::now()), |_| vec![1; 8192]),
+        producer.publish_timed(
+            None,
+            Some(Instant::now()),
+            8192 + RECORD_ACCOUNTING_BYTES,
+            |_| vec![1; 8192]
+        ),
         ObservationPublishOutcome::Dropped { .. }
     ));
     assert_eq!(producer.shared.credit_waits.load(Ordering::Acquire), 0);

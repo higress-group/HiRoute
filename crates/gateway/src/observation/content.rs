@@ -387,10 +387,14 @@ impl RequestObservation {
         let key = self.inner.key;
         let event_kind = event.phase;
         let occurred_at_unix_nanos = self.content_occurred_at.unwrap_or_else(unix_nanos);
+        let credit_bytes = self
+            .content_credit_wait
+            .map_or(0, |_| event.record_credit_bytes(&correlation));
         let published = self.inner.channels.content.publish_with_credit(
             self.inner.latency.clone(),
             self.content_credit_wait
                 .map(|limit| std::time::Instant::now() + limit),
+            credit_bytes,
             move |producer, sequence, loss| {
                 let sequence_bytes = sequence.to_be_bytes();
                 ConversationContentEnvelopeV1 {
@@ -700,6 +704,58 @@ struct ContentEvent {
     downstream_delivery: Option<String>,
     abort_reason: Option<String>,
     completeness_delta: Option<String>,
+}
+
+impl ContentEvent {
+    fn record_credit_bytes(&self, correlation: &super::schema::CorrelationV1) -> usize {
+        // Fixed keys, producer IDs, event ID, numbers and accounting fit 4 KiB.
+        // Variable metadata gets JSON's worst-case six bytes per input byte;
+        // base64 is already safe ASCII. Do not reserve a full 64 KiB chunk for
+        // a short final chunk or terminal marker. Actual serialized size is
+        // still checked by the producer, including unusually large envelopes.
+        let strings = [
+            Some(self.direction),
+            Some(self.phase),
+            Some(self.fork_id.as_str()),
+            self.attempt_id.as_deref(),
+            self.parent_transcript_root.as_deref(),
+            self.result_transcript_root.as_deref(),
+            self.message_instance_id.as_deref(),
+            self.message_role.as_deref(),
+            self.content_kind.as_deref(),
+            self.content_id.as_deref(),
+            self.content_blob_digest.as_deref(),
+            self.transport_frame_id.as_deref(),
+            self.canonical_media_type.as_deref(),
+            self.downstream_delivery.as_deref(),
+            self.abort_reason.as_deref(),
+            self.completeness_delta.as_deref(),
+            Some(correlation.workspace_id.as_str()),
+            Some(correlation.conversation_id.as_str()),
+            Some(correlation.session_scope.as_str()),
+            Some(correlation.correlation_provenance.as_str()),
+            Some(correlation.turn_id.as_str()),
+            Some(correlation.request_id.as_str()),
+        ];
+        let metadata = strings
+            .into_iter()
+            .flatten()
+            .fold(4096usize, |bytes, text| {
+                bytes.saturating_add(text.len().saturating_mul(6))
+            });
+        let metadata = self.content_ref.as_ref().map_or(metadata, |reference| {
+            [
+                &reference.content_id,
+                &reference.digest,
+                &reference.media_type,
+            ]
+            .iter()
+            .fold(metadata, |bytes, text| {
+                bytes.saturating_add(text.len().saturating_mul(6))
+            })
+        });
+        metadata.saturating_add(self.canonical_bytes_base64.as_ref().map_or(0, String::len))
+    }
 }
 
 fn update_transcript(transcript: &mut WorkspaceHmac, message_instance_id: &str, content_id: &str) {
