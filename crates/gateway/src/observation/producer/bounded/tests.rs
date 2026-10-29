@@ -165,6 +165,85 @@ impl ObservationRecordSink for SlowOnceSink {
     }
 }
 
+#[test]
+fn optional_worker_parks_for_credit_without_spinning_and_ack_releases_it() {
+    const CAPACITY: usize = 64 * 1024;
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer =
+        ByteBoundedObservationProducer::new(identity("credit"), CAPACITY, 128, sink.clone())
+            .unwrap();
+    let work = producer.reserve_work(3 * CAPACITY / 4).unwrap();
+    assert!(
+        producer.reserve_work(1).is_none(),
+        "queued work must leave record headroom"
+    );
+    assert!(matches!(
+        producer.try_publish(|_| vec![0; 8192]),
+        ObservationPublishOutcome::Enqueued { .. }
+    ));
+    let worker = producer.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        let result =
+            worker.publish_timed(None, Some(Instant::now() + Duration::from_secs(1)), |_| {
+                vec![1; 8192]
+            });
+        sender.send(result).unwrap();
+    });
+    producer.wait_until_credit_blocked();
+    assert_eq!(producer.shared.credit_waits.load(Ordering::Acquire), 1);
+    assert!(receiver.try_recv().is_err());
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    assert!(matches!(
+        receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+        ObservationPublishOutcome::Enqueued { .. }
+    ));
+    thread.join().unwrap();
+    producer.flush(Duration::from_secs(2)).unwrap();
+    drop(work);
+    assert_eq!(producer.stats().queued_bytes, 0);
+    assert_eq!(producer.stats().dropped, 0);
+    assert_eq!(sink.records.lock().unwrap().len(), 2);
+    assert!(producer.stats().queue_high_water_bytes <= CAPACITY);
+}
+
+#[test]
+fn exhausted_background_credit_deadline_keeps_explicit_loss_and_releases_work() {
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer =
+        ByteBoundedObservationProducer::new(identity("credit-stalled"), 65536, 128, sink.clone())
+            .unwrap();
+    let work = producer.reserve_work(49152).unwrap();
+    producer.try_publish(|_| vec![0; 8192]);
+    assert!(matches!(
+        producer.publish_timed(None, Some(Instant::now()), |_| vec![1; 8192]),
+        ObservationPublishOutcome::Dropped { .. }
+    ));
+    assert_eq!(producer.shared.credit_waits.load(Ordering::Acquire), 0);
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    producer.flush(Duration::from_secs(2)).unwrap();
+    drop(work);
+    assert_eq!(producer.stats().queued_bytes, 0);
+    assert_eq!(producer.stats().dropped, 1);
+    assert_eq!(sink.gaps.lock().unwrap().len(), 1);
+}
+
 fn identity(name: &str) -> ObservationProducerIdentity {
     ObservationProducerIdentity {
         channel: Arc::from(name.to_owned()),

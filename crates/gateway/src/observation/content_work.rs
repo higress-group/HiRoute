@@ -23,6 +23,9 @@ use super::schema::LifecycleFactV1;
 
 const JOB_SLOTS: usize = 256;
 const JOB_OVERHEAD: usize = 1024;
+// Optional capture may park for credit; it never extends a model deadline.
+// Bound a stalled sink's retention by one active job, with no polling/retry loop.
+const CREDIT_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(1);
 
 fn queue_storage_bytes() -> usize {
     JOB_SLOTS * (std::mem::size_of::<Job>() + 2 * std::mem::size_of::<usize>()) + JOB_OVERHEAD
@@ -45,6 +48,16 @@ pub(super) struct ContentStatus {
     failed: AtomicBool,
     response_begin: AtomicBool,
     response_terminal: AtomicBool,
+}
+
+impl ContentStatus {
+    pub(super) fn failed(&self) -> bool {
+        self.failed.load(Ordering::Acquire)
+    }
+
+    pub(super) fn stop(&self) {
+        self.failed.store(true, Ordering::Release);
+    }
 }
 
 struct Job {
@@ -161,11 +174,12 @@ impl ContentWorkProducer {
                         job._retained.shrink_to(JOB_OVERHEAD);
                     }
                     let started = Instant::now();
-                    let request = job.request.clone();
+                    let mut request = job.request.clone();
+                    request.content_credit_deadline = Some(started + CREDIT_WAIT_LIMIT);
                     let failed = job.status.failed.load(Ordering::Acquire);
                     if !failed {
                         let result =
-                            catch_unwind(AssertUnwindSafe(|| process(&job.request, job.command)));
+                            catch_unwind(AssertUnwindSafe(|| process(&request, job.command)));
                         match result {
                             Ok(true) => {}
                             Ok(false) => request

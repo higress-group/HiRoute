@@ -373,13 +373,23 @@ impl RequestObservation {
     }
 
     fn emit_content(&self, event: ContentEvent) {
+        if self.content_credit_deadline.is_some()
+            && self
+                .inner
+                .async_content
+                .get()
+                .is_some_and(|status| status.failed())
+        {
+            return;
+        }
         let correlation = self.correlation();
         let request_id = self.metadata().request_id.clone();
         let key = self.inner.key;
         let event_kind = event.phase;
         let occurred_at_unix_nanos = self.content_occurred_at.unwrap_or_else(unix_nanos);
-        self.inner.channels.content.publish_timed(
+        let published = self.inner.channels.content.publish_with_credit(
             self.inner.latency.clone(),
+            self.content_credit_deadline,
             move |producer, sequence, loss| {
                 let sequence_bytes = sequence.to_be_bytes();
                 ConversationContentEnvelopeV1 {
@@ -429,6 +439,14 @@ impl RequestObservation {
                 }
             },
         );
+        if !published
+            && self.content_credit_deadline.is_some()
+            && let Some(status) = self.inner.async_content.get()
+        {
+            // The producer has already declared the exact lost sequence.
+            // Suppress dependent terminal roots after this failed command.
+            status.stop();
+        }
     }
 }
 

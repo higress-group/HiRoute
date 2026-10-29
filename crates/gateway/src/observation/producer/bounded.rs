@@ -3,7 +3,7 @@ use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -90,14 +90,14 @@ pub struct ObservationWorkReservation {
 
 impl Drop for ObservationWorkReservation {
     fn drop(&mut self) {
-        release_bytes(&self.shared, self.bytes);
+        release_work_bytes(&self.shared, self.bytes);
     }
 }
 
 impl ObservationWorkReservation {
     pub(in super::super) fn shrink_to(&mut self, bytes: usize) {
         let retained = bytes.min(self.bytes);
-        release_bytes(&self.shared, self.bytes - retained);
+        release_work_bytes(&self.shared, self.bytes - retained);
         self.bytes = retained;
     }
 }
@@ -171,8 +171,13 @@ impl fmt::Debug for ByteBoundedObservationProducer {
 
 struct ProducerShared {
     capacity_bytes: usize,
+    credit_gate: Mutex<()>,
+    credit_available: Condvar,
+    #[cfg(test)]
+    credit_waits: AtomicUsize,
     next_sequence: AtomicU64,
     queued_bytes: AtomicUsize,
+    work_bytes: AtomicUsize,
     queue_high_water_bytes: AtomicUsize,
     enqueued: AtomicUsize,
     delivered: AtomicUsize,
@@ -196,14 +201,32 @@ enum ProducerMessage {
 }
 
 impl ByteBoundedObservationProducer {
+    fn work_capacity(&self) -> usize {
+        // Keep an encoded-record window inside the same byte ceiling. Queued
+        // optional jobs must not consume every byte needed by their own worker.
+        self.shared.capacity_bytes - self.shared.capacity_bytes / 4
+    }
+
     pub(super) fn work_can_fit(&self, bytes: usize) -> bool {
-        bytes <= self.shared.capacity_bytes
+        bytes <= self.work_capacity()
     }
 
     pub(super) fn reserve_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
-        reserve_bytes(&self.shared, bytes).then(|| ObservationWorkReservation {
-            shared: Arc::clone(&self.shared),
-            bytes,
+        let _gate = lock(&self.shared.credit_gate);
+        let next_work = self
+            .shared
+            .work_bytes
+            .load(Ordering::Relaxed)
+            .checked_add(bytes)?;
+        if next_work > self.work_capacity() {
+            return None;
+        }
+        reserve_bytes(&self.shared, bytes).then(|| {
+            self.shared.work_bytes.store(next_work, Ordering::Release);
+            ObservationWorkReservation {
+                shared: Arc::clone(&self.shared),
+                bytes,
+            }
         })
     }
 
@@ -224,8 +247,13 @@ impl ByteBoundedObservationProducer {
         let (sender, receiver) = sync_channel(capacity_events);
         let shared = Arc::new(ProducerShared {
             capacity_bytes,
+            credit_gate: Mutex::new(()),
+            credit_available: Condvar::new(),
+            #[cfg(test)]
+            credit_waits: AtomicUsize::new(0),
             next_sequence: AtomicU64::new(1),
             queued_bytes: AtomicUsize::new(0),
+            work_bytes: AtomicUsize::new(0),
             queue_high_water_bytes: AtomicUsize::new(0),
             enqueued: AtomicUsize::new(0),
             delivered: AtomicUsize::new(0),
@@ -261,9 +289,24 @@ impl ByteBoundedObservationProducer {
         self.try_publish_timed(None, build)
     }
 
+    #[cfg(test)]
     pub(super) fn try_publish_timed<F>(
         &self,
         timing: Option<super::super::latency::RequestLatency>,
+        build: F,
+    ) -> ObservationPublishOutcome
+    where
+        F: FnOnce(ObservationSequenceStamp) -> Vec<u8>,
+    {
+        self.publish_timed(timing, None, build)
+    }
+
+    /// Only the single optional content worker may wait. Foreground callers
+    /// keep try_publish_timed, and every job supplies one bounded deadline.
+    pub(super) fn publish_timed<F>(
+        &self,
+        timing: Option<super::super::latency::RequestLatency>,
+        credit_deadline: Option<Instant>,
         build: F,
     ) -> ObservationPublishOutcome
     where
@@ -290,7 +333,7 @@ impl ByteBoundedObservationProducer {
             self.restore_and_drop(sequence, ObservationLossReason::EventTooLarge);
             return ObservationPublishOutcome::Dropped { sequence };
         }
-        if !reserve_bytes(&self.shared, accounted_bytes) {
+        if !self.reserve_record(accounted_bytes, credit_deadline) {
             self.restore_and_drop(sequence, ObservationLossReason::QueueBytesExceeded);
             return ObservationPublishOutcome::Dropped { sequence };
         }
@@ -325,6 +368,61 @@ impl ByteBoundedObservationProducer {
             | Err(TrySendError::Disconnected(ProducerMessage::Flush { .. })) => {
                 unreachable!("try_publish sends only records")
             }
+        }
+    }
+
+    fn reserve_record(&self, bytes: usize, deadline: Option<Instant>) -> bool {
+        let mut gate = lock(&self.shared.credit_gate);
+        // A larger record cannot be guaranteed progress while queued jobs own
+        // the rest of the budget. It keeps the original nonblocking outcome.
+        loop {
+            let total = self.shared.queued_bytes.load(Ordering::Relaxed);
+            let work = self.shared.work_bytes.load(Ordering::Relaxed);
+            let records_fit = deadline.is_none()
+                || bytes > self.shared.capacity_bytes / 4
+                || total.saturating_sub(work).saturating_add(bytes)
+                    <= self.shared.capacity_bytes / 4;
+            if records_fit && reserve_bytes(&self.shared, bytes) {
+                return true;
+            }
+            let Some(deadline) = deadline.filter(|_| bytes <= self.shared.capacity_bytes / 4)
+            else {
+                return false;
+            };
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return false;
+            }
+            #[cfg(test)]
+            {
+                self.shared.credit_waits.fetch_add(1, Ordering::Relaxed);
+                self.shared.credit_available.notify_all();
+            }
+            let (next, _) = self
+                .shared
+                .credit_available
+                .wait_timeout(gate, remaining)
+                .unwrap_or_else(|error| error.into_inner());
+            gate = next;
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn wait_until_credit_blocked(&self) {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        let mut gate = lock(&self.shared.credit_gate);
+        while self.shared.credit_waits.load(Ordering::Acquire) == 0 {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            assert!(
+                !remaining.is_zero(),
+                "content never waited for record credit"
+            );
+            gate = self
+                .shared
+                .credit_available
+                .wait_timeout(gate, remaining)
+                .unwrap()
+                .0;
         }
     }
 
@@ -381,12 +479,16 @@ impl ByteBoundedObservationProducer {
 }
 
 fn reserve_bytes(shared: &ProducerShared, bytes: usize) -> bool {
+    reserve_bytes_up_to(shared, bytes, shared.capacity_bytes)
+}
+
+fn reserve_bytes_up_to(shared: &ProducerShared, bytes: usize, ceiling: usize) -> bool {
     let mut current = shared.queued_bytes.load(Ordering::Acquire);
     loop {
         let Some(next) = current.checked_add(bytes) else {
             return false;
         };
-        if next > shared.capacity_bytes {
+        if next > ceiling {
             return false;
         }
         match shared.queued_bytes.compare_exchange_weak(
@@ -407,8 +509,19 @@ fn reserve_bytes(shared: &ProducerShared, bytes: usize) -> bool {
 }
 
 fn release_bytes(shared: &ProducerShared, bytes: usize) {
+    let _gate = lock(&shared.credit_gate);
     let previous = shared.queued_bytes.fetch_sub(bytes, Ordering::AcqRel);
     debug_assert!(previous >= bytes);
+    // Pair with the waiter's final capacity check to avoid a missed wakeup.
+    shared.credit_available.notify_all();
+}
+
+fn release_work_bytes(shared: &ProducerShared, bytes: usize) {
+    let _gate = lock(&shared.credit_gate);
+    let previous_work = shared.work_bytes.fetch_sub(bytes, Ordering::AcqRel);
+    let previous = shared.queued_bytes.fetch_sub(bytes, Ordering::AcqRel);
+    debug_assert!(previous_work >= bytes && previous >= bytes);
+    shared.credit_available.notify_all();
 }
 
 fn record_loss(shared: &ProducerShared, loss: ObservationLossWatermark) {

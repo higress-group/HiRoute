@@ -23,6 +23,9 @@ current authority/profile checks still run, and cleanup rebuilds the template.
 Template serialization borrows the existing JSON tree while expanding its wire
 markers. Replay serializes each canonical range under its existing memory gate
 and derives range lengths from the same checked stream counters.
+Production ingress moves its native tree into the canonical request; context
+identity keeps only the original `metadata` and `client_metadata` roots so
+externalizing native content cannot change Claude/Codex identity enrichment.
 
 [Optional content encoding](src/observation/content_work.rs) uses one ordered,
 bounded worker per observation channel set. Its immutable snapshot retains only
@@ -32,6 +35,11 @@ their transcript roots remain related. Accepted-output history and usage update
 at delivery; neither waits for content encoding or SQLite. Capacity or capture
 failure reports a gap and stops dependent capture for that request. The final
 Replay owner releases files and reservations on all paths.
+The existing content queue splits its byte ceiling between optional jobs and
+encoded records. Only the content worker can park on record credit, with a
+bounded active-job wait; foreground producers remain nonblocking. Delivery
+releases credit through a condition variable, and a stalled job reports loss
+without publishing dependent completion roots.
 
 Ordinary Responses, Chat Completions, Messages and model-catalog clients may carry
 their HiRoute connection token as `Authorization: Bearer <token>`. The current

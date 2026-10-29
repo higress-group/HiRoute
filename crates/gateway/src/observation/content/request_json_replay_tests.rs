@@ -785,3 +785,98 @@ fn active_snapshot_does_not_reduce_encoded_capacity_while_the_sink_is_blocked() 
     }
     assert_eq!(captured, text.as_bytes());
 }
+
+#[test]
+fn dense_async_history_waits_for_record_credit_and_keeps_every_original_byte() {
+    struct Gate(Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>);
+    impl Drop for Gate {
+        fn drop(&mut self) {
+            *self.0.0.lock().unwrap() = true;
+            self.0.1.notify_all();
+        }
+    }
+    struct HeldSink {
+        gate: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+        records: mpsc::Sender<Value>,
+    }
+    impl ObservationRecordSink for HeldSink {
+        fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack> {
+            let mut open = self.gate.0.lock().unwrap();
+            while !*open {
+                open = self.gate.1.wait(open).unwrap();
+            }
+            self.records
+                .send(serde_json::from_slice(record.payload()).unwrap())
+                .unwrap();
+            Ok(accounted_acknowledgement(record))
+        }
+    }
+    let fixture = ReplayFixture::new(1024 * 1024);
+    let messages: Vec<_> = (0..256)
+        .map(|index| {
+            json!({
+                "role":"user", "content":format!("part-{index}:{}", "x".repeat(512))
+            })
+        })
+        .collect();
+    let expected: Vec<u8> = messages
+        .iter()
+        .flat_map(|message| message["content"].as_str().unwrap().bytes())
+        .collect();
+    let input = production_request(
+        &json!({"model":"route","input":messages}),
+        &fixture.store,
+        0,
+    );
+    fixture
+        .store
+        .prevalidate(&crate::content_ref::model_content_refs(&input))
+        .unwrap();
+    let gate = Gate(Arc::new((
+        std::sync::Mutex::new(false),
+        std::sync::Condvar::new(),
+    )));
+    let (sender, receiver) = mpsc::channel();
+    let observation = request_with_sinks_capacity(
+        OtelContentPolicy::Disabled,
+        DiagnosticsPort::default(),
+        true,
+        GatewayObservationSinks {
+            conversation_content: Arc::new(HeldSink {
+                gate: gate.0.clone(),
+                records: sender,
+            }),
+            ..GatewayObservationSinks::discard()
+        },
+        512 * 1024,
+    );
+    observation.capture_request_async(&input, &fixture.store);
+    assert!(observation.inner.async_content.get().is_some());
+    // The caller already returned. Park the optional encoder behind the exact
+    // full-record boundary, rather than depending on a slow-sink sleep.
+    observation
+        .inner
+        .channels
+        .content
+        .wait_until_credit_blocked();
+    assert!(receiver.try_recv().is_err());
+    drop(input);
+    drop(gate);
+    observation.inner.channels.content_work.flush(&observation);
+    let mut captured = Vec::new();
+    loop {
+        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(record["loss_watermark"].is_null(), "{record}");
+        assert_ne!(record["phase"], "abort", "{record}");
+        if record["phase"] == "append" {
+            captured.extend(decoded_base64(
+                record["canonical_bytes_base64"].as_str().unwrap(),
+            ));
+        }
+        if record["phase"] == "finish" {
+            break;
+        }
+    }
+    assert_eq!(captured, expected);
+    assert!(!observation.inner.async_content.get().unwrap().failed());
+}

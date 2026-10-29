@@ -40,6 +40,10 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
+    #[cfg(test)]
+    pub(super) fn wait_until_credit_blocked(&self) {
+        self.inner.as_ref().unwrap().wait_until_credit_blocked();
+    }
     pub(super) fn work_can_fit(&self, bytes: usize) -> bool {
         self.inner
             .as_ref()
@@ -109,18 +113,34 @@ impl ChannelProducer {
         T: Serialize,
         F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
     {
+        self.publish_with_credit(timing, None, build);
+    }
+
+    pub(super) fn publish_with_credit<T, F>(
+        &self,
+        timing: Option<super::latency::RequestLatency>,
+        deadline: Option<std::time::Instant>,
+        build: F,
+    ) -> bool
+    where
+        T: Serialize,
+        F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
+    {
         let component = Arc::clone(&self.component);
         let revision = Arc::clone(&self.revision);
         let Some(inner) = &self.inner else {
-            return;
+            return true;
         };
-        inner.try_publish_timed(timing, move |stamp| {
-            let producer = descriptor(&stamp, &component, &revision);
-            let loss = stamp.loss_watermark.map(loss_watermark);
-            serde_json::to_vec(&build(producer, stamp.sequence, loss)).unwrap_or_else(|_| {
-                br#"{"schema_version":"hiroute.observation.serialization-failure/v1"}"#.to_vec()
-            })
-        });
+        matches!(
+            inner.publish_timed(timing, deadline, move |stamp| {
+                let producer = descriptor(&stamp, &component, &revision);
+                let loss = stamp.loss_watermark.map(loss_watermark);
+                serde_json::to_vec(&build(producer, stamp.sequence, loss)).unwrap_or_else(|_| {
+                    br#"{"schema_version":"hiroute.observation.serialization-failure/v1"}"#.to_vec()
+                })
+            }),
+            bounded::ObservationPublishOutcome::Enqueued { .. }
+        )
     }
 }
 
