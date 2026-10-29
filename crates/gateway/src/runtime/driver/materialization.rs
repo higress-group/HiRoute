@@ -432,7 +432,7 @@ pub(super) async fn materialize_attempt(
             if execution.connector_runtime == hiroute_domain::ConnectorRuntimeKind::CpaBridge {
                 return Err(Arc::from(MATERIALIZATION_AUTHORITY_FAILED));
             }
-            let target = transport_target_for_profile(plan, &lease_target)?;
+            let target = transport_target_for_profile(plan, lease_target)?;
             provider.target_resolver.resolve(target, &scope).await?
         }
     };

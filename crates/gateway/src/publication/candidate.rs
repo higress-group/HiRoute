@@ -97,10 +97,9 @@ impl CompiledCandidate {
         }
         if published.protocol_profile == facts.protocol_profile
             && published.profile_digest == facts.profile_digest
+            && let Some(prepared) = self.executions.get(&request.ingress_protocol)
         {
-            if let Some(prepared) = self.executions.get(&request.ingress_protocol) {
-                return Ok(prepared.clone());
-            }
+            return Ok(prepared.clone());
         }
         PreparedCandidateExecution::compile(&self.binding, facts)
     }

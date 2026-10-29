@@ -21,6 +21,7 @@ pub(crate) use continuation::{
     with_active_response_delivery,
 };
 pub use ingress::decode_ingress_request;
+#[cfg(test)]
 pub(crate) use ingress::decode_ingress_request_with_replay;
 pub(crate) use ingress::decode_owned_ingress_request_with_replay;
 pub use request::{
