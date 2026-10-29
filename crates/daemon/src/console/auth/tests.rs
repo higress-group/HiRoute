@@ -25,12 +25,16 @@ fn audit_accepts_catalog_versioned_commands_without_weakening_field_bounds() {
     let session = auth
         .exchange_launch(&code, peer(), &local_target().origin)
         .unwrap();
-    for command in ["preview_compute_save_v3", "apply_compute_change_v3"] {
+    for command in ["preview_compute_save_v3", "save_decision_service_v2"] {
         assert!(hiroute_product_session::catalog::product_command(command).is_some());
         auth.audit_command(&session.session, "1234567890abcdef", command, None)
             .unwrap();
     }
-    for command in ["Preview_compute_save_v3", "preview-compute-save-v3", "bad\ncommand"] {
+    for command in [
+        "Preview_compute_save_v3",
+        "preview-compute-save-v3",
+        "bad\ncommand",
+    ] {
         assert_eq!(
             auth.audit_command(&session.session, "1234567890abcdef", command, None),
             Err(AuthError::Invalid)

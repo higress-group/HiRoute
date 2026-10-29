@@ -389,7 +389,9 @@ impl ConsoleAuth {
     ) -> Result<(), AuthError> {
         if !valid_context(context)
             || command.len() > 80
-            || !command.bytes().all(|c| c.is_ascii_lowercase() || c == b'_')
+            || !command
+                .bytes()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_')
             || operation_id.is_some_and(|v| v.len() > 256 || v.chars().any(char::is_control))
         {
             return Err(AuthError::Invalid);
