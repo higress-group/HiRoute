@@ -37,23 +37,23 @@ pub(crate) use store::{
     ContextHoldKey, ContextHoldStore, HistoryContinuity, HoldCompletion, HoldTicket, PreparedHold,
 };
 
-pub(crate) struct ContextRequest<'a> {
+pub(crate) struct ContextRequest<'a, 'request> {
     pub(crate) ingress: IngressProtocol,
     pub(crate) headers: &'a HeaderMap,
     pub(crate) document: &'a Value,
-    pub(crate) request: &'a ModelRequestIRV1,
-    pub(crate) semantic_request: Option<&'a ModelRequestIRV1>,
+    pub(crate) request: &'request ModelRequestIRV1,
+    pub(crate) semantic_request: Option<&'request ModelRequestIRV1>,
     pub(crate) user_origin_unverified: bool,
     pub(crate) replay: &'a ReplayStore,
 }
 
-pub(crate) fn prepare_context(
+pub(crate) fn prepare_context<'request>(
     store: &ContextHoldStore,
     observation_key: &[u8; 32],
     authorized: &AuthorizedRequestPlan,
-    input: ContextRequest<'_>,
+    input: ContextRequest<'_, 'request>,
     now: Instant,
-) -> (ContextIdentityFacts, Option<PreparedHold>, bool) {
+) -> (ContextIdentityFacts, Option<PreparedHold<'request>>, bool) {
     let ContextRequest {
         ingress,
         headers,
@@ -92,7 +92,7 @@ pub(crate) fn prepare_context(
         }?
         .with_semantic_request(semantic_request)?;
         let key = ContextHoldKey::from_request(authorized, ingress, &identity, &hold_key)?;
-        let mut prepared = store.prepare(key, &history, now)?;
+        let mut prepared = store.prepare_request(key, &history, request, now)?;
         prepared.set_native(native);
         native_user_unavailable = prepared.native_user_unavailable();
         if !prepared.history_can_capture() {

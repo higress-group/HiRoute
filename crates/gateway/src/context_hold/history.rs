@@ -14,6 +14,16 @@ use crate::server::core_runtime::model_ir::{
 
 use super::fingerprint::FingerprintBudget;
 
+#[cfg(test)]
+std::thread_local! {
+    static MEASUREMENT_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(super) fn measurement_count() -> usize {
+    MEASUREMENT_COUNT.with(std::cell::Cell::get)
+}
+
 #[derive(Clone)]
 pub(crate) struct HistoryEvidence<'a> {
     pub(crate) instruction_digest: [u8; 32],
@@ -26,6 +36,7 @@ pub(crate) struct HistoryEvidence<'a> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HistoryDigests {
     pub(crate) message_count: usize,
+    pub(crate) prefix_message_count: Option<usize>,
     pub(crate) prefix_digest: Option<[u8; 32]>,
     pub(crate) complete_digest: [u8; 32],
     pub(crate) semantic_prefix_digest: Option<[u8; 32]>,
@@ -72,6 +83,21 @@ pub(crate) fn branch_anchors(
 }
 
 impl<'a> HistoryEvidence<'a> {
+    pub(super) fn matches_original(&self, request: &ModelRequestIRV1, key: &[u8; 32]) -> bool {
+        std::ptr::eq(self.request, request)
+            && self.key == key
+            && self
+                .semantic_request
+                .is_none_or(|semantic| std::ptr::eq(semantic, request))
+    }
+
+    pub(super) fn preceding_assistant_index(&self) -> Option<usize> {
+        self.request
+            .messages
+            .iter()
+            .rposition(|message| message.role == MessageRole::Assistant)
+    }
+
     #[cfg(test)]
     pub(crate) fn branch_anchors(&self, positions: &[usize]) -> Option<super::HistoryAnchors> {
         branch_anchors(self.request, self.key, self.replay, positions)
@@ -98,6 +124,8 @@ impl<'a> HistoryEvidence<'a> {
     /// only masks instruction-role text; positions and all other parts stay exact.
     /// No per-message digest array survives the call.
     pub(crate) fn measure(&self, prefix_count: Option<usize>) -> Option<HistoryDigests> {
+        #[cfg(test)]
+        MEASUREMENT_COUNT.with(|count| count.set(count.get() + 1));
         let semantic_request = self.semantic_request.unwrap_or(self.request);
         if semantic_request.messages.len() != self.request.messages.len() {
             return None;
@@ -140,6 +168,7 @@ impl<'a> HistoryEvidence<'a> {
         }
         Some(HistoryDigests {
             message_count: self.request.messages.len(),
+            prefix_message_count: prefix_count,
             // An incomplete projection must never establish provider/KV affinity.
             prefix_digest: if self.request.native_only {
                 None
