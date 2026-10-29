@@ -108,6 +108,17 @@ fn regression_cold_catalog_outage_is_unavailable_without_reopening_revoked_admis
         ));
         assert_eq!(empty.calls.lock().len(), calls);
 
+        // Reapplying saved Enabled authority admits maintenance, not execution
+        // from the invalidated catalog while recovery is still pending.
+        restored
+            .apply_account_management(&account, 7, CpaSourceManagementState::Enabled)
+            .unwrap();
+        assert!(matches!(
+            lease_saved_target(&restored, &target),
+            Err(CpaAttemptError::Unavailable)
+        ));
+        assert_eq!(empty.calls.lock().len(), calls);
+
         restored
             .apply_account_management(&account, 8, CpaSourceManagementState::Disabled)
             .unwrap();

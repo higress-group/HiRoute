@@ -133,6 +133,11 @@ impl ManagedCpaRuntime {
                     matches!(result, Err(CpaLifecycleError::ControlUnavailable)),
                 );
             }
+        } else if result.is_ok() {
+            let mut admission = self.admission.state.lock();
+            if crate::request_context::check().is_ok() {
+                admission.preparation_unavailable = false;
+            }
         }
         result
     }
@@ -287,10 +292,10 @@ impl ManagedCpaRuntime {
         let resumed = state == CpaSourceManagementState::Enabled
             && std::mem::replace(&mut admission.subscription_execution_suspended, false);
         if changed || resumed {
-            admission.preparation_unavailable = false;
             if state == CpaSourceManagementState::Enabled {
                 admission.needs_account_validation = true;
             } else {
+                admission.preparation_unavailable = false;
                 admission.revoked_accounts.insert(account_digest.to_owned());
             }
             self.admission.advance();
