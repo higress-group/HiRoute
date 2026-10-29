@@ -2,8 +2,9 @@
 use crate::WriterCycleOutcome;
 use hiroute_domain::{
     AttemptId, CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1, ContentCompleteness,
-    ContentDownstreamDeliveryV2, ContentId, ContentMode, ConversationContentDirectionV2, EventId,
-    MessageInstanceId, ObservationQueryPort, ReceiptId, TranscriptRoot,
+    ContentDownstreamDeliveryV2, ContentId, ContentMode, ContentRefV2,
+    ConversationContentDirectionV2, EventId, MessageInstanceId, ObservationQueryPort, ReceiptId,
+    TranscriptRoot,
 };
 
 use super::support::*;
@@ -62,6 +63,12 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
                 authority()
                     .content_blob_digest(CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1, response_bytes),
             );
+            event.content_ref = Some(ContentRefV2 {
+                content_id: event.content_id.clone().unwrap(),
+                digest: event.content_blob_digest.clone().unwrap(),
+                byte_count: response_bytes.len() as u64,
+                media_type: CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1.into(),
+            });
             event.transport_frame_id = Some("accepted-frame".into());
             event.downstream_delivery =
                 Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted);
