@@ -76,6 +76,34 @@ fn concurrent_local_work_reference_assesses_each_actual_session_predecessor() {
     run_reference(&wire, 8, 0, Some("memory"), 2);
 }
 
+#[test]
+fn concurrent_tool_rich_history_preserves_capture_and_actual_predecessors() {
+    // Two ordinary requests may finish parsing before the sole optional
+    // encoder takes its first snapshot. Exercise that pressure with public,
+    // synthetic tool schemas rather than relying on a private conversation.
+    let properties = (0..12)
+        .map(|index| {
+            (
+                format!("field_{index}"),
+                json!({"type":"string","description":"A bounded tool argument."}),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+    let wire = json!({
+        "messages":(0..237).map(|index| json!({
+            "role":if index % 2 == 0 {"user"} else {"assistant"},
+            "content":format!("message {index}: {}", "a路由🦀\\\"\n".repeat(80))
+        })).collect::<Vec<_>>(),
+        "tools":(0..21).map(|index| json!({
+            "type":"function","function":{
+                "name":format!("tool_{index}"),"description":"Read-only synthetic tool.",
+                "parameters":{"type":"object","properties":properties}
+            }
+        })).collect::<Vec<_>>()
+    });
+    run_reference(&wire, 8, 0, Some("memory"), 2);
+}
+
 fn is_followup(index: usize, concurrency: usize) -> bool {
     index % (2 * concurrency) >= concurrency
 }
