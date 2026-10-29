@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://hiroute.ai/en/download/">Download</a> ·
   <a href="#get-started">Quickstart</a> ·
-  <a href="#routing-results-with-jev-114">Experiments</a> ·
+  <a href="#how-well-does-the-routing-policy-work">Experiments</a> ·
   <a href="https://hiroute.ai/en/docs/">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -86,28 +86,35 @@ changes and choose whether to publish it.
 You can also tailor the judgment criteria to your own tasks and compare prompt changes
 using the [published evaluation method](experiments/system-one-routing-paper/README.md).
 
-## Routing results with Jev 1.14
+## How well does the routing policy work?
 
-In a matched comparison, both approaches receive the same context and complete routing
-policy. One selects a model group directly; the other answers the three questions and
-lets HiRoute combine the answers.
+Both approaches receive the same task context and complete routing policy. One selects
+a model group directly; the other answers three questions and lets HiRoute combine the
+answers. The comparison uses engineering workflows and mathematical dependency states.
 
-![Jev 1.14 final group-selection accuracy: engineering 69.23% to 96.15%; mathematics 62.50% to 97.92%](decision-extensions/assets/readme-jev114-en.svg)
+![Final group-selection accuracy on the reviewed subset: Jev 1.14 engineering 67.31% to 96.15% and mathematics 54.86% to 100.00%; OpenAI Decisions engineering 50.00% to 91.35% and mathematics 65.97% to 88.89%](decision-extensions/assets/readme-routing-comparison-en.svg)
 
-| Scenario | Full-policy direct selection | Three-question routing |
-| --- | ---: | ---: |
-| Engineering | 69.23% | **96.15%** |
-| Mathematics | 62.50% | **97.92%** |
+| Scenario | Decision model | Full-policy direct selection | Three-question routing |
+| --- | --- | ---: | ---: |
+| Engineering | Jev 1.14 | 67.31% | **96.15%** |
+| Engineering | OpenAI Decisions / gpt-6-luna | 50.00% | **91.35%** |
+| Mathematical dependency states | Jev 1.14 | 54.86% | **100.00%** |
+| Mathematical dependency states | OpenAI Decisions / gpt-6-luna | 65.97% | **88.89%** |
 
-Final group-selection accuracy, with equal weight per workflow, from the 28 October 2026
-rerun of existing cases. Engineering: 26 workflows, 86 determinate cases out of 104;
-mathematics: six workflows, 48 determinate dependency-state cases. Each condition ran once
-in an interleaved campaign. Boundary and insufficient-evidence cases are reported separately.
-These controlled results measure selection under the stated policy, not task-completion
-rates or realized savings.
+**Metric:** final group-selection accuracy, averaged equally across workflow families.
+Engineering has 80 determinate cases across 26 workflows; mathematics has 40 across six.
+This is a **post-hoc reviewed subset**, with the same exclusions applied to every model
+and both formats after inspecting outputs. Original labels and full-population results
+remain available. Jev calls ran on 28 October 2026 and OpenAI calls on 29 October; inputs
+and policy match, but the calls were not contemporaneous.
 
-[Study and method](experiments/system-one-routing-paper/README.md) ·
-[Datasets and review](experiments/system-one-routing-paper/DATA-CARD.md)
+The results measure conformance to the stated routing policy, not task completion or
+realized savings. OpenAI was evaluated through a research adapter, not a tested product
+integration. Use the [study and cases](experiments/system-one-routing-paper/README.md)
+to evaluate decision prompts against your own tasks.
+
+[Comparison, exclusions and saved responses](experiments/system-one-routing-paper/supplements/decision-interface-transfer/README.md) ·
+[Dataset construction and review](experiments/system-one-routing-paper/DATA-CARD.md)
 
 ## Get started
 

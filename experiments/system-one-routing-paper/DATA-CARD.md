@@ -176,3 +176,17 @@ New relabeling, prompts or samples should receive distinct versions and results.
 Unless a file carries another notice, this release follows the repository's
 [Apache License 2.0](../../LICENSE). Citation metadata will be finalized with the
 paper authors before arXiv submission; no paper DOI or arXiv identifier is invented.
+
+
+## Native-interface transfer: post-hoc reviewed subset (29 October 2026)
+
+The [transfer supplement](supplements/decision-interface-transfer/README.md) reuses
+104 engineering and 48 targeted mathematical records. Jev calls ran on 28 October;
+OpenAI Decisions calls ran on 29 October. A subsequent non-blind assistant review
+excluded six engineering and eight mathematical records with inferred prerequisite
+or cross-target operation-policy ambiguity. The same IDs are excluded for every
+backend, output form and language; original labels and complete responses remain.
+The retained 138 records contain 120 determinate actions. This is a post-hoc subset,
+not a newly independent test. Its mathematical enhanced/standard label mixture is
+24/16 rather than the source panel's 24/24, and all its current tasks are routine.
+The report therefore keeps full-population and group-specific results visible.

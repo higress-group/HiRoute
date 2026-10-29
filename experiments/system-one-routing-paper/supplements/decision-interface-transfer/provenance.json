@@ -1,0 +1,33 @@
+{
+  "source_campaigns": [
+    {
+      "name": "matched-engineering-mathematics",
+      "date": "2026-10-28",
+      "calls": 608,
+      "freeze_sha256": "301942f1fec2d3eb0acf2e70659e0cd178ae46d3a4a3ca41ee8fe6efffabd5e1"
+    },
+    {
+      "name": "openai-decisions-transfer",
+      "date": "2026-10-29",
+      "calls": 304,
+      "freeze_sha256": "74b2691bda7fcffda24b3997c0da3785906c20dd69bc4607bbc637a936dab54c"
+    }
+  ],
+  "scope": "Semantic requests and answer objects retained; hosted-access namespaces, remote response identifiers, provider fields, operational timestamps and workstation configuration omitted. Requested Jev releases and returned dated versions retained. OpenAI evaluated model remains gpt-6-luna.",
+  "annotation_changes": 0,
+  "new_calls_for_selection": 0,
+  "repeats_per_condition": 1,
+  "thresholds": {
+    "simple": 0.5,
+    "historical_score_0_to_2": 1,
+    "applicability": 0.5
+  },
+  "source_hashes": {
+    "contemporaneous-engineering-math-20261028/requests.jsonl": "49c8f10139230e6c28dfecaf1fba0265673590c667c621affb957f5a96c25c43",
+    "contemporaneous-engineering-math-20261028/events.jsonl": "d38cbfe5d9cf7dec48c01c12970fedc09875702d9a10c5665cc44b1b3260dc51",
+    "contemporaneous-engineering-math-20261028/predictions.jsonl": "e80158473234e677a1dccd3866462ca9e7a1b6cbd90921353816f6ba691a45c1",
+    "openai-decisions-full-comparison-20261029/requests.jsonl": "6f61dad4d6ff0b2b5434b11ccc1eee3e0812b19abdd04e88b93c01b93fd549b0",
+    "openai-decisions-full-comparison-20261029/events.jsonl": "8f770f2e9ec9c1d9e577d865b3152e94048d63542f8db21ec841455f58e18e19",
+    "openai-decisions-full-comparison-20261029/predictions.jsonl": "7d5c2b9f3d644ad27e35f2d95256bb9c6559dd4af7fec145bb39509e64060fe2"
+  }
+}

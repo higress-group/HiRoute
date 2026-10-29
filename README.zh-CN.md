@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://hiroute.ai/download/">下载</a> ·
   <a href="#快速开始">快速开始</a> ·
-  <a href="#jev-114-选模实验">实验结果</a> ·
+  <a href="#选模效果用实验检验">实验结果</a> ·
   <a href="https://hiroute.ai/docs/">使用文档</a> ·
   <a href="CONTRIBUTING.md">参与贡献</a>
 </p>
@@ -77,25 +77,31 @@ HiRoute 结合这些判断与你的路由计划，选择实际执行的模型。
 也可以按自己的任务调整判断标准，使用[公开评测方法](experiments/system-one-routing-paper/README.md)
 对照检查提示词改动的效果。
 
-## Jev 1.14 选模实验
+## 选模效果，用实验检验
 
-在同轮对照中，两种方法获得相同的上下文与完整选模策略：一种直接选择模型组，另一种分别回答
-三个问题，再由 HiRoute 组合判断。
+两种方法读取相同的任务上下文和完整路由策略：一种直接选择模型组，另一种回答三个问题，
+再由 HiRoute 组合判断。对比覆盖工程工作流和数学依赖状态场景。
 
-![Jev 1.14 最终选组准确率：工程从 69.23% 到 96.15%；数学从 62.50% 到 97.92%](decision-extensions/assets/readme-jev114-zh-CN.svg)
+![复核子集最终选组准确率：Jev 1.14 工程 67.31% 至 96.15%、数学 54.86% 至 100.00%；OpenAI Decisions 工程 50.00% 至 91.35%、数学 65.97% 至 88.89%](decision-extensions/assets/readme-routing-comparison-zh-CN.svg)
 
-| 场景 | 完整策略直接选组 | 三问组合 |
-| --- | ---: | ---: |
-| 工程 | 69.23% | **96.15%** |
-| 数学 | 62.50% | **97.92%** |
+| 场景 | 决策模型 | 完整策略单问 | 三问组合 |
+| --- | --- | ---: | ---: |
+| 工程 | Jev 1.14 | 67.31% | **96.15%** |
+| 工程 | OpenAI Decisions / gpt-6-luna | 50.00% | **91.35%** |
+| 数学依赖状态 | Jev 1.14 | 54.86% | **100.00%** |
+| 数学依赖状态 | OpenAI Decisions / gpt-6-luna | 65.97% | **88.89%** |
 
-指标为最终选组准确率，按工作流等权统计，来自 2026 年 10 月 28 日对已有案例的重测。
-工程包含 26 个工作流、104 条记录，其中 86 条有明确选组答案；数学包含 6 个工作流、48 条明确的
-依赖状态案例。每个条件调用一次，同轮交错执行，边界与证据不足案例单列。
-这些受控结果衡量指定策略下的选组表现，不代表任务完成率或实际节省比例。
+**口径：最终选组准确率，按工作流族等权平均。**工程含 26 个工作流中的 80 条确定选组样本，
+数学含 6 个工作流中的 40 条。这是查看输出后的**事后复核子集**，所有模型和两种方法应用
+相同排除清单，原标签和完整集结果保留。Jev、OpenAI 分别于 2026 年 10 月 28、29 日调用，
+输入和策略匹配，但并非同期调用。
 
-[研究与方法](experiments/system-one-routing-paper/README.md) ·
-[评测集与审核说明](experiments/system-one-routing-paper/DATA-CARD.md)
+结果衡量对既定路由策略的遵循程度，不代表任务完成率或实际节省比例。OpenAI 使用研究适配器，
+不表示已完成产品接入验证。也可以参照[实验方法与案例](experiments/system-one-routing-paper/README.md)，
+用自己的真实任务检验和改进决策提示词。
+
+[对比、排除清单与原始语义回答](experiments/system-one-routing-paper/supplements/decision-interface-transfer/README.md) ·
+[数据构建与复核](experiments/system-one-routing-paper/DATA-CARD.md)
 
 ## 快速开始
 

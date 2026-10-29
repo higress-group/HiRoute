@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="750" viewBox="0 0 1120 750" role="img" aria-labelledby="title desc">
+<title id="title">How three questions change model-group selection</title>
+<desc id="desc">Post-hoc reviewed subset · Final group-selection accuracy · Equal weight per workflow family</desc>
+<rect width="1120" height="750" rx="16" fill="#ffffff"/>
+<g font-family="Arial, PingFang SC, Microsoft YaHei, sans-serif" fill="#17243b">
+<text x="38" y="46" font-size="29" font-weight="700" fill="#17243b">How three questions change model-group selection</text>
+<text x="38" y="77" font-size="17" font-weight="400" fill="#54637a">Post-hoc reviewed subset · Final group-selection accuracy · Equal weight per workflow family</text>
+<rect x="38" y="97" width="19" height="19" rx="3" fill="#7995bd"/>
+<text x="66" y="113" font-size="17" font-weight="400" fill="#17243b">Full-policy direct selection</text>
+<rect x="390" y="97" width="19" height="19" rx="3" fill="#6b59e8"/>
+<text x="418" y="113" font-size="17" font-weight="400" fill="#17243b">Three-question routing</text>
+<path d="M330.0 176V357 M330.0 446V627" stroke="#e4e9f0" stroke-width="1"/>
+<text x="330.0" y="655" font-size="16" font-weight="400" fill="#607089" text-anchor="middle">0%</text>
+<path d="M500.0 176V357 M500.0 446V627" stroke="#e4e9f0" stroke-width="1"/>
+<text x="500.0" y="655" font-size="16" font-weight="400" fill="#607089" text-anchor="middle">25%</text>
+<path d="M670.0 176V357 M670.0 446V627" stroke="#e4e9f0" stroke-width="1"/>
+<text x="670.0" y="655" font-size="16" font-weight="400" fill="#607089" text-anchor="middle">50%</text>
+<path d="M840.0 176V357 M840.0 446V627" stroke="#e4e9f0" stroke-width="1"/>
+<text x="840.0" y="655" font-size="16" font-weight="400" fill="#607089" text-anchor="middle">75%</text>
+<path d="M1010.0 176V357 M1010.0 446V627" stroke="#e4e9f0" stroke-width="1"/>
+<text x="1010.0" y="655" font-size="16" font-weight="400" fill="#607089" text-anchor="middle">100%</text>
+<text x="38" y="151" font-size="21" font-weight="700" fill="#17243b">Engineering workflows</text>
+<text x="1035" y="151" font-size="16" font-weight="400" fill="#607089" text-anchor="end">26 workflows · 80 determinate cases</text>
+<text x="38" y="211" font-size="20" font-weight="600" fill="#17243b">Jev 1.14</text>
+<rect x="330" y="186" width="457.6923" height="24" rx="3" fill="#7995bd"/>
+<text x="795.6923076923076" y="205" font-size="18" font-weight="600" fill="#17243b">67.31%</text>
+<rect x="330" y="220" width="653.8462" height="24" rx="3" fill="#6b59e8"/>
+<text x="991.8461538461539" y="239" font-size="18" font-weight="600" fill="#17243b">96.15%</text>
+<text x="38" y="311" font-size="20" font-weight="600" fill="#17243b">OpenAI Decisions</text>
+<text x="38" y="335" font-size="16" font-weight="400" fill="#607089">gpt-6-luna</text>
+<rect x="330" y="286" width="340.0000" height="24" rx="3" fill="#7995bd"/>
+<text x="678.0" y="305" font-size="18" font-weight="600" fill="#17243b">50.00%</text>
+<rect x="330" y="320" width="621.1538" height="24" rx="3" fill="#6b59e8"/>
+<text x="959.1538461538461" y="339" font-size="18" font-weight="600" fill="#17243b">91.35%</text>
+<text x="38" y="421" font-size="21" font-weight="700" fill="#17243b">Mathematical dependency states</text>
+<text x="1035" y="421" font-size="16" font-weight="400" fill="#607089" text-anchor="end">6 workflows · 40 determinate cases</text>
+<text x="38" y="481" font-size="20" font-weight="600" fill="#17243b">Jev 1.14</text>
+<rect x="330" y="456" width="373.0556" height="24" rx="3" fill="#7995bd"/>
+<text x="711.0555555555555" y="475" font-size="18" font-weight="600" fill="#17243b">54.86%</text>
+<rect x="330" y="490" width="680.0000" height="24" rx="3" fill="#6b59e8"/>
+<text x="1018.0" y="509" font-size="18" font-weight="600" fill="#17243b">100.00%</text>
+<text x="38" y="581" font-size="20" font-weight="600" fill="#17243b">OpenAI Decisions</text>
+<text x="38" y="605" font-size="16" font-weight="400" fill="#607089">gpt-6-luna</text>
+<rect x="330" y="556" width="448.6111" height="24" rx="3" fill="#7995bd"/>
+<text x="786.6111111111111" y="575" font-size="18" font-weight="600" fill="#17243b">65.97%</text>
+<rect x="330" y="590" width="604.4444" height="24" rx="3" fill="#6b59e8"/>
+<text x="942.4444444444445" y="609" font-size="18" font-weight="600" fill="#17243b">88.89%</text>
+<text x="38" y="699" font-size="16" font-weight="400" fill="#54637a">Identical exclusions across models and formats; original labels and full-population results retained.</text>
+<text x="38" y="725" font-size="16" font-weight="400" fill="#54637a">Jev: 28 Oct 2026 · OpenAI: 29 Oct 2026 (research adapter). Not a task-completion measure.</text>
+</g></svg>
