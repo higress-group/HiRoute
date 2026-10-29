@@ -362,6 +362,9 @@ impl ByteBoundedObservationProducer {
         });
         if credit_deadline.is_some() && credit.is_none() {
             let sequence = self.shared.next_sequence.fetch_add(1, Ordering::Relaxed);
+            // A refused record still belongs in this request's loss summary,
+            // even though capacity was refused before building its envelope.
+            drop(timing.map(|timing| timing.record()));
             self.restore_and_drop(sequence, ObservationLossReason::QueueBytesExceeded);
             return ObservationPublishOutcome::Dropped { sequence };
         }

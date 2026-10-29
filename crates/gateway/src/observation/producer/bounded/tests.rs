@@ -408,6 +408,17 @@ fn request_timing_follows_bounded_delivery_without_waiting_on_the_request() {
         producer.try_publish_timed(Some(latency.clone()), |_| vec![1; 16_384]),
         ObservationPublishOutcome::Dropped { .. }
     ));
+    let work = producer.reserve_work(producer.work_capacity()).unwrap();
+    assert!(matches!(
+        producer.publish_timed(
+            Some(latency.clone()),
+            Some(Instant::now()),
+            8192,
+            |_| panic!("refused credit must not build an envelope"),
+        ),
+        ObservationPublishOutcome::Dropped { .. }
+    ));
+    drop(work);
     // The request completes while the sink is still blocked. Neither timing nor
     // delivery requires a request-side flush or another worker.
     latency.finish(
@@ -433,9 +444,9 @@ fn request_timing_follows_bounded_delivery_without_waiting_on_the_request() {
         .collect::<Vec<_>>();
     assert_eq!(summaries.len(), 1, "{log}");
     let summary = &summaries[0];
-    assert_eq!(summary["asynchronous"]["records"], 3);
+    assert_eq!(summary["asynchronous"]["records"], 4);
     assert_eq!(summary["asynchronous"]["delivered"], 2);
-    assert_eq!(summary["asynchronous"]["dropped"], 1);
+    assert_eq!(summary["asynchronous"]["dropped"], 2);
     assert!(
         summary["asynchronous"]["queue_wait_max_us"]
             .as_u64()
