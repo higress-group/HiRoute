@@ -9,7 +9,11 @@ pub(super) fn summaries(fixture: &RuntimeFixture, expected: usize) -> Vec<Value>
         .join("daemon/current.jsonl");
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        let log = std::fs::read_to_string(&path).unwrap();
+        let log = match std::fs::read_to_string(&path) {
+            Ok(log) => log,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(error) => panic!("read request timing log: {error}"),
+        };
         let summaries: Vec<_> = log
             .lines()
             .map(|line| serde_json::from_str::<Value>(line).unwrap())

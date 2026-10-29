@@ -622,7 +622,7 @@ fn full_content_work_queue_declares_loss_without_waiting_and_next_request_recove
 
 #[test]
 fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
-    use crate::content_ref::model_content_refs;
+    use crate::content_ref::{JsonValueExt, model_content_refs};
     let fixture = ReplayFixture::new(31);
     let mut input = state_request([json!({"text":"deferred disk input".repeat(1024)})]);
     externalize_model_request(&mut input, &fixture.store, 0).unwrap();
@@ -639,7 +639,7 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
     let ContentPart::ProviderState { state } = &input.messages[0].content[0] else {
         panic!("canonical state fixture")
     };
-    let reference = state.value["text"].as_str().unwrap().content_ref().unwrap();
+    let reference = state.value.content_ref().unwrap();
     fixture.store.truncate_stream_last_byte(&reference).unwrap();
     gate.release();
     observation.inner.channels.content_work.flush(&observation);
