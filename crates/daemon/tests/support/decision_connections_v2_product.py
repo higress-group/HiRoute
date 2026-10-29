@@ -114,6 +114,18 @@ def run(repository):
         source = save_source('save_ready', [{'action': 'add', 'input_candidate': candidate}], 'decision-add-key')
         assert len(source['keys']) == 2, source
         source_view = next(row for row in data('decision sources list')['sources'] if row['source_id'] == product.source_id)
+        compatible = data('decision connections options --provider compatible')
+        assert compatible['selected_provider']['wire_protocol'] is None
+        legacy = data('decision services options --provider compatible')
+        assert legacy['selected_provider']['kind'] == 'system_one'
+        command = ('decision connections apply --id decision/compatible --name Compatible '
+            '--provider compatible --model fixture --endpoint '
+            f'http://127.0.0.1:{endpoint.server_port}/v1/decisions --source {product.source_id}')
+        code, missing = product.public_cli(command, success=False)
+        assert code != 0 and missing['data']['required_choices'] == ['--wire-protocol'], missing
+        for codec in ('system_one', 'openai_decisions'):
+            preview = data(command + ' --wire-protocol ' + codec)
+            assert preview['normalized_spec']['desired_state']['change']['service']['connection']['wire_protocol'] == codec
         shared = {'schema': 'hiroute.decision-service/v2', 'id': 'decision/shared', 'revision': 1,
             'name': 'Shared loopback', 'connection': {'kind': 'native', 'provider': 'openai',
                 'wire_protocol': 'openai_decisions', 'model': 'gpt-6-luna',
@@ -121,8 +133,29 @@ def run(repository):
                 'authentication': {'kind': 'shared_source', 'source_id': product.source_id,
                                    'source_lineage_digest': source_view['lineage_digest']}}}
         before = len(Endpoint.requests)
-        mutate({'id': shared['id'], 'expected_revision': 0, 'service': shared,
-                'expected_source_revisions': [{'source_id': product.source_id, 'revision': source_view['revision']}]}, 'decision-shared-create')
+        change = {'id': shared['id'], 'expected_revision': 0, 'service': shared,
+                  'expected_source_revisions': [{'source_id': product.source_id, 'revision': source_view['revision']}]}
+        stale_change = copy.deepcopy(change)
+        stale_change['expected_source_revisions'][0]['revision'] += 1
+        def spec(value):
+            return {'schema_version': V1, 'command_id': 'decision.connections.apply',
+                    'resource_id': shared['id'], 'desired_state': {'change': value}}
+        code, rejected = product.public_cli('decision connections apply',
+            {'schema_version': V1, 'spec': spec(stale_change)}, success=False)
+        assert code != 0 and rejected['error']['code'] == 'REVISION_CONFLICT', rejected
+        old_preview = data('decision connections apply', {'schema_version': V1, 'spec': spec(change)})
+        save_source('save_disabled', [], 'decision-conflict-disable')
+        save_source('save_ready', [], 'decision-conflict-enable')
+        source_view = next(row for row in data('decision sources list')['sources'] if row['source_id'] == product.source_id)
+        change['expected_source_revisions'][0]['revision'] = source_view['revision']
+        fresh_preview = data('decision connections apply', {'schema_version': V1, 'spec': spec(change)})
+        # Use fresh overall revisions to exercise the per-source CAS during Apply,
+        # rather than failing at the earlier whole-store revision check.
+        code, rejected = product.public_cli('decision connections apply', {'schema_version': V1,
+            'spec': old_preview['normalized_spec'], 'accept_digest': old_preview['change_digest'],
+            'expected_revisions': fresh_preview['expected_revisions'], 'idempotency_key': 'decision-stale-apply'}, success=False)
+        assert code != 0 and rejected['error']['code'] == 'REVISION_CONFLICT', rejected
+        mutate(change, 'decision-shared-create')
         assert len(Endpoint.requests) == before, 'save called the provider'
         view = current(shared['id'])
         result = test(view)
@@ -228,7 +261,8 @@ def run(repository):
             'cases': ['save-without-network', 'exact-admission', '401-key-failover', '400-no-retry',
                       'stale-digest', 'disabled-source', 'restart', 'published-gateway-route',
                       'frozen-revision', 'source-switch', 'independent-switch',
-                      'published-source-disable']}), flush=True)
+                      'published-source-disable', 'explicit-compatible-codec',
+                      'stale-source-preview-and-apply']}), flush=True)
     finally:
         if model_upstream is not None:
             model_upstream.close()

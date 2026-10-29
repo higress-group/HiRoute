@@ -39,7 +39,9 @@ fn catalog() -> Value {
 fn provider_options(client: Option<&LocalControlClient>) -> Value {
     let mut providers = catalog()["providers"].as_array().unwrap().clone();
     for provider in &mut providers {
-        if provider.get("wire_protocol").is_none() {
+        if provider["id"] == "compatible" {
+            provider["wire_protocol"] = Value::Null;
+        } else if provider.get("wire_protocol").is_none() {
             provider["wire_protocol"] = json!("system_one");
         }
     }
@@ -207,6 +209,12 @@ pub(super) fn prepare(client: &LocalControlClient, options: &[String]) -> Result
                 .or_else(|| preset.and_then(|preset| preset["model"].as_str()))
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| choices(&["--model"], json!({})))?;
+            if provider == "compatible" && !flags.has("--wire-protocol") {
+                return Err(choices(
+                    &["--wire-protocol"],
+                    json!({"wire_protocols":["system_one","openai_decisions"]}),
+                ));
+            }
             let codec = flags
                 .get("--wire-protocol")
                 .or_else(|| {
@@ -323,6 +331,13 @@ mod tests {
         assert_eq!(openai["endpoint"], "https://api.openai.com/v1/decisions");
         assert_eq!(openai["model"], "gpt-6-luna");
         assert_eq!(openai["wire_protocol"], "openai_decisions");
+        let compatible = current["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|provider| provider["id"] == "compatible")
+            .unwrap();
+        assert!(compatible["wire_protocol"].is_null());
         assert!(
             super::super::decision::options(None)["providers"]
                 .as_array()

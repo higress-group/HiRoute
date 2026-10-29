@@ -1049,6 +1049,15 @@ mod classifier_secret_tests;
 mod compute_tests;
 
 #[test]
+fn decision_source_revision_conflict_does_not_change_legacy_identity_errors() {
+    let stale =
+        TransactionError::Preparation(ChangePreparationError::DecisionSourceRevisionConflict);
+    let legacy = TransactionError::Preparation(ChangePreparationError::SourceIdentityMismatch);
+    assert_eq!(stale.error_code(), ErrorCode::RevisionConflict);
+    assert_eq!(legacy.error_code(), ErrorCode::InvalidArguments);
+}
+
+#[test]
 fn qoder_budget_conflict_has_the_same_public_and_terminal_error_code() {
     for error in [
         TransactionError::Port(PortError::new(

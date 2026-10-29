@@ -534,13 +534,12 @@ fn plan_decision_connection<O: ConnectionOptionAuthorizationPort>(
                 })?
                 .secrets,
             );
-        } else if let Some(header) = service.connection.transport().2 {
-            if !prior
+        } else if let Some(header) = service.connection.transport().2
+            && !prior
                 .as_ref()
                 .is_some_and(|old| decision_header_is_reusable(old, service, header))
-            {
-                return Err(ChangePreparationError::SecretInputRequired);
-            }
+        {
+            return Err(ChangePreparationError::SecretInputRequired);
         }
     } else if input.input_slot.is_some() {
         return Err(ChangePreparationError::UnexpectedSecretInput);
@@ -549,8 +548,10 @@ fn plan_decision_connection<O: ConnectionOptionAuthorizationPort>(
     for expected in &change.expected_source_revisions {
         let source = options
             .decision_source(&expected.source_id)?
-            .filter(|source| source.revision == expected.revision)
             .ok_or(ChangePreparationError::SourceIdentityMismatch)?;
+        if source.revision != expected.revision {
+            return Err(ChangePreparationError::DecisionSourceRevisionConflict);
+        }
         let transition = match &change.service {
             Some(service) => register_decision_consumer(&source, service).map(Some),
             None => remove_decision_consumers(&source, &change.id),
@@ -913,6 +914,8 @@ pub enum ChangePreparationError {
     UnknownConnectionOption,
     #[error("the exact Source does not match the verified Connection Option")]
     SourceIdentityMismatch,
+    #[error("the decision source revision changed since it was read")]
+    DecisionSourceRevisionConflict,
     #[error("paid/subscription connection requires explicit materialization")]
     ExplicitMaterializationRequired,
     #[error("this Connection Option does not accept a native Secret")]
