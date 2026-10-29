@@ -243,7 +243,7 @@ impl LocalControlAdapter {
                     Ok(true) => {}
                     Ok(false) => continue,
                     Err(error) => {
-                        self.suspend_saved_subscription_execution(&source);
+                        self.suspend_failed_subscription_restore(&source, &error);
                         let status = lifecycle_failure_presentation(&error);
                         self.set_subscription_maintenance_status(&source.source_id, status, None)?;
                         continue;
@@ -299,7 +299,7 @@ impl LocalControlAdapter {
                             // A newer save already won; this old scan has no lifecycle effect.
                             Ok(false) => {}
                             Err(error) => {
-                                self.suspend_saved_subscription_execution(&source);
+                                self.suspend_failed_subscription_restore(&source, &error);
                                 self.set_subscription_maintenance_status(
                                     &source.source_id,
                                     lifecycle_failure_presentation(&error),
@@ -395,6 +395,22 @@ impl LocalControlAdapter {
                 &source.last_candidate_ref,
                 source.revision,
             );
+        }
+    }
+
+    fn suspend_failed_subscription_restore(
+        &self,
+        source: &ComputeManagementSourceV2,
+        error: &hiroute_cpa_bridge::CpaLifecycleError,
+    ) {
+        // Saved-source recovery already suspends capabilities on a runtime read
+        // failure. Keep its unavailable cause instead of replacing it with an
+        // authorization revocation. Other failures retain explicit suspension.
+        if !matches!(
+            error,
+            hiroute_cpa_bridge::CpaLifecycleError::ControlUnavailable
+        ) {
+            self.suspend_saved_subscription_execution(source);
         }
     }
 
