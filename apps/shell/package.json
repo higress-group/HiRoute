@@ -1,6 +1,6 @@
 {
   "name": "hiroute-windows-shell-ui",
-  "version": "0.3.1",
+  "version": "0.3.2-dev.1",
   "private": true,
   "type": "module",
   "scripts": { "build": "vite build", "tauri": "tauri" },

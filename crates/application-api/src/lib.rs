@@ -172,6 +172,27 @@ mod protocol_tests {
     }
 
     #[test]
+    fn development_builds_retain_exact_client_service_version_matching() {
+        let hello = ClientHelloV1 {
+            api_version: LOCAL_CONTROL_SCHEMA_V2,
+            machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
+            client_name: "version-test".into(),
+            client_version: LOCAL_CONTROL_RELEASE_VERSION.into(),
+        };
+        let server = negotiate_hello(&hello).unwrap();
+        assert_eq!(server.daemon_version, LOCAL_CONTROL_RELEASE_VERSION);
+        assert_eq!(server.release_version, LOCAL_CONTROL_RELEASE_VERSION);
+        let mismatched = ClientHelloV1 {
+            client_version: format!("{LOCAL_CONTROL_RELEASE_VERSION}-different"),
+            ..hello
+        };
+        assert_eq!(
+            negotiate_hello(&mismatched).unwrap_err().code,
+            ErrorCode::InvalidArguments
+        );
+    }
+
+    #[test]
     fn legacy_request_and_unknown_current_fields_are_rejected() {
         let old = serde_json::json!({
             "schema_version": {"major": 1, "minor": 0},

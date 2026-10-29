@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run the PR publisher with real local Git remotes and a strictly offline gh fixture."""
 import json
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -10,6 +11,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 BRANCH = "chore/release-contracts-v1.2.0"
+VERSION_SPEC = importlib.util.spec_from_file_location("product_version", ROOT / "scripts/product-version.py")
+product = importlib.util.module_from_spec(VERSION_SPEC)
+VERSION_SPEC.loader.exec_module(product)
 
 
 class PublicationTests(unittest.TestCase):
@@ -28,8 +32,16 @@ class PublicationTests(unittest.TestCase):
         self.write("crates/local-storage/src/migrations/mod.rs", "pub const LATEST_SCHEMA_VERSION: u32 = 7;\n")
         for path in ("contracts/compatibility-support.v1.json", "contracts/cli/contract-set.v1.json"):
             self.write(path, '{"contract":"released/v1"}\n')
-        for path in ("scripts/release-contracts.py", ".github/scripts/release-contract-pr.sh"):
+        for path in ("scripts/release-contracts.py", "scripts/product-version.py", ".github/scripts/release-contract-pr.sh"):
             self.write(path, (ROOT / path).read_text())
+        self.version_paths = product.VERSION_PATHS
+        for path, name in product.CARGO_PACKAGES.items():
+            self.write(path, f'[package]\nname = "{name}"\nversion = "1.2.0"\n')
+        for path in product.JSON_MANIFESTS:
+            self.write(path, json.dumps({"name": "fixture", "version": "1.2.0"}, indent=2) + '\n')
+        for path in product.NPM_LOCKS:
+            self.write(path, json.dumps({"version": "1.2.0", "packages": {"": {"version": "1.2.0"}}}, indent=2) + '\n')
+        self.write("Cargo.lock", '\n\n'.join(f'[[package]]\nname = "{name}"\nversion = "1.2.0"' for name in product.CARGO_PACKAGES.values()) + '\n')
         self.commit("released producer")
         revision = self.git("rev-parse", "HEAD").strip()
         self.git("tag", "v1.2.0")
@@ -110,7 +122,9 @@ else:
         self.assertEqual(self.remote("refs/heads/main"), self.main)
         first = self.remote("refs/heads/" + BRANCH)
         changed = self.git("diff", "--name-only", self.main, first).splitlines()
-        self.assertEqual(changed, ["contracts/releases/index.v1.json", "contracts/releases/v1.2.0.json"])
+        self.assertEqual(set(changed), {"contracts/releases/index.v1.json", "contracts/releases/v1.2.0.json", *self.version_paths})
+        for path in self.version_paths:
+            self.assertIn('1.2.1-dev.1', self.git('show', first + ':' + path))
         self.assertIn("does not claim migration acceptance", (self.base / "pr-body.md").read_text())
         self.publish()
         self.assertEqual(self.remote("refs/heads/" + BRANCH), first)
@@ -157,6 +171,20 @@ else:
         self.publish(False)
         self.assertEqual(self.remote("refs/heads/" + BRANCH), before)
         self.assertEqual(self.calls(["pr", "create"]), [])
+
+    def test_existing_branch_with_unrelated_changes_in_a_version_manifest_is_rejected(self):
+        self.publish()
+        self.git('fetch', 'origin', BRANCH)
+        self.git('switch', '--detach', 'FETCH_HEAD')
+        path = self.repo / 'apps/desktop/package.json'
+        value = json.loads(path.read_text())
+        value['scripts'] = {'build': 'unrelated command'}
+        path.write_text(json.dumps(value, indent=2) + '\n')
+        self.commit('unrelated manifest content')
+        self.git('push', 'origin', 'HEAD:refs/heads/' + BRANCH)
+        before = self.remote('refs/heads/' + BRANCH)
+        self.publish(False)
+        self.assertEqual(self.remote('refs/heads/' + BRANCH), before)
 
     def test_explicit_replacement_uses_new_branch_and_preserves_old_bytes(self):
         self.publish()

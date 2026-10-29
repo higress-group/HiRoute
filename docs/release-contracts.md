@@ -114,7 +114,12 @@ artifact rows; this workflow consumes the reviewed catalog and published bytes.
 package identities, then publishes the installers/site. Only after those jobs succeed does
 `record-contracts` call [the PR publisher](../.github/scripts/release-contract-pr.sh).
 It reads the verified manifest revision and exact released source, cross-checks published asset
-sizes/digests, and proposes only `contracts/releases/` changes on `chore/release-contracts-<tag>`.
+sizes/digests, and proposes `contracts/releases/` plus the product version fields and
+lockfile entries on `chore/release-contracts-<tag>`. The shared
+[version tool](../scripts/product-version.py) opens the next patch development
+cycle after a stable release when main has not already moved ahead. It preserves
+a newer planned version. Retries accept only those version fields and contract
+records; unrelated edits inside a version manifest remain ownership conflicts.
 
 Normal review/checks and merge into `main` advance the repository's baseline. The workflow never
 approves or merges its own PR. Existing snapshots are immutable; older reruns and previews retain
