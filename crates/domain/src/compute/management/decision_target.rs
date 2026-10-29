@@ -33,7 +33,8 @@ pub struct ComputeDecisionTargetV4 {
 
 /// Match the Gateway's decision endpoint normalization without authorizing another origin.
 pub fn canonical_decision_endpoint(endpoint: &str) -> Result<String, ComputeManagementErrorV2> {
-    if endpoint.len() > 2048 || endpoint.chars().any(char::is_whitespace) {
+    if endpoint.len() > 2048 || endpoint.contains('#') || endpoint.chars().any(char::is_whitespace)
+    {
         return Err(ComputeManagementErrorV2::InvalidTarget);
     }
     let uri: http::Uri = endpoint

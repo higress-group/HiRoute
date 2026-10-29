@@ -490,7 +490,7 @@ pub(crate) fn compile_classifier_mode_authority(
 ) -> Result<Arc<RestBranchClassifierAuthorityV1>, PublicationInstallError> {
     mode.validate()
         .map_err(|_| PublicationInstallError::InvalidPlannerPolicy)?;
-    let (endpoint, timeout_ms, auth_header, system_one_model) = match mode {
+    let (endpoint, timeout_ms, auth_header, system_one_model, wire_protocol) = match mode {
         hiroute_domain::ComplexityClassifierModeV1::DecisionService { service } => {
             let (endpoint, timeout, auth) = service.connection.transport();
             let model = match &service.connection {
@@ -499,7 +499,35 @@ pub(crate) fn compile_classifier_mode_authority(
                 }
                 _ => None,
             };
-            (endpoint, timeout, auth, model)
+            (
+                endpoint,
+                timeout,
+                auth,
+                model,
+                hiroute_domain::DecisionWireProtocolV2::SystemOne,
+            )
+        }
+        hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { service } => {
+            let (endpoint, timeout, auth) = service.connection.transport();
+            match &service.connection {
+                hiroute_domain::DecisionConnectionV2::Native {
+                    model,
+                    wire_protocol,
+                    authentication: hiroute_domain::DecisionAuthenticationV2::Independent { .. },
+                    ..
+                } => (endpoint, timeout, auth, Some(model.clone()), *wire_protocol),
+                hiroute_domain::DecisionConnectionV2::Custom { .. } => (
+                    endpoint,
+                    timeout,
+                    auth,
+                    None,
+                    hiroute_domain::DecisionWireProtocolV2::SystemOne,
+                ),
+                // Shared sources are usable only after exact target/consumer lease wiring.
+                hiroute_domain::DecisionConnectionV2::Native { .. } => {
+                    return Err(PublicationInstallError::InvalidPlannerPolicy);
+                }
+            }
         }
         _ => return Err(PublicationInstallError::InvalidPlannerPolicy),
     };
@@ -605,8 +633,17 @@ pub(crate) fn compile_classifier_mode_authority(
                     _ => "custom".into(),
                 }
             }
+            hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { service } => {
+                match &service.connection {
+                    hiroute_domain::DecisionConnectionV2::Native { provider, .. } => {
+                        provider.clone()
+                    }
+                    _ => "custom".into(),
+                }
+            }
             _ => "local".into(),
         },
+        wire_protocol,
         native_protocol: None,
         endpoint: normalized_endpoint.into(),
         http_authority: normalized_authority.into(),

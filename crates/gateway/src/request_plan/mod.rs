@@ -107,6 +107,7 @@ pub(crate) struct RestBranchClassifierAuthorityV1 {
     pub(crate) plan_identity: Option<(String, u64)>,
     pub(crate) default_category: Option<String>,
     pub(crate) decision_provider: String,
+    pub(crate) wire_protocol: hiroute_domain::DecisionWireProtocolV2,
     pub(crate) native_protocol: Option<hiroute_domain::FrozenNativeProtocolV1>,
     pub(crate) endpoint: Arc<str>,
     pub(crate) http_authority: Arc<str>,

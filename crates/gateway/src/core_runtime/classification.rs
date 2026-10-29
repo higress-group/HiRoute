@@ -30,6 +30,8 @@ pub use c_capability::CClassifierDiagnosticOutcome;
 mod extension;
 #[path = "classification/group_policy.rs"]
 mod group_policy;
+#[path = "classification/openai_decisions.rs"]
+mod openai_decisions;
 #[path = "classification/protocol.rs"]
 mod protocol;
 #[cfg(test)]
@@ -836,7 +838,14 @@ impl ProductionGatewayRuntime {
 
         if status == StatusCode::OK {
             let result = match &prepared.bindings {
-                Some(bindings) => system_one::parse_response(&body, bindings),
+                Some(bindings) => match classifier.wire_protocol {
+                    hiroute_domain::DecisionWireProtocolV2::SystemOne => {
+                        system_one::parse_response(&body, bindings)
+                    }
+                    hiroute_domain::DecisionWireProtocolV2::OpenaiDecisions => {
+                        openai_decisions::parse_response(&body, bindings)
+                    }
+                },
                 None => extension::parse_response(
                     &body,
                     &classifier.decision,
