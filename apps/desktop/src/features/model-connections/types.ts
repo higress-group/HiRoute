@@ -383,6 +383,8 @@ export type ModelConnectionBackend = {
 };
 
 export type ModelConnectionFormProps = {
+  /** Explicit model choices from the subscription import; only exact checked API matches preselect. */
+  initialSelectedModelIds?: string[];
   /** A caller-owned connection-source choice; the ordinary form still owns inputs/save. */
   connectionChoice?: import('react').ReactNode;
   allowCustom?: boolean;

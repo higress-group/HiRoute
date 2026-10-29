@@ -374,7 +374,11 @@
     "args": [
       {
         "name": "operation",
-        "type": "OperationReferenceV1"
+        "type": "Option<OperationReferenceV1>"
+      },
+      {
+        "name": "idempotency_key",
+        "type": "Option<String>"
       }
     ],
     "result": "Result<WebComputeSaveResultV2, DesktopFailure>",

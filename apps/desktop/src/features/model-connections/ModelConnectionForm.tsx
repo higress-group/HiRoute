@@ -686,6 +686,12 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       }
       const retained = selectionRef.current;
       const nextSelection = selectedModelRefsAfterRecheck(retained?.result ?? null, retained?.refs ?? new Set(), checked);
+      if (!retained && props.initialSelectedModelIds) {
+        const requested = new Set(props.initialSelectedModelIds);
+        for (const model of checked.candidate.models) {
+          if (requested.has(model.upstream_model_id) && modelCanBeSelected(checked, model, true)) nextSelection.add(model.model_ref);
+        }
+      }
       setSelected(nextSelection);
       selectionRef.current = { result: checked, refs: nextSelection };
       for (const model of checked.candidate.models) preservedModelIds.current.add(model.upstream_model_id);

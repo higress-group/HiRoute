@@ -226,6 +226,7 @@ pub(crate) fn dispatch_apply_compute(
                 Some(
                     COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
                         | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                        | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
                 )
             )
         {

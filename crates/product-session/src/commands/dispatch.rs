@@ -238,11 +238,16 @@ pub async fn dispatch(
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
             struct Arguments {
-                operation: OperationReferenceV1,
+                #[serde(default)]
+                operation: Option<OperationReferenceV1>,
+                #[serde(default)]
+                idempotency_key: Option<String>,
             }
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
-            let value = get_compute_save_result(window, state, input.operation).await?;
+            let value =
+                get_compute_save_result(window, state, input.operation, input.idempotency_key)
+                    .await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "manage_subscription_login" => {

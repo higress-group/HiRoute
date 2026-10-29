@@ -1,3 +1,6 @@
+import { SubscriptionApiPicker, SavedSubscriptionApi } from '../features/subscriptions/SubscriptionApiConnection';
+import { useSubscriptionApi } from '../features/subscriptions/useSubscriptionApi';
+import { isCodexSubscription } from '../features/subscriptions/api-sync';
 import { ModelFeedPanel } from '../features/model-feed/ModelFeedPanel';
 import { newModelConnectionDraft } from '../features/model-connections/new-draft';
 import { modelConnectionBackend } from '../features/model-connections/backend';
@@ -191,6 +194,7 @@ export function ModelManagementPage({
   const [addStage, setAddStage] = useState<'choose' | 'api' | 'scan' | 'subscription-login' | 'existing'>('choose');
   const [appendingSource, setAppendingSource] = useState<ManagedSource | null>(null);
   const [appendManual, setAppendManual] = useState(false);
+  const [subscriptionApiChoices, setSubscriptionApiChoices] = useState<Record<string, string>>({});
   const [addNotice, setAddNotice] = useState('');
   const [modelNotice, setModelNotice] = useState('');
   const [priceTarget, setPriceTarget] = useState<{
@@ -424,7 +428,15 @@ export function ModelManagementPage({
         change.selected_model_refs = change.selected_model_refs.filter(ref => !appendingSource.models.some(model => model.model_ref === ref));
         if (!change.selected_model_refs.length) throw { code: 'MODEL_SELECTION_REQUIRED' };
       }
-      const preview = await invoke<SavePreview>('preview_compute_save', { change });
+      const choice = subscriptionApiChoices[selection.candidate.candidate_ref];
+      const previousLink = currentManagement.subscription_api_links?.find(link => link.source_id === selectedSubscription?.existing_source_id);
+      const codex = selection.candidate.candidate_ref.startsWith('candidate/cpa/codex/');
+      const apiLink = codex && choice !== undefined && choice !== (previousLink?.api_source_id ?? '')
+        ? choice ? { intent: 'associate', api_source_id: choice } : { intent: 'remove' }
+        : undefined;
+      const preview = apiLink
+        ? await invoke<SavePreview>('preview_compute_save_v3', { change, defaultPreferences: {}, apiLink })
+        : await invoke<SavePreview>('preview_compute_save', { change });
       if (!alive.current || subscriptionView.current !== view) return;
       handedOffValidations.current.add(validationKey);
       let accepted: { operation: OperationReference };
@@ -468,6 +480,9 @@ export function ModelManagementPage({
       }
       onChanged();
       if (!alive.current || subscriptionView.current !== view) return;
+      // The subscription is committed before the independent API import is attempted.
+      const apiResult = saved.source_id ? await subscriptionApi.synchronize(saved.source_id) : undefined;
+      if (!alive.current || subscriptionView.current !== view) return;
       const current = checksRef.current[selection.candidate.candidate_ref];
       if (current && alive.current && subscriptionView.current === view) {
         const result = await invoke<SubscriptionCheckResult>('get_subscription_check_result', {
@@ -480,9 +495,11 @@ export function ModelManagementPage({
       if (!alive.current || subscriptionView.current !== view) return;
       onChanged();
       closeScan();
-      setModelNotice(repairing
-        ? (language === 'zh' ? '订阅授权已更新。' : 'Subscription access updated.')
-        : (language === 'zh' ? '订阅已接入。' : 'Subscription connected.'));
+      setModelNotice(apiResult?.items.some(item => item.state !== 'imported')
+        ? (language === 'zh' ? '订阅已接入，关联 API 部分模型待同步或不支持。可在订阅详情中重试。' : 'Subscription connected. Some associated API models are pending or unsupported. Retry in subscription details.')
+        : repairing
+          ? (language === 'zh' ? '订阅授权已更新。' : 'Subscription access updated.')
+          : (language === 'zh' ? '订阅已接入。' : 'Subscription connected.'));
     } catch (cause) {
       if (alive.current && subscriptionView.current === view) setSubscriptionError({ code: failureCode(cause), phase: 'save' });
       onRecoveryRefresh();
@@ -672,6 +689,8 @@ export function ModelManagementPage({
   }, [startScanning, trustedAuthority, active]);
 
   const backend = useMemo(() => modelConnectionBackend(language), [language]);
+  const subscriptionApi = useSubscriptionApi({ language, mutable: trustedAuthority,
+    onOperation, onRefresh: refreshManagement, onUncertain: onRecoveryRefresh });
 
   function discardProtectedInputs() {
     const inputs = protectedInputs.current.splice(0);
@@ -1175,6 +1194,12 @@ export function ModelManagementPage({
                 : (language === 'zh' ? '账号可见 · 能力资料待补充，暂不能用于路由' : 'Visible to this account · capability data pending; not yet routable')}</span>}</div></label>)}</div></>
             : <p className="oc-meta">{language === 'zh' ? '检查已完成，但没有可接入的模型。' : 'The check completed, but no connectable model was found.'}</p>
           : <p className="oc-meta">{language === 'zh' ? '检查会使用这项订阅验证连接；保存后才加入模型列表。' : 'The check uses this subscription to verify the connection. Save it to add the model.'}</p>}
+        {management && selectedSubscription.candidate.candidate_ref.startsWith('candidate/cpa/codex/') && <SubscriptionApiPicker
+          language={language} snapshot={management} mutable={trustedAuthority} busy={subscriptionWorking}
+          value={subscriptionApiChoices[selectedSubscription.candidate.candidate_ref] ?? management.subscription_api_links?.find(link => link.source_id === selectedSubscription.existing_source_id)?.api_source_id ?? ''}
+          onChange={value => setSubscriptionApiChoices(previous => ({ ...previous, [selectedSubscription.candidate.candidate_ref]: value }))}
+          modelIds={effectiveSubscription.models.filter(model => selectedSubscriptionModels.has(model.model_ref)).map(model => model.upstream_model_id)}
+          onRefresh={refreshManagement} onOperation={onOperation} onUncertain={onRecoveryRefresh} />}
       </div> : <DeviceScanList
         language={language}
         subscriptions={subscriptions}
@@ -1226,6 +1251,12 @@ export function ModelManagementPage({
       priceRefresh={priceRefresh}
       onReauthorize={repairSubscription}
       onManageSubscriptionLogin={() => { setAdding(true); setAddStage('subscription-login'); }}
+      renderSubscriptionApi={source => isCodexSubscription(source) ? <SavedSubscriptionApi
+        language={language} snapshot={management} source={source} mutable={trustedAuthority}
+        busy={subscriptionApi.busy.has(source.source_id)} result={subscriptionApi.results[source.source_id]}
+        onAssociate={apiSourceId => subscriptionApi.associate(source.source_id, apiSourceId)}
+        onRetry={() => { void subscriptionApi.synchronize(source.source_id); }}
+        onRefresh={refreshManagement} onOperation={onOperation} onUncertain={onRecoveryRefresh} /> : null}
       onRecheck={recheckSavedSource}
       onCancelRecheck={checkId => invoke<void>('cancel_model_connection_check', { checkId })}
       onReconnect={reconnectSource}

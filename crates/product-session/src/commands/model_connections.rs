@@ -599,7 +599,8 @@ pub async fn apply_compute_save(
 pub async fn get_compute_save_result(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
-    operation: OperationReferenceV1,
+    operation: Option<OperationReferenceV1>,
+    idempotency_key: Option<String>,
 ) -> Result<WebComputeSaveResultV2, DesktopFailure> {
     main_window(window)?;
     let client = state
@@ -610,6 +611,45 @@ pub async fn get_compute_save_result(
         .ok_or("RESIDENT_UNAVAILABLE")?
         .client
         .clone();
+    let operation = match (operation, idempotency_key) {
+        (Some(operation), None) => operation,
+        (None, Some(key)) => {
+            let found: OperationIdempotencyResultV1 = crate::session::query(
+                &client,
+                "FindOperationByIdempotency",
+                &OperationIdempotencyLookupV1 {
+                    principal_kind: PrincipalKind::InteractiveUser,
+                    operation_kind: APPLY_COMPUTE_SAVE_OPERATION_V2.into(),
+                    idempotency_key: key,
+                    // This is a read by identity. A different digest never authorizes an Apply.
+                    accepted_digest: CanonicalDigest::of_bytes(b"subscription-api-sync-lookup/v1"),
+                    include_model_budget_conflict: false,
+                },
+            )
+            .await?;
+            let Some(operation) = found.operation else {
+                return Ok(ComputeSaveResultV2 {
+                    candidate: None,
+                    validation: None,
+                    disposition: ComputeSaveDispositionV2::NeedsInput,
+                    source_id: None,
+                    bindings: Vec::new(),
+                    saved_revision: None,
+                    management_state: None,
+                    operation: None,
+                    reason: Some("OPERATION_NOT_FOUND".into()),
+                }
+                .into());
+            };
+            OperationReferenceV1 {
+                operation_id: operation.operation_id,
+                state: operation.state,
+                sequence: operation.sequence,
+                cancellable: operation.cancellable,
+            }
+        }
+        _ => return Err("REQUEST_INVALID".into()),
+    };
     envelope_data(
         client
             .get_compute_save_result(&crate::random_id()?, operation)

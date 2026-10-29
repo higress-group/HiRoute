@@ -17,7 +17,63 @@ where
             return Err(ComputeManagementPlanningErrorV2::InvalidChange);
         }
         let api_link = change.api_link.take();
-        let mut preview = self.preview(change.change)?;
+        let metadata_source = if api_link.is_some()
+            && let hiroute_application_api::ComputeManagementSubjectV2::SavedSource { source_id } =
+                &change.change.subject
+        {
+            let saved = self
+                .repository
+                .compute_management_source(source_id)?
+                .ok_or(ComputeManagementPlanningErrorV2::SourceNotFound)?;
+            let intent = if saved.state == hiroute_domain::MaterializationState::Disabled {
+                hiroute_application_api::ComputeManagementIntentV2::SaveDisabled
+            } else {
+                hiroute_application_api::ComputeManagementIntentV2::SaveReady
+            };
+            if !matches!(&saved.provenance, hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } if connector_id == "connector.cpa.codex")
+                || change.change.edit.is_some()
+                || !change.change.key_edits.is_empty()
+                || !change.default_preferences.is_empty()
+                || change.change.intent != intent
+                || change.change.validation.is_some()
+                || !change
+                    .change
+                    .selected_model_refs
+                    .iter()
+                    .eq(saved.models.iter().map(|model| &model.model_ref))
+            {
+                return Err(ComputeManagementPlanningErrorV2::InvalidChange);
+            }
+            Some(saved)
+        } else {
+            None
+        };
+        let mut preview = if let Some(saved) = metadata_source {
+            let snapshot = self
+                .repository
+                .compute_management_snapshot(&self.workspace)?;
+            if snapshot.revisions != change.change.expected_revisions {
+                return Err(ComputeManagementPlanningErrorV2::RevisionConflict);
+            }
+            let mut desired = saved.clone();
+            desired.revision = desired
+                .revision
+                .checked_add(1)
+                .ok_or(ComputeManagementPlanningErrorV2::InvalidChange)?;
+            // Link-only edits preserve the saved authorization exactly; they neither fabricate
+            // a check receipt nor request another OAuth check.
+            self.seal_preview(
+                change.change,
+                Some(&saved),
+                Some(desired),
+                None,
+                snapshot.revisions,
+                Vec::new(),
+                Vec::new(),
+            )?
+        } else {
+            self.preview(change.change)?
+        };
         let mutation: ComputeManagementMutationV2 = serde_json::from_value(
             preview
                 .plan

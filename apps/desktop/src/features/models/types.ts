@@ -87,6 +87,7 @@ export type ManagementSnapshot = {
   runtime_state: 'complete' | 'partial';
   sources: ManagedSource[];
   subscription_modes?: { source_id: string; source_revision: number; mode: SubscriptionMode }[];
+  subscription_api_links?: import('../subscriptions/api-sync').SubscriptionApiLink[];
 };
 
 export type KeyEdit =

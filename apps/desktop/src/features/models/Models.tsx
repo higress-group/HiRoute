@@ -27,6 +27,7 @@ import type {
 } from './types';
 
 type Props = {
+  renderSubscriptionApi?(source: ManagedSource): React.ReactNode;
   language: 'zh' | 'en';
   snapshot: ManagementSnapshot;
   initialSourceId?: string | null;
@@ -385,6 +386,8 @@ export function Models(props: Props) {
             <div className="detail-identity"><ProviderIcon optionId={source.display_template_id ?? source.connection_identity?.connection_option_id} language={props.language} /><div><h2>{model?.display_name ?? source.display_name}</h2><p>{sourceLabel}</p></div></div>
             <StatusBadge value={status} reason={reason} subscription={access === 'subscription'} language={props.language} />
           </div>
+
+          {props.renderSubscriptionApi?.(source)}
 
           {model?.catalog_configuration_id && <ModelOriginDetails modelId={model.catalog_configuration_id} language={props.language} />}
 
