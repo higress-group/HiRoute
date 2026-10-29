@@ -1,6 +1,8 @@
 //! Safe, versioned decision connection DTOs shared by the product hosts and CLI.
 use hiroute_domain::{CanonicalDigest, DecisionServiceRecord, DecisionWireProtocolV2};
-pub use hiroute_domain::{DecisionExpectedSourceRevisionV1, DecisionServiceChangeV2};
+pub use hiroute_domain::{
+    DecisionExpectedSourceRevisionV1, DecisionServiceChangeV2, DecisionServiceOperationInputV2,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

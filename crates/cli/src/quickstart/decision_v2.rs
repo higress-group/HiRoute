@@ -267,7 +267,7 @@ pub(super) fn prepare(client: &LocalControlClient, options: &[String]) -> Result
         )
     };
     let input = json!({"change":{"id":id,"expected_revision":expected_revision,"service":service,"expected_source_revisions":expected_source_revisions},"input_slot":input_slot});
-    let typed: hiroute_domain::DecisionServiceOperationInputV2 =
+    let typed: DecisionServiceOperationInputV2 =
         serde_json::from_value(input).map_err(|_| error(ErrorCode::InvalidArguments))?;
     if !typed.change.validate() {
         return Err(error(ErrorCode::InvalidArguments));
