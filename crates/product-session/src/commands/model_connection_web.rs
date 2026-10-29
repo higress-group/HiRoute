@@ -327,7 +327,34 @@ struct WebComputeManagementChangeV3 {
     default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct WebComputeManagementChangeV4 {
+    schema: String,
+    change: WebComputeManagementChangeV3,
+    api_link: hiroute_domain::ComputeSubscriptionApiLinkIntentV1,
+}
+
 fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+    {
+        let linked: hiroute_application_api::ComputeManagementChangeV4 =
+            serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
+        if linked.change.api_link.is_some() {
+            return Err("RESPONSE_DATA_INVALID");
+        }
+        return serde_json::to_value(WebComputeManagementChangeV4 {
+            schema: linked.schema,
+            change: WebComputeManagementChangeV3 {
+                schema: linked.change.schema,
+                change: linked.change.change.into(),
+                default_preferences: linked.change.default_preferences,
+            },
+            api_link: linked.api_link,
+        })
+        .map_err(|_| "RESPONSE_DATA_INVALID");
+    }
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
     {
@@ -348,11 +375,29 @@ fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'stati
 }
 fn change_for_native(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
     if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+    {
+        let linked: WebComputeManagementChangeV4 =
+            serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
+        return serde_json::to_value(hiroute_application_api::ComputeManagementChangeV4 {
+            schema: linked.schema,
+            change: ComputeManagementChangeV3 {
+                api_link: None,
+                schema: linked.change.schema,
+                change: linked.change.change.try_into()?,
+                default_preferences: linked.change.default_preferences,
+            },
+            api_link: linked.api_link,
+        })
+        .map_err(|_| "REQUEST_INVALID");
+    }
+    if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
     {
         let change: WebComputeManagementChangeV3 =
             serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
         serde_json::to_value(ComputeManagementChangeV3 {
+            api_link: None,
             schema: change.schema,
             change: change.change.try_into()?,
             default_preferences: change.default_preferences,

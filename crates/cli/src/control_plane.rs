@@ -117,6 +117,7 @@ pub(crate) fn command_payload(
         "compute.list" => Some(empty::<ComputeManagementQueryV2>(options)),
         "compute.show" => Some(positional(options, |source_id| ComputeManagementQueryV2 {
             source_id: Some(source_id),
+            ..Default::default()
         })),
         "compute.connection.prepare" => Some(request::<
             hiroute_application_api::PrepareDiscoveredModelConnectionRequestV1,

@@ -570,6 +570,7 @@ async fn saved_borrowed_mode_and_membership_survive_native_credential_failures()
                             "saved-credential-mode",
                             ComputeManagementQueryV2 {
                                 source_id: Some(source.source_id.clone()),
+                                ..Default::default()
                             },
                         )
                         .await

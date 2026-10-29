@@ -953,6 +953,10 @@
       {
         "name": "default_preferences",
         "type": "hiroute_domain::SourceDefaultPreferencesV1"
+      },
+      {
+        "name": "api_link",
+        "type": "Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>"
       }
     ],
     "result": "Result<WebComputeSavePreviewV2, DesktopFailure>",

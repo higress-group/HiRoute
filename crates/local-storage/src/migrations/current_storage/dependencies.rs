@@ -22,6 +22,7 @@ pub(super) fn validate(
         .artifact_dependencies()
         .map_err(|_| LocalStorageError::InvalidData)?;
     let connection = control.connection.borrow();
+    super::super::subscription_api_v34::validate_links(&connection)?;
     let pending = crate::control::current_dependencies::validate_recovery_members(&connection)
         .map_err(|_| LocalStorageError::InvalidData)?;
     for id in &pending {

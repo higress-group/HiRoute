@@ -134,6 +134,7 @@ impl ComputeManagementMutationV3 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ComputeManagementMutation {
+    V4(ComputeManagementMutationV4),
     V3(ComputeManagementMutationV3),
     V2(ComputeManagementMutationV2),
 }
@@ -141,16 +142,38 @@ impl Deref for ComputeManagementMutation {
     type Target = ComputeManagementMutationV2;
     fn deref(&self) -> &Self::Target {
         match self {
+            Self::V4(value) => &value.source_mutation,
             Self::V2(value) => value,
             Self::V3(value) => &value.source_mutation,
         }
     }
 }
 impl ComputeManagementMutation {
+    pub fn validate_for_spec(&self, spec: &ChangeSpecV1) -> Result<(), ComputeManagementErrorV2> {
+        match self {
+            Self::V2(value) => value.validate_shape(spec),
+            Self::V3(value) => value.validate(spec),
+            Self::V4(value) => value.validate(spec),
+        }
+    }
+
+    pub fn api_link_change(
+        &self,
+    ) -> Option<(
+        &Option<ComputeSubscriptionApiLinkV1>,
+        &Option<ComputeSubscriptionApiLinkV1>,
+    )> {
+        match self {
+            Self::V4(value) => Some((&value.api_link_before, &value.api_link_after)),
+            _ => None,
+        }
+    }
+
     pub fn preferences(
         &self,
     ) -> Option<(&SourceDefaultPreferencesV1, &SourceDefaultPreferencesV1)> {
         match self {
+            Self::V4(value) => value.source_mutation.preferences(),
             Self::V2(_) => None,
             Self::V3(v) => Some((&v.preferences_before, &v.preferences_after)),
         }

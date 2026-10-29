@@ -862,12 +862,20 @@ pub async fn dispatch(
             struct Arguments {
                 change: WebComputeManagementChangeV2,
                 default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+                #[serde(default)]
+                api_link: Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>,
             }
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
             serde_json::to_value(
-                preview_compute_save_v3(window, state, input.change, input.default_preferences)
-                    .await?,
+                preview_compute_save_v3(
+                    window,
+                    state,
+                    input.change,
+                    input.default_preferences,
+                    input.api_link,
+                )
+                .await?,
             )
             .map_err(|_| "RESPONSE_DATA_INVALID".into())
         }

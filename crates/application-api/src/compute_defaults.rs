@@ -9,6 +9,8 @@ pub struct ComputeManagementChangeV3 {
     pub schema: String,
     pub change: ComputeManagementChangeV2,
     pub default_preferences: SourceDefaultPreferencesV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_link: Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>,
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -16,10 +18,23 @@ pub struct ComputeSavePreviewRequestV3 {
     pub change: ComputeManagementChangeV3,
 }
 
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeManagementChangeV4 {
+    pub schema: String,
+    pub change: ComputeManagementChangeV3,
+    pub api_link: hiroute_domain::ComputeSubscriptionApiLinkIntentV1,
+}
+
 pub fn saved_compute_change(
     value: serde_json::Value,
 ) -> Result<ComputeManagementChangeV2, serde_json::Error> {
     if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+    {
+        let value: ComputeManagementChangeV4 = serde_json::from_value(value)?;
+        Ok(value.change.change)
+    } else if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
     {
         serde_json::from_value::<ComputeManagementChangeV3>(value).map(|value| value.change)

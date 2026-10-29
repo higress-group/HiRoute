@@ -12,6 +12,7 @@ use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::Deserialize;
 use serde_json::Value;
 
+mod api_link;
 mod compensation;
 mod defaults;
 mod references;
@@ -41,6 +42,7 @@ pub(in crate::control) fn stage_control(
         .validate_against(current.as_ref())
         .map_err(|_| conflict("compute.management.stage.cas"))?;
     defaults::validate_before(transaction, workspace, &mutation)?;
+    api_link::validate_before(transaction, workspace, &mutation)?;
     references::validate_removal(transaction, workspace, &mutation)?;
     let identity = mutation
         .desired()
@@ -87,6 +89,7 @@ pub(in crate::control) fn stage_control(
         )
         .map_err(|_| port("compute.management.stage.effect"))?;
     defaults::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
+    api_link::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
     Ok(())
 }
 
@@ -125,18 +128,32 @@ pub(in crate::control) fn activate(
         .validate_against(current.as_ref())
         .map_err(|_| conflict("compute.management.activate.cas"))?;
     defaults::validate_before(transaction, workspace, &mutation)?;
+    api_link::validate_before(transaction, workspace, &mutation)?;
     references::validate_removal(transaction, workspace, &mutation)?;
     let preferences = defaults::after(transaction, workspace, &mutation)?;
     if let Some(desired) = mutation.desired() {
         write_source(transaction, workspace, desired, operation_id)?;
-        defaults::write(transaction, workspace, mutation.source_id(), &preferences)
+        defaults::write(transaction, workspace, mutation.source_id(), &preferences)?;
+        api_link::apply_effect(
+            transaction,
+            workspace,
+            mutation.source_id(),
+            operation_id,
+            false,
+        )
     } else {
         let deleted = transaction.execute("DELETE FROM compute_management_sources WHERE workspace_id=?1 AND source_id=?2 AND revision=?3", params![workspace.as_str(), mutation.source_id(), mutation.expected_revision()])
             .map_err(|_| port("compute.management.delete"))?;
         if deleted != 1 {
             return Err(conflict("compute.management.delete.cas"));
         }
-        Ok(())
+        api_link::apply_effect(
+            transaction,
+            workspace,
+            mutation.source_id(),
+            operation_id,
+            false,
+        )
     }
 }
 
@@ -170,6 +187,14 @@ pub(in crate::control) fn current_matches(
     if let Some(after) = defaults::effect(connection, operation_id.as_str(), false)?
         && defaults::read(connection, workspace, mutation.source_id())? != after
     {
+        return Ok(false);
+    }
+    if !api_link::current_matches(
+        connection,
+        workspace,
+        mutation.source_id(),
+        operation_id.as_str(),
+    )? {
         return Ok(false);
     }
     let current: Option<(String, String)> = connection
@@ -229,7 +254,9 @@ pub(in crate::control) fn compensate(
         }
         None => current.is_none() && deletion_owned(transaction, workspace, operation_id)?,
     };
-    if !owns {
+    if !owns
+        || !api_link::current_matches(transaction, workspace, mutation.source_id(), operation_id)?
+    {
         return Ok(false);
     }
     if let Some(expected) = mutation.expected() {
@@ -258,10 +285,25 @@ pub(in crate::control) fn compensate(
     if let Some(before) = defaults::effect(transaction, operation_id, true)? {
         defaults::write(transaction, workspace, mutation.source_id(), &before)?;
     }
+    api_link::apply_effect(
+        transaction,
+        workspace,
+        mutation.source_id(),
+        operation_id,
+        true,
+    )?;
     Ok(true)
 }
 
 impl ComputeManagementRepositoryPort for ControlStore {
+    fn compute_subscription_api_links(
+        &self,
+        workspace: &WorkspaceId,
+        source_id: Option<&str>,
+    ) -> PortResult<Vec<hiroute_domain::ComputeSubscriptionApiLinkV1>> {
+        api_link::list(&self.connection.borrow(), workspace, source_id)
+    }
+
     fn source_default_preferences(
         &self,
         source_id: &str,

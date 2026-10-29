@@ -323,6 +323,7 @@ pub(super) async fn preview_compute_save_v3(
     state: State<'_, DesktopState>,
     change: hiroute_product_session::commands::WebComputeManagementChangeV2,
     default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+    api_link: Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>,
 ) -> Result<hiroute_product_session::commands::WebComputeSavePreviewV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -355,6 +356,7 @@ pub(super) async fn preview_compute_save_v3(
         &product_state,
         change,
         default_preferences,
+        api_link,
     )
     .await
 }

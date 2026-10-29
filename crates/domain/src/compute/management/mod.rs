@@ -15,7 +15,9 @@ use crate::{
     RevisionSetV1, UpstreamProtocol, WorkspaceId,
 };
 
+mod api_link;
 mod defaults;
+pub use api_link::*;
 pub use defaults::*;
 
 pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2: &str = "hiroute.compute-management-source/v3";
@@ -703,6 +705,14 @@ pub struct ComputeManagementStoredSnapshotV2 {
 /// Narrow safe-record persistence port. All writes still enter through the existing Operation
 /// control effect; this trait intentionally offers reads only.
 pub trait ComputeManagementRepositoryPort {
+    fn compute_subscription_api_links(
+        &self,
+        _workspace: &WorkspaceId,
+        _source_id: Option<&str>,
+    ) -> PortResult<Vec<ComputeSubscriptionApiLinkV1>> {
+        Ok(Vec::new())
+    }
+
     fn source_default_preferences(
         &self,
         _source_id: &str,

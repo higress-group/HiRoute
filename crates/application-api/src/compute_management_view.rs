@@ -16,6 +16,8 @@ pub const COMPUTE_MANAGEMENT_SNAPSHOT_SCHEMA_V2: &str = "hiroute.compute-managem
 pub struct ComputeManagementQueryV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_id: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub include_subscription_api_links: bool,
 }
 
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -204,4 +206,8 @@ mod tests {
             .is_err()
         );
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }

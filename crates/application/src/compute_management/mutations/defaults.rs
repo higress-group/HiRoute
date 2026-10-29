@@ -11,11 +11,12 @@ where
 {
     pub fn preview_v3(
         &self,
-        change: ComputeManagementChangeV3,
+        mut change: ComputeManagementChangeV3,
     ) -> Result<ComputeManagementPreparedPreviewV2, ComputeManagementPlanningErrorV2> {
         if change.schema != COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3 {
             return Err(ComputeManagementPlanningErrorV2::InvalidChange);
         }
+        let api_link = change.api_link.take();
         let mut preview = self.preview(change.change)?;
         let mutation: ComputeManagementMutationV2 = serde_json::from_value(
             preview
@@ -59,6 +60,52 @@ where
                 resource_id: mutation.source_id().into(),
                 action: "update".into(),
             });
+        if let Some(intent) = api_link {
+            let source = mutation
+                .desired()
+                .ok_or(ComputeManagementPlanningErrorV2::InvalidChange)?;
+            if !matches!(&source.provenance, hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } if connector_id == "connector.cpa.codex")
+            {
+                return Err(ComputeManagementPlanningErrorV2::InvalidChange);
+            }
+            if let hiroute_domain::ComputeSubscriptionApiLinkIntentV1::Associate { api_source_id } =
+                &intent
+            {
+                let target = self
+                    .repository
+                    .compute_management_source(api_source_id)?
+                    .ok_or(ComputeManagementPlanningErrorV2::SourceNotFound)?;
+                if !target.provenance.is_native() || target.source_id == source.source_id {
+                    return Err(ComputeManagementPlanningErrorV2::InvalidChange);
+                }
+            }
+            let before = self
+                .repository
+                .compute_subscription_api_links(&self.workspace, Some(&source.source_id))?
+                .into_iter()
+                .next();
+            preview.plan = preview
+                .plan
+                .with_subscription_api_link(before, intent)
+                .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
+            preview.result.spec = preview.plan.spec().clone();
+            preview.result.accept_digest = CanonicalDigest::of(&(
+                "hiroute.compute-management-preview/v4",
+                &preview.result.spec,
+                &preview.result.expected_revisions,
+                preview.plan.control(),
+                preview.plan.secrets(),
+            ))
+            .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
+            preview
+                .result
+                .changes
+                .push(hiroute_application_api::ComputeSaveChangeViewV2 {
+                    resource_kind: "subscription_api_link".into(),
+                    resource_id: source.source_id.clone(),
+                    action: "update".into(),
+                });
+        }
         Ok(preview)
     }
     pub fn preview_saved_state(
@@ -66,6 +113,18 @@ where
         value: serde_json::Value,
     ) -> Result<ComputeManagementPreparedPreviewV2, ComputeManagementPlanningErrorV2> {
         if value.get("schema").and_then(serde_json::Value::as_str)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+        {
+            let saved: hiroute_application_api::ComputeManagementChangeV4 =
+                serde_json::from_value(value)
+                    .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
+            if saved.change.api_link.is_some() {
+                return Err(ComputeManagementPlanningErrorV2::InvalidChange);
+            }
+            let mut change = saved.change;
+            change.api_link = Some(saved.api_link);
+            self.preview_v3(change)
+        } else if value.get("schema").and_then(serde_json::Value::as_str)
             == Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
         {
             self.preview_v3(

@@ -190,6 +190,9 @@ pub(crate) fn audit_current_storage(
         }
         drop(defaults);
     }
+    if control_version >= 34 {
+        super::subscription_api_v34::validate_links(&connection)?;
+    }
     // Cross-store grant/publication equality is checked only after Operation recovery.
     // Each store's format and integrity must already be valid before recovery writes.
     let secret_connection = secrets.connection.borrow();

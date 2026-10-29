@@ -532,6 +532,7 @@ fn model_defaults_activated_before_terminal_failure_complete_once_on_startup() {
         )]);
         let preview = planner
             .preview_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                api_link: None,
                 schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
                 change: edit(
                     &stores,

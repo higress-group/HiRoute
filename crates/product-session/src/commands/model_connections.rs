@@ -232,7 +232,10 @@ pub async fn compute_management_snapshot(
         client
             .compute_management_snapshot_v3(
                 &crate::random_id()?,
-                ComputeManagementQueryV2::default(),
+                ComputeManagementQueryV2 {
+                    include_subscription_api_links: true,
+                    ..Default::default()
+                },
             )
             .await?,
     )
@@ -627,8 +630,10 @@ pub async fn preview_compute_save_v3(
     state: &CommandState<'_>,
     change: WebComputeManagementChangeV2,
     default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+    api_link: Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>,
 ) -> Result<WebComputeSavePreviewV2, DesktopFailure> {
     let change = hiroute_application_api::ComputeManagementChangeV3 {
+        api_link,
         schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
         change: change.try_into().map_err(DesktopFailure::from)?,
         default_preferences,

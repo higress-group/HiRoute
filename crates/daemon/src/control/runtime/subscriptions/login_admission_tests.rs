@@ -392,6 +392,7 @@ impl Fixture {
         let preview = self
             .adapter()
             .preview_compute_save_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                api_link: None,
                 schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
                 change,
                 default_preferences: Default::default(),
