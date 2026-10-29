@@ -76,6 +76,7 @@ fn connect(
 ) {
     let mut facts =
         subscription_selection::subscription("candidate/cpa/codex/managed/test-account");
+    facts.display_name = "Codex subscription".into();
     facts.provenance = ComputeCandidateProvenanceV2::ConnectorOwned {
         connector_id: "connector.cpa.codex".into(),
         account_ref: "account/subscription".into(),

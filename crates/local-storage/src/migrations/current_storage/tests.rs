@@ -524,7 +524,7 @@ fn locator_upgrade_resumes_each_store_commit_and_precompletion_from_verified_32(
         for path in &paths {
             assert_eq!(
                 database_version(path).unwrap(),
-                Some(33),
+                Some(LATEST_SCHEMA_VERSION),
                 "boundary {boundary}"
             );
         }
