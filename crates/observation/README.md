@@ -26,6 +26,17 @@ history scan. The worker retains its bounded selection/processing limits and mak
 one bounded full pass after restart; opening the store only installs notifications.
 Missing or invalid source content still cannot publish a successful search hit.
 
+`store/blob_gc` bounds background orphan discovery to 256 ordered blob identities
+and removal to 32 candidates per pass, using the existing covering and live-reference
+indexes. The process-local cursor advances only after successful collection;
+completed sweeps and errors wait five seconds, while unfinished sweeps yield for at
+least 250 ms. A large live history therefore spreads discovery over multiple ticks
+instead of rescanning it on every idle pass. Changes behind the cursor are revisited
+on the next sweep, and restart begins at the first identity. Candidate discovery
+uses its own read connection. The existing writer-transaction reference and capacity
+protection checks still authorize every deletion. Explicit user deletion and capacity
+retirement retain their existing collection paths; no new persisted state is needed.
+
 `StageAssessmentRecordedV1` retains joint quality under one frozen native rubric
 without assigning a model or profile. It uses the existing nullable stage projection
 and immutable history membership. Complete joint assessments count as scored stages;

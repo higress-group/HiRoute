@@ -262,6 +262,10 @@ uses same-filesystem directory publication without traversing historical content
 The optional capacity threshold uses the
 [existing maintenance lifecycle](../../crates/observation/src/maintenance.rs) and
 [bounded retirement owner](../../crates/observation/src/store/capacity.rs).
+Background orphan discovery uses a bounded keyset scan in
+[`store/blob_gc`](../../crates/observation/src/store/blob_gc.rs); deletion authority
+remains with the existing transactional reference recheck in
+[`store/retention`](../../crates/observation/src/store/retention.rs).
 Representative scenarios cover
 [format admission](../../crates/observation/src/store/upgrade/tests.rs),
 [interrupted sealing](../../crates/local-storage/src/backup/source_snapshot/seal/tests.rs),

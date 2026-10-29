@@ -468,6 +468,27 @@ Recovery presentation SHALL distinguish correcting prerequisites, current-batch 
 Source Issue:
 - https://github.com/higress-group/HiRoute/issues/176
 
+### Requirement: Background orphan discovery remains bounded as history grows
+
+Background content-blob orphan discovery SHALL bound identities examined as well
+as candidates deleted per pass, using ordered progress through existing indexes.
+An unfinished sweep SHALL yield between pages; completed and failed passes SHALL
+back off from completion. Changes behind a process-local cursor SHALL remain
+discoverable on a later sweep or restart. Read-only discovery SHALL NOT occupy
+the capture writer or authorize deletion: the existing writer transaction SHALL
+recheck live references and capacity protection before removing files or metadata.
+Explicit deletion, logical visibility, capacity retirement and recovery formats
+retain their current contracts.
+
+#### Scenario: Large live history does not turn an empty GC pass into a full scan
+
+- **WHEN** background collection encounters many live blobs before any orphan
+- **THEN** each pass examines only a bounded indexed page, yields while the sweep
+  is unfinished and eventually reaches later orphans; deleting a full candidate
+  batch does not skip the rest of its page. New live references win the final
+  deletion recheck, and an interrupted or failed sweep cannot permanently hide
+  unprocessed garbage.
+
 ### Requirement: Optional capacity retention uses restrained observation maintenance
 
 HiRoute SHALL allow the local installation owner to save or disable one durable active-observation capacity threshold. The default threshold SHALL be 20 GB (20,000,000,000 bytes), including a fresh generation after old-history sealing. The owner may change it or explicitly disable capacity expiry; a disabled choice SHALL remain disabled across restart. Seven-day age retention remains independent. When enabled and exceeded, the existing lifecycle SHALL retire oldest eligible completed-request detail before seven days, preserving in-flight writes, live shared references, deletion/replay barriers, lawful non-content aggregates and recovery backups. Retained observations remain lossless; policy removals SHALL be distinct from representation savings and actual physical release. Accounting/reclamation SHALL use spaced bounded work, yielding and idle/failure/no-progress backoff rather than sustained high CPU or an unbounded catch-up loop. HiRoute SHALL report actual measured usage and pending/blocked release with its reason, without promising an instantaneous hard cap, reporting reusable pages as released, or dropping acknowledged writes. Changes/disabling affect uncommitted future retirement and do not restore already expired history.
