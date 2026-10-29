@@ -90,6 +90,16 @@ fn regression_maintenance_keeps_cold_catalog_outage_available_for_fallback() {
     let fault = fixture.root.path().join("block-model-catalog");
     fs::write(&fault, b"blocked").unwrap();
     fixture.reopen(true);
+    // This case owns the maintenance clock. Stop the background real-time
+    // writer before advancing the two explicit scan timestamps below.
+    drop(
+        fixture
+            .runtime
+            .as_mut()
+            .unwrap()
+            ._observation_maintenance
+            .take(),
+    );
     fixture.adapter().enable_subscription_maintenance();
     fixture
         .adapter()
