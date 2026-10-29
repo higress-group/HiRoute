@@ -121,6 +121,9 @@ They also pause deferred encoding through foreground teardown, check root/byte
 parity with the independent synchronous oracle, and inject bounded queue failure.
 The [late-content SQLite case](../../crates/observation/src/store/tests/late_content.rs)
 checks content arriving after RequestFinished, exact reopen and duplicate ACKs.
+The [request measurement cases](../../crates/gateway/src/context_hold/store_request_measurement_tests.rs)
+compare reused checkpoints with the uncached continuity oracle, count complete
+scans and require rescanning for changed source, semantic view, key or position.
 The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
 verify that explicit maintenance-purpose evidence excludes a user turn without
 removing the request, while unmarked retained records remain visible. These

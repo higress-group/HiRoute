@@ -582,13 +582,13 @@ fn enable_c(
     protocol
 }
 
-pub(super) fn enable_c_in_publication(
+fn enable_c_in_publication(
     publication: &mut hiroute_gateway::server::publication::GatewayPublicationSnapshotV3,
 ) -> hiroute_domain::FrozenNativeProtocolV1 {
     enable_c_in_publication_with(publication, &hiroute_domain::NativeProtocolV1::default())
 }
 
-fn enable_c_in_publication_with(
+pub(super) fn enable_c_in_publication_with(
     publication: &mut hiroute_gateway::server::publication::GatewayPublicationSnapshotV3,
     protocol: &hiroute_domain::NativeProtocolV1,
 ) -> hiroute_domain::FrozenNativeProtocolV1 {

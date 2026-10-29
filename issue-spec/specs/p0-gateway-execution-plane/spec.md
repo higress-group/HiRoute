@@ -233,6 +233,12 @@ The process-local MD5 equality representation is shared by incoming and accepted
 output evidence and is independent of transport fragmentation and Replay backing.
 It is not authentication or persisted observation integrity. Cache pressure uses
 the existing bounded uncached/unknown behavior without rejecting model delivery.
+The later branch-scoped check MAY reuse a complete measurement and its single
+prefix checkpoint from the same immutable request and runtime key. Reuse SHALL
+require the exact requested prefix position; a different request, semantic view,
+key or position retains the original complete scan. Choosing a likely checkpoint
+position is an optimization only and cannot establish continuity. No retained
+per-message digest index or cross-request prefix trust is introduced.
 
 The history store defaults to 500,000,000 bytes and one-hour idle TTL, retaining
 bounded independent captures, branch heads and immutable assessment membership.

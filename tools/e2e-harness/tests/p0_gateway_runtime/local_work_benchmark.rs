@@ -5,6 +5,35 @@ use serde_json::{Value, json};
 
 const CHAT_STREAM: &[u8] = b"data: {\"id\":\"bench\",\"model\":\"runtime-native-model-1\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"42\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"bench\",\"model\":\"runtime-native-model-1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\ndata: [DONE]\n\n";
 
+#[cfg(target_os = "linux")]
+fn process_usage(pid: u32) -> Option<(u64, u64)> {
+    let root = std::path::PathBuf::from(format!("/proc/{pid}"));
+    let stat = std::fs::read_to_string(root.join("stat")).unwrap();
+    let fields = stat
+        .rsplit_once(") ")
+        .unwrap()
+        .1
+        .split_whitespace()
+        .collect::<Vec<_>>();
+    let cpu = fields[11].parse::<u64>().unwrap() + fields[12].parse::<u64>().unwrap();
+    let status = std::fs::read_to_string(root.join("status")).unwrap();
+    let peak_rss = status
+        .lines()
+        .find(|line| line.starts_with("VmHWM:"))
+        .unwrap()
+        .split_whitespace()
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
+    Some((cpu, peak_rss))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_usage(_pid: u32) -> Option<(u64, u64)> {
+    None
+}
+
 #[test]
 #[ignore = "release whole-listener performance experiment, not a unit timing gate"]
 fn measure_complete_local_work_with_continuity_and_capture() {
@@ -24,6 +53,9 @@ fn measure_complete_local_work_with_continuity_and_capture() {
         })).chain(std::iter::once(json!({"role":"user","content":"Return 42."}))).collect::<Vec<_>>() }),
     };
     let original = wire["messages"].as_array().expect("Chat messages");
+    // Freeze the shared stock protocol for before/after measurements; a later
+    // product default must not change the workload or reject the older binary.
+    let protocol = hiroute_domain::NativeProtocolV1::c_v1();
     let backing = std::env::var("HIROUTE_LOCAL_WORK_BACKING").ok();
     assert!(
         backing
@@ -86,10 +118,14 @@ fn measure_complete_local_work_with_continuity_and_capture() {
             .find(|grant| grant.protocol == IngressProtocol::ChatCompletions)
             .unwrap()
             .consumer = Some(hiroute_domain::AgentModelConsumerV1::Hermes);
-        decision_branches::enable_c_in_publication(&mut publication);
+        decision_branches::enable_c_in_publication_with(&mut publication, &protocol);
         fixture.publish(&mut publication);
         let mut wire_bytes = 0;
+        let mut resource_start = None;
         for index in 0..count {
+            if index == warmup {
+                resource_start = process_usage(fixture.process.id());
+            }
             let mut input = wire.clone();
             let mut history = original.clone();
             if index % 2 == 1 {
@@ -135,6 +171,28 @@ fn measure_complete_local_work_with_continuity_and_capture() {
             if let Some(dropped) = timing["asynchronous"]["capture_dropped_jobs"].as_u64() {
                 assert_eq!(dropped, 0, "{timing}");
             }
+        }
+        if let Some((cpu_before, _)) = resource_start {
+            let (cpu_after, peak_rss_kib) = process_usage(fixture.process.id()).unwrap();
+            let tick_rate = std::process::Command::new("getconf")
+                .arg("CLK_TCK")
+                .output()
+                .unwrap();
+            assert!(tick_rate.status.success());
+            let ticks_per_second: u64 = std::str::from_utf8(&tick_rate.stdout)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
+            println!(
+                "local_work_resources {}",
+                json!({
+                    "variant":variant,"native_protocol":protocol.schema,
+                    "samples":measured,"process_cpu_ticks":cpu_after-cpu_before,
+                    "clock_ticks_per_second":ticks_per_second,"peak_rss_kib":peak_rss_kib,
+                    "includes_async_capture_cpu":true
+                })
+            );
         }
         let records = request_timing::summaries(&fixture, count);
         let facts = wait_execution_facts(&fixture, count);
@@ -188,6 +246,7 @@ fn measure_complete_local_work_with_continuity_and_capture() {
             println!(
                 "local_work_benchmark {}",
                 json!({"variant":variant,"sample":index,"replay_threshold_bytes":threshold,
+                "native_protocol":protocol.schema,
                 "capture_backing":capture_backing[index + warmup],
                 "wire_bytes":wire_bytes,"messages":original.len(),"complete_local_us":complete_local_us,
                 "timing":timing})
