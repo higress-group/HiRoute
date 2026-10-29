@@ -257,6 +257,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   if(command==='get_subscription_check_result' && setupControl.checkedSubscription) return structuredClone(setupControl.checkedSubscription);
   if(command==='preview_compute_save') { setupControl.appendChange=structuredClone(payload.change); return mockProductInvoke(command,payload,'ready'); }
   if(command==='apply_compute_save' && setupControl.appendChange?.edit?.action==='append_models') {
+   if (params.has('reuse-save-failed')) return mockProductInvoke(command,payload,'ready');
    const subscription=setupControl.appendChange.subject.candidate.candidate_ref==='candidate/codex-local-subscription';
    const source=trialManagement.sources[subscription?0:1];
    source.revision++;

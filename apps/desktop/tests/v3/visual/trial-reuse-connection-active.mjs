@@ -18,6 +18,10 @@ async function open(query = '', language = 'en', width = 755, height = 600, reco
   await click('.new-models button',language==='zh'?'试用':'Try');
   await waitFor(client,`!!document.querySelector('.trial-footer') && !document.querySelector('.trial-setup')?.disabled`);
   if (recommended) await click('.trial-model-card','Kimi');
+  if (query.includes('reuse-preserve=1')) {
+    await click('.trial-choice-list .trial-choice','GPT');
+    await evaluate(client,`(()=>{const n=document.querySelector('[data-trial-target=name] input'),s=document.querySelector('[data-trial-target=trust] input[type=range]');for(const [e,v] of [[n,'My retained trial'],[s,'677']]){Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,v);e.dispatchEvent(new Event('input',{bubbles:true}));}return true;})()`);
+  }
   await click('[data-trial-target=trial] button', recommended ? language==='zh'?'在此接入':'Connect here' : language==='zh'?'新增接入':'Add a connection');
   await waitFor(client,`!!document.querySelector('[data-trial-source-choice]')`);
 }
@@ -91,6 +95,10 @@ try {
   await run('lost-reply-refreshes-original-save',async()=>{
     await open('reuse-lost=1');await source();await click('.trial-reuse-connection button','Check and add');
     await waitFor(client,`[...document.querySelectorAll('.trial-reuse-connection button')].some(e=>e.textContent.includes('Refresh result'))`);
+    await click('.trial-reuse-connection button','Back to trial');
+    await waitFor(client,`!document.querySelector('.trial-reuse-connection')`);
+    await click('button','Review connection result');
+    await waitFor(client,`!!document.querySelector('.trial-reuse-connection')`);
     await click('.trial-reuse-connection button','Refresh result');
     await waitFor(client,`!document.querySelector('.trial-reuse-connection') && document.querySelector('[data-trial-target=trial]').textContent.includes('Actual saved trial model')`);
     assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
@@ -132,6 +140,13 @@ try {
     await waitFor(client,`trialSetupControl.pending.length===0`);
     assert.equal(await evaluate(client,`!!document.querySelector('.trial-reuse-connection')`),false);
     assert.equal(await evaluate(client,`document.querySelector('.trial-model-card.selected').textContent.includes('Kimi')`),true);
+  });
+  await run('reuse-preserves-trust-name-and-primary',async()=>{
+    await open('reuse-preserve=1');await source();await click('.trial-reuse-connection button','Check and add');
+    await waitFor(client,`!document.querySelector('.trial-reuse-connection') && document.querySelector('[data-trial-target=trial]').textContent.includes('Actual saved trial model')`);
+    assert.equal(await evaluate(client,`document.querySelector('[data-trial-target=name] input').value`),'My retained trial');
+    assert.equal(await evaluate(client,`document.querySelector('[data-trial-target=trust] input[type=range]').value`),'677');
+    assert.ok(await evaluate(client,`document.querySelector('[data-trial-target=primary] .trial-choice.selected')?.textContent.includes('GPT')`));
   });
   await run('localized-layout',async()=>{
     for(const [language,theme,width,height] of [['zh','dark',755,600],['en','light',755,600],['zh','light',1200,813],['en','dark',1200,813]]) {

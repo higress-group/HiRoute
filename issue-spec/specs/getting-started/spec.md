@@ -669,7 +669,9 @@ another model or running paid inference.
 A completed save SHALL be reconciled to its exact returned source/model/binding and
 current routable trial candidate, then return selected without a second chooser.
 An uncertain save SHALL only observe its original accepted Operation and SHALL NOT
-submit another Apply. Cancellation and stale results SHALL NOT replace later user
+submit another Apply. Returning to setup SHALL retain that submission and offer
+Review connection result to reopen it; ordinary review cannot advance past the
+unresolved connection. Cancellation and stale results SHALL NOT replace later user
 choices. Other trial selections, explicit route name and exact trust remain intact.
 
 #### Scenario: Existing binding

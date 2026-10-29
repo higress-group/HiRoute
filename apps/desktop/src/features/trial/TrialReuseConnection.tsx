@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import { randomId } from '../../random-id.ts';
+import { Dialog } from '../../ui/Dialog';
 import { requestEditorReplacement, useDiscardGuard } from '../../ui/discard-guard';
 import { connectionErrorMessage, manualModelIdError, safeConnectionErrorCode } from '../model-connections/form-support';
 import { checkMatches, clientIdempotencyKey, saveEligibility } from '../model-connections/state';
@@ -15,11 +16,12 @@ type Checked = { candidate: { candidate_ref: string; candidate_revision: number 
 type Submission = { key: string; digest: string; candidate: Checked['candidate']; modelRef: string; operation?: OperationReference };
 
 /** A selected trial model is an intent, not another general model-management entry. */
-export function TrialReuseConnection({ model, sourceId, options, language, mutable, onUse, onOperation, onClose }: {
+export function TrialReuseConnection({ model, sourceId, options, visible, language, mutable, onUse, onOperation, onClose }: {
   model: AvailableModel; sourceId: string; language: 'zh' | 'en'; mutable: boolean;
   options?: ComputeConnectionOptions;
+  visible: boolean;
   onUse(binding: ReusedTrialBinding): Promise<boolean>;
-  onOperation(operation: OperationReference): void; onClose(): void;
+  onOperation(operation: OperationReference): void; onClose(recoverable: boolean): void;
 }) {
   const zh = language === 'zh', text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const [source, setSource] = useState<ManagedSource>();
@@ -197,7 +199,8 @@ export function TrialReuseConnection({ model, sourceId, options, language, mutab
     } finally { working.current = false; if (live.current) setBusy(false); }
   }
 
-  return <section className="trial-reuse-connection" aria-busy={loading || busy}>
+  const close = () => void requestEditorReplacement('models').then(allowed => { if (allowed) onClose(!!submitted.current); });
+  return <Dialog open={visible} title={text('复用已有接入', 'Reuse an existing connection')} closeLabel={text('返回试用', 'Back to trial')} className="trial-dialog" closeDisabled={busy} onClose={close}><section className="trial-reuse-connection" aria-busy={loading || busy}>
     <h3>{model.display_name}</h3>
     <p className="field-help">{text('保留已选的试用模型，复用这个接入的端点和凭据。', 'Keep your trial model and reuse this connection’s endpoints and credentials.')}</p>
     {loading ? <p role="status">{text('正在读取接入…', 'Reading connection…')}</p> : <>
@@ -209,10 +212,10 @@ export function TrialReuseConnection({ model, sourceId, options, language, mutab
       {error && <p className="oc-inline-error" id="trial-reuse-error" role="alert">{error}</p>}
       {(receipt || uncertain) && <p role="status">{receipt ? text('接入已保存，正在核实所选绑定。', 'Connection saved; confirming the selected binding.') : text('保存结果尚未确认，不会重复提交。', 'The save is unconfirmed; it will not be submitted again.')}</p>}
       <div className="actions">
-        <button type="button" className="btn" disabled={busy} onClick={() => void requestEditorReplacement('models').then(allowed => { if (allowed) onClose(); })}>{text('返回试用', 'Back to trial')}</button>
+        <button type="button" className="btn" disabled={busy} onClick={close}>{text('返回试用', 'Back to trial')}</button>
         {!source && <button type="button" className="btn" onClick={() => void load()}>{text('重试', 'Retry')}</button>}
         {submitted.current ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void refreshResult()}>{text('刷新结果', 'Refresh result')}</button> : source && <button type="button" className="btn btn-primary" disabled={!mutable || busy || source.state !== 'ready'} onClick={() => void useConnection()}>{busy ? text('正在确认…', 'Checking…') : savedRequestModel(source, requestId) ? text('使用此接入', 'Use this connection') : text('检查并添加', 'Check and add')}</button>}
       </div>
     </>}
-  </section>;
+  </section></Dialog>;
 }
