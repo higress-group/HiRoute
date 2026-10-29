@@ -24,14 +24,17 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
     let text = format!("late capture: {}", "escape \\\"\n路由🦀".repeat(2048));
     install_content(&store, &fixture, text.as_bytes(), 101);
     let detail = store
-        .get_session(&fixture.workspace, &fixture.session, ContentMode::MessagesAndTools)
+        .get_session(
+            &fixture.workspace,
+            &fixture.session,
+            ContentMode::MessagesAndTools,
+        )
         .unwrap();
     assert_eq!(
         detail.summary.content_completeness,
         ContentCompleteness::Complete
     );
-    let serialized = serde_json::to_string(&detail).unwrap();
-    assert!(serialized.contains("late capture:"));
+    assert_eq!(detail.turns[0].messages[0].bytes, text.as_bytes());
     assert_eq!(
         store.get_receipt(&fixture.workspace, &receipt_id).unwrap(),
         receipt
@@ -41,7 +44,11 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
     let reopened = open_store(root.path());
     assert_eq!(
         reopened
-            .get_session(&fixture.workspace, &fixture.session, ContentMode::MessagesAndTools)
+            .get_session(
+                &fixture.workspace,
+                &fixture.session,
+                ContentMode::MessagesAndTools
+            )
             .unwrap(),
         detail
     );
@@ -55,7 +62,11 @@ fn delayed_content_after_request_finished_preserves_receipt_and_reopens_exactly(
     install_content(&reopened, &fixture, text.as_bytes(), 101);
     assert_eq!(
         reopened
-            .get_session(&fixture.workspace, &fixture.session, ContentMode::MessagesAndTools)
+            .get_session(
+                &fixture.workspace,
+                &fixture.session,
+                ContentMode::MessagesAndTools
+            )
             .unwrap(),
         detail
     );
