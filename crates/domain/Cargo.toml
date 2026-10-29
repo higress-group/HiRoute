@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+http.workspace = true
 pinyin = { version = "=0.11.0", default-features = false, features = ["plain"] }
 serde.workspace = true
 schemars = "=1.2.2"

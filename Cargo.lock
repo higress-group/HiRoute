@@ -2414,6 +2414,7 @@ dependencies = [
 name = "hiroute-domain"
 version = "0.1.0"
 dependencies = [
+ "http",
  "pinyin",
  "schemars 1.2.2",
  "serde",

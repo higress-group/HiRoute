@@ -116,6 +116,7 @@
     "hiroute.compute-management-snapshot/v2",
     "hiroute.compute-management-snapshot/v3",
     "hiroute.compute-management-source/v3",
+    "hiroute.compute-management-source/v4",
     "hiroute.compute-management-target/v2",
     "hiroute.compute-probe-lease/v1",
     "hiroute.compute-projection-control/v1",
@@ -1190,9 +1191,20 @@
         "hiroute.compute-management-mutation/v3",
         "hiroute.compute-management-preview/v2",
         "hiroute.compute-management-preview/v3",
-        "hiroute.compute-management-source/v3"
+        "hiroute.compute-management-source/v4"
       ],
       "legacy_support": [
+        {
+          "contract": "hiroute.compute-management-source/v3",
+          "mode": "legacy_adapter",
+          "owner": "compute-management",
+          "reason": "Read released sources and retained Operations without changing their canonical content; they have no decision destinations.",
+          "removal_condition": "Remove only after every supported release, retained operation and recoverable source using v3 is retired under the support policy.",
+          "allowed_paths": [
+            "crates/domain/src/compute/management/mod.rs",
+            "crates/local-storage/tests/fixtures/v0.2.0-compute-operation.json"
+          ]
+        },
         {
           "contract": "hiroute.compute-management-mutation/v2",
           "mode": "frozen_fixture",

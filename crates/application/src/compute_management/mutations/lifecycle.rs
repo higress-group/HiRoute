@@ -38,6 +38,7 @@ where
             .as_ref()
             .ok_or(ComputeManagementPlanningErrorV2::SourceNotFound)?;
         let mut source = current.clone();
+        source.schema = hiroute_domain::COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V4.into();
         source.revision = source
             .revision
             .checked_add(1)
@@ -66,6 +67,14 @@ where
                 Some(source)
             }
             ComputeManagementEditV1::Delete => {
+                if !current.decision_targets.is_empty() {
+                    return Err(ComputeManagementPlanningErrorV2::Port(
+                        hiroute_domain::PortError::new(
+                            hiroute_domain::PortErrorCode::Conflict,
+                            "decision_service.source_in_use",
+                        ),
+                    ));
+                }
                 for key in &current.credentials {
                     if self.secrets.generation(&key.credential)? != key.credential.generation() {
                         return Err(ComputeManagementPlanningErrorV2::CredentialConflict);

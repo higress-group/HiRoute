@@ -74,6 +74,7 @@ fn source(authentication: GatewayAuthenticationSemanticsV1) -> ComputeManagement
         }],
         native_recheck: None,
         additional_native_endpoints: Vec::new(),
+        decision_targets: Vec::new(),
         credentials,
         validation: None,
         last_candidate_ref: "candidate/a".into(),
@@ -156,6 +157,71 @@ fn one_native_source_shares_one_key_across_distinct_protocol_endpoints() {
 }
 
 #[test]
+fn decision_targets_are_distinct_from_models_and_preserve_legacy_source_bytes() {
+    let mut source = source(GatewayAuthenticationSemanticsV1::Bearer);
+    let legacy = serde_json::to_string(&source).unwrap();
+    let legacy_digest = source.digest().unwrap();
+    let reopened: ComputeManagementSourceV2 = serde_json::from_str(&legacy).unwrap();
+    assert_eq!(serde_json::to_string(&reopened).unwrap(), legacy);
+    assert_eq!(reopened.digest().unwrap(), legacy_digest);
+
+    let mut target = ComputeDecisionTargetV4::new(
+        "https://EXAMPLE.test/v1/decisions",
+        crate::DecisionWireProtocolV2::OpenaiDecisions,
+    )
+    .unwrap();
+    assert_eq!(target.endpoint, "https://example.test/v1/decisions");
+    let first = target
+        .consumer(
+            &source.source_id,
+            &source.lineage_digest,
+            "decision/a",
+            1,
+            "model-a",
+        )
+        .unwrap();
+    let second = target
+        .consumer(
+            &source.source_id,
+            &source.lineage_digest,
+            "decision/b",
+            1,
+            "model-b",
+        )
+        .unwrap();
+    assert_ne!(first.consumer_binding_id, second.consumer_binding_id);
+    target.consumers = vec![first, second];
+    source.schema = COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V4.into();
+    source.decision_targets.push(target.clone());
+    let destinations = source.native_destinations().unwrap();
+    assert!(destinations.contains(&target.destination_id));
+    assert!(target.destination_id.starts_with("decision-target/"));
+    assert_eq!(destinations.len(), 2);
+    let key = &mut source.credentials[0];
+    key.credential = CredentialRefV1::new(
+        &key.key_id,
+        format!("source/{}", source.source_id),
+        "hirouted",
+        "provider-auth",
+        destinations,
+        2,
+    )
+    .unwrap();
+    assert_eq!(source.validate(), Ok(()));
+    source.decision_targets[0].consumers[0].model = "substituted-model".into();
+    assert_eq!(
+        source.validate(),
+        Err(ComputeManagementErrorV2::InvalidTarget)
+    );
+    source.decision_targets[0] = target;
+    source.schema = COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2.into();
+    assert_eq!(
+        source.validate(),
+        Err(ComputeManagementErrorV2::UnsupportedSchema)
+    );
+}
+
+#[test]
 fn disabled_source_may_retain_ordered_keys_without_becoming_ready() {
     let mut disabled = source(GatewayAuthenticationSemanticsV1::Bearer);
     disabled.state = MaterializationState::Disabled;
@@ -185,7 +251,7 @@ fn explicit_http_and_https_targets_survive_source_serialization() {
     for scheme in ["http", "https"] {
         for authority in [
             "192.0.2.10",
-            "192.168.1.10",
+            "198.51.100.10",
             "gateway.invalid",
             "localhost",
             "127.0.0.1",
