@@ -124,10 +124,13 @@ pub async fn dispatch(
         "compute_connection_options" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
-            struct Arguments {}
-            let _: Arguments = serde_json::from_value(args)
+            struct Arguments {
+                include_request_model_ids: Option<bool>,
+            }
+            let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
-            let value = compute_connection_options(window, state).await?;
+            let value =
+                compute_connection_options(window, state, input.include_request_model_ids).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "register_protected_model_input" => {

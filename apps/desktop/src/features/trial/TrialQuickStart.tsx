@@ -7,7 +7,7 @@ import { requestEditorReplacement } from '../../ui/discard-guard';
 import { type Editor, type Plan, type Selection } from '../../plan-editor';
 import type { DesktopOperation, DesktopSnapshot } from '../../product/home-projections';
 import type { TrialCatalogSnapshot, TrialManagementSnapshot, TrialMember, TrialRetainedApiConnection, TrialSource, TrialSetupSnapshot } from './types';
-import type { ComputeSaveResult, OperationReference } from '../model-connections/types';
+import type { ComputeConnectionOptions, ComputeSaveResult, OperationReference } from '../model-connections/types';
 import type { AvailableModel, ModelAvailabilityResult } from '../model-feed/types';
 import { agentDisplayName } from '../agents/ecosystems';
 import { DecisionSelector } from '../decision-services/DecisionSelector';
@@ -17,6 +17,8 @@ import type { DecisionIntent, OpenDecisionConnection } from '../decision-service
 import { TrustLevelControl } from '../trust/TrustLevelControl';
 import { agentEcosystem } from '../agents/ecosystems';
 import { TrialConnectModel, type TrialConnectionState } from './TrialConnectModel';
+import { TrialReuseConnection } from './TrialReuseConnection';
+import type { ReusedTrialBinding } from './reuse-connection';
 import { TrialAgentChoice, TrialAgentMapping } from './TrialAgentMapping';
 import { TrialReview, type TrialReviewHandle } from './TrialReview';
 import { createTrialAlias, currentPrimary, defaultTrialName, initialTrialMapping, trialCriteria, trialSelection, type TrialMapping } from './model';
@@ -89,6 +91,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const [services, setServices] = useState<DecisionService[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true), [servicesError, setServicesError] = useState(false);
   const [connect, setConnect] = useState<AvailableModel | null>(null), [subscriptions, setSubscriptions] = useState(false);
+  const [reuseConnection, setReuseConnection] = useState<{ model: AvailableModel; sourceId: string; epoch: number; options?: ComputeConnectionOptions } | null>(null);
   const [connectionHidden, setConnectionHidden] = useState(false);
   const [connectionState, setConnectionState] = useState<TrialConnectionState>('editing');
   const [pickerRole, setPickerRole] = useState<'trial' | 'primary' | null>(null);
@@ -487,7 +490,13 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       {fieldError('trial') && <p id="trial-model-error" className="oc-inline-error">{fieldError('trial')}</p>}
       {reasoningPicker('trial')}
       {alias && <p className="field-help">{t('路由别名', 'Route alias')}: <code>{alias}</code></p>}
-      {connect && data && <div className="trial-connect-card" hidden={connectionHidden}><TrialConnectModel key={connect.model_configuration_id} model={connect} language={language} management={data.management} mutable={mutable} onOperation={operationRef} onResolve={receipt => refresh(false, true, receipt)} onReceipt={() => setSavedReceipt(true)} onSelectionIntent={() => { ++pickerEpoch.current; return ++selectionEpoch.current; }} onStateChange={setConnectionState} onBack={recoverable => { if (recoverable) setConnectionHidden(true); else { if (!replacingConnection.current) ++selectionEpoch.current; setConnect(null); setConnectionState('editing'); setConnectionHidden(false); } void refresh(); }} onSaved={(_result, selection, intent) => { if (!live.current || (intent ?? connectionEpoch.current) !== selectionEpoch.current) return false; setSavedConnections(values => [...new Set([...values, selection.source])]); setTrialId(selection.modelId); setTrialBinding(selection.bindingId); setTrialChosen(undefined); setUnlinked(selection.linked ? '' : selection.bindingId); setConnect(null); setConnectionState('editing'); setConnectionHidden(false); void onRefresh(); return true; }} /></div>}
+      {connect && data && <div className="trial-connect-card" hidden={connectionHidden}><TrialConnectModel key={connect.model_configuration_id} model={connect} language={language} management={data.management} onReuseSource={async (sourceId, options) => {
+        if (!connect || !data.management.sources.some(source => source.source_id === sourceId && source.actions.includes('append_models')) || !await releaseConnection() || !live.current) return;
+        const target = connect;
+        const epoch = ++selectionEpoch.current;
+        setConnect(null); setConnectionHidden(false); setConnectionState('editing');
+        setReuseConnection({ model: target, sourceId, epoch, options });
+      }} mutable={mutable} onOperation={operationRef} onResolve={receipt => refresh(false, true, receipt)} onReceipt={() => setSavedReceipt(true)} onSelectionIntent={() => { ++pickerEpoch.current; return ++selectionEpoch.current; }} onStateChange={setConnectionState} onBack={recoverable => { if (recoverable) setConnectionHidden(true); else { if (!replacingConnection.current) ++selectionEpoch.current; setConnect(null); setConnectionState('editing'); setConnectionHidden(false); } void refresh(); }} onSaved={(_result, selection, intent) => { if (!live.current || (intent ?? connectionEpoch.current) !== selectionEpoch.current) return false; setSavedConnections(values => [...new Set([...values, selection.source])]); setTrialId(selection.modelId); setTrialBinding(selection.bindingId); setTrialChosen(undefined); setUnlinked(selection.linked ? '' : selection.bindingId); setConnect(null); setConnectionState('editing'); setConnectionHidden(false); void onRefresh(); return true; }} /></div>}
       {!connect && trial?.catalog && !unlinkedTrial && !trialCandidates.length && trial.availability.kind !== 'needs_newer_client' && data && <div className="trial-connect-card"><div><strong>{t(`先接入 ${trial.display_name}`, `Connect ${trial.display_name} first`)}</strong><p className="field-help">{t('只读取这个服务的模型目录，不会发起付费推理。API Key 保存在本机。', 'Only the service model list is read; no paid inference runs. The API key stays on this device.')}</p></div><button type="button" className="btn btn-primary" onClick={() => { connectionEpoch.current = ++selectionEpoch.current; setConnectionState('editing'); setConnectionHidden(false); setConnect(trial.catalog!); }}>{t('在此接入', 'Connect here')}</button></div>}
       <TrialProtectionExplanation classifier={classifier} language={language} />
     </section>
@@ -576,6 +585,22 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     </Dialog>}
     {pickerRole && (manageSource || addingConnection) && <Dialog open title={manageSource ? t('管理所选接入', 'Manage selected connection') : t('新增接入', 'Add a connection')} closeLabel={t('返回已接入模型', 'Back to connected models')} onClose={() => void (async () => { if (await requestEditorReplacement('models')) { setManageSource(null); setAppendIntent(false); setAddingConnection(false); void refresh(false, true); } })()} className="trial-dialog"><ModelManagementPage agents={agentRead.snapshot?.choices} language={language} active trustedAuthority={mutable} initialSourceId={manageSource} startAppending={appendIntent} startAdding={addingConnection} scanOnMount={false} onOperation={operationRef} onRecoveryRefresh={() => void refresh()} onChanged={() => { void refresh(false, true); void onRefresh(); }} plans={snapshot?.catalog.plans} /></Dialog>}
     {decision && <Dialog open title={t('接入决策连接', 'Connect a decision service')} closeLabel={t('返回试用', 'Back to trial')} onClose={() => void (async () => { if (await requestEditorReplacement('decisions')) setDecision(null); })()} className="trial-dialog"><DecisionServicesPage language={language} active mutable={mutable} intent={decision} plans={snapshot?.catalog.plans} drafts={snapshot?.catalog.drafts} onChanged={() => void refreshServices()} onReturn={() => setDecision(null)} onUse={service => { serviceTouched.current = true; decisionSelect.current?.(service); setDecision(null); void refreshServices(); }} /></Dialog>}
+    {reuseConnection && <Dialog open title={t('复用已有接入', 'Reuse an existing connection')} closeLabel={t('返回试用', 'Back to trial')} className="trial-dialog" onClose={() => void requestEditorReplacement('models').then(allowed => { if (allowed) { ++selectionEpoch.current; setReuseConnection(null); } })}>
+      <TrialReuseConnection key={`${reuseConnection.sourceId}:${reuseConnection.epoch}`} model={reuseConnection.model} sourceId={reuseConnection.sourceId} options={reuseConnection.options} language={language} mutable={mutable} onOperation={operationRef} onClose={() => { ++selectionEpoch.current; setReuseConnection(null); }} onUse={async (selected: ReusedTrialBinding) => {
+        const context = reuseConnection;
+        const current = await refresh(false, true);
+        if (!live.current || context.epoch !== selectionEpoch.current) return false;
+        const source = current?.management.sources.find(source => source.source_id === selected.sourceId);
+        const member = source?.models.find(member => member.binding_id === selected.bindingId && member.model_ref === selected.modelRef && member.revision === selected.revision);
+        const candidate = current?.options.candidates.find(candidate => candidate.binding_id === selected.bindingId);
+        if (!source || !member || !candidate || !bindingUsable(source, member, candidate, current)) return false;
+        setTrialId(candidate.model_configuration_id); setTrialBinding(selected.bindingId); setTrialChosen(undefined);
+        setUnlinked(member.catalog_admitted && member.catalog_configuration_id === candidate.model_configuration_id ? '' : selected.bindingId);
+        setSavedConnections(values => [...new Set([...values, source.display_name])]);
+        if (candidate.model_configuration_id === primaryId) { setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); }
+        setReuseConnection(null); void onRefresh(); return true;
+      }} />
+    </Dialog>}
     {subscriptions && <Dialog open title={t('复用本机订阅', 'Reuse a local subscription')} closeLabel={t('返回试用', 'Back to trial')} onClose={() => void (async () => { if (await requestEditorReplacement('models')) { setSubscriptions(false); void refresh(); } })()} className="trial-dialog"><ModelManagementPage agents={agentRead.snapshot?.choices} language={language} active trustedAuthority={mutable} startScanning onOperation={operationRef} onRecoveryRefresh={() => void refresh()} onChanged={() => { void refresh(); void onRefresh(); }} plans={snapshot?.catalog.plans} /></Dialog>}
   </ProductPage>;
 }

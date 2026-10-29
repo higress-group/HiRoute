@@ -107,3 +107,10 @@
 .new-model-foot { display: grid; gap: 10px; margin-top: auto; padding-top: 4px; }
 .new-model-foot .badge { justify-self: start; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .new-model-foot .btn { width: 100%; }
+
+.trial-reuse-connection { display: grid; gap: 12px; min-width: 0; }
+.trial-reuse-connection h3, .trial-reuse-connection p { margin: 0; overflow-wrap: anywhere; }
+.trial-reuse-connection .field { display: grid; gap: 6px; min-width: 0; }
+.trial-reuse-connection .field-label { justify-content: flex-start; gap: 4px; }
+.trial-reuse-connection .input { width: 100%; min-width: 0; }
+.trial-reuse-connection .actions { flex-wrap: wrap; }

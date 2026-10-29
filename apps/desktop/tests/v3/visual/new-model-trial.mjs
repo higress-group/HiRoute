@@ -70,6 +70,7 @@ try {
   await new Promise((resolve, reject) => { chrome.once('spawn', resolve); chrome.once('error', reject); });
   await waitFor(`http://127.0.0.1:${cdpPort}/json/version`);
   const selectedRunner = [
+    ['--trial-reuse', 'trial-reuse-connection-active.mjs'],
     ['--setup-followup', 'trial-setup-followup-active.mjs'],
 
     ['--trial-setup-polish', 'trial-setup-polish-active.mjs'],

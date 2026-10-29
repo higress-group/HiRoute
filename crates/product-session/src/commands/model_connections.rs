@@ -296,6 +296,7 @@ pub async fn prepare_discovered_model_connection(
 pub async fn compute_connection_options(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
+    include_request_model_ids: Option<bool>,
 ) -> Result<ComputeConnectionOptionsResultV1, DesktopFailure> {
     main_window(window)?;
     let client = state
@@ -309,7 +310,10 @@ pub async fn compute_connection_options(
     crate::session::query(
         &client,
         "ListConnectionOptions",
-        &ComputeConnectionOptionsRequestV1 { candidate: None },
+        &ComputeConnectionOptionsRequestV1 {
+            candidate: None,
+            include_request_model_ids: include_request_model_ids.unwrap_or(false),
+        },
     )
     .await
 }
