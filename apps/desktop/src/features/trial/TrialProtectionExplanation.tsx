@@ -5,7 +5,7 @@ import './trial-protection-explanation.css';
 
 export function TrialProtectionExplanation({ classifier, language }: { classifier: Classifier; language: 'zh' | 'en' }) {
   const zh = language === 'zh';
-  const custom = classifier.kind === 'decision_service' && classifier.service.connection.kind === 'custom';
+  const custom = classifier.kind !== 'local_rules' && classifier.service.connection.kind === 'custom';
   const summary = custom
     ? (zh ? '由自定义扩展选择新模型或主力；HiRoute 不额外应用信任阈值或低分保护。' : 'The custom extension chooses the trial model or Primary. HiRoute adds no trust threshold or low-score protection.')
     : classifier.kind === 'local_rules'
@@ -14,7 +14,7 @@ export function TrialProtectionExplanation({ classifier, language }: { classifie
   return <div className="callout trial-rule"><UiIcon name="info" /><div className="trial-rule-content">
     <p>{summary}</p>
     <Disclosure language={language} label={zh ? '如何分配任务与保护' : 'How task routing and protection work'}>
-      <p>{zh ? '新模型先放进常规组。' : 'The new model starts in Regular. '}{protectionExplanation(classifier, language)}{classifier.kind === 'decision_service' && !custom && (zh ? '主力拿到低分不会再回退。熟悉之后，可以用分工把难的任务交给新模型。' : ' Primary does not fall back after a low score. Once you know the new model, divide work to give it harder tasks.')}</p>
+      <p>{zh ? '新模型先放进常规组。' : 'The new model starts in Regular. '}{protectionExplanation(classifier, language)}{classifier.kind !== 'local_rules' && !custom && (zh ? '主力拿到低分不会再回退。熟悉之后，可以用分工把难的任务交给新模型。' : ' Primary does not fall back after a low score. Once you know the new model, divide work to give it harder tasks.')}</p>
     </Disclosure>
   </div></div>;
 }

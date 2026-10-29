@@ -5,7 +5,7 @@ import { invoke } from '../../../src/host/index.ts';
 import { trialAgentRead } from './trial-agent-fixture';
 import { agentHomeRead } from './agent-home-fixture';
 import { DesktopApp } from '../../../src/product/DesktopApp';
-import { fixturePlanAuthoring, mockProductInvoke, readyAgents, readyDesktop, readyManagement } from './product-fixtures';
+import { fixtureDecisionSource, fixtureDecisionView, fixturePlanAuthoring, mockProductInvoke, readyAgents, readyDesktop, readyManagement } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
 // Only the IPC boundary is synthetic. Navigation, settings, forms and operation
@@ -20,6 +20,8 @@ const control = {
   clipboard: [] as string[],
   downloads: [] as Blob[],
   callHost: invoke,
+  decisionView: fixtureDecisionView,
+  decisionSource: fixtureDecisionSource,
   handlers: {} as Record<string, (payload: Record<string, unknown>) => unknown>,
   fixtureResponse: (command: string, payload: Record<string, unknown>) => {
     const response = mockProductInvoke(command, payload, 'ready');

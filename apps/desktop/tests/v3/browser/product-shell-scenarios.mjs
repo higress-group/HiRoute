@@ -47,6 +47,35 @@ function setInput(input, value) {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, value);
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
+const nativeField = name => all('.decision-connection-form')[0]?.querySelector(`[data-native-field="${name}"]`);
+function choose(select, value) { select.value = value; select.dispatchEvent(new Event('change', { bubbles: true })); }
+const decisionOrder = () => c().commands.map(item => item.command).filter(command => ['save_decision_service_v2', 'decision_services_v2', 'test_decision_service_v2'].includes(command));
+// Synthetic daemon state for the V2 decision commands; a submitted key becomes an opaque reference.
+function decisionStore(services = [], sources = []) {
+  const store = { services: structuredClone(services), sources: structuredClone(sources), test: () => ({ outcome: 'passed' }) };
+  store.view = id => { const service = store.services.find(item => item.id === id); return service && c().decisionView(service, store.sources); };
+  c().handlers.decision_services_v2 = () => ({ services: store.services.map(service => c().decisionView(service, store.sources)) });
+  c().handlers.decision_connection_sources = () => ({ sources: structuredClone(store.sources) });
+  c().handlers.save_decision_service_v2 = ({ input }) => {
+    const { change, secret } = input;
+    if ((store.services.find(item => item.id === change.id)?.revision ?? 0) !== change.expected_revision) throw { code: 'DECISION_REVISION_CONFLICT' };
+    store.services = store.services.filter(item => item.id !== change.id);
+    if (change.service) {
+      const saved = structuredClone(change.service);
+      const header = saved.connection.kind === 'native' ? saved.connection.authentication.auth_header : saved.connection.auth_header;
+      if (header && secret) header.value_secret_ref = `protected/${saved.id}/r${saved.revision}`;
+      store.services.push(saved);
+    }
+    return { operation_id: 'operation/decision', accepted_digest: 'sha256:' + '5'.repeat(64), state: 'succeeded' };
+  };
+  c().handlers.test_decision_service_v2 = ({ input }) => {
+    const view = store.view(input.id);
+    if (!view || view.service.revision !== input.revision || view.configuration_digest !== input.expected_configuration_digest) throw { code: 'DECISION_REVISION_CONFLICT' };
+    return { schema: 'hiroute.decision-service-test-result/v2', failure_code: null, duration_millis: 20, ...store.test(input),
+      tested_configuration_digest: view.configuration_digest, tested_credential_state_revision: view.credential_state_revision };
+  };
+  return store;
+}
 const operation = (state = 'running', id = 'operation/shell') => ({ operation_id: id, state, sequence: state === 'succeeded' ? 2 : 1, cancellable: false, safe_error_code: null });
 const feedback = () => document.querySelector('[data-operation-phase]');
 async function pending() {
@@ -629,14 +658,11 @@ const scenarios = [
     await until(() => !all('.session-request-focus').length && all('.request-timeline').length, 'explicit full-session navigation');
   }),
   scenario('desktop.models.return-from-decisions', ['model-connections', 'decision-services'], 'Returning from a decision connection save uses the current configuration revision for credential changes', async () => {
-    let services = [];
+    let store;
     await fresh(() => {
-      c().handlers.decision_services = () => ({ services: structuredClone(services) });
-      c().handlers.save_decision_service = ({ input }) => {
-        services = [structuredClone(input.change.service)];
-        c().management.revisions.target += 1;
-        return { state: 'succeeded' };
-      };
+      store = decisionStore();
+      const save = c().handlers.save_decision_service_v2;
+      c().handlers.save_decision_service_v2 = payload => { const result = save(payload); c().management.revisions.target += 1; return result; };
       c().handlers.preview_compute_save = ({ change }) => {
         if (change.expected_revisions.target !== c().management.revisions.target) throw { code: 'REVISION_CONFLICT' };
         return c().fixtureResponse('preview_compute_save', { change });
@@ -645,8 +671,9 @@ const scenarios = [
     await click('模型');
     await until(() => all('.oc-models .master-list button').length, 'general models');
     await click('决策模型'); await click('添加决策模型');
-    setInput(all('.decision-connection-form [name="credential"]')[0], 'synthetic-decision-key');
-    await click('仅保存'); await until(() => services.length && !all('.decision-connection-form').length, 'saved decision connection');
+    await until(() => nativeField('credential'), 'independent setup after an empty connection read');
+    setInput(nativeField('credential'), 'synthetic-decision-key');
+    await click('仅保存'); await until(() => store.services.length && !all('.decision-connection-form').length, 'saved decision connection');
     await click('通用模型');
     await until(() => all('.oc-models .master-list button').some(item => item.textContent.includes('Qwen3-Coder-Plus')), 'Bailian model');
     all('.oc-models .master-list button').find(item => item.textContent.includes('Qwen3-Coder-Plus')).click(); await pause(40);
@@ -773,10 +800,10 @@ const scenarios = [
   }),
   scenario('desktop.decisions.hidden-invalid-field', ['decision-services'], 'An invalid collapsed field and its error scroll above the sticky form actions', async () => {
     const saved = { id: 'decision/invalid-field', revision: 1, name: 'Connection with a collapsed timeout', connection: { kind: 'system_one', provider: 'bailian-token-plan', model: 'decision-model-preview', endpoint: 'https://example.test/systemone', timeout_ms: 10000, auth_header: { name: 'Authorization', value_secret_ref: 'protected/r1' } } };
-    await fresh(() => { c().handlers.decision_services = () => ({ services: [saved] }); });
+    await fresh(() => { decisionStore([saved]); });
     await click('模型'); await click('决策模型'); await click('编辑');
     const form = all('.decision-connection-form')[0];
-    const timeout = form.querySelector('[name="timeout"]');
+    const timeout = form.querySelector('[data-native-field="timeout"]');
     const details = timeout.closest('details');
     details.querySelector('summary').click(); await pause(40);
     setInput(timeout, '0'); await pause(40);
@@ -787,66 +814,153 @@ const scenarios = [
     const field = timeout.closest('.field').getBoundingClientRect();
     const footer = form.querySelector('.decision-form-actions').getBoundingClientRect();
     assert(field.top >= pane.getBoundingClientRect().top && field.bottom <= footer.top, 'Invalid field or error is hidden behind the sticky actions');
-    assert(calls('save_decision_service').length === 0, 'Invalid timeout was submitted');
+    assert(calls('save_decision_service_v2').length === 0, 'Invalid timeout was submitted');
   }),
-  scenario('desktop.decisions.save-test-revision', ['decision-services'], 'Save and test uses the saved credential revision; failure repairs and origin changes retain safe state', async () => {
-    let services = [];
-    await fresh(() => {
-      c().handlers.decision_services = () => ({ services: structuredClone(services) });
-      c().handlers.save_decision_service = ({ input }) => {
-        const saved = structuredClone(input.change.service);
-        saved.connection.auth_header.value_secret_ref = `protected/r${saved.revision}`;
-        services = [saved]; return { state: 'succeeded' };
-      };
-      c().handlers.test_classifier_decision = () => ({ outcome: 'failed', failure_code: 'CLASSIFIER_INPUT_REJECTED', duration_millis: 12 });
-    });
+  scenario('desktop.decisions.save-test-revision', ['decision-services'], 'Save and test reads back the exact revision, tests its digest, maps failures to repairs and never resubmits a key', async () => {
+    let store;
+    await fresh(() => { store = decisionStore(); store.test = () => ({ outcome: 'failed', failure_code: 'DECISION_INPUT_REJECTED' }); });
     await click('模型'); await click('决策模型'); await click('添加决策模型');
     const form = () => all('.decision-connection-form')[0];
-    const input = name => form()?.querySelector(`[name="${name}"]`);
+    const input = nativeField;
+    await until(() => input('credential'), 'independent setup after an empty connection read');
+    assert(all('.decision-mode')[1].getAttribute('aria-pressed') === 'true', 'An empty connection read did not default to independent setup');
     assert(all('.decision-provider img').length >= 2, 'Provider brand logos are missing');
-    assert(!input('timeout').closest('details').open && !input('endpoint').closest('details').open, 'Advanced defaults overwhelm initial form');
+    assert(!input('timeout').closest('details').open, 'Advanced defaults overwhelm initial form');
     setInput(input('credential'), 'synthetic-test-key'); await pause(30);
-    form().querySelector('summary').click(); await pause(30);
+    input('timeout').closest('details').querySelector('summary').click(); await pause(30);
     assert(input('credential').value === 'synthetic-test-key', 'Disclosure lost the credential');
     await click('保存并测试'); await until(() => text().includes('配置已保存，测试失败'), 'saved failure feedback');
-    const saved = calls('save_decision_service').at(-1).payload.input;
-    assert(saved.change.expected_revision === 0 && saved.change.service.revision === 1, 'New connection did not use revision transaction');
-    assert(saved.secret === 'synthetic-test-key', 'Built-in auth was incorrectly prefixed by UI');
-    const tested = calls('test_classifier_decision').at(-1).payload.input.classifier.service;
-    assert(tested.revision === 1 && tested.id === saved.change.service.id && tested.connection.auth_header.value_secret_ref === 'protected/r1', 'Test used the unsaved editor or old credential');
-    assert(text().includes('协议兼容性') && !text().includes('CLASSIFIER_INPUT_REJECTED'), 'Failure is not actionable or exposes raw code by default');
-    await click('修改连接'); await click('更换');
-    setInput(input('credential'), 'replacement-key');
-    form().querySelector('summary').click(); await pause(30);
-    setInput(input('endpoint'), 'https://other.example.test/systemone'); await pause(30);
-    assert(input('credential').value === '' && text().includes('请重新填写认证'), 'Endpoint origin change retained credentials');
-    const before = calls('save_decision_service').length;
+    const saved = calls('save_decision_service_v2').at(-1).payload.input;
+    assert(saved.change.expected_revision === 0 && saved.change.service.revision === 1 && saved.change.service.schema === 'hiroute.decision-service/v2', 'New connection did not use the V2 revision transaction');
+    assert(saved.secret === 'synthetic-test-key' && saved.change.service.connection.authentication.kind === 'independent', 'Independent key was not sent once as the save secret');
+    assert(decisionOrder().slice(-3).join() === 'save_decision_service_v2,decision_services_v2,test_decision_service_v2', 'Test did not follow readback of the saved revision');
+    const tested = calls('test_decision_service_v2').at(-1).payload.input;
+    assert(tested.revision === 1 && tested.id === saved.change.service.id && tested.expected_configuration_digest === store.view(saved.change.service.id).configuration_digest, 'Test used the unsaved editor or an old digest');
+    assert(text().includes('请核对模型、完整地址和协议') && !text().includes('DECISION_INPUT_REJECTED') && !text().includes('sha256:'), 'Failure is not actionable or exposes codes and digests by default');
+    await click('编辑决策模型'); await click('更换');
+    setInput(input('credential'), 'replacement-key'); await pause(30);
+    all('.decision-address-value button')[0].click(); await pause(30);
+    setInput(input('endpoint'), 'https://other.example.test/v1/decisions'); await pause(30);
+    assert(input('credential').value === '' && text().includes('地址的来源已变化，请重新填写 API Key。'), 'Endpoint origin change retained credentials');
+    const before = calls('save_decision_service_v2').length;
     await click('仅保存');
-    assert(calls('save_decision_service').length === before, 'Missing credential was submitted');
+    assert(calls('save_decision_service_v2').length === before, 'Missing credential was submitted');
     setInput(input('credential'), 'replacement-key'); await pause(30);
     await click('仅保存'); await until(() => !form(), 'saved edited revision');
-    assert(calls('test_classifier_decision').length === 1 && text().includes('本次打开尚未测试'), 'Old test status leaked to new revision or save-only tested');
-    c().handlers.test_classifier_decision = () => ({ outcome: 'passed', duration_millis: 20 });
+    assert(calls('test_decision_service_v2').length === 1 && text().includes('本次打开尚未测试'), 'Old test status leaked to new revision or save-only tested');
+    store.test = () => ({ outcome: 'passed' });
     await click('测试连接'); await until(() => text().includes('连接测试通过'), 'test repaired connection');
-    assert(calls('test_classifier_decision').at(-1).payload.input.classifier.service.revision === 2, 'Repair tested a stale revision');
+    assert(calls('test_decision_service_v2').at(-1).payload.input.revision === 2, 'Repair tested a stale revision');
     await click('编辑'); setInput(input('name'), 'Saved while readback fails'); await pause(40);
-    c().handlers.decision_services = () => { throw new Error('DAEMON_UNAVAILABLE'); };
-    await click('保存并测试'); await until(() => text().includes('配置已保存，但未能核实新版本'), 'acknowledged save readback failure');
-    assert(!form() && calls('test_classifier_decision').length === 2, 'Readback failure retained a resubmittable secret or ran a stale test');
-    assert(button('测试连接').disabled, 'Readback failure allowed testing an old snapshot');
-    c().handlers.decision_services = () => ({ services: structuredClone(services) });
-    await click('刷新'); await until(() => text().includes('Saved while readback fails') && !button('测试连接').disabled, 'readback recovery');
+    const read = c().handlers.decision_services_v2;
+    c().handlers.decision_services_v2 = () => { throw new Error('DAEMON_UNAVAILABLE'); };
+    await click('保存并测试'); await until(() => text().includes('已保存 — 需要刷新'), 'acknowledged save readback failure');
+    assert(!form() && calls('test_decision_service_v2').length === 2, 'Readback failure retained a resubmittable secret or ran a stale test');
+    const testButton = () => all('.decision-test-actions button')[0];
+    assert(testButton().disabled, 'Readback failure allowed testing an old snapshot');
+    c().handlers.decision_services_v2 = read;
+    await click('刷新'); await until(() => text().includes('Saved while readback fails') && !testButton().disabled, 'readback recovery');
+  }),
+  scenario('desktop.decisions.shared-source', ['decision-services', 'model-connections'], 'A ready API connection defaults to reuse without choosing it; bundles, pending keys, detours and stale tests stay scoped', async () => {
+    let store;
+    const sourceId = 'source/openai/decisions';
+    await fresh(() => { store = decisionStore([], [c().decisionSource(sourceId)]); });
+    await click('模型'); await click('决策模型'); await click('添加决策模型');
+    const input = nativeField;
+    const mode = index => all('.decision-mode')[index];
+    await until(() => mode(0)?.getAttribute('aria-pressed') === 'true', 'reuse default after a ready read');
+    assert(input('source').value === '' && !input('model'), 'The form chose an API connection for the user');
+    choose(input('source'), sourceId); await pause(40);
+    assert(input('model').value === 'gpt-6-luna' && input('name').value === 'gpt-6-luna · Decision API', 'Suggested settings or default name are missing');
+    assert(!input('credential') && text().includes('使用 API 接入的凭据'), 'Reuse asked for a key');
+    setInput(input('model'), 'gpt-6-luna-mini'); setInput(input('name'), 'Team decisions'); await pause(40);
+    await click('使用建议设置');
+    assert(input('model').value === 'gpt-6-luna' && input('name').value === 'Team decisions', 'Suggested settings overwrote the edited name');
+    setInput(input('model'), 'gpt-6-luna-mini'); await pause(40);
+    mode(1).click(); await pause(40);
+    setInput(input('credential'), 'pending-independent-key'); await pause(40);
+    mode(0).click(); await pause(40);
+    assert(text().includes('未保存的 Key 已清除') && input('model').value === 'gpt-6-luna-mini' && input('source').value === sourceId, 'Mode switch kept a pending key or replaced the shared bundle');
+    mode(1).click(); await pause(40);
+    assert(input('credential').value === '', 'Returning to independent setup restored a cleared key');
+    mode(0).click(); await pause(40);
+    await click('保存并测试'); await until(() => text().includes('连接测试通过'), 'shared save, readback and test');
+    const saved = calls('save_decision_service_v2').at(-1).payload.input;
+    const auth = saved.change.service.connection.authentication;
+    assert(saved.secret === null && auth.kind === 'shared_source' && auth.source_id === sourceId && auth.source_lineage_digest === store.sources[0].lineage_digest, 'Shared save carried a key or the wrong source lineage');
+    assert(JSON.stringify(saved.change.expected_source_revisions) === JSON.stringify([{ source_id: sourceId, revision: 1 }]), 'Shared save omitted the source revision precondition');
+    assert(decisionOrder().slice(-3).join() === 'save_decision_service_v2,decision_services_v2,test_decision_service_v2', 'Test did not follow readback of the saved revision');
+    assert(calls('test_decision_service_v2').at(-1).payload.input.expected_configuration_digest === store.view(saved.change.id).configuration_digest, 'Test did not use the read-back digest');
+    assert(!text().includes('sha256:') && calls('preview_plan_editor').length === 0, 'Digest shown outside diagnostics or save published a route');
+    await click('编辑'); setInput(input('name'), 'Edited during detour'); await pause(40);
+    await click('管理 API 接入');
+    await until(() => button('返回决策模型 — 草稿已保留'), 'detour banner');
+    store.sources[0] = { ...store.sources[0], credential_state_revision: 'sha256:' + '9'.repeat(64) };
+    const reads = calls('decision_connection_sources').length;
+    await click('返回决策模型 — 草稿已保留');
+    await until(() => calls('decision_connection_sources').length > reads && input('name')?.value === 'Edited during detour', 'detour return refreshes sources and keeps the draft');
+    assert(mode(0).getAttribute('aria-pressed') === 'true' && input('source').value === sourceId && input('model').value === 'gpt-6-luna-mini', 'Detour return changed mode, source or bundle');
+    await until(() => all('.decision-test-state.stale').length === 1, 'key rotation marks the earlier pass stale');
+    assert(calls('test_decision_service_v2').length === 1, 'Returning from the detour retested implicitly');
+    await click('取消'); await click('放弃修改');
+    await until(() => text().includes('上次测试通过 — 凭据或配置已变化'), 'stale detail state');
+    store.test = () => ({ outcome: 'failed', failure_code: 'DECISION_AUTHENTICATION_REJECTED' });
+    await click('重新测试'); await until(() => text().includes('连接测试失败'), 'shared authentication failure');
+    assert(button('管理 API 接入') && button('编辑决策模型') && !text().includes('DECISION_AUTHENTICATION_REJECTED'), 'Shared authentication failure lacks repairs or exposes raw codes');
+    assert(!button('重试'), 'Authentication failure offered a blind retry');
+    await click('管理 API 接入');
+    await until(() => button('返回决策模型 — 草稿已保留'), 'repair detour banner');
+    store.sources[0] = { ...store.sources[0], state: 'disabled' };
+    await click('返回决策模型 — 草稿已保留');
+    await until(() => all('.decision-source-callout').length && text().includes('没有可用的 Key 或已停用'), 'disabled source repair');
+  }),
+  scenario('desktop.decisions.source-read-states', ['decision-services'], 'Slow or failed connection reads never block independent setup, and a late read never overrides an explicit choice', async () => {
+    let release;
+    await fresh(() => {
+      decisionStore();
+      c().handlers.decision_connection_sources = () => new Promise(resolve => { release = () => resolve({ sources: [c().decisionSource('source/late')] }); });
+    });
+    await click('模型'); await click('决策模型'); await click('添加决策模型');
+    await until(() => text().includes('正在读取 API 接入…') && button('改为独立配置'), 'loading escape');
+    await click('改为独立配置');
+    assert(nativeField('credential'), 'Loading escape did not open independent setup');
+    release(); await until(() => calls('decision_connection_sources').length && !text().includes('正在读取 API 接入…'), 'late source read');
+    assert(all('.decision-mode')[1].getAttribute('aria-pressed') === 'true' && nativeField('credential'), 'A late read overrode the explicit independent choice');
+    let fail = true;
+    await fresh(() => {
+      decisionStore();
+      c().handlers.decision_connection_sources = () => { if (fail) throw { code: 'DAEMON_UNAVAILABLE' }; return { sources: [c().decisionSource('source/retried')] }; };
+    });
+    await click('模型'); await click('决策模型'); await click('添加决策模型');
+    await until(() => text().includes('暂时无法读取 API 接入。'), 'source read error');
+    assert(button('重试') && button('独立配置') && !all('.decision-mode').some(item => item.getAttribute('aria-pressed') === 'true'), 'Read error chose a mode or lacks recovery');
+    fail = false; await click('重试');
+    await until(() => all('.decision-mode')[0]?.getAttribute('aria-pressed') === 'true', 'retry defaults to reuse after a ready read');
+    assert(nativeField('source').value === '', 'Retry chose an API connection for the user');
+  }),
+  scenario('desktop.decisions.selector-labels', ['decision-services', 'routing-editor'], 'Route selectors accept V1 and V2 records, distinguish same-name models and keep the classifier kind exact', async () => {
+    const legacy = { id: 'decision/legacy', revision: 1, name: 'Legacy decisions', connection: { kind: 'system_one', provider: 'bailian-token-plan', model: 'qwen-decision', endpoint: 'https://legacy.example.test/systemone', timeout_ms: 10000, auth_header: { name: 'Authorization', value_secret_ref: 'protected/legacy' } } };
+    const shared = (id, sourceId, model) => ({ schema: 'hiroute.decision-service/v2', id, revision: 1, name: 'Decisions', connection: { kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model, endpoint: 'https://api.openai.test/v1/decisions', timeout_ms: 10000, authentication: { kind: 'shared_source', source_id: sourceId, source_lineage_digest: c().decisionSource(sourceId).lineage_digest } } });
+    await fresh(() => { decisionStore([legacy, shared('decision/a', 'source/team-a', 'gpt-6-luna'), shared('decision/b', 'source/team-a', 'gpt-6-sol')], [c().decisionSource('source/team-a', { display_name: 'Team API' })]); });
+    await routing(); await click('决策模型');
+    const select = () => all('.decision-selector select')[0];
+    await until(() => select()?.options.length === 4, 'decision choices');
+    const labels = [...select().options].slice(1).map(option => option.textContent);
+    assert(new Set(labels).size === 3 && labels.includes('Legacy decisions'), `Choices are ambiguous or omit V1: ${labels.join(' | ')}`);
+    assert(labels.includes('Decisions · gpt-6-luna · Team API') && labels.includes('Decisions · gpt-6-sol · Team API'), `Same-name choices lack model and source: ${labels.join(' | ')}`);
+    choose(select(), 'decision/b'); await pause(40);
+    await click('保存草稿');
+    await until(() => calls('preview_plan_editor').length > 0, 'draft with V2 classifier');
+    const classifier = calls('preview_plan_editor').at(-1).payload.input.editor.smart.classifier;
+    assert(classifier.kind === 'decision_service_v2' && classifier.service.id === 'decision/b' && classifier.service.revision === 1, 'V2 selection was not serialized with its exact kind and revision');
+    choose(select(), 'decision/legacy'); await pause(40);
+    await until(() => !button('保存草稿').disabled, 'draft action finished');
+    await click('保存草稿');
+    await until(() => calls('preview_plan_editor').at(-1).payload.input.editor.smart.classifier.kind === 'decision_service', 'V1 selection keeps its kind');
   }),
   scenario('desktop.decisions.route-detour', ['decision-services', 'routing-editor'], 'Adding a custom extension preserves the route and selects its exact saved version without publication', async () => {
-    let services = [];
-    await fresh(() => {
-      c().handlers.decision_services = () => ({ services: structuredClone(services) });
-      c().handlers.save_decision_service = ({ input }) => {
-        const saved = structuredClone(input.change.service);
-        if (saved.connection.auth_header) saved.connection.auth_header.value_secret_ref = 'protected/custom';
-        services = [saved]; return { state: 'succeeded' };
-      };
-    });
+    let store;
+    await fresh(() => { store = decisionStore(); });
     await routing();
     const routeName = () => all('.plan-identity-fields input')[0];
     setInput(routeName(), 'Preserved route draft'); await pause(40);
@@ -862,11 +976,11 @@ const scenarios = [
     assert(input('credential').value === 'extension-token', 'Protocol dialog cleared authentication');
     await click('仅保存');
     await until(() => routeName()?.value === 'Preserved route draft', 'return to original draft');
-    assert(calls('save_decision_service').at(-1).payload.input.secret === 'Bearer extension-token', 'Custom bearer auth was not serialized correctly');
-    assert(all('.decision-selector select')[0]?.value === services[0].id, 'Saved extension was not selected');
-    assert(calls('preview_plan_editor').length === 0 && calls('test_classifier_decision').length === 0, 'Connection save published the route or save-only ran a test');
+    assert(calls('save_decision_service_v2').at(-1).payload.input.secret === 'Bearer extension-token', 'Custom bearer auth was not serialized correctly');
+    assert(all('.decision-selector select')[0]?.value === store.services[0].id, 'Saved extension was not selected');
+    assert(calls('preview_plan_editor').length === 0 && calls('test_decision_service_v2').length === 0, 'Connection save published the route or save-only ran a test');
     await click('启发式规则'); await click('自定义扩展');
-    assert(all('.decision-selector select')[0]?.value === services[0].id, 'Changing decision method lost the selected extension');
+    assert(all('.decision-selector select')[0]?.value === store.services[0].id, 'Changing decision method lost the selected extension');
     await click('决策模型');
     assert(all('.decision-selector select')[0].options.length === 1, 'Extension leaked into decision model choices');
     await click('添加决策模型'); await click('返回路由'); await click('放弃修改');
@@ -878,28 +992,31 @@ const scenarios = [
       endpoint: 'https://example.test/systemone', timeout_ms: 10000,
       auth_header: { name: 'Authorization', value_secret_ref: 'decision/saved/r1' },
     } };
-    await fresh(() => { c().handlers.decision_services = () => ({ services: [saved] }); });
+    await fresh(() => { decisionStore([saved]); });
     await click('模型'); await click('决策模型');
     const editor = () => all('.decision-connection-form')[0];
     await until(() => text().includes(saved.name), 'saved decision');
+    await click('编辑');
+    assert(editor().querySelector('button[type="submit"]').disabled, 'An untouched V1 record opened as V2 is dirty');
+    await click('取消');
     for (const creating of [false, true]) {
-      if (creating) await click('添加决策模型');
+      if (creating) { await click('添加决策模型'); await until(() => nativeField('credential'), 'new independent setup'); }
       else { await click('编辑'); await click('更换'); }
-      setInput(editor().querySelector('[name="name"]'), 'Unsaved decision');
-      setInput(editor().querySelector('[name="credential"]'), 'synthetic-discard-value');
+      setInput(nativeField('name'), 'Unsaved decision');
+      setInput(nativeField('credential'), 'synthetic-discard-value');
       await click('通用模型'); await click('继续编辑');
-      assert(editor().querySelector('[name="name"]').value === 'Unsaved decision', 'Keep editing lost the name');
-      assert(editor().querySelector('[name="credential"]').value === 'synthetic-discard-value', 'Keep editing lost the credential');
+      assert(nativeField('name').value === 'Unsaved decision', 'Keep editing lost the name');
+      assert(nativeField('credential').value === 'synthetic-discard-value', 'Keep editing lost the credential');
       await click('首页'); await click('放弃修改'); await click('模型');
       await until(() => !editor() && text().includes(saved.name), 'discard restores saved detail');
       await click('编辑'); await click('更换');
-      assert(editor().querySelector('[name="credential"]').value === '', 'Discard retained the unsaved credential');
+      assert(nativeField('credential').value === '', 'Discard retained the unsaved credential');
       assert(editor().querySelector('button[type="submit"]').disabled, 'Discard left a dirty editor');
       await click('取消'); await click('首页');
       assert(!document.querySelector('dialog[open]'), 'Discarded editor prompted again');
       await click('模型');
     }
-    assert(calls('save_decision_service').length === 0, 'Discard persisted an edit');
+    assert(calls('save_decision_service_v2').length === 0, 'Discard persisted an edit');
   }),
   scenario('desktop.settings.fixed-scale', ['desktop-presentation'], 'Settings omit text size and normalize old enlarged preferences without losing language or appearance', async () => {
     await fresh(); await click('设置');
@@ -1105,7 +1222,7 @@ const scenarios = [
     local.click(); await pause(40);
     assert(local.getAttribute('aria-pressed') === 'true' && external.getAttribute('aria-pressed') === 'false', 'Heuristic choice did not replace the decision selection');
     await click('自定义扩展');
-    c().handlers.decision_services = () => ({ services: [] });
+    c().handlers.decision_services_v2 = () => ({ services: [] });
     await click('接入自定义扩展');
     assert(!document.querySelector('dialog[open]'), 'Connection detour discarded the route');
     await click('查看接入协议');
