@@ -327,7 +327,7 @@ mod protocol_tests {
             CommandLifecycle::Released
         );
         let release = release_manifest();
-        assert_eq!(release.commands.len(), 76);
+        assert_eq!(release.commands.len(), 80);
         assert!(release.commands.iter().all(|command| {
             command.lifecycle == CommandLifecycle::Released
                 && command.positive.state == CoverageState::Executable
