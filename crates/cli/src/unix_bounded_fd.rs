@@ -1,15 +1,19 @@
 //! Bounded Unix inherited-fd reader.
 //!
-//! Opens `/dev/fd/N` without changing the inherited description's file-status
-//! flags. macOS `/dev/fd/N` follows dup semantics, so `O_NONBLOCK` on that open
-//! does not make a blocking pipe nonblocking. `poll` enforces the deadline.
+//! Reopens `/dev/fd/N` with `O_NONBLOCK` so Linux named-FIFO acquisition does
+//! not wait for a writer. That open flag applies to the new description; the
+//! inherited descriptor's file-status flags stay unchanged. macOS `/dev/fd/N`
+//! follows dup semantics, so the same flag does not make a blocking pipe
+//! nonblocking. `poll` enforces the read deadline.
 
 use std::io::{ErrorKind, Read};
 use std::os::fd::AsFd;
 use std::os::unix::fs::FileTypeExt;
 use std::time::{Duration, Instant};
 
+use nix::fcntl::{OFlag, open};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+use nix::sys::stat::Mode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct UnixFdReadBounds {
@@ -28,13 +32,18 @@ pub(crate) fn read_unix_fd_bounded(
     if fd < bounds.min_fd {
         return Err(UnixFdReadError);
     }
-    let mut file = std::fs::File::open(format!("/dev/fd/{fd}")).map_err(|_| UnixFdReadError)?;
+    let deadline = Instant::now() + bounds.timeout;
+    let opened = open(
+        format!("/dev/fd/{fd}").as_str(),
+        OFlag::O_RDONLY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
+        Mode::empty(),
+    )
+    .map_err(|_| UnixFdReadError)?;
+    let mut file = std::fs::File::from(opened);
     let file_type = file.metadata().map_err(|_| UnixFdReadError)?.file_type();
     if !file_type.is_file() && !file_type.is_fifo() {
         return Err(UnixFdReadError);
     }
-
-    let deadline = Instant::now() + bounds.timeout;
     let mut bytes = Vec::new();
     let mut buf = [0u8; 8192];
     loop {
@@ -129,6 +138,8 @@ pub(crate) mod watchdog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nix::fcntl::{OFlag, open};
+    use nix::sys::stat::Mode;
     use std::io::{Seek, Write};
     use std::os::fd::AsRawFd;
 
@@ -209,5 +220,60 @@ mod tests {
     #[test]
     fn partial_pipe_without_eof_times_out_under_watchdog() {
         timeout_under_watchdog("partial", b"partial");
+    }
+
+    fn named_fifo(name: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(name);
+        nix::unistd::mkfifo(&path, Mode::S_IRUSR | Mode::S_IWUSR).unwrap();
+        (directory, path)
+    }
+
+    #[test]
+    fn named_fifo_without_writer_times_out_under_watchdog() {
+        if let Some(fd) = watchdog::child_fd() {
+            std::process::exit(if read_unix_fd_bounded(fd, SHORT).is_err() {
+                0
+            } else {
+                1
+            });
+        }
+        let (_directory, path) = named_fifo("no-writer");
+        let read = open(
+            path.as_path(),
+            OFlag::O_RDONLY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
+            Mode::empty(),
+        )
+        .unwrap();
+        let child = watchdog::spawn(&read, "named-fifo-no-writer");
+        watchdog::wait(child, Duration::from_secs(2));
+    }
+
+    #[test]
+    fn named_fifo_closed_writer_completes_under_watchdog() {
+        // Linux `/dev/fd/N` reopen of a hung-up FIFO does not surface hangup
+        // after the buffered payload, so the reader may time out. Completing
+        // inside the deadline is the P2 contract.
+        if let Some(fd) = watchdog::child_fd() {
+            let _ = read_unix_fd_bounded(fd, SHORT);
+            std::process::exit(0);
+        }
+        let (_directory, path) = named_fifo("closed-writer");
+        let read = open(
+            path.as_path(),
+            OFlag::O_RDONLY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
+            Mode::empty(),
+        )
+        .unwrap();
+        let write = open(
+            path.as_path(),
+            OFlag::O_WRONLY | OFlag::O_CLOEXEC | OFlag::O_NONBLOCK,
+            Mode::empty(),
+        )
+        .unwrap();
+        nix::unistd::write(&write, b"closed").unwrap();
+        drop(write);
+        let child = watchdog::spawn(&read, "named-fifo-closed-writer");
+        watchdog::wait(child, Duration::from_secs(2));
     }
 }
