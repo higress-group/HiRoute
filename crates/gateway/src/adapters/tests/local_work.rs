@@ -70,6 +70,25 @@ impl Fixture {
 }
 
 #[test]
+fn borrowed_wire_json_matches_the_existing_owned_expansion_exactly() {
+    use crate::content_ref::{ContentRef, JsonValueExt, borrowed_wire_value};
+    let reference = ContentRef::new(7, 13, 29, 31);
+    let marker = reference.json_marker();
+    let body = json!({
+        "z":[null,true,-17,1.25,"escaped \"\\\n路由🦀",marker],
+        "a":{"nested":reference.json_marker(),"literal":reference.wire_marker()},
+        // Additional keys make this ordinary JSON, not a locator object.
+        "ordinary":{"__hiroute_json_content_ref_v2":reference.wire_marker(),"other":1},
+    });
+    for body in [body, reference.json_marker(), json!("plain"), json!([])] {
+        assert_eq!(
+            serde_json::to_vec(&borrowed_wire_value(&body)).unwrap(),
+            serde_json::to_vec(&body.wire_value()).unwrap(),
+        );
+    }
+}
+
+#[test]
 fn local_work_protocol_oracle_preserves_complete_text_and_tool_history() {
     let text = format!("{}\"\\\n中文🦀{}", "a".repeat(24_577), "z".repeat(16_385));
     // Ingress already canonicalizes valid tool JSON. Keep this fixture in
