@@ -306,6 +306,11 @@ fn migrate(
 
     for version in (current + 1)..=target {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if kind == DatabaseKind::Control && version == 34 {
+            // Validate the old coverage before our known additive DDL changes its cookie.
+            crate::control::agent_locator::validate_coverage(&transaction)
+                .map_err(|_| LocalStorageError::InvalidData)?;
+        }
         transaction.execute_batch(migration_sql(kind, version)?)?;
         if kind == DatabaseKind::Control && version == 8 {
             compute_v8::migrate_semantic_identities(&transaction)?;
@@ -316,6 +321,9 @@ fn migrate(
         }
         if kind == DatabaseKind::Control && version == 33 {
             agent_locator_v33::initialize(&transaction)?;
+        }
+        if kind == DatabaseKind::Control && version == 34 {
+            subscription_api_v34::initialize(&transaction)?;
         }
         if kind == DatabaseKind::Secrets && version == 15 {
             convergence_v15::ensure_collaboration_preparation_column(&transaction)?;
@@ -563,17 +571,20 @@ impl MigrationSetCoordinator {
     }
 
     /// This is determined only from the already validated original BackupSet,
-    /// not the live files after migration. The exception applies to one target.
-    pub(crate) fn is_admitted_locator_only_batch(&self) -> bool {
+    /// not the live files after migration. Only these reviewed additive steps qualify.
+    pub(crate) fn is_admitted_additive_batch(&self) -> bool {
         self.set.as_ref().is_some_and(|set| {
-            set.target_schema_version() == 33
-                && [
-                    set.control.manifest(),
-                    set.runtime.manifest(),
-                    set.secrets.manifest(),
-                ]
-                .iter()
-                .all(|source| source.schema_version == 32)
+            let source = set.control.manifest().schema_version;
+            matches!(
+                (source, set.target_schema_version()),
+                (32, 33 | 34) | (33, 34)
+            ) && [
+                set.control.manifest(),
+                set.runtime.manifest(),
+                set.secrets.manifest(),
+            ]
+            .iter()
+            .all(|item| item.schema_version == source)
         })
     }
 

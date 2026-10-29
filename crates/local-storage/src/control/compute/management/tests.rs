@@ -38,8 +38,8 @@ mod recovery;
 mod released_lifecycle;
 mod removal_guards;
 mod runtime_leases;
-mod subscription_selection;
 mod subscription_api;
+mod subscription_selection;
 
 struct ProtectedInput;
 

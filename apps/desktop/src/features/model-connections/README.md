@@ -42,7 +42,9 @@ network probing. Closed target-validation reasons survive the daemon error envel
 as `message_key` values and become localized correction text; raw exception strings
 and provider bodies never become UI messages.
 
-The first inventory check selects no models. A tool check on an explicitly selected
+The first inventory check selects no models by default. An explicit Codex subscription
+API-association flow may supply the already selected upstream IDs; after a successful
+API check only exact selectable matches are preselected, for user review before save. A tool check on an explicitly selected
 model preserves existing choices by exact upstream model identity within the same
 candidate and edit revision, using fresh selectable model references. Newly
 discovered, removed, or unavailable models are never automatically selected.
@@ -56,3 +58,11 @@ User/ambiguous declarations retain saved intent; connector-verified authority is
 New UI saves use a V3 source/default transaction while released V2 requests and journal bytes
 retain their original proof reader. The model detail default editor shows saved versus current
 values and records official-follow/preserve choices through normal Preview/Apply.
+
+`../subscriptions/SubscriptionApiConnection.tsx` owns the optional saved/new API picker
+for Codex login and scan imports and saved association edits. The normal API form owns
+its separate protected Key. `api-sync.ts` appends only exact API-observed models through
+ordinary Check/Preview/Apply after a successful explicit subscription import. It neither
+creates routes nor copies OAuth authority. The durable association and memberships
+reconstruct pending work; retry first resolves the original idempotent Operation.
+Unsupported API models remain in the subscription. Detach retains both sources.

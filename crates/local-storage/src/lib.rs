@@ -343,9 +343,9 @@ impl LocalStorageSet {
             progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
         }
         let integrity = if migration.durable_set_prepared() {
-            if migration.is_admitted_locator_only_batch() {
-                // The complete original source was already admitted at exactly v32.
-                // This v33 derivation validates structure and current dependencies,
+            if migration.is_admitted_additive_batch() {
+                // The complete original source was already admitted at v32 or v33.
+                // These reviewed additive steps validate structure and current dependencies,
                 // without claiming a full semantic audit of unrelated history.
                 migrations::validate_sqlite_structure(&control, &runtime, &secrets).and_then(|_| {
                     migrations::validate_current_storage(&control, &runtime, &secrets)

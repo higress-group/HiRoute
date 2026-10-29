@@ -106,12 +106,15 @@
     "hiroute.compute-management-binding/v2",
     "hiroute.compute-management-change/v2",
     "hiroute.compute-management-change/v3",
+    "hiroute.compute-management-change/v4",
     "hiroute.compute-management-key/v2",
     "hiroute.compute-management-lineage/v3",
     "hiroute.compute-management-mutation/v2",
     "hiroute.compute-management-mutation/v3",
+    "hiroute.compute-management-mutation/v4",
     "hiroute.compute-management-preview/v2",
     "hiroute.compute-management-preview/v3",
+    "hiroute.compute-management-preview/v4",
     "hiroute.compute-management-query/v2",
     "hiroute.compute-management-snapshot/v2",
     "hiroute.compute-management-snapshot/v3",
@@ -1184,10 +1187,13 @@
       "current_contracts": [
         "hiroute.compute-management-change/v2",
         "hiroute.compute-management-change/v3",
+        "hiroute.compute-management-change/v4",
         "hiroute.compute-management-mutation/v2",
         "hiroute.compute-management-mutation/v3",
+        "hiroute.compute-management-mutation/v4",
         "hiroute.compute-management-preview/v2",
         "hiroute.compute-management-preview/v3",
+        "hiroute.compute-management-preview/v4",
         "hiroute.compute-management-source/v3"
       ],
       "legacy_support": [
@@ -1418,7 +1424,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",

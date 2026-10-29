@@ -606,6 +606,56 @@ Removing or recreating the exact untouched automatically generated empty-model p
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/246#issuecomment-6462728885
 
+### Requirement: Codex imports may synchronize into an explicitly associated API connection
+
+Independent Codex login and local-login discovery SHALL offer an optional saved or new
+native API connection. New API credentials use the ordinary protected API form and
+remain separate from subscription OAuth. The association is durable metadata and may
+be adjusted or removed on the saved subscription. Removing it retains both sources,
+API credentials and already imported models. Removing the API leaves a visible
+unavailable association; removing the subscription clears its association.
+
+After a successful explicit subscription import or append, the client SHALL attempt
+an API check and append only exact upstream IDs from the user's subscription selection
+that the API actually observes and qualifies. Existing API models, Binding identities,
+endpoint, credentials and routes remain unchanged. Subscription names or capabilities
+cannot prove API entitlement. An API form opened from the explicit association may
+preselect only exact selectable matches of the user's subscription selection after
+its successful check; ordinary API forms retain an empty first selection.
+
+Subscription success SHALL survive API authentication, directory or save failures.
+The saved subscription SHALL show imported, pending or unsupported API models and
+permit explicit retry. Only a complete API directory can prove absence; a partial
+or unavailable read remains pending. A restart reconstructs pending imports from the
+association and both saved memberships. No background catalog refresh enlarges them.
+Uncertain writes SHALL resolve the original idempotent Operation before resubmission;
+a pending Operation cannot be replaced. Retry rechecks source revisions and the
+association. Changing or cancelling the action invalidates stale async results.
+
+Association and import SHALL NOT create, reorder or change candidate groups or routing
+plans. The user chooses how to combine the sources. Association does not promise
+eligibility for API credits or change upstream billing classification.
+
+#### Scenario: Subscription succeeds while the API is unavailable
+
+- **WHEN** an explicit Codex import succeeds and its associated API check fails
+- **THEN** the subscription remains saved, the missing API imports remain pending,
+  and explicit retry can append supported IDs without duplicating existing models
+
+#### Scenario: Only some selected IDs are supported
+
+- **WHEN** a complete API directory supports one of two imported subscription IDs
+- **THEN** only that exact API ID is appended and the other remains visible as
+  unsupported while both subscription models remain saved
+
+#### Scenario: Interrupted API save
+
+- **WHEN** the API Apply response is lost or the app restarts during a pending save
+- **THEN** retry resolves the original Operation and verifies saved membership;
+  it does not submit a second pending write
+
+Source Issue: https://github.com/higress-group/HiRoute/issues/279
+
 ## Implementation references
 
 - [Retain the selected trial model when reusing a saved connection](https://github.com/higress-group/HiRoute/issues/263).

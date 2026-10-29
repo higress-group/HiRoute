@@ -10,6 +10,32 @@ pub(super) const CONTROL: &str = "CREATE TABLE compute_subscription_api_links (
 ALTER TABLE compute_management_effects ADD COLUMN api_link_before TEXT;
 ALTER TABLE compute_management_effects ADD COLUMN api_link_after TEXT;";
 
+pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::LocalStorageError> {
+    // The caller validated the original cookie in this same transaction before DDL.
+    // Rebind only this known migration; ordinary schema edits still fail closed.
+    let schema: i64 = tx.pragma_query_value(None, "schema_version", |r| r.get(0))?;
+    if tx.execute(
+        "UPDATE agent_locator_coverage SET schema_version=?1 WHERE singleton=1 AND tampered=0",
+        [schema],
+    )? != 1
+    {
+        return Err(crate::LocalStorageError::InvalidData);
+    }
+    crate::control::agent_locator::validate_coverage(tx)
+        .map_err(|_| crate::LocalStorageError::InvalidData)?;
+    validate_links(tx)
+}
+
+#[cfg(test)]
+pub(super) fn remove_test_shape(db: &rusqlite::Connection) {
+    db.execute_batch(
+        "DROP TABLE compute_subscription_api_links;
+        ALTER TABLE compute_management_effects DROP COLUMN api_link_before;
+        ALTER TABLE compute_management_effects DROP COLUMN api_link_after;",
+    )
+    .unwrap();
+}
+
 pub(crate) fn validate_links(
     connection: &rusqlite::Connection,
 ) -> Result<(), crate::LocalStorageError> {

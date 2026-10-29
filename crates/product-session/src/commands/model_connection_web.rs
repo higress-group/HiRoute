@@ -668,15 +668,20 @@ mod tests {
 
     #[test]
     fn preview_and_apply_restore_the_exact_native_change() {
-        round_trip_native_change(false);
+        round_trip_native_change(false, false);
     }
 
     #[test]
     fn model_defaults_v3_preview_and_apply_restore_the_exact_native_change() {
-        round_trip_native_change(true);
+        round_trip_native_change(true, false);
     }
 
-    fn round_trip_native_change(with_defaults: bool) {
+    #[test]
+    fn association_v4_preview_and_apply_restore_exact_native_revision() {
+        round_trip_native_change(true, true);
+    }
+
+    fn round_trip_native_change(with_defaults: bool, with_link: bool) {
         let revisions = RevisionSetV1 {
             target: 3,
             dependencies: BTreeMap::new(),
@@ -696,7 +701,7 @@ mod tests {
             key_edits: Vec::new(),
             validation: Some(validation()),
         };
-        let desired = if with_defaults {
+        let mut desired = if with_defaults {
             serde_json::json!({
                 "schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3,
                 "change": change,
@@ -705,6 +710,13 @@ mod tests {
         } else {
             serde_json::to_value(&change).unwrap()
         };
+        if with_link {
+            desired = serde_json::json!({
+                "schema": hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4,
+                "change": desired,
+                "api_link": { "intent": "associate", "api_source_id": "source/api" }
+            });
+        }
         let preview = ComputeSavePreviewV2 {
             candidate: None,
             validation: Some(validation()),
@@ -723,7 +735,9 @@ mod tests {
         let web =
             serde_json::to_value(WebComputeSavePreviewV2::try_from(preview).unwrap()).unwrap();
         assert_eq!(
-            if with_defaults {
+            if with_link {
+                web["spec"]["desired_state"]["change"]["change"]["validation"]["validation_revision"].clone()
+            } else if with_defaults {
                 web["spec"]["desired_state"]["change"]["validation"]["validation_revision"].clone()
             } else {
                 web["spec"]["desired_state"]["validation"]["validation_revision"].clone()

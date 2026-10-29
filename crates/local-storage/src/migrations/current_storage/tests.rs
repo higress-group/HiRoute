@@ -351,6 +351,10 @@ fn historical_plan_bytes_become_strict_when_current_or_held() {
 /// A synthetic retained source is produced by the real migration and writers at
 /// its requested old target. This is not a claim of exact released-producer input.
 fn schema32_source(root: &Path) -> LocalStorageSet {
+    schema_source(root, 32)
+}
+
+fn schema_source(root: &Path, version: u32) -> LocalStorageSet {
     crate::prepare_owner_directory(root).unwrap();
     let live = root.join("live");
     crate::prepare_owner_directory(&live).unwrap();
@@ -361,7 +365,7 @@ fn schema32_source(root: &Path) -> LocalStorageSet {
         &live.join("control.db"),
         &backup,
         "00000000000000000000000000000001",
-        32,
+        version,
     )
     .unwrap();
     let runtime = crate::RuntimeStore::open_from_migration_set(
@@ -369,7 +373,7 @@ fn schema32_source(root: &Path) -> LocalStorageSet {
         &live.join("runtime.db"),
         &backup,
         "00000000000000000000000000000002",
-        32,
+        version,
     )
     .unwrap();
     let secrets = crate::LocalSecretStore::open_test_source_at_schema(
@@ -377,7 +381,7 @@ fn schema32_source(root: &Path) -> LocalStorageSet {
         &live.join("secrets.db"),
         &root.join("master-key"),
         &backup,
-        32,
+        version,
     )
     .unwrap();
     LocalStorageSet {
@@ -413,7 +417,7 @@ fn locator_upgrade_from_admitted_32_preserves_unrelated_publication_damage() {
     let upgraded = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
     assert_eq!(
         database_version(&root.join("live/control.db")).unwrap(),
-        Some(33)
+        Some(LATEST_SCHEMA_VERSION)
     );
     assert_eq!(
         upgraded
@@ -712,5 +716,44 @@ fn locator_upgrade_distinguishes_unheld_plan_history_from_current_and_held_versi
                 Some(32)
             );
         }
+    }
+}
+
+#[test]
+fn additive_schema33_upgrade_preserves_locator_history_and_rejects_unknown_ddl() {
+    for damage in [false, true] {
+        let directory = crate::test_tempdir().unwrap();
+        let root = directory.path().join("storage");
+        let stores = schema_source(&root, 33);
+        history(&stores, 3);
+        stores.control.connection.borrow().execute("UPDATE gateway_publications SET digest='unrelated-history' WHERE publication_revision=1", []).unwrap();
+        if damage {
+            stores
+                .control
+                .connection
+                .borrow()
+                .execute_batch("CREATE TABLE unknown_foreign_edit(id INTEGER)")
+                .unwrap();
+        }
+        let key = fs::read(root.join("master-key")).unwrap();
+        drop(stores);
+        let reopened = LocalStorageSet::open_for_daemon_startup(&root);
+        if damage {
+            assert!(reopened.is_err());
+        } else {
+            let reopened = reopened.unwrap();
+            reopened.control().validate_agent_locator(false).unwrap();
+            assert!(
+                audit_current_storage(reopened.control(), reopened.runtime(), reopened.secrets())
+                    .is_err()
+            );
+            assert_eq!(
+                database_version(&root.join("live/control.db")).unwrap(),
+                Some(LATEST_SCHEMA_VERSION)
+            );
+            drop(reopened);
+            drop(LocalStorageSet::open_for_daemon_startup(&root).unwrap());
+        }
+        assert_eq!(fs::read(root.join("master-key")).unwrap(), key);
     }
 }
