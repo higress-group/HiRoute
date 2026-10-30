@@ -57,7 +57,10 @@ fn storage_preparation_reopens_without_adopting_a_file() {
     prepare_storage_directory(&path).unwrap();
     let file = path.join("foreign");
     write_material(&file, b"preserve", FileMode::Data).unwrap();
-    assert!(prepare_storage_directory(&file).is_err());
+    assert!(matches!(
+        prepare_storage_directory(&file),
+        Err(DirectoryError::NotDirectory)
+    ));
     assert_eq!(fs::read(file).unwrap(), b"preserve");
 }
 

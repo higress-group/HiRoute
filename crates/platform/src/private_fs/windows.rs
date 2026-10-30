@@ -7,6 +7,16 @@ use std::{
 };
 
 pub(super) fn prepare_storage_directory(path: &Path) -> Result<(), DirectoryError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(DirectoryError::NotDirectory);
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(DirectoryError::Io(error)),
+    }
+    // Metadata classifies an existing wrong-kind entry; held native handles
+    // still decide admission and reject replacement/reparse races.
     security::ensure_private_directory(path)
         .map(drop)
         .map_err(DirectoryError::Io)
