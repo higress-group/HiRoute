@@ -982,6 +982,9 @@ pub(crate) fn acquire_host_lock(root: &Path) -> Result<File, String> {
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod busy_tests;
+
 #[cfg(all(test, target_os = "macos"))]
 mod channel_native_tests;
 
