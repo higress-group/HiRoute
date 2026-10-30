@@ -10,7 +10,7 @@ fn send_window(
     turn: &str,
     input: Value,
     selected: &[usize],
-) {
+) -> WireResponse {
     let hashes = input
         .as_array()
         .unwrap()
@@ -30,7 +30,7 @@ fn send_window(
             "messages":selected.iter().map(|index| json!({"index":index,"sha256":hashes[*index]})).collect::<Vec<_>>(),
             "scope_digest":format!("{:x}",Sha256::digest(serde_json::to_vec(&hashes).unwrap()))}
     }).to_string();
-    accepted(&request(
+    let response = request(
         fixture.address,
         "POST",
         "/v1/responses",
@@ -38,7 +38,9 @@ fn send_window(
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect::<Vec<_>>(),
         &serde_json::to_vec(&json!({"model":MODEL,"input":input,"stream":false})).unwrap(),
-    ));
+    );
+    accepted(&response);
+    response
 }
 
 #[test]
@@ -129,4 +131,93 @@ fn real_listener_current_window_evaluates_a_after_shortening_and_trailing_contex
                 .contains("TRAILING_RUNTIME_CONTEXT")
         );
     }
+}
+
+#[test]
+fn real_listener_dsh_tool_reminder_keeps_one_turn_and_complete_prior_stage_membership() {
+    let regular = NativeProvider::start(vec![reply(RESPONSES_TOOL_CALL), reply(RESPONSES_OK)]);
+    let primary = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+    let classifier = NativeProvider::start(vec![
+        reply(CLASSIFIER_SIMPLE),
+        reply(br#"{"group":"primary","assessment":{"score":0.75,"partial":false}}"#),
+    ]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_observation(
+        &[&regular, &primary, &classifier],
+        1,
+        ObservationFaults::healthy(),
+    );
+    let task = json!({"role":"user","content":"EXPORT_THE_DATA"});
+    let response = send_window(&fixture, "dsh", "5", json!([task]), &[0]);
+    let output: Value = serde_json::from_slice(&response.body).unwrap();
+    let reminder = "Inspect the previous tool result before trying another approach.";
+    let mut input = vec![
+        task,
+        json!({"type":"function_call","call_id":output["output"][0]["call_id"],
+            "namespace":"tools","name":"lookup","arguments":"{}"}),
+        json!({"type":"function_call_output","call_id":output["output"][0]["call_id"],
+            "output":"EXPORTED_THREE_ROWS"}),
+        json!({"role":"user","content":reminder}),
+    ];
+    // The adapter's v2 descriptor still selects the original human input and
+    // binds the reminder in the full User scope; the provider keeps its bytes.
+    send_window(&fixture, "dsh", "5", json!(input), &[0]);
+    assert_eq!(
+        classifier.calls(),
+        1,
+        "the reminder reclassified the same task"
+    );
+    assert_eq!(regular.calls(), 2);
+    assert_eq!(primary.calls(), 0);
+    assert!(
+        classifier_body(&regular, 1)["input"]
+            .to_string()
+            .contains(reminder)
+    );
+
+    input.extend([
+        json!({"role":"assistant","content":"ok"}),
+        json!({"role":"user","content":"THANK_YOU_NEXT_TASK"}),
+    ]);
+    send_window(&fixture, "dsh", "6", json!(input), &[2]);
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (2, 1, 2)
+    );
+    let decision = classifier_body(&classifier, 1);
+    assert!(
+        decision["latest_user"]
+            .to_string()
+            .contains("THANK_YOU_NEXT_TASK")
+    );
+    let facts = wait_execution_facts(&fixture, 3);
+    let facts = facts.iter().map(|fact| &fact["fact"]).collect::<Vec<_>>();
+    assert_eq!(
+        facts
+            .iter()
+            .filter(|fact| fact["kind"] == "agent_turn_admitted")
+            .count(),
+        2,
+        "two actual inputs must admit exactly two turns"
+    );
+    let finished = facts
+        .iter()
+        .find(|fact| fact["kind"] == "agent_turn_finished")
+        .unwrap();
+    assert_eq!(finished["status"], "complete");
+    assert_eq!(finished["history_partial"], false);
+    assert_eq!(
+        finished["history_membership"]["request_ids"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let score = facts
+        .iter()
+        .find(|fact| fact["kind"] == "branch_assessment_recorded")
+        .unwrap();
+    assert_eq!(score["score"], 0.75);
+    assert_eq!(score["partial"], false);
+    assert_eq!(score["segment_id"], finished["segment_id"]);
+    assert_eq!(score["history_membership"], finished["history_membership"]);
 }

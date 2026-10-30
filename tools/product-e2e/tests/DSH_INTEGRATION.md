@@ -63,6 +63,13 @@ envelopes and 32 current positions. Old events outside that window do not invali
 a correctly mapped new activation, and a missing proof still permits ordinary
 classification, execution capture and assessment of actual prior output.
 
+The native `repeat-tool-reminder` tool-loop guard is supplemental context of the
+current task, identified by its native source kind rather than its text. Its User
+envelope stays unchanged in provider execution and in the complete scope digest;
+it does not become a new input for classification or assessment. Cover reminders
+after a tool result, exact scope mismatches and a subsequent actual user sending
+the same text. Unknown or peer sources keep the conservative observed-input path.
+
 Late agent-message/subagent-settled and unknown source input keep their full native
 payloads with uncertain task association. A sender session can be reused for a
 different task; arrival in a newer parent turn does not make the old result belong
