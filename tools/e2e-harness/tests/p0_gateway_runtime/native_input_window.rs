@@ -189,21 +189,30 @@ fn real_listener_dsh_tool_reminder_keeps_one_turn_and_complete_prior_stage_membe
             .to_string()
             .contains("THANK_YOU_NEXT_TASK")
     );
-    let facts = wait_execution_facts(&fixture, 3);
-    let facts = facts.iter().map(|fact| &fact["fact"]).collect::<Vec<_>>();
+    let envelopes = wait_execution_facts(&fixture, 3);
+    let facts = envelopes
+        .iter()
+        .map(|fact| &fact["fact"])
+        .collect::<Vec<_>>();
+    let admissions = facts
+        .iter()
+        .filter(|fact| fact["kind"] == "agent_turn_admitted")
+        .collect::<Vec<_>>();
+    // Admission is recorded for each request, including a same-turn tool call.
+    assert_eq!(admissions.len(), 3);
     assert_eq!(
-        facts
-            .iter()
-            .filter(|fact| fact["kind"] == "agent_turn_admitted")
-            .count(),
-        2,
-        "two actual inputs must admit exactly two turns"
+        admissions[0]["agent_turn_id"],
+        admissions[1]["agent_turn_id"]
+    );
+    assert_ne!(
+        admissions[1]["agent_turn_id"],
+        admissions[2]["agent_turn_id"]
     );
     let finished = facts
         .iter()
         .find(|fact| fact["kind"] == "agent_turn_finished")
         .unwrap();
-    assert_eq!(finished["status"], "complete");
+    assert_eq!(finished["status"], "completed");
     assert_eq!(finished["history_partial"], false);
     assert_eq!(
         finished["history_membership"]["request_ids"]
@@ -220,4 +229,9 @@ fn real_listener_dsh_tool_reminder_keeps_one_turn_and_complete_prior_stage_membe
     assert_eq!(score["partial"], false);
     assert_eq!(score["segment_id"], finished["segment_id"]);
     assert_eq!(score["history_membership"], finished["history_membership"]);
+    let timeline = super::observed_history::timeline(&envelopes);
+    assert_eq!(timeline.turns.len(), 2);
+    assert_eq!(timeline.turns[0].status, "completed");
+    assert_eq!(timeline.turns[0].requests.len(), 2);
+    assert!(!timeline.turns[0].assessment.as_ref().unwrap().partial);
 }
