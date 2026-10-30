@@ -650,6 +650,116 @@ fn retained_association_schema35_preserves_v4_journals_and_sources_during_upgrad
 }
 
 #[test]
+fn retained_association_schema35_resumes_each_committed_store_without_changing_the_backup() {
+    use crate::backup::{BackupSetPhase, test_writer_barrier};
+    use crate::migrations::{DatabaseKind, LATEST_SCHEMA_VERSION, open_database_from_set};
+    for committed in 1..=3 {
+        for phase_recorded in [false, true] {
+            let root = tempdir().unwrap();
+            populate_saved_source(root.path(), &WorkspaceId::default());
+            let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            let api = lifecycle::saved(&stores);
+            let registry = TrustedComputeCandidateRegistry::new();
+            connect_with_format(&stores, &registry, &api, "codex", true);
+            let before = (sources(&stores), links(&stores), frozen_payloads(&stores));
+            drop(stores);
+            retained_association_schema35(root.path(), false);
+            let key = std::fs::read(root.path().join("master-key")).unwrap();
+            let paths = ["control", "runtime", "secrets"]
+                .map(|name| root.path().join(format!("live/{name}.db")));
+            let binding = crate::LocalSecretStore::migration_binding(
+                &paths[2],
+                &root.path().join("master-key"),
+            )
+            .unwrap()
+            .unwrap();
+            let dbs = paths
+                .each_ref()
+                .map(|path| rusqlite::Connection::open(path).unwrap());
+            let backup = crate::upgrade_backup_root(root.path()).unwrap();
+            let mut set = crate::BackupSet::create_migration(
+                &test_writer_barrier(),
+                &backup,
+                &dbs[0],
+                &dbs[1],
+                &dbs[2],
+                &binding.key_id,
+                LATEST_SCHEMA_VERSION,
+            )
+            .unwrap();
+            let original = paths
+                .each_ref()
+                .map(|path| std::fs::read(backup.join(path.file_name().unwrap())).unwrap());
+            let id = set.set_id().to_owned();
+            drop(dbs);
+            for (index, kind) in [
+                DatabaseKind::Control,
+                DatabaseKind::Runtime,
+                DatabaseKind::Secrets,
+            ]
+            .into_iter()
+            .enumerate()
+            .take(committed)
+            {
+                drop(
+                    open_database_from_set(
+                        &crate::test_storage_authority(),
+                        &paths[index],
+                        kind,
+                        &backup,
+                        None,
+                        Some(&binding),
+                        LATEST_SCHEMA_VERSION,
+                    )
+                    .unwrap(),
+                );
+                if index + 1 < committed || phase_recorded {
+                    set.persist_phase(
+                        &test_writer_barrier(),
+                        [
+                            BackupSetPhase::ControlMigrated,
+                            BackupSetPhase::RuntimeMigrated,
+                            BackupSetPhase::SecretsMigrated,
+                        ][index],
+                    )
+                    .unwrap();
+                }
+            }
+            drop(set);
+            let upgraded = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            assert_eq!(
+                (
+                    sources(&upgraded),
+                    links(&upgraded),
+                    frozen_payloads(&upgraded)
+                ),
+                before
+            );
+            assert_eq!(std::fs::read(root.path().join("master-key")).unwrap(), key);
+            let set = crate::BackupSet::open(&crate::test_storage_authority(), &backup).unwrap();
+            assert_eq!(set.set_id(), id);
+            assert_eq!(set.phase(), BackupSetPhase::Completed);
+            assert_eq!(
+                paths
+                    .each_ref()
+                    .map(|path| { std::fs::read(backup.join(path.file_name().unwrap())).unwrap() }),
+                original
+            );
+            drop(upgraded);
+            let reopened = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            assert_eq!(
+                (
+                    sources(&reopened),
+                    links(&reopened),
+                    frozen_payloads(&reopened)
+                ),
+                before
+            );
+        }
+    }
+}
+
+#[test]
 fn incomplete_legacy_layout_is_preserved_and_never_reconstructed_as_direct() {
     let root = tempdir().unwrap();
     populate_saved_source(root.path(), &WorkspaceId::default());
