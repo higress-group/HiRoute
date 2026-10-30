@@ -329,7 +329,7 @@ struct WebComputeManagementChangeV3 {
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct WebComputeManagementChangeV4 {
+struct WebComputeManagementChangeV5 {
     schema: String,
     change: WebComputeManagementChangeV3,
     api_link: hiroute_domain::ComputeSubscriptionApiLinkIntentV1,
@@ -337,14 +337,14 @@ struct WebComputeManagementChangeV4 {
 
 fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
     if value.get("schema").and_then(serde_json::Value::as_str)
-        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
     {
-        let linked: hiroute_application_api::ComputeManagementChangeV4 =
+        let linked: hiroute_application_api::ComputeManagementChangeV5 =
             serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
         if linked.change.api_link.is_some() {
             return Err("RESPONSE_DATA_INVALID");
         }
-        return serde_json::to_value(WebComputeManagementChangeV4 {
+        return serde_json::to_value(WebComputeManagementChangeV5 {
             schema: linked.schema,
             change: WebComputeManagementChangeV3 {
                 schema: linked.change.schema,
@@ -375,11 +375,11 @@ fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'stati
 }
 fn change_for_native(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
     if value.get("schema").and_then(serde_json::Value::as_str)
-        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
     {
-        let linked: WebComputeManagementChangeV4 =
+        let linked: WebComputeManagementChangeV5 =
             serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
-        return serde_json::to_value(hiroute_application_api::ComputeManagementChangeV4 {
+        return serde_json::to_value(hiroute_application_api::ComputeManagementChangeV5 {
             schema: linked.schema,
             change: ComputeManagementChangeV3 {
                 api_link: None,
@@ -712,7 +712,7 @@ mod tests {
         };
         if with_link {
             desired = serde_json::json!({
-                "schema": hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4,
+                "schema": hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5,
                 "change": desired,
                 "api_link": { "intent": "associate", "api_source_id": "source/api" }
             });

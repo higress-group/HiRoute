@@ -160,7 +160,7 @@ where
                 .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
             preview.result.spec = preview.plan.spec().clone();
             preview.result.accept_digest = CanonicalDigest::of(&(
-                "hiroute.compute-management-preview/v4",
+                "hiroute.compute-management-preview/v5",
                 &preview.result.spec,
                 &preview.result.expected_revisions,
                 preview.plan.control(),
@@ -183,9 +183,9 @@ where
         value: serde_json::Value,
     ) -> Result<ComputeManagementPreparedPreviewV2, ComputeManagementPlanningErrorV2> {
         if value.get("schema").and_then(serde_json::Value::as_str)
-            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
         {
-            let saved: hiroute_application_api::ComputeManagementChangeV4 =
+            let saved: hiroute_application_api::ComputeManagementChangeV5 =
                 serde_json::from_value(value)
                     .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
             if saved.change.api_link.is_some() {

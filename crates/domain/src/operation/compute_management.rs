@@ -61,9 +61,9 @@ impl TransactionPlanV1 {
             }
             crate::ComputeSubscriptionApiLinkIntentV1::Remove => None,
         };
-        self.spec.desired_state = json!({"schema": crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4, "change": self.spec.desired_state, "api_link": intent});
-        let mutation = crate::ComputeManagementMutationV4 {
-            schema: crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4.into(),
+        self.spec.desired_state = json!({"schema": crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5, "change": self.spec.desired_state, "api_link": intent});
+        let mutation = crate::ComputeManagementMutationV5 {
+            schema: crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5.into(),
             source_mutation: Box::new(source_mutation),
             api_link_before: before,
             api_link_after: after,

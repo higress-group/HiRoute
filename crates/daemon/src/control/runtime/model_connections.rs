@@ -752,7 +752,7 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             .desired_state
             .get("schema")
             .and_then(serde_json::Value::as_str)
-            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
             && matches!(
                 change.subject,
                 ComputeManagementSubjectV2::SavedSource { .. }

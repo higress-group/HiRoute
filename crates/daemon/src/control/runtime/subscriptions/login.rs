@@ -63,7 +63,7 @@ impl LocalControlAdapter {
             Some(
                 COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
                     | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
-                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
             )
         );
         if operation

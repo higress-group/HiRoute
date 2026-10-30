@@ -628,7 +628,7 @@ pub(super) fn validate_connection_plan(
         Some(
             crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
                 | crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
-                | crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+                | crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
         )
     ) {
         return super::compute_management::validate_management_plan(

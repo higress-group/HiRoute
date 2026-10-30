@@ -1,8 +1,8 @@
 //! An optional import association; it conveys no credentials or routing authority.
 use super::*;
 
-pub const COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4: &str = "hiroute.compute-management-change/v4";
-pub const COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4: &str = "hiroute.compute-management-mutation/v4";
+pub const COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5: &str = "hiroute.compute-management-change/v5";
+pub const COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5: &str = "hiroute.compute-management-mutation/v5";
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -30,22 +30,22 @@ pub enum ComputeSubscriptionApiLinkIntentV1 {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct ComputeManagementMutationV4 {
+pub struct ComputeManagementMutationV5 {
     pub schema: String,
     pub source_mutation: Box<ComputeManagementMutation>,
     pub api_link_before: Option<ComputeSubscriptionApiLinkV1>,
     pub api_link_after: Option<ComputeSubscriptionApiLinkV1>,
     pub change_spec_digest: CanonicalDigest,
 }
-impl ComputeManagementMutationV4 {
+impl ComputeManagementMutationV5 {
     pub fn validate(&self, spec: &ChangeSpecV1) -> Result<(), ComputeManagementErrorV2> {
-        if self.schema != COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4
-            || matches!(&*self.source_mutation, ComputeManagementMutation::V4(_))
+        if self.schema != COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5
+            || matches!(&*self.source_mutation, ComputeManagementMutation::V5(_))
             || spec
                 .desired_state
                 .get("schema")
                 .and_then(serde_json::Value::as_str)
-                != Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+                != Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
             || CanonicalDigest::of(spec).map_err(|_| ComputeManagementErrorV2::InvalidDigest)?
                 != self.change_spec_digest
         {

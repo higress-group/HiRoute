@@ -911,7 +911,7 @@ fn subscription_association_v4_retains_handoff_and_metadata_edits_after_restart(
     );
     assert_eq!(
         request.spec.desired_state["schema"],
-        hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+        hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
     );
     fixture.save(request);
     let before = fixture.snapshot().sources.remove(0);

@@ -190,8 +190,8 @@ pub(crate) fn audit_current_storage(
         }
         drop(defaults);
     }
-    if control_version >= 35 {
-        super::subscription_api_v35::validate_links(&connection)?;
+    if control_version >= 36 {
+        super::subscription_api_v36::validate_links(&connection)?;
     }
     // Cross-store grant/publication equality is checked only after Operation recovery.
     // Each store's format and integrity must already be valid before recovery writes.
