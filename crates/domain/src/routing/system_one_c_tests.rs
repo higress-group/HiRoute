@@ -111,7 +111,13 @@ fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
     let new_frozen = freeze(&new);
     let v2_bytes = serde_json::to_vec(&v2_frozen).unwrap();
     let restored_v2: FrozenNativeProtocolV1 = serde_json::from_slice(&v2_bytes).unwrap();
-    restored_v2.validate_smart(&judgment).unwrap();
+    let v2_authoring = judgment
+        .resolve_assessment(Some(&super::super::NativeProtocolSelectionV1 {
+            schema: SYSTEM_ONE_C_V2.into(),
+            prior_context_max_turns: 8,
+        }))
+        .unwrap();
+    restored_v2.validate_smart(&v2_authoring).unwrap();
     assert_eq!(serde_json::to_vec(&restored_v2).unwrap(), v2_bytes);
     assert_ne!(v2_frozen.digest, new_frozen.digest);
     assert_ne!(
