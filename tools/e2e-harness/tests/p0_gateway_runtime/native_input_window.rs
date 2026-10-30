@@ -191,13 +191,19 @@ fn real_listener_dsh_tool_reminder_keeps_one_turn_and_complete_prior_stage_membe
     );
     let facts = wait_execution_facts(&fixture, 3);
     let facts = facts.iter().map(|fact| &fact["fact"]).collect::<Vec<_>>();
+    let admissions = facts
+        .iter()
+        .filter(|fact| fact["kind"] == "agent_turn_admitted")
+        .collect::<Vec<_>>();
+    // Admission is recorded for each request, including a same-turn tool call.
+    assert_eq!(admissions.len(), 3);
     assert_eq!(
-        facts
-            .iter()
-            .filter(|fact| fact["kind"] == "agent_turn_admitted")
-            .count(),
-        2,
-        "two actual inputs must admit exactly two turns"
+        admissions[0]["agent_turn_id"],
+        admissions[1]["agent_turn_id"]
+    );
+    assert_ne!(
+        admissions[1]["agent_turn_id"],
+        admissions[2]["agent_turn_id"]
     );
     let finished = facts
         .iter()
