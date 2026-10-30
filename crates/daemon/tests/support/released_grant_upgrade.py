@@ -230,6 +230,13 @@ def run(repository, archive):
                 defaults = product.control('GetComputeDefaults', {'source_id':saved['source_id']})['data']
                 fields = next(model for model in defaults['models'] if model['binding_id'] == saved['binding_id'])['fields']
                 assert all(field['intent'] == 'preserve_saved' and field['effective_value'] == field['saved_value'] for field in fields.values()), fields
+            # Companion policy migration cannot rewrite supported released source bytes or
+            # authorize an inherited environment. Reads perform no provider request.
+            for saved in [manual, unknown]:
+                network = product.public_cli('compute network show', {'source_id': saved['source_id']})[1]['data']
+                assert network['policy'] == {'mode': 'direct'} and network['network_revision'] == 1, network
+                assert network['application_state'] == 'applied' and network['applied_revision'] == 1, network
+            assert source_rows(product)[unknown['source_id']] == sources_before[unknown['source_id']], 'policy conversion rewrote released source JSON'
             assert expected_sources[manual['source_id']]['models'][0]['capabilities']['context_tokens']['value'] == 23456
             for path, original in native_before.items():
                 assert path.read_bytes() == original, "startup rewrote native settings"
@@ -256,6 +263,7 @@ def run(repository, archive):
             "candidate": candidate, "released_sessions": 2, "current_attributed_sessions": 4,
             "agents": sorted(connections), "current_startups": 2,
             "native_settings_and_grants_unchanged": True,
+            "native_policy_direct_and_source_bytes_unchanged": True,
             "released_pending_state": pending['observed_state'],
             "retired_external_fixture_children": pending['retired_external_fixture_children'],
         }), flush=True)

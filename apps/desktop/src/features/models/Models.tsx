@@ -1,3 +1,5 @@
+import { NativeSourceNetworkEditor } from '../model-connections/NativeSourceNetworkEditor';
+import { networkFailureText, networkRepairable, type NativeNetworkFailure } from '../model-connections/native-network';
 import { ModelDefaultsEditor } from '../model-feed/ModelDefaultsEditor';
 import { ModelOriginDetails } from '../model-feed/ModelOriginDetails';
 import { ModelFeedPanel } from '../model-feed/ModelFeedPanel';
@@ -107,6 +109,9 @@ export function Models(props: Props) {
   const appliedInitialSource = useRef<string | null>(null);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [networkDirty, setNetworkDirty] = useState(false);
+  const [networkReveal, setNetworkReveal] = useState(0);
+  const [networkFailure, setNetworkFailure] = useState<NativeNetworkFailure | null>(null);
   const [draft, setDraft] = useState<ModelDraft | null>(null);
   const submittingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
@@ -153,10 +158,11 @@ export function Models(props: Props) {
   }), [model, props.plans]);
 
   const pristineDraft = source ? createDraft(source) : null;
-  const dirty = Boolean(draft && pristineDraft && JSON.stringify(draft) !== JSON.stringify(pristineDraft));
+  const dirty = networkDirty || Boolean(draft && pristineDraft && JSON.stringify(draft) !== JSON.stringify(pristineDraft));
   useDiscardGuard('models', dirty, props.language, confirmCredentialReplacement);
 
   useEffect(() => {
+    if (networkDirty) return;
     if (!props.initialSourceId) { appliedInitialSource.current = null; return; }
     if (appliedInitialSource.current === props.initialSourceId) return;
     if (!props.initialSourceId || !props.snapshot.sources.some(item => item.source_id === props.initialSourceId)) return;
@@ -165,18 +171,19 @@ export function Models(props: Props) {
     setQuery('');
     setSelectedModelId(null);
     setSelectedSourceId(props.initialSourceId);
+    setNetworkReveal(0); setNetworkFailure(null);
     setDetailOpen(true);
-  }, [props.initialSourceId, props.snapshot.sources]);
+  }, [props.initialSourceId, props.snapshot.sources, networkDirty]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.key !== 'Escape' || draft || !detailOpen || !window.matchMedia('(max-width: 800px)').matches) return;
+      if (event.defaultPrevented || event.key !== 'Escape' || draft || networkDirty || !detailOpen || !window.matchMedia('(max-width: 800px)').matches) return;
       event.preventDefault();
       returnToList();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [detailOpen, draft]);
+  }, [detailOpen, draft, networkDirty]);
 
   useEffect(() => {
     if (!recheckNotice) return;
@@ -191,6 +198,7 @@ export function Models(props: Props) {
   }, []);
 
   function returnToList() {
+    if (networkDirty) return;
     setDetailOpen(false);
     requestAnimationFrame(() => activeRow.current?.focus({ preventScroll: true }));
   }
@@ -204,6 +212,7 @@ export function Models(props: Props) {
   }
 
   async function confirmCredentialReplacement() {
+    if (networkDirty) return false;
     if (dirty && !(await confirmDiscard(props.language))) return false;
     discardCredentials();
     return true;
@@ -214,7 +223,7 @@ export function Models(props: Props) {
   }
 
   async function saveCredentials() {
-    if (!props.mutable || !source || !draft || submittingRef.current) return;
+    if (!props.mutable || !source || !draft || submittingRef.current || networkDirty) return;
     if (credentialEditing) {
       setErrorCode('CREDENTIAL_INPUT_PENDING');
       return;
@@ -250,8 +259,11 @@ export function Models(props: Props) {
   }
 
   function selectEntry(nextSource: ManagedSource, nextModel: ManagedModel | undefined) {
+    if (networkDirty) return;
+    setNetworkReveal(0);
     setRecheckError('');
     setRecheckNotice('');
+    setNetworkFailure(null);
     setStateChangeError('');
     setSelectedSourceId(nextSource.source_id);
     setSelectedModelId(nextModel?.model_ref ?? null);
@@ -259,19 +271,22 @@ export function Models(props: Props) {
   }
 
   async function recheckSource() {
-    if (!props.mutable || !source || !props.onRecheck || activeRecheck.current) return;
+    if (!props.mutable || !source || !props.onRecheck || activeRecheck.current || networkDirty) return;
     const checkId = clientOperationId('saved-model-check');
     const editRevision = ++recheckRevision.current;
     activeRecheck.current = checkId;
     setRechecking({ sourceId: source.source_id, checkId });
     setRecheckError('');
     setRecheckNotice('');
+    setNetworkFailure(null);
     try {
       const outcome = await props.onRecheck(source, checkId, editRevision);
       if (activeRecheck.current !== checkId) return;
       if (outcome !== 'uncertain') setRecheckNotice(text('接入检查已更新。', 'Connection check updated.'));
     } catch (cause) {
       if (activeRecheck.current !== checkId) return;
+      const failure = (cause as { networkFailure?: NativeNetworkFailure } | null)?.networkFailure;
+      if (failure) { setNetworkFailure(failure); setRecheckError(networkFailureText(failure, zh)); return; }
       const code = safeErrorCode(cause).toLocaleUpperCase();
       setRecheckError(code.includes('RECHECK_CONTEXT_UNAVAILABLE')
         ? source.authentication.kind === 'none'
@@ -291,7 +306,7 @@ export function Models(props: Props) {
   }
 
   async function changeSourceState(enabled: boolean) {
-    if (!props.mutable || !source || source.provenance === 'connector_owned' || submittingRef.current) return;
+    if (!props.mutable || !source || source.provenance === 'connector_owned' || submittingRef.current || networkDirty) return;
     if (!source.actions.includes(enabled ? 'enable' : 'disable')) return;
     submittingRef.current = true;
     setSubmitting(true);
@@ -335,7 +350,7 @@ export function Models(props: Props) {
     && !['free', 'subscription'].includes(billing)
     && priceContexts.length > 0
     && Boolean(props.onEditPrice);
-  const canRecheck = Boolean(props.mutable && source?.actions.includes('recheck') && access !== 'subscription' && props.onRecheck);
+  const canRecheck = Boolean(props.mutable && !networkDirty && source?.actions.includes('recheck') && access !== 'subscription' && props.onRecheck);
   const sourceRechecking = Boolean(source && rechecking?.sourceId === source.source_id);
   const reason = model?.presentation?.reason_code ?? null;
   const subscriptionAttention = access === 'subscription'
@@ -350,7 +365,7 @@ export function Models(props: Props) {
           <label className="search-box">
             <span className="sr-only">{text('搜索模型或来源', 'Search models or sources')}</span>
             <UiIcon name="search" />
-            <input className="input" value={query} onChange={event => { setQuery(event.target.value); setDetailOpen(false); }} placeholder={text('搜索模型或来源', 'Search models or sources')} />
+            <input className="input" value={query} disabled={networkDirty} onChange={event => { setQuery(event.target.value); setDetailOpen(false); }} placeholder={text('搜索模型或来源', 'Search models or sources')} />
           </label>
           <div className="source-tabs" aria-label={text('来源筛选', 'Source filter')}>
             {([
@@ -358,18 +373,18 @@ export function Models(props: Props) {
               ['subscription', text('订阅', 'Subscriptions')],
               ['api', 'API'],
               ['free', text('免费', 'Free')],
-            ] as const).map(([value, label]) => <button className={`source-tab${filter === value ? ' active' : ''}`} key={value} type="button" aria-pressed={filter === value} onClick={() => { setFilter(value); setDetailOpen(false); }}>{label}</button>)}
+            ] as const).map(([value, label]) => <button className={`source-tab${filter === value ? ' active' : ''}`} key={value} type="button" disabled={networkDirty} aria-pressed={filter === value} onClick={() => { setFilter(value); setDetailOpen(false); }}>{label}</button>)}
           </div>
           <div className="segmented model-view-switch" role="group" aria-label={text('查看方式', 'View')}>
-            <button className={`segment${view === 'models' ? ' active' : ''}`} type="button" aria-pressed={view === 'models'} onClick={() => setView('models')}>{text('按模型', 'Models')}</button>
-            <button className={`segment${view === 'connections' ? ' active' : ''}`} type="button" aria-pressed={view === 'connections'} onClick={() => setView('connections')}>{text('按接入', 'Connections')}</button>
+            <button className={`segment${view === 'models' ? ' active' : ''}`} type="button" disabled={networkDirty} aria-pressed={view === 'models'} onClick={() => setView('models')}>{text('按模型', 'Models')}</button>
+            <button className={`segment${view === 'connections' ? ' active' : ''}`} type="button" disabled={networkDirty} aria-pressed={view === 'connections'} onClick={() => setView('connections')}>{text('按接入', 'Connections')}</button>
           </div>
         </div>
         <nav className="master-list native-list" aria-label={text('模型', 'Models')}>
           {entries.map(item => {
             const active = source?.source_id === item.source.source_id && model?.model_ref === item.model?.model_ref;
             const itemStatus = modelAvailability(item.source, item.model);
-            return <button ref={active ? activeRow : undefined} className={`list-row${active ? ' active' : ''}`} key={item.model?.binding_id ?? item.source.source_id} aria-current={active ? 'page' : undefined} onClick={() => selectEntry(item.source, item.model)}>
+            return <button ref={active ? activeRow : undefined} className={`list-row${active ? ' active' : ''}`} key={item.model?.binding_id ?? item.source.source_id} disabled={networkDirty} aria-current={active ? 'page' : undefined} onClick={() => selectEntry(item.source, item.model)}>
               <ProviderIcon optionId={item.source.display_template_id ?? item.source.connection_identity?.connection_option_id} language={props.language} />
               <span className="row-main"><span className="row-title">{item.model?.display_name || nameLabel(item.source)}</span><span className="row-meta">{view === 'connections' ? `${connectionName(item.source.connection_identity?.connection_option_id, props.language, item.source.connection_identity?.product_label ?? '')} · ${item.source.models.length} ${text('个模型', 'models')}` : `${connectionLabel(item.source, props.language)}${duplicateName(item.source) ? ` · ${item.source.source_id.slice(-8)}` : ''}`}</span></span>
               <StatusBadge value={itemStatus} reason={item.model?.presentation?.reason_code} subscription={sourceAccess(item.source) === 'subscription'} compact language={props.language} />
@@ -380,7 +395,7 @@ export function Models(props: Props) {
       </aside>
 
       <section className="detail-pane">
-        <div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={returnToList}><UiIcon name="arrowLeft" />{text('返回模型列表', 'Back to models')}</button></div>
+        <div className="oc-model-back"><button className="btn btn-quiet" type="button" disabled={networkDirty} onClick={returnToList}><UiIcon name="arrowLeft" />{text('返回模型列表', 'Back to models')}</button></div>
         {source ? <div className="detail-inner">
           <div className="detail-hero">
             <div className="detail-identity"><ProviderIcon optionId={source.display_template_id ?? source.connection_identity?.connection_option_id} language={props.language} /><div><h2>{model?.display_name ?? source.display_name}</h2><p>{sourceLabel}</p></div></div>
@@ -389,7 +404,7 @@ export function Models(props: Props) {
 
           {model?.catalog_configuration_id && <ModelOriginDetails modelId={model.catalog_configuration_id} language={props.language} />}
 
-          {model && <ModelDefaultsEditor source={source} bindingId={model.binding_id} language={props.language} mutable={props.mutable} onApply={props.onApply} onSaved={props.onRefresh} />}
+          {model && <ModelDefaultsEditor source={source} bindingId={model.binding_id} language={props.language} mutable={props.mutable && !networkDirty} onApply={props.onApply} onSaved={props.onRefresh} />}
 
           {status === 'available' && <p className="field-help">{text('接入就绪仅表示本地路由条件满足，不代表上游推理或工具调用已验证。', 'Connection ready means local routing conditions are met; upstream inference and tool calls are not verified by this status.')}</p>}
 
@@ -399,17 +414,20 @@ export function Models(props: Props) {
             ? <button className="btn" type="button" onClick={cancelRecheck}>{text('取消检查', 'Cancel check')}</button>
             : canReauthorize
               ? <button className="btn" type="button" onClick={() => props.onReauthorize?.(source.source_id)}>{access === 'subscription' ? subscriptionMode === 'cpa_managed' ? text('重新独立登录', 'Sign in independently again') : text('重新检查订阅', 'Check subscription again') : text('重新检查接入', 'Check connection again')}</button>
-              : status !== 'needs_credentials' && canRecheck
+                : status !== 'needs_credentials' && canRecheck
                 ? <button className="btn" type="button" onClick={() => void recheckSource()}>{text('检查接入', 'Check connection')}</button>
-                : canManageCredentials && <button className="btn" type="button" onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>}
+                : canManageCredentials && <button className="btn" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>}
           {recheckError && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{recheckError}</span><button className="btn" type="button" disabled={!canRecheck} onClick={() => void recheckSource()}>{text('重试', 'Retry')}</button></div>}
           {recheckNotice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{recheckNotice}</span></div></div>}
 
+          {networkRepairable(networkFailure) && <button className="btn" type="button" onClick={() => setNetworkReveal(v => v + 1)}>{text('检查网络设置', 'Review network settings')}</button>}
+          {networkDirty && <p className="field-help" role="status">{text('请先保存或放弃网络修改，再切换或修改接入；保存结果未确认时，请刷新原操作。', 'Save or discard the network changes before switching or editing the connection. If a save is unconfirmed, refresh its original operation.')}</p>}
+          {source.provenance !== 'connector_owned' && <NativeSourceNetworkEditor key={source.source_id} sourceId={source.source_id} language={props.language} mutable={props.mutable && !draft && !rechecking && !submitting} reveal={networkReveal} onDirty={setNetworkDirty} onSaved={async () => { setNetworkFailure(null); setRecheckError(''); setRecheckNotice(text('网络设置已更新，请重新检查接入。', 'Network settings changed. Check the connection again.')); await props.onRefresh(); }} />}
           <section className="detail-section">
-            <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>
+            <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>
             <strong>{source.display_name}</strong>
             <p className="field-help">{connectionName(source.connection_identity?.connection_option_id, props.language, source.connection_identity?.product_label ?? '')}</p>
-            <div className="actions"><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting} onClick={() => setLifecycle({ source, action: 'rename' })}>{text('重命名', 'Rename')}</button>{props.onAppend && <button className="btn" type="button" disabled={!props.mutable || submitting} onClick={() => props.onAppend?.(source)}>{text('向此接入添加模型', 'Add models to this connection')}</button>}</div>
+            <div className="actions"><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => setLifecycle({ source, action: 'rename' })}>{text('重命名', 'Rename')}</button>{props.onAppend && <button className="btn" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => props.onAppend?.(source)}>{text('向此接入添加模型', 'Add models to this connection')}</button>}</div>
             <p className="field-help">{text(`此接入包含 ${source.models.length} 个模型。端点、Key 和启停操作作用于这份接入。`, `This connection has ${source.models.length} models. Endpoints, keys and enabled state belong to this connection.`)}</p>
             <p className="muted">{access === 'subscription'
               ? subscriptionMode === 'cpa_managed'
@@ -423,26 +441,26 @@ export function Models(props: Props) {
                 ? text('此接入不需要用户提供 API Key。', 'No user-provided API key is required.')
                 : sourceLabel}</p>
             {access === 'subscription' && props.onManageSubscriptionLogin && <div className="actions"><button className="btn" type="button" disabled={!props.mutable} onClick={props.onManageSubscriptionLogin}>{subscriptionMode === 'native_borrowed' ? text('改用独立登录', 'Use independent sign-in') : text('管理订阅登录', 'Manage subscription sign-ins')}</button></div>}
-            {source.provenance === 'user_configured' && props.onReconnect && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting} onClick={() => props.onReconnect?.(source)}>{text('编辑端点', 'Edit endpoints')}</button><span className="field-help">{text('一个来源的端点共用已保存的 API Key。', 'Endpoints in one connection share the saved API key.')}</span></div>}
-            {source.provenance !== 'connector_owned' && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting || !source.actions.includes(source.state === 'disabled' ? 'enable' : 'disable')} onClick={() => void changeSourceState(source.state === 'disabled')}>{submitting ? text('正在保存…', 'Saving…') : source.state === 'disabled' ? text('启用接入', 'Enable connection') : text('停用接入', 'Disable connection')}</button></div>}
+            {source.provenance === 'user_configured' && props.onReconnect && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => props.onReconnect?.(source)}>{text('编辑端点', 'Edit endpoints')}</button><span className="field-help">{text('一个来源的端点共用已保存的 API Key。', 'Endpoints in one connection share the saved API key.')}</span></div>}
+            {source.provenance !== 'connector_owned' && <div className="actions"><button className="btn" type="button" disabled={!props.mutable || submitting || networkDirty || !source.actions.includes(source.state === 'disabled' ? 'enable' : 'disable')} onClick={() => void changeSourceState(source.state === 'disabled')}>{submitting ? text('正在保存…', 'Saving…') : source.state === 'disabled' ? text('启用接入', 'Enable connection') : text('停用接入', 'Disable connection')}</button></div>}
             {stateChangeError && <div className="callout bad" role="alert" data-error-code={stateChangeError}><UiIcon name="warning" /><span>{text('接入状态未修改；请刷新后重试。', 'The connection state was not changed. Refresh and try again.')}</span></div>}
-            {view === 'connections' && <div>{source.models.map(member => <button key={member.binding_id} className="list-row" type="button" onClick={() => { setView('models'); selectEntry(source, member); }}><span className="row-main">{member.display_name}</span><UiIcon name="chevronRight" /></button>)}</div>}
-            <button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting} onClick={() => setLifecycle({ source, action: 'delete' })}>{text('删除接入', 'Delete connection')}</button>
+            {view === 'connections' && <div>{source.models.map(member => <button key={member.binding_id} className="list-row" type="button" disabled={networkDirty} onClick={() => { setView('models'); selectEntry(source, member); }}><span className="row-main">{member.display_name}</span><UiIcon name="chevronRight" /></button>)}</div>}
+            <button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => setLifecycle({ source, action: 'delete' })}>{text('删除接入', 'Delete connection')}</button>
           </section>
 
           {model && <section className="detail-section">
-            <div className="detail-section-head"><h3>{text('费用', 'Cost')}</h3>{canEditPrice && <button className="btn btn-quiet" type="button" onClick={() => props.onEditPrice?.(source, model)}>{text('调整价格', 'Edit pricing')}</button>}</div>
+            <div className="detail-section-head"><h3>{text('费用', 'Cost')}</h3>{canEditPrice && <button className="btn btn-quiet" type="button" disabled={networkDirty} onClick={() => props.onEditPrice?.(source, model)}>{text('调整价格', 'Edit pricing')}</button>}</div>
             <ModelPriceSummary language={props.language} model={model} billing={billing} contexts={priceContexts}
               refreshVersion={props.priceRefresh?.get(JSON.stringify([source.source_id, model.binding_id])) ?? 0} />
           </section>}
 
           {model && <section className="detail-section">
             <div className="detail-section-head"><h3>{text('用于这些路由', 'Used in these routes')}</h3></div>
-            {props.onTryModel && <button className="btn" type="button" disabled={!props.mutable || submitting} onClick={() => props.onTryModel?.(model.catalog_configuration_id, model.binding_id)}>{text('试用这个模型', 'Try this model')}</button>}
-            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}{plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && model && <button className="btn" type="button" onClick={() => props.onCreatePlan?.(model.binding_id)}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
+            {props.onTryModel && <button className="btn" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => props.onTryModel?.(model.catalog_configuration_id, model.binding_id)}>{text('试用这个模型', 'Try this model')}</button>}
+            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan || networkDirty}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}{plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && model && <button className="btn" type="button" disabled={networkDirty} onClick={() => props.onCreatePlan?.(model.binding_id)}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
           </section>}
 
-          {model && <section className="detail-section"><div className="detail-section-head"><h3>{text('移除模型', 'Remove model')}</h3><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting} onClick={() => setLifecycle({ source, model, action: 'remove' })}>{text('移除模型', 'Remove model')}</button></div><p className="muted">{text('仅从所属接入移除这个模型。', 'Remove this model from its connection.')}</p></section>}
+          {model && <section className="detail-section"><div className="detail-section-head"><h3>{text('移除模型', 'Remove model')}</h3><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => setLifecycle({ source, model, action: 'remove' })}>{text('移除模型', 'Remove model')}</button></div><p className="muted">{text('仅从所属接入移除这个模型。', 'Remove this model from its connection.')}</p></section>}
 
         </div> : <div className="empty-state"><div><div className="empty-icon"><UiIcon name="models" /></div><h3>{text('选择一个模型', 'Select a model')}</h3></div></div>}
       </section>
@@ -456,7 +474,7 @@ export function Models(props: Props) {
       closeLabel={text('关闭凭据设置', 'Close credential settings')}
       closeDisabled={submitting}
       onClose={() => { if (!submitting) cancelCredentials(); }}
-      footer={<><button className="btn" type="button" disabled={submitting} onClick={cancelCredentials}>{text('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-primary" type="button" disabled={submitting || !props.mutable || !draft?.selectedModels.length} onClick={() => void saveCredentials()}>{submitting ? text('正在保存…', 'Saving…') : text('保存凭据', 'Save credentials')}</button></>}
+      footer={<><button className="btn" type="button" disabled={submitting} onClick={cancelCredentials}>{text('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-primary" type="button" disabled={submitting || networkDirty || !props.mutable || !draft?.selectedModels.length} onClick={() => void saveCredentials()}>{submitting ? text('正在保存…', 'Saving…') : text('保存凭据', 'Save credentials')}</button></>}
     >
       {source && draft && <CredentialEditor language={props.language} source={source} model={model} draft={draft} errorCode={errorCode} onChange={setDraft} onEditingChange={setCredentialEditing} readKeyMasks={props.onReadKeyMasks} />}
     </Dialog>

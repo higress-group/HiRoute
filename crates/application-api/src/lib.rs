@@ -300,7 +300,21 @@ mod protocol_tests {
     #[test]
     fn p0_registry_and_staging_invariants_remain_closed() {
         let commands = planned_commands();
-        assert_eq!(commands.len(), 113);
+        assert_eq!(commands.len(), 120);
+        for operation in [
+            "GetNativeSourceNetworkV1",
+            "PreviewNativeSourceNetworkV1",
+            "ApplyNativeSourceNetworkV1",
+            "PreviewNativeNetworkRouteV1",
+            "PreviewComputeSaveV4",
+            "TestDecisionServiceV3",
+            "TestComputeConnectionV2",
+        ] {
+            assert_eq!(
+                command_by_operation(operation).unwrap().lifecycle,
+                CommandLifecycle::Released
+            );
+        }
         assert_eq!(
             commands
                 .iter()
@@ -348,7 +362,7 @@ mod protocol_tests {
             CommandLifecycle::Released
         );
         let release = release_manifest();
-        assert_eq!(release.commands.len(), 80);
+        assert_eq!(release.commands.len(), 87);
         assert!(release.commands.iter().all(|command| {
             command.lifecycle == CommandLifecycle::Released
                 && command.positive.state == CoverageState::Executable
@@ -389,3 +403,5 @@ pub use plan_authoring::*;
 
 mod console;
 pub use console::*;
+mod native_network;
+pub use native_network::*;

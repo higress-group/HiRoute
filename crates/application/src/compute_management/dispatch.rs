@@ -1,3 +1,5 @@
+mod network;
+
 use hiroute_application_api::{
     APPLY_COMPUTE_SAVE_OPERATION_V2, APPLY_SUBSCRIPTION_CHECK_OPERATION_V2, ApplyResultV1,
     CANCEL_NATIVE_MODEL_CONNECTION_CHECK_OPERATION_V1, CHECK_NATIVE_MODEL_CONNECTION_OPERATION_V1,
@@ -22,36 +24,40 @@ use crate::ApplicationService;
 use crate::control::ComputeManagementControlError;
 
 pub(crate) fn is_compute_management_operation(operation: &str) -> bool {
-    matches!(
-        operation,
-        "ListCompute"
-            | "GetCompute"
-            | LIST_COMPUTE_OPERATION_V3
-            | GET_COMPUTE_OPERATION_V3
-            | hiroute_application_api::GET_COMPUTE_KEY_MASKS_OPERATION_V1
-            | GET_COMPUTE_CANDIDATE_OPERATION_V2
-            | "GetComputeDefaults"
-            | "PreviewComputeSaveV3"
-            | PREVIEW_COMPUTE_SAVE_OPERATION_V2
-            | APPLY_COMPUTE_SAVE_OPERATION_V2
-            | GET_COMPUTE_SAVE_RESULT_OPERATION_V2
-            | CHECK_NATIVE_MODEL_CONNECTION_OPERATION_V1
-            | CHECK_REGISTERED_MODEL_CONNECTION_OPERATION_V1
-            | PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1
-            | CHECK_SAVED_MODEL_CONNECTION_OPERATION_V1
-            | CANCEL_NATIVE_MODEL_CONNECTION_CHECK_OPERATION_V1
-            | LIST_COMPUTE_SUBSCRIPTIONS_OPERATION_V2
-            | PREVIEW_SUBSCRIPTION_CHECK_OPERATION_V2
-            | APPLY_SUBSCRIPTION_CHECK_OPERATION_V2
-            | GET_SUBSCRIPTION_CHECK_RESULT_OPERATION_V2
-            | RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2
-    )
+    network::handles(operation)
+        || matches!(
+            operation,
+            "ListCompute"
+                | "GetCompute"
+                | LIST_COMPUTE_OPERATION_V3
+                | GET_COMPUTE_OPERATION_V3
+                | hiroute_application_api::GET_COMPUTE_KEY_MASKS_OPERATION_V1
+                | GET_COMPUTE_CANDIDATE_OPERATION_V2
+                | "GetComputeDefaults"
+                | "PreviewComputeSaveV3"
+                | PREVIEW_COMPUTE_SAVE_OPERATION_V2
+                | APPLY_COMPUTE_SAVE_OPERATION_V2
+                | GET_COMPUTE_SAVE_RESULT_OPERATION_V2
+                | CHECK_NATIVE_MODEL_CONNECTION_OPERATION_V1
+                | CHECK_REGISTERED_MODEL_CONNECTION_OPERATION_V1
+                | PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1
+                | CHECK_SAVED_MODEL_CONNECTION_OPERATION_V1
+                | CANCEL_NATIVE_MODEL_CONNECTION_CHECK_OPERATION_V1
+                | LIST_COMPUTE_SUBSCRIPTIONS_OPERATION_V2
+                | PREVIEW_SUBSCRIPTION_CHECK_OPERATION_V2
+                | APPLY_SUBSCRIPTION_CHECK_OPERATION_V2
+                | GET_SUBSCRIPTION_CHECK_RESULT_OPERATION_V2
+                | RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2
+        )
 }
 
 pub(crate) fn dispatch_compute_management(
     service: &ApplicationService,
     request: LocalControlRequestV2,
 ) -> MachineEnvelopeV2<Value> {
+    if network::handles(&request.operation_id) {
+        return network::dispatch(service, request);
+    }
     let Some(ports) = service.ports.as_ref() else {
         return failed(ErrorCode::DaemonUnavailable, request.request_id);
     };

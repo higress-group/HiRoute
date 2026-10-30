@@ -19,7 +19,6 @@ use bytes::Bytes;
 use pingora_core::apps::{
     HttpPersistentSettings, HttpServerApp, HttpServerOptions, ReusedHttpStream,
 };
-use pingora_core::connectors::http::Connector;
 use pingora_core::listeners::ALPN;
 use pingora_core::protocols::http::ServerSession;
 use pingora_core::protocols::http::client::HttpSession as ClientSession;
@@ -41,8 +40,8 @@ use crate::core::execution_plan::{
     TransportScheme, TransportTarget,
 };
 use crate::runtime::attempt::{
-    AttemptError, AttemptTransport, AttemptTransportFactory, PreparedRequestHead,
-    TransportPrecommitEvent, TransportPrecommitReceipt,
+    AttemptError, AttemptTransport, AttemptTransportFactory, NetworkDialRoute, PreparedRequestHead,
+    ProxyDialRoute, ProxyFailurePhase, TransportPrecommitEvent, TransportPrecommitReceipt,
 };
 use crate::transport::{
     GatewayLifecycle, GatewayRequestHead, GatewayResponseHead, GatewaySession, HttpProtocol,
@@ -55,6 +54,7 @@ const UPSTREAM_READER_MAILBOX_CAPACITY: usize = 1;
 
 mod client;
 mod connector;
+mod proxy;
 mod server;
 mod shared_h1;
 
@@ -63,4 +63,5 @@ pub use connector::PingoraConnectorAdapter;
 pub use server::GatewayHttpApp;
 
 use connector::{PingoraConnectorRegistry, build_peer};
+use proxy::NetworkConnector as Connector;
 use shared_h1::{SharedH1Io, SharedH1Mode, SharedH1Role, SharedH1Stream, flatten_reused_h1_stream};

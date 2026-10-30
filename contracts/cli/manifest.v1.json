@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:ed6ce2dcbf77cda13cfbcc9606011981e80c73c2b53260030464d0709a53fbe4",
+  "descriptor_digest": "sha256:9cc0651513ac62b99c12e9f8ea84362244d2de2a030f3aba4876bdd33057e36a",
   "visibility": "release",
   "commands": [
     {
@@ -1373,6 +1373,58 @@
       }
     },
     {
+      "command_id": "compute.connection.test-network",
+      "path": [
+        "compute",
+        "connection",
+        "test-network"
+      ],
+      "operation_id": "TestComputeConnectionV2",
+      "trace_ids": [
+        "CLI-080",
+        "APP-080"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "external_probe",
+      "request_schema": "hiroute.compute-connection-test-request/v2",
+      "response_schema": "hiroute.model-connection-check/v2",
+      "effect": "bounded_probe",
+      "network": "local_control_then_registered_gateway",
+      "model_call": "explicit_probe_may_call_model",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Check an explicit Native draft or saved source with admitted route evidence.",
+        "usage": "hiroute compute connection test-network [typed options] --non-interactive --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. The strict wrapper is {kind, request} for native, registered or saved. request contains the corresponding V2 request: its inner request preserves the released V1 shape and network_edit supplies policy plus expected_network_revision; saved may use null to select current source policy. New drafts use revision 0. Inspect check, network and failure separately. No directory or inference model means no provider call and no connectivity claim. Use the generated schema for full fields; credentials remain protected candidates.",
+        "effects": "Runs one explicit bounded source check. It keeps protected input in daemon memory and does not persist source state until the separate Preview/Apply flow.",
+        "network_and_model_use": "Contacts only the explicitly selected, typed endpoint. Inventory checks make no inference call; selecting an inference model may send one bounded model request and consume provider quota.",
+        "automation": "Use the strict {kind, request} V2 native/registered/saved wrapper from schema show --include-schema. Keep the inner released request and network_edit separate. New drafts use network revision 0; saved checks may select current policy with null. Check evidence is bound to the admitted route and cannot authorize a different policy. No directory preserves the declared-model path without claiming connectivity. Protected input remains in daemon memory; inference is explicit and may consume quota.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute connection test-network --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.connection.test-network"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.connection.test-network.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.connection.test-network.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "routing.options",
       "path": [
         "routing",
@@ -2474,7 +2526,7 @@
       "response_schema": "hiroute.decision-service-test-result/v2",
       "effect": "bounded_probe",
       "network": "local_control_then_registered_gateway",
-      "model_call": "never",
+      "model_call": "explicit_probe_may_call_model",
       "stdin_channels": [
         "request_stdin",
         "request_file"
@@ -2484,8 +2536,8 @@
         "purpose": "Test an exact saved decision connection revision with a synthetic request.",
         "usage": "hiroute decision connections test (--service ID@REVISION | --request-file PATH | --request-stdin)",
         "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
-        "effects": "One explicit bounded probe through a registered connector; no inference request or fallback probe.",
-        "network_and_model_use": "Uses only the selected registered endpoint; never sends a model inference request.",
+        "effects": "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.",
+        "network_and_model_use": "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.",
         "automation": "An explicit potentially billed probe. --service ID@REVISION resolves an exact current listed connection; historical pinned versions remain available through the typed request. Inspect data.outcome and failure_code even when the command itself succeeded. Passing establishes this synthetic connection test, not semantic decision quality, execution model availability or native loading. Never silently switch a selected service to local_rules after failure.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
@@ -2503,6 +2555,58 @@
       },
       "negative": {
         "scenario_id": "p0.decision.connections.test.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.network.test",
+      "path": [
+        "decision",
+        "network",
+        "test"
+      ],
+      "operation_id": "TestDecisionServiceV3",
+      "trace_ids": [
+        "CLI-079",
+        "APP-079"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "external_probe",
+      "request_schema": "hiroute.decision-service-test-request/v2",
+      "response_schema": "hiroute.decision-service-test-result/v3",
+      "effect": "bounded_probe",
+      "network": "local_control_then_registered_gateway",
+      "model_call": "explicit_probe_may_call_model",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Test an exact saved decision revision with admitted network evidence.",
+        "usage": "hiroute decision network test [typed options] --non-interactive --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.",
+        "network_and_model_use": "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.",
+        "automation": "An explicit potentially billed probe. Supply the exact saved id, revision and expected_configuration_digest using --request-file or --request-stdin. Inspect check.outcome, failure and the admitted network evidence. Shared-source decisions inherit the source policy against their actual decision URL. A route or environment change makes earlier evidence stale. Independent/custom connections have no inherited Native evidence. Proxy authentication failures do not imply a rejected provider Key.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision network test --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.network.test"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.network.test.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.network.test.negative",
         "polarity": "negative",
         "state": "executable"
       }
@@ -2854,6 +2958,251 @@
       },
       "negative": {
         "scenario_id": "p0.models.availability.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.network.show",
+      "path": [
+        "compute",
+        "network",
+        "show"
+      ],
+      "operation_id": "GetNativeSourceNetworkV1",
+      "trace_ids": [
+        "CLI-074",
+        "APP-074"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Read a Native source policy, application state and affected consumers.",
+        "usage": "hiroute compute network show [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute network show --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.network.show"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.network.show.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.network.show.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.network.preview",
+      "path": [
+        "compute",
+        "network",
+        "preview"
+      ],
+      "operation_id": "PreviewNativeSourceNetworkV1",
+      "trace_ids": [
+        "CLI-075",
+        "APP-075"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "preview",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Preview a revision-bound Native source network policy edit.",
+        "usage": "hiroute compute network preview [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
+        "network_and_model_use": "No model use and no non-fixture network access.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute network preview --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.network.preview"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.network.preview.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.network.preview.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.network.apply",
+      "path": [
+        "compute",
+        "network",
+        "apply"
+      ],
+      "operation_id": "ApplyNativeSourceNetworkV1",
+      "trace_ids": [
+        "CLI-076",
+        "APP-076"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "apply",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "high_impact_write",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Apply an exact sealed Native source network preview through its existing Operation.",
+        "usage": "hiroute compute network apply [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Application-owned journaled operation after exact spec, digest, revision, capability, and idempotency checks.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute network apply --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.network.apply"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.network.apply.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.network.apply.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.network.resolve",
+      "path": [
+        "compute",
+        "network",
+        "resolve"
+      ],
+      "operation_id": "PreviewNativeNetworkRouteV1",
+      "trace_ids": [
+        "CLI-077",
+        "APP-077"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Interpret a Native route without DNS or provider requests.",
+        "usage": "hiroute compute network resolve [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute network resolve --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.network.resolve"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.network.resolve.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.network.resolve.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.connection.preview-network",
+      "path": [
+        "compute",
+        "connection",
+        "preview-network"
+      ],
+      "operation_id": "PreviewComputeSaveV4",
+      "trace_ids": [
+        "CLI-078",
+        "APP-078"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "preview",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Preview a combined source and network policy save.",
+        "usage": "hiroute compute connection preview-network [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
+        "network_and_model_use": "No model use and no non-fixture network access.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute connection preview-network --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.connection.preview-network"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.connection.preview-network.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.connection.preview-network.negative",
         "polarity": "negative",
         "state": "executable"
       }

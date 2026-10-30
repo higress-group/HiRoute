@@ -9,6 +9,105 @@ pub async fn dispatch(
     dependencies: &WorkerDependencyConfirmationState,
 ) -> Result<Value, DesktopFailure> {
     match name {
+        "native_source_network" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: NativeSourceNetworkQueryV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = native_source_network(window, state, input.input).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_native_network_route" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: NativeNetworkRoutePreviewRequestV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = preview_native_network_route(window, state, input.input).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_native_source_network" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: NativeSourceNetworkPreviewV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = preview_native_source_network(window, state, input.input).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "apply_native_source_network" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                request: WebComputeConnectionApplyRequestV1,
+                language: String,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value =
+                apply_native_source_network(window, state, input.request, input.language).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_compute_save_v4" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                change: WebComputeManagementChangeV2,
+                default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+                network_edit: NativeNetworkEditV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = preview_compute_save_v4(
+                window,
+                state,
+                input.change,
+                input.default_preferences,
+                input.network_edit,
+            )
+            .await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "check_model_connection_v2" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                request: NativeModelConnectionCheckRequestV2,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = check_model_connection_v2(window, state, input.request).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "check_registered_model_connection_v2" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                request: RegisteredModelConnectionCheckRequestV2,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = check_registered_model_connection_v2(window, state, input.request).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "check_saved_model_connection_v2" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                request: SavedModelConnectionCheckRequestV2,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = check_saved_model_connection_v2(window, state, input.request).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "compute_subscriptions" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -508,6 +607,17 @@ pub async fn dispatch(
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
             serde_json::to_value(test_decision_service_v2(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "test_decision_service_v3" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {
+                input: DecisionServiceTestRequestV2,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(test_decision_service_v3(window, state, input.input).await?)
                 .map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "decision_services" => {

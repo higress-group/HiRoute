@@ -74,6 +74,12 @@
     "host_only": false
   },
   {
+    "name": "test_decision_service_v3",
+    "args": [{ "name": "input", "type": "hiroute_application_api::DecisionServiceTestRequestV2" }],
+    "result": "Result<hiroute_application_api::DecisionServiceTestResultV3, DesktopFailure>",
+    "host_only": false
+  },
+  {
     "name": "decision_services",
     "args": [],
     "result": "Result<crate::session::DecisionServiceList, DesktopFailure>",
@@ -293,7 +299,12 @@
   },
   {
     "name": "compute_connection_options",
-    "args": [{ "name": "include_request_model_ids", "type": "Option<bool>" }],
+    "args": [
+      {
+        "name": "include_request_model_ids",
+        "type": "Option<bool>"
+      }
+    ],
     "result": "Result<ComputeConnectionOptionsResultV1, DesktopFailure>",
     "host_only": false
   },
@@ -407,8 +418,14 @@
   {
     "name": "compute_subscriptions",
     "args": [
-      { "name": "source_id", "type": "Option<String>" },
-      { "name": "expected_source_revision", "type": "Option<u64>" }
+      {
+        "name": "source_id",
+        "type": "Option<String>"
+      },
+      {
+        "name": "expected_source_revision",
+        "type": "Option<u64>"
+      }
     ],
     "result": "Result<WebComputeSubscriptionCandidatesV2, DesktopFailure>",
     "host_only": false
@@ -531,7 +548,12 @@
   },
   {
     "name": "trial_agent_model",
-    "args": [{ "name": "context_id", "type": "String" }],
+    "args": [
+      {
+        "name": "context_id",
+        "type": "String"
+      }
+    ],
     "result": "Result<TrialAgentModel, DesktopFailure>",
     "host_only": false
   },
@@ -980,6 +1002,106 @@
       }
     ],
     "result": "Result<WebComputeSavePreviewV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "native_source_network",
+    "args": [
+      {
+        "name": "input",
+        "type": "NativeSourceNetworkQueryV1"
+      }
+    ],
+    "result": "Result<NativeSourceNetworkViewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_native_network_route",
+    "args": [
+      {
+        "name": "input",
+        "type": "NativeNetworkRoutePreviewRequestV1"
+      }
+    ],
+    "result": "Result<NativeNetworkRouteViewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_native_source_network",
+    "args": [
+      {
+        "name": "input",
+        "type": "NativeSourceNetworkPreviewV1"
+      }
+    ],
+    "result": "Result<WebNativeNetworkSavePreviewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "apply_native_source_network",
+    "args": [
+      {
+        "name": "request",
+        "type": "WebComputeConnectionApplyRequestV1"
+      },
+      {
+        "name": "language",
+        "type": "String"
+      }
+    ],
+    "result": "Result<ModelSaveAccepted, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_compute_save_v4",
+    "args": [
+      {
+        "name": "change",
+        "type": "WebComputeManagementChangeV2"
+      },
+      {
+        "name": "default_preferences",
+        "type": "hiroute_domain::SourceDefaultPreferencesV1"
+      },
+      {
+        "name": "network_edit",
+        "type": "NativeNetworkEditV1"
+      }
+    ],
+    "result": "Result<WebComputeSavePreviewV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_model_connection_v2",
+    "args": [
+      {
+        "name": "request",
+        "type": "NativeModelConnectionCheckRequestV2"
+      }
+    ],
+    "result": "Result<ModelConnectionCheckViewV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_registered_model_connection_v2",
+    "args": [
+      {
+        "name": "request",
+        "type": "RegisteredModelConnectionCheckRequestV2"
+      }
+    ],
+    "result": "Result<ModelConnectionCheckViewV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "check_saved_model_connection_v2",
+    "args": [
+      {
+        "name": "request",
+        "type": "SavedModelConnectionCheckRequestV2"
+      }
+    ],
+    "result": "Result<ModelConnectionCheckViewV2, DesktopFailure>",
     "host_only": false
   }
 ]

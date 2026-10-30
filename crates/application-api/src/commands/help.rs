@@ -46,6 +46,12 @@ pub(super) fn automation(command_id: &str) -> &'static str {
     if command_id == "decision.connections.apply" {
         return "Use decision connections options for the current presets and decision sources list for reusable managed sources. Choose --source ID or register an independent credential with protected-input and pass --candidate REF. Native presets carry an explicit wire protocol; --wire-protocol can select system_one or openai_decisions. Preview first; --apply-file creates a private exact request without saving. Save does not contact a provider. Test the saved ID@REVISION explicitly after reading it back.";
     }
+    if command_id == "compute.connection.test-network" {
+        return "Use the strict {kind, request} V2 native/registered/saved wrapper from schema show --include-schema. Keep the inner released request and network_edit separate. New drafts use network revision 0; saved checks may select current policy with null. Check evidence is bound to the admitted route and cannot authorize a different policy. No directory preserves the declared-model path without claiming connectivity. Protected input remains in daemon memory; inference is explicit and may consume quota.";
+    }
+    if command_id == "decision.network.test" {
+        return "An explicit potentially billed probe. Supply the exact saved id, revision and expected_configuration_digest using --request-file or --request-stdin. Inspect check.outcome, failure and the admitted network evidence. Shared-source decisions inherit the source policy against their actual decision URL. A route or environment change makes earlier evidence stale. Independent/custom connections have no inherited Native evidence. Proxy authentication failures do not imply a rejected provider Key.";
+    }
     if matches!(
         command_id,
         "decision.services.test" | "decision.connections.test"
@@ -137,10 +143,16 @@ pub(super) fn effects(command_id: &str, kind: CommandKind) -> &'static str {
     if command_id == "agents.check" {
         return "Configuration, native-authentication, and collaboration are bounded same-UID local checks. Live creates bounded connectivity-probe runtime state and may update real credential cooldown after authentic 401/429 responses; probe traffic is excluded from Session and Value.";
     }
-    if command_id == "decision.services.test" {
+    if matches!(
+        command_id,
+        "decision.services.test" | "decision.connections.test" | "decision.network.test"
+    ) {
         return "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.";
     }
-    if command_id == "compute.connection.test" {
+    if matches!(
+        command_id,
+        "compute.connection.test" | "compute.connection.test-network"
+    ) {
         return "Runs one explicit bounded source check. It keeps protected input in daemon memory and does not persist source state until the separate Preview/Apply flow.";
     }
     if matches!(
@@ -186,10 +198,16 @@ pub(super) fn network_and_model_use(command_id: &str, kind: CommandKind) -> &'st
     if command_id == "agents.check" {
         return "Local checks make no provider call and require no second authorization channel. Live quick sends one fixed inference request, tool sends a fixed inference request with a built-in no-side-effect tool, and conformance may send a bounded protocol matrix; every live suite may consume real provider quota and requires explicit consent plus a protected probe grant.";
     }
-    if command_id == "decision.services.test" {
+    if matches!(
+        command_id,
+        "decision.services.test" | "decision.connections.test" | "decision.network.test"
+    ) {
         return "Sends one fixed synthetic routing decision to the explicitly configured service; may consume provider quota. It reads no real session history and does not publish or edit a route.";
     }
-    if command_id == "compute.connection.test" {
+    if matches!(
+        command_id,
+        "compute.connection.test" | "compute.connection.test-network"
+    ) {
         return "Contacts only the explicitly selected, typed endpoint. Inventory checks make no inference call; selecting an inference model may send one bounded model request and consume provider quota.";
     }
     if command_id == "agent.launch" {

@@ -120,6 +120,9 @@ pub(crate) fn validate_current_storage(
     if version < 32 {
         return audit_current_storage(control, runtime, secrets);
     }
+    if version >= 35 {
+        super::source_network_v35::validate(&control.connection.borrow())?;
+    }
     dependencies::validate(control, runtime, secrets)
 }
 
@@ -167,6 +170,9 @@ pub(crate) fn audit_current_storage(
     // Current schema still requires the table and all of its reference closure.
     let control_version: u32 =
         connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if control_version >= 35 {
+        super::source_network_v35::validate(&connection)?;
+    }
     if control_version >= 31 {
         let mut defaults = connection.prepare("SELECT d.source_id,d.preferences_json,s.source_json FROM compute_source_defaults d LEFT JOIN compute_management_sources s USING(workspace_id,source_id)")?;
         for row in defaults.query_map([], |r| {

@@ -154,6 +154,7 @@ pub(super) fn begin_request(
         return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
     }
     Ok(ProductionLogicalRequest {
+        native_network: seed.native_network,
         reasoning_cleanup: Arc::clone(&seed.route_context.reasoning_cleanup),
         ingress,
         replay: seed.replay,
@@ -406,6 +407,7 @@ pub(super) async fn materialize_attempt(
         super::OwnedAttemptStatePermits::without_credential(binding_key, binding_permit)
     };
 
+    let mut network_route = None;
     let resolved_target = match credential
         .as_ref()
         .and_then(|credential| credential.transport_override())
@@ -433,7 +435,27 @@ pub(super) async fn materialize_attempt(
                 return Err(Arc::from(MATERIALIZATION_AUTHORITY_FAILED));
             }
             let target = transport_target_for_profile(plan, lease_target)?;
-            provider.target_resolver.resolve(target, &scope).await?
+            // Selection takes the route context before attempts begin. The admitted
+            // network snapshot belongs to the logical HTTP request through all attempts.
+            if let Some(snapshot) = logical.native_network.as_ref() {
+                let (route, target) = super::network::resolve(
+                    snapshot,
+                    execution.credential_binding_id(),
+                    lease_target.uri(),
+                    target,
+                    &scope,
+                )
+                .await?;
+                let proxy = route.as_ref().is_some_and(|r| r.proxy.is_some());
+                network_route = route;
+                if proxy {
+                    target
+                } else {
+                    provider.target_resolver.resolve(target, &scope).await?
+                }
+            } else {
+                provider.target_resolver.resolve(target, &scope).await?
+            }
         }
     };
     validate_attempt_permits(provider.state.as_ref(), permits.borrowed(), &scope)
@@ -562,6 +584,7 @@ pub(super) async fn materialize_attempt(
     });
     Ok((
         PreparedAttemptHttpRequest {
+            network_route,
             head: PreparedRequestHead {
                 method: Method::POST,
                 path_and_query: prepared.path.into(),
@@ -669,9 +692,11 @@ pub(super) fn classify_materialization_failure(error: &Arc<str>) -> AttemptMater
                 | MATERIALIZATION_SOURCE_DISABLED
                 | MATERIALIZATION_KEY_DISABLED
                 | MATERIALIZATION_DNS_FAILED
+                | "proxy_dns_failed"
+                | "network_policy_unavailable"
         );
     let class = match error.as_ref() {
-        MATERIALIZATION_DNS_FAILED => AttemptMaterializationFailureClass::Dns,
+        MATERIALIZATION_DNS_FAILED | "proxy_dns_failed" => AttemptMaterializationFailureClass::Dns,
         MATERIALIZATION_CREDENTIAL_EXHAUSTED
         | MATERIALIZATION_SOURCE_DISABLED
         | MATERIALIZATION_KEY_DISABLED

@@ -142,6 +142,7 @@ impl LocalControlAdapter {
                     None => error.to_string(),
                 }
             })
+            .and_then(|_| self.initialize_native_network())
     }
 
     pub(super) fn refresh_discovery(
@@ -420,11 +421,11 @@ impl ControlRepositoryPort for LocalControlAdapter {
     }
 
     fn activate_control(&self, effect: &OwnedEffectV1) -> PortResult<OwnedEffectV1> {
-        self.stores_lock()?.control().activate_control(effect)
+        self.with_native_network_effect(effect, |control| control.activate_control(effect))
     }
 
     fn compensate_control(&self, effect: &OwnedEffectV1) -> PortResult<CompensationOutcome> {
-        self.stores_lock()?.control().compensate_control(effect)
+        self.with_native_network_effect(effect, |control| control.compensate_control(effect))
     }
 
     fn reconcile_compute_compensation(

@@ -44,10 +44,11 @@ impl PingoraConnectorAdapter {
 
 #[derive(Default)]
 pub(super) struct PingoraConnectorRegistry {
-    slots: Mutex<HashMap<TransportReuseClassId, ConnectorSlot>>,
+    slots: Mutex<HashMap<(TransportReuseClassId, [u8; 32]), ConnectorSlot>>,
 }
 
 struct ConnectorSlot {
+    network_generation: u64,
     fingerprint: ConnectionEpochFingerprint,
     pool_compatibility_fingerprint: [u8; 32],
     connection_config_fingerprint: [u8; 32],
@@ -62,22 +63,37 @@ fn pool_compatibility_fingerprint(target: &TransportTarget) -> [u8; 32] {
 }
 
 impl PingoraConnectorRegistry {
+    #[cfg(test)]
     pub(super) fn connector_for(
         &self,
         target: &TransportTarget,
         connection_config_fingerprint: [u8; 32],
     ) -> Result<Arc<Connector>, AttemptError> {
+        self.connector_for_network(target, connection_config_fingerprint, None)
+    }
+
+    pub(super) fn connector_for_network(
+        &self,
+        target: &TransportTarget,
+        connection_config_fingerprint: [u8; 32],
+        route: Option<&NetworkDialRoute>,
+    ) -> Result<Arc<Connector>, AttemptError> {
+        let connection_config_fingerprint =
+            network_fingerprint(connection_config_fingerprint, route);
+        let network_generation = route.map_or(0, |r| r.generation);
         let requested = target.connection_epoch_fingerprint();
+        let key = (requested.reuse_class, route.map_or([0; 32], |r| r.scope));
         let pool_compatibility_fingerprint = pool_compatibility_fingerprint(target);
         let mut slots = self
             .slots
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let Some(current) = slots.get(&requested.reuse_class) else {
-            let connector = Arc::new(Connector::new(None));
+        let Some(current) = slots.get(&key) else {
+            let connector = Arc::new(Connector::for_route(target, route));
             slots.insert(
-                requested.reuse_class,
+                key,
                 ConnectorSlot {
+                    network_generation,
                     fingerprint: requested,
                     pool_compatibility_fingerprint,
                     connection_config_fingerprint,
@@ -86,11 +102,13 @@ impl PingoraConnectorRegistry {
             );
             return Ok(connector);
         };
-        if requested.pool_epoch < current.fingerprint.pool_epoch {
+        if requested.pool_epoch < current.fingerprint.pool_epoch
+            || network_generation < current.network_generation
+        {
             // An already-bound old publication may reach connect after a newer
             // request rotated the class. Give it an isolated, non-pooled
             // generation without rolling the live slot backward.
-            return Ok(Arc::new(Connector::new(None)));
+            return Ok(Arc::new(Connector::for_route(target, route)));
         }
         if requested.pool_epoch == current.fingerprint.pool_epoch {
             if pool_compatibility_fingerprint != current.pool_compatibility_fingerprint {
@@ -98,7 +116,9 @@ impl PingoraConnectorRegistry {
                     "connection fingerprint changed without a pool epoch bump".into(),
                 ));
             }
-            if current.connection_config_fingerprint == connection_config_fingerprint {
+            if current.connection_config_fingerprint == connection_config_fingerprint
+                && current.network_generation == network_generation
+            {
                 return Ok(Arc::clone(&current.connector));
             }
         }
@@ -106,10 +126,11 @@ impl PingoraConnectorRegistry {
         // Replacing the only registry Arc explicitly drains the retired
         // generation. Active sessions retain their Arc until bounded finish or
         // reset, after which the old Pingora pools are dropped as one unit.
-        let connector = Arc::new(Connector::new(None));
+        let connector = Arc::new(Connector::for_route(target, route));
         slots.insert(
-            requested.reuse_class,
+            key,
             ConnectorSlot {
+                network_generation,
                 fingerprint: requested,
                 pool_compatibility_fingerprint,
                 connection_config_fingerprint,
@@ -118,6 +139,29 @@ impl PingoraConnectorRegistry {
         );
         Ok(connector)
     }
+}
+
+pub(super) fn network_fingerprint(config: [u8; 32], route: Option<&NetworkDialRoute>) -> [u8; 32] {
+    use sha2::{Digest, Sha256};
+    let Some(route) = route else {
+        return config;
+    };
+    let mut digest = Sha256::new();
+    digest.update(config);
+    digest.update(route.scope);
+    digest.update(route.identity);
+    digest.update(route.generation.to_be_bytes());
+    if let Some(proxy) = &route.proxy {
+        digest.update(proxy.authority.as_bytes());
+        digest.update([u8::from(proxy.scheme == TransportScheme::Https)]);
+        if let CaPolicy::Pem(pem) = &proxy.ca {
+            digest.update(pem.as_ref());
+        }
+        if let Some(auth) = proxy.authorization() {
+            digest.update(auth.as_bytes());
+        }
+    }
+    digest.finalize().into()
 }
 
 impl AttemptTransportFactory for PingoraConnectorAdapter {

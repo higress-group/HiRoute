@@ -42,6 +42,7 @@ mod delegation_v10;
 mod integration_v17_tests;
 mod plan_authoring_v10;
 mod source_defaults_v31;
+mod source_network_v35;
 mod source_prices_v10;
 mod subscription_v16;
 #[cfg(test)]
@@ -61,7 +62,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 34;
+pub const LATEST_SCHEMA_VERSION: u32 = 35;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -306,7 +307,7 @@ fn migrate(
 
     for version in (current + 1)..=target {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if kind == DatabaseKind::Control && version == 34 {
+        if kind == DatabaseKind::Control && matches!(version, 34 | 35) {
             crate::control::agent_locator::validate_coverage(&transaction)
                 .map_err(|_| LocalStorageError::InvalidData)?;
         }
@@ -321,7 +322,7 @@ fn migrate(
         if kind == DatabaseKind::Control && version == 33 {
             agent_locator_v33::initialize(&transaction)?;
         }
-        if kind == DatabaseKind::Control && version == 34 {
+        if kind == DatabaseKind::Control && matches!(version, 34 | 35) {
             decision_sources_v34::refresh_locator(&transaction)?;
         }
         if kind == DatabaseKind::Secrets && version == 15 {
@@ -530,7 +531,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | 31 | 32 | 33 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | 31 | 32 | 33 | 34 | LATEST_SCHEMA_VERSION
         ) || (set.target_schema_version() == 24
             && [
                 set.control.manifest(),
@@ -588,6 +589,23 @@ impl MigrationSetCoordinator {
         self.set.as_ref().is_some_and(|set| {
             set.target_schema_version() == 34
                 && [32, 33].iter().any(|version| {
+                    [
+                        set.control.manifest(),
+                        set.runtime.manifest(),
+                        set.secrets.manifest(),
+                    ]
+                    .iter()
+                    .all(|source| source.schema_version == *version)
+                })
+        })
+    }
+
+    /// Policy initialization touches current source roots only. Already-admitted
+    /// dependency formats retain their bounded-history validation contract.
+    pub(crate) fn is_admitted_native_network_batch(&self) -> bool {
+        self.set.as_ref().is_some_and(|set| {
+            set.target_schema_version() == 35
+                && [32, 33, 34].iter().any(|version| {
                     [
                         set.control.manifest(),
                         set.runtime.manifest(),
@@ -882,6 +900,8 @@ fn phase_rank(phase: BackupSetPhase) -> u8 {
 
 fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, LocalStorageError> {
     match (kind, version) {
+        (DatabaseKind::Control, 35) => Ok(source_network_v35::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 35) => Ok(NOOP_V9),
         (DatabaseKind::Control, 1) => Ok(CONTROL_V1),
         (DatabaseKind::Control, 2) => Ok(CONTROL_V2),
         (DatabaseKind::Control, 3) => Ok(CONTROL_V3),

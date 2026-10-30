@@ -752,6 +752,17 @@ pub struct ComputeManagementStoredSnapshotV2 {
 /// Narrow safe-record persistence port. All writes still enter through the existing Operation
 /// control effect; this trait intentionally offers reads only.
 pub trait ComputeManagementRepositoryPort {
+    fn native_source_network(
+        &self,
+        _source_id: &str,
+    ) -> PortResult<Option<crate::NativeSourceNetworkRecordV1>> {
+        // Unsupported adapters cannot claim an absent current policy means Direct.
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "native.network.repository_unavailable",
+        ))
+    }
+
     fn source_default_preferences(
         &self,
         _source_id: &str,

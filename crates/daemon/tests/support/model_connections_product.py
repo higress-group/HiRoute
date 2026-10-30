@@ -24,10 +24,11 @@ V2 = {'major': 2, 'minor': 0}
 
 
 class NativeUpstream:
-    def __init__(self, base_host=None):
+    def __init__(self, base_host=None, bind_host='127.0.0.1'):
         self.requests = []
         self.rejected_token = None
         self.reject_reasoning_history = False
+        self.function_tools = False
         self.lock = threading.Lock()
         owner = self
 
@@ -77,26 +78,28 @@ class NativeUpstream:
                     self.send_json(400, {'error': {'code': 'invalid_encrypted_content',
                                                  'message': 'fixture history rejected'}})
                     return
+                output = [{
+                    'id': 'msg_native_product', 'type': 'message', 'role': 'assistant',
+                    'status': 'completed', 'content': [{
+                        'type': 'output_text', 'text': 'native product answer', 'annotations': []}],
+                }]
+                if owner.function_tools and body.get('tools') and not any(
+                    isinstance(item, dict) and item.get('type') == 'function_call_output'
+                    for item in body.get('input', [])
+                ):
+                    output = [{'type': 'function_call', 'id': 'fc_native_proxy',
+                               'call_id': 'native-proxy-call', 'name': 'native_probe',
+                               'arguments': '{}', 'status': 'completed'}]
                 self.send_json(200, {
                     'id': 'resp_native_product',
                     'object': 'response',
                     'status': 'completed',
                     'model': MODEL,
-                    'output': [{
-                        'id': 'msg_native_product',
-                        'type': 'message',
-                        'role': 'assistant',
-                        'status': 'completed',
-                        'content': [{
-                            'type': 'output_text',
-                            'text': 'native product answer',
-                            'annotations': [],
-                        }],
-                    }],
+                    'output': output,
                     'usage': {'input_tokens': 4, 'output_tokens': 3, 'total_tokens': 7},
                 })
 
-        self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server = http.server.ThreadingHTTPServer((bind_host, 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         address, port = self.server.server_address
@@ -173,7 +176,7 @@ def save_native_source(product, upstream, token=None, unknown=False,
                        context_tokens=32768, cli_input=False,
                        source_display_name='Product Native API',
                        model_display_name='Manual Native Model',
-                       inventory_path='/v1/models'):
+                       inventory_path='/v1/models', network_policy=None):
     status = control(product, 'GetClientServiceStatus', {})['data']
     suffix = ('-unknown' if unknown else '') + ('-' + variant if variant else '')
     candidate_ref = 'candidate/native/product' + suffix
@@ -244,12 +247,18 @@ def save_native_source(product, upstream, token=None, unknown=False,
             'candidate_ref': candidate_ref,
             'candidate_revision': 1,
         }
-    check_digest = 'sha256:' + hashlib.sha256(encoded(check_request)).hexdigest()
-    grant = desktop_grant(
-        product, 'CheckNativeModelConnection', check_digest,
-        status['revisions'], 'native-check' + suffix)
-    checked = control(
-        product, 'CheckNativeModelConnection', check_request, grant)['data']
+    if network_policy is None:
+        check_digest = 'sha256:' + hashlib.sha256(encoded(check_request)).hexdigest()
+        grant = desktop_grant(
+            product, 'CheckNativeModelConnection', check_digest,
+            status['revisions'], 'native-check' + suffix)
+        checked = control(product, 'CheckNativeModelConnection', check_request, grant)['data']
+    else:
+        network_check = product.public_cli('compute connection test-network', {'kind': 'native',
+            'request': {'request': check_request,
+                        'network_edit': {'expected_network_revision': 0, 'policy': network_policy}}})[1]['data']
+        assert network_check['network']['policy'] == network_policy, network_check
+        checked = network_check['check']
     assert checked['directory'] == ('not_run' if unknown or inventory_path is None else 'unavailable'), checked
     assert checked['inference'] == 'not_run', checked
     if inventory_path is None:
@@ -259,10 +268,10 @@ def save_native_source(product, upstream, token=None, unknown=False,
                   if model['upstream_model_id'] == upstream_model_id)
     assert manual['selectable'] and manual['membership'] == 'user_declared', manual
 
-    return save_compute_candidate(product, checked['candidate'], manual['model_ref'], 'native-product-save' + suffix)
+    return save_compute_candidate(product, checked['candidate'], manual['model_ref'], 'native-product-save' + suffix, network_policy=network_policy)
 
 
-def save_compute_candidate(product, candidate, model_ref, idempotency_key):
+def save_compute_candidate(product, candidate, model_ref, idempotency_key, network_policy=None):
     """Complete the public preview/save/result transaction for a prepared native candidate."""
     snapshot = control(product, 'ListCompute', {})['data']
     change = {
@@ -273,7 +282,12 @@ def save_compute_candidate(product, candidate, model_ref, idempotency_key):
         'intent': 'save_ready',
         'key_edits': [],
     }
-    preview = control(product, 'PreviewComputeSave', {'change': change})['data']
+    if network_policy is None:
+        preview = control(product, 'PreviewComputeSave', {'change': change})['data']
+    else:
+        preview = product.public_cli('compute connection preview-network', {
+            'schema': 'hiroute.compute-management-change/v4', 'change': change,
+            'network_edit': {'expected_network_revision': 0, 'policy': network_policy}})[1]['data']
     applied = control(product, 'ApplyComputeSave', {
         'spec': preview['spec'],
         'accept_digest': preview['accept_digest'],

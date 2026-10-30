@@ -533,6 +533,20 @@
       }
     },
     {
+      "command_id": "compute.connection.test-network",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.connection.test-network.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.connection.test-network.positive",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "compute.credential.list",
       "lifecycle": "planned",
       "negative": {
@@ -1079,6 +1093,20 @@
       }
     },
     {
+      "command_id": "decision.network.test",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.decision.network.test.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.decision.network.test.positive",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "decision.services.test",
       "lifecycle": "released",
       "negative": {
@@ -1201,6 +1229,76 @@
       "positive": {
         "polarity": "positive",
         "scenario_id": "p0.models.availability.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.network.show",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.network.show.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.network.show.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.network.preview",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.network.preview.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.network.preview.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.network.apply",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.network.apply.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.network.apply.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.network.resolve",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.network.resolve.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.network.resolve.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.connection.preview-network",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.connection.preview-network.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.connection.preview-network.positive",
         "state": "executable"
       }
     },
@@ -1583,7 +1681,7 @@
       }
     }
   ],
-  "descriptor_digest": "sha256:ed6ce2dcbf77cda13cfbcc9606011981e80c73c2b53260030464d0709a53fbe4",
+  "descriptor_digest": "sha256:9cc0651513ac62b99c12e9f8ea84362244d2de2a030f3aba4876bdd33057e36a",
   "schema_version": {
     "major": 1,
     "minor": 0

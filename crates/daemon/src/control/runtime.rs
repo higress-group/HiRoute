@@ -82,6 +82,7 @@ mod native_additional_model;
 mod native_claude_model;
 mod native_hermes;
 mod native_model;
+mod native_network;
 mod observation_key;
 mod trust;
 use observation_key::observation_workspace_key;
@@ -693,6 +694,9 @@ impl ProductionControlRuntime {
             .open_launcher_capability_registrar()
             .map_err(|error| error.to_string())?;
         let adapter = Arc::new(LocalControlAdapter {
+            native_network: Arc::new(hiroute_domain::NativeNetworkRegistryV1::new(
+                native_network::capture(),
+            )),
             publication_diagnostics: Mutex::new(Default::default()),
             publication_marker_cache: Mutex::new(None),
             settings_publication_candidate: Mutex::new(None),
@@ -1022,6 +1026,7 @@ fn delegation_epoch() -> Result<String, String> {
 }
 
 struct LocalControlAdapter {
+    native_network: Arc<hiroute_domain::NativeNetworkRegistryV1>,
     publication_diagnostics: Mutex<DiagnosticsPort>,
     publication_marker_cache: Mutex<Option<publication::DecodedMarker>>,
     settings_publication_candidate: Mutex<Option<publication::SettingsCandidate>>,

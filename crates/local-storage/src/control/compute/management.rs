@@ -15,6 +15,7 @@ use serde_json::Value;
 mod compensation;
 mod decision_runtime;
 mod defaults;
+mod network;
 mod references;
 mod runtime_pool;
 
@@ -88,6 +89,7 @@ pub(in crate::control) fn stage_control(
         )
         .map_err(|_| port("compute.management.stage.effect"))?;
     defaults::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
+    network::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
     Ok(())
 }
 
@@ -128,8 +130,16 @@ pub(in crate::control) fn activate(
     defaults::validate_before(transaction, workspace, &mutation)?;
     references::validate_removal(transaction, workspace, &mutation)?;
     let preferences = defaults::after(transaction, workspace, &mutation)?;
+    let network = network::after(transaction, workspace, &mutation)?;
     if let Some(desired) = mutation.desired() {
         write_source(transaction, workspace, desired, operation_id)?;
+        network::write(
+            transaction,
+            workspace,
+            mutation.source_id(),
+            network.as_ref(),
+            operation_id,
+        )?;
         defaults::write(transaction, workspace, mutation.source_id(), &preferences)
     } else {
         let deleted = transaction.execute("DELETE FROM compute_management_sources WHERE workspace_id=?1 AND source_id=?2 AND revision=?3", params![workspace.as_str(), mutation.source_id(), mutation.expected_revision()])
@@ -170,6 +180,11 @@ pub(in crate::control) fn current_matches(
     }
     if let Some(after) = defaults::effect(connection, operation_id.as_str(), false)?
         && defaults::read(connection, workspace, mutation.source_id())? != after
+    {
+        return Ok(false);
+    }
+    if let Some(after) = network::effect(connection, operation_id.as_str(), false)?
+        && network::read(connection, workspace, mutation.source_id())? != after
     {
         return Ok(false);
     }
@@ -233,6 +248,7 @@ pub(in crate::control) fn compensate(
     if !owns {
         return Ok(false);
     }
+    let mut restored_owner = operation_id.to_owned();
     if let Some(expected) = mutation.expected() {
         let before_owner: Option<String> = transaction
             .query_row(
@@ -246,6 +262,7 @@ pub(in crate::control) fn compensate(
             .flatten();
         let before_owner =
             before_owner.ok_or_else(|| corrupt("compute.management.compensate.owner_missing"))?;
+        restored_owner = before_owner.clone();
         write_source(transaction, workspace, expected, &before_owner)?;
     } else {
         transaction
@@ -259,10 +276,28 @@ pub(in crate::control) fn compensate(
     if let Some(before) = defaults::effect(transaction, operation_id, true)? {
         defaults::write(transaction, workspace, mutation.source_id(), &before)?;
     }
+    network::restore(
+        transaction,
+        workspace,
+        operation_id,
+        &restored_owner,
+        &mutation,
+    )?;
     Ok(true)
 }
 
 impl ComputeManagementRepositoryPort for ControlStore {
+    fn native_source_network(
+        &self,
+        source_id: &str,
+    ) -> PortResult<Option<hiroute_domain::NativeSourceNetworkRecordV1>> {
+        validate_storage_id(source_id)?;
+        network::read(
+            &self.connection.borrow(),
+            &WorkspaceId::default(),
+            source_id,
+        )
+    }
     fn source_default_preferences(
         &self,
         source_id: &str,

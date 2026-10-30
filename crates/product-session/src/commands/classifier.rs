@@ -93,6 +93,22 @@ pub async fn test_decision_service_v2(
         .await
 }
 
+pub async fn test_decision_service_v3(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: hiroute_application_api::DecisionServiceTestRequestV2,
+) -> Result<hiroute_application_api::DecisionServiceTestResultV3, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .test_decision_service_v3(input)
+        .await
+}
+
 pub async fn decision_services(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,

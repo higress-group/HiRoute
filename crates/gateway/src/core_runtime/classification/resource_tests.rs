@@ -61,6 +61,8 @@ async fn optional_projection_capacity_falls_back_without_changing_input_or_sourc
             .classify_for_planner(
                 &strategy,
                 ClassificationRequest {
+                    native_network: None,
+                    admitted_network: None,
                     request: &request,
                     current_input: None,
                     native_user_unavailable: false,

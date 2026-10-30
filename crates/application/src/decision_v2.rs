@@ -42,6 +42,8 @@ impl ApplicationService {
         &self,
         request: LocalControlRequestV2,
     ) -> MachineEnvelopeV2<Value> {
+        let network_aware =
+            request.operation_id == hiroute_application_api::TEST_DECISION_SERVICE_V3;
         if request
             .protected_grant
             .as_ref()
@@ -81,7 +83,7 @@ impl ApplicationService {
                 &grant.capability,
                 &WorkspaceId::default(),
                 grant.principal_kind,
-                "TestDecisionServiceV2",
+                &request.operation_id,
                 &request_digest,
                 &revisions,
             ) {
@@ -98,6 +100,7 @@ impl ApplicationService {
                 Ok(None) => {
                     return succeeded(
                         rejected(
+                            network_aware,
                             test.expected_configuration_digest,
                             DecisionFailureCodeV2::DecisionRevisionConflict,
                         ),
@@ -111,7 +114,11 @@ impl ApplicationService {
         };
         if digest != test.expected_configuration_digest {
             return succeeded(
-                rejected(digest, DecisionFailureCodeV2::DecisionRevisionConflict),
+                rejected(
+                    network_aware,
+                    digest,
+                    DecisionFailureCodeV2::DecisionRevisionConflict,
+                ),
                 request.request_id,
             );
         }
@@ -143,29 +150,44 @@ impl ApplicationService {
                 None
             };
             if let Some(failure) = failure {
-                return succeeded(rejected(digest, failure), request.request_id);
+                return succeeded(rejected(network_aware, digest, failure), request.request_id);
             }
         }
         let Some(diagnostic) = ports.classifier_diagnostic.as_deref() else {
             return failed(ErrorCode::GatewayUnavailable, request.request_id);
         };
-        match diagnostic.test_decision_service_v2(&service, &digest) {
-            Ok(result) => succeeded(result, request.request_id),
-            Err(_) => failed(ErrorCode::GatewayUnavailable, request.request_id),
+        if network_aware {
+            match diagnostic.test_decision_service_v3(&service, &digest) {
+                Ok(result) => succeeded(result, request.request_id),
+                Err(_) => failed(ErrorCode::GatewayUnavailable, request.request_id),
+            }
+        } else {
+            match diagnostic.test_decision_service_v2(&service, &digest) {
+                Ok(result) => succeeded(result, request.request_id),
+                Err(_) => failed(ErrorCode::GatewayUnavailable, request.request_id),
+            }
         }
     }
 }
 
-fn rejected(
-    digest: CanonicalDigest,
-    failure: DecisionFailureCodeV2,
-) -> DecisionServiceTestResultV2 {
-    DecisionServiceTestResultV2 {
+fn rejected(network_aware: bool, digest: CanonicalDigest, failure: DecisionFailureCodeV2) -> Value {
+    let check = DecisionServiceTestResultV2 {
         schema: DecisionServiceTestResultSchemaV2::V2,
         outcome: DecisionTestOutcomeV2::Failed,
         failure_code: Some(failure),
         duration_millis: None,
         tested_configuration_digest: digest,
         tested_credential_state_revision: None,
+    };
+    if network_aware {
+        serde_json::to_value(hiroute_application_api::DecisionServiceTestResultV3 {
+            schema: hiroute_application_api::DecisionServiceTestResultSchemaV3::V3,
+            check,
+            network: None,
+            failure: None,
+        })
+    } else {
+        serde_json::to_value(check)
     }
+    .expect("safe decision result serialization")
 }

@@ -63,6 +63,7 @@ impl LocalControlAdapter {
             Some(
                 COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
                     | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
             )
         );
         if operation
@@ -101,6 +102,7 @@ impl LocalControlAdapter {
         match &envelope.compute_management_mutation {
             ComputeManagementMutation::V2(value) => value.validate_shape(operation.plan.spec()),
             ComputeManagementMutation::V3(value) => value.validate(operation.plan.spec()),
+            ComputeManagementMutation::V4(value) => value.validate(operation.plan.spec()),
         }
         .map_err(|_| {
             PortError::new(

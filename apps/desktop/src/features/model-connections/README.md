@@ -56,3 +56,31 @@ User/ambiguous declarations retain saved intent; connector-verified authority is
 New UI saves use a V3 source/default transaction while released V2 requests and journal bytes
 retain their original proof reader. The model detail default editor shows saved versus current
 values and records official-follow/preserve choices through normal Preview/Apply.
+
+`NativeNetworkSettings` owns presentation-only expansion. New and normally reopened
+connections start collapsed; `NativeNetworkDraft` retains inactive manual fields,
+while `networkEdit` serializes only the active mode. The daemon's read-only preview
+explains the actual route without provider I/O. Route edits invalidate candidate
+and check authority while retaining the same-context protected Key. A reopened
+connection's V4 preview/save couples policy and checked edits in one Operation,
+including candidate-backed rename. Only an existing policy change adds its affected
+model/decision impact confirmation. Default Direct creation keeps its ordinary flow.
+
+`NativeSourceNetworkEditor` is reused by source detail, append, trial and shared
+decision repair. Its save is durable independently of its parent. Pending delivery
+retains the original Operation and does not resubmit on refresh. The decision
+consumer keeps a compact inherited summary, retains the mounted editor when it is
+collapsed, and compares admitted network identity separately from Key/configuration
+identity. A source-only repair refreshes metadata and requires explicit rechecking.
+An explicit reload after a conflict retains the same source's edited policy and
+inactive manual inputs, rebasing the expected revision before another Preview.
+It does not replay a save. Parent navigation and model/credential actions show a
+reason and remain unavailable until network edits are saved/discarded or the
+original pending Operation is reconciled; metadata refresh stays part of that
+blocking interval. A decision test's repair action opens and focuses the editor,
+while an ordinary switch to another saved decision starts collapsed again.
+A failed consumer refresh after a confirmed save has its own read-only retry;
+editing a new draft hides the older notice without forgetting that refresh, so
+discarding the new draft can still recover the parent without replaying a save.
+[The operating guide](../../../../../docs/native-api-proxy.md) defines modes,
+bypass/environment rules, status wording and CLI counterparts.

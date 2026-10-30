@@ -17,6 +17,23 @@ pub(super) fn build_request_header(
     Ok(request)
 }
 
+/// Retain Pingora's validated headers and framing, changing only the request-target prefix.
+pub(super) fn build_forward_proxy_header(
+    head: &PreparedRequestHead,
+    authority: &str,
+) -> Result<Vec<u8>, AttemptError> {
+    let request = build_request_header(head)?;
+    let wire = pingora_core::protocols::http::v1::client::http_req_header_to_wire(&request)
+        .ok_or_else(|| AttemptError::InvalidTarget("invalid proxy request head".into()))?;
+    let split = head.method.as_str().len() + 1;
+    let mut forward = Vec::with_capacity(wire.len() + authority.len() + 7);
+    forward.extend_from_slice(&wire[..split]);
+    forward.extend_from_slice(b"http://");
+    forward.extend_from_slice(authority.as_bytes());
+    forward.extend_from_slice(&wire[split..]);
+    Ok(forward)
+}
+
 pub(super) fn build_h2_request_header(
     head: &PreparedRequestHead,
     tls: bool,
@@ -41,6 +58,7 @@ pub(super) async fn run_upstream_reader(
     mut session: ClientSession,
     sender: mpsc::Sender<Result<TransportPrecommitReceipt, AttemptError>>,
     local_read_suppression: Arc<Mutex<ReaderSuppressionClock>>,
+    forward_proxy: bool,
 ) -> ClientSession {
     loop {
         let suppression_started = Instant::now();
@@ -77,6 +95,10 @@ pub(super) async fn run_upstream_reader(
             return session;
         };
         let informational = response.status.is_informational();
+        if forward_proxy && response.status.as_u16() == 407 {
+            permit.send(Err(AttemptError::Proxy(ProxyFailurePhase::Authentication)));
+            return session;
+        }
         permit.send(Ok(TransportPrecommitReceipt {
             event: TransportPrecommitEvent::ResponseHead {
                 status: response.status,

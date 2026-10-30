@@ -660,7 +660,7 @@ pub(super) fn attempt_failure_facts<T: AttemptTransport>(
         GatewayExecutionError::Attempt(AttemptError::DeadlineExceeded) => {
             (AttemptFailureClass::AttemptDeadline, "attempt_deadline")
         }
-        GatewayExecutionError::Attempt(AttemptError::Transport(_)) => {
+        GatewayExecutionError::Attempt(AttemptError::Transport(_) | AttemptError::Proxy(_)) => {
             (AttemptFailureClass::Transport, "transport")
         }
         _ => return None,

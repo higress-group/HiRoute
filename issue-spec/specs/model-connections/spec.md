@@ -461,17 +461,46 @@ HiRoute does not implement or stack another OAuth refresh chain.
 
 ### Requirement: Proxy configuration is scoped and reports actual application
 
-Subscription proxy modes are inherited startup environment, direct, and manual
-HTTP(S). Desired configuration persists separately from the applied process state.
-Manual mode consistently overrides both cases of inherited proxy variables; direct
-clears them; inherited mode preserves the host's startup contract. Manual URLs
-cannot contain credentials and inherited secrets cannot enter status/errors.
+Subscription proxy modes SHALL remain inherited startup environment, direct and manual HTTP(S). Their desired configuration persists separately from applied process state. Manual mode overrides both cases of inherited proxy variables; direct clears them for that subscription scope; inherited mode preserves the host startup contract. Manual URLs cannot contain credentials and inherited secrets cannot enter status or errors. This subscription policy applies only to managed subscriptions and Claude subscription remote checks. Local management remains direct. Editing during scan retains results, cancel returns to them, and explicit subscription save/restart creates a fresh scan. An old running process or invalid configuration cannot be reported as applied.
 
-Only managed subscriptions and Claude's subscription remote checks use this policy;
-Native API, Worker, and system settings do not. Local management stays direct and
-proxy failure cannot fall back to direct internet. Editing during scan retains
-results, cancel returns to them, and explicit save/restart creates a fresh scan.
-A still-running old process or invalid configuration cannot be reported as applied.
+Each saved Native API connection SHALL independently own a direct, inherited-service-startup-environment or manual HTTP(S) proxy policy, shared by its ordinary model bindings, protocol endpoints and explicitly associated shared-source decision consumers. Editing that source SHALL NOT modify another source, subscription policy, independent decision service, custom extension, Worker process/tool environment or system settings. A Worker request through Gateway to that source uses the source policy. Existing saved Native sources lacking new policy state and new connection drafts SHALL start direct. Imported native client configuration SHALL NOT implicitly adopt another process's proxies. Invalid/unknown new policy state SHALL fail explicitly rather than be treated as missing legacy state.
+
+A successfully applied Native policy change SHALL affect subsequent requests without restarting the service or republishing route contents. Already admitted requests retain their exact network-policy snapshot; connections incompatible with the new route SHALL NOT be reused for new-snapshot work. Source/model/Key identities and saved model membership remain intact. The setting and its selected mode survive service restart. Inherit uses the service's captured startup environment, whose external change requires restart; it does not read a browser or current client shell environment. Native manual settings SHALL override inherited routing within the source scope and SHALL NOT mutate process-global environment. Manual URLs remain credential-free; protected inherited credentials never enter public views.
+
+Management SHALL distinguish desired policy, actual applied snapshot and remote check evidence. Pending, failed or uncertain application cannot claim the desired snapshot is applied. Current-success evidence SHALL identify the policy/environment snapshot actually tested and become stale when that effective state changes. Application success does not assert provider availability. Normal revision guards, original Operation identity and recovery govern concurrent/uncertain saves. No scoped proxy failure authorizes an implicit direct internet retry.
+
+#### Scenario: An external API uses a proxy while an internal API stays direct
+
+- **WHEN** the user changes source A to manual proxy while source B and a subscription already exist
+- **THEN** A and its explicit consumers use the selected policy; B, subscription settings and Worker tool environment retain their existing behavior
+
+#### Scenario: Upgrade existing Native connections
+
+- **WHEN** supported saved Native connections without the new policy state are opened by the updated service
+- **THEN** their identities, model membership and credentials retain their meaning and their network path remains direct
+
+#### Scenario: Apply while a stream is running
+
+- **WHEN** a Native source policy is successfully changed while an already admitted stream uses the previous snapshot
+- **THEN** the stream keeps that snapshot; subsequent requests use the new policy without service restart, automatic Plan publication or reuse of incompatible old connections
+
+#### Scenario: Reopen and capture a new inherited environment
+
+- **WHEN** a saved inherit policy is reopened after restarting the service with changed startup proxy variables
+- **THEN** the selected mode persists, subsequent requests use the new captured environment, and old check evidence is not presented as validating it
+
+#### Scenario: A save response is uncertain
+
+- **WHEN** the client cannot confirm whether an accepted policy Operation activated the new snapshot
+- **THEN** the UI preserves the original operation/recovery identity and desired-versus-applied distinction instead of claiming success or submitting a duplicate change
+
+#### Scenario: Subscription settings retain their existing scope
+
+- **WHEN** a user edits or cancels the subscription proxy panel during scan
+- **THEN** cancel preserves scan results; explicit subscription save/restart applies that subscription policy without becoming the Native API setting
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/274#issuecomment-6499632874
 
 ### Requirement: Model management joins facts without creating a second authority
 
@@ -623,6 +652,148 @@ Removing or recreating the exact untouched automatically generated empty-model p
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/246#issuecomment-6462728885
+
+### Requirement: Native API checks and execution share explicit network route semantics
+
+Native API connection checks, configured model-directory reads, explicit inference/tool probes, production text inference, SSE and tool continuations SHALL resolve the selected source policy consistently for each exact original destination. Direct ignores ambient proxy configuration. Inherit uses the service's captured supported environment; manual uses the configured HTTP(S) proxy and bypass rules. Environment precedence and supported domain, IP/CIDR, port and loopback matching SHALL have one documented meaning across paths. A bypass match is an explicit reason for direct access, never a response to proxy failure. The check result SHALL expose a safe description of the route actually used and bind evidence to the exact policy/environment snapshot, target and credential authority.
+
+A proxy SHALL be only a next hop. Preserve the original configured API URL, Host, protocol, upstream TLS identity, exact credential destination and current source/Key permission. HTTP and HTTPS upstreams and HTTP and HTTPS proxy endpoints are supported; HTTPS proxy and HTTPS upstream certificate verification remain appropriate to their separate peers. A provider Key SHALL NOT appear in CONNECT or Proxy-Authorization. Proxy routing that carries an upstream hostname SHALL NOT require successful local DNS for that upstream before using the proxy. Existing endpoint admission, forbidden redirects/header rules and protected input handling remain enforced.
+
+Proxy dial, negotiation and TLS work SHALL be bounded by the existing request/check deadline and cancellation scope. A failed selected proxy SHALL yield an actionable, redacted transport/proxy error and SHALL NOT trigger direct upstream access or invented credential rejection. Subsequent candidate selection may use only the saved Plan's admitted candidates, their own policies, budgets and response-commit rules. Streaming remains bounded and cancellable. Policy, proxy/target identity and relevant TLS changes SHALL prevent incompatible pooled connection reuse.
+
+Directory availability and inference evidence remain independent. An absent directory may retain the existing configured/manual-model check/save path without network probing; ordinary check/status/save SHALL NOT automatically send an inference request. A success from one policy revision cannot authorize or verify a changed route.
+
+#### Scenario: Consistent check and production routing
+
+- **WHEN** a configured source is checked and then used for text, SSE and a tool continuation under the same effective policy
+- **THEN** each request uses the policy for its own exact destination; a directory success is not labelled as inference verification
+
+#### Scenario: Explicit bypass
+
+- **WHEN** the current supported bypass rules match the configured upstream destination
+- **THEN** both check and production paths connect directly for that match and expose the bypass reason; a nonmatching destination uses the selected proxy
+
+#### Scenario: Upstream DNS is only available through the proxy
+
+- **WHEN** the proxy can resolve the authorized upstream hostname but the service machine cannot
+- **THEN** the proxied request may reach that hostname without a mandatory local upstream DNS lookup while retaining the original Host/TLS/destination authorization
+
+#### Scenario: Proxy is unavailable
+
+- **WHEN** a selected proxy cannot be reached or refuses negotiation
+- **THEN** the operation fails within its budget with a safe actionable error and no implicit direct upstream attempt
+
+#### Scenario: Another saved candidate can execute
+
+- **WHEN** a candidate has a proxy/network failure before the response-commit boundary and the saved Plan permits a later candidate
+- **THEN** fallback obeys existing order and limits and uses the later candidate's own policy, without changing saved model selection
+
+#### Scenario: Separate TLS peers and provider authorization
+
+- **WHEN** an HTTPS API is accessed through an HTTPS proxy
+- **THEN** both peers receive appropriate certificate/hostname verification and the provider credential is sent only in the authorized upstream request
+
+#### Scenario: Optional directory and explicit inference
+
+- **WHEN** a valid Native connection has no directory path and the user saves declared models without requesting an inference probe
+- **THEN** the existing non-probing check/save path remains available and no network or inference success is fabricated
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/274#issuecomment-6499634214
+
+### Requirement: Native API network management covers connection and trial journeys
+
+Desktop, Windows shell, web console and the released CLI SHALL configure and inspect the same daemon-owned per-source Native API policy and safe desired/applied status. New registered/custom API configuration SHALL make network settings accessible before checking through an optional, collapsed-by-default section; manual mode provides proxy URL and optional bypass controls with actionable validation after expansion. Saved-source detail SHALL show network mode/application state, offer editing and explain the affected source models and shared decision consumers. Supported policy-only edits reuse saved credential authority without requiring a second API Key entry. Subscription settings retain their subscription-specific scope.
+
+Saved-source recheck, model append and reuse SHALL retain the source policy. Scan/import permits explicit policy configuration and SHALL NOT silently adopt another process's environment. Trial new-connection/reuse flows consume the same behavior; a repair detour preserves selected model and parent draft. Network edits participate in semantic dirty detection and the existing close/back/cancel guards. Each product/prefill retains its own draft and protected-input ownership; policy edits invalidate dependent checks and stale responses cannot replace newer state. Concurrent changes and uncertain saves retain existing revision/operation recovery behavior.
+
+The UI and CLI SHALL distinguish configuration/application facts, directory result, authentication outcome and explicit inference evidence. Reports identify the tested effective route without exposing credentials. Recognized proxy/timeout, proxy authentication, certificate, upstream authentication and directory failures receive precise safe explanations and relevant edit/retry actions; generic failures do not invent a bad Key. Reads and source selection SHALL NOT initiate provider calls. In a remote console, loopback proxy addresses and inherit mode SHALL explicitly refer to the service machine and its startup environment. View-only, loading and disconnected states preserve user intent and authority limits. Published CLI help/schema and the management Skill SHALL describe configuration, inspection, checks and the same semantics.
+
+In Desktop, Windows shell and web-console connection editors, detailed network/proxy controls SHALL be collapsed by default for new connections and ordinary reopening of saved connections. A compact summary SHALL identify the current mode and expose a clearly labelled expand/edit action. Mode selection, proxy URL, bypass fields and detailed explanations appear after explicit expansion; the default direct check/save journey requires no expansion or additional network choice. An explicit network-settings or repair action may open the controls directly. Merely opening/closing the section SHALL NOT itself create an unsaved configuration change or perform a provider call.
+
+Collapsing SHALL preserve the selected policy, unsaved values, semantic dirty state, credential ownership and actual saved behavior. An existing inherited/manual policy SHALL NOT reset to direct because its fields are hidden. Relevant applied/pending/error state remains visible in a concise summary. If validation rejects a proxy field, the UI SHALL reveal/focus the field or provide a visible correction action that does so; it SHALL NOT hide the only error explanation or leave a disabled primary action unexplained. Shared-source decision views SHALL show a compact inherited-policy summary and management action rather than duplicate an expanded configuration form.
+
+A reopened connection draft SHALL apply an explicitly changed policy atomically with its checked connection edits through the same source revision and recoverable Operation, including a candidate-backed rename. Only a policy change on an existing source adds affected-consumer confirmation; ordinary new Direct setup adds no extra step. A standalone shape-valid policy repair SHALL NOT require a successful remote check. Cancelling its parent connection/trial/decision draft does not undo a successfully applied source policy, and the UI SHALL explain that independent save.
+
+A route-only edit SHALL invalidate check/candidate authority while retaining same-context protected Key input and registered provenance. Temporarily inactive manual fields stay in the editor without being serialized into Direct/Inherit requests or blocking those modes. Typed safe failure phases SHALL drive repair actions; proxy authentication SHALL NOT request provider-Key replacement or disable that Key. Ambiguous transport failures retain neutral wording and retry/settings actions.
+
+#### Scenario: Configure before first check
+
+- **WHEN** a user adds a registered API or custom API on a proxy-required network
+- **THEN** they can explicitly expand the optional network section, select network mode before checking, inspect the actual check path, select models and save through the existing protected flow
+
+#### Scenario: Manage an existing multi-model connection
+
+- **WHEN** a user opens network settings from one model belonging to a saved source
+- **THEN** the UI identifies the shared source and affected models/decision consumers and edits its policy without changing model membership or unnecessarily asking for its saved Key
+
+#### Scenario: Append using the saved route
+
+- **WHEN** a user rechecks or appends models to a source with a manual proxy
+- **THEN** the saved network policy is used and remains intact after the append
+
+#### Scenario: Edit after a successful check
+
+- **WHEN** a user changes proxy settings while an older check result exists or is still in flight
+- **THEN** the old result cannot appear current or authorize the changed draft; genuine edits and credentials remain protected on close or product switch
+
+#### Scenario: Repair a trial connection
+
+- **WHEN** a trial flow enters network settings to repair its selected source and then returns
+- **THEN** the selected model and enclosing draft remain available; refreshed state does not automatically call the provider
+
+#### Scenario: Configure a remote service
+
+- **WHEN** a browser connected to a remote HiRoute service selects inherit or enters a loopback proxy address
+- **THEN** the UI explains that these refer to the service host; Desktop, browser and CLI expose the same saved and applied policy
+
+#### Scenario: Read or save without inference
+
+- **WHEN** a user reads policy status, selects a source or saves a valid configuration without choosing an inference test
+- **THEN** those actions do not send an inference request or claim inference availability
+
+#### Scenario: Routine direct connection needs no proxy interaction
+
+- **WHEN** a user opens a new API connection editor with its default direct policy
+- **THEN** proxy details are collapsed; a compact mode summary and optional expand action are available, and the user can check and save without opening the section or making another network choice
+
+#### Scenario: Reopen a saved proxy connection
+
+- **WHEN** a user ordinarily opens an existing connection configured with a manual proxy
+- **THEN** details start collapsed with a compact manual-mode/application summary, and checks continue using the saved proxy rather than resetting to direct
+
+#### Scenario: Collapse an edited network section
+
+- **WHEN** a user edits proxy settings and collapses then expands the section
+- **THEN** the draft values, selected policy, credential ownership and genuine unsaved-change protection are preserved; toggling alone neither changes configuration nor calls the provider
+
+#### Scenario: Correct a hidden invalid proxy field
+
+- **WHEN** a check or save rejects a proxy field that is currently collapsed
+- **THEN** a visible error explains the issue and the affected field is revealed/focused automatically or through a visible correction action, without losing input
+
+#### Scenario: Pending application remains visible
+
+- **WHEN** a connection has a saved policy whose runtime application is pending or uncertain and the controls are collapsed
+- **THEN** the compact summary exposes that state without displaying all configuration fields or claiming the desired policy is active
+
+#### Scenario: One atomic reopened save
+
+- **WHEN** an existing connection draft changes both a checked connection fact and its network policy
+- **THEN** the source-CAS Operation applies or compensates both together after the affected-consumer review; a failed save cannot leave only one change active
+
+#### Scenario: Route repair retains the current Key
+
+- **WHEN** the user changes only the network policy and explicitly checks again within the same credential destination/context
+- **THEN** a fresh check binds the new route without another Key paste, reusing no stale candidate and preserving registered provenance
+
+#### Scenario: Cancel the parent after a source repair
+
+- **WHEN** an in-place network repair succeeds and the user later cancels the parent trial or decision draft
+- **THEN** the already saved source policy stays active while the unsaved parent draft follows its normal discard rules
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/274#issuecomment-6499635567
 
 ## Implementation references
 

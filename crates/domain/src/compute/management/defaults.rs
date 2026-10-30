@@ -134,6 +134,7 @@ impl ComputeManagementMutationV3 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ComputeManagementMutation {
+    V4(crate::ComputeManagementMutationV4),
     V3(ComputeManagementMutationV3),
     V2(ComputeManagementMutationV2),
 }
@@ -141,6 +142,7 @@ impl Deref for ComputeManagementMutation {
     type Target = ComputeManagementMutationV2;
     fn deref(&self) -> &Self::Target {
         match self {
+            Self::V4(value) => &value.source_mutation,
             Self::V2(value) => value,
             Self::V3(value) => &value.source_mutation,
         }
@@ -151,8 +153,16 @@ impl ComputeManagementMutation {
         &self,
     ) -> Option<(&SourceDefaultPreferencesV1, &SourceDefaultPreferencesV1)> {
         match self {
+            Self::V4(v) => v.source_mutation.preferences(),
             Self::V2(_) => None,
             Self::V3(v) => Some((&v.preferences_before, &v.preferences_after)),
+        }
+    }
+
+    pub fn network(&self) -> Option<&crate::NativeNetworkMutationV1> {
+        match self {
+            Self::V4(v) => Some(&v.network),
+            Self::V2(_) | Self::V3(_) => None,
         }
     }
 }

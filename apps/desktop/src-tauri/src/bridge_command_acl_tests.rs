@@ -33,6 +33,7 @@ const CLASSIFIER_COMMANDS: &[&str] = &[
     "decision_services_v2",
     "save_decision_service_v2",
     "test_decision_service_v2",
+    "test_decision_service_v3",
     "save_classifier_header_secret",
     "save_classifier_openapi",
 ];

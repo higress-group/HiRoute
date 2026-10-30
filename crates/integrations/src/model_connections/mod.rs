@@ -4,6 +4,8 @@
 //! results use the C0 safe candidate view and never expose those bytes or their source locator.
 
 mod inference;
+mod network;
+pub use network::*;
 mod point_discovery;
 mod probe;
 mod target;
@@ -208,6 +210,8 @@ pub struct NativeModelConnectionServiceV1<P, T> {
     transport: T,
     revisions: Mutex<BTreeMap<String, u64>>,
     limits: ModelConnectionProbeLimitsV1,
+    network_checks:
+        Mutex<BTreeMap<String, (u64, hiroute_application_api::NativeNetworkCheckEvidenceV1)>>,
 }
 
 impl<P, T> NativeModelConnectionServiceV1<P, T>
@@ -221,6 +225,7 @@ where
             transport,
             revisions: Mutex::new(BTreeMap::new()),
             limits: ModelConnectionProbeLimitsV1::default(),
+            network_checks: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -470,6 +475,17 @@ where
         credential: NativeModelConnectionCredentialV1<'_>,
         cancellation: &ModelConnectionProbeCancellationV1,
     ) -> Result<ModelConnectionCheckViewV1, NativeModelConnectionErrorV1> {
+        self.check_using(draft, credential, cancellation, &self.transport, None)
+    }
+
+    fn check_using<R: ModelDirectoryTransportV1>(
+        &self,
+        draft: NativeModelConnectionDraftV1,
+        credential: NativeModelConnectionCredentialV1<'_>,
+        cancellation: &ModelConnectionProbeCancellationV1,
+        transport: &R,
+        network_identity: Option<&CanonicalDigest>,
+    ) -> Result<ModelConnectionCheckViewV1, NativeModelConnectionErrorV1> {
         if !self.limits.valid() {
             return Err(NativeModelConnectionErrorV1::InvalidDraft);
         }
@@ -489,7 +505,13 @@ where
             protocol_header_semantics: &draft.protocol_header_semantics,
             authentication: &draft.authentication,
         })?;
-        let input_digest = input_digest(&draft, &credential)?;
+        let base_digest = input_digest(&draft, &credential)?;
+        let input_digest = if let Some(identity) = network_identity {
+            CanonicalDigest::of(&("native-model-connection-network/v1", &base_digest, identity))
+                .map_err(|_| NativeModelConnectionErrorV1::InvalidDraft)?
+        } else {
+            base_digest
+        };
         let remaining = self
             .limits
             .total_timeout
@@ -509,11 +531,11 @@ where
                 observation
             }
             NativeModelConnectionCredentialV1::NotRequired => {
-                probe_model_directory(&self.transport, &target, None, cancellation, probe_limits)
+                probe_model_directory(transport, &target, None, cancellation, probe_limits)
             }
             NativeModelConnectionCredentialV1::Protected { secret, .. }
             | NativeModelConnectionCredentialV1::Saved { secret, .. } => probe_model_directory(
-                &self.transport,
+                transport,
                 &target,
                 Some(ModelConnectionProbeCredentialV1 {
                     authentication: &draft.authentication,
@@ -539,7 +561,7 @@ where
                 _ => None,
             };
             observation = inference::observe(
-                &self.transport,
+                transport,
                 &target,
                 model,
                 probe_credential,
@@ -561,13 +583,15 @@ where
             &draft.provenance,
             NativeConnectionProvenanceInputV1::Registered { .. }
         );
-        let connection_allows_ready =
-            !matches!(&credential, NativeModelConnectionCredentialV1::PendingInput)
-                && !cancellation.is_cancelled()
-                && observation.authentication
-                    != hiroute_application_api::ModelConnectionAuthenticationStatusV1::Rejected
-                && observation.inference
-                    != hiroute_application_api::ModelConnectionInferenceStatusV1::Failed;
+        let connection_allows_ready = (network_identity.is_none()
+            || observation.reachability
+                != hiroute_application_api::ModelConnectionReachabilityV1::TransportFailed)
+            && !matches!(&credential, NativeModelConnectionCredentialV1::PendingInput)
+            && !cancellation.is_cancelled()
+            && observation.authentication
+                != hiroute_application_api::ModelConnectionAuthenticationStatusV1::Rejected
+            && observation.inference
+                != hiroute_application_api::ModelConnectionInferenceStatusV1::Failed;
         let models = candidate_models(
             &candidate_ref,
             &draft.models,

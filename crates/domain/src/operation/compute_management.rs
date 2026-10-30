@@ -5,6 +5,48 @@ use std::collections::BTreeMap;
 use super::*;
 
 impl TransactionPlanV1 {
+    pub fn with_source_network(
+        mut self,
+        network: crate::NativeNetworkMutationV1,
+    ) -> Result<Self, OperationValidationError> {
+        validate_management_plan(
+            &self.spec,
+            &self.control,
+            &self.secrets,
+            &self.runtime,
+            &self.external,
+        )?;
+        let source_mutation = serde_json::from_value(
+            self.control
+                .get("compute_management_mutation")
+                .cloned()
+                .ok_or(OperationValidationError::UnregisteredEffectPlan)?,
+        )
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+        self.spec.desired_state = json!({
+            "schema": crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4,
+            "change": self.spec.desired_state, "network": network,
+        });
+        let mutation = crate::ComputeManagementMutationV4 {
+            schema: crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4.into(),
+            source_mutation: Box::new(source_mutation),
+            network,
+            change_spec_digest: CanonicalDigest::of(&self.spec)
+                .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?,
+        };
+        mutation
+            .validate(&self.spec)
+            .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+        self.control = json!({"compute_management_mutation": mutation});
+        validate_management_plan(
+            &self.spec,
+            &self.control,
+            &self.secrets,
+            &self.runtime,
+            &self.external,
+        )?;
+        Ok(self)
+    }
     /// Seals one source-level management mutation into the existing recoverable transaction.
     /// Secret bytes remain outside the plan; exact HMAC fingerprints and generations bind the
     /// staged management record to the Secret effects applied by the same Operation.
@@ -104,6 +146,7 @@ pub(super) fn validate_management_plan(
         .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
     let mutation = envelope.compute_management_mutation;
     match &mutation {
+        crate::ComputeManagementMutation::V4(value) => value.validate(spec),
         crate::ComputeManagementMutation::V2(value) => value.validate_shape(spec),
         crate::ComputeManagementMutation::V3(value) => value.validate(spec),
     }

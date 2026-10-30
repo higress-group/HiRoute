@@ -56,6 +56,13 @@ pub enum ControlReadAttempt<T> {
 }
 
 pub trait ClassifierDiagnosticPort: Send + Sync {
+    fn test_decision_service_v3(
+        &self,
+        _service: &hiroute_domain::DecisionServiceRecord,
+        _configuration_digest: &CanonicalDigest,
+    ) -> Result<hiroute_application_api::DecisionServiceTestResultV3, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn test_decision_service_v2(
         &self,
         _service: &hiroute_domain::DecisionServiceRecord,
@@ -453,6 +460,54 @@ pub enum ComputeManagementControlError {
 /// Production adapter boundary for the source-level model connection aggregate. Public payloads
 /// remain closed DTOs; candidate facts and protected input slots stay behind this port.
 pub trait ComputeManagementControlPort: Send + Sync {
+    fn get_native_source_network(
+        &self,
+        _request: hiroute_application_api::NativeSourceNetworkQueryV1,
+    ) -> Result<hiroute_application_api::NativeSourceNetworkViewV1, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn preview_native_source_network(
+        &self,
+        _request: hiroute_application_api::NativeSourceNetworkPreviewV1,
+    ) -> Result<hiroute_application_api::NativeNetworkSavePreviewV1, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn preview_native_network_route(
+        &self,
+        _request: hiroute_application_api::NativeNetworkRoutePreviewRequestV1,
+    ) -> Result<hiroute_application_api::NativeNetworkRouteViewV1, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn preview_compute_save_v4(
+        &self,
+        _request: hiroute_application_api::ComputeManagementChangeV4,
+    ) -> Result<hiroute_application_api::ComputeSavePreviewV2, ComputeManagementControlError> {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn check_native_model_connection_v2(
+        &self,
+        _request: hiroute_application_api::NativeModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn check_registered_model_connection_v2(
+        &self,
+        _request: hiroute_application_api::RegisteredModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn check_saved_model_connection_v2(
+        &self,
+        _request: hiroute_application_api::SavedModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
     fn compute_key_masks(
         &self,
         _query: &hiroute_application_api::ComputeKeyMasksQueryV1,

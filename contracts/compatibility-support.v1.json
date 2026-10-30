@@ -102,17 +102,21 @@
     "hiroute.compute-connection-options/v1",
     "hiroute.compute-connection-preview/v1",
     "hiroute.compute-connection-test-request/v1",
+    "hiroute.compute-connection-test-request/v2",
     "hiroute.compute-control-projection/v1",
     "hiroute.compute-discovery-evidence/v1",
     "hiroute.compute-management-binding/v2",
     "hiroute.compute-management-change/v2",
     "hiroute.compute-management-change/v3",
+    "hiroute.compute-management-change/v4",
     "hiroute.compute-management-key/v2",
     "hiroute.compute-management-lineage/v3",
     "hiroute.compute-management-mutation/v2",
     "hiroute.compute-management-mutation/v3",
+    "hiroute.compute-management-mutation/v4",
     "hiroute.compute-management-preview/v2",
     "hiroute.compute-management-preview/v3",
+    "hiroute.compute-management-preview/v4",
     "hiroute.compute-management-query/v2",
     "hiroute.compute-management-snapshot/v2",
     "hiroute.compute-management-snapshot/v3",
@@ -179,6 +183,7 @@
     "hiroute.decision-service-operation/v2",
     "hiroute.decision-service-test-request/v2",
     "hiroute.decision-service-test-result/v2",
+    "hiroute.decision-service-test-result/v3",
     "hiroute.decision-service/v2",
     "hiroute.decision-services/v1",
     "hiroute.decision-services/v2",
@@ -275,6 +280,7 @@
     "hiroute.model-availability/v2",
     "hiroute.model-catalog-query/v1",
     "hiroute.model-catalog-view/v1",
+    "hiroute.model-connection-check/v2",
     "hiroute.model-data/v1",
     "hiroute.model-feed-removal-preview/v2",
     "hiroute.model-feed-remove/v1",
@@ -294,6 +300,8 @@
     "hiroute.native-file-reference/v1",
     "hiroute.native-files/v1",
     "hiroute.native-launch/v1",
+    "hiroute.native-network-mutation/v1",
+    "hiroute.native-network-policy/v1",
     "hiroute.native-observation/v2",
     "hiroute.native-plugin-restore/v1",
     "hiroute.native-protocol-diagnostic/v1",
@@ -514,8 +522,13 @@
   "subjects": [
     {
       "subject": "decision_service_lists",
-      "audited_prefixes": ["hiroute.decision-services"],
-      "current_contracts": ["hiroute.decision-services/v1", "hiroute.decision-services/v2"],
+      "audited_prefixes": [
+        "hiroute.decision-services"
+      ],
+      "current_contracts": [
+        "hiroute.decision-services/v1",
+        "hiroute.decision-services/v2"
+      ],
       "legacy_support": [],
       "owner": "decision-foundation",
       "reason": "The released V1 query remains explicit and rejects a V2 latest record; the V2 query returns both strict retained service versions and safe source state.",
@@ -523,8 +536,13 @@
     },
     {
       "subject": "decision_cli_options",
-      "audited_prefixes": ["hiroute.cli-decision-options"],
-      "current_contracts": ["hiroute.cli-decision-options/v1", "hiroute.cli-decision-options/v2"],
+      "audited_prefixes": [
+        "hiroute.cli-decision-options"
+      ],
+      "current_contracts": [
+        "hiroute.cli-decision-options/v1",
+        "hiroute.cli-decision-options/v2"
+      ],
       "legacy_support": [],
       "owner": "decision-foundation",
       "reason": "V1 options retain System One semantics while V2 options expose the same preset catalog with an explicit wire codec.",
@@ -1212,10 +1230,14 @@
       "current_contracts": [
         "hiroute.compute-management-change/v2",
         "hiroute.compute-management-change/v3",
+        "hiroute.compute-management-change/v4",
         "hiroute.compute-management-mutation/v2",
         "hiroute.compute-management-mutation/v3",
+        "hiroute.compute-management-mutation/v4",
         "hiroute.compute-management-preview/v2",
         "hiroute.compute-management-preview/v3",
+        "hiroute.compute-management-preview/v4",
+        "hiroute.compute-management-source/v3",
         "hiroute.compute-management-source/v4"
       ],
       "legacy_support": [
@@ -1379,6 +1401,34 @@
           ]
         }
       ]
+    },
+    {
+      "subject": "decision_service_tests",
+      "audited_prefixes": [
+        "hiroute.decision-service-test-result"
+      ],
+      "current_contracts": [
+        "hiroute.decision-service-test-result/v2",
+        "hiroute.decision-service-test-result/v3"
+      ],
+      "legacy_support": [],
+      "owner": "decision-foundation/native-network",
+      "reason": "The explicit V2 test operation retains its strict result. The network-aware V3 operation wraps the same V2 check and independently records admitted Native network evidence; both call one production diagnostic.",
+      "removal_condition": "Retire an explicit operation only with the supported-client compatibility decision; do not add network fields to the strict V2 result."
+    },
+    {
+      "subject": "compute_connection_test_requests",
+      "audited_prefixes": [
+        "hiroute.compute-connection-test-request"
+      ],
+      "current_contracts": [
+        "hiroute.compute-connection-test-request/v1",
+        "hiroute.compute-connection-test-request/v2"
+      ],
+      "legacy_support": [],
+      "owner": "compute-management-network",
+      "reason": "The released explicit V1 probe union stays strict; the separate V2 operation accepts network-aware Native/registered/saved requests. Neither injects fields into the other carrier.",
+      "removal_condition": "Retire an explicit operation only under the supported-client compatibility policy."
     }
   ],
   "forbidden_contracts": [
@@ -1457,7 +1507,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2232,6 +2282,70 @@
         "crates/observation/src/store/tests/fixtures/routing-timeline-base-952917.json",
         "crates/observation/src/store/tests/plan_quality/stage_admission.rs"
       ]
+    },
+    {
+      "contract": "hiroute.compute-management-change/v2",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-network",
+      "reason": "Released strict source/default save carriers retain their canonical bytes and accepted digests. Existing callers preserve the source-owned companion policy; explicit network edits use the V4 wrapper rather than adding fields to V2/V3.",
+      "removal_condition": "Retire only after the supported released CLI and retained Operation inputs no longer require these carriers and their compatibility tests are explicitly retired.",
+      "allowed_paths": [
+        "crates/application-api/src/compute_management.rs",
+        "crates/application-api/src/compute_defaults.rs",
+        "crates/application/src/compute_management/mutations/defaults.rs",
+        "crates/application/src/compute_management/mutations/network.rs",
+        "crates/domain/src/compute/network/transaction.rs",
+        "crates/product-session/src/commands/model_connection_web.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs"
+      ],
+      "field": "released save shape without a network edit wrapper"
+    },
+    {
+      "contract": "hiroute.compute-management-change/v3",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-network",
+      "reason": "Released strict source/default save carriers retain their canonical bytes and accepted digests. Existing callers preserve the source-owned companion policy; explicit network edits use the V4 wrapper rather than adding fields to V2/V3.",
+      "removal_condition": "Retire only after the supported released CLI and retained Operation inputs no longer require these carriers and their compatibility tests are explicitly retired.",
+      "allowed_paths": [
+        "crates/application-api/src/compute_management.rs",
+        "crates/application-api/src/compute_defaults.rs",
+        "crates/application/src/compute_management/mutations/defaults.rs",
+        "crates/application/src/compute_management/mutations/network.rs",
+        "crates/domain/src/compute/network/transaction.rs",
+        "crates/product-session/src/commands/model_connection_web.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs"
+      ],
+      "field": "released save shape without a network edit wrapper"
+    },
+    {
+      "contract": "hiroute.compute-management-source/v3",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-network",
+      "reason": "Production schema-35 startup assigns Direct revision 1 to supported pre-policy Native sources after their existing source conversion. Source JSON, model/key identities, Secret destination binding and retained Operation bytes remain unchanged; missing or corrupt policy at current schema is refused.",
+      "removal_condition": "Retire only when all supported pre-policy source schemas and retained upgrade batches are outside the release support policy and the released-input upgrade scenarios are explicitly retired.",
+      "allowed_paths": [
+        "crates/local-storage/src/control/compute/management/network.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs",
+        "crates/local-storage/src/lib.rs",
+        "crates/local-storage/src/migrations/mod.rs",
+        "crates/local-storage/src/migrations/source_network_v35.rs"
+      ],
+      "field": "pre-policy saved source without companion state"
+    },
+    {
+      "contract": "hiroute.compute-management-source/v4",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-network",
+      "reason": "Production schema-35 startup assigns Direct revision 1 to supported pre-policy Native sources after their existing source conversion. Source JSON, model/key identities, Secret destination binding and retained Operation bytes remain unchanged; missing or corrupt policy at current schema is refused.",
+      "removal_condition": "Retire only when all supported pre-policy source schemas and retained upgrade batches are outside the release support policy and the released-input upgrade scenarios are explicitly retired.",
+      "allowed_paths": [
+        "crates/local-storage/src/control/compute/management/network.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs",
+        "crates/local-storage/src/lib.rs",
+        "crates/local-storage/src/migrations/mod.rs",
+        "crates/local-storage/src/migrations/source_network_v35.rs"
+      ],
+      "field": "pre-policy saved source without companion state"
     }
   ]
 }

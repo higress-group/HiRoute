@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-apply-native-source-network"
+description = "Enables the apply_native_source_network command without any pre-configured scope."
+commands.allow = ["apply_native_source_network"]
+
+[[permission]]
+identifier = "deny-apply-native-source-network"
+description = "Denies the apply_native_source_network command without any pre-configured scope."
+commands.deny = ["apply_native_source_network"]

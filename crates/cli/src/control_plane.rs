@@ -72,7 +72,7 @@ pub(crate) fn command_payload(
         ),
         "decision.services.apply" | "decision.connections.apply" => Some(preview_or_apply(options)),
         "decision.services.test" => Some(classifier_request(options)),
-        "decision.connections.test" => Some(request::<
+        "decision.connections.test" | "decision.network.test" => Some(request::<
             hiroute_application_api::DecisionServiceTestRequestV2,
         >(options)),
         "models.feed.status" | "models.feed.refresh" | "models.availability" => {
@@ -92,6 +92,21 @@ pub(crate) fn command_payload(
         "agents.previous-routing.preview" => Some(request::<
             hiroute_application_api::AgentPreviousRoutingQueryV1,
         >(options)),
+        "compute.network.show" => {
+            Some(request::<hiroute_application_api::NativeSourceNetworkQueryV1>(options))
+        }
+        "compute.network.preview" => Some(request::<
+            hiroute_application_api::NativeSourceNetworkPreviewV1,
+        >(options)),
+        "compute.network.apply" => Some(request::<
+            hiroute_application_api::ComputeConnectionApplyRequestV1,
+        >(options)),
+        "compute.network.resolve" => Some(request::<
+            hiroute_application_api::NativeNetworkRoutePreviewRequestV1,
+        >(options)),
+        "compute.connection.preview-network" => {
+            Some(request::<hiroute_application_api::ComputeManagementChangeV4>(options))
+        }
         "compute.defaults.get" => Some(request::<hiroute_application_api::ComputeDefaultsQueryV1>(
             options,
         )),
@@ -136,6 +151,9 @@ pub(crate) fn command_payload(
         }
         "compute.connection.login" => Some(request::<
             hiroute_application_api::ComputeSubscriptionLoginRequestV1,
+        >(options)),
+        "compute.connection.test-network" => Some(request::<
+            hiroute_application_api::ComputeConnectionTestRequestV2,
         >(options)),
         "compute.connection.test" => Some(request::<ComputeConnectionTestRequestV1>(options)),
         "compute.credential.add" => Some(preview_or_apply(options)),

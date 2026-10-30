@@ -40,6 +40,7 @@ use super::state::{
 
 mod context_overflow;
 mod materialization;
+pub(crate) mod network;
 mod response;
 pub(crate) mod response_diagnostics;
 mod selection;
@@ -71,6 +72,7 @@ pub struct ProductionProvider {
 }
 
 pub struct ProductionLogicalRequest {
+    native_network: Option<Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
     reasoning_cleanup: Arc<ReasoningCleanup>,
     ingress: IngressProtocol,
     replay: ReplayStore,
@@ -128,6 +130,7 @@ impl ReasoningCleanup {
 }
 
 pub(crate) struct ProductionReplaySeed {
+    pub(crate) native_network: Option<Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
     pub(crate) ingress: IngressProtocol,
     pub(crate) replay: ReplayStore,
     pub(crate) raw_body: ContentRef,

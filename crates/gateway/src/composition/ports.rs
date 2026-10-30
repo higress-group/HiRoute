@@ -498,6 +498,9 @@ pub trait ExecutionFactSink: Send + Sync {}
 pub trait ConversationContentSink: Send + Sync {}
 
 pub struct ProductionPorts {
+    /// Present for the Control-owned managed Gateway; standalone immutable fixtures have no
+    /// editable source registry. A present registry never falls back on a missing source.
+    pub native_network: Option<Arc<hiroute_domain::NativeNetworkRegistryV1>>,
     pub publications: Arc<dyn RuntimePublicationFeed>,
     pub credentials: Arc<dyn CredentialResolver>,
     pub runtime_state: Arc<dyn RuntimeStateStore>,
@@ -510,6 +513,7 @@ impl ProductionPorts {
     pub fn fail_closed(publications: Arc<GatewayPublicationInstaller>) -> Self {
         let unavailable = Arc::new(UnavailableAdapter);
         Self {
+            native_network: None,
             publications,
             credentials: unavailable.clone(),
             runtime_state: unavailable.clone(),

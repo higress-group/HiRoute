@@ -1,3 +1,5 @@
+import type { NativeNetworkFailure, NetworkCheckResponse } from "../model-connections/native-network";
+
 /** Backend-owned Product Session wire contract; UI code consumes but does not edit it. */
 export type CanonicalDigest = string; // sha256:<64 lowercase hex digits>
 export type DecisionWireProtocol = 'system_one' | 'openai_decisions';
@@ -59,10 +61,16 @@ export type DecisionServiceTestResult = {
   tested_configuration_digest: CanonicalDigest; tested_credential_state_revision: CanonicalDigest | null;
 };
 
+export type DecisionServiceNetworkTestResult = {
+  schema: 'hiroute.decision-service-test-result/v3'; check: DecisionServiceTestResult;
+  network: NetworkCheckResponse['network'] | null; failure: NativeNetworkFailure | null;
+};
+
 /** Names and wrappers are identical for Tauri and web-console invoke. */
 export type DecisionProductCalls = {
   decision_connection_sources: { args: Record<string, never>; result: DecisionConnectionSources };
   decision_services_v2: { args: Record<string, never>; result: DecisionServices };
   save_decision_service_v2: { args: DecisionServiceSaveArgs; result: DecisionServiceApplyResult };
   test_decision_service_v2: { args: DecisionServiceTestArgs; result: DecisionServiceTestResult };
+  test_decision_service_v3: { args: DecisionServiceTestArgs; result: DecisionServiceNetworkTestResult };
 };

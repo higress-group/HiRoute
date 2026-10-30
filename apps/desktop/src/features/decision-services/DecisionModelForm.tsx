@@ -1,5 +1,6 @@
+import { InheritedSourceNetwork } from './InheritedSourceNetwork';
 import { SecretTransportWarning } from '../../host/ConsoleUi';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Disclosure, UiIcon } from '../../ui';
 import { confirmDiscard, requestEditorReplacement, useDiscardGuard } from '../../ui/discard-guard';
 import type { DecisionServiceV2, DecisionServiceView, DecisionWireProtocol } from './contracts';
@@ -15,9 +16,10 @@ export type NativeSaveOutcome = 'committed' | 'conflict' | 'failed';
 const protocolName = (protocol: DecisionWireProtocol, language: 'zh' | 'en') => protocol === 'openai_decisions'
   ? (language === 'zh' ? 'OpenAI 决策接口' : 'OpenAI decisions') : 'System One';
 
-export function DecisionModelForm({ initial, saved, view, revision, sources, language, mutable, onRetrySources, onManageSource, onSave, onCancel }: {
+export function DecisionModelForm({ initial, saved, view, revision, sources, language, mutable, onRetrySources, onManageSource, onSave, onCancel, onNetworkDirty }: {
   initial: NativeDraft; saved: boolean; view: DecisionServiceView | null; revision: number; sources: SourceRead;
-  language: 'zh' | 'en'; mutable: boolean; onRetrySources(): void; onManageSource?(sourceId: string): void;
+  language: 'zh' | 'en'; mutable: boolean; onRetrySources(): void | Promise<void>; onManageSource?(sourceId: string): void;
+  onNetworkDirty?(dirty: boolean): void;
   onSave(service: DecisionServiceV2, secret: string | null, test: boolean, sourceIds: string[]): Promise<NativeSaveOutcome>;
   onCancel(): void;
 }) {
@@ -26,6 +28,8 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   const [baseline] = useState(() => comparable(initial, null, language));
   const [replacing, setReplacing] = useState(false), [revealed, setRevealed] = useState(false);
   const [hasSecret, setHasSecret] = useState(false), [busy, setBusy] = useState(false);
+  const [networkDirty, setNetworkDirty] = useState(false);
+  const networkChanged = useCallback((dirty: boolean) => { setNetworkDirty(dirty); onNetworkDirty?.(dirty); }, [onNetworkDirty]);
   const [issues, setIssues] = useState<Partial<Record<NativeIssueKey, string>>>({});
   const [credentialNotice, setCredentialNotice] = useState('');
   const [urlOpen, setUrlOpen] = useState(false), [protocolOpen, setProtocolOpen] = useState(false);
@@ -35,8 +39,8 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   const listed = knownSources(sources);
   const retained = retainedIndependentAuth(draft, source);
   const dirty = !saved || comparable(draft, source, language) !== baseline || hasSecret;
-  useDiscardGuard('decisions', dirty || busy, language, async () => {
-    if (busy || !await confirmDiscard(language)) return false;
+  useDiscardGuard('decisions', dirty || busy || networkDirty, language, async () => {
+    if (busy || networkDirty || !await confirmDiscard(language)) return false;
     if (secret.current) secret.current.value = '';
     onCancel();
     return true;
@@ -71,7 +75,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
     setDraft(next); setIssues({});
   }
   async function submit(test: boolean) {
-    if (busy || !mutable) return;
+    if (busy || !mutable || networkDirty) return;
     const found = nativeIssues(draft, source, !!secret.current?.value.trim(), replacing, language);
     const first = Object.keys(found)[0] as NativeIssueKey | undefined;
     if (first) {
@@ -112,7 +116,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
     {sources.status === 'loading' && !listed.length && <div className="decision-source-loading" role="status"><UiIcon name="clock" /><span>{t('正在读取 API 接入…', 'Reading API connections…')}</span></div>}
     {sources.status === 'error' && <div className="callout bad decision-source-error" role="alert"><p>{t('暂时无法读取 API 接入的状态。', 'API connection state could not be read.')}</p><button className="btn" type="button" onClick={onRetrySources}><UiIcon name="refresh" />{t('重试', 'Retry')}</button></div>}
     {(sources.status === 'ready' || listed.length > 0 || draft.sourceId) && <label className="field"><span className="field-label">{t('API 接入', 'API connection')}</span>
-      <select className="input" data-native-field="source" aria-invalid={!!issues.source} value={rebind ? '' : draft.sourceId ?? ''} onChange={event => {
+      <select className="input" data-native-field="source" disabled={networkDirty} aria-invalid={!!issues.source} value={rebind ? '' : draft.sourceId ?? ''} onChange={event => {
         const id = event.target.value || null;
         const next = listed.find(item => item.source_id === id) ?? null;
         switchContext(chooseSource(draft, next, id));
@@ -127,7 +131,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
       <UiIcon name="lock" /><div><strong>{t('使用 API 接入的凭据', 'Credentials from API connection')}</strong>
         <span className="field-help">{[sourceName(source, language), source.provider_label, source.endpoint_host].filter(Boolean).join(' · ')} · {sourceStateLabel(source.state, language)}</span>
         <span className="field-help">{t('“本地可用”表示已启用且有已配置的 Key，不代表上游已授权。', '“Ready locally” means enabled with a configured key; it does not confirm upstream access.')}</span></div>
-      {onManageSource && <button className="btn" type="button" onClick={() => onManageSource(source.source_id)}>{t('管理 API 接入', 'Manage API connection')}</button>}
+      {onManageSource && <button className="btn" type="button" disabled={networkDirty} onClick={() => onManageSource(source.source_id)}>{t('管理 API 接入', 'Manage API connection')}</button>}
     </div>}
   </>;
 
@@ -151,8 +155,8 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
       <section className="editor-section decision-form-fields">
         <div className="field"><span className="field-label">{t('凭据', 'Credentials')}</span>
           <div className="decision-modes" role="group" aria-label={t('凭据来源', 'Credential source')} data-native-field="mode" tabIndex={-1}>
-            <button type="button" className="decision-mode" aria-pressed={draft.mode === 'shared'} onClick={() => setMode('shared')}><strong>{t('使用已有 API 接入', 'Use existing API connection')}</strong><span>{t('复用接入中的 Key，无需再次填写。', 'Reuse the keys in a connection without entering them again.')}</span></button>
-            <button type="button" className="decision-mode" aria-pressed={draft.mode === 'independent'} onClick={() => setMode('independent')}><strong>{t('独立配置', 'Configure independently')}</strong><span>{t('为决策模型单独填写 Key。', 'Enter a key for this decision model only.')}</span></button>
+            <button type="button" className="decision-mode" disabled={networkDirty} aria-pressed={draft.mode === 'shared'} onClick={() => setMode('shared')}><strong>{t('使用已有 API 接入', 'Use existing API connection')}</strong><span>{t('复用接入中的 Key，无需再次填写。', 'Reuse the keys in a connection without entering them again.')}</span></button>
+            <button type="button" className="decision-mode" disabled={networkDirty} aria-pressed={draft.mode === 'independent'} onClick={() => setMode('independent')}><strong>{t('独立配置', 'Configure independently')}</strong><span>{t('为决策模型单独填写 Key。', 'Enter a key for this decision model only.')}</span></button>
           </div>{fieldError('mode')}
           {!draft.mode && sources.status === 'loading' && <div className="decision-source-loading" role="status"><UiIcon name="clock" /><span>{t('正在读取 API 接入…', 'Reading API connections…')}</span><button className="btn btn-quiet" type="button" onClick={() => setMode('independent')}>{t('改为独立配置', 'Configure independently instead')}</button></div>}
           {!draft.mode && sources.status === 'error' && <div className="callout bad decision-source-error" role="alert"><p>{t('暂时无法读取 API 接入。', 'API connections could not be read.')}</p><div className="field-actions"><button className="btn" type="button" onClick={onRetrySources}><UiIcon name="refresh" />{t('重试', 'Retry')}</button><button className="btn" type="button" onClick={() => setMode('independent')}>{t('独立配置', 'Configure independently')}</button></div></div>}
@@ -172,15 +176,16 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
             {fieldError('wire_protocol')}
             {draft.mode === 'shared' && source?.endpoint_host && host && host !== source.endpoint_host && <p className="field-help decision-host-note" role="note">{t(`这个地址的主机（${host}）与 API 接入（${source.endpoint_host}）不同。调用时会向这个地址发送接入中的 Key。`, `This address’s host (${host}) differs from the API connection (${source.endpoint_host}). Calls send the connection’s key to this address.`)}</p>}
           </div>
+          {draft.mode === 'shared' && source && !rebind && <InheritedSourceNetwork key={source.source_id} sourceId={source.source_id} target={{ kind: 'draft', endpoint_url: bundle.endpoint }} refreshKey={source.revision ?? 0} language={language} mutable={mutable && !busy && source.state !== 'missing'} onDirty={networkChanged} onSaved={onRetrySources} />}
           {suggestion && !sameBundle(bundle, suggestion) && (suggestion.model || suggestion.endpoint) && <button className="btn btn-quiet decision-suggested" type="button" onClick={() => update(resetToSuggested(draft, source))}><UiIcon name="refresh" />{t('使用建议设置', 'Use suggested settings')}</button>}
           <label className="field"><span className="field-label">{t('名称', 'Name')}</span><input className="input" data-native-field="name" maxLength={128} aria-invalid={!!issues.name} value={displayName(draft, source, language)} onChange={event => { setDraft({ ...draft, name: event.target.value, nameEdited: true }); setIssues({}); }} />{fieldError('name')}<span className="field-help">{t('在路由中用这个名称选择决策模型。', 'Use this name to select the decision model in routes.')}</span></label>
           <Disclosure label={t(`高级设置 · 超时 ${draft.timeout_ms / 1000} 秒`, `Advanced settings · ${draft.timeout_ms / 1000}s timeout`)} language={language}><label className="field"><span className="field-label">{t('决策超时（秒）', 'Decision timeout (seconds)')}</span><input className="input" data-native-field="timeout" type="number" min={0.001} max={3600} step={0.001} aria-invalid={!!issues.timeout} value={draft.timeout_ms / 1000} onChange={event => { setDraft({ ...draft, timeout_ms: Math.round(Number(event.target.value) * 1000) }); setIssues({}); }} />{fieldError('timeout')}</label></Disclosure>
           <p className="field-help decision-publish-note">{draft.mode === 'shared'
-            ? t('API 接入中的 Key 更换或停用会影响之后的调用，无需重新发布；更改模型、地址或协议会生成新配置，需在路由中选用并发布。', 'Key changes or disabling in the API connection affect later calls without republishing. Changing the model, URL or protocol creates a new configuration that must be selected and published in the route.')
+            ? t('API 接入中的 Key 或网络设置变更会影响之后的调用，无需重新发布；更改模型、地址或协议会生成新配置，需在路由中选用并发布。', 'Key or network changes in the API connection affect later calls without republishing. Changing the model, URL or protocol creates a new configuration that must be selected and published in the route.')
             : t('更改模型、地址、协议或 Key 会生成新配置，需在路由中选用并发布。', 'Changing the model, URL, protocol or key creates a new configuration that must be selected and published in the route.')}</p>
         </>}
       </section>
-      <footer className="decision-form-actions"><p className="field-help">{t('测试发送固定示例，可能消耗配额；不读取真实会话，也不能证明所有 Key 可用或路由质量。', 'Testing sends a fixed example and may use quota. It does not read real conversations and does not prove every key works or routing quality.')}</p><div className="field-actions"><button type="submit" className="btn btn-primary" disabled={!dirty}>{busy ? t('正在保存…', 'Saving…') : t('保存并测试', 'Save and test')}</button><button className="btn" type="button" disabled={!dirty} onClick={() => void submit(false)}>{t('仅保存', 'Save only')}</button><button className="btn btn-quiet" type="button" onClick={() => void requestEditorReplacement('decisions').then(accepted => { if (accepted) onCancel(); })}>{t('取消', 'Cancel')}</button></div></footer>
+      <footer className="decision-form-actions">{networkDirty && <p className="field-help" role="status">{t('请先保存或放弃网络修改，再继续或离开；保存结果未确认时，请刷新原操作。', 'Save or discard the network changes before continuing or leaving. If a save is unconfirmed, refresh its original operation.')}</p>}<p className="field-help">{t('测试发送固定示例，可能消耗配额；不读取真实会话，也不能证明所有 Key 可用或路由质量。', 'Testing sends a fixed example and may use quota. It does not read real conversations and does not prove every key works or routing quality.')}</p><div className="field-actions"><button type="submit" className="btn btn-primary" disabled={!dirty || networkDirty}>{busy ? t('正在保存…', 'Saving…') : t('保存并测试', 'Save and test')}</button><button className="btn" type="button" disabled={!dirty || networkDirty} onClick={() => void submit(false)}>{t('仅保存', 'Save only')}</button><button className="btn btn-quiet" type="button" disabled={busy || networkDirty} onClick={() => void requestEditorReplacement('decisions').then(accepted => { if (accepted) onCancel(); })}>{t('取消', 'Cancel')}</button></div></footer>
     </fieldset>
   </form>;
 }

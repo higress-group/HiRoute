@@ -1,3 +1,4 @@
+import type { NativeNetworkDraft, NativeNetworkEdit, NativeNetworkFailure, NativeNetworkRoute, NativeNetworkPolicy } from './native-network';
 export type Language = 'zh' | 'en';
 export type CanonicalDigest = `sha256:${string}`;
 export type EntryKind = 'preset_api' | 'custom_api' | 'free_api_key' | 'free_direct';
@@ -48,6 +49,7 @@ export type ModelDeclaration = {
 };
 
 export type ModelConnectionDraft = {
+  network?: NativeNetworkDraft;
   display_template_id?: string | null;
   inference_model_id?: string | null;
   entry_kind: EntryKind;
@@ -261,6 +263,8 @@ export type ComputeCandidateView = {
 };
 
 export type ModelConnectionCheckView = {
+  network?: { policy: NativeNetworkPolicy; expected_network_revision: number; route: NativeNetworkRoute };
+  failure?: NativeNetworkFailure | null;
   observed_model_ids?: string[];
   inference_model_id?: string | null;
   candidate: ComputeCandidateView;
@@ -334,7 +338,7 @@ export type ComputeSaveResult = {
 export type ProtectedInputRegistration = { input_candidate: ComputeCandidateRef };
 export type ModelConnectionDraftInput = Omit<
   ModelConnectionDraft,
-  'entry_kind' | 'models' | 'provenance' | 'qualification'
+  'entry_kind' | 'models' | 'provenance' | 'qualification' | 'network'
 > & {
   configuration_revision: number;
   models: Omit<ModelDeclaration, 'client_id'>[];
@@ -371,10 +375,10 @@ export type ModelConnectionBackend = {
   registerProtectedInput(secret: string): Promise<ProtectedInputRegistration>;
   releaseProtectedInput(input: ComputeCandidateRef): Promise<void>;
   listConnectionOptions(): Promise<ComputeConnectionOptions>;
-  checkModelConnection(request: ModelConnectionCheckRequest): Promise<ModelConnectionCheckView>;
-  checkRegisteredModelConnection(request: RegisteredModelConnectionCheckRequest): Promise<ModelConnectionCheckView>;
+  checkModelConnection(request: ModelConnectionCheckRequest, networkEdit?: NativeNetworkEdit): Promise<ModelConnectionCheckView>;
+  checkRegisteredModelConnection(request: RegisteredModelConnectionCheckRequest, networkEdit?: NativeNetworkEdit): Promise<ModelConnectionCheckView>;
   cancelModelConnectionCheck(checkId: string): Promise<void>;
-  previewComputeSave(change: ComputeManagementChange): Promise<ComputeSavePreview>;
+  previewComputeSave(change: ComputeManagementChange, networkEdit?: NativeNetworkEdit): Promise<ComputeSavePreview>;
   applyComputeSave(request: ComputeConnectionApplyRequest): Promise<{
     result: { operation_id: string; accepted_digest: CanonicalDigest; state: string };
     operation: OperationReference;

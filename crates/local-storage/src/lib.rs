@@ -346,8 +346,9 @@ impl LocalStorageSet {
         let integrity = if migration.durable_set_prepared() {
             if migration.is_admitted_locator_only_batch()
                 || migration.is_admitted_decision_index_only_batch()
+                || migration.is_admitted_native_network_batch()
             {
-                // These complete sources were already admitted. The v33/v34 index
+                // These complete sources were already admitted. The index and source-policy
                 // derivations validate structure and current dependencies without a
                 // full semantic audit of unrelated history.
                 migrations::validate_sqlite_structure(&control, &runtime, &secrets).and_then(|_| {

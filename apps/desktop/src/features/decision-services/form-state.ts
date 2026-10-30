@@ -1,5 +1,6 @@
+import type { NativeNetworkFailure, NativeNetworkRoute } from "../model-connections/native-network";
 import type {
-  DecisionAuthHeader, DecisionExpectedSourceRevision, DecisionServiceRecord, DecisionServiceTestResult, DecisionServiceV2,
+  DecisionAuthHeader, DecisionExpectedSourceRevision, DecisionServiceRecord, DecisionServiceTestResult, DecisionServiceNetworkTestResult, DecisionServiceV2,
   DecisionServiceView, DecisionSourceSummary, DecisionWireProtocol,
 } from './contracts.ts';
 import { providers } from './types.ts';
@@ -265,6 +266,7 @@ export function expectedSourceRevisions(sourceIds: (string | null | undefined)[]
 
 export type TestRecord = {
   outcome: 'passed' | 'failed'; code?: string; duration?: number | null; at: number;
+  tested_network_state_revision?: string | null; network_failure?: NativeNetworkFailure | null;
   tested_configuration_digest?: string; tested_credential_state_revision?: string | null; savedBeforeTest?: boolean;
 };
 /** `unverified`: a prior pass whose current credential state could not be read back; never shown as passed. */
@@ -273,14 +275,24 @@ export function testRecord(result: DecisionServiceTestResult, at: number): TestR
   return { outcome: result.outcome, code: result.failure_code ?? undefined, duration: result.duration_millis, at,
     tested_configuration_digest: result.tested_configuration_digest, tested_credential_state_revision: result.tested_credential_state_revision };
 }
+export function networkTestRecord(result: DecisionServiceNetworkTestResult, at: number): TestRecord {
+  return { ...testRecord(result.check, at), tested_network_state_revision: result.network?.route.state_revision ?? null, network_failure: result.failure };
+}
+
+/** Current network evidence is read for the selected service only; no provider call. */
 /** A pass is current only for the configuration and credential state it admitted, checked against a successful readback. */
-export function testPresentation(record: TestRecord | undefined, view: DecisionServiceView, testing: boolean, current = true): TestPresentation {
+export function testPresentation(record: TestRecord | undefined, view: DecisionServiceView, testing: boolean, current = true, network?: NativeNetworkRoute | null): TestPresentation {
   if (testing) return 'testing';
   if (!record) return 'untested';
   if (record.outcome === 'failed') return 'failed';
   const changed = (record.tested_configuration_digest !== undefined && record.tested_configuration_digest !== view.configuration_digest)
     || (record.tested_credential_state_revision !== undefined && record.tested_credential_state_revision !== view.credential_state_revision);
-  return changed ? 'stale' : current ? 'passed' : 'unverified';
+  if (changed) return 'stale';
+  if (recordSharedSource(view.service) && record.tested_network_state_revision !== undefined) {
+    if (!network || !record.tested_network_state_revision || !current) return 'unverified';
+    if (record.tested_network_state_revision !== network.state_revision) return 'stale';
+  }
+  return current ? 'passed' : 'unverified';
 }
 export function testKey(service: Pick<DecisionServiceRecord, 'id' | 'revision'>): string { return `${service.id}/${service.revision}`; }
 
