@@ -4,7 +4,7 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const chooseIndependentOpenAI = async () => {
-    const button = all('.decision-provider').find(item => item.textContent.includes('OpenAI Decisions'));
+    const button = all('.decision-provider').find(item => item.lastElementChild?.textContent === 'OpenAI');
     assert(button, 'The OpenAI preset is missing'); button.click(); await pause(40);
   };
   return [

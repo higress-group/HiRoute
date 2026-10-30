@@ -50,7 +50,15 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
     setHasSecret(false); setRevealed(false); setReplacing(false);
     if (pending && notice) setCredentialNotice(notice);
   }
-  function update(next: NativeDraft) { setDraft(next); setIssues({}); setUrlOpen(false); setProtocolOpen(false); }
+  function clearChangedOrigin(next: NativeDraft) {
+    const nextBundle = currentBundle(next, source);
+    if (draft.mode === 'independent' && next.mode === 'independent' && bundle && nextBundle
+      && !sameEndpointOrigin(bundle.endpoint, nextBundle.endpoint) && (retained || secret.current?.value)) {
+      clearSecret();
+      setCredentialNotice(t('地址的来源已变化，请重新填写 API Key。', 'The address origin changed. Enter the API key again.'));
+    }
+  }
+  function update(next: NativeDraft) { clearChangedOrigin(next); setDraft(next); setIssues({}); setUrlOpen(false); setProtocolOpen(false); }
   function switchContext(next: NativeDraft) {
     clearSecret(t('配置方式、供应商或 API 接入已变化，未保存的 Key 已清除。', 'The setup, provider or API connection changed. The unsaved key was cleared.'));
     update(next);
@@ -59,10 +67,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   function setEndpoint(endpoint: string) {
     if (!bundle) return;
     const next = editBundle(draft, source, { endpoint });
-    if (draft.mode === 'independent' && !sameEndpointOrigin(bundle.endpoint, endpoint) && (retained || secret.current?.value)) {
-      clearSecret();
-      setCredentialNotice(t('地址的来源已变化，请重新填写 API Key。', 'The address origin changed. Enter the API key again.'));
-    }
+    clearChangedOrigin(next);
     setDraft(next); setIssues({});
   }
   async function submit(test: boolean) {

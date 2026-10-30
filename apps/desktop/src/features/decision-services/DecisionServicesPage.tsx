@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { invoke } from '../../host/index.ts';
 import { Dialog, Disclosure, ProductPage, UiIcon } from '../../ui';
 import { requestEditorReplacement, useDiscardGuard } from '../../ui/discard-guard';
@@ -48,9 +48,12 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   const [query, setQuery] = useState(''), [showList, setShowList] = useState(false);
   const [protocol, setProtocol] = useState(false), [menu, setMenu] = useState(false), [deleting, setDeleting] = useState(false);
   const sourceGeneration = useRef(0), serviceGeneration = useRef(0), testSequence = useRef<Record<string, number>>({});
+  const useGeneration = useRef(0);
   const selected = views.find(view => view.service.id === selectedId);
   const editingView = editing && !editing.isNew ? views.find(view => view.service.id === editing.key) ?? null : null;
   useDiscardGuard('decisions', busy, language, async () => false);
+  // A saved test may finish after this caller or page has been replaced.
+  useLayoutEffect(() => () => { useGeneration.current++; }, [active, intent?.key]);
 
   function accept(next: DecisionServiceView[]) {
     setViews(next); setFactsCurrent(true);
@@ -94,6 +97,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     return () => { current = false; serviceGeneration.current++; sourceGeneration.current++; };
   }, [active, sourceRefreshKey]);
   function startNew(kind: DecisionEntry) {
+    useGeneration.current++;
     const id = 'decision-' + randomId();
     setEditing(kind === 'custom' ? { key: id, isNew: true, expected: 0, kind: 'custom', record: { ...newDecisionConnection('custom', language), id } }
       : { key: id, isNew: true, expected: 0, kind: 'native', draft: newNativeDraft(id, kind === 'compatible' ? 'compatible' : 'system_one') });
@@ -107,13 +111,28 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   }
   async function choose(view: DecisionServiceView) {
     if (!await requestEditorReplacement('decisions')) return;
+    useGeneration.current++;
     setEditing(null); setSelectedId(view.service.id); setShowList(false); setError(null); setNotice('');
   }
   function edit(view: DecisionServiceView) {
+    useGeneration.current++;
     const service = structuredClone(view.service);
     setEditing(isNativeRecord(service) ? { key: service.id, isNew: false, expected: service.revision, kind: 'native', draft: draftFromRecord(service) }
       : { key: service.id, isNew: false, expected: service.revision, kind: 'custom', record: service });
     setNotice(''); setError(null);
+  }
+  function cancelEdit() {
+    useGeneration.current++;
+    setEditing(null); setError(null);
+  }
+  function manageSource(id: string) {
+    useGeneration.current++;
+    onManageSource?.(id);
+  }
+  async function returnToCaller() {
+    if (!onReturn || busy || !await requestEditorReplacement('decisions')) return;
+    useGeneration.current++;
+    onReturn();
   }
   async function test(view: DecisionServiceView): Promise<boolean> {
     const key = testKey(view.service), sequence = (testSequence.current[key] ?? 0) + 1;
@@ -126,7 +145,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     } catch (cause) { next = { outcome: 'failed', code: planErrorCode(cause), at: Date.now() }; }
     // Credentials may rotate during the call; the pass counts only against state read back afterwards.
     const latest = await refresh().then(all => all?.find(item => testKey(item.service) === key), () => undefined);
-    // A later test or edit supersedes this result.
+    // Only another test of this saved revision supersedes its diagnostic result.
     if (testSequence.current[key] !== sequence) return false;
     setTesting(current => current === key ? null : current);
     setTests(current => ({ ...current, [key]: next }));
@@ -144,6 +163,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   }
   async function save(service: DecisionServiceV2, secret: string | null, runTest: boolean, sourceIds: string[]): Promise<NativeSaveOutcome> {
     if (!editing || busy) return 'failed';
+    const useAtStart = useGeneration.current;
     const expected = editing.isNew ? 0 : editing.expected;
     const expected_source_revisions = expectedSourceRevisions(sourceIds, sources, editingView);
     // A selected source without an observed revision cannot be registered safely.
@@ -170,7 +190,8 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       setNotice(t('配置已保存。路由选用后需发布才会生效。', 'Configuration saved. Publish a route to use this version.'));
       setSavedBeforeTest(runTest ? testKey(saved.service) : null);
       setBusy(false);
-      if (!runTest || await test(saved)) onUse?.(saved.service);
+      const passed = !runTest || await test(saved);
+      if (passed && useGeneration.current === useAtStart) onUse?.(saved.service);
       return 'committed';
     } catch (cause) {
       const code = planErrorCode(cause);
@@ -216,7 +237,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       {menu && <div className="decision-menu" role="menu"><button role="menuitem" onClick={() => void add('custom')}>{t('接入自定义扩展', 'Connect custom extension')}</button><button role="menuitem" onClick={() => void add('compatible')}>{t('其他兼容接入', 'Other compatible connection')}</button></div>}
     </div>
   }>
-    {onReturn && <div className="decision-return"><button className="btn btn-quiet" disabled={busy} onClick={onReturn}><UiIcon name="arrowLeft" />{returnLabel ?? t('返回路由', 'Back to route')}</button><span>{returnLabel ? t('草稿已保留，保存后可继续配置。', 'Your draft is retained. Save to continue.') : t('路由草稿已保留，保存后可继续配置。', 'Your route draft is retained. Save to continue.')}</span></div>}
+    {onReturn && <div className="decision-return"><button className="btn btn-quiet" disabled={busy} onClick={() => void returnToCaller()}><UiIcon name="arrowLeft" />{returnLabel ?? t('返回路由', 'Back to route')}</button><span>{returnLabel ? t('草稿已保留，保存后可继续配置。', 'Your draft is retained. Save to continue.') : t('路由草稿已保留，保存后可继续配置。', 'Your route draft is retained. Save to continue.')}</span></div>}
     {error && <div className="callout bad decision-notice" role="alert"><div><p>{error.message}</p>{error.code && <Disclosure label={t('诊断详情', 'Diagnostic details')} language={language}><code>{error.code}</code></Disclosure>}</div><button className="btn" disabled={busy} onClick={() => void Promise.all([refresh(), loadSources()]).then(() => setError(null)).catch(() => {})}>{t('刷新', 'Refresh')}</button></div>}
     {notice && <div className="decision-notice field-help" role="status">{notice}</div>}
     <div className={'split-view' + (showList || (!editing && !selected) ? ' show-list' : '')}>
@@ -224,11 +245,11 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
         {visible.map(view => { const service = view.service, state = rowState(view); return <button className={'list-row' + (!editing && selected?.service.id === service.id ? ' active' : '')} key={service.id} disabled={busy} aria-current={!editing && selected?.service.id === service.id ? 'page' : undefined} onClick={() => void choose(view)}><DecisionIcon provider={recordProvider(service)} language={language} /><span className="row-main"><span className="row-title">{service.name}</span><span className="row-meta">{providerLabel(service.connection, language)}{view.source ? ` · ${sourceLabel(view)}` : ''}</span>{recordModel(service) && <span className="row-meta">{recordModel(service)}</span>}<span className={'decision-test-state' + (state === 'passed' ? ' passed' : state === 'failed' ? ' failed' : state === 'stale' || state === 'unverified' ? ' stale' : '')}>{rowText[state]}</span></span><UiIcon name="chevronRight" /></button>; })}
         {!visible.length && <div className="empty-state"><p>{loading ? t('正在读取…', 'Loading…') : query ? t('没有匹配的连接', 'No matching connections') : t('添加决策模型，为路由判断任务分支。', 'Add a decision model to select task branches.')}</p></div>}
       </nav></aside>
-      <section className="detail-pane"><div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => setShowList(true)}><UiIcon name="arrowLeft" />{t('返回列表', 'Back to list')}</button></div>
+      <section className="detail-pane"><div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => { useGeneration.current++; setShowList(true); }}><UiIcon name="arrowLeft" />{t('返回列表', 'Back to list')}</button></div>
         {editing ? editing.kind === 'native'
-          ? <DecisionModelForm key={editing.key} initial={editing.draft} saved={!editing.isNew} view={editingView} revision={editing.isNew ? 0 : editing.expected} sources={sources} language={language} mutable={mutable && !busy} onRetrySources={() => void loadSources()} onManageSource={onManageSource} onSave={save} onCancel={() => { setEditing(null); setError(null); }} />
-          : <DecisionConnectionForm key={editing.key} initial={editing.record} saved={!editing.isNew} language={language} mutable={mutable && !busy} onSave={(service, secret, runTest) => save(service, secret, runTest, [])} onCancel={() => { setEditing(null); setError(null); }} onProtocol={() => setProtocol(true)} />
-          : selected ? <DecisionConnectionDetail view={selected} language={language} mutable={mutable} busy={busy || selected.service.id === unverifiedSave?.id} state={rowState(selected)} result={tests[testKey(selected.service)]} savedBeforeTest={savedBeforeTest === testKey(selected.service)} plans={plans} drafts={drafts} onEdit={() => edit(selected)} onTest={() => void testSelected()} onRefresh={() => void Promise.all([refresh(), loadSources()]).catch(() => {})} onDelete={() => setDeleting(true)} onProtocol={() => setProtocol(true)} onOpenRoute={onOpenRoute} onUse={onUse ? () => onUse(selected.service) : undefined} onManageSource={onManageSource} />
+          ? <DecisionModelForm key={editing.key} initial={editing.draft} saved={!editing.isNew} view={editingView} revision={editing.isNew ? 0 : editing.expected} sources={sources} language={language} mutable={mutable && !busy} onRetrySources={() => void loadSources()} onManageSource={onManageSource ? manageSource : undefined} onSave={save} onCancel={cancelEdit} />
+          : <DecisionConnectionForm key={editing.key} initial={editing.record} saved={!editing.isNew} language={language} mutable={mutable && !busy} onSave={(service, secret, runTest) => save(service, secret, runTest, [])} onCancel={cancelEdit} onProtocol={() => setProtocol(true)} />
+          : selected ? <DecisionConnectionDetail view={selected} language={language} mutable={mutable} busy={busy || selected.service.id === unverifiedSave?.id} state={rowState(selected)} result={tests[testKey(selected.service)]} savedBeforeTest={savedBeforeTest === testKey(selected.service)} plans={plans} drafts={drafts} onEdit={() => edit(selected)} onTest={() => void testSelected()} onRefresh={() => void Promise.all([refresh(), loadSources()]).catch(() => {})} onDelete={() => setDeleting(true)} onProtocol={() => setProtocol(true)} onOpenRoute={onOpenRoute} onUse={onUse ? () => { useGeneration.current++; onUse(selected.service); } : undefined} onManageSource={onManageSource ? manageSource : undefined} />
           : <div className="empty-state"><p>{t('选择连接查看详情，或添加决策模型。', 'Select a connection or add a decision model.')}</p></div>}
       </section>
     </div>
