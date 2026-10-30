@@ -125,6 +125,9 @@ fn each_unmet_pin_condition_is_reported_without_per_poll_logging() {
 #[test]
 fn slow_patch_is_distinct_from_unmet_pin_checks() {
     let fixture = Fixture::new();
+    // A shared 100 ms budget cannot establish that the delayed PATCH was
+    // reached when ordinary account preparation itself takes longer.
+    fixture.account_read_delay_ms.store(150, Ordering::SeqCst);
     fixture.patch_delay_ms.store(300, Ordering::SeqCst);
     let logs = crate::private_test_support::tempdir().unwrap();
     let runtime = diagnostics(logs.path());

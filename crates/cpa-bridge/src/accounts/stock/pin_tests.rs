@@ -11,6 +11,7 @@ struct Fixture {
     patches: Arc<AtomicUsize>,
     reject_patch: Arc<AtomicBool>,
     patch_delay_ms: Arc<AtomicUsize>,
+    account_read_delay_ms: Arc<AtomicUsize>,
     fault: Arc<AtomicUsize>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
@@ -42,10 +43,12 @@ impl Fixture {
         let patches = Arc::new(AtomicUsize::new(0));
         let reject_patch = Arc::new(AtomicBool::new(false));
         let patch_delay_ms = Arc::new(AtomicUsize::new(0));
+        let account_read_delay_ms = Arc::new(AtomicUsize::new(0));
         let fault = Arc::new(AtomicUsize::new(0));
         let stop = Arc::new(AtomicBool::new(false));
         let (count, reject, stopped) = (patches.clone(), reject_patch.clone(), stop.clone());
         let delay = patch_delay_ms.clone();
+        let account_delay = account_read_delay_ms.clone();
         let fault_value = fault.clone();
         let worker = thread::spawn(move || {
             let mut account_reads = 0;
@@ -94,6 +97,9 @@ impl Fixture {
                     }
                 } else if header.starts_with("GET /v0/management/auth-files?name=") {
                     account_reads += 1;
+                    thread::sleep(Duration::from_millis(
+                        account_delay.load(Ordering::SeqCst) as u64
+                    ));
                     let mut value: Value =
                         serde_json::from_slice(&super::tests::oauth_response("")).unwrap();
                     if account_reads > 1 && fault_value.load(Ordering::SeqCst) == 4 {
@@ -171,6 +177,7 @@ impl Fixture {
             patches,
             reject_patch,
             patch_delay_ms,
+            account_read_delay_ms,
             fault,
             stop,
             worker: Some(worker),
