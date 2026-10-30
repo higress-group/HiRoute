@@ -540,7 +540,7 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertIn('actions/cache@', workflow)
         self.assertIn('cargo check --locked --target x86_64-pc-windows-msvc '
                       '-p hiroute-cli -p hiroute-daemon -p hiroute-platform '
-                      '-p hiroute-local-storage --all-targets', workflow)
+                      '-p hiroute-local-storage -p hiroute-integrations --all-targets', workflow)
         self.assertIn("if ($LASTEXITCODE -ne 0) { throw", workflow)
         component_tests = [line.strip() for line in workflow.splitlines()
                            if line.strip().startswith('cargo test ')]

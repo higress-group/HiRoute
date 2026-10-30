@@ -53,7 +53,7 @@ jobs:
       - name: Check headless binaries and their test targets
         shell: pwsh
         run: |
-          cargo check --locked --target x86_64-pc-windows-msvc -p hiroute-cli -p hiroute-daemon -p hiroute-platform -p hiroute-local-storage --all-targets
+          cargo check --locked --target x86_64-pc-windows-msvc -p hiroute-cli -p hiroute-daemon -p hiroute-platform -p hiroute-local-storage -p hiroute-integrations --all-targets
           if ($LASTEXITCODE -ne 0) { throw 'Windows headless compilation failed' }
       - name: Test Windows package and restore policy components
         shell: pwsh
