@@ -16,7 +16,7 @@ fn sql_count(root: &Path, table: &str) -> u64 {
             .collect::<Vec<_>>()
     );
     let output = Command::new("python3").args(["-c",
-        "import sqlite3,sys,pathlib; p=pathlib.Path(sys.argv[1]); assert p.is_file(),str(p); d=sqlite3.connect(p.as_uri()+'?mode=ro',uri=True); print(d.execute('SELECT COUNT(*) FROM '+sys.argv[2]).fetchone()[0])"])
+        "import sqlite3,sys,pathlib; p=pathlib.Path(sys.argv[1]); assert p.is_file(),str(p); d=sqlite3.connect(p); d.execute('PRAGMA query_only=ON'); print(d.execute('SELECT COUNT(*) FROM '+sys.argv[2]).fetchone()[0])"])
         .arg(database).arg(table).output().unwrap();
     assert!(
         output.status.success(),
@@ -67,8 +67,9 @@ fn busy_sql_writer_refuses_real_native_grants_without_losing_the_session_or_disp
         &before.revisions,
         "ListSessionsV2",
     );
+    let refusal_elapsed = start.elapsed();
     assert_eq!(refused.err().as_deref(), Some("TRUSTED_AUTHORITY_BUSY"));
-    assert!(start.elapsed() < Duration::from_secs(1));
+    assert!(refusal_elapsed < Duration::from_secs(1));
     assert!(resident.has_authority());
     assert_eq!(resident.owned.as_ref().unwrap().child.id(), pid);
     assert!(resident.owned.as_ref().unwrap().pending_ack.is_none());
@@ -117,6 +118,16 @@ fn busy_sql_writer_refuses_real_native_grants_without_losing_the_session_or_disp
         grants_before + 1
     );
     assert_eq!(sql_count(root.path(), "operations"), operations_before);
+    println!(
+        "{}",
+        serde_json::json!({
+            "schema":"hiroute.native-grant-refusal-test/v1",
+            "busy_elapsed_us":refusal_elapsed.as_micros(),
+            "grant_rows_added_on_refusal":0,"business_operations_added":0,
+            "same_daemon":true,"channel_reused":true,"successful_grant_persisted":true,
+            "model_calls":0,"content_events":0,
+        })
+    );
 }
 
 fn daemon() -> PathBuf {
