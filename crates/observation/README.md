@@ -117,3 +117,9 @@ indexes. Optional routing summaries run first in the same read transaction so
 their ordered identity scan precedes stage drill-down. The readers retain the
 1 s deadline, streaming row/byte limits, and existing missing/deleted/corrupt evidence rules. These indexes are
 rebuildable; opening an existing current-format store does not rewrite history.
+
+Text/session search and text-filtered analysis share a 5 s absolute query budget,
+including admission, index readiness and nested readers. Ordinary observation
+reads keep their 1 s default. A nested reader cannot extend an earlier deadline;
+reader permits, SQLite lock-wait limits, cancellation, authorization and cursor
+bindings retain their existing behavior.
