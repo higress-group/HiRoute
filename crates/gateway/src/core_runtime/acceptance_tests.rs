@@ -242,12 +242,26 @@ async fn replay_body_reader_uses_bounded_credit_under_retained_request_pressure(
     use crate::replay::{ReplayConfig, ReplayManager};
     use hiroute_gateway_core::runtime::body::MemoryRole;
 
+    struct Root(std::path::PathBuf);
+    impl Drop for Root {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     for threshold in [16 * 1024, 2 * 1024 * 1024] {
-        let root = tempfile::tempdir().unwrap();
+        let root = Root(std::env::temp_dir().join(format!(
+            "hiroute-replay-read-{}-{threshold}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        )));
         let tree = BudgetTree::new(16 * 1024 * 1024, 16 * 1024 * 1024).unwrap();
         let budget = tree.stream(8 * 1024 * 1024).unwrap();
         let manager = ReplayManager::open(ReplayConfig {
-            root: root.path().to_owned(),
+            root: root.0.clone(),
             memory_threshold_bytes: threshold,
             ..ReplayConfig::production_default()
         })
