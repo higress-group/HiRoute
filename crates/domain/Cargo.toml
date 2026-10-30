@@ -16,3 +16,6 @@ subtle = "2.6.1"
 thiserror.workspace = true
 unicode-normalization.workspace = true
 zeroize.workspace = true
+url = "=2.5.8"
+ipnet = "=2.12.1"
+percent-encoding = "=2.3.2"

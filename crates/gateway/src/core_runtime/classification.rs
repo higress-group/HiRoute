@@ -116,7 +116,16 @@ pub(super) enum ClassificationError {
     Resource,
 }
 
+pub struct ClassifierNetworkDiagnostic {
+    pub snapshot: Arc<hiroute_domain::NativeNetworkSnapshotV1>,
+    pub source_id: String,
+    pub endpoint: String,
+    pub failure: Option<hiroute_domain::NativeNetworkFailurePhaseV1>,
+}
+
 pub(super) struct ClassificationRequest<'a> {
+    pub(super) native_network: Option<Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
+    pub(super) admitted_network: Option<&'a mut Option<ClassifierNetworkDiagnostic>>,
     pub(super) request: &'a ModelRequestIRV1,
     pub(super) current_input: Option<&'a [ContentPart]>,
     /// A recognized auxiliary call or continuation has no independent current input.
@@ -225,7 +234,8 @@ impl ProductionGatewayRuntime {
         &self,
         mode: &hiroute_domain::ComplexityClassifierModeV1,
     ) -> Result<ClassifierDiagnosticOutcome, ClassifierDiagnosticError> {
-        self.test_classifier_decision_inner(mode, &mut None).await
+        self.test_classifier_decision_inner(mode, &mut None, &mut None)
+            .await
     }
 
     pub async fn test_classifier_decision_with_admitted_state(
@@ -237,15 +247,32 @@ impl ProductionGatewayRuntime {
     ) {
         let mut admitted = None;
         let result = self
-            .test_classifier_decision_inner(mode, &mut admitted)
+            .test_classifier_decision_inner(mode, &mut admitted, &mut None)
             .await;
         (result, admitted)
+    }
+
+    pub async fn test_classifier_decision_with_network(
+        &self,
+        mode: &hiroute_domain::ComplexityClassifierModeV1,
+    ) -> (
+        Result<ClassifierDiagnosticOutcome, ClassifierDiagnosticError>,
+        Option<hiroute_domain::CanonicalDigest>,
+        Option<ClassifierNetworkDiagnostic>,
+    ) {
+        let mut admitted = None;
+        let mut network = None;
+        let result = self
+            .test_classifier_decision_inner(mode, &mut admitted, &mut network)
+            .await;
+        (result, admitted, network)
     }
 
     async fn test_classifier_decision_inner(
         &self,
         mode: &hiroute_domain::ComplexityClassifierModeV1,
         admitted: &mut Option<hiroute_domain::CanonicalDigest>,
+        network: &mut Option<ClassifierNetworkDiagnostic>,
     ) -> Result<ClassifierDiagnosticOutcome, ClassifierDiagnosticError> {
         if matches!(mode, hiroute_domain::ComplexityClassifierModeV1::LocalRules) {
             return Err(ClassifierDiagnosticError::InvalidConfig);
@@ -324,10 +351,19 @@ impl ProductionGatewayRuntime {
         let overall_deadline = started
             .checked_add(classifier.timeout)
             .ok_or(ClassifierDiagnosticError::Resource)?;
+        let native_network = self
+            .ports
+            .native_network
+            .as_ref()
+            .map(|registry| registry.pin())
+            .transpose()
+            .map_err(|_| ClassifierDiagnosticError::Unavailable)?;
         let result = self
             .classify_for_planner(
                 &strategy,
                 ClassificationRequest {
+                    native_network,
+                    admitted_network: Some(network),
                     request: &request,
                     current_input: None,
                     native_user_unavailable: false,
@@ -498,6 +534,8 @@ impl ProductionGatewayRuntime {
                                             fixed_timeout_wins,
                                             request.cancellation.clone(),
                                             request.admitted_credential_state.as_deref_mut(),
+                                            request.native_network.as_ref(),
+                                            request.admitted_network.as_deref_mut(),
                                         )
                                         .await
                                     {
@@ -649,6 +687,8 @@ impl ProductionGatewayRuntime {
         fixed_timeout_wins: bool,
         cancellation: CancellationToken,
         admitted_state: Option<&mut Option<hiroute_domain::CanonicalDigest>>,
+        native_network: Option<&Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
+        mut network_diagnostic: Option<&mut Option<ClassifierNetworkDiagnostic>>,
     ) -> Result<Result<ClassifierResponse, CallFailure>, ClassificationError> {
         let ClassifierAuthenticationAuthorityV1::SharedDecision { binding } =
             &classifier.authentication
@@ -666,9 +706,24 @@ impl ProductionGatewayRuntime {
                     cancellation,
                     None,
                     admitted_state,
+                    None,
+                    None,
                 )
                 .await;
         };
+        if native_network.is_none() {
+            return Ok(Err(CallFailure::Unavailable));
+        }
+        if let (Some(snapshot), Some(diagnostic)) =
+            (native_network, network_diagnostic.as_deref_mut())
+        {
+            *diagnostic = Some(ClassifierNetworkDiagnostic {
+                snapshot: Arc::clone(snapshot),
+                source_id: binding.source_id.clone(),
+                endpoint: binding.endpoint.clone(),
+                failure: None,
+            });
+        }
         let scope = ExecutionScope::new(call_deadline, cancellation.clone());
         ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
         let admission = match self.ports.credentials.admit_decision_credentials(binding) {
@@ -827,6 +882,8 @@ impl ProductionGatewayRuntime {
                     cancellation.clone(),
                     Some(&lease),
                     None,
+                    native_network,
+                    network_diagnostic.as_deref_mut(),
                 )
                 .await;
             let class = match &result {
@@ -903,8 +960,13 @@ impl ProductionGatewayRuntime {
         cancellation: CancellationToken,
         shared_lease: Option<&CredentialLease>,
         admitted_state: Option<&mut Option<hiroute_domain::CanonicalDigest>>,
+        native_network: Option<&Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
+        mut network_diagnostic: Option<&mut Option<ClassifierNetworkDiagnostic>>,
     ) -> Result<Result<ClassifierResponse, CallFailure>, ClassificationError> {
         let template = &prepared.template;
+        if let Some(Some(diagnostic)) = network_diagnostic.as_deref_mut() {
+            diagnostic.failure = None;
+        }
         let mut diagnostic = CallDiagnostic::new(self.observation.diagnostic_context());
         let scope = ExecutionScope::new(call_deadline, cancellation.clone());
         ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
@@ -974,22 +1036,65 @@ impl ProductionGatewayRuntime {
         }
 
         diagnostic.prepared(&headers, &template.bytes);
-        let resolver = TargetResolver::new();
-        let target = match resolver
-            .resolve(classifier.transport_target.clone(), &scope)
-            .await
+        let mut network_route = None;
+        let mut target = classifier.transport_target.clone();
+        if let (ClassifierAuthenticationAuthorityV1::SharedDecision { binding }, Some(snapshot)) =
+            (&classifier.authentication, native_network)
         {
-            Ok(target) => target,
-            Err(_) => {
-                return active_failure_or_abort(
-                    CallFailure::Unavailable,
-                    call_deadline,
-                    overall_deadline,
-                    fixed_timeout_wins,
-                    &cancellation,
-                );
+            match crate::runtime::resolve_native_source_network(
+                snapshot,
+                &binding.source_id,
+                &binding.source_lineage_digest,
+                &binding.endpoint,
+                target,
+                &scope,
+            )
+            .await
+            {
+                Ok((route, admitted_target)) => {
+                    network_route = route;
+                    target = admitted_target;
+                }
+                Err(code) => {
+                    let phase = if code.as_ref() == "proxy_dns_failed" {
+                        hiroute_domain::NativeNetworkFailurePhaseV1::ProxyConnect
+                    } else {
+                        hiroute_domain::NativeNetworkFailurePhaseV1::RouteUnavailable
+                    };
+                    if let Some(Some(diagnostic)) = network_diagnostic.as_deref_mut() {
+                        diagnostic.failure = Some(phase);
+                    }
+                    return active_failure_or_abort(
+                        CallFailure::Unavailable,
+                        call_deadline,
+                        overall_deadline,
+                        fixed_timeout_wins,
+                        &cancellation,
+                    );
+                }
             }
-        };
+        }
+        if network_route
+            .as_ref()
+            .is_none_or(|route| route.proxy.is_none())
+        {
+            target = match TargetResolver::new().resolve(target, &scope).await {
+                Ok(target) => target,
+                Err(_) => {
+                    if let Some(Some(diagnostic)) = network_diagnostic.as_deref_mut() {
+                        diagnostic.failure =
+                            Some(hiroute_domain::NativeNetworkFailurePhaseV1::UpstreamConnect);
+                    }
+                    return active_failure_or_abort(
+                        CallFailure::Unavailable,
+                        call_deadline,
+                        overall_deadline,
+                        fixed_timeout_wins,
+                        &cancellation,
+                    );
+                }
+            };
+        }
         let body = sequential_replay_body(
             template.clone(),
             replay.clone(),
@@ -998,7 +1103,11 @@ impl ProductionGatewayRuntime {
         )
         .map_err(map_preparation_error)?;
         let leases = RequestLeaseBook::new();
+        let proxied = network_route
+            .as_ref()
+            .is_some_and(|route| route.proxy.is_some());
         let request = PreparedAttemptHttpRequest {
+            network_route,
             head: PreparedRequestHead {
                 method: Method::POST,
                 path_and_query: Arc::clone(&classifier.request_path),
@@ -1066,6 +1175,20 @@ impl ProductionGatewayRuntime {
         let (status, body) = match exchange_result {
             Ok(response) => response,
             Err(CollectResponseError::Attempt(error)) => {
+                if let Some(Some(network)) = network_diagnostic.as_deref_mut() {
+                    use hiroute_domain::NativeNetworkFailurePhaseV1 as Phase;
+                    use hiroute_gateway_core::runtime::attempt::ProxyFailurePhase;
+                    network.failure = Some(match &error {
+                        AttemptError::Proxy(ProxyFailurePhase::Connect) => Phase::ProxyConnect,
+                        AttemptError::Proxy(ProxyFailurePhase::Tls) => Phase::ProxyTls,
+                        AttemptError::Proxy(ProxyFailurePhase::Authentication) => Phase::ProxyAuth,
+                        AttemptError::Proxy(ProxyFailurePhase::Negotiation) => {
+                            Phase::ProxyNegotiation
+                        }
+                        AttemptError::Proxy(ProxyFailurePhase::UpstreamTls) => Phase::UpstreamTls,
+                        _ => Phase::TransportUnknown,
+                    });
+                }
                 diagnostic.failure(match error {
                     AttemptError::DeadlineExceeded
                     | AttemptError::ConnectTimeout
@@ -1147,6 +1270,18 @@ impl ProductionGatewayRuntime {
             };
         }
 
+        if proxied && status == StatusCode::PROXY_AUTHENTICATION_REQUIRED {
+            if let Some(Some(network)) = network_diagnostic.as_deref_mut() {
+                network.failure = Some(hiroute_domain::NativeNetworkFailurePhaseV1::ProxyAuth);
+            }
+            diagnostic.finish(Some(CallFailure::Unavailable));
+            return Ok(Err(CallFailure::Unavailable));
+        }
+        if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
+            && let Some(Some(network)) = network_diagnostic
+        {
+            network.failure = Some(hiroute_domain::NativeNetworkFailurePhaseV1::UpstreamAuth);
+        }
         if status == StatusCode::OK {
             let result = match &prepared.bindings {
                 Some(bindings) => match classifier.wire_protocol {
@@ -1516,6 +1651,12 @@ mod tests {
             let mut ports = ProductionPorts::fail_closed(publications);
             ports.credentials = credentials.clone();
             ports.runtime_state = Arc::new(crate::ports::InMemoryRuntimeStateStore::default());
+            ports.native_network = Some(Arc::new(hiroute_domain::NativeNetworkRegistryV1::new(
+                hiroute_domain::NativeProxyEnvironmentV1::from_variables(
+                    "revocation-test".into(),
+                    [],
+                ),
+            )));
             let runtime = ProductionGatewayRuntime::compose(ports);
             let (result, admitted) = runtime
                 .test_classifier_decision_with_admitted_state(&mode)

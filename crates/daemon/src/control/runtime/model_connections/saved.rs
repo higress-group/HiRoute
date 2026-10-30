@@ -1207,6 +1207,11 @@ mod tests {
                 ],
             )
             .unwrap();
+        let network = hiroute_domain::NativeSourceNetworkRecordV1::initial(&source).unwrap();
+        connection.execute(
+            "INSERT INTO native_source_network(workspace_id,source_id,record_json,owner_operation_id) VALUES (?1,?2,?3,?4)",
+            rusqlite::params![WorkspaceId::DEFAULT, source.source_id, serde_json::to_string(&network).unwrap(), owner],
+        ).unwrap();
 
         let request = SavedModelConnectionCheckRequestV1 {
             source_id: source.source_id.clone(),

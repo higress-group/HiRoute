@@ -35,6 +35,7 @@ mod compensation_guards;
 mod decision;
 mod defaults;
 mod lifecycle;
+mod network;
 mod recovery;
 mod released_lifecycle;
 mod removal_guards;

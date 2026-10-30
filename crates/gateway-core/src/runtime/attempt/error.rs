@@ -2,6 +2,8 @@ use super::*;
 
 #[derive(Debug, Error, Eq, PartialEq)]
 pub enum AttemptError {
+    #[error("proxy exchange failed: {0:?}")]
+    Proxy(ProxyFailurePhase),
     #[error("transport target is invalid: {0}")]
     InvalidTarget(Arc<str>),
     #[error("write quantum must be non-zero")]

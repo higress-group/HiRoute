@@ -100,6 +100,17 @@ fn real_process_native_model_save_publishes_and_reaches_gateway() {
     run_script("model_connections_product.py");
 }
 
+/// Native source proxy configuration, checked routes and hot apply use real Control/CLI/Gateway.
+#[test]
+fn real_process_native_network_shared_decision_and_generation_retain_one_head_snapshot() {
+    run_script("native_network_decision_product.py");
+}
+
+#[test]
+fn real_process_native_network_proxy_applies_without_republishing_and_survives_restart() {
+    run_script("native_network_product.py");
+}
+
 /// Execute both published recipes against the current catalog without mistaking local
 /// candidate preparation for provider reachability or credential verification.
 #[test]

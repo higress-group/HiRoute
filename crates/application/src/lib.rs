@@ -150,7 +150,7 @@ impl ApplicationService {
             "ListDecisionConnectionSourcesV1" | "ListDecisionServicesV2" => {
                 self.list_decision_v2(request)
             }
-            "TestDecisionServiceV2" => self.test_decision_v2(request),
+            "TestDecisionServiceV2" | "TestDecisionServiceV3" => self.test_decision_v2(request),
             "ListDecisionServices" => {
                 if serde_json::from_value::<hiroute_application_api::ClientEmptyRequestV1>(
                     request.payload.clone(),
@@ -220,6 +220,7 @@ impl ApplicationService {
             }
             "ManageSubscriptionLogin" => control_plane::subscription_login::dispatch(self, request),
             "TestComputeConnection" => control_plane::dispatch_test_compute(self, request),
+            "TestComputeConnectionV2" => control_plane::dispatch_test_compute_v2(self, request),
             "ApplyCredentialAdd" if request.payload.get("accept_digest").is_some() => {
                 self.apply_change(request, "compute.credential.add")
             }

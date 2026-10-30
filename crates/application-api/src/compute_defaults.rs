@@ -31,10 +31,17 @@ pub fn saved_compute_change(
 ) -> Result<ComputeManagementChangeV2, serde_json::Error> {
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
+        || value.get("schema").and_then(serde_json::Value::as_str)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
     {
-        let value: ComputeManagementChangeV5 = serde_json::from_value(value)?;
-        Ok(value.change.change)
-    } else if value.get("schema").and_then(serde_json::Value::as_str)
+        return saved_compute_change(
+            value
+                .get("change")
+                .cloned()
+                .unwrap_or(serde_json::Value::Null),
+        );
+    }
+    if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
     {
         serde_json::from_value::<ComputeManagementChangeV3>(value).map(|value| value.change)

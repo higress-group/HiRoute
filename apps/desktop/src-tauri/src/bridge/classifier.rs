@@ -148,6 +148,42 @@ pub(super) async fn test_decision_service_v2(
         .await
 }
 
+#[tauri::command]
+pub(super) async fn test_decision_service_v3(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: DecisionServiceTestRequestV2,
+) -> Result<DecisionServiceTestResultV3, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        visible: &visible,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::test_decision_service_v3(&context, &product_state, input)
+        .await
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum ClassifierOpenApiSaveOutcome {

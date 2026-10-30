@@ -762,6 +762,17 @@ pub trait ComputeManagementRepositoryPort {
         Ok(Vec::new())
     }
 
+    fn native_source_network(
+        &self,
+        _source_id: &str,
+    ) -> PortResult<Option<crate::NativeSourceNetworkRecordV1>> {
+        // Unsupported adapters cannot claim an absent current policy means Direct.
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "native.network.repository_unavailable",
+        ))
+    }
+
     fn source_default_preferences(
         &self,
         _source_id: &str,

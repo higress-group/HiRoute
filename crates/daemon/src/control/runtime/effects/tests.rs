@@ -544,6 +544,12 @@ fn permission_effect_hardens_only_pinned_identity_and_never_reverts_mode() {
     );
     delegation_safety.finish_startup_recovery();
     let adapter = LocalControlAdapter {
+        native_network: Arc::new(hiroute_domain::NativeNetworkRegistryV1::new(
+            hiroute_domain::NativeProxyEnvironmentV1::from_variables(
+                "test-network".into(),
+                std::iter::empty::<(String, String)>(),
+            ),
+        )),
         price_snapshot: std::sync::Arc::new(
             hiroute_application::prices::PriceSnapshotSlot::default(),
         ),

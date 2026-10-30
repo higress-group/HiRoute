@@ -774,3 +774,19 @@ Request-local spill seals completed writes with the existing handle/length check
 without a durable flush. Independent readers retain their pinned handles; restart
 cleans orphaned spill rather than recovering in-flight requests. Observation storage
 and recoverable publication keep their own durability barriers.
+
+## Native source network routes
+
+[Native API network settings](../../docs/native-api-proxy.md) are source-owned and
+independent of frozen Plan content. HTTP-head admission pins the immutable registry
+once for classification, candidate execution and fallback. Shared decisions resolve
+against their exact authorized decision URL; independent/custom services retain
+their transport. The [route materializer](src/runtime/driver/network.rs) resolves
+only the selected next hop before the [Pingora adapter](../gateway-core/src/transport/pingora/proxy.rs)
+composes proxy TLS, CONNECT and original-upstream TLS through public session APIs.
+Provider credentials never enter CONNECT or Proxy-Authorization. Separate pool
+identity/generation prevents an older admitted request from replacing current-route
+connections. Streaming, duplex writes, cancellation and response commitment retain
+their existing attempt owners. Real proxy/listener scenarios live in daemon
+`native_network_product.py` and `native_network_decision_product.py`; the transport's
+`proxy_loopback` tests cover independent TLS peers and HTTP/2 tunnels.

@@ -138,6 +138,7 @@ fn runtime(
     let credentials = Arc::new(CredentialProbe(AtomicUsize::new(0)));
     let marker = Arc::new(MarkerPorts);
     let ports = ProductionPorts {
+        native_network: None,
         publications,
         credentials: credentials.clone(),
         runtime_state: marker.clone(),

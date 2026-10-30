@@ -944,10 +944,12 @@ fn validate_registered_plan(
     runtime: &[RuntimeMutationV1],
     external: &[ExternalEffectIntentV1],
 ) -> Result<(), OperationValidationError> {
+    let feature_state = crate::native_network_feature_gate_state(spec)
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
     if spec.schema_version.major != crate::CHANGE_SPEC_SCHEMA_V1.major
         // Routing content has its own exact, typed validator. A REST classifier
         // endpoint is legitimate there and must survive durable reconstruction.
-        || (!matches!(spec.command_id.as_str(), "routing.apply" | "decision.services.apply" | "decision.connections.apply") && contains_disabled_or_url(&spec.desired_state))
+        || (!matches!(spec.command_id.as_str(), "routing.apply" | "decision.services.apply" | "decision.connections.apply") && contains_disabled_or_url(&feature_state))
         || spec
             .resource_id
             .as_deref()

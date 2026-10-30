@@ -11,8 +11,19 @@ impl<T: AttemptTransport> AttemptExchange<T> {
         if self.connected {
             return Ok(());
         }
+        self.transport
+            .as_mut()
+            .expect("active exchange owns transport")
+            .configure_network_route(self.request.network_route.as_ref())?;
         let mut last_error = None;
-        for address in self.target.target().addresses.iter().copied() {
+        let addresses = self
+            .request
+            .network_route
+            .as_ref()
+            .and_then(|r| r.proxy.as_ref())
+            .map(|p| Arc::clone(&p.addresses))
+            .unwrap_or_else(|| Arc::clone(&self.target.target().addresses));
+        for address in addresses.iter().copied() {
             if self.cancellation.is_cancelled() {
                 return Err(AttemptError::Cancelled);
             }

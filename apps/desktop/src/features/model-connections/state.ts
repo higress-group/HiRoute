@@ -46,6 +46,7 @@ export function buildCheckDraft(draft: ModelConnectionDraft): ModelConnectionDra
     throw new Error('MODEL_CONNECTION_PROVENANCE_UNAVAILABLE');
   }
   const {
+    network: _network,
     entry_kind: _entryKind,
     provenance,
     qualification: _qualification,

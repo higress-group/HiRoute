@@ -5,6 +5,7 @@
 //! commit ownership remains in that lifecycle.
 
 mod driver;
+pub(crate) use driver::network::resolve_source as resolve_native_source_network;
 mod state;
 #[cfg(all(unix, debug_assertions))]
 pub mod stream_capture;

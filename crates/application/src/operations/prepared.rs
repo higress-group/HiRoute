@@ -591,8 +591,11 @@ where
             request.spec.command_id.as_str(),
             "routing.apply" | "decision.services.apply" | "decision.connections.apply"
         ) {
-            validate_feature_gate(&request.spec.desired_state)?;
+            let guarded = hiroute_domain::native_network_feature_gate_state(&request.spec)
+                .map_err(|_| TransactionError::InvalidArguments)?;
+            validate_feature_gate(&guarded)?;
         }
+
         let current = self.control.current_revisions(workspace)?;
         compare_revisions(&request.expected_revisions, &current)
             .map_err(TransactionError::RevisionConflict)?;

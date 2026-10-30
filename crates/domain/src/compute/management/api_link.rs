@@ -40,7 +40,7 @@ pub struct ComputeManagementMutationV5 {
 impl ComputeManagementMutationV5 {
     pub fn validate(&self, spec: &ChangeSpecV1) -> Result<(), ComputeManagementErrorV2> {
         if self.schema != COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5
-            || matches!(&*self.source_mutation, ComputeManagementMutation::V5(_))
+            || matches!(&*self.source_mutation, ComputeManagementMutation::V4(_) | ComputeManagementMutation::V5(_))
             || spec
                 .desired_state
                 .get("schema")

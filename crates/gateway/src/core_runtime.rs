@@ -6,7 +6,7 @@ pub mod adapters;
 mod classification;
 pub use classification::{
     CClassifierDiagnosticOutcome, CLASSIFIER_DIAGNOSTIC_LATEST_USER, ClassifierDiagnosticError,
-    ClassifierDiagnosticOutcome,
+    ClassifierDiagnosticOutcome, ClassifierNetworkDiagnostic,
 };
 #[path = "core_runtime/decision_history.rs"]
 mod decision_history;
@@ -255,6 +255,23 @@ impl ProductionGatewayRuntime {
             return write_response(session, StatusCode::OK, body, None).await;
         }
         let authorization = inbound_authorization(path, &request.headers);
+        let native_network = match self
+            .ports
+            .native_network
+            .as_ref()
+            .map(|n| n.pin())
+            .transpose()
+        {
+            Ok(snapshot) => snapshot,
+            Err(_) => {
+                return write_typed_error(
+                    session,
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "NETWORK_POLICY_UNAVAILABLE",
+                )
+                .await;
+            }
+        };
         let authorization = authorization.as_deref();
         // Existing delegated runs still need model calls to finish. The ordinary run bearer
         // verifier below remains the authority; this prefix never authorizes an aggregate call.
@@ -429,6 +446,7 @@ impl ProductionGatewayRuntime {
             ingress,
             authorized,
             budget,
+            native_network,
         )
         .await
     }
@@ -445,6 +463,7 @@ impl ProductionGatewayRuntime {
         ingress: IngressReplay,
         mut authorized: Box<AuthorizedRequestPlan>,
         budget: StreamBudget,
+        native_network: Option<Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
     ) -> Pin<Box<dyn Future<Output = Result<SessionReuse, TransportError>> + Send + 'a>> {
         Box::pin(async move {
             set_phase(LocalPhase::Replay);
@@ -776,6 +795,8 @@ impl ProductionGatewayRuntime {
                 let mut classification = Box::pin(self.classify_for_planner(
                     &strategy,
                     classification::ClassificationRequest {
+                        native_network: native_network.clone(),
+                        admitted_network: None,
                         request: routing_request,
                         current_input: routing_view.current_input(),
                         native_user_unavailable: native_user_unavailable
@@ -1287,6 +1308,7 @@ impl ProductionGatewayRuntime {
             };
             let seed = Arc::new(ProductionReplaySeedEnvelope::new(ProductionReplaySeed {
                 templates: prepared_templates,
+                native_network,
                 ingress: protocol,
                 replay,
                 raw_body,

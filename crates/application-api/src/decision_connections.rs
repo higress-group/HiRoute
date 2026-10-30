@@ -118,6 +118,24 @@ pub struct DecisionServiceTestResultV2 {
     pub tested_credential_state_revision: Option<CanonicalDigest>,
 }
 
+pub const TEST_DECISION_SERVICE_V3: &str = "TestDecisionServiceV3";
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum DecisionServiceTestResultSchemaV3 {
+    #[serde(rename = "hiroute.decision-service-test-result/v3")]
+    V3,
+}
+
+/// Network evidence describes the admitted request, independently of its Key state.
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionServiceTestResultV3 {
+    pub schema: DecisionServiceTestResultSchemaV3,
+    pub check: DecisionServiceTestResultV2,
+    pub network: Option<crate::NativeNetworkCheckEvidenceV1>,
+    pub failure: Option<crate::NativeNetworkFailureV1>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,6 +191,33 @@ mod tests {
             serde_json::to_value(saved).unwrap(),
             fixture["classifier_v2"]["service"]
         );
+    }
+
+    #[test]
+    fn network_evidence_wraps_the_strict_v2_check_without_redefining_credential_state() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../apps/desktop/tests/decision-services-v2-contract.json"
+        ))
+        .unwrap();
+        let check: DecisionServiceTestResultV2 =
+            serde_json::from_value(fixture["test_decision_service_v2"]["result"].clone()).unwrap();
+        let value = DecisionServiceTestResultV3 {
+            schema: DecisionServiceTestResultSchemaV3::V3,
+            check: check.clone(),
+            network: None,
+            failure: None,
+        };
+        let encoded = serde_json::to_value(&value).unwrap();
+        assert!(serde_json::from_value::<DecisionServiceTestResultV2>(encoded.clone()).is_err());
+        assert_eq!(
+            serde_json::from_value::<DecisionServiceTestResultV3>(encoded.clone())
+                .unwrap()
+                .check,
+            check
+        );
+        let mut extra = encoded;
+        extra["network_state_revision"] = "not-an-admitted-route".into();
+        assert!(serde_json::from_value::<DecisionServiceTestResultV3>(extra).is_err());
     }
 
     #[test]

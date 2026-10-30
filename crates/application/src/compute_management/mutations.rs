@@ -24,6 +24,7 @@ use super::{
 
 mod defaults;
 mod lifecycle;
+mod network;
 
 /// A public preview paired with its sealed, non-wire transaction plan.
 pub struct ComputeManagementPreparedPreviewV2 {

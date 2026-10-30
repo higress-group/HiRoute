@@ -344,7 +344,7 @@ impl LocalStorageSet {
             progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
         }
         let integrity = if migration.durable_set_prepared() {
-            if migration.is_admitted_additive_batch() {
+            if migration.is_admitted_additive_batch() || migration.is_admitted_native_network_batch() {
                 // These complete sources were already admitted. The reviewed additive
                 // steps validate structure and current dependencies without a full
                 // semantic audit of unrelated history.

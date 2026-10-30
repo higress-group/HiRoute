@@ -5,11 +5,12 @@ mod reader;
 mod request;
 mod transport;
 
-use request::{build_request_header, run_upstream_reader};
+use request::{build_forward_proxy_header, build_request_header, run_upstream_reader};
 
 pub struct PingoraClientSession {
     registry: Arc<PingoraConnectorRegistry>,
     connection_config_fingerprint: [u8; 32],
+    network_route: Option<NetworkDialRoute>,
     connected: Option<ConnectedPingoraSession>,
     request_head_written: bool,
     response_eos_emitted: bool,
@@ -25,6 +26,7 @@ struct ConnectedPingoraSession {
     reused: bool,
     protocol: HttpProtocol,
     request_eos: bool,
+    forward_proxy_authority: Option<Arc<str>>,
 }
 
 struct PingoraReaderOwner {

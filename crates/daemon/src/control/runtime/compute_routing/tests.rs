@@ -499,6 +499,12 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
     );
     delegation_safety.finish_startup_recovery();
     let adapter = LocalControlAdapter {
+        native_network: Arc::new(hiroute_domain::NativeNetworkRegistryV1::new(
+            hiroute_domain::NativeProxyEnvironmentV1::from_variables(
+                "test-network".into(),
+                std::iter::empty::<(String, String)>(),
+            ),
+        )),
         price_snapshot: std::sync::Arc::new(
             hiroute_application::prices::PriceSnapshotSlot::default(),
         ),

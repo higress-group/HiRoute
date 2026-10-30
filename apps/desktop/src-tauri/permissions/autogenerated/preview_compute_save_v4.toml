@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-compute-save-v4"
+description = "Enables the preview_compute_save_v4 command without any pre-configured scope."
+commands.allow = ["preview_compute_save_v4"]
+
+[[permission]]
+identifier = "deny-preview-compute-save-v4"
+description = "Denies the preview_compute_save_v4 command without any pre-configured scope."
+commands.deny = ["preview_compute_save_v4"]

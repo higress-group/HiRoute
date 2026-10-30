@@ -49,3 +49,18 @@ machine-envelope error codes. A generic upstream rejection is
 `decision_service` continues to select exact V1 content and
 `decision_service_v2` selects exact V2 content. Neither codec changes the
 frozen System One C v1/v2 logic, scoring or thresholds.
+
+The network-aware `test_decision_service_v3` uses the same exact saved request and
+one production diagnostic. Its strict V3 result wraps the unchanged V2 `check`,
+optional admitted Native `network` evidence and a typed safe `failure`. The old
+V2 call retains its response shape. Network policy/revision/environment identity
+is separate from credential identity; independent/custom tests have no inherited
+Native evidence. `preview_native_network_route` with a saved decision selector
+reads the current safe route without DNS, Keys or provider calls. Only the displayed
+service needs that read; growing unrelated services must not add provider work.
+Compare the admitted network state with the current readback before retaining a
+current pass. A failed current read makes that pass unverified, never current.
+`InheritedSourceNetwork` exposes a compact summary and the source-owned editor;
+source save refreshes metadata while preserving decision/parent drafts and never
+starts another test. Collapsing retains the mounted editor and original pending
+Operation. Proxy-authentication repair leaves provider-Key management untouched.

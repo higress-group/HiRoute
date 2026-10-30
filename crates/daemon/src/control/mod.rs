@@ -314,7 +314,11 @@ impl LocalControlDaemon {
         }
         let grant_allowed = matches!(
             request.operation_id.as_str(),
-            "ListWorkPlans"
+            hiroute_application_api::CHECK_NATIVE_MODEL_CONNECTION_V2
+                | hiroute_application_api::CHECK_REGISTERED_MODEL_CONNECTION_V2
+                | hiroute_application_api::CHECK_SAVED_MODEL_CONNECTION_V2
+                | hiroute_application_api::APPLY_NATIVE_SOURCE_NETWORK_V1
+                | "ListWorkPlans"
                 | "ListDelegations"
                 | "GetDelegation"
                 | "StartDelegation"

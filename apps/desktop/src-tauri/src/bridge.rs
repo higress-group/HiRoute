@@ -35,6 +35,8 @@ mod agent_home;
 use agent_home::*;
 mod model_feed;
 use model_feed::*;
+mod native_network;
+use native_network::*;
 mod model_connections;
 use model_connections::*;
 mod subscription_login;
@@ -766,6 +768,7 @@ pub fn run() {
             decision_services_v2,
             save_decision_service_v2,
             test_decision_service_v2,
+            test_decision_service_v3,
             save_classifier_header_secret,
             save_classifier_openapi,
             desktop_snapshot,
@@ -786,6 +789,14 @@ pub fn run() {
             get_model_metadata,
             compute_defaults,
             preview_compute_save_v3,
+            native_source_network,
+            preview_native_network_route,
+            preview_native_source_network,
+            apply_native_source_network,
+            preview_compute_save_v4,
+            check_model_connection_v2,
+            check_registered_model_connection_v2,
+            check_saved_model_connection_v2,
             effective_price_query,
             compute_management_snapshot,
             compute_key_masks,

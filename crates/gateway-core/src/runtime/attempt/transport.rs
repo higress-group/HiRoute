@@ -42,6 +42,7 @@ pub struct PreparedRequestHead {
 
 #[derive(Debug)]
 pub struct PreparedAttemptHttpRequest {
+    pub network_route: Option<NetworkDialRoute>,
     pub head: PreparedRequestHead,
     pub body: PreparedAttemptBody,
 }
@@ -376,6 +377,17 @@ pub enum PrecommitEvent {
 
 #[async_trait]
 pub trait AttemptTransport: Send {
+    fn configure_network_route(
+        &mut self,
+        route: Option<&NetworkDialRoute>,
+    ) -> Result<(), AttemptError> {
+        if route.is_some() {
+            return Err(AttemptError::Transport(
+                "network route is unsupported".into(),
+            ));
+        }
+        Ok(())
+    }
     /// Production codecs that can retain opaque response backing request a
     /// pre-read window reservation. Deterministic in-memory transports may
     /// leave this false because they allocate no hidden codec buffers.

@@ -715,6 +715,61 @@ as decision models; custom extensions remain separately typed.
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488573916
 
+### Requirement: Shared-source decision models inherit the API connection network policy
+
+A decision model that explicitly references a saved Native API source SHALL use that source's effective network policy for both saved-configuration tests and production decision calls. Resolve bypass and the proxy next hop against the decision model's own exact authorized URL, even when its host/path differs from ordinary inference. Preserve the decision service's frozen endpoint, model, wire codec, prompts and timeout, the exact source/lineage/consumer authorization and current Key permission. Shared network policy SHALL NOT replace the decision URL with an ordinary inference URL, broaden credential destination authority or introduce another credential owner.
+
+An applied source policy change SHALL affect subsequent shared decision requests without republishing the decision configuration. Already admitted calls retain their network snapshot. Safe decision views SHALL show inherited network policy and a manage-connection action. Returning from connection management preserves decision and surrounding route/trial drafts while refreshing current source state. A changed effective policy/environment invalidates a previous current-success test indication and does not trigger automatic retesting. Save-only remains non-probing; explicit tests use the saved exact decision configuration and production transport.
+
+Independent decision services and custom extensions retain their own existing network behavior. Proxy failures remain within existing decision deadlines, cancellation and failure/fallback semantics, without automatic cross-source/independent-secret substitution, direct internet retry or a false competence judgment about the executing model. Decision-specific failure attribution SHALL remain isolated from unrelated ordinary model bindings.
+
+The outer HTTP request SHALL admit one network snapshot for shared decision calls and subsequent model candidates/fallback. An explicit diagnostic records its own admitted snapshot. Versioned safe test evidence SHALL identify network state separately from configuration and credential state; it SHALL NOT reread after the call and label the new state as tested. A current read-only route preview uses the exact saved decision identity without DNS, provider I/O or destination authority. An unreadable current state cannot confirm an earlier pass. Returning a policy to an earlier value cannot revive evidence from an older policy revision.
+
+Shared decision repair SHALL use the collapsed source-owned editor in place, retain model/URL/codec and surrounding drafts, and refresh metadata without automatically testing. A proxy 407 SHALL retain typed proxy-authentication attribution and existing Key eligibility rather than becoming provider authentication failure. Independent/custom tests SHALL NOT acquire Native source policy evidence.
+
+#### Scenario: Test and run a reused API source
+
+- **WHEN** a decision service explicitly uses source A with manual proxy
+- **THEN** its explicit saved test and production decision calls use A's policy and authorized decision URL without a second Key entry
+
+#### Scenario: Different ordinary and decision destinations
+
+- **WHEN** a source's ordinary API destination matches a bypass rule but its separately authorized decision URL does not
+- **THEN** ordinary requests are direct for that rule and decision requests use the proxy; neither path substitutes the other's endpoint
+
+#### Scenario: Change policy after a successful decision test
+
+- **WHEN** the selected source network policy changes after a decision test succeeded
+- **THEN** subsequent decision calls use the new applied snapshot without republishing; the previous test is marked stale until an explicit retest
+
+#### Scenario: Return from source management
+
+- **WHEN** the user edits the shared source policy through a decision editor's manage-connection action and returns
+- **THEN** decision/parent drafts are retained and safe source state refreshes without silently changing the saved decision endpoint, source choice or issuing a provider call
+
+#### Scenario: Independent consumers remain independent
+
+- **WHEN** a Native source policy changes while an independently configured decision service or custom extension also exists
+- **THEN** the independent consumer retains its existing network route and configuration
+
+#### Scenario: Shared decision proxy fails
+
+- **WHEN** the selected source's proxy fails during a shared decision call
+- **THEN** the call follows existing bounded decision failure behavior without direct/cross-account fallback or attributing that network failure as competence evidence about an ordinary executing model
+
+#### Scenario: Policy changes while classification is running
+
+- **WHEN** a source policy changes while a request's shared decision call is in progress
+- **THEN** that request's later model execution retains its original network snapshot while a new HTTP request uses the replacement for both decision and inference, without republishing
+
+#### Scenario: Proxy authentication rejects a shared decision
+
+- **WHEN** the selected proxy returns 407 to a saved decision test or production decision call
+- **THEN** the result identifies proxy authentication, the provider Key remains enabled, and neither direct retry nor independent-secret substitution occurs
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/274#issuecomment-6499636922
+
 ## Implementation references
 
 - [Decision domain](../../../crates/domain/src/routing/decision.rs) and

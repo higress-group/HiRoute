@@ -271,7 +271,11 @@ fn real_role_all_keeps_external_gate_and_console_auth_authority_separate() {
     assert!(scan.get("sources").is_none());
     // Versioned mutations must reach product input validation, rather than
     // being rejected as invalid console credentials by the audit-name guard.
-    for command in ["save_decision_service_v2", "test_decision_service_v2"] {
+    for command in [
+        "save_decision_service_v2",
+        "test_decision_service_v2",
+        "test_decision_service_v3",
+    ] {
         let (status, response, _) = http(
             address,
             &format!("/api/console/v1/command/{command}"),

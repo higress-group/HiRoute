@@ -2415,6 +2415,8 @@ name = "hiroute-domain"
 version = "0.1.0"
 dependencies = [
  "http",
+ "ipnet",
+ "percent-encoding",
  "pinyin",
  "schemars 1.2.2",
  "serde",
@@ -2423,6 +2425,7 @@ dependencies = [
  "subtle",
  "thiserror 2.0.20",
  "unicode-normalization",
+ "url",
  "zeroize",
 ]
 
@@ -2455,6 +2458,7 @@ name = "hiroute-gateway"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "bytes",
  "clap",
  "getrandom 0.3.4",
@@ -2497,9 +2501,11 @@ dependencies = [
  "futures",
  "h2",
  "http",
+ "httparse",
  "parking_lot",
  "pingora-core",
  "pingora-http",
+ "pingora-rustls",
  "proptest",
  "rcgen",
  "rustls-pemfile",

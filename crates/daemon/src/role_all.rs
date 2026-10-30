@@ -41,6 +41,9 @@ use crate::gateway_ports::{
     GatewayRequestPriceSource, GatewayRunRelationSink, GatewayRuntimeStateStore,
 };
 
+#[path = "role_all/decision_network.rs"]
+mod decision_network;
+
 #[cfg(test)]
 #[path = "role_all/subscription_startup_tests.rs"]
 mod subscription_startup_tests;
@@ -135,62 +138,16 @@ impl ClassifierDiagnosticPort for GatewayClassifierDiagnostic {
         service: &hiroute_domain::DecisionServiceRecord,
         configuration_digest: &hiroute_domain::CanonicalDigest,
     ) -> Result<hiroute_application_api::DecisionServiceTestResultV2, ControlReadError> {
-        use hiroute_application_api::{
-            DecisionFailureCodeV2 as Failure, DecisionServiceTestResultSchemaV2,
-            DecisionServiceTestResultV2, DecisionTestOutcomeV2,
-        };
-        use hiroute_gateway::server::core_runtime::ClassifierDiagnosticError as Error;
-        let mode = match service {
-            hiroute_domain::DecisionServiceRecord::V1(service) => {
-                hiroute_domain::ComplexityClassifierModeV1::DecisionService {
-                    service: Box::new(service.clone()),
-                }
-            }
-            hiroute_domain::DecisionServiceRecord::V2(service) => {
-                hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 {
-                    service: Box::new(service.clone()),
-                }
-            }
-        };
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|_| ControlReadError::Unavailable)?;
-        let started = std::time::Instant::now();
-        let (result, admitted) = runtime.block_on(
-            self.runtime
-                .test_classifier_decision_with_admitted_state(&mode),
-        );
-        let failure = match result {
-            Ok(_) => None,
-            Err(Error::SourceDisabled) => Some(Failure::DecisionSourceDisabled),
-            Err(Error::NoUsableCredentials) => Some(Failure::DecisionNoUsableCredentials),
-            Err(Error::InvalidConfig | Error::Integrity) => {
-                Some(Failure::DecisionInvalidConfiguration)
-            }
-            Err(Error::Timeout | Error::Cancelled) => Some(Failure::DecisionTimeout),
-            Err(Error::AuthenticationRejected) => Some(Failure::DecisionAuthenticationRejected),
-            Err(Error::RateLimited) => Some(Failure::DecisionRateLimited),
-            Err(Error::RejectedInput | Error::EndpointRejected) => {
-                Some(Failure::DecisionInputRejected)
-            }
-            Err(Error::InvalidOutput) => Some(Failure::DecisionMalformedOutput),
-            Err(Error::Unavailable | Error::Resource) => {
-                Some(Failure::DecisionTransportUnavailable)
-            }
-        };
-        Ok(DecisionServiceTestResultV2 {
-            schema: DecisionServiceTestResultSchemaV2::V2,
-            outcome: if failure.is_some() {
-                DecisionTestOutcomeV2::Failed
-            } else {
-                DecisionTestOutcomeV2::Passed
-            },
-            failure_code: failure,
-            duration_millis: Some(started.elapsed().as_millis().try_into().unwrap_or(u64::MAX)),
-            tested_configuration_digest: configuration_digest.clone(),
-            tested_credential_state_revision: admitted,
-        })
+        self.test_decision_service_v3(service, configuration_digest)
+            .map(|result| result.check)
+    }
+
+    fn test_decision_service_v3(
+        &self,
+        service: &hiroute_domain::DecisionServiceRecord,
+        configuration_digest: &hiroute_domain::CanonicalDigest,
+    ) -> Result<hiroute_application_api::DecisionServiceTestResultV3, ControlReadError> {
+        decision_network::test(&self.runtime, service, configuration_digest)
     }
 
     fn test_classifier_c(
@@ -597,6 +554,7 @@ fn start_role_all_with_runtime(
             .map_err(|error| RoleAllError::Component("Runtime state", error.to_string()))?,
     );
     let ports = ProductionPorts {
+        native_network: Some(runtime.native_network_registry()),
         publications: Arc::clone(&publications) as _,
         credentials,
         runtime_state,

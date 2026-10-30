@@ -94,6 +94,26 @@ macro_rules! response { ($($ty:ty),+ $(,)?) => { alternatives(vec![$(schema::<Ma
 
 pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
     let (mut request, mut response) = match command_id {
+        "compute.network.show" => (
+            request!(NativeSourceNetworkQueryV1),
+            response!(NativeSourceNetworkViewV1),
+        ),
+        "compute.network.preview" => (
+            request!(NativeSourceNetworkPreviewV1),
+            response!(NativeNetworkSavePreviewV1),
+        ),
+        "compute.network.apply" => (
+            request!(ComputeConnectionApplyRequestV1),
+            response!(ApplyResultV1),
+        ),
+        "compute.network.resolve" => (
+            request!(NativeNetworkRoutePreviewRequestV1),
+            response!(NativeNetworkRouteViewV1),
+        ),
+        "compute.connection.preview-network" => (
+            request!(ComputeManagementChangeV4),
+            response!(ComputeSavePreviewV2),
+        ),
         "compute.defaults.get" => (
             request!(ComputeDefaultsQueryV1),
             response!(ComputeDefaultsResultV1),
@@ -267,6 +287,10 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             request!(ComputeSubscriptionLoginRequestV1),
             response!(ComputeSubscriptionLoginResultV1),
         ),
+        "compute.connection.test-network" => (
+            request!(ComputeConnectionTestRequestV2),
+            response!(ModelConnectionCheckViewV2),
+        ),
         "compute.connection.test" => (
             request!(ComputeConnectionTestRequestV1),
             response!(ModelConnectionCheckViewV1, ComputeCandidateViewV2),
@@ -354,6 +378,10 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
         "decision.services.test" => (
             request!(ClassifierDecisionTestRequestV1),
             response!(ClassifierDecisionTestResultV1),
+        ),
+        "decision.network.test" => (
+            request!(DecisionServiceTestRequestV2),
+            response!(DecisionServiceTestResultV3),
         ),
         "decision.connections.test" => (
             request!(DecisionServiceTestRequestV2),
