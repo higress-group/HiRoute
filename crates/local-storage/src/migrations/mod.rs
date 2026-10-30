@@ -893,8 +893,6 @@ fn phase_rank(phase: BackupSetPhase) -> u8 {
 
 fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, LocalStorageError> {
     match (kind, version) {
-        (DatabaseKind::Control, 35) => Ok(source_network_v35::CONTROL),
-        (DatabaseKind::Runtime | DatabaseKind::Secrets, 35 | 36) => Ok(NOOP_V9),
         (DatabaseKind::Control, 1) => Ok(CONTROL_V1),
         (DatabaseKind::Control, 2) => Ok(CONTROL_V2),
         (DatabaseKind::Control, 3) => Ok(CONTROL_V3),

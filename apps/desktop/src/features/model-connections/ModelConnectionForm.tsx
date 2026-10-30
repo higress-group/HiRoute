@@ -77,7 +77,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const [networkLoadError, setNetworkLoadError] = useState(false);
   const [networkLoadAttempt, setNetworkLoadAttempt] = useState(0);
   const [networkReveal, setNetworkReveal] = useState(0);
-  const [networkReview, setNetworkReview] = useState<{ preview: ComputeSavePreview; checked: ModelConnectionCheckView; returnScreen: 'models' | 'manual' } | null>(null);
+  const [networkReview, setNetworkReview] = useState<{ preview: ComputeSavePreview; checked: ModelConnectionCheckView; returnScreen: 'models' | 'manual' | 'connection' } | null>(null);
   const [custom, setCustom] = useState(props.initialDraft.entry_kind === 'custom_api');
   const free = props.initialDraft.entry_kind === 'free_api_key';
   const catalogEnabled = props.initialDraft.entry_kind !== 'custom_api' && !props.initialDraft.existing_source_id;
@@ -489,7 +489,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     invalidate(current => ({ ...current, models: current.models.map(value => value.client_id === model.client_id ? model : value) }), false, 'manual');
   }
 
-  async function saveChecked(checked: ModelConnectionCheckView, selectedRefs: string[], returnScreen: 'models' | 'manual' = 'models') {
+  async function saveChecked(checked: ModelConnectionCheckView, selectedRefs: string[], returnScreen: 'models' | 'manual' | 'connection' = 'models') {
     if (!props.mutable) {
       setError('TRUSTED_AUTHORITY_UNAVAILABLE');
       return;
@@ -708,7 +708,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       setDraft(acceptedDraft);
       setResult(checked);
       if (checked.failure && checked.failure.phase !== 'directory') {
-        setPhase('editing'); setScreen(checked.failure.phase === 'inference' ? 'manual' : 'connection');
+        setPhase('editing'); setScreen(!props.subscriptionModelIds && checked.failure.phase === 'inference' ? 'manual' : 'connection');
         if (networkRepairable(checked.failure)) setNetworkReveal(v => v + 1);
         return;
       }
@@ -718,11 +718,18 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         setPhase('editing');
         return;
       }
+      if (props.subscriptionModelIds) {
+        const selectedRefs = [...explicitApiModelSelection(checked, props.subscriptionModelIds)];
+        if (!selectedRefs.length) {
+          setError('SUBSCRIPTION_API_MODELS_UNAVAILABLE');
+          setPhase('editing');
+          return;
+        }
+        await saveChecked(checked, selectedRefs, 'connection');
+        return;
+      }
       const retained = selectionRef.current;
       const nextSelection = selectedModelRefsAfterRecheck(retained?.result ?? null, retained?.refs ?? new Set(), checked);
-      if (!retained && props.initialSelectedModelIds) {
-        for (const ref of explicitApiModelSelection(checked, props.initialSelectedModelIds)) nextSelection.add(ref);
-      }
       setSelected(nextSelection);
       selectionRef.current = { result: checked, refs: nextSelection };
       for (const model of checked.candidate.models) preservedModelIds.current.add(model.upstream_model_id);
@@ -872,14 +879,14 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     : screen === 'catalog'
       ? <><button className="btn" type="button" onClick={() => void requestClose('back')}>{zh ? '返回' : 'Back'}</button><span className="field-help">{zh ? '选择服务后继续配置' : 'Choose a service to continue'}</span></>
       : screen === 'connection'
-      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && (props.singleProductShortcut || props.initialConnectionOptionId) ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || !networkReady || Boolean(manualProxyError(draft.network ?? networkDraft())) || (!custom && (optionsLoading || !registeredExecutable))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
+      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && (props.singleProductShortcut || props.initialConnectionOptionId) ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || !networkReady || Boolean(manualProxyError(draft.network ?? networkDraft())) || (!custom && (optionsLoading || !registeredExecutable))}>{props.subscriptionModelIds ? (zh ? '检查并保存 API' : 'Check and save API') : (zh ? '检查并继续' : 'Check and continue')}</button></>
       : screen === 'manual'
         ? <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><button className="btn btn-primary" type="submit" form="mc-manual-form" disabled={!props.mutable}>{zh ? '检查并保存' : 'Check and save'}</button></>
         : <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><span className="connection-selection-count">{zh ? `已选择 ${selectedCount} 个模型` : `${selectedCount} models selected`}</span><button className="btn btn-primary" type="button" disabled={!props.mutable || !selectedCount} onClick={() => void saveSelected()}>{zh ? '保存连接' : 'Save connection'}</button></>;
 
   return <Dialog open title={title} className="connection-dialog" closeLabel={phase === 'saving' ? (zh ? '正在保存' : 'Saving') : (zh ? '取消添加' : 'Cancel')} closeDisabled={phase === 'saving'} onClose={() => void requestClose('cancel')} footer={footer}>
     <section className="connection-flow" ref={flow} aria-label={zh ? '添加模型连接' : 'Add model connection'}>
-      <ol className="connection-steps" aria-label={zh ? '连接步骤' : 'Connection steps'}>{(zh ? ['选择服务', '配置连接', '选择模型'] : ['Choose service', 'Configure', 'Choose models']).map((label, index) => <li key={label} className={index < step ? 'complete' : index === step ? 'current' : ''} aria-current={index === step ? 'step' : undefined}><span>{index < step ? <UiIcon name="check" /> : index + 1}</span>{label}</li>)}</ol>
+      <ol className="connection-steps" aria-label={zh ? '连接步骤' : 'Connection steps'}>{(props.subscriptionModelIds ? (zh ? ['选择服务', '配置连接'] : ['Choose service', 'Configure']) : (zh ? ['选择服务', '配置连接', '选择模型'] : ['Choose service', 'Configure', 'Choose models'])).map((label, index) => <li key={label} className={index < step ? 'complete' : index === step ? 'current' : ''} aria-current={index === step ? 'step' : undefined}><span>{index < step ? <UiIcon name="check" /> : index + 1}</span>{label}</li>)}</ol>
       {props.connectionChoice && <fieldset className="connection-source-choice" disabled={busy || !props.mutable}>{props.connectionChoice}</fieldset>}
       {props.appendTo && <p className="field-help">{zh ? '复用此接入的端点和凭据。检查后添加模型，已有模型与启停状态将保留。' : 'Reuse saved endpoints and credentials. Add models after checking; existing models and enabled state are retained.'}</p>}
       {!props.mutable && !busy && <div className="callout warn" role="status"><UiIcon name="warning" /><span>{zh ? '本机服务连接中断。当前输入已保留，重新连接后再保存。' : 'The local service disconnected. Your input is retained; reconnect before saving.'}</span></div>}

@@ -1,6 +1,6 @@
 //! Association metadata is never credential or model-execution authority.
 use super::*;
-use hiroute_domain::{ComputeManagementProvenanceV2, ComputeSubscriptionApiLinkV1};
+use hiroute_domain::ComputeSubscriptionApiLinkV1;
 
 pub(super) fn list(
     connection: &rusqlite::Connection,
@@ -36,7 +36,7 @@ pub(super) fn list(
             .map_err(|_| corrupt("compute.api_link.identity"))?;
         let source = decode_source(primary, Some(&link.source_id))?
             .ok_or_else(|| corrupt("compute.api_link.source"))?;
-        if !is_codex(&source) {
+        if !is_supported_subscription(&source) {
             return Err(corrupt("compute.api_link.provider"));
         }
         // Deleting the API leaves an explicitly unavailable association. It cannot grant access.
@@ -49,8 +49,8 @@ pub(super) fn list(
     }
     Ok(result)
 }
-fn is_codex(source: &ComputeManagementSourceV2) -> bool {
-    matches!(&source.provenance, ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } if connector_id == "connector.cpa.codex")
+fn is_supported_subscription(source: &ComputeManagementSourceV2) -> bool {
+    ComputeSubscriptionApiLinkV1::supports_source(source)
 }
 fn read(
     connection: &rusqlite::Connection,
@@ -165,7 +165,7 @@ fn write(
             .map_err(|_| corrupt("compute.api_link.write_identity"))?;
         let source = read_source(connection, workspace, source_id)?
             .ok_or_else(|| corrupt("compute.api_link.write_source"))?;
-        if link.source_id != source_id || !is_codex(&source) {
+        if link.source_id != source_id || !is_supported_subscription(&source) {
             return Err(corrupt("compute.api_link.write_kind"));
         }
         connection.execute("INSERT INTO compute_subscription_api_links(workspace_id,source_id,api_source_id) VALUES (?1,?2,?3) ON CONFLICT(workspace_id,source_id) DO UPDATE SET api_source_id=excluded.api_source_id", params![workspace.as_str(), source_id, link.api_source_id])

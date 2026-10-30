@@ -56,6 +56,7 @@ export function connectionErrorMessage(code: string, zh: boolean): string {
     ? '请填写有效的思考档位或预算范围。'
     : 'Enter valid reasoning levels or a valid budget range.';
   if (code === 'CONNECTION_NAME_CONFLICT') return zh ? '请输入 1–60 个字符的名称，并与其他接入区分。' : 'Use a distinct connection name with 1–60 characters.';
+  if (code === 'SUBSCRIPTION_API_MODELS_UNAVAILABLE') return zh ? '此 API 暂无可导入的订阅已选模型。请检查 API 权限或更换服务；订阅选择已保留。' : 'This API has no importable counterpart for the selected subscription models. Check API access or change service; the subscription selection is retained.';
   if (code === 'MODEL_SELECTION_REQUIRED') return zh ? '至少选择一个模型。' : 'Select at least one model.';
   if (code === 'MODEL_DIRECTORY_EMPTY') return zh
     ? '没有读取到可接入的模型。请检查服务地址，或使用自定义 API 补充未知模型。'

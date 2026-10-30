@@ -5,15 +5,15 @@ import { modelConnectionBackend } from '../model-connections/backend';
 import { newModelConnectionDraft } from '../model-connections/new-draft';
 import type { OperationReference } from '../model-connections/types';
 import type { ManagedSource, ManagementSnapshot } from '../models/types';
-import { apiLinkItems, type ApiSyncResult } from './api-sync';
+import { apiLinkItems, associatedApiOption, subscriptionProvider, type LinkedSubscriptionProvider, type ApiSyncResult } from './api-sync';
 
 type Common = {
   language: 'zh' | 'en'; snapshot: ManagementSnapshot; mutable: boolean; busy?: boolean;
   onRefresh(): Promise<void>; onOperation(operation: OperationReference): void; onUncertain(): void;
 };
-export function SubscriptionApiPicker(props: Common & { value: string; modelIds: string[]; onChange(value: string): void }) {
+export function SubscriptionApiPicker(props: Common & { value: string; provider: LinkedSubscriptionProvider; modelIds: string[]; onChange(value: string): void }) {
   const zh = props.language === 'zh';
-  const [creating, setCreating] = useState(false);
+  const [creatingModels, setCreatingModels] = useState<string[] | null>(null);
   const draft = useRef(newModelConnectionDraft('known'));
   const choices = props.snapshot.sources.filter(source => source.provenance !== 'connector_owned');
   return <section className="detail-section">
@@ -25,15 +25,16 @@ export function SubscriptionApiPicker(props: Common & { value: string; modelIds:
       </select>
     </label>
     <p className="field-help">{zh ? '保存订阅后，也会向此 API 接入导入相同 ID 的模型。以后追加导入继续同步；API 失败不影响订阅，可稍后重试。候选组和优先级由你选择。' : 'After saving the subscription, import matching model IDs into this API connection too. Later imports also sync. API failures keep the subscription intact and can be retried. You choose candidate groups and their priority.'}</p>
-    <button className="btn btn-quiet" type="button" disabled={!props.mutable || props.busy} onClick={() => setCreating(true)}>{zh ? '新建关联 API 接入' : 'Create an associated API connection'}</button>
-    {creating && <ModelConnectionForm language={props.language} mutable={props.mutable}
-      initialConnectionOptionId="openai.platform.global.v1"
-      initialDraft={draft.current} initialSelectedModelIds={props.modelIds}
+    <button className="btn btn-quiet" type="button" disabled={!props.mutable || props.busy || !props.modelIds.length} onClick={() => setCreatingModels([...new Set(props.modelIds)])}>{zh ? '新建关联 API 接入' : 'Create an associated API connection'}</button>
+    {!props.modelIds.length && <p className="field-help">{zh ? '先检查订阅并选择模型，再新建关联 API。' : 'Check the subscription and choose its models before creating the associated API.'}</p>}
+    {creatingModels && <ModelConnectionForm language={props.language} mutable={props.mutable}
+      initialConnectionOptionId={associatedApiOption(props.provider)}
+      initialDraft={draft.current} subscriptionModelIds={creatingModels}
       existingNames={props.snapshot.sources.map(source => source.display_name)} expectedRevisions={props.snapshot.revisions}
-      connectionChoice={<p className="field-help">{zh ? 'API 接入独立保存并使用自己的 API Key。完成后返回订阅，保存关联。' : 'The API connection is saved separately and uses its own API key. Return to the subscription afterward to save the association.'}</p>}
-      backend={modelConnectionBackend(props.language)} onBack={() => setCreating(false)} onCancel={() => setCreating(false)}
+      connectionChoice={<p className="field-help">{zh ? '填写 API Key 后检查并保存，自动使用订阅中已选的模型，无需重复选择。API 接入独立保存；返回后保存订阅关联。' : 'Enter the API key, then check and save using the models already selected in the subscription. No second model selection is needed. The API connection is saved separately; return to save the subscription association.'}</p>}
+      backend={modelConnectionBackend(props.language)} onBack={() => setCreatingModels(null)} onCancel={() => setCreatingModels(null)}
       onSaveAccepted={props.onOperation} onSaveUncertain={props.onUncertain}
-      onSaveResult={result => { if (result.disposition === 'saved' && result.source_id) { props.onChange(result.source_id); setCreating(false); } void props.onRefresh(); }}
+      onSaveResult={result => { if (result.disposition === 'saved' && result.source_id) { props.onChange(result.source_id); setCreatingModels(null); } void props.onRefresh(); }}
       restoreFocus={() => {}} />}
   </section>;
 }
@@ -73,7 +74,7 @@ export function SavedSubscriptionApi(props: Common & {
         <button className="btn" type="button" disabled={!props.mutable || props.busy || saving || !api} onClick={props.onRetry}>{zh ? '重试同步' : 'Retry sync'}</button></>}
     </>}
     {editing && <>
-      <SubscriptionApiPicker {...props} busy={props.busy || saving} value={selection ?? link?.api_source_id ?? ''} onChange={setSelection} modelIds={props.source.models.map(model => model.upstream_model_id)} />
+      <SubscriptionApiPicker {...props} provider={subscriptionProvider(props.source)!} busy={props.busy || saving} value={selection ?? link?.api_source_id ?? ''} onChange={setSelection} modelIds={props.source.models.map(model => model.upstream_model_id)} />
       <p className="field-help">{zh ? '取消关联只停止后续同步，保留两边已经导入的模型。' : 'Removing the association stops future syncs and retains models already imported into both sources.'}</p>
       <button className="btn btn-primary" type="button" disabled={!props.mutable || props.busy || saving} onClick={() => void save()}>{saving ? (zh ? '正在保存…' : 'Saving…') : (zh ? '保存关联' : 'Save association')}</button>
     </>}

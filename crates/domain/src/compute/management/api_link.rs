@@ -11,6 +11,11 @@ pub struct ComputeSubscriptionApiLinkV1 {
     pub api_source_id: String,
 }
 impl ComputeSubscriptionApiLinkV1 {
+    pub fn supports_source(source: &ComputeManagementSourceV2) -> bool {
+        matches!(&source.provenance, ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. }
+            if matches!(connector_id.as_str(), "connector.cpa.codex" | "connector.cpa.claude"))
+    }
+
     pub fn validate(&self) -> Result<(), ComputeManagementErrorV2> {
         validate_identifier(&self.source_id)?;
         validate_identifier(&self.api_source_id)?;
@@ -40,7 +45,10 @@ pub struct ComputeManagementMutationV5 {
 impl ComputeManagementMutationV5 {
     pub fn validate(&self, spec: &ChangeSpecV1) -> Result<(), ComputeManagementErrorV2> {
         if self.schema != COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5
-            || matches!(&*self.source_mutation, ComputeManagementMutation::V4(_) | ComputeManagementMutation::V5(_))
+            || matches!(
+                &*self.source_mutation,
+                ComputeManagementMutation::V4(_) | ComputeManagementMutation::V5(_)
+            )
             || spec
                 .desired_state
                 .get("schema")
@@ -55,8 +63,7 @@ impl ComputeManagementMutationV5 {
             .source_mutation
             .desired()
             .ok_or(ComputeManagementErrorV2::InvalidMutation)?;
-        if !matches!(&source.provenance, ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } if connector_id == "connector.cpa.codex")
-        {
+        if !ComputeSubscriptionApiLinkV1::supports_source(source) {
             return Err(ComputeManagementErrorV2::InvalidProvenance);
         }
         for link in self

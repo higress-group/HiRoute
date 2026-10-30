@@ -31,9 +31,12 @@ automatic sign-in credential refresh, never renewal of the paid subscription.
 Device scans explicitly request native-only candidates. Independent HiRoute sign-ins
 stay in login management, while login continuation retains the complete candidate
 query and saved-source append uses exact source/revision lookup. The scan list keeps
-its native results separate from a selected independent-login candidate. Codex's
-associated API form initially selects the registered OpenAI API product; returning
-to the service directory remains an explicit user choice.
+its native results separate from a selected independent-login candidate. The associated API form initially selects OpenAI for Codex or Anthropic for Claude.
+It snapshots the subscription's explicit model selection and, after an API check,
+saves only exact observed/selectable counterparts without opening the API model
+picker. Empty selections require choosing subscription models first; a check with
+no matching models retains the form and subscription selection. Ordinary API model
+selection and explicit service changes keep their existing behavior.
 
 Tests belong to the Desktop subscription suites and the production Pilot path; shared
 contract and protected callback admission regressions belong to Application API, CLI and

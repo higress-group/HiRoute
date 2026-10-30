@@ -56,6 +56,7 @@ pub async fn preview_compute_save_v4(
     network_edit: NativeNetworkEditV1,
 ) -> Result<WebComputeSavePreviewV2, DesktopFailure> {
     let inner = ComputeManagementChangeV3 {
+        api_link: None,
         schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
         change: change.try_into().map_err(DesktopFailure::from)?,
         default_preferences,

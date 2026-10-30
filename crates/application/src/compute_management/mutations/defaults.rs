@@ -35,7 +35,7 @@ where
             } else {
                 hiroute_application_api::ComputeManagementIntentV2::SaveReady
             };
-            if !matches!(&saved.provenance, hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } if connector_id == "connector.cpa.codex")
+            if !hiroute_domain::ComputeSubscriptionApiLinkV1::supports_source(&saved)
                 || change.change.edit.is_some()
                 || !change.change.key_edits.is_empty()
                 || change.change.intent != intent
@@ -134,8 +134,7 @@ where
             let source = mutation
                 .desired()
                 .ok_or(ComputeManagementPlanningErrorV2::InvalidChange)?;
-            if !matches!(&source.provenance, hiroute_domain::ComputeManagementProvenanceV2::ConnectorOwned { connector_id, .. } if connector_id == "connector.cpa.codex")
-            {
+            if !hiroute_domain::ComputeSubscriptionApiLinkV1::supports_source(source) {
                 return Err(ComputeManagementPlanningErrorV2::InvalidChange);
             }
             if let hiroute_domain::ComputeSubscriptionApiLinkIntentV1::Associate { api_source_id } =

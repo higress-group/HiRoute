@@ -58,7 +58,7 @@ pub(crate) fn validate_links(
          LEFT JOIN compute_management_sources s ON s.workspace_id=l.workspace_id AND s.source_id=l.source_id
          LEFT JOIN compute_management_sources a ON a.workspace_id=l.workspace_id AND a.source_id=l.api_source_id
          WHERE s.source_id IS NULL OR json_extract(s.source_json,'$.provenance.kind') IS NOT 'connector_owned'
-          OR json_extract(s.source_json,'$.provenance.connector_id') IS NOT 'connector.cpa.codex'
+          OR json_extract(s.source_json,'$.provenance.connector_id') NOT IN ('connector.cpa.codex','connector.cpa.claude')
           OR (a.source_id IS NOT NULL AND json_extract(a.source_json,'$.provenance.kind') NOT IN ('registered','user_configured')))",
         [], |row| row.get(0),
     )?;

@@ -662,15 +662,15 @@ Removing or recreating the exact untouched automatically generated empty-model p
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/246#issuecomment-6462728885
 
-### Requirement: Codex imports may synchronize into an explicitly associated API connection
+### Requirement: Subscription imports may synchronize into an explicitly associated API connection
 
-Independent Codex login and local-login discovery SHALL offer an optional saved or new
-native API connection. New API credentials use the ordinary protected API form and
-remain separate from subscription OAuth. Creating an API connection from Codex
-association SHALL initially select the current OpenAI API product, with its registered
-endpoint and authentication defaults, so only an API key is required. The user may
-explicitly change service. Missing or unavailable OpenAI configuration SHALL NOT
-silently select another provider; ordinary API entry defaults remain unchanged.
+Independent Codex and Claude login and local-login discovery SHALL offer an optional
+saved or new native API connection. New API credentials use the ordinary protected API form and
+remain separate from subscription OAuth. Creating an associated API connection SHALL
+initially select the registered OpenAI API for Codex or Anthropic API for Claude, with
+its endpoint and authentication defaults. The user may explicitly change service. A
+missing preferred product SHALL NOT silently select another provider; ordinary API
+entry defaults remain unchanged.
 The association is durable metadata and may
 be adjusted or removed on the saved subscription. Removing it retains both sources,
 API credentials and already imported models. Removing the API leaves a visible
@@ -680,9 +680,13 @@ After a successful explicit subscription import or append, the client SHALL atte
 an API check and append only exact upstream IDs from the user's subscription selection
 that the API actually observes and qualifies. Existing API models, Binding identities,
 endpoint, credentials and routes remain unchanged. Subscription names or capabilities
-cannot prove API entitlement. An API form opened from the explicit association may
-preselect only exact selectable matches of the user's subscription selection after
-its successful check; ordinary API forms retain an empty first selection.
+cannot prove API entitlement. The subscription selection SHALL be the only model
+selection in the association flow. The associated new-API form SHALL check and save
+its exact observed, selectable API counterparts directly, without a second model
+picker or an opportunity to expand membership. Users select subscription models
+before opening that form. No matches SHALL leave the form recoverable with explicit
+guidance and retain the subscription selection. Ordinary API forms retain their
+independent model selection.
 
 Subscription success SHALL survive API authentication, directory or save failures.
 The saved subscription SHALL show imported, pending or unsupported API models and
@@ -697,9 +701,14 @@ Association and import SHALL NOT create, reorder or change candidate groups or r
 plans. The user chooses how to combine the sources. Association does not promise
 eligibility for API credits or change upstream billing classification.
 
+#### Scenario: Configure a provider API without selecting models again
+
+- **WHEN** a user selects subscription models and creates the associated OpenAI or Anthropic API connection
+- **THEN** the form starts with the corresponding registered provider and saves only exact API-checked counterparts of that selection; it does not ask for another model selection
+
 #### Scenario: Subscription succeeds while the API is unavailable
 
-- **WHEN** an explicit Codex import succeeds and its associated API check fails
+- **WHEN** an explicit Codex or Claude import succeeds and its associated API check fails
 - **THEN** the subscription remains saved, the missing API imports remain pending,
   and explicit retry can append supported IDs without duplicating existing models
 

@@ -74,11 +74,26 @@ fn connect(
         serde_json::Value,
     ),
 ) {
-    let mut facts =
-        subscription_selection::subscription("candidate/cpa/codex/managed/test-account");
+    connect_provider(stores, registry, api, "codex")
+}
+fn connect_provider(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    api: &ComputeManagementSourceV2,
+    provider: &str,
+) -> (
+    ComputeManagementSourceV2,
+    (
+        hiroute_application_api::ComputeSavePreviewV2,
+        serde_json::Value,
+    ),
+) {
+    let mut facts = subscription_selection::subscription(&format!(
+        "candidate/cpa/{provider}/managed/test-account"
+    ));
     facts.display_name = "Codex subscription".into();
     facts.provenance = ComputeCandidateProvenanceV2::ConnectorOwned {
-        connector_id: "connector.cpa.codex".into(),
+        connector_id: format!("connector.cpa.{provider}"),
         account_ref: "account/subscription".into(),
     };
     subscription_selection::register_verified_subscription(
@@ -125,13 +140,20 @@ fn metadata(
 }
 
 #[test]
-fn subscription_api_v4_import_detach_reassociate_reopen_and_backup_preserve_both_sources() {
+fn subscription_api_v5_import_detach_reassociate_reopen_and_backup_preserve_both_sources() {
+    association_lifecycle("codex");
+}
+#[test]
+fn claude_api_import_detach_reassociate_reopen_and_backup_preserve_both_sources() {
+    association_lifecycle("claude");
+}
+fn association_lifecycle(provider: &str) {
     let root = tempdir().unwrap();
     populate_saved_source(root.path(), &WorkspaceId::default());
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
     let api = lifecycle::saved(&stores);
     let registry = TrustedComputeCandidateRegistry::new();
-    let (sub, preview) = connect(&stores, &registry, &api);
+    let (sub, preview) = connect_provider(&stores, &registry, &api, provider);
     assert_eq!(
         links(&stores),
         vec![ComputeSubscriptionApiLinkV1 {
@@ -150,7 +172,7 @@ fn subscription_api_v4_import_detach_reassociate_reopen_and_backup_preserve_both
     let mutation: ComputeManagementMutation =
         serde_json::from_value(preview.1["compute_management_mutation"].clone()).unwrap();
     mutation.validate_for_spec(&preview.0.spec).unwrap();
-    assert!(matches!(mutation, ComputeManagementMutation::V4(_)));
+    assert!(matches!(mutation, ComputeManagementMutation::V5(_)));
     let mut tampered = serde_json::to_value(&mutation).unwrap();
     tampered["api_link_after"]["api_source_id"] = serde_json::json!("source/unapproved");
     let tampered: ComputeManagementMutation = serde_json::from_value(tampered).unwrap();

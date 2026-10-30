@@ -1,6 +1,6 @@
 import { SubscriptionApiPicker, SavedSubscriptionApi } from '../features/subscriptions/SubscriptionApiConnection';
 import { useSubscriptionApi } from '../features/subscriptions/useSubscriptionApi';
-import { isCodexSubscription } from '../features/subscriptions/api-sync';
+import { isLinkedSubscription, candidateSubscriptionProvider } from '../features/subscriptions/api-sync';
 
 import { checkSavedNativeConnection } from '../features/model-connections/backend';
 import { ModelFeedPanel } from '../features/model-feed/ModelFeedPanel';
@@ -434,8 +434,8 @@ export function ModelManagementPage({
       }
       const choice = subscriptionApiChoices[selection.candidate.candidate_ref];
       const previousLink = currentManagement.subscription_api_links?.find(link => link.source_id === selectedSubscription?.existing_source_id);
-      const codex = selection.candidate.candidate_ref.startsWith('candidate/cpa/codex/');
-      const apiLink = codex && choice !== undefined && choice !== (previousLink?.api_source_id ?? '')
+      const supported = candidateSubscriptionProvider(selection.candidate.candidate_ref) !== null;
+      const apiLink = supported && choice !== undefined && choice !== (previousLink?.api_source_id ?? '')
         ? choice ? { intent: 'associate', api_source_id: choice } : { intent: 'remove' }
         : undefined;
       const preview = apiLink
@@ -1200,7 +1200,8 @@ export function ModelManagementPage({
                 : (language === 'zh' ? '账号可见 · 能力资料待补充，暂不能用于路由' : 'Visible to this account · capability data pending; not yet routable')}</span>}</div></label>)}</div></>
             : <p className="oc-meta">{language === 'zh' ? '检查已完成，但没有可接入的模型。' : 'The check completed, but no connectable model was found.'}</p>
           : <p className="oc-meta">{language === 'zh' ? '检查会使用这项订阅验证连接；保存后才加入模型列表。' : 'The check uses this subscription to verify the connection. Save it to add the model.'}</p>}
-        {management && selectedSubscription.candidate.candidate_ref.startsWith('candidate/cpa/codex/') && <SubscriptionApiPicker
+        {management && candidateSubscriptionProvider(selectedSubscription.candidate.candidate_ref) && <SubscriptionApiPicker
+          provider={candidateSubscriptionProvider(selectedSubscription.candidate.candidate_ref)!}
           language={language} snapshot={management} mutable={trustedAuthority} busy={subscriptionWorking}
           value={subscriptionApiChoices[selectedSubscription.candidate.candidate_ref] ?? management.subscription_api_links?.find(link => link.source_id === selectedSubscription.existing_source_id)?.api_source_id ?? ''}
           onChange={value => setSubscriptionApiChoices(previous => ({ ...previous, [selectedSubscription.candidate.candidate_ref]: value }))}
@@ -1257,7 +1258,7 @@ export function ModelManagementPage({
       priceRefresh={priceRefresh}
       onReauthorize={repairSubscription}
       onManageSubscriptionLogin={() => { setAdding(true); setAddStage('subscription-login'); }}
-      renderSubscriptionApi={source => isCodexSubscription(source) ? <SavedSubscriptionApi key={source.source_id}
+      renderSubscriptionApi={source => isLinkedSubscription(source) ? <SavedSubscriptionApi key={source.source_id}
         language={language} snapshot={management} source={source} mutable={trustedAuthority}
         busy={subscriptionApi.busy.has(source.source_id)} result={subscriptionApi.results[source.source_id]}
         onAssociate={apiSourceId => subscriptionApi.associate(source.source_id, apiSourceId)}

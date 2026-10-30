@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { apiSyncKey, synchronizeSubscriptionApi } from '../src/features/subscriptions/api-sync.ts';
+import { apiSyncKey, associatedApiOption, subscriptionProvider, candidateSubscriptionProvider, synchronizeSubscriptionApi } from '../src/features/subscriptions/api-sync.ts';
 
 const link = { source_id: 'source/sub', api_source_id: 'source/api' };
 const model = (id, extra = {}) => ({ upstream_model_id: id, model_ref: `model/${id}`, binding_id: `binding/${id}`, membership: 'observed', selectable: true, ...extra });
@@ -162,4 +162,28 @@ test('sync keys distinguish encoded separators, identities and source/API revisi
   assert.notEqual(base, apiSyncKey({ ...f.subscription, revision: 5 }, f.api));
   assert.notEqual(base, apiSyncKey(f.subscription, { ...f.api, revision: 9 }));
   assert.throws(() => apiSyncKey({ ...f.subscription, source_id: 'x'.repeat(201) }, f.api));
+});
+
+
+test('Claude subscriptions use Anthropic and synchronize only exact selected Claude model IDs', async () => {
+  const f = fixture();
+  f.subscription.connection_identity.connection_option_id = 'claude.subscription.global.v1';
+  f.subscription.models = [model('claude-sonnet-5'), model('claude-opus-5')];
+  f.checked.observed_model_ids = ['claude-sonnet-5', 'claude-opus-5', 'unselected-claude'];
+  f.checked.candidate.models = f.checked.observed_model_ids.map(id => model(id));
+  assert.equal(subscriptionProvider(f.subscription), 'claude');
+  assert.equal(candidateSubscriptionProvider('candidate/cpa/claude/managed/test'), 'claude');
+  assert.equal(associatedApiOption('claude'), 'anthropic.platform.global.v1');
+  assert.equal(associatedApiOption('codex'), 'openai.platform.global.v1');
+  const before = structuredClone(f.subscription);
+  const result = await f.run();
+  assert.deepEqual(result.items.map(item => item.state), ['imported', 'imported']);
+  assert.deepEqual(f.calls.preview[0].selected_model_refs, ['model/claude-sonnet-5', 'model/claude-opus-5']);
+  assert.deepEqual(f.subscription, before);
+  assert.equal(f.api.models.some(item => item.upstream_model_id === 'unselected-claude'), false);
+  await f.run();
+  assert.equal(f.calls.apply.length, 1);
+  f.subscription.connection_identity.connection_option_id = 'other.subscription.global.v1';
+  assert.equal(subscriptionProvider(f.subscription), null);
+  assert.equal(candidateSubscriptionProvider('candidate/cpa/other/test'), null);
 });

@@ -26,9 +26,25 @@ export type ApiSyncBackend = {
   checkId(): string;
 };
 
-export function isCodexSubscription(source: ManagedSource): boolean {
-  return source.provenance === 'connector_owned'
-    && source.connection_identity?.connection_option_id === 'codex.subscription.global.v1';
+export type LinkedSubscriptionProvider = 'codex' | 'claude';
+export function subscriptionProvider(source: ManagedSource): LinkedSubscriptionProvider | null {
+  if (source.provenance !== 'connector_owned') return null;
+  switch (source.connection_identity?.connection_option_id) {
+    case 'codex.subscription.global.v1': return 'codex';
+    case 'claude.subscription.global.v1': return 'claude';
+    default: return null;
+  }
+}
+export function candidateSubscriptionProvider(candidateRef: string): LinkedSubscriptionProvider | null {
+  if (candidateRef.startsWith('candidate/cpa/codex/')) return 'codex';
+  if (candidateRef.startsWith('candidate/cpa/claude/')) return 'claude';
+  return null;
+}
+export function associatedApiOption(provider: LinkedSubscriptionProvider): string {
+  return provider === 'claude' ? 'anthropic.platform.global.v1' : 'openai.platform.global.v1';
+}
+export function isLinkedSubscription(source: ManagedSource): boolean {
+  return subscriptionProvider(source) !== null;
 }
 export function apiLinkItems(source: ManagedSource, api?: ManagedSource): ApiSyncItem[] {
   const ids = new Set(api?.models.map(model => model.upstream_model_id));
@@ -54,7 +70,7 @@ export async function synchronizeSubscriptionApi(link: SubscriptionApiLink, back
   };
   const pending = (reason: ApiSyncResult['reason']) => ({ ...output, reason });
   const linked = (view: ManagementSnapshot) => view.subscription_api_links?.some(item => item.source_id === link.source_id && item.api_source_id === link.api_source_id);
-  if (!source || !isCodexSubscription(source) || !linked(snapshot)) return pending('source_changed');
+  if (!source || !isLinkedSubscription(source) || !linked(snapshot)) return pending('source_changed');
   if (!api || api.provenance === 'connector_owned') return pending('api_missing');
   if (!output.items.some(item => item.state === 'pending')) return output;
   if (api.state !== 'ready') return pending('api_disabled');

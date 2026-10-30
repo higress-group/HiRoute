@@ -60,7 +60,7 @@ retain their original proof reader. The model detail default editor shows saved 
 values and records official-follow/preserve choices through normal Preview/Apply.
 
 `../subscriptions/SubscriptionApiConnection.tsx` owns the optional saved/new API picker
-for Codex login and scan imports and saved association edits. The normal API form owns
+for Codex/Claude login and scan imports and saved association edits. The normal API form owns
 its separate protected Key. `api-sync.ts` appends only exact API-observed models through
 ordinary Check/Preview/Apply after a successful explicit subscription import. It neither
 creates routes nor copies OAuth authority. The durable association and memberships

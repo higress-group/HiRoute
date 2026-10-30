@@ -5,7 +5,7 @@ import { clientIdempotencyKey } from '../model-connections/state';
 import { saveFailureDefinitelyPreAdmission } from './model';
 import type { ComputeSaveResult, ComputeSavePreview, ModelConnectionCheckView, OperationReference } from '../model-connections/types';
 import type { ManagedSource, ManagementChange, ManagementSnapshot } from '../models/types';
-import { apiLinkItems, isCodexSubscription, synchronizeSubscriptionApi, type ApiSyncResult } from './api-sync';
+import { apiLinkItems, isLinkedSubscription, synchronizeSubscriptionApi, type ApiSyncResult } from './api-sync';
 
 export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, onUncertain }: {
   language: 'zh' | 'en'; mutable: boolean;
@@ -32,7 +32,7 @@ export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, 
     if (!mutable || !alive.current) throw new Error('TRUSTED_AUTHORITY_UNAVAILABLE');
     const snapshot = await read();
     const source = snapshot.sources.find(item => item.source_id === sourceId);
-    if (!source || !isCodexSubscription(source)) throw new Error('SOURCE_CHANGED');
+    if (!source || !isLinkedSubscription(source)) throw new Error('SOURCE_CHANGED');
     const change: ManagementChange = {
       schema: 'hiroute.compute-management-change/v2', subject: { kind: 'saved_source', source_id: source.source_id },
       expected_revisions: snapshot.revisions, selected_model_refs: source.models.map(model => model.model_ref),
