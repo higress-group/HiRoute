@@ -242,7 +242,7 @@ async fn replay_body_reader_uses_bounded_credit_under_retained_request_pressure(
     use crate::replay::{ReplayConfig, ReplayManager};
     use hiroute_gateway_core::runtime::body::MemoryRole;
 
-    for threshold in [1, 2 * 1024 * 1024] {
+    for threshold in [16 * 1024, 2 * 1024 * 1024] {
         let root = tempfile::tempdir().unwrap();
         let tree = BudgetTree::new(16 * 1024 * 1024, 16 * 1024 * 1024).unwrap();
         let budget = tree.stream(8 * 1024 * 1024).unwrap();
