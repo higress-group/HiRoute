@@ -537,6 +537,42 @@ fn released_block_cache_backfills_without_changing_bodies_offsets_or_occurrence_
 }
 
 #[test]
+fn index_fixture_drains_sources_beyond_one_maintenance_batch() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    // A production cycle completes at most 200 sources and may yield earlier
+    // at its scan-time budget, with no source currently in the building state.
+    for n in 0..201 {
+        add(
+            &store,
+            &format!("session-{n}"),
+            &format!("request-{n}"),
+            100 + n,
+            &format!("needle {n}"),
+        );
+    }
+    index(&store);
+    let mut q = query("needle", 200);
+    let first = store
+        .search_observed_sessions(&reader(true), &q, 500)
+        .unwrap();
+    assert!(
+        !first.index_partial,
+        "fixture left sources unpublished: {first:?}"
+    );
+    assert_eq!(first.hits.len(), 200);
+    assert!(first.next_cursor.is_some());
+    q.cursor = first.next_cursor;
+    let last = store
+        .search_observed_sessions(&reader(true), &q, 500)
+        .unwrap();
+    assert!(!last.index_partial);
+    assert_eq!(last.hits.len(), 1);
+    assert_eq!(last.hits[0].session_id, "session-0");
+    assert!(last.next_cursor.is_none());
+}
+
+#[test]
 fn live_search_deletion_removes_lookup_and_body_without_invalidating_other_sessions() {
     let root = tempfile::tempdir().unwrap();
     let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
