@@ -56,10 +56,10 @@ late model-selection notification is covered by the
 [producer controls](../../scripts/tests/dsh-routing-adapter.test.mjs) and
 [projection controls](../../crates/gateway/src/core_runtime/native_routing_view/dsh_tests.rs);
 the unchanged wire request remains available to normal routing and capture.
-The DSH producer recognizes native runtime, skill-catalog and time-context
-supplements, and validates both retained instruction roles and older User-role
-projections against the complete final User scope. Unknown producers still lose
-the optional input proof. Native failed-request retry association belongs to the
+The DSH producer recognizes native runtime, skill-catalog, time-context and
+repeat-tool-reminder supplements, and validates both retained instruction roles
+and older User-role projections against the complete final User scope. Unknown
+producers still lose the optional input proof. Native failed-request retry association belongs to the
 [shared history owner](../../crates/gateway/src/agent_turn_history/store/retry.rs),
 not to the DSH adapter or a session-wide lock.
 
