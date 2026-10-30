@@ -9,7 +9,8 @@
 <p align="center">
   <strong>Make Codex and Claude Code subscriptions go further.</strong><br>
   Combine subscriptions, APIs and local models in the Agent you already use.<br>
-  Give routine work to economical models and keep your primary model for the hard parts.
+  Give routine work to economical models, keep your primary model for the hard parts,<br>
+  and let it step in when an economical model falls short.
 </p>
 
 <p align="center">
@@ -36,8 +37,8 @@ or use a smaller and a stronger model from the same supported source.
 | What you want | What HiRoute provides |
 | --- | --- |
 | **Keep your workflow** | Continue in your familiar Agent while models share the work within a session. |
-| **Make strong-model capacity last** | Route suitable work to economical models and keep primary-model protection available. |
-| **Try a new model gradually** | Choose its initial trust level, keep a familiar primary model and adjust the division of work. |
+| **Make strong-model capacity last** | Route suitable work to economical models, with low-score protection from your primary model. |
+| **Try a new model gradually** | Start at a trust level you choose, keep a familiar primary model as backup and adjust with evidence from your own tasks. |
 | **Understand each decision** | Inspect the actual models, routing reasons, stage performance, usage and cost estimates. |
 
 ## One task, the right model for each stage
@@ -45,16 +46,19 @@ or use a smaller and a stronger model from the same supported source.
 A difficulty-routing plan follows both the work ahead and what happened before:
 
 - **Routine work:** use the economical group when the task meets your criteria.
-- **Relevant failure:** keep primary-model protection when a poor prior result still affects the work.
+- **Relevant failure:** when a stage scores below the competence floor and its problem still affects
+  the work, low-score protection moves the next stage to your primary model.
 - **Problem resolved or task changed:** reassess the current work and whether the old problem still matters.
 
 **System One answers three questions: How demanding is the current work? How well did the
 previous stage go? Does its problem still affect the current task?** HiRoute combines these
 judgments with your plan to choose the executing model.
 
-<!-- README-SCREENSHOT S1: decision-extensions/assets/readme-session-en.png -->
-> **Screenshot pending — real session timeline.** Show readable model names, several stages of
-> the same task, and one selected stage's routing reason.
+<p align="center">
+  <img src="decision-extensions/assets/readme-session-en.png" alt="HiRoute session timeline: a DeepSeek V4.1 Flash stage scores 0.24 and protects the next turn; the selected turn runs on the primary model GPT-6 Astra under low-score protection and scores 0.73; the following turns return to Flash, and the next one scores 0.94" width="760">
+</p>
+<p align="center"><sub>A real session: after a Flash stage scores 0.24, the primary model takes the next turn under
+low-score protection; once that turn scores 0.73, the work returns to Flash.</sub></p>
 
 Keep asking follow-up questions or let your Agent advance a long task. HiRoute can reassess
 at supported new-input and context-reconstruction boundaries; tool continuations normally
@@ -64,20 +68,28 @@ reuse the stage's decision. See [routing behavior and supported-client limits](a
 
 ## Try new models with a primary model ready to help
 
-Select the model you want to try, pair it with a familiar primary model, and choose an
-initial trust level. Click a preset or adjust the slider, review the changes, then publish
-and map the plan to your Agent. You decide how much work to entrust to the new model.
+Start from **New models** on Home. The new model goes first and your primary model
+catches what it misses.
+
+1. **Pair and set trust.** Pick the model to try and a familiar primary model, then click
+   Trial, Familiar, Trusted or Hands-off, or drag the slider between Cautious and Entrusted.
+   Every change is listed before you publish and map the plan to your Agent.
+2. **Work as usual.** Each turn stays on one model to preserve the cache; a new message or
+   rebuilt context triggers a fresh decision.
+3. **Primary steps in when needed.** If the new model's stage scores below the competence
+   floor and the problem still matters, low-score protection moves the next stage to your
+   primary model.
 
 <!-- README-SCREENSHOT S2: decision-extensions/assets/readme-trial-en.png -->
 > **Screenshot pending — trial setup.** Show the new and primary models, their sources, and
 > the trust slider with its clickable presets.
 
-### Use execution reports to decide what to change
+### Adjust with evidence from your own tasks
 
 The session timeline shows which model actually ran and why. Model performance reports
-bring together stage assessments, the share handled by the regular group and available
-cost estimates. When there is enough evidence, review a suggested adjustment, inspect the
-changes and choose whether to publish it.
+bring together stage scores, the share handled by the regular group and available cost
+estimates. When there is enough evidence, a report suggests a step up or step down; replay
+the setting on your own records, inspect the changes and choose whether to publish.
 
 <!-- README-SCREENSHOT S3: decision-extensions/assets/readme-report-en.png -->
 > **Screenshot pending — real execution report.** Show the report's scope, scored stages
@@ -109,8 +121,8 @@ remain available. Jev calls ran on 28 October 2026 and OpenAI calls on 29 Octobe
 and policy match, but the calls were not contemporaneous.
 
 The results measure conformance to the stated routing policy, not task completion or
-realized savings. OpenAI was evaluated through a research adapter, not a tested product
-integration. Use the [study and cases](experiments/system-one-routing-paper/README.md)
+realized savings. The OpenAI results come from the study's research adapter, not from
+HiRoute's built-in OpenAI connection. Use the [study and cases](experiments/system-one-routing-paper/README.md)
 to evaluate decision prompts against your own tasks.
 
 [Comparison, exclusions and saved responses](experiments/system-one-routing-paper/supplements/decision-interface-transfer/README.md) ·
@@ -126,7 +138,7 @@ to evaluate decision prompts against your own tasks.
    economical model plus a primary model.
 2. **Set the division of work.** Connect a decision model in **Models → Decision models**,
    choose a trust level, then publish and map the plan to your Agent. Built-in connections
-   support Bailian, OpenRouter Jev, TypeSafe and compatible endpoints without self-hosting Jev.
+   support Bailian, OpenAI, OpenRouter Jev, TypeSafe and compatible endpoints without self-hosting Jev.
 3. **Work as usual.** Continue in your Agent, then inspect model switches and execution
    reports in HiRoute.
 
