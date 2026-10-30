@@ -558,6 +558,8 @@ class HostedReleasePolicyTests(unittest.TestCase):
             'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-local-storage --lib migrations::startup_recovery::tests -- --test-threads=1',
             'cargo test --locked --target x86_64-pc-windows-msvc '
+            '-p hiroute-local-storage --lib control::capability_registration::tests -- --test-threads=1',
+            'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-cli --lib service::recovery_text_tests -- --test-threads=1',
             'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-shell --features shell-runtime --lib'])

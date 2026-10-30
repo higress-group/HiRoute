@@ -688,11 +688,15 @@ impl ProductionControlRuntime {
                 .map_err(|error| error.to_string())?,
         );
         let delegation_finalization = Arc::new(DelegationFinalization::default());
+        let launcher_capability_registrar = stores
+            .open_launcher_capability_registrar()
+            .map_err(|error| error.to_string())?;
         let adapter = Arc::new(LocalControlAdapter {
             publication_diagnostics: Mutex::new(Default::default()),
             publication_marker_cache: Mutex::new(None),
             settings_publication_candidate: Mutex::new(None),
             stores: Mutex::new(stores),
+            launcher_capability_registrar,
             price_snapshot: Arc::new(hiroute_application::prices::PriceSnapshotSlot::default()),
             delegation_digest_authority: digest_authority,
             delegation_observation: observation.clone(),
@@ -1022,6 +1026,7 @@ struct LocalControlAdapter {
     settings_publication_candidate: Mutex<Option<publication::SettingsCandidate>>,
     price_snapshot: Arc<hiroute_application::prices::PriceSnapshotSlot>,
     stores: Mutex<LocalStorageSet>,
+    launcher_capability_registrar: hiroute_local_storage::LauncherCapabilityRegistrar,
     delegation_digest_authority: DigestAuthority,
     delegation_observation: Arc<LocalObservationStore>,
     observation_workspace_key: Zeroizing<[u8; 32]>,
@@ -1738,20 +1743,8 @@ impl RuntimeAuthority {
         &self,
         registration: ApplyCapabilityRegistrationV1,
     ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
-        registration
-            .check_current()
-            .map_err(|error| error.to_string())?;
-        let stores = match self.adapter.stores.try_lock() {
-            Ok(stores) => stores,
-            Err(std::sync::TryLockError::WouldBlock) => {
-                return Ok(hiroute_local_storage::ApplyCapabilityRegistrationOutcome::Busy);
-            }
-            Err(std::sync::TryLockError::Poisoned(_)) => {
-                return Err("capability registrar is unavailable".into());
-            }
-        };
-        stores
-            .apply_capability_registrar()
+        self.adapter
+            .launcher_capability_registrar
             .try_register(registration)
             .map_err(|error| error.to_string())
     }

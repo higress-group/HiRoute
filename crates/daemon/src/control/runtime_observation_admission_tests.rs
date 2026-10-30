@@ -4,10 +4,10 @@ use hiroute_application_api::{
 };
 
 #[test]
-fn protected_grant_admission_does_not_wait_for_the_global_control_mutex() {
+fn protected_grant_admission_is_independent_of_the_global_control_mutex() {
     #[cfg(unix)]
     if crate::test_support::isolated_agent_home(
-        "control::runtime::tests::observation_admission_tests::protected_grant_admission_does_not_wait_for_the_global_control_mutex",
+        "control::runtime::tests::observation_admission_tests::protected_grant_admission_is_independent_of_the_global_control_mutex",
     ) {
         return;
     }
@@ -58,7 +58,7 @@ fn protected_grant_admission_does_not_wait_for_the_global_control_mutex() {
         result
             .expect("grant admission waited for the Control mutex")
             .unwrap(),
-        hiroute_local_storage::ApplyCapabilityRegistrationOutcome::Busy
+        hiroute_local_storage::ApplyCapabilityRegistrationOutcome::Registered
     );
     assert_eq!(
         runtime

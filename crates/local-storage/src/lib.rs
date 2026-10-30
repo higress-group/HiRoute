@@ -24,8 +24,8 @@ pub use control::{
     AgentLocatorSummary, AgentLocatorWitness, AgentNativeTargetWitness, ApplyCapabilityRegistrar,
     ApplyCapabilityRegistrationOutcome, ApplyCapabilityRegistrationV1, CapturedActivePublication,
     CapturedAgentLocator, ComputeSubscriptionValidationRecordV1,
-    ComputeSubscriptionValidationStateV1, ControlReadStamp, ControlStore, ManagedArtifactStore,
-    SucceededAgentOperationV1,
+    ComputeSubscriptionValidationStateV1, ControlReadStamp, ControlStore,
+    LauncherCapabilityRegistrar, ManagedArtifactStore, SucceededAgentOperationV1,
 };
 pub use physical_read_stamp::AgentReadStamp;
 pub use runtime::RuntimeStore;
@@ -438,6 +438,14 @@ impl LocalStorageSet {
     /// Narrow capability persistence seam for the daemon's protected launcher only.
     pub fn apply_capability_registrar(&self) -> ApplyCapabilityRegistrar<'_> {
         ApplyCapabilityRegistrar::new(&self.control)
+    }
+
+    /// Opens once after coordinated startup, retaining its owner lease and exact Control file.
+    /// This narrow launcher handle exposes neither SQL nor another storage admission path.
+    pub fn open_launcher_capability_registrar(
+        &self,
+    ) -> Result<LauncherCapabilityRegistrar, LocalStorageError> {
+        LauncherCapabilityRegistrar::open(&self.control)
     }
 
     /// Opens the operation journal's managed publication/Agent-artifact adapter after the

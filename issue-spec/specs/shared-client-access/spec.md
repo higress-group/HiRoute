@@ -65,8 +65,12 @@ Source SPEC comments:
 
 ### Requirement: Native connection loss is truthful and safely recoverable
 
-Protected grant registration SHALL try admission at the shared Control mutex and
-SQLite writer reservation without waiting behind an existing owner. A refusal
+Protected grant registration SHALL use a launcher-only connection opened once
+from the coordinated, admitted Control database. It SHALL retain that database's
+physical identity, UUID, schema and startup ownership without creating, migrating
+or initializing another file. Unrelated Runtime/Secrets reads under the shared
+storage mutex SHALL NOT refuse registration. Registration SHALL try its narrow
+connection and the actual SQLite writer reservation without waiting behind an existing owner. A refusal
 before writer admission SHALL create no capability or business operation and
 SHALL finish the exact acknowledgement with `registered:false`. This result is a
 retryable registration refusal, never successful authorization. Only a complete,
@@ -89,12 +93,17 @@ persistent-format conversion is introduced.
 
 #### Scenario: Busy grant admission preserves a synchronized connection
 
-- **WHEN** the global Control mutex or an external SQLite writer is held while
+- **WHEN** the registrar connection or an external SQLite writer is held while
   Desktop registers an exact grant
 - **THEN** the daemon promptly returns a matching unregistered acknowledgement,
   no grant or business effect exists, and Desktop keeps its channel usable. A
   later user request after release uses a fresh registration and may succeed
   with the same daemon PID. A failed write/commit cannot claim this refusal.
+
+- **WHEN** an unrelated reader holds the shared storage mutex while the Control
+  writer is available
+- **THEN** registration can commit without waiting for that reader, with the same
+  durable authorization, expiry and exact request checks.
 
 A responsive daemon SHALL NOT establish that the Desktop's inherited protected
 channel remains usable. Uncertain, timed-out, malformed or mismatched exchanges SHALL

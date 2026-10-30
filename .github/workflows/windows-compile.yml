@@ -71,6 +71,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows storage directory classification regression failed' }
           cargo test --locked --target x86_64-pc-windows-msvc -p hiroute-local-storage --lib migrations::startup_recovery::tests -- --test-threads=1
           if ($LASTEXITCODE -ne 0) { throw 'Windows startup recovery regressions failed' }
+          cargo test --locked --target x86_64-pc-windows-msvc -p hiroute-local-storage --lib control::capability_registration::tests -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows grant admission component regressions failed' }
           cargo test --locked --target x86_64-pc-windows-msvc -p hiroute-cli --lib service::recovery_text_tests -- --test-threads=1
           if ($LASTEXITCODE -ne 0) { throw 'Windows recovery source path regression failed' }
       - name: Check Windows console shell and its restricted host commands

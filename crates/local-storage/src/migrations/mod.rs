@@ -685,7 +685,7 @@ fn database_version(path: &Path) -> Result<Option<u32>, LocalStorageError> {
     )?))
 }
 
-fn open_existing_for_snapshot(path: &Path) -> Result<Connection, LocalStorageError> {
+pub(crate) fn open_existing_for_snapshot(path: &Path) -> Result<Connection, LocalStorageError> {
     validate_owner_file(path)?;
     Ok(Connection::open_with_flags(
         path,

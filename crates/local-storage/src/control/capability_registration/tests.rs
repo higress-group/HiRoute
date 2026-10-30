@@ -195,3 +195,117 @@ fn rejected_expiry_and_duplicate_are_errors_not_busy_or_success() {
     assert_eq!(grants(&stores), 1);
     assert_eq!(busy_policy(&stores), original_policy);
 }
+
+#[test]
+fn launcher_registrar_retains_startup_ownership_and_exact_durable_registration() {
+    let directory = crate::test_tempdir().unwrap();
+    let root = directory.path().join("storage");
+    let stores = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+    let registrar = stores.open_launcher_capability_registrar().unwrap();
+    assert_eq!(
+        registrar
+            .connection
+            .lock()
+            .unwrap()
+            .pragma_query_value(None, "synchronous", |r| r.get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    let blocker = Connection::open(root.join("live/control.db")).unwrap();
+    blocker.execute_batch("BEGIN IMMEDIATE").unwrap();
+    let token = "e".repeat(64);
+    let started = std::time::Instant::now();
+    let result = registrar.try_register(registration(&token, now() + 60));
+    blocker.execute_batch("ROLLBACK").unwrap();
+    assert!(started.elapsed() < Duration::from_millis(500));
+    assert_eq!(result.unwrap(), ApplyCapabilityRegistrationOutcome::Busy);
+    assert_eq!(grants(&stores), 0);
+    let guard = registrar.connection.lock().unwrap();
+    assert_eq!(
+        registrar
+            .try_register(registration(&token, now() + 60))
+            .unwrap(),
+        ApplyCapabilityRegistrationOutcome::Busy
+    );
+    drop(guard);
+    assert_eq!(
+        registrar
+            .try_register(registration(&token, now() - 1))
+            .unwrap_err()
+            .code,
+        PortErrorCode::PermissionDenied
+    );
+    assert_eq!(
+        registrar
+            .try_register(registration(&token, now() + 60))
+            .unwrap(),
+        ApplyCapabilityRegistrationOutcome::Registered
+    );
+    assert!(
+        registrar
+            .try_register(registration(&token, now() + 60))
+            .is_err()
+    );
+    assert_eq!(grants(&stores), 1);
+    drop(stores);
+    assert!(
+        matches!(LocalStorageSet::open_for_daemon_startup(&root), Err(LocalStorageError::Recovery { recovery, .. }) if recovery.cause == hiroute_host_runtime::StorageRecoveryCause::Locked)
+    );
+    drop(registrar);
+    let stores = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+    let capability = ProtectedApplyCapability::new(token).unwrap();
+    assert!(
+        stores
+            .control()
+            .verify_apply_authorization(
+                &capability,
+                &WorkspaceId::default(),
+                "interactive-user",
+                "ListSessionsV2",
+                &CanonicalDigest::of_bytes(b"exact query"),
+                &revisions()
+            )
+            .is_ok()
+    );
+    assert!(
+        stores
+            .control()
+            .verify_apply_authorization(
+                &capability,
+                &WorkspaceId::default(),
+                "interactive-user",
+                "ListSessionsV2",
+                &CanonicalDigest::of_bytes(b"wrong query"),
+                &revisions()
+            )
+            .is_err()
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn launcher_registrar_refuses_missing_or_replaced_control_without_creating_or_changing_it() {
+    let directory = crate::test_tempdir().unwrap();
+    let root = directory.path().join("storage");
+    let stores = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+    let path = root.join("live/control.db");
+    let original = root.join("live/control.retained");
+    std::fs::rename(&path, &original).unwrap();
+    assert!(stores.open_launcher_capability_registrar().is_err());
+    assert!(!path.exists(), "the registrar must never create a database");
+    std::fs::write(&path, b"foreign-file-must-not-change").unwrap();
+    assert!(stores.open_launcher_capability_registrar().is_err());
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        b"foreign-file-must-not-change"
+    );
+    std::fs::remove_file(&path).unwrap();
+    std::fs::rename(&original, &path).unwrap();
+    let registrar = stores.open_launcher_capability_registrar().unwrap();
+    assert_eq!(
+        registrar
+            .try_register(registration(&"f".repeat(64), now() + 60))
+            .unwrap(),
+        ApplyCapabilityRegistrationOutcome::Registered
+    );
+}

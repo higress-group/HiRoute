@@ -255,6 +255,8 @@ copy and verification; key/journal durability and old recovery formats are uncha
 Native grant admission belongs to
 [`Control capability registration`](../../crates/local-storage/src/control/capability_registration.rs)
 and the daemon's [protected exchange](../../crates/daemon/src/control/protected_exchange.rs).
+Its launcher-only connection retains the admitted Control identity and startup owner;
+unrelated Runtime/Secrets reads do not participate in grant admission.
 The [Desktop channel](../../apps/desktop/src-tauri/src/bootstrap/channel.rs) distinguishes
 an exact unregistered busy reply from lost framing; success still follows durable
 registration, and recovery never replays the original business request. Representative

@@ -124,6 +124,7 @@ pub struct ControlStore {
 
 pub use capability_registration::{
     ApplyCapabilityRegistrar, ApplyCapabilityRegistrationOutcome, ApplyCapabilityRegistrationV1,
+    LauncherCapabilityRegistrar,
 };
 
 impl ControlStore {
