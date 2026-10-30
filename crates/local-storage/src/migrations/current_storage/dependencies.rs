@@ -23,8 +23,8 @@ pub(super) fn validate(
         .map_err(|_| LocalStorageError::InvalidData)?;
     let connection = control.connection.borrow();
     let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if version >= 34 {
-        super::super::subscription_api_v34::validate_links(&connection)?;
+    if version >= 35 {
+        super::super::subscription_api_v35::validate_links(&connection)?;
     }
     let pending = crate::control::current_dependencies::validate_recovery_members(&connection)
         .map_err(|_| LocalStorageError::InvalidData)?;

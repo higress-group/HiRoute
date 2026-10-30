@@ -4,15 +4,16 @@ use hiroute_gateway_core::core::execution_plan::{CredentialRef, ResolvedTargetBi
 
 use crate::ports::CredentialLeaseRequest;
 use crate::server::composition::{PortError, ProductionPorts};
-use crate::server::publication::{SealedCandidateExecutionV1, lease_target};
+use crate::server::publication::PreparedCandidateExecution;
 use crate::server::request_plan::AuthorizedRequestPlan;
 
 pub(super) fn bind_current(
     ports: &ProductionPorts,
     authorized: &mut AuthorizedRequestPlan,
     binding: ResolvedTargetBindingId,
-    execution: &SealedCandidateExecutionV1,
+    prepared: &PreparedCandidateExecution,
 ) -> Result<bool, PortError> {
+    let execution = prepared.execution();
     if execution.connector_runtime != hiroute_domain::ConnectorRuntimeKind::BuiltinNative {
         return Ok(true);
     }
@@ -34,8 +35,8 @@ pub(super) fn bind_current(
         .credential_refs
         .first()
         .ok_or(PortError::Rejected)?;
-    let target = lease_target::for_request(execution, profile).map_err(|_| PortError::Rejected)?;
-    let digest = hiroute_domain::CanonicalDigest::of(&target).map_err(|_| PortError::Rejected)?;
+    let target = prepared.lease_target();
+    let digest = prepared.lease_target_digest();
     let destination = profile
         .native_target
         .as_ref()

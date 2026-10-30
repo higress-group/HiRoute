@@ -9,6 +9,12 @@ fn real_process_decision_services_and_branch_publication() {
     run_script("decision_services_product.py");
 }
 
+/// A real daemon, protected source pool and synthetic OpenAI Decisions loopback.
+#[test]
+fn real_process_versioned_decision_connections_use_exact_source_keys() {
+    run_script("decision_connections_v2_product.py");
+}
+
 /// Route actual model requests and inspect C facts through the existing product query.
 #[test]
 fn real_process_c_routing_execution_and_retained_observations() {

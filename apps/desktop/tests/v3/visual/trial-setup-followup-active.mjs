@@ -287,7 +287,7 @@ try {
   await run('save.user-declared-binding', async () => {
     await open('saved-user-declared=1');
     const catalogReads=await evaluate(client, `trialTrace.filter(x=>x.command==='model_availability').length`);
-    const serviceReads=await evaluate(client, `trialTrace.filter(x=>x.command==='decision_services').length`);
+    const serviceReads=await evaluate(client, `trialTrace.filter(x=>x.command==='decision_services_v2').length`);
     await saveConnection();
     await waitFor(client, `!!document.querySelector('.trial-recovery')`);
     await waitFor(client, `!document.querySelector('.trial-recovery button:disabled')`);
@@ -298,7 +298,7 @@ try {
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='check_registered_model_connection').some(x=>x.payload.request.inference_model_id)`),false);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='model_availability').length`),catalogReads,'unlinked save does not synchronously reread unrelated catalog history');
-    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='decision_services').length`),serviceReads,'saved model selection does not wait for unrelated decision services');
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='decision_services_v2').length`),serviceReads,'saved model selection does not wait for unrelated decision services');
   });
   await run('save.unlinked-id-never-becomes-catalog-proof', async () => {
     await open('saved-user-declared=1&saved-id-collision=1'); await saveConnection();

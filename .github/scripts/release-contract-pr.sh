@@ -43,8 +43,9 @@ python3 "$root/scripts/release-contracts.py" record --repo "$root" \
   "$@" \
   --release-json "$scratch/release.json" --revision "$RELEASE_REVISION" \
   --repository "$GH_REPO" > /dev/null
-if [[ -z $(git -C "$worktree" status --porcelain -- contracts/releases) ]]; then
-  echo 'Published contract snapshot is already recorded on main.'
+python3 "$root/scripts/product-version.py" advance --repo "$worktree" > /dev/null
+if [[ -z $(git -C "$worktree" status --porcelain) ]]; then
+  echo 'Published contract snapshot and next development version are already recorded on main.'
   exit 0
 fi
 git worktree remove --force "$worktree"
@@ -59,16 +60,25 @@ fi
 
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+python3 "$root/scripts/product-version.py" paths > "$scratch/version-paths"
 if git ls-remote --exit-code --heads origin "$branch" > "$scratch/remote-ref"; then
   git fetch origin "$branch:refs/remotes/origin/$branch"
-  changed=$(git diff --name-only "origin/main...origin/$branch")
-  if [[ -n "$changed" ]] && ! python3 -c \
-    'import sys; raise SystemExit(any(not p.startswith("contracts/releases/") for p in sys.stdin.read().splitlines()))' <<< "$changed"; then
-    echo 'Existing automation branch contains unrelated changes.' >&2
-    exit 1
-  fi
   git worktree add --detach "$worktree" "origin/$branch"
-  git -C "$worktree" merge --no-edit --signoff origin/main
+  python3 "$root/scripts/product-version.py" scope --repo "$worktree" --base origin/main > /dev/null
+  if ! git -C "$worktree" merge-base --is-ancestor origin/main HEAD; then
+    # Scope proved these files differ from the common ancestor only in owned
+    # version fields. Remove that projection before merging so main's newer
+    # version, dependencies and generated contracts merge normally. Advance it
+    # again below against the merged release ledger, without rewriting history.
+    ancestor=$(git -C "$worktree" merge-base origin/main HEAD)
+    while IFS= read -r path; do
+      git -C "$worktree" restore --source "$ancestor" --staged --worktree -- "$path"
+    done < "$scratch/version-paths"
+    if ! git -C "$worktree" diff --cached --quiet; then
+      git -C "$worktree" commit -s -m "chore(release): refresh version projection before merging main"
+    fi
+    git -C "$worktree" merge --no-edit --signoff origin/main
+  fi
 else
   status=$?
   [[ "$status" == 2 ]] || exit "$status"
@@ -82,9 +92,14 @@ python3 "$root/scripts/release-contracts.py" record --repo "$root" \
   --repository "$GH_REPO" > /dev/null
 python3 "$root/scripts/release-contracts.py" check --repo "$root" \
   --directory "$worktree/contracts/releases" --base origin/main > /dev/null
+python3 "$root/scripts/product-version.py" advance --repo "$worktree" > /dev/null
+python3 "$root/scripts/product-version.py" check --repo "$worktree" > /dev/null
 git -C "$worktree" add -- contracts/releases
+while IFS= read -r path; do
+  git -C "$worktree" add -- "$path"
+done < "$scratch/version-paths"
 if ! git -C "$worktree" diff --cached --quiet; then
-  git -C "$worktree" commit -s -m "chore(release): record contracts for $RELEASE_TAG"
+  git -C "$worktree" commit -s -m "chore(release): record $RELEASE_TAG and prepare development version"
 fi
 gh auth setup-git
 git -C "$worktree" push origin "HEAD:refs/heads/$branch"
@@ -98,10 +113,13 @@ including storage schema, frozen contract descriptors and installer identities.
 
 The release publication and package-verification jobs succeeded before this update.
 Merging this PR advances the recorded stable baseline when this is a newer stable release;
-previous snapshots remain immutable, including revision-bound archives when an explicitly
+it also prepares the next patch development version when main has not already advanced,
+keeping all shipped components and lockfiles consistent without lowering a newer planned version.
+The Local Control schema and its contract digest follow the same product version.
+Previous snapshots remain immutable, including revision-bound archives when an explicitly
 authorized unpromoted release is replaced. This inventory does not claim migration acceptance.
 
-Validation: deterministic snapshot generation and frozen-source/index verification.
+Validation: deterministic snapshot generation, frozen-source/index verification and product version consistency.
 EOF
   gh pr create --repo "$GH_REPO" --base main --head "$branch" \
     --title "chore(release): record contracts for $RELEASE_TAG" --body-file "$scratch/body.md"

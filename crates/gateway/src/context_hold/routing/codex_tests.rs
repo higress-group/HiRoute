@@ -20,6 +20,29 @@ fn known_headers() -> HeaderMap {
 }
 
 #[test]
+fn compact_context_document_preserves_codex_metadata_and_conflicts() {
+    for value in [
+        metadata(json!("thread:1")),
+        metadata(Value::Null),
+        json!({"request_kind":"memory"}),
+    ] {
+        let mut body = document(value);
+        body["input"] = json!([{"role":"user","content":"large-history".repeat(4096)}]);
+        for conflict in [false, true] {
+            if conflict {
+                body["client_metadata"]["session_id"] = json!("different");
+            }
+            let compact = crate::context_hold::context_document(&body);
+            assert!(compact.get("input").is_none());
+            assert_eq!(
+                facts(&known_headers(), &compact),
+                facts(&known_headers(), &body)
+            );
+        }
+    }
+}
+
+#[test]
 fn codex_window_counter_is_negative_evidence_and_unknown_shapes_stay_conservative() {
     for (window, expected) in [
         (json!("thread:0"), Some(0)),

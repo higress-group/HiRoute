@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 mod apply_file;
 mod decision;
+mod decision_v2;
 mod flags;
 mod navigation;
 mod plan_restore;
@@ -19,6 +20,9 @@ pub(crate) const HELP: &str = "HiRoute Quickstart\n\nUsage\n  hiroute quickstart
 
 pub(crate) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExecution> {
     if let Some(execution) = decision::execute(arguments, globals) {
+        return Some(execution);
+    }
+    if let Some(execution) = decision_v2::execute(arguments, globals) {
         return Some(execution);
     }
     if arguments.first().is_none_or(|v| v != "quickstart") {
@@ -57,6 +61,8 @@ pub(crate) fn preview_command(
             | "agents.restore.preview"
             | "decision.services.apply"
             | "decision.services.test"
+            | "decision.connections.apply"
+            | "decision.connections.test"
     ) {
         return None;
     }
@@ -75,7 +81,11 @@ pub(crate) fn preview_command(
     let result: Result<Reply> = (|| {
         validate_globals(globals)?;
         let (options, path, key) = flags::submission(options)?;
-        if command == "decision.services.test" && path.is_some() {
+        if matches!(
+            command,
+            "decision.services.test" | "decision.connections.test"
+        ) && path.is_some()
+        {
             return Err(error(ErrorCode::InvalidArguments));
         }
         let client = client(globals)?;
@@ -85,8 +95,10 @@ pub(crate) fn preview_command(
         } else {
             preview::prepare(&client, command, &options)?
         };
-        if command == "decision.services.apply"
-            && path.is_some()
+        if matches!(
+            command,
+            "decision.services.apply" | "decision.connections.apply"
+        ) && path.is_some()
             && payload.get("accept_digest").is_some()
         {
             return Err(choices(

@@ -589,7 +589,7 @@ where
         // effect URL from the generic setup command.
         if !matches!(
             request.spec.command_id.as_str(),
-            "routing.apply" | "decision.services.apply"
+            "routing.apply" | "decision.services.apply" | "decision.connections.apply"
         ) {
             validate_feature_gate(&request.spec.desired_state)?;
         }

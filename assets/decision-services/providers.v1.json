@@ -5,6 +5,7 @@
     { "id": "bailian-workspace", "name": "百炼业务空间", "endpoint": "", "model": "decision-model-preview" },
     { "id": "openrouter", "name": "OpenRouter", "endpoint": "https://openrouter.ai/api/alpha/decisions", "model": "typesafe/jev-1.13" },
     { "id": "typesafe", "name": "TypeSafe", "endpoint": "https://api.typesafe.ai/v1/systemone", "model": "jev-latest" },
+    { "id": "openai", "name": "OpenAI Decisions", "endpoint": "https://api.openai.com/v1/decisions", "model": "gpt-6-luna", "wire_protocol": "openai_decisions" },
     { "id": "compatible", "name": "System One 兼容", "endpoint": "", "model": "" }
   ]
 }

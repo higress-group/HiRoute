@@ -1,8 +1,8 @@
 //! Immutable connection versions, committed with the existing terminal Operation transaction.
 use super::ControlStore;
 use hiroute_domain::{
-    DecisionServiceChangeV1, DecisionServiceV1, OperationState, OperationV1, PortError,
-    PortErrorCode, PortResult, WorkspaceId,
+    DecisionServiceChangeV1, DecisionServiceRecord, DecisionServiceV1, OperationState, OperationV1,
+    PortError, PortErrorCode, PortResult, WorkspaceId,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
@@ -13,14 +13,59 @@ fn invalid() -> PortError {
 fn storage() -> PortError {
     PortError::new(PortErrorCode::Unavailable, "decision_service.storage")
 }
+fn client_version_required() -> PortError {
+    PortError::new(
+        PortErrorCode::Conflict,
+        "decision_service.client_version_required",
+    )
+}
 
 impl ControlStore {
+    pub fn decision_service_versions(
+        &self,
+        workspace: &WorkspaceId,
+        id: &str,
+    ) -> PortResult<Vec<DecisionServiceRecord>> {
+        let connection = self.connection.borrow();
+        let mut statement = connection.prepare("SELECT revision,service_json FROM decision_services WHERE workspace_id=?1 AND service_id=?2 ORDER BY revision")
+            .map_err(|_| storage())?;
+        let rows = statement
+            .query_map(params![workspace.as_str(), id], |row| {
+                Ok((row.get::<_, u64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|_| storage())?;
+        rows.map(|row| {
+            let (revision, encoded) = row.map_err(|_| storage())?;
+            let record: DecisionServiceRecord =
+                serde_json::from_str(&encoded).map_err(|_| invalid())?;
+            if !record.validate() || record.id() != id || record.revision() != revision {
+                return Err(invalid());
+            }
+            Ok(record)
+        })
+        .collect()
+    }
+
     pub fn decision_service(
         &self,
         workspace: &WorkspaceId,
         id: &str,
         revision: u64,
     ) -> PortResult<Option<DecisionServiceV1>> {
+        self.decision_service_record(workspace, id, revision)?
+            .map(|value| match value {
+                DecisionServiceRecord::V1(service) => Ok(service),
+                DecisionServiceRecord::V2(_) => Err(client_version_required()),
+            })
+            .transpose()
+    }
+
+    pub fn decision_service_record(
+        &self,
+        workspace: &WorkspaceId,
+        id: &str,
+        revision: u64,
+    ) -> PortResult<Option<DecisionServiceRecord>> {
         let connection = self.connection.borrow();
         let encoded: Option<String> = connection.query_row(
             "SELECT service_json FROM decision_services WHERE workspace_id=?1 AND service_id=?2 AND revision=?3",
@@ -29,9 +74,9 @@ impl ControlStore {
         ).optional().map_err(|_| storage())?;
         encoded
             .map(|encoded| {
-                let value: DecisionServiceV1 =
+                let value: DecisionServiceRecord =
                     serde_json::from_str(&encoded).map_err(|_| invalid())?;
-                if !value.validate() || value.id != id || value.revision != revision {
+                if !value.validate() || value.id() != id || value.revision() != revision {
                     return Err(invalid());
                 }
                 Ok(value)
@@ -40,15 +85,35 @@ impl ControlStore {
     }
 
     pub fn decision_services(&self, workspace: &WorkspaceId) -> PortResult<Vec<DecisionServiceV1>> {
+        self.decision_service_records(workspace)?
+            .into_iter()
+            .map(|value| match value {
+                DecisionServiceRecord::V1(service) => Ok(service),
+                DecisionServiceRecord::V2(_) => Err(client_version_required()),
+            })
+            .collect()
+    }
+
+    pub fn decision_service_records(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> PortResult<Vec<DecisionServiceRecord>> {
         let connection = self.connection.borrow();
-        let mut statement = connection.prepare("SELECT service_json FROM decision_services d WHERE workspace_id=?1 AND revision=(SELECT MAX(revision) FROM decision_services WHERE workspace_id=d.workspace_id AND service_id=d.service_id) ORDER BY service_id").map_err(|_| storage())?;
+        let mut statement = connection.prepare("SELECT service_id, revision, service_json FROM decision_services d WHERE workspace_id=?1 AND revision=(SELECT MAX(revision) FROM decision_services WHERE workspace_id=d.workspace_id AND service_id=d.service_id) ORDER BY service_id").map_err(|_| storage())?;
         let rows = statement
-            .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
+            .query_map([workspace.as_str()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, u64>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
             .map_err(|_| storage())?;
         rows.map(|row| {
-            let value: DecisionServiceV1 =
-                serde_json::from_str(&row.map_err(|_| storage())?).map_err(|_| invalid())?;
-            if !value.validate() {
+            let (id, revision, encoded) = row.map_err(|_| storage())?;
+            let value: DecisionServiceRecord =
+                serde_json::from_str(&encoded).map_err(|_| invalid())?;
+            if !value.validate() || value.id() != id || value.revision() != revision {
                 return Err(invalid());
             }
             Ok(value)
@@ -90,28 +155,30 @@ fn check(
             "decision_service.revision_conflict",
         ));
     }
-    if change.service.is_none() {
-        for sql in [
-            "SELECT version_json FROM plan_versions WHERE workspace_id=?1",
-            "SELECT draft_json FROM plan_drafts WHERE workspace_id=?1",
-        ] {
-            let mut statement = connection.prepare(sql).map_err(|_| storage())?;
-            let rows = statement
-                .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
-                .map_err(|_| storage())?;
-            for row in rows {
-                let value: Value =
-                    serde_json::from_str(&row.map_err(|_| storage())?).map_err(|_| invalid())?;
-                if references(&value, &change.id) {
-                    return Err(PortError::new(
-                        PortErrorCode::Conflict,
-                        "decision_service.in_use",
-                    ));
-                }
-            }
+    let latest: Option<String> = connection
+        .query_row(
+            "SELECT service_json FROM decision_services WHERE workspace_id=?1 AND service_id=?2 ORDER BY revision DESC LIMIT 1",
+            params![workspace.as_str(), change.id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|_| storage())?;
+    if let Some(encoded) = latest {
+        let current: DecisionServiceRecord =
+            serde_json::from_str(&encoded).map_err(|_| invalid())?;
+        if matches!(current, DecisionServiceRecord::V2(_)) {
+            return Err(client_version_required());
         }
-    } else if change.input_slot.is_some() {
-        let service = change.service.as_ref().ok_or_else(invalid)?;
+    }
+    if change.service.is_none() && references(connection, workspace, &change.id)? {
+        return Err(PortError::new(
+            PortErrorCode::Conflict,
+            "decision_service.in_use",
+        ));
+    }
+    if let Some(service) = &change.service
+        && change.input_slot.is_some()
+    {
         let reference = &service
             .connection
             .transport()
@@ -126,12 +193,10 @@ fn check(
             .query_map([workspace.as_str()], |row| row.get::<_, String>(0))
             .map_err(|_| storage())?;
         for row in rows {
-            let old: DecisionServiceV1 =
+            let old: DecisionServiceRecord =
                 serde_json::from_str(&row.map_err(|_| storage())?).map_err(|_| invalid())?;
             if old
-                .connection
-                .transport()
-                .2
+                .auth_header()
                 .is_some_and(|header| &header.value_secret_ref == reference)
             {
                 return Err(invalid());
@@ -141,20 +206,16 @@ fn check(
     Ok(())
 }
 
-fn references(value: &Value, id: &str) -> bool {
-    match value {
-        Value::Object(map) => {
-            (map.get("kind").and_then(Value::as_str) == Some("decision_service")
-                && map
-                    .get("service")
-                    .and_then(|s| s.get("id"))
-                    .and_then(Value::as_str)
-                    == Some(id))
-                || map.values().any(|v| references(v, id))
-        }
-        Value::Array(values) => values.iter().any(|v| references(v, id)),
-        _ => false,
-    }
+pub(super) fn references(
+    connection: &Connection,
+    workspace: &WorkspaceId,
+    id: &str,
+) -> PortResult<bool> {
+    connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM decision_plan_references WHERE workspace_id=?1 AND service_id=?2)",
+        params![workspace.as_str(), id],
+        |row| row.get(0),
+    ).map_err(|_| storage())
 }
 
 pub(super) fn finish(connection: &Connection, operation: &OperationV1) -> PortResult<()> {
@@ -214,7 +275,10 @@ mod tests {
 
     fn connection() -> Connection {
         let connection = Connection::open_in_memory().unwrap();
-        connection.execute_batch("CREATE TABLE decision_services(workspace_id TEXT,service_id TEXT,revision INTEGER,service_json TEXT); CREATE TABLE plan_versions(workspace_id TEXT,version_json TEXT); CREATE TABLE plan_drafts(workspace_id TEXT,draft_json TEXT);").unwrap();
+        connection.execute_batch("CREATE TABLE decision_services(workspace_id TEXT,service_id TEXT,revision INTEGER,service_json TEXT); CREATE TABLE plan_versions(workspace_id TEXT,plan_id TEXT,content_revision INTEGER,version_json TEXT); CREATE TABLE plan_drafts(workspace_id TEXT,draft_id TEXT,draft_json TEXT);").unwrap();
+        connection
+            .execute_batch(crate::migrations::decision_sources_v34::CONTROL)
+            .unwrap();
         connection
     }
     fn service() -> DecisionServiceV1 {
@@ -272,6 +336,59 @@ mod tests {
                 .unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn mixed_records_preserve_old_bytes_and_refuse_legacy_list() {
+        let root = crate::test_tempdir().unwrap();
+        let storage = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let control = storage.control();
+        let workspace = WorkspaceId::default();
+        let first = service();
+        let old_bytes = serde_json::to_string(&first).unwrap();
+        let current = json!({
+            "schema": "hiroute.decision-service/v2",
+            "id": first.id, "revision": 2, "name": "Shared decision",
+            "connection": {
+                "kind": "native", "provider": "openai", "wire_protocol": "openai_decisions",
+                "model": "gpt-6-luna", "endpoint": "https://example.test/v1/decisions",
+                "timeout_ms": 1000,
+                "authentication": { "kind": "shared_source", "source_id": "source/example",
+                    "source_lineage_digest": format!("sha256:{}", "1".repeat(64)) }
+            }
+        });
+        for (revision, encoded) in [(1, old_bytes.clone()), (2, current.to_string())] {
+            control.connection.borrow().execute(
+                "INSERT INTO decision_services(workspace_id,service_id,revision,service_json) VALUES(?1,?2,?3,?4)",
+                params![workspace.as_str(), first.id, revision, encoded],
+            ).unwrap();
+        }
+        assert_eq!(
+            control.decision_service(&workspace, &first.id, 1).unwrap(),
+            Some(first.clone())
+        );
+        assert!(matches!(
+            control
+                .decision_service_record(&workspace, &first.id, 2)
+                .unwrap(),
+            Some(DecisionServiceRecord::V2(_))
+        ));
+        assert!(matches!(
+            control
+                .decision_service_records(&workspace)
+                .unwrap()
+                .as_slice(),
+            [DecisionServiceRecord::V2(_)]
+        ));
+        assert_eq!(
+            control.decision_services(&workspace).unwrap_err().context,
+            "decision_service.client_version_required"
+        );
+        let stored: String = control.connection.borrow().query_row(
+            "SELECT service_json FROM decision_services WHERE workspace_id=?1 AND service_id=?2 AND revision=1",
+            params![workspace.as_str(), first.id], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(stored, old_bytes);
     }
     #[test]
     fn decision_service_edits_require_cas_and_never_overwrite_published_credentials() {
@@ -332,11 +449,13 @@ mod tests {
             };
             check(&connection, &workspace, &change).unwrap();
             let frozen = json!({"strategy":{"routing":{"classifier":{"kind":"decision_service","service":service}}}});
+            let sql = if table == "plan_drafts" {
+                "INSERT INTO plan_drafts(workspace_id,draft_id,draft_json) VALUES(?1,'draft/one',?2)"
+            } else {
+                "INSERT INTO plan_versions(workspace_id,plan_id,content_revision,version_json) VALUES(?1,'plan/one',1,?2)"
+            };
             connection
-                .execute(
-                    &format!("INSERT INTO {table} VALUES(?1,?2)"),
-                    params![workspace.as_str(), frozen.to_string()],
-                )
+                .execute(sql, params![workspace.as_str(), frozen.to_string()])
                 .unwrap();
             assert!(check(&connection, &workspace, &change).is_err());
             connection

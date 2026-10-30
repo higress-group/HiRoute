@@ -8,6 +8,146 @@ const CLASSIFIER_OPENAPI_FILENAME: &str = "hiroute-decision.openapi.json";
 const CLASSIFIER_OPENAPI: &str =
     include_str!("../../../../../decision-extensions/api/decision.openapi.json");
 
+#[tauri::command]
+pub(super) async fn decision_connection_sources(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> Result<DecisionConnectionSourcesV1, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        visible: &visible,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::decision_connection_sources(&context, &product_state).await
+}
+
+#[tauri::command]
+pub(super) async fn decision_services_v2(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> Result<DecisionServicesV2, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        visible: &visible,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::decision_services_v2(&context, &product_state).await
+}
+
+#[tauri::command]
+pub(super) async fn save_decision_service_v2(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: DecisionServiceSaveInputV2,
+) -> Result<ApplyResultV1, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        visible: &visible,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::save_decision_service_v2(&context, &product_state, input)
+        .await
+}
+
+#[tauri::command]
+pub(super) async fn test_decision_service_v2(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: DecisionServiceTestRequestV2,
+) -> Result<DecisionServiceTestResultV2, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        visible: &visible,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::test_decision_service_v2(&context, &product_state, input)
+        .await
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum ClassifierOpenApiSaveOutcome {

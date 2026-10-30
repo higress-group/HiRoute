@@ -18,6 +18,26 @@ already-ended gaps; every overlapping gap still retains its scope, loss status
 and reason when split. Current-store reopen installs this derived index without
 rewriting evidence, resetting history or changing the physical format version.
 
+`text_index/sources` coalesces newly eligible content into one earliest-row
+watermark in the existing metadata store. SQLite notifications commit with blob,
+reference and derived-index changes, including peer writers and late completion.
+Ordinary fact updates and references to already indexed bytes do not restart a
+history scan. The worker retains its bounded selection/processing limits and makes
+one bounded full pass after restart; opening the store only installs notifications.
+Missing or invalid source content still cannot publish a successful search hit.
+
+`store/blob_gc` bounds background orphan discovery to 256 ordered blob identities
+and removal to 32 candidates per pass, using the existing covering and live-reference
+indexes. The process-local cursor advances only after successful collection;
+completed sweeps and errors wait five seconds, while unfinished sweeps yield for at
+least 250 ms. A large live history therefore spreads discovery over multiple ticks
+instead of rescanning it on every idle pass. Changes behind the cursor are revisited
+on the next sweep, and restart begins at the first identity. Candidate discovery
+reuses one read connection per maintenance worker, releasing its snapshot after
+each page so capture and WAL page release remain independent. The existing writer-transaction reference and capacity
+protection checks still authorize every deletion. Explicit user deletion and capacity
+retirement retain their existing collection paths; no new persisted state is needed.
+
 `StageAssessmentRecordedV1` retains joint quality under one frozen native rubric
 without assigning a model or profile. It uses the existing nullable stage projection
 and immutable history membership. Complete joint assessments count as scored stages;
@@ -97,3 +117,9 @@ indexes. Optional routing summaries run first in the same read transaction so
 their ordered identity scan precedes stage drill-down. The readers retain the
 1 s deadline, streaming row/byte limits, and existing missing/deleted/corrupt evidence rules. These indexes are
 rebuildable; opening an existing current-format store does not rewrite history.
+
+Text/session search and text-filtered analysis share a 5 s absolute query budget,
+including admission, index readiness and nested readers. Ordinary observation
+reads keep their 1 s default. A nested reader cannot extend an earlier deadline;
+reader permits, SQLite lock-wait limits, cancellation, authorization and cursor
+bindings retain their existing behavior.

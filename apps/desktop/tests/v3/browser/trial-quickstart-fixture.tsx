@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { TrialQuickStart } from '../../../src/features/trial/TrialQuickStart';
 import { NewModels } from '../../../src/features/trial/NewModels';
-import { readyDesktop, readyAgents, readyManagement, dailyPlan, fixturePlanAuthoring, mockProductInvoke } from './product-fixtures';
+import { readyDesktop, readyAgents, readyManagement, dailyPlan, fixtureDecisionView, fixturePlanAuthoring, mockProductInvoke } from './product-fixtures';
 import { PlanEditor } from '../../../src/plan-editor';
 import type { DesktopOperation, DesktopSnapshot } from '../../../src/product/home-projections';
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
@@ -162,10 +162,10 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
  if(command==='model_feed_status') return structuredClone(feedStatus);
  if(command==='model_feed_settings_apply') {if(payload.input.retrieval_enabled!==undefined) feedStatus.retrieval_enabled=payload.input.retrieval_enabled; if(payload.input.acknowledge_disclosure) feedStatus.disclosure_acknowledged=true; return structuredClone(feedStatus);}
  if(command==='agent_snapshot') return structuredClone(agents);
- if(command==='decision_services') {
+ if(command==='decision_services_v2') {
   if (setupControl.holdNextDecision) { setupControl.holdNextDecision=false; await new Promise<void>(release=>setupControl.pendingDecision.push(release)); }
   const native=params.has('native')?{...decision,connection:{kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:10000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}}}:decision;
-  return {services:params.has('custom-service')?[native,{...decision,id:'decision/custom-fixture',name:'Saved extension'}]:[native]};
+  return {services:(params.has('custom-service')?[native,{...decision,id:'decision/custom-fixture',name:'Saved extension'}]:[native]).map(service=>fixtureDecisionView(service as any))};
  }
  if(command==='plan_editor_options') {
   const value:any = await mockProductInvoke(command,payload,'ready');

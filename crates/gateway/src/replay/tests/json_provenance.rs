@@ -2,6 +2,67 @@ use super::*;
 use crate::content_ref::ContentRef;
 
 #[test]
+fn serialized_ranges_keep_exact_offsets_and_escaped_lengths_across_spill() {
+    let text = "路由🦀\n\"\\\u{1}".repeat(4096);
+    // Frozen expected syntax is independent of Replay's serializer/counters.
+    let expected = format!(
+        "{{\"a\":[true,null,-12,1.5],\"z\":\"{}\"}}",
+        "路由🦀\\n\\\"\\\\\\u0001".repeat(4096)
+    );
+    for threshold in [31, 1024 * 1024] {
+        let root = TestRoot::new("json-range-lengths");
+        let manager = ReplayManager::open(config(&root.0, threshold, 31)).unwrap();
+        let budget = budget();
+        let store = manager.begin_request(budget.clone()).unwrap();
+        let mut pool = store.begin_content_pool().unwrap();
+        let before = pool.append(b"left").unwrap();
+        let value = serde_json::json!({"z":text,"a":[true,null,-12,1.5]});
+        let json = pool.append_canonical_json(&value).unwrap();
+        let after = pool.append(b"right").unwrap();
+        pool.seal().unwrap();
+        assert_eq!(json.byte_offset(), before.byte_len());
+        assert_eq!(after.byte_offset(), json.byte_offset() + json.byte_len());
+        assert_eq!(read_all(&store, &json), expected.as_bytes());
+        let escaped = serde_json::to_string(&expected).unwrap();
+        assert_eq!(json.json_escaped_len(), (escaped.len() - 2) as u64);
+        assert_eq!(read_all(&store, &before), b"left");
+        assert_eq!(read_all(&store, &after), b"right");
+        assert_eq!(store.snapshot().disk_backed, threshold == 31);
+        drop(store);
+        assert_eq!(budget.snapshot().unwrap().live, 0);
+    }
+}
+
+#[test]
+fn concurrent_serialized_ranges_share_the_existing_request_memory_ceiling() {
+    let root = TestRoot::new("json-concurrent-ranges");
+    let manager = ReplayManager::open(config(&root.0, 64 * 1024, 4 * 1024)).unwrap();
+    let budget = budget();
+    let store = manager.begin_request(budget.clone()).unwrap();
+    let threads = (0..8)
+        .map(|_| {
+            let store = store.clone();
+            std::thread::spawn(move || {
+                let text = "escaped\n\"\\🦀".repeat(4096);
+                let value = serde_json::json!({"a":text});
+                let mut pool = store.begin_content_pool().unwrap();
+                let reference = pool.append_canonical_json(&value).unwrap();
+                pool.seal().unwrap();
+                (reference, serde_json::to_vec(&value).unwrap())
+            })
+        })
+        .collect::<Vec<_>>();
+    for thread in threads {
+        let (reference, expected) = thread.join().unwrap();
+        assert_eq!(read_all(&store, &reference), expected);
+    }
+    assert!(store.snapshot().disk_backed);
+    assert!(store.snapshot().memory_retained_bytes <= 64 * 1024);
+    drop(store);
+    assert_eq!(budget.snapshot().unwrap().live, 0);
+}
+
+#[test]
 fn canonical_json_provenance_belongs_only_to_the_exact_registered_range() {
     for threshold in [64, 64 * 1024] {
         let root = TestRoot::new("json-provenance");

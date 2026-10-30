@@ -1,9 +1,9 @@
 //! Comparable accepted response boundaries. Unsupported output loses an edge,
 //! never capture or forwarding. Input text alone cannot establish this edge.
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::io::Write;
 
-use sha2::{Digest, Sha256};
+use crate::runtime_fingerprint::RuntimeHash;
 
 use crate::content_ref::{ContentValueExt, unsigned_messages_thinking_text};
 use crate::context_hold::fingerprint::FingerprintBudget;
@@ -27,7 +27,7 @@ pub(super) struct BoundaryCapture {
 
 enum Block {
     Text {
-        hash: Sha256,
+        hash: RuntimeHash,
         nonempty: bool,
         reasoning: bool,
     },
@@ -198,7 +198,7 @@ impl BoundaryCapture {
             return;
         }
         let block = self.blocks.entry(index).or_insert_with(|| Block::Text {
-            hash: Sha256::new(),
+            hash: RuntimeHash::new(),
             nonempty: false,
             reasoning,
         });
@@ -211,7 +211,7 @@ impl BoundaryCapture {
                 if finished {
                     // A terminal cannot erase accepted nonempty deltas.
                     self.unavailable |= *nonempty && text.is_empty();
-                    *hash = Sha256::new_with_prefix(text.as_bytes());
+                    *hash = RuntimeHash::new_with_prefix(text.as_bytes());
                     *nonempty = !text.is_empty();
                 } else {
                     hash.update(text.as_bytes());
@@ -249,7 +249,7 @@ impl BoundaryCapture {
                 } => {
                     hash.part(
                         if *reasoning { b"reasoning" } else { b"text" },
-                        text.clone().finalize().into(),
+                        text.clone().finalize(),
                     );
                 }
                 Block::Tool {
@@ -499,9 +499,9 @@ impl BoundaryEvidence {
 }
 
 struct BoundaryHasher {
-    full: Sha256,
-    plaintext_full: Sha256,
-    visible: Sha256,
+    full: RuntimeHash,
+    plaintext_full: RuntimeHash,
+    visible: RuntimeHash,
     content: bool,
     visible_content: bool,
     reasoning: bool,
@@ -511,9 +511,11 @@ struct BoundaryHasher {
 impl Default for BoundaryHasher {
     fn default() -> Self {
         Self {
-            full: Sha256::new_with_prefix(b"accepted-response-boundary/v2"),
-            plaintext_full: Sha256::new_with_prefix(b"accepted-plaintext-encoding-boundary/v1"),
-            visible: Sha256::new_with_prefix(b"accepted-response-boundary/v2"),
+            full: RuntimeHash::new_with_prefix(b"accepted-response-boundary/v2"),
+            plaintext_full: RuntimeHash::new_with_prefix(
+                b"accepted-plaintext-encoding-boundary/v1",
+            ),
+            visible: RuntimeHash::new_with_prefix(b"accepted-response-boundary/v2"),
             content: false,
             visible_content: false,
             reasoning: false,
@@ -527,7 +529,7 @@ impl BoundaryHasher {
         // Only the new proof retains empty reasoning positions. Original full
         // and visible hashes deliberately keep their existing zero-content fold.
         self.plaintext_full.update(b"reasoning");
-        self.plaintext_full.update(Sha256::digest(b""));
+        self.plaintext_full.update(RuntimeHash::digest(b""));
     }
 
     fn part(&mut self, kind: &[u8], digest: [u8; 32]) {
@@ -552,9 +554,9 @@ impl BoundaryHasher {
 
     fn finish(self) -> Option<BoundaryEvidence> {
         self.content.then(|| BoundaryEvidence {
-            full: self.full.finalize().into(),
-            plaintext_full: self.plaintext_full.finalize().into(),
-            visible: self.visible_content.then(|| self.visible.finalize().into()),
+            full: self.full.finalize(),
+            plaintext_full: self.plaintext_full.finalize(),
+            visible: self.visible_content.then(|| self.visible.finalize()),
             reasoning: self.reasoning,
             contextual: false,
             encrypted: self.encrypted,
@@ -567,24 +569,18 @@ fn text_digest(
     replay: Option<&ReplayStore>,
     budget: &mut FingerprintBudget,
 ) -> Option<[u8; 32]> {
-    let mut hash = Sha256::new();
+    let mut hash = RuntimeHash::new();
     if let Some(reference) = text.content_ref() {
         budget.bytes(usize::try_from(reference.byte_len()).ok()?)?;
-        let mut reader = replay?.reader(&reference).ok()?;
-        let mut buffer = [0u8; 8192];
-        loop {
-            let n = reader.read(&mut buffer).ok()?;
-            if n == 0 {
-                break;
-            }
-            hash.update(&buffer[..n]);
-        }
-        reader.verify_terminal().ok()?;
+        return replay?.runtime_fingerprint(&reference).ok();
     } else {
         budget.bytes(text.len())?;
+        if let Some(replay) = replay {
+            return Some(replay.runtime_bytes_fingerprint(text.as_bytes()));
+        }
         hash.update(text.as_bytes());
     }
-    Some(hash.finalize().into())
+    Some(hash.finalize())
 }
 
 fn function_encoding_digest(
@@ -596,13 +592,13 @@ fn function_encoding_digest(
         return Some(base);
     };
     budget.items(paths.len())?;
-    let mut hash = Sha256::new_with_prefix(b"tool-function-encoding/v1");
+    let mut hash = RuntimeHash::new_with_prefix(b"tool-function-encoding/v1");
     hash.update(base);
     hash.update((paths.len() as u64).to_be_bytes());
     for path in paths {
         hash.update(text_digest(path, None, budget)?);
     }
-    Some(hash.finalize().into())
+    Some(hash.finalize())
 }
 
 fn tool_digest(
@@ -614,7 +610,7 @@ fn tool_digest(
     replay: Option<&ReplayStore>,
     budget: &mut FingerprintBudget,
 ) -> Option<[u8; 32]> {
-    let mut hash = Sha256::new_with_prefix(b"tool-boundary/v2");
+    let mut hash = RuntimeHash::new_with_prefix(b"tool-boundary/v2");
     hash.update(text_digest(id, None, budget)?);
     hash.update(match kind {
         ToolKindV1::Function => b"function".as_slice(),
@@ -626,7 +622,7 @@ fn tool_digest(
     }
     hash.update(text_digest(name, replay, budget)?);
     // Canonical JSON includes arguments and their types, never only the tool name.
-    struct Sink<'a>(&'a mut Sha256);
+    struct Sink<'a>(&'a mut RuntimeHash);
     impl Write for Sink<'_> {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
             self.0.update(bytes);
@@ -641,7 +637,7 @@ fn tool_digest(
     } else {
         write_canonical_json(&mut Sink(&mut hash), args).ok()?;
     }
-    Some(hash.finalize().into())
+    Some(hash.finalize())
 }
 
 #[cfg(test)]

@@ -433,6 +433,19 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(result["rust"])
         self.assertFalse(result["frontend"])
 
+    def test_product_version_tooling_uses_lifecycle_and_publication_regressions(self):
+        for path in plan.PRODUCT_VERSION_TOOLING:
+            with self.subTest(path=path):
+                selected = plan.select([path])
+                self.assertEqual(selected['mode'], 'affected')
+                self.assertFalse(selected['rust'])
+                self.assertFalse(selected['frontend'])
+                self.assertIn(['python3', 'scripts/test-product-version.py'], selected['commands'])
+                self.assertIn(['python3', 'scripts/product-version.py', 'check'], selected['commands'])
+        selected = plan.select(['scripts/product-version.py'])
+        self.assertIn(['python3', 'scripts/test-release-contract-pr.py'], selected['commands'])
+        self.assertIn(['python3', 'scripts/test-package-desktop.py'], selected['commands'])
+
     def test_frontend_has_no_native_or_rust_claim(self):
         result = plan.select(["apps/desktop/src/product/Models.tsx"])
         self.assertTrue(result["frontend"])

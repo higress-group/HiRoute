@@ -9,10 +9,15 @@ mod state;
 #[cfg(all(unix, debug_assertions))]
 pub mod stream_capture;
 
+pub(crate) use driver::ProductionStateAdapter;
 pub(crate) use driver::response_diagnostics::category as response_failure_category;
 pub use driver::*;
 pub use state::StateAccessError;
 pub(crate) use state::native_endpoint_state_key;
+pub(crate) use state::{
+    OwnedAttemptStatePermits, PermitAvailability, RuntimeCooldownPolicy,
+    acquire_target_permit_status, confirm_success, record_failure,
+};
 
 #[cfg(test)]
 mod tests;

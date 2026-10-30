@@ -131,8 +131,8 @@ pub(super) fn relative(
     )
 }
 
-/// Buffered creation is reserved for temporary payloads whose publication
-/// boundary explicitly flushes the completed file.
+/// Buffered creation is reserved for request-owned temporary payloads. The
+/// caller verifies complete writes before sealing; persistence uses other factories.
 pub(super) fn create_buffered_file_relative(
     parent: &File,
     leaf: &OsStr,

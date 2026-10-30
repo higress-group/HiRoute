@@ -76,11 +76,15 @@ impl Fixture {
         .unwrap()
     }
 
-    fn prepare(&self, request: &model_ir::ModelRequestIRV1) -> PreparedHold {
+    fn prepare(&self, request: &model_ir::ModelRequestIRV1) -> PreparedHold<'static> {
         self.prepare_in_scope(request, 1)
     }
 
-    fn prepare_in_scope(&self, request: &model_ir::ModelRequestIRV1, scope: u8) -> PreparedHold {
+    fn prepare_in_scope(
+        &self,
+        request: &model_ir::ModelRequestIRV1,
+        scope: u8,
+    ) -> PreparedHold<'static> {
         let history = visible_history_with_replay(request, &[23; 32], Some(&self.replay)).unwrap();
         let mut prepared = self
             .runtime
@@ -100,7 +104,11 @@ impl Fixture {
         prepared
     }
 
-    fn begin(&self, request: &model_ir::ModelRequestIRV1, hold: PreparedHold) -> DecisionHistory {
+    fn begin(
+        &self,
+        request: &model_ir::ModelRequestIRV1,
+        hold: PreparedHold<'_>,
+    ) -> DecisionHistory {
         self.runtime
             .begin_decision_history(
                 &super::super::observation::accepted_request_for_runtime_test(),
@@ -338,7 +346,9 @@ fn p2_failed_history_admission_cannot_apply_an_unadmitted_tool_result() {
     let bypassed = fixture
         .runtime
         .agent_turn_history
-        .with_lock_for_runtime_test(|| fixture.begin(&rejected, prepared));
+        // Token exhaustion is a real Resource refusal before admission. Holding
+        // the mutex on this same thread is no longer an admission failure.
+        .with_exhausted_request_tokens_for_runtime_test(|| fixture.begin(&rejected, prepared));
     assert!(bypassed.guard.is_none());
     drop(bypassed);
 

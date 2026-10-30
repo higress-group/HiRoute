@@ -104,6 +104,8 @@ WEBSITE_PREFIXES = ("apps/website/", ".github/scripts/", "news/", "experiments/"
 RELEASE_CONTRACT_TOOLING = {"scripts/release-contracts.py", "scripts/test-release-contracts.py",
                           "scripts/test-release-contract-pr.py", ".github/scripts/release-contract-pr.sh",
                           ".github/workflows/release.yml"}
+PRODUCT_VERSION_TOOLING = {"scripts/product-version.py", "scripts/test-product-version.py",
+                           ".github/workflows/product-version.yml"}
 HOSTED_BACKEND_EXECUTION = {
     ".github/workflows/gateway-core.yml",
     ".github/actions/ci-setup/action.yml",
@@ -449,11 +451,17 @@ def select(paths, full=False):
     validation_tooling = False
     local_gc_tooling = False
     release_contract_tooling = False
+    product_version_tooling = False
     release_build_tooling = False
     windows_validation_tooling = False
     targets = set()
     agent_commands = []
     for path in sorted(set(paths)):
+        if path in PRODUCT_VERSION_TOOLING:
+            product_version_tooling = True
+            release_contract_tooling |= path == "scripts/product-version.py"
+            release_build_tooling |= path == "scripts/product-version.py"
+            continue
         selected_agent_commands = project_agent_tooling(path)
         if selected_agent_commands is not None:
             agent_commands.extend(c for c in selected_agent_commands if c not in agent_commands)
@@ -633,6 +641,9 @@ def select(paths, full=False):
         commands.extend([["python3", "scripts/test-release-contracts.py"],
                          ["python3", "scripts/test-release-contract-pr.py"],
                          ["python3", "scripts/release-contracts.py", "check"]])
+    if full or product_version_tooling or release_contract_tooling or release_build_tooling:
+        commands.extend([["python3", "scripts/test-product-version.py"],
+                         ["python3", "scripts/product-version.py", "check"]])
     if validation_tooling:
         commands.extend([["python3", "scripts/" + name] for name in
                          ("test-validation.py", "test-console-assets.py", "test-windows-dev.py", "test-validation-report.py", "test-local-rust.py", "test-remote-rust.py", "test-validation-schedule.py",

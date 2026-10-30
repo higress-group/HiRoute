@@ -2225,7 +2225,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-application-api"
-version = "0.3.1"
+version = "0.3.2-dev.1"
 dependencies = [
  "hiroute-domain",
  "schemars 1.2.2",
@@ -2237,7 +2237,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-cli"
-version = "0.3.1"
+version = "0.3.2-dev.1"
 dependencies = [
  "getrandom 0.3.4",
  "hiroute-application",
@@ -2307,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-daemon"
-version = "0.3.1"
+version = "0.3.2-dev.1"
 dependencies = [
  "agent-client-protocol",
  "arc-swap",
@@ -2355,7 +2355,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-desktop"
-version = "0.3.1"
+version = "0.3.2-dev.1"
 dependencies = [
  "command-fds",
  "fs2",
@@ -2395,7 +2395,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-diagnostics"
-version = "0.3.1"
+version = "0.3.2-dev.1"
 dependencies = [
  "fs2",
  "getrandom 0.3.4",
@@ -2414,6 +2414,7 @@ dependencies = [
 name = "hiroute-domain"
 version = "0.1.0"
 dependencies = [
+ "http",
  "pinyin",
  "schemars 1.2.2",
  "serde",
@@ -2465,9 +2466,12 @@ dependencies = [
  "hmac",
  "http",
  "libc",
+ "md-5",
+ "memchr",
  "parking_lot",
  "pingora-core",
  "rcgen",
+ "ring",
  "rustix",
  "rustls",
  "serde",
@@ -2530,6 +2534,7 @@ dependencies = [
 name = "hiroute-integrations"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "getrandom 0.3.4",
  "hiroute-application",
  "hiroute-application-api",
@@ -2678,7 +2683,7 @@ dependencies = [
 
 [[package]]
 name = "hiroute-shell"
-version = "0.3.1"
+version = "0.3.2-dev.1"
 dependencies = [
  "fs2",
  "hiroute-application-api",
@@ -3353,6 +3358,16 @@ dependencies = [
  "log",
  "tendril",
  "web_atoms",
+]
+
+[[package]]
+name = "md-5"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
+dependencies = [
+ "cfg-if",
+ "digest",
 ]
 
 [[package]]

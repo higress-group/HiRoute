@@ -53,7 +53,7 @@ jobs:
       - name: Check headless binaries and their test targets
         shell: pwsh
         run: |
-          cargo check --locked --target x86_64-pc-windows-msvc -p hiroute-cli -p hiroute-daemon -p hiroute-platform -p hiroute-local-storage --all-targets
+          cargo check --locked --target x86_64-pc-windows-msvc -p hiroute-cli -p hiroute-daemon -p hiroute-platform -p hiroute-local-storage -p hiroute-integrations --all-targets
           if ($LASTEXITCODE -ne 0) { throw 'Windows headless compilation failed' }
       - name: Test Windows package and restore policy components
         shell: pwsh
@@ -67,6 +67,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows startup-attempt recovery regressions failed' }
           cargo test --locked --target x86_64-pc-windows-msvc -p hiroute-platform --lib windows::shell_registration::tests::inherited_export_is_published_privately_and_changed_material_is_not_overwritten -- --exact
           if ($LASTEXITCODE -ne 0) { throw 'Windows recovery-material publication regression failed' }
+          cargo test --locked --target x86_64-pc-windows-msvc -p hiroute-platform --lib private_fs::tests::storage_preparation_reopens_without_adopting_a_file -- --exact
+          if ($LASTEXITCODE -ne 0) { throw 'Windows storage directory classification regression failed' }
+          cargo test --locked --target x86_64-pc-windows-msvc -p hiroute-local-storage --lib migrations::startup_recovery::tests -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows startup recovery regressions failed' }
+          cargo test --locked --target x86_64-pc-windows-msvc -p hiroute-local-storage --lib control::capability_registration::tests -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows grant admission component regressions failed' }
+          cargo test --locked --target x86_64-pc-windows-msvc -p hiroute-cli --lib service::recovery_text_tests -- --test-threads=1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows recovery source path regression failed' }
       - name: Check Windows console shell and its restricted host commands
         shell: pwsh
         env:

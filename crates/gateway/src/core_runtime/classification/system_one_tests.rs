@@ -7,6 +7,9 @@ use crate::server::core_runtime::classification::diagnostic_request;
 use hiroute_domain::{BranchExecutionV1, CategoryOptionV1, ExecutionGroupV1, JudgmentSettingsV1};
 use std::sync::Arc;
 
+#[path = "openai_isolation_tests.rs"]
+mod openai_isolation_tests;
+
 fn authority() -> RestBranchClassifierAuthorityV1 {
     let mode = hiroute_domain::ComplexityClassifierModeV1::DecisionService {
         service: Box::new(hiroute_domain::DecisionServiceV1 {
@@ -263,6 +266,187 @@ fn c_stock_questions_exactly_match_the_appendix_and_isolate_invalid_q3() {
         assert_eq!(response.assessment.unwrap().score, 0.1);
         assert_eq!(response.probabilities.unwrap()["simple"], 0.9);
     }
+}
+
+#[test]
+fn openai_codec_keeps_frozen_context_and_continuous_score_with_refusal() {
+    let original = c_authority();
+    let h = c_history(&original);
+    let system = request_template(&original, &diagnostic_request(), &h, false).unwrap();
+    let mut openai = original.clone();
+    openai.wire_protocol = hiroute_domain::DecisionWireProtocolV2::OpenaiDecisions;
+    let prepared = request_template(&openai, &diagnostic_request(), &h, false).unwrap();
+    let before: Value = serde_json::from_slice(&system.template.bytes).unwrap();
+    let after: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
+    assert_eq!(
+        after["input"][0]["content"][0]["data"]["state"],
+        before["state"]
+    );
+    assert_eq!(after["questions"].as_array().unwrap().len(), 3);
+    for question in after["questions"].as_array().unwrap() {
+        let name = question["name"].as_str().unwrap();
+        assert_eq!(
+            question["instructions"],
+            before["questions"][name]["instructions"]
+        );
+    }
+    let body = json!({"answers":[
+        {"name":"q2", "type":"refusal"},
+        {"name":"q1", "type":"score", "score":0.95, "probabilities":[
+            {"value":0,"label":"0","probability":0.25},
+            {"value":1,"label":"1","probability":0.55},
+            {"value":2,"label":"2","probability":0.2}]},
+        {"name":"q0", "type":"score", "score":0.2, "probabilities":[
+            {"value":0,"label":"0","probability":0.8},
+            {"value":1,"label":"1","probability":0.2}]}
+    ]});
+    let parse = |value: &Value| {
+        super::super::openai_decisions::parse_response(
+            &serde_json::to_vec(value).unwrap(),
+            prepared.bindings.as_ref().unwrap(),
+        )
+    };
+    let result = parse(&body).unwrap();
+    assert_eq!(result.probabilities.unwrap()["simple"], 0.8);
+    assert_eq!(result.assessment.unwrap().score, 0.475);
+    assert_eq!(result.applicability, None);
+    let mut duplicate = body.clone();
+    duplicate["answers"]
+        .as_array_mut()
+        .unwrap()
+        .push(body["answers"][0].clone());
+    assert!(parse(&duplicate).is_err());
+    let mut unknown = body.clone();
+    unknown["answers"][0]["name"] = json!("unexpected");
+    assert!(parse(&unknown).is_err());
+    let mut invalid = body.clone();
+    invalid["answers"][2]["probabilities"][0]["probability"] = json!(0.9);
+    let result = parse(&invalid).unwrap();
+    assert!(result.degree_failed);
+    assert_eq!(result.assessment.unwrap().score, 0.475);
+}
+
+#[test]
+fn openai_maximum_branch_request_is_one_call_and_ignores_unused_invalid_degree() {
+    let mut a = c_authority();
+    a.wire_protocol = hiroute_domain::DecisionWireProtocolV2::OpenaiDecisions;
+    let j = a.smart_judgment.clone().unwrap();
+    a.branch_policies = (0..16)
+        .map(|i| {
+            let id = format!("branch-{i}");
+            hiroute_domain::MaterializedBranchV1 {
+                id: id.clone(),
+                name: id.clone(),
+                condition: format!("Handle {id}"),
+                group: hiroute_domain::MaterializedGroupId::Branch(i),
+                primary_group: Some(hiroute_domain::MaterializedGroupId::BranchPrimary(i)),
+                judgment: Some(j.clone()),
+            }
+        })
+        .collect();
+    let definition = hiroute_domain::branch_decision_definition(&a.branch_policies, "branch-15");
+    let frozen = hiroute_domain::FrozenNativeProtocolV1::freeze(
+        &hiroute_domain::NativeProtocolV1::default(),
+        definition,
+        a.branch_policies
+            .iter()
+            .map(|b| (b.id.clone(), b.judgment.clone().unwrap())),
+    )
+    .unwrap();
+    let mut h = history(true);
+    let target = h.assessment_target.as_mut().unwrap();
+    target.branch_execution.as_mut().unwrap().policy =
+        frozen.execution_policy("branch-0", &j, "branch-0");
+    if let ExecutionAttribution::Single {
+        selected_branch_id,
+        executed_branch_id,
+        ..
+    } = &mut target.attribution
+    {
+        *selected_branch_id = "branch-0".into();
+        *executed_branch_id = "branch-0".into();
+    }
+    a.native_protocol = Some(frozen);
+    let prepared = request_template(&a, &diagnostic_request(), &h, false).unwrap();
+    let wire: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
+    assert_eq!(wire["questions"].as_array().unwrap().len(), 19);
+    let choices = (0..16).map(|i| json!({"value":format!("branch-{i}"), "probability":if i == 0 { 1.0 } else { 0.0 }})).collect::<Vec<_>>();
+    let mut answers =
+        vec![json!({"type":"choice","name":"q0","choice":"branch-0","probabilities":choices})];
+    for i in 1..=16 {
+        if i == 2 {
+            answers.push(json!({"type":"score","name":"q2","probabilities":"invalid"}));
+        } else {
+            answers.push(json!({"type":"score","name":format!("q{i}"),"score":0.2,"probabilities":[
+                {"value":0,"label":"0","probability":0.8}, {"value":1,"label":"1","probability":0.2}]}));
+        }
+    }
+    answers.push(json!({"type":"score","name":"q17","score":0.95,"probabilities":[
+        {"value":0,"label":"0","probability":0.25}, {"value":1,"label":"1","probability":0.55}, {"value":2,"label":"2","probability":0.2}]}));
+    answers.push(json!({"type":"refusal","name":"q18"}));
+    let result = super::super::openai_decisions::parse_response(
+        &serde_json::to_vec(&json!({"answers":answers.clone()})).unwrap(),
+        prepared.bindings.as_ref().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(result.branch_id, "branch-0");
+    assert!(!result.degree_failed);
+    assert_eq!(result.probabilities.unwrap()["simple"], 0.8);
+    assert_eq!(result.assessment.unwrap().score, 0.475);
+    assert_eq!(result.applicability, None);
+
+    // Raw bytes retain numbers outside f64 rather than normalizing through Value.
+    let raw_answers = answers
+        .iter()
+        .enumerate()
+        .map(|(index, answer)| {
+            if index == 2 {
+                r#"{"name":"q2","type":"score","score":1e999,"probabilities":[]}"#.to_owned()
+            } else {
+                serde_json::to_string(answer).unwrap()
+            }
+        })
+        .collect::<Vec<_>>();
+    let body = format!(r#"{{"answers":[{}]}}"#, raw_answers.join(","));
+    let result = super::super::openai_decisions::parse_response(
+        body.as_bytes(),
+        prepared.bindings.as_ref().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(result.branch_id, "branch-0");
+    assert!(!result.degree_failed);
+    assert_eq!(result.probabilities.unwrap()["simple"], 0.8);
+    assert_eq!(result.assessment.unwrap().score, 0.475);
+
+    // Name framing is global; the type and contents of an unselected degree are local.
+    for malformed in [json!({"name":"q2"}), json!({"name":"q2","type":7})] {
+        let mut changed = answers.clone();
+        changed[2] = malformed;
+        let result = super::super::openai_decisions::parse_response(
+            &serde_json::to_vec(&json!({"answers":changed})).unwrap(),
+            prepared.bindings.as_ref().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(result.branch_id, "branch-0");
+        assert!(!result.degree_failed);
+    }
+    let mut changed = answers.clone();
+    changed[1] = json!({"name":"q1","type":false});
+    let result = super::super::openai_decisions::parse_response(
+        &serde_json::to_vec(&json!({"answers":changed})).unwrap(),
+        prepared.bindings.as_ref().unwrap(),
+    )
+    .unwrap();
+    assert!(result.degree_failed);
+    let mut missing_name = answers;
+    missing_name[2] = json!({"type":"score"});
+    assert!(
+        super::super::openai_decisions::parse_response(
+            &serde_json::to_vec(&json!({"answers":missing_name})).unwrap(),
+            prepared.bindings.as_ref().unwrap(),
+        )
+        .is_err()
+    );
 }
 
 #[test]

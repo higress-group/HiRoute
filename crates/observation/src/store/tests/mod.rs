@@ -5,6 +5,7 @@ mod fact_regression;
 mod failure_isolation;
 mod gap_lookup;
 mod incremental_completeness;
+mod late_content;
 mod plan_quality;
 mod request_purpose;
 mod retention;

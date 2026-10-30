@@ -77,6 +77,7 @@ async fn optional_projection_capacity_falls_back_without_changing_input_or_sourc
                     },
                     cancellation,
                     started_at: now,
+                    admitted_credential_state: None,
                 },
             )
             .await;

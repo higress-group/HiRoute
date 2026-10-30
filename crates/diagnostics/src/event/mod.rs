@@ -17,6 +17,7 @@ mod native_routing;
 mod observation;
 mod protected_channel;
 mod request_projection;
+mod request_timing;
 mod startup;
 mod system;
 mod worker;
@@ -37,6 +38,7 @@ pub use native_routing::*;
 pub use observation::*;
 pub use protected_channel::*;
 pub use request_projection::*;
+pub use request_timing::*;
 pub use startup::*;
 pub use system::*;
 pub use worker::*;
@@ -70,6 +72,7 @@ pub enum DiagnosticEvent {
     ProtectedExchange(ProtectedExchange),
     RequestBegin(RequestBegin),
     RequestEnd(RequestEnd),
+    RequestTimingSummary(RequestTimingSummary),
     RouteSelected(RouteSelected),
     AttemptBegin(AttemptBegin),
     AttemptEnd(AttemptEnd),
@@ -172,6 +175,7 @@ impl DiagnosticEvent {
                 }
             }
             DiagnosticEvent::RequestBegin(_)
+            | DiagnosticEvent::RequestTimingSummary(_)
             | DiagnosticEvent::RouteSelected(_)
             | DiagnosticEvent::AttemptBegin(_) => Info,
             DiagnosticEvent::RequestEnd(end) => match end.outcome {
@@ -284,6 +288,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::ProtectedExchange(_) => "protected_exchange",
             DiagnosticEvent::RequestBegin(_) => "request_begin",
             DiagnosticEvent::RequestEnd(_) => "request_end",
+            DiagnosticEvent::RequestTimingSummary(_) => "request_timing_summary",
             DiagnosticEvent::RouteSelected(_) => "route_selected",
             DiagnosticEvent::AttemptBegin(_) => "attempt_begin",
             DiagnosticEvent::AttemptEnd(_) => "attempt_end",

@@ -7,6 +7,9 @@ use crate::server::request_plan::IngressProtocol;
 
 const HISTORY_KEY: [u8; 32] = [23; 32];
 
+#[path = "store_request_measurement_tests.rs"]
+mod request_measurement;
+
 #[test]
 fn source_uncertainty_keeps_one_authorized_scope_with_separate_branch_evidence() {
     let authorized = crate::server::publication::authorized_native_consumer_fixture(None);

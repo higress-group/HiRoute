@@ -65,6 +65,7 @@ pub(crate) struct CompiledModelExecution {
     pub route: CompiledRoute,
     pub request_plan: CompiledRequestPlanHandle,
     pub candidates: Arc<[ProviderCandidateAuthority]>,
+    pub candidate_configs: Arc<BTreeMap<u32, Arc<super::CompiledCandidate>>>,
     pub pricing_bindings: Arc<[RequestPriceBindingV1]>,
 }
 
@@ -490,7 +491,7 @@ pub(crate) fn compile_classifier_mode_authority(
 ) -> Result<Arc<RestBranchClassifierAuthorityV1>, PublicationInstallError> {
     mode.validate()
         .map_err(|_| PublicationInstallError::InvalidPlannerPolicy)?;
-    let (endpoint, timeout_ms, auth_header, system_one_model) = match mode {
+    let (endpoint, timeout_ms, auth_header, system_one_model, wire_protocol) = match mode {
         hiroute_domain::ComplexityClassifierModeV1::DecisionService { service } => {
             let (endpoint, timeout, auth) = service.connection.transport();
             let model = match &service.connection {
@@ -499,7 +500,30 @@ pub(crate) fn compile_classifier_mode_authority(
                 }
                 _ => None,
             };
-            (endpoint, timeout, auth, model)
+            (
+                endpoint,
+                timeout,
+                auth,
+                model,
+                hiroute_domain::DecisionWireProtocolV2::SystemOne,
+            )
+        }
+        hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { service } => {
+            let (endpoint, timeout, auth) = service.connection.transport();
+            match &service.connection {
+                hiroute_domain::DecisionConnectionV2::Native {
+                    model,
+                    wire_protocol,
+                    ..
+                } => (endpoint, timeout, auth, Some(model.clone()), *wire_protocol),
+                hiroute_domain::DecisionConnectionV2::Custom { .. } => (
+                    endpoint,
+                    timeout,
+                    auth,
+                    None,
+                    hiroute_domain::DecisionWireProtocolV2::SystemOne,
+                ),
+            }
         }
         _ => return Err(PublicationInstallError::InvalidPlannerPolicy),
     };
@@ -585,12 +609,57 @@ pub(crate) fn compile_classifier_mode_authority(
     target
         .validate()
         .map_err(|_| PublicationInstallError::InvalidEndpoint(endpoint.to_owned()))?;
-    let authentication = match auth_header {
-        None => ClassifierAuthenticationAuthorityV1::None,
-        Some(header) => ClassifierAuthenticationAuthorityV1::Header {
+    let shared = match mode {
+        hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { service } => match &service
+            .connection
+        {
+            hiroute_domain::DecisionConnectionV2::Native {
+                model,
+                endpoint,
+                wire_protocol,
+                authentication:
+                    hiroute_domain::DecisionAuthenticationV2::SharedSource {
+                        source_id,
+                        source_lineage_digest,
+                    },
+                ..
+            } => {
+                let target = hiroute_domain::ComputeDecisionTargetV4::new(endpoint, *wire_protocol)
+                    .map_err(|_| PublicationInstallError::InvalidPlannerPolicy)?;
+                let consumer = target
+                    .consumer(
+                        source_id,
+                        source_lineage_digest,
+                        &service.id,
+                        service.revision,
+                        model,
+                    )
+                    .map_err(|_| PublicationInstallError::InvalidPlannerPolicy)?;
+                Some(hiroute_domain::DecisionCredentialBindingV1 {
+                    source_id: source_id.clone(),
+                    source_lineage_digest: source_lineage_digest.clone(),
+                    service_id: service.id.clone(),
+                    service_revision: service.revision,
+                    consumer_binding_id: consumer.consumer_binding_id,
+                    model: model.clone(),
+                    endpoint: target.endpoint,
+                    wire_protocol: *wire_protocol,
+                    authentication: target.authentication,
+                    destination_id: target.destination_id,
+                })
+            }
+            _ => None,
+        },
+        _ => None,
+    };
+    let authentication = match (auth_header, shared) {
+        (None, Some(binding)) => ClassifierAuthenticationAuthorityV1::SharedDecision { binding },
+        (None, None) => ClassifierAuthenticationAuthorityV1::None,
+        (Some(header), None) => ClassifierAuthenticationAuthorityV1::Header {
             name: Arc::from(header.name.as_str()),
             value_secret_ref: Arc::from(header.value_secret_ref.as_str()),
         },
+        (Some(_), Some(_)) => return Err(PublicationInstallError::InvalidPlannerPolicy),
     };
     Ok(Arc::new(RestBranchClassifierAuthorityV1 {
         extension_identity: mode.extension_identity(),
@@ -605,8 +674,17 @@ pub(crate) fn compile_classifier_mode_authority(
                     _ => "custom".into(),
                 }
             }
+            hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { service } => {
+                match &service.connection {
+                    hiroute_domain::DecisionConnectionV2::Native { provider, .. } => {
+                        provider.clone()
+                    }
+                    _ => "custom".into(),
+                }
+            }
             _ => "local".into(),
         },
+        wire_protocol,
         native_protocol: None,
         endpoint: normalized_endpoint.into(),
         http_authority: normalized_authority.into(),
@@ -682,6 +760,14 @@ fn compile_execution(
         .collect::<Vec<_>>()
         .into();
     let pricing_bindings = compile_candidate_pricing(bindings, protocols)?;
+    let candidate_configs = bindings
+        .iter()
+        .map(|candidate| {
+            super::CompiledCandidate::compile(candidate)
+                .map(|compiled| (candidate.local_id, compiled))
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()?
+        .into();
     let planner_policy = Arc::new(planner_policy);
     let route = CompiledRoute {
         normalized_host: Arc::from("gateway.invalid"),
@@ -702,6 +788,7 @@ fn compile_execution(
         route,
         request_plan,
         candidates: candidate_authorities,
+        candidate_configs,
         pricing_bindings,
     })
 }
@@ -958,7 +1045,8 @@ fn compile_routing(
                 hiroute_domain::ComplexityClassifierModeV1::LocalRules => {
                     (CompiledClassifierKindV1::LocalRules, None)
                 }
-                hiroute_domain::ComplexityClassifierModeV1::DecisionService { .. } => (
+                hiroute_domain::ComplexityClassifierModeV1::DecisionService { .. }
+                | hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { .. } => (
                     CompiledClassifierKindV1::Rest,
                     Some(
                         CanonicalDigest::of(&routing.request_owned)

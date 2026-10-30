@@ -485,24 +485,18 @@ fn process_job(
                 return;
             };
             state.accepted_started = true;
-            state
-                .request
-                .begin_content("response_delivered", Some(&attempt));
+            state.request.begin_response_content(&attempt);
             match state.tracker.correlate_accepted_output(&bytes, end_stream) {
                 Ok(delivery) => state
                     .request
                     .emit_canonical_response_delivery(&attempt, &frame_id, delivery),
                 Err(reason) => {
                     mark_failed(&state.status, reason);
-                    state
-                        .request
-                        .terminal_content("response_delivered", "abort", Some(reason));
+                    state.request.finish_response_content("abort", Some(reason));
                 }
             }
             if end_stream && !state.status.failed.load(Ordering::Acquire) {
-                state
-                    .request
-                    .terminal_content("response_delivered", "finish", None);
+                state.request.finish_response_content("finish", None);
                 states.remove(&id);
             }
         }
@@ -512,9 +506,7 @@ fn process_job(
             if let Some(state) = states.remove(&id)
                 && state.accepted_started
             {
-                state
-                    .request
-                    .terminal_content("response_delivered", "abort", Some(reason));
+                state.request.finish_response_content("abort", Some(reason));
             }
             status.finish();
         }
@@ -530,11 +522,9 @@ fn cleanup_failed(states: &mut BTreeMap<u64, CaptureWorkerState>) {
         if let Some(state) = states.remove(&id)
             && state.accepted_started
         {
-            state.request.terminal_content(
-                "response_delivered",
-                "abort",
-                state_failure_reason(&state.status),
-            );
+            state
+                .request
+                .finish_response_content("abort", state_failure_reason(&state.status));
         }
     }
 }
@@ -556,8 +546,8 @@ fn state_failure_reason(status: &CaptureStatus) -> Option<&'static str> {
 }
 
 fn abort_capture(request: &RequestObservation, attempt: &AttemptObservation, reason: &'static str) {
-    request.begin_content("response_delivered", Some(attempt));
-    request.terminal_content("response_delivered", "abort", Some(reason));
+    request.begin_response_content(attempt);
+    request.finish_response_content("abort", Some(reason));
 }
 
 impl RequestObservation {

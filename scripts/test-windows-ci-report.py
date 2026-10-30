@@ -7,6 +7,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 import sys
@@ -106,6 +107,25 @@ try {
 
 
 class NativeFeedback(unittest.TestCase):
+    def test_core_timing_and_field_exclusions_remain_source_declared_opt_ins(self):
+        repo = Path(__file__).resolve().parent.parent
+        driver = (repo / 'scripts/windows-headless-ci.ps1').read_text()
+        for package in ('application', 'observation', 'gateway'):
+            with self.subTest(package=package):
+                marker = "if ($Package -eq 'hiroute-" + package + "') {"
+                block = driver.split(marker, 1)[1].split('\n    }', 1)[0]
+                names = re.findall(r"'([^']+::[^']+)'", block)
+                self.assertTrue(names)
+                self.assertEqual(len(names), len(set(names)))
+                sources = '\n'.join(path.read_text() for path in
+                                    (repo / 'crates' / package / 'src').rglob('*.rs'))
+                for name in names:
+                    function = re.escape(name.rsplit('::', 1)[1])
+                    explicit = re.findall(
+                        r'#\[test\]\s*#\[ignore\s*=\s*"([^"\n]+)"\]\s*fn\s+'
+                        + function + r'\s*\(', sources)
+                    self.assertEqual(len(explicit), 1, name)
+
     def fixture(self, root, scenario="green", revision="a" * 40):
         provenance = dict(source_revision="a" * 40, host_architecture="X64", cargo="cargo fixed",
                           rustc="rustc fixed", plan="windows-headless", phase="focused", related_runs=["123"])

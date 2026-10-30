@@ -18,6 +18,39 @@
 
 Token Plan 保持一个入口，不根据个人/团队版做本地资格判断；以用户接入的实际调用结果为准。[Token Plan 官方入口](https://help.aliyun.com/zh/model-studio/token-plan-decision-model)。这些地址与模型名是连接预设，不能成为运行时按名字识别协议的隐式规则。
 
+## OpenAI Decisions and API connection reuse
+
+The current native connection explicitly selects either `system_one` or
+`openai_decisions`. Provider presets are suggestions, not runtime protocol
+detection. OpenAI Decisions uses `https://api.openai.com/v1/decisions`, an editable
+model ID and the same frozen logical questions as System One. Its wire request
+contains shared `input_json` with `{state: ...}` and an array of questions with
+stable names, original instructions, `choices` or ordered `levels`. Responses bind
+by question name and answer value, never array order. Raw competence score is still
+divided by two; difficulty and applicability still consume validated probability
+vectors. Refusal or invalid output on one question preserves valid independent
+answers where the selected path permits it. See the
+[OpenAI Decisions guide](https://developers.openai.com/api/docs/guides/decisions).
+
+A native decision model can reuse an existing Native API connection or keep
+independent credentials. Reuse selects the source that already owns the Keys;
+it does not copy a Key into another secret. The decision model has its own full
+endpoint, model ID, protocol and timeout. Its saved target becomes an authorized
+destination of the source through the same recoverable save. Key rotation and
+disablement affect subsequent calls without republishing; changing the decision
+configuration requires selecting and publishing its new version. OpenRouter and
+both Bailian access types can use this mode. TypeSafe and compatible endpoints
+remain configurable independently. Source availability is local configuration
+state, not proof of provider entitlement; an explicit saved-version test checks
+connectivity. Custom extensions keep their own independent authentication.
+
+V2 service records carry `hiroute.decision-service/v2`; supported V1 records and
+published C v1/v2 question bundles keep their original bytes and meaning. The
+service version, wire codec and logical C protocol identify different boundaries.
+An OpenAI codec does not change prompts, routing thresholds, history partition or
+continuous scoring. Both codecs enforce the actual encoded request-byte budget
+without materializing a large history twice merely to translate envelopes.
+
 ## 三步适配，不增加执行框架
 
 1. **编译**：验证计划，构建当前 decision 定义和冻结的 assessment_target；分配本请求内的 opaque question ID，并保留 ID 到语义位置的局部绑定表。
@@ -51,7 +84,13 @@ Applicability requires exactly `applicable` and `not_established`, with finite p
 
 ## Connection test and maximum-shape diagnostic
 
-The connection page has one test, retaining `hiroute.classifier-decision-test/v1` and its result contract. Its fixed example uses the current request frame. There is no route-editor test. Save, inspect and publish do not call a provider.
+The connection page has one explicit saved-version test. Current V2 calls bind the
+saved ID/revision and configuration digest; results also identify the credential
+state admitted for the test. Supported `hiroute.classifier-decision-test/v1`
+callers retain their exact request/result contract. The fixed example uses the
+selected wire codec and current logical request frame. There is no route-editor
+test. Save, inspect and publish do not call a provider. A changed credential state
+makes a previous success stale, without starting an automatic test.
 
 CLI and acceptance tooling can explicitly invoke the separately named [historical problem applicability diagnostic](../../crates/application-api/src/classifier_diagnostic_c.rs), `hiroute.historical-applicability-test/v1`, through the existing protected test operation. It binds an exact saved service revision, endpoint/model, frozen content and `standard` / `max_branches` shape, using production construction, transport and parsing to verify raw Score and complete probability vectors. The maximum shape submits all nineteen questions once, without splitting, dropping questions or inferring capacity from a smaller success. Results describe that shape and connection only, without semantic accuracy or continuous-health claims. Explicit calls may consume quota.
 

@@ -2,6 +2,9 @@
 //! hits. The original content store and its visibility remain authoritative.
 mod block;
 pub(crate) mod lookup;
+mod sources;
+#[cfg(test)]
+mod sources_tests;
 mod worker;
 pub(crate) use block::{fold, original_offset};
 use rusqlite::Connection;
@@ -50,5 +53,6 @@ pub(crate) fn migrate(
     }
     lookup::migrate(transaction)
         .map_err(|_| crate::writer::ObservationStoreError::ActivityUnavailable)?;
+    sources::migrate(transaction)?;
     Ok(())
 }

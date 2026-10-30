@@ -5,3 +5,4 @@ pub mod executor;
 pub mod scope;
 pub mod sse;
 pub mod telemetry;
+pub mod timing;

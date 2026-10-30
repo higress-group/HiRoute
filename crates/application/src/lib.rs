@@ -21,6 +21,7 @@ pub mod compiler;
 pub mod compute_management;
 pub mod control;
 mod control_plane;
+mod decision_v2;
 pub mod delegation;
 pub mod model_catalog;
 pub mod model_feed;
@@ -146,6 +147,10 @@ impl ApplicationService {
             "CancelOperation" => self.cancel_operation(request),
             "CheckAgentConnection" => self.check_agent(request),
             "TestClassifierDecision" => self.test_classifier_decision(request),
+            "ListDecisionConnectionSourcesV1" | "ListDecisionServicesV2" => {
+                self.list_decision_v2(request)
+            }
+            "TestDecisionServiceV2" => self.test_decision_v2(request),
             "ListDecisionServices" => {
                 if serde_json::from_value::<hiroute_application_api::ClientEmptyRequestV1>(
                     request.payload.clone(),
@@ -165,6 +170,14 @@ impl ApplicationService {
                         hiroute_application_api::DecisionServicesListV1 { services },
                         request.request_id,
                     ),
+                    Err(control::ControlReadError::ClientVersionRequired) => {
+                        let mut response =
+                            failed(ErrorCode::SchemaIncompatible, request.request_id);
+                        if let Some(error) = response.error.as_mut() {
+                            error.message_key = "decision_service.client_version_required".into();
+                        }
+                        response
+                    }
                     Err(error) => failed(map_control_error(error), request.request_id),
                 }
             }
@@ -172,6 +185,10 @@ impl ApplicationService {
                 self.apply_change(request, "decision.services.apply")
             }
             "ApplyDecisionService" => self.preview_change(request, "decision.services.apply"),
+            "ApplyDecisionServiceV2" if request.payload.get("accept_digest").is_some() => {
+                self.apply_change(request, "decision.connections.apply")
+            }
+            "ApplyDecisionServiceV2" => self.preview_change(request, "decision.connections.apply"),
             "ScanAgents" | "ListAgents" => self.list_agents(request),
             "PreviewAgentConnectionChange" => {
                 control_plane::dispatch_preview_agent_connection(self, request)
@@ -864,6 +881,7 @@ fn map_control_error(error: control::ControlReadError) -> ErrorCode {
     match error {
         control::ControlReadError::NotFound => ErrorCode::ResourceNotFound,
         control::ControlReadError::SnapshotChanged => ErrorCode::ChangePreviewStale,
+        control::ControlReadError::ClientVersionRequired => ErrorCode::SchemaIncompatible,
         control::ControlReadError::Unavailable | control::ControlReadError::Corrupt => {
             ErrorCode::DaemonUnavailable
         }

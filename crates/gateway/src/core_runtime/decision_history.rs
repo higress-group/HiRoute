@@ -52,7 +52,7 @@ impl ProductionGatewayRuntime {
         plan: PlanSnapshot,
         request: &model_ir::ModelRequestIRV1,
         replay: &ReplayStore,
-        prepared_hold: Option<PreparedHold>,
+        prepared_hold: Option<PreparedHold<'_>>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
         let capture = prepared_hold.as_ref().map(CaptureScope::from_prepared);
         self.begin_authorized_decision_history(
@@ -75,7 +75,7 @@ impl ProductionGatewayRuntime {
         observation: &RequestObservation,
         plan: PlanSnapshot,
         capture: Option<CaptureScope>,
-        prepared_hold: Option<PreparedHold>,
+        prepared_hold: Option<PreparedHold<'_>>,
         input: HistoryInput<'_>,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
         let HistoryInput {
@@ -246,7 +246,7 @@ pub(super) struct CaptureScope {
 
 impl CaptureScope {
     #[cfg(test)]
-    fn from_prepared(prepared: &PreparedHold) -> Self {
+    fn from_prepared(prepared: &PreparedHold<'_>) -> Self {
         Self {
             scope_id: prepared.scope_id(),
             native_turn: prepared.native_turn(),
@@ -263,7 +263,7 @@ impl CaptureScope {
         protocol: crate::server::request_plan::IngressProtocol,
         identity: &crate::context_hold::ContextIdentityFacts,
         digest_key: &[u8; 32],
-        prepared: Option<&PreparedHold>,
+        prepared: Option<&PreparedHold<'_>>,
     ) -> Option<Self> {
         let key = crate::context_hold::ContextHoldKey::routing_history(
             authorized, protocol, identity, digest_key,

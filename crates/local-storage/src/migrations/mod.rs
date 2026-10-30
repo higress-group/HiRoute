@@ -35,6 +35,7 @@ mod compute_v8;
 mod convergence_v15;
 mod convergence_v17;
 mod decision_services_v28;
+pub(crate) mod decision_sources_v34;
 mod delegation_native_lifecycle_v21;
 mod delegation_v10;
 #[cfg(test)]
@@ -42,7 +43,7 @@ mod integration_v17_tests;
 mod plan_authoring_v10;
 mod source_defaults_v31;
 mod source_prices_v10;
-mod subscription_api_v34;
+mod subscription_api_v35;
 mod subscription_v16;
 #[cfg(test)]
 mod upgrade_batch_recovery_tests;
@@ -61,7 +62,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 34;
+pub const LATEST_SCHEMA_VERSION: u32 = 35;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -306,8 +307,8 @@ fn migrate(
 
     for version in (current + 1)..=target {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if kind == DatabaseKind::Control && version == 34 {
-            // Validate the old coverage before our known additive DDL changes its cookie.
+        if kind == DatabaseKind::Control && matches!(version, 34 | 35) {
+            // Validate coverage before the known additive DDL changes its cookie.
             crate::control::agent_locator::validate_coverage(&transaction)
                 .map_err(|_| LocalStorageError::InvalidData)?;
         }
@@ -323,7 +324,10 @@ fn migrate(
             agent_locator_v33::initialize(&transaction)?;
         }
         if kind == DatabaseKind::Control && version == 34 {
-            subscription_api_v34::initialize(&transaction)?;
+            decision_sources_v34::refresh_locator(&transaction)?;
+        }
+        if kind == DatabaseKind::Control && version == 35 {
+            subscription_api_v35::initialize(&transaction)?;
         }
         if kind == DatabaseKind::Secrets && version == 15 {
             convergence_v15::ensure_collaboration_preparation_column(&transaction)?;
@@ -531,7 +535,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | 31 | 32 | 33 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | 31 | 32 | 33 | 34 | LATEST_SCHEMA_VERSION
         ) || (set.target_schema_version() == 24
             && [
                 set.control.manifest(),
@@ -577,7 +581,7 @@ impl MigrationSetCoordinator {
             let source = set.control.manifest().schema_version;
             matches!(
                 (source, set.target_schema_version()),
-                (32, 33 | 34) | (33, 34)
+                (32, 33..=35) | (33, 34..=35) | (34, 35)
             ) && [
                 set.control.manifest(),
                 set.runtime.manifest(),
@@ -697,7 +701,7 @@ fn database_version(path: &Path) -> Result<Option<u32>, LocalStorageError> {
     )?))
 }
 
-fn open_existing_for_snapshot(path: &Path) -> Result<Connection, LocalStorageError> {
+pub(crate) fn open_existing_for_snapshot(path: &Path) -> Result<Connection, LocalStorageError> {
     validate_owner_file(path)?;
     Ok(Connection::open_with_flags(
         path,
@@ -952,9 +956,11 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Control, 32) => Ok(current_dependencies_v32::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 32) => Ok(NOOP_V9),
         (DatabaseKind::Control, 33) => Ok(agent_locator_v33::CONTROL),
-        (DatabaseKind::Control, 34) => Ok(subscription_api_v34::CONTROL),
-        (DatabaseKind::Runtime | DatabaseKind::Secrets, 34) => Ok("-- schema alignment"),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 33) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 34) => Ok(decision_sources_v34::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 34) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 35) => Ok(subscription_api_v35::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 35) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }

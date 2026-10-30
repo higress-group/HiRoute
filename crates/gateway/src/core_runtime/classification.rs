@@ -30,6 +30,8 @@ pub use c_capability::CClassifierDiagnosticOutcome;
 mod extension;
 #[path = "classification/group_policy.rs"]
 mod group_policy;
+#[path = "classification/openai_decisions.rs"]
+mod openai_decisions;
 #[path = "classification/protocol.rs"]
 mod protocol;
 #[cfg(test)]
@@ -49,7 +51,7 @@ use super::profiles::{
 };
 use crate::agent_turn_history::{AgentTurnHistorySnapshot, AssessmentTarget};
 use crate::content_ref::ContentValueExt;
-use crate::ports::{ExecutionScope, HeaderSecretLeaseRequest};
+use crate::ports::{CredentialLease, ExecutionScope, HeaderSecretLeaseRequest, RuntimeStateKey};
 use crate::replay::{ReplayError, ReplayStore};
 use crate::runtime::TargetResolver;
 use crate::server::request_plan::{
@@ -72,6 +74,8 @@ pub struct ClassifierDiagnosticOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ClassifierDiagnosticError {
     InvalidConfig,
+    SourceDisabled,
+    NoUsableCredentials,
     Timeout,
     Unavailable,
     RejectedInput,
@@ -88,6 +92,8 @@ impl ClassifierDiagnosticError {
     pub const fn code(self) -> &'static str {
         match self {
             Self::InvalidConfig => "CLASSIFIER_CONFIG_INVALID",
+            Self::SourceDisabled => "DECISION_SOURCE_DISABLED",
+            Self::NoUsableCredentials => "DECISION_NO_USABLE_CREDENTIALS",
             Self::Timeout => "CLASSIFIER_TIMEOUT",
             Self::Unavailable => "CLASSIFIER_UNAVAILABLE",
             Self::RejectedInput => "CLASSIFIER_INPUT_REJECTED",
@@ -125,6 +131,8 @@ pub(super) struct ClassificationRequest<'a> {
     pub(super) overall_deadline: Instant,
     pub(super) cancellation: CancellationToken,
     pub(super) started_at: Instant,
+    /// Present only for an explicit diagnostic that must report admitted state, even on failure.
+    pub(super) admitted_credential_state: Option<&'a mut Option<hiroute_domain::CanonicalDigest>>,
 }
 
 /// Current input is an independent descriptor; selecting it never rewrites the
@@ -180,6 +188,8 @@ pub(crate) struct BoundAssessment {
 enum CallFailure {
     Timeout,
     Unavailable,
+    SourceDisabled,
+    NoUsableCredentials,
     RejectedInput,
     AuthenticationRejected,
     RateLimited,
@@ -192,7 +202,7 @@ impl CallFailure {
         use hiroute_domain::ApplicabilityReasonV1 as R;
         match self {
             Self::Timeout => R::Timeout,
-            Self::Unavailable => R::Unavailable,
+            Self::Unavailable | Self::SourceDisabled | Self::NoUsableCredentials => R::Unavailable,
             Self::RejectedInput => R::RejectedInput,
             Self::AuthenticationRejected => R::AuthenticationRejected,
             Self::RateLimited => R::RateLimited,
@@ -214,6 +224,28 @@ impl ProductionGatewayRuntime {
     pub async fn test_classifier_decision(
         &self,
         mode: &hiroute_domain::ComplexityClassifierModeV1,
+    ) -> Result<ClassifierDiagnosticOutcome, ClassifierDiagnosticError> {
+        self.test_classifier_decision_inner(mode, &mut None).await
+    }
+
+    pub async fn test_classifier_decision_with_admitted_state(
+        &self,
+        mode: &hiroute_domain::ComplexityClassifierModeV1,
+    ) -> (
+        Result<ClassifierDiagnosticOutcome, ClassifierDiagnosticError>,
+        Option<hiroute_domain::CanonicalDigest>,
+    ) {
+        let mut admitted = None;
+        let result = self
+            .test_classifier_decision_inner(mode, &mut admitted)
+            .await;
+        (result, admitted)
+    }
+
+    async fn test_classifier_decision_inner(
+        &self,
+        mode: &hiroute_domain::ComplexityClassifierModeV1,
+        admitted: &mut Option<hiroute_domain::CanonicalDigest>,
     ) -> Result<ClassifierDiagnosticOutcome, ClassifierDiagnosticError> {
         if matches!(mode, hiroute_domain::ComplexityClassifierModeV1::LocalRules) {
             return Err(ClassifierDiagnosticError::InvalidConfig);
@@ -308,6 +340,7 @@ impl ProductionGatewayRuntime {
                     overall_deadline,
                     cancellation: CancellationToken::new(),
                     started_at: started,
+                    admitted_credential_state: Some(admitted),
                 },
             )
             .await
@@ -354,7 +387,7 @@ impl ProductionGatewayRuntime {
     pub(super) async fn classify_for_planner(
         &self,
         strategy: &CompiledComplexityStrategyV1,
-        request: ClassificationRequest<'_>,
+        mut request: ClassificationRequest<'_>,
     ) -> Result<ClassificationOutcome, ClassificationError> {
         ensure_source_active(request.overall_deadline, &request.cancellation)?;
         let started = request.started_at;
@@ -408,6 +441,9 @@ impl ProductionGatewayRuntime {
         } else {
             match request.classifier {
                 Some(classifier) => {
+                    hiroute_gateway_core::runtime::timing::set_phase(
+                        hiroute_gateway_core::runtime::timing::LocalPhase::History,
+                    );
                     let prepared = if classifier.system_one_model.is_some() {
                         system_one::request_template(
                             classifier,
@@ -461,6 +497,7 @@ impl ProductionGatewayRuntime {
                                             request.overall_deadline,
                                             fixed_timeout_wins,
                                             request.cancellation.clone(),
+                                            request.admitted_credential_state.as_deref_mut(),
                                         )
                                         .await
                                     {
@@ -580,6 +617,8 @@ impl ProductionGatewayRuntime {
                 fallback.fallback_reason = Some(match failure {
                     CallFailure::Timeout => ClassifierFallbackReasonV1::Timeout,
                     CallFailure::Unavailable
+                    | CallFailure::SourceDisabled
+                    | CallFailure::NoUsableCredentials
                     | CallFailure::AuthenticationRejected
                     | CallFailure::RateLimited => ClassifierFallbackReasonV1::Unavailable,
                     CallFailure::RejectedInput | CallFailure::EndpointRejected => {
@@ -609,6 +648,261 @@ impl ProductionGatewayRuntime {
         overall_deadline: Instant,
         fixed_timeout_wins: bool,
         cancellation: CancellationToken,
+        admitted_state: Option<&mut Option<hiroute_domain::CanonicalDigest>>,
+    ) -> Result<Result<ClassifierResponse, CallFailure>, ClassificationError> {
+        let ClassifierAuthenticationAuthorityV1::SharedDecision { binding } =
+            &classifier.authentication
+        else {
+            return self
+                .call_classifier_attempt(
+                    classifier,
+                    &prepared,
+                    routing_observation,
+                    replay,
+                    publication_revision,
+                    call_deadline,
+                    overall_deadline,
+                    fixed_timeout_wins,
+                    cancellation,
+                    None,
+                    admitted_state,
+                )
+                .await;
+        };
+        let scope = ExecutionScope::new(call_deadline, cancellation.clone());
+        ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
+        let admission = match self.ports.credentials.admit_decision_credentials(binding) {
+            Ok(admission) => admission,
+            Err(_) => {
+                return active_failure_or_abort(
+                    CallFailure::Unavailable,
+                    call_deadline,
+                    overall_deadline,
+                    fixed_timeout_wins,
+                    &cancellation,
+                );
+            }
+        };
+        if let Some(state) = admitted_state {
+            *state = Some(admission.credential_state_revision.clone());
+        }
+        if admission.state == hiroute_domain::MaterializationState::Disabled {
+            return Ok(Err(CallFailure::SourceDisabled));
+        }
+        if admission.keys.is_empty() {
+            return Ok(Err(CallFailure::NoUsableCredentials));
+        }
+        let store = crate::runtime::ProductionStateAdapter {
+            inner: Arc::clone(&self.ports.runtime_state),
+        };
+        let policy = crate::runtime::RuntimeCooldownPolicy::for_gateway_model_execution();
+        let binding_key = RuntimeStateKey::binding(binding.consumer_binding_id.clone());
+        let mut excluded = Vec::new();
+        let mut last_failure = CallFailure::NoUsableCredentials;
+        for key in &admission.keys {
+            ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
+            let binding_permit =
+                match crate::runtime::acquire_target_permit_status(&store, &binding_key, &scope)
+                    .await
+                {
+                    Ok(crate::runtime::PermitAvailability::Permit(permit)) => permit,
+                    _ => {
+                        return active_failure_or_abort(
+                            CallFailure::Unavailable,
+                            call_deadline,
+                            overall_deadline,
+                            fixed_timeout_wins,
+                            &cancellation,
+                        );
+                    }
+                };
+            let key_state = RuntimeStateKey::credential(
+                binding.consumer_binding_id.clone(),
+                key.key_id.clone(),
+                key.key_id.clone(),
+                key.generation,
+            );
+            let key_permit = match crate::runtime::acquire_target_permit_status(
+                &store, &key_state, &scope,
+            )
+            .await
+            {
+                Ok(crate::runtime::PermitAvailability::Permit(permit)) => permit,
+                _ => {
+                    let permits = crate::runtime::OwnedAttemptStatePermits::without_credential(
+                        binding_key.clone(),
+                        binding_permit,
+                    );
+                    let failure = crate::attempt_outcome::AttemptFailure {
+                        class: crate::attempt_outcome::AttemptFailureClass::Unclassified,
+                        status: None,
+                        retry_after: None,
+                    };
+                    let _ = crate::runtime::record_failure(
+                        &store,
+                        permits.borrowed(),
+                        &failure,
+                        &policy,
+                        &scope,
+                    )
+                    .await;
+                    excluded.push(key.key_id.clone());
+                    continue;
+                }
+            };
+            let permits = crate::runtime::OwnedAttemptStatePermits::new(
+                binding_key.clone(),
+                binding_permit,
+                key_state,
+                key_permit,
+            );
+            let request = hiroute_domain::DecisionCredentialLeaseRequestV1 {
+                binding: binding.clone(),
+                admitted_keys: admission.keys.clone(),
+                excluded_key_ids: excluded.clone(),
+                key_id: key.key_id.clone(),
+            };
+            let lease = self
+                .ports
+                .credentials
+                .lease_decision_credential(&request, &scope)
+                .await;
+            let lease = if let Ok(Some(lease)) = lease {
+                lease
+            } else {
+                let failure = crate::attempt_outcome::AttemptFailure {
+                    class: crate::attempt_outcome::AttemptFailureClass::Unclassified,
+                    status: None,
+                    retry_after: None,
+                };
+                let _ = crate::runtime::record_failure(
+                    &store,
+                    permits.borrowed(),
+                    &failure,
+                    &policy,
+                    &scope,
+                )
+                .await;
+                match lease {
+                    Err(crate::server::composition::PortError::CredentialDenied(
+                        hiroute_domain::NativeCredentialAccessDeniedV1::SourceDisabled,
+                    )) => {
+                        return active_failure_or_abort(
+                            CallFailure::SourceDisabled,
+                            call_deadline,
+                            overall_deadline,
+                            fixed_timeout_wins,
+                            &cancellation,
+                        );
+                    }
+                    Ok(None)
+                    | Err(crate::server::composition::PortError::CredentialDenied(
+                        hiroute_domain::NativeCredentialAccessDeniedV1::CredentialDisabled,
+                    )) => {
+                        excluded.push(key.key_id.clone());
+                        continue;
+                    }
+                    Err(_) => {
+                        return active_failure_or_abort(
+                            CallFailure::Unavailable,
+                            call_deadline,
+                            overall_deadline,
+                            fixed_timeout_wins,
+                            &cancellation,
+                        );
+                    }
+                    Ok(Some(_)) => unreachable!(),
+                }
+            };
+            let result = self
+                .call_classifier_attempt(
+                    classifier,
+                    &prepared,
+                    routing_observation,
+                    replay,
+                    publication_revision,
+                    call_deadline,
+                    overall_deadline,
+                    fixed_timeout_wins,
+                    cancellation.clone(),
+                    Some(&lease),
+                    None,
+                )
+                .await;
+            let class = match &result {
+                Ok(Ok(_)) => {
+                    if crate::runtime::confirm_success(&store, permits.borrowed(), &scope)
+                        .await
+                        .is_err()
+                    {
+                        return active_failure_or_abort(
+                            CallFailure::Unavailable,
+                            call_deadline,
+                            overall_deadline,
+                            fixed_timeout_wins,
+                            &cancellation,
+                        );
+                    }
+                    return result;
+                }
+                Ok(Err(CallFailure::AuthenticationRejected)) => {
+                    crate::attempt_outcome::AttemptFailureClass::Credential
+                }
+                Ok(Err(CallFailure::RateLimited)) => {
+                    crate::attempt_outcome::AttemptFailureClass::Quota
+                }
+                _ => crate::attempt_outcome::AttemptFailureClass::Unclassified,
+            };
+            let failure = crate::attempt_outcome::AttemptFailure {
+                class,
+                status: None,
+                retry_after: None,
+            };
+            if crate::runtime::record_failure(&store, permits.borrowed(), &failure, &policy, &scope)
+                .await
+                .is_err()
+            {
+                return active_failure_or_abort(
+                    CallFailure::Unavailable,
+                    call_deadline,
+                    overall_deadline,
+                    fixed_timeout_wins,
+                    &cancellation,
+                );
+            }
+            match result {
+                Ok(Err(
+                    failure @ (CallFailure::AuthenticationRejected | CallFailure::RateLimited),
+                )) => {
+                    last_failure = failure;
+                    excluded.push(key.key_id.clone());
+                }
+                other => return other,
+            }
+        }
+        active_failure_or_abort(
+            last_failure,
+            call_deadline,
+            overall_deadline,
+            fixed_timeout_wins,
+            &cancellation,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn call_classifier_attempt(
+        &self,
+        classifier: &RestBranchClassifierAuthorityV1,
+        prepared: &PreparedDecisionRequest,
+        routing_observation: &mut Option<hiroute_domain::RoutingObservationV1>,
+        replay: &ReplayStore,
+        publication_revision: u64,
+        call_deadline: Instant,
+        overall_deadline: Instant,
+        fixed_timeout_wins: bool,
+        cancellation: CancellationToken,
+        shared_lease: Option<&CredentialLease>,
+        admitted_state: Option<&mut Option<hiroute_domain::CanonicalDigest>>,
     ) -> Result<Result<ClassifierResponse, CallFailure>, ClassificationError> {
         let template = &prepared.template;
         let mut diagnostic = CallDiagnostic::new(self.observation.diagnostic_context());
@@ -659,6 +953,22 @@ impl ProductionGatewayRuntime {
             if lease.credential_ref() != value_secret_ref.as_ref()
                 || lease.apply_authorization(&mut headers).is_err()
             {
+                return Ok(Err(CallFailure::Unavailable));
+            }
+            if let Some(state) = admitted_state {
+                *state = hiroute_domain::decision_header_state_revision(
+                    lease.credential_ref(),
+                    lease.generation(),
+                )
+                .ok();
+            }
+        } else if let ClassifierAuthenticationAuthorityV1::SharedDecision { .. } =
+            &classifier.authentication
+        {
+            let Some(lease) = shared_lease else {
+                return Ok(Err(CallFailure::Unavailable));
+            };
+            if lease.apply_authorization(&mut headers).is_err() {
                 return Ok(Err(CallFailure::Unavailable));
             }
         }
@@ -748,6 +1058,9 @@ impl ProductionGatewayRuntime {
             o.applicability_state = hiroute_domain::ApplicabilityStateV1::Unavailable;
             o.applicability_reason = hiroute_domain::ApplicabilityReasonV1::Pending;
         }
+        hiroute_gateway_core::runtime::timing::set_phase(
+            hiroute_gateway_core::runtime::timing::LocalPhase::Decision,
+        );
         let exchange_result = collect_response(&mut exchange, call_deadline, &mut diagnostic).await;
         diagnostic.protocol(exchange.transport_facts().upstream_protocol);
         let (status, body) = match exchange_result {
@@ -836,7 +1149,14 @@ impl ProductionGatewayRuntime {
 
         if status == StatusCode::OK {
             let result = match &prepared.bindings {
-                Some(bindings) => system_one::parse_response(&body, bindings),
+                Some(bindings) => match classifier.wire_protocol {
+                    hiroute_domain::DecisionWireProtocolV2::SystemOne => {
+                        system_one::parse_response(&body, bindings)
+                    }
+                    hiroute_domain::DecisionWireProtocolV2::OpenaiDecisions => {
+                        openai_decisions::parse_response(&body, bindings)
+                    }
+                },
                 None => extension::parse_response(
                     &body,
                     &classifier.decision,
@@ -1101,6 +1421,114 @@ mod tests {
     use super::*;
     use crate::server::composition::ProductionPorts;
     use crate::server::publication::GatewayPublicationInstaller;
+
+    struct RevokedDecisionSource {
+        error: u8,
+        leases: std::sync::atomic::AtomicUsize,
+        revision: hiroute_domain::CanonicalDigest,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::server::composition::CredentialResolver for RevokedDecisionSource {
+        fn acquire(
+            &self,
+            _: &str,
+        ) -> Result<
+            crate::server::composition::CredentialLease,
+            crate::server::composition::PortError,
+        > {
+            Err(crate::server::composition::PortError::Rejected)
+        }
+
+        fn admit_decision_credentials(
+            &self,
+            _: &hiroute_domain::DecisionCredentialBindingV1,
+        ) -> Result<
+            hiroute_domain::DecisionCredentialAdmissionV1,
+            crate::server::composition::PortError,
+        > {
+            Ok(hiroute_domain::DecisionCredentialAdmissionV1 {
+                state: hiroute_domain::MaterializationState::Ready,
+                keys: ["key/one", "key/two"]
+                    .into_iter()
+                    .map(|key| hiroute_domain::DecisionCredentialKeyV1 {
+                        key_id: key.into(),
+                        generation: 1,
+                    })
+                    .collect(),
+                credential_state_revision: self.revision.clone(),
+            })
+        }
+
+        async fn lease_decision_credential(
+            &self,
+            _: &hiroute_domain::DecisionCredentialLeaseRequestV1,
+            _: &ExecutionScope,
+        ) -> Result<Option<CredentialLease>, crate::server::composition::PortError> {
+            self.leases
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(match self.error {
+                0 => crate::server::composition::PortError::CredentialDenied(
+                    hiroute_domain::NativeCredentialAccessDeniedV1::SourceDisabled,
+                ),
+                1 => crate::server::composition::PortError::Unavailable("fixture"),
+                _ => crate::server::composition::PortError::CredentialDenied(
+                    hiroute_domain::NativeCredentialAccessDeniedV1::CredentialDisabled,
+                ),
+            })
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn shared_decision_preserves_revocation_and_authority_failures_after_admission() {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-decision-revocation-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let service: hiroute_domain::DecisionServiceV2 = serde_json::from_value(serde_json::json!({
+            "schema": "hiroute.decision-service/v2", "id": "decision/shared", "revision": 1, "name": "fixture",
+            "connection": {"kind": "native", "provider": "openai", "wire_protocol": "openai_decisions", "model": "gpt-6-luna", "endpoint": "http://127.0.0.1:1/v1/decisions", "timeout_ms": 3000,
+                "authentication": {"kind": "shared_source", "source_id": "source/one", "source_lineage_digest": format!("sha256:{}", "1".repeat(64))}}
+        })).unwrap();
+        let mode = hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 {
+            service: Box::new(service),
+        };
+        for (error, expected, attempts) in [
+            (0, ClassifierDiagnosticError::SourceDisabled, 1),
+            (1, ClassifierDiagnosticError::Unavailable, 1),
+            (2, ClassifierDiagnosticError::NoUsableCredentials, 2),
+        ] {
+            let publications = Arc::new(
+                GatewayPublicationInstaller::open(root.join(format!("{error}.json"))).unwrap(),
+            );
+            let revision = hiroute_domain::CanonicalDigest::of(&"admitted").unwrap();
+            let credentials = Arc::new(RevokedDecisionSource {
+                error,
+                leases: std::sync::atomic::AtomicUsize::new(0),
+                revision: revision.clone(),
+            });
+            let mut ports = ProductionPorts::fail_closed(publications);
+            ports.credentials = credentials.clone();
+            ports.runtime_state = Arc::new(crate::ports::InMemoryRuntimeStateStore::default());
+            let runtime = ProductionGatewayRuntime::compose(ports);
+            let (result, admitted) = runtime
+                .test_classifier_decision_with_admitted_state(&mode)
+                .await;
+            assert_eq!(result.unwrap_err(), expected);
+            assert_eq!(admitted, Some(revision));
+            assert_eq!(
+                credentials.leases.load(std::sync::atomic::Ordering::SeqCst),
+                attempts
+            );
+        }
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn classifier_statuses_keep_request_rejection_distinct_from_unavailability() {

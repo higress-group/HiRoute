@@ -1,3 +1,5 @@
+mod capability_registration;
+
 use hiroute_diagnostics::publication::{PublicationStage, measure};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -69,6 +71,7 @@ mod collaboration_store;
 mod compute;
 pub(crate) mod current_dependencies;
 mod decision_services;
+mod decision_services_v2;
 mod journal;
 #[path = "../agents/native_artifacts.rs"]
 mod native_artifacts;
@@ -120,140 +123,10 @@ pub struct ControlStore {
     pub(crate) startup_lock: Option<std::sync::Arc<crate::migrations::StartupLock>>,
 }
 
-/// One exact grant received over the daemon launcher's protected inherited channel. The raw
-/// capability is zeroized by the domain wrapper and this type is intentionally neither Clone nor
-/// serializable, so it cannot become an ambient socket/API credential.
-pub struct ApplyCapabilityRegistrationV1 {
-    capability: ProtectedApplyCapability,
-    authorization: VerifiedApplyAuthorizationV1,
-    revisions: RevisionSetV1,
-}
-
-impl ApplyCapabilityRegistrationV1 {
-    #[allow(clippy::too_many_arguments)]
-    pub fn from_protected_launcher(
-        capability: String,
-        principal: impl Into<String>,
-        workspace: WorkspaceId,
-        operation_kind: impl Into<String>,
-        accepted_digest: CanonicalDigest,
-        revisions: RevisionSetV1,
-        expires_at_unix: i64,
-    ) -> Result<Self, LocalStorageError> {
-        let principal = principal.into();
-        if principal == "daemon-subscription-maintenance" {
-            return Err(LocalStorageError::InvalidData);
-        }
-        Self::build(
-            capability,
-            principal,
-            workspace,
-            operation_kind.into(),
-            accepted_digest,
-            revisions,
-            expires_at_unix,
-        )
-    }
-
-    pub fn from_subscription_maintenance(
-        capability: String,
-        workspace: WorkspaceId,
-        operation_kind: impl Into<String>,
-        accepted_digest: CanonicalDigest,
-        revisions: RevisionSetV1,
-        expires_at_unix: i64,
-    ) -> Result<Self, LocalStorageError> {
-        let operation_kind = operation_kind.into();
-        if !matches!(
-            operation_kind.as_str(),
-            "ApplySubscriptionCheck" | "ApplyComputeSave"
-        ) {
-            return Err(LocalStorageError::InvalidData);
-        }
-        Self::build(
-            capability,
-            "daemon-subscription-maintenance".to_owned(),
-            workspace,
-            operation_kind,
-            accepted_digest,
-            revisions,
-            expires_at_unix,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn build(
-        capability: String,
-        principal: String,
-        workspace: WorkspaceId,
-        operation_kind: String,
-        accepted_digest: CanonicalDigest,
-        revisions: RevisionSetV1,
-        expires_at_unix: i64,
-    ) -> Result<Self, LocalStorageError> {
-        let capability = ProtectedApplyCapability::new(capability)
-            .map_err(|_| LocalStorageError::InvalidData)?;
-        if capability.expose().len() < 32 || expires_at_unix <= 0 {
-            return Err(LocalStorageError::InvalidData);
-        }
-        let revisions_digest =
-            CanonicalDigest::of(&revisions).map_err(|_| LocalStorageError::InvalidData)?;
-        let authorization = VerifiedApplyAuthorizationV1::from_capability_verifier(
-            CanonicalDigest::of_bytes(capability.expose()),
-            principal,
-            workspace,
-            operation_kind,
-            accepted_digest,
-            revisions_digest,
-            "apply:one-shot",
-            expires_at_unix,
-        )
-        .map_err(|_| LocalStorageError::InvalidData)?;
-        Ok(Self {
-            capability,
-            authorization,
-            revisions,
-        })
-    }
-}
-
-/// Borrowed registrar available only from the coordinated daemon storage set. It can persist a
-/// launcher-verified grant, but cannot mint, clone, serialize, or return a capability.
-pub struct ApplyCapabilityRegistrar<'a> {
-    control: &'a ControlStore,
-}
-
-impl ApplyCapabilityRegistrar<'_> {
-    pub(crate) fn new(control: &ControlStore) -> ApplyCapabilityRegistrar<'_> {
-        ApplyCapabilityRegistrar { control }
-    }
-
-    pub fn register(self, registration: ApplyCapabilityRegistrationV1) -> PortResult<()> {
-        let now: i64 = self
-            .control
-            .connection
-            .borrow()
-            .query_row("SELECT unixepoch()", [], |row| row.get(0))
-            .map_err(|_| port(PortErrorCode::Unavailable, "control.capability.clock"))?;
-        if registration.authorization.expires_at_unix() <= now
-            || registration.authorization.expires_at_unix() > now.saturating_add(300)
-        {
-            return Err(port(
-                PortErrorCode::PermissionDenied,
-                "control.capability.expiry",
-            ));
-        }
-        self.control.insert_apply_capability(
-            &registration.capability,
-            registration.authorization.principal(),
-            registration.authorization.workspace_id(),
-            registration.authorization.operation_kind(),
-            registration.authorization.accepted_digest(),
-            &registration.revisions,
-            registration.authorization.expires_at_unix(),
-        )
-    }
-}
+pub use capability_registration::{
+    ApplyCapabilityRegistrar, ApplyCapabilityRegistrationOutcome, ApplyCapabilityRegistrationV1,
+    LauncherCapabilityRegistrar,
+};
 
 impl ControlStore {
     pub(crate) fn native_credential_unavailable(
@@ -497,11 +370,7 @@ impl ControlStore {
         self.connection
             .borrow()
             .execute(
-                "INSERT INTO apply_capabilities(
-                    capability_digest, principal, workspace_id, operation_kind,
-                    accepted_digest, expected_revisions_digest, capability_scope,
-                    expires_at, revoked, consumed_operation_id
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'apply:one-shot', ?7, 0, NULL)",
+                capability_registration::INSERT_SQL,
                 params![
                     capability_digest.as_str(),
                     principal,
@@ -908,6 +777,7 @@ impl ControlRepositoryPort for ControlStore {
         }
         compute::management::stage_control(&transaction, workspace, operation_id, desired)?;
         decision_services::stage(&transaction, workspace, desired)?;
+        decision_services_v2::stage(&transaction, workspace, operation_id, desired)?;
 
         let desired_json = serde_json::to_string(&json!({
             "schema": "hiroute.control-desired/v1",
@@ -1087,7 +957,13 @@ impl ControlRepositoryPort for ControlStore {
             staged_json.as_deref(),
             operation_id,
         )?;
-        if workspace_owned && pool_owned && source_owned && management_owned {
+        let decision_owned = decision_services_v2::current_matches(
+            &connection,
+            workspace,
+            staged_json.as_deref(),
+            operation_id,
+        )?;
+        if workspace_owned && pool_owned && source_owned && management_owned && decision_owned {
             Ok(EffectReconciliation::Applied(owned))
         } else {
             Ok(EffectReconciliation::OwnershipLost(owned))
@@ -1240,6 +1116,7 @@ impl ControlRepositoryPort for ControlStore {
             }
         }
         compute::management::activate(&transaction, &workspace, &staged, operation_id)?;
+        decision_services_v2::activate(&transaction, &workspace, &staged, operation_id)?;
         prices::activate(&transaction, &workspace, &staged)?;
         transaction
             .execute(
@@ -1364,6 +1241,9 @@ impl ControlRepositoryPort for ControlStore {
         let workspace = WorkspaceId::parse(record.0.clone())
             .map_err(|_| port(PortErrorCode::Corrupt, "control.compensate.workspace"))?;
         if !compute::management::compensate(&transaction, &workspace, operation_id)? {
+            return Ok(CompensationOutcome::OwnershipLost);
+        }
+        if !decision_services_v2::compensate(&transaction, &workspace, operation_id)? {
             return Ok(CompensationOutcome::OwnershipLost);
         }
         if !prices::compensate(&transaction, operation_id)? {
@@ -1532,7 +1412,16 @@ impl ControlRepositoryPort for ControlStore {
         operation: &OperationV1,
         references: &[hiroute_domain::CredentialRefV1],
     ) -> PortResult<()> {
-        compute::management::reconcile_compensation(self, operation, references)
+        if operation
+            .plan
+            .control()
+            .get("decision_service_operation_v2")
+            .is_some()
+        {
+            decision_services_v2::reconcile_compensation(self, operation, references)
+        } else {
+            compute::management::reconcile_compensation(self, operation, references)
+        }
     }
 
     fn finish_operation(&self, operation: &mut OperationV1) -> PortResult<u64> {
@@ -1551,6 +1440,7 @@ impl ControlRepositoryPort for ControlStore {
         plans::finish_plan_operation(&transaction, operation)
             .map_err(|_| port(PortErrorCode::Conflict, "control.finish.plan-head"))?;
         decision_services::finish(&transaction, operation)?;
+        decision_services_v2::finish(&transaction, operation)?;
         compute::finish_save_handoff_in(&transaction, operation)?;
         artifact_heads::finish(
             &transaction,

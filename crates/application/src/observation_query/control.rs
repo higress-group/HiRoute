@@ -432,6 +432,7 @@ fn map_control(error: ControlReadError) -> ObservationQueryError {
         }
         ControlReadError::NotFound => ObservationQueryError::NotFound,
         ControlReadError::Corrupt => ObservationQueryError::Corrupt,
+        ControlReadError::ClientVersionRequired => ObservationQueryError::Unavailable,
         ControlReadError::Unavailable | ControlReadError::SnapshotChanged => {
             ObservationQueryError::Unavailable
         }

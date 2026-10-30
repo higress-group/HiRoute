@@ -12,7 +12,8 @@ import type { AvailableModel, ModelAvailabilityResult } from '../model-feed/type
 import { agentDisplayName } from '../agents/ecosystems';
 import { DecisionSelector } from '../decision-services/DecisionSelector';
 import { DecisionServicesPage } from '../decision-services/DecisionServicesPage';
-import { emptyService, isCustomExtension, type Classifier, type DecisionService } from '../decision-services/types';
+import { classifierFor, emptyService, isCustomExtension, type Classifier, type DecisionService } from '../decision-services/types';
+import type { DecisionServiceView, DecisionServices } from '../decision-services/contracts';
 import type { DecisionIntent, OpenDecisionConnection } from '../decision-services/presentation';
 import { TrustLevelControl } from '../trust/TrustLevelControl';
 import { agentEcosystem } from '../agents/ecosystems';
@@ -91,7 +92,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const agentRead = useTrialAgents(mapping.agentId);
   const [classifier, setClassifier] = useState<Classifier>(() => ({ kind: 'decision_service', service: emptyService() }));
   const custom = isCustomExtension(classifier);
-  const [services, setServices] = useState<DecisionService[]>([]);
+  const [services, setServices] = useState<DecisionServiceView[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true), [servicesError, setServicesError] = useState(false);
   const [connect, setConnect] = useState<AvailableModel | null>(null), [subscriptions, setSubscriptions] = useState(false);
   const [reuseConnection, setReuseConnection] = useState<{ model: AvailableModel; sourceId: string; epoch: number; options?: ComputeConnectionOptions } | null>(null);
@@ -104,6 +105,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const [appendIntent, setAppendIntent] = useState(false);
   const [unlinked, setUnlinked] = useState('');
   const [decision, setDecision] = useState<DecisionIntent | null>(null);
+  const [decisionSource, setDecisionSource] = useState<string | null>(null), [sourceRefreshKey, setSourceRefreshKey] = useState(0);
   const decisionSelect = useRef<((service: DecisionService) => void) | null>(null);
   const [savedConnections, setSavedConnections] = useState<string[]>([]);
   const [savedReceipt, setSavedReceipt] = useState(false);
@@ -153,12 +155,12 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     const generation = ++serviceGeneration.current;
     setServicesLoading(true); setServicesError(false);
     try {
-      const result = await invoke<{services: DecisionService[]}>('decision_services');
+      const result = await invoke<DecisionServices>('decision_services_v2', {});
       if (!live.current || generation !== serviceGeneration.current) return;
       setServices(result.services);
       if (!serviceInitialized.current) {
         serviceInitialized.current = true;
-        if (!serviceTouched.current && result.services.length === 1) setClassifier({kind:'decision_service', service:result.services[0]});
+        if (!serviceTouched.current && result.services.length === 1) setClassifier(classifierFor(result.services[0].service));
       }
     } catch { if (live.current && generation === serviceGeneration.current) setServicesError(true); }
     finally { if (live.current && generation === serviceGeneration.current) setServicesLoading(false); }
@@ -221,6 +223,9 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       setPrimaryId(candidate.model_configuration_id); setPrimaryBinding(candidate.binding_id); setPrimarySelection(current);
     }
   }, [data, agentRead.ready, agentRead.snapshot, mapping.agentId, trialId]);
+  /** Leaving source management keeps the decision draft; only the source state is re-read. */
+  async function returnToDecision() { if (await requestEditorReplacement('models')) { setDecisionSource(null); setSourceRefreshKey(key => key + 1); } }
+  async function closeDecision() { if (await requestEditorReplacement('decisions')) setDecision(null); }
   const openDecision: OpenDecisionConnection = (kind, select) => { decisionSelect.current = select; setDecision({ key: randomId(), kind }); };
   const operationRef = (value: OperationReference) => onOperation({ ...value, safe_error_code: null });
   type TrialModel = Pick<AvailableModel, 'model_configuration_id' | 'display_name' | 'identity_stability' | 'availability'> & { catalog?: AvailableModel };
@@ -351,7 +356,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const readiness = trialReadiness({ language, trialId, trialUsable: usable(selectedTrial), trialReasoning: trialReasoning?.state,
     primaryId, primaryUsable: usable(selectedPrimary), primaryReasoning: primaryReasoning?.state, connectionOpen: !!reuseConnection || (!!connect && !connectionHidden && connectionState === 'editing'),
     connectionPending: connect && (connectionState === 'saving' || connectionState === 'uncertain') ? connectionState : null,
-    decisionUsable: classifier.kind === 'decision_service' && !!classifier.service.name && services.some(s => s.id === classifier.service.id && s.revision === classifier.service.revision),
+    decisionUsable: classifier.kind !== 'local_rules' && !!classifier.service.name && services.some(view => view.service.id === classifier.service.id && view.service.revision === classifier.service.revision),
     agentId: mapping.agentId, agentMatches, agentSeedKnown: !!agentRead.snapshot?.selected && agentEditorSeed(agentRead.snapshot.selected, 'model', []).known,
     claude: agentEcosystem(mapping.agentId) === 'claude', presets: mapping.presets.length,
     name: name ?? (defaultName || (!trial || !primary ? 'pending' : '')), threshold, custom,
@@ -565,7 +570,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       <button type="button" className="btn btn-primary" disabled={readiness.systemBlocked} onClick={() => {
         setAttempted(true);
         if (!ready) { if (readiness.blockers[0]) focusBlocker(readiness.blockers[0]); return; }
-        if (!selectedTrial || !selectedPrimary || !trialReasoning || !primaryReasoning || classifier.kind !== 'decision_service') return;
+        if (!selectedTrial || !selectedPrimary || !trialReasoning || !primaryReasoning || classifier.kind === 'local_rules') return;
         if (!data?.options.authoring) return;
         const editor = structuredClone(reviewDraft ?? data.options.authoring.editor); editor.mode = 'smart_saving';
         if (!reviewDraft || reviewDraft.smart.economy[0]?.binding_id !== trialReasoning.selection.binding_id) editor.custom_alias = alias;
@@ -612,7 +617,10 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       </div>
     </Dialog>}
     {pickerRole && manageSource && <Dialog open title={t('管理所选接入', 'Manage selected connection')} closeLabel={t('返回已接入模型', 'Back to connected models')} onClose={() => void (async () => { if (await requestEditorReplacement('models')) { setManageSource(null); setAppendIntent(false); void refresh(false, true); } })()} className="trial-dialog"><ModelManagementPage agents={agentRead.snapshot?.choices} language={language} active trustedAuthority={mutable} initialSourceId={manageSource} startAppending={appendIntent} scanOnMount={false} onOperation={operationRef} onRecoveryRefresh={() => void refresh()} onChanged={() => { void refresh(false, true); void onRefresh(); }} plans={snapshot?.catalog.plans} /></Dialog>}
-    {decision && <Dialog open title={t('接入决策连接', 'Connect a decision service')} closeLabel={t('返回试用', 'Back to trial')} onClose={() => void (async () => { if (await requestEditorReplacement('decisions')) setDecision(null); })()} className="trial-dialog"><DecisionServicesPage language={language} active mutable={mutable} intent={decision} plans={snapshot?.catalog.plans} drafts={snapshot?.catalog.drafts} onChanged={() => void refreshServices()} onReturn={() => setDecision(null)} onUse={service => { serviceTouched.current = true; decisionSelect.current?.(service); setDecision(null); void refreshServices(); }} /></Dialog>}
+    {decision && <Dialog open title={decisionSource ? t('管理 API 接入', 'Manage API connection') : t('决策模型', 'Decision model')} closeLabel={decisionSource ? t('返回决策模型', 'Back to decision model') : t('返回试用', 'Back to trial')} onClose={() => void (decisionSource ? returnToDecision() : closeDecision())} className="trial-dialog">
+      <div hidden={!!decisionSource}><DecisionServicesPage language={language} active mutable={mutable} intent={decision} plans={snapshot?.catalog.plans} drafts={snapshot?.catalog.drafts} sourceRefreshKey={sourceRefreshKey} returnLabel={t('返回试用', 'Back to trial')} onChanged={() => void refreshServices()} onReturn={() => void closeDecision()} onManageSource={sourceId => setDecisionSource(sourceId)} onUse={service => { serviceTouched.current = true; decisionSelect.current?.(service); setDecision(null); void refreshServices(); }} /></div>
+      {decisionSource && <><div className="decision-detour" role="note"><button type="button" className="btn btn-quiet" onClick={() => void returnToDecision()}><UiIcon name="arrowLeft" />{t('返回决策模型 — 草稿已保留', 'Back to decision model — draft retained')}</button></div><ModelManagementPage agents={agentRead.snapshot?.choices} language={language} active trustedAuthority={mutable} initialSourceId={decisionSource} scanOnMount={false} onOperation={operationRef} onRecoveryRefresh={() => void refresh()} onChanged={() => { void refresh(false, true); void onRefresh(); }} plans={snapshot?.catalog.plans} /></>}
+    </Dialog>}
     {reuseConnection && <TrialReuseConnection visible={!reuseHidden} key={`${reuseConnection.sourceId}:${reuseConnection.epoch}`} model={reuseConnection.model} sourceId={reuseConnection.sourceId} options={reuseConnection.options} language={language} mutable={mutable} onOperation={operationRef} onClose={recoverable => { if (recoverable) setReuseHidden(true); else { ++selectionEpoch.current; setReuseConnection(null); } }} onUse={async (selected: ReusedTrialBinding) => {
         const context = reuseConnection;
         const current = await refresh(false, true);

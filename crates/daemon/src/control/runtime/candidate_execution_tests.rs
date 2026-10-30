@@ -1298,6 +1298,7 @@ fn registered_management_compilation_excludes_disabled_missing_keys_and_unknown_
         }],
         native_recheck: None,
         additional_native_endpoints: fact.additional_native_endpoints.clone(),
+        decision_targets: Vec::new(),
         credentials: ordered
             .iter()
             .enumerate()

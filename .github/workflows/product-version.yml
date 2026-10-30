@@ -1,0 +1,24 @@
+name: product-version
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check development version and component consistency
+        run: python3 scripts/product-version.py check
+      - name: Test version lifecycle
+        run: python3 scripts/test-product-version.py

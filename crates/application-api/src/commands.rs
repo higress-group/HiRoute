@@ -877,6 +877,42 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Save a decision service version or delete an unreferenced service with revision checking."
     ),
     command!(
+        "decision.sources.list",
+        ["decision", "sources", "list"],
+        "ListDecisionConnectionSourcesV1",
+        [],
+        Released,
+        Query,
+        "List safe source summaries available to decision connections."
+    ),
+    command!(
+        "decision.connections.list",
+        ["decision", "connections", "list"],
+        "ListDecisionServicesV2",
+        [],
+        Released,
+        Query,
+        "List versioned decision connections with current source state."
+    ),
+    command!(
+        "decision.connections.apply",
+        ["decision", "connections", "apply"],
+        "ApplyDecisionServiceV2",
+        [],
+        Released,
+        Apply,
+        "Save a versioned decision connection with exact source and credential revisions."
+    ),
+    command!(
+        "decision.connections.test",
+        ["decision", "connections", "test"],
+        "TestDecisionServiceV2",
+        [],
+        Released,
+        ExternalProbe,
+        "Test an exact saved decision connection revision with a synthetic request."
+    ),
+    command!(
         "decision.services.test",
         ["decision", "services", "test"],
         "TestClassifierDecision",

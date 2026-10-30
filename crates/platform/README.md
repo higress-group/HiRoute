@@ -118,8 +118,9 @@ file identity and endpoint leaf instead of reopening its pathname.
 `create_owner_only_buffered_file_at` is the separate temporary Replay payload
 factory. It preserves the same private descriptor, exclusive sharing and relative
 identity checks, while allowing filesystem caching during fragmented writes.
-Replay flushes the complete payload with `sync_all` before sealing it. Persistent
-keys, journals and namespace transitions retain their write-through factories.
+Temporary Replay sealing verifies completed writes, length and handle identity
+without a durability flush. Persistent keys, journals and namespace transitions
+retain their write-through factories and durability barriers.
 
 `durable` replaces files through unique private stages. Initial publication cannot
 replace an existing key: Unix preserves the released `create_new`, mode-0600 write

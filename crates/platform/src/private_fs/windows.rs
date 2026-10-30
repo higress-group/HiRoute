@@ -5,11 +5,20 @@ use std::{
     io,
     path::{Path, PathBuf},
 };
+use windows_sys::Win32::Foundation::ERROR_DIRECTORY;
 
 pub(super) fn prepare_storage_directory(path: &Path) -> Result<(), DirectoryError> {
+    // Classify the native directory-open refusal without a separate path lookup.
+    // Normalization and reparse-free traversal must precede any inspection.
     security::ensure_private_directory(path)
         .map(drop)
-        .map_err(DirectoryError::Io)
+        .map_err(|error| {
+            if error.raw_os_error() == Some(ERROR_DIRECTORY as i32) {
+                DirectoryError::NotDirectory
+            } else {
+                DirectoryError::Io(error)
+            }
+        })
 }
 
 pub fn create_directory(path: &Path) -> io::Result<()> {

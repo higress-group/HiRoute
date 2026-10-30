@@ -229,6 +229,7 @@ mod tests {
             .unwrap();
             crate::prepare_owner_directory(&root.join("observation")).unwrap();
             let path = root.join("observation/activity.db");
+            hiroute_platform::durable::write_private_new(&path, b"").unwrap();
             let db = Connection::open(&path).unwrap();
             db.execute_batch("CREATE TABLE observation_meta(key TEXT PRIMARY KEY,value TEXT); INSERT INTO observation_meta VALUES('schema_version','4'); CREATE TABLE original_content(id INTEGER PRIMARY KEY,body BLOB); INSERT INTO original_content VALUES(1,X'00ff');").unwrap();
             drop(db);
@@ -246,8 +247,8 @@ mod tests {
                 .map(|p| fs::read(root.join(p)).unwrap())
                 .collect();
             if prior_upgrade {
-                fs::write(
-                    root.join("observation.upgrade.json"),
+                hiroute_platform::durable::write_private_new(
+                    &root.join("observation.upgrade.json"),
                     b"unknown prior phase",
                 )
                 .unwrap();

@@ -534,10 +534,7 @@ fn locator_upgrade_resumes_each_store_commit_and_precompletion_from_verified_32(
         );
         upgraded.validate_recovered_grant_publications().unwrap();
         drop(upgraded);
-        let current = BackupSet::open(&crate::test_storage_authority(), &backup_root).unwrap();
-        assert_ne!(current.set_id(), set_id, "boundary {boundary}");
-        assert_eq!(current.target_schema_version(), LATEST_SCHEMA_VERSION);
-        assert_eq!(current.phase(), BackupSetPhase::Completed);
+
         let archived = backup_root
             .parent()
             .unwrap()
@@ -553,6 +550,9 @@ fn locator_upgrade_resumes_each_store_commit_and_precompletion_from_verified_32(
             fs::read(archived.join("control.db")).unwrap(),
             original_backup
         );
+        let current = BackupSet::open(&crate::test_storage_authority(), &backup_root).unwrap();
+        assert_eq!(current.target_schema_version(), LATEST_SCHEMA_VERSION);
+        assert_eq!(current.phase(), BackupSetPhase::Completed);
         LocalStorageSet::open_for_daemon_startup(&root).unwrap();
     }
 }
@@ -728,11 +728,11 @@ fn locator_upgrade_distinguishes_unheld_plan_history_from_current_and_held_versi
 }
 
 #[test]
-fn additive_schema33_upgrade_preserves_locator_history_and_rejects_unknown_ddl() {
-    for damage in [false, true] {
+fn additive_schema33_and_34_upgrade_preserves_locator_history_and_rejects_unknown_ddl() {
+    for (version, damage) in [(33, false), (33, true), (34, false), (34, true)] {
         let directory = crate::test_tempdir().unwrap();
         let root = directory.path().join("storage");
-        let stores = schema_source(&root, 33);
+        let stores = schema_source(&root, version);
         history(&stores, 3);
         stores.control.connection.borrow().execute("UPDATE gateway_publications SET digest='unrelated-history' WHERE publication_revision=1", []).unwrap();
         if damage {

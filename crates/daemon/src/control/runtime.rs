@@ -85,6 +85,7 @@ mod native_model;
 mod observation_key;
 mod trust;
 use observation_key::observation_workspace_key;
+mod decision_connections;
 mod plan_content;
 mod plan_content_snapshot;
 mod plan_versions;
@@ -688,11 +689,15 @@ impl ProductionControlRuntime {
                 .map_err(|error| error.to_string())?,
         );
         let delegation_finalization = Arc::new(DelegationFinalization::default());
+        let launcher_capability_registrar = stores
+            .open_launcher_capability_registrar()
+            .map_err(|error| error.to_string())?;
         let adapter = Arc::new(LocalControlAdapter {
             publication_diagnostics: Mutex::new(Default::default()),
             publication_marker_cache: Mutex::new(None),
             settings_publication_candidate: Mutex::new(None),
             stores: Mutex::new(stores),
+            launcher_capability_registrar,
             price_snapshot: Arc::new(hiroute_application::prices::PriceSnapshotSlot::default()),
             delegation_digest_authority: digest_authority,
             delegation_observation: observation.clone(),
@@ -994,6 +999,14 @@ impl ProductionControlRuntime {
         self.protected_authority()
             .register_apply_capability(registration)
     }
+
+    pub(crate) fn try_register_apply_capability(
+        &self,
+        registration: hiroute_local_storage::ApplyCapabilityRegistrationV1,
+    ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
+        self.protected_authority()
+            .try_register_apply_capability(registration)
+    }
 }
 
 fn delegation_epoch() -> Result<String, String> {
@@ -1014,6 +1027,7 @@ struct LocalControlAdapter {
     settings_publication_candidate: Mutex<Option<publication::SettingsCandidate>>,
     price_snapshot: Arc<hiroute_application::prices::PriceSnapshotSlot>,
     stores: Mutex<LocalStorageSet>,
+    launcher_capability_registrar: hiroute_local_storage::LauncherCapabilityRegistrar,
     delegation_digest_authority: DigestAuthority,
     delegation_observation: Arc<LocalObservationStore>,
     observation_workspace_key: Zeroizing<[u8; 32]>,
@@ -1083,6 +1097,41 @@ pub(crate) struct ControlNativeCredentialAuthority {
 }
 
 impl NativeCredentialAuthorityV1 for ControlNativeCredentialAuthority {
+    fn admit_decision_credentials(
+        &self,
+        binding: &hiroute_domain::DecisionCredentialBindingV1,
+    ) -> Result<
+        hiroute_domain::DecisionCredentialAdmissionV1,
+        hiroute_domain::NativeCredentialLeaseErrorV1,
+    > {
+        self.adapter
+            .stores
+            .lock()
+            .map_err(|_| {
+                PortError::new(
+                    PortErrorCode::Unavailable,
+                    "control.runtime.decision_pool_lock",
+                )
+            })?
+            .admit_decision_credentials(binding)
+    }
+
+    fn lease_decision_credential(
+        &self,
+        request: &hiroute_domain::DecisionCredentialLeaseRequestV1,
+    ) -> Result<Option<NativeCredentialLeaseV1>, hiroute_domain::NativeCredentialLeaseErrorV1> {
+        self.adapter
+            .stores
+            .lock()
+            .map_err(|_| {
+                PortError::new(
+                    PortErrorCode::Unavailable,
+                    "control.runtime.decision_lease_lock",
+                )
+            })?
+            .lease_decision_credential_exact(request)
+    }
+
     fn current_native_credential_refs(
         &self,
         request: &NativeCredentialLeaseRequestV1,
@@ -1696,6 +1745,9 @@ fn discovered_agent(
 }
 
 fn map_port(error: PortError) -> ControlReadError {
+    if error.context == "decision_service.client_version_required" {
+        return ControlReadError::ClientVersionRequired;
+    }
     match error.code {
         PortErrorCode::Conflict => ControlReadError::SnapshotChanged,
         PortErrorCode::NotFound => ControlReadError::NotFound,
@@ -1726,6 +1778,16 @@ mod early_cancel_tests;
 
 pub(crate) use protected_inputs::RuntimeAuthority;
 impl RuntimeAuthority {
+    pub(crate) fn try_register_apply_capability(
+        &self,
+        registration: ApplyCapabilityRegistrationV1,
+    ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
+        self.adapter
+            .launcher_capability_registrar
+            .try_register(registration)
+            .map_err(|error| error.to_string())
+    }
+
     pub(crate) fn register_apply_capability(
         &self,
         registration: ApplyCapabilityRegistrationV1,

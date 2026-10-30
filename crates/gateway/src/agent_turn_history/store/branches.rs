@@ -2,7 +2,7 @@
 use super::*;
 use crate::context_hold::HistoryContinuity;
 
-const MAX_HEADS: usize = 32;
+pub(super) const MAX_HEADS: usize = 32;
 const MAX_TERMINAL_RECORDS: usize = 128;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,10 +47,7 @@ impl AgentTurnHistoryStore {
         replay: &ReplayStore,
     ) -> Result<super::super::projection::AnalyzedRequest, AgentTurnHistoryError> {
         let mut positions = {
-            let inner = self
-                .inner
-                .try_lock()
-                .ok_or(AgentTurnHistoryError::Resource)?;
+            let inner = self.inner.lock();
             inner
                 .scope_entries(scope)
                 .map(|(_, e)| e)

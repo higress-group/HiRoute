@@ -67,11 +67,14 @@ pub(crate) fn command_payload(
     options: &[String],
 ) -> Option<Result<Value, ErrorCode>> {
     match command_id {
-        "decision.services.list" => Some(empty::<hiroute_application_api::ClientEmptyRequestV1>(
-            options,
-        )),
-        "decision.services.apply" => Some(preview_or_apply(options)),
+        "decision.services.list" | "decision.sources.list" | "decision.connections.list" => Some(
+            empty::<hiroute_application_api::ClientEmptyRequestV1>(options),
+        ),
+        "decision.services.apply" | "decision.connections.apply" => Some(preview_or_apply(options)),
         "decision.services.test" => Some(classifier_request(options)),
+        "decision.connections.test" => Some(request::<
+            hiroute_application_api::DecisionServiceTestRequestV2,
+        >(options)),
         "models.feed.status" | "models.feed.refresh" | "models.availability" => {
             Some(empty::<hiroute_application_api::ClientEmptyRequestV1>(
                 options,

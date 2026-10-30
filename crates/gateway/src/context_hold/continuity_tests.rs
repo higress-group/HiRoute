@@ -3,7 +3,12 @@ use crate::context_hold::{NativeCheckpoint, NativeUserOrigin, visible_history};
 use crate::server::core_runtime::adapters::decode_ingress_request;
 use serde_json::{Value, json};
 
-fn prepare(store: &ContextHoldStore, input: Value, turn: u8, generation: u64) -> PreparedHold {
+fn prepare(
+    store: &ContextHoldStore,
+    input: Value,
+    turn: u8,
+    generation: u64,
+) -> PreparedHold<'static> {
     let request = decode_ingress_request(
         IngressProtocol::Responses,
         &json!({"model":"route","input":input}),

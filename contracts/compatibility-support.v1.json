@@ -73,6 +73,7 @@
     "hiroute.claude-subscription-discovery-evidence/v1",
     "hiroute.claude-subscription-source/v1",
     "hiroute.cli-decision-options/v1",
+    "hiroute.cli-decision-options/v2",
     "hiroute.cli-input-diagnostic/v1",
     "hiroute.cli-prepared-preview/v1",
     "hiroute.cli-quickstart/v1",
@@ -119,6 +120,7 @@
     "hiroute.compute-management-snapshot/v2",
     "hiroute.compute-management-snapshot/v3",
     "hiroute.compute-management-source/v3",
+    "hiroute.compute-management-source/v4",
     "hiroute.compute-management-target/v2",
     "hiroute.compute-probe-lease/v1",
     "hiroute.compute-projection-control/v1",
@@ -175,7 +177,15 @@
     "hiroute.daemon-ready/v1",
     "hiroute.daemon-startup-failure/v1",
     "hiroute.daemon-upgrade-progress/v1",
+    "hiroute.decision-connection-sources/v1",
+    "hiroute.decision-header-state/v1",
+    "hiroute.decision-service-operation/v2",
+    "hiroute.decision-service-test-request/v2",
+    "hiroute.decision-service-test-result/v2",
+    "hiroute.decision-service/v2",
     "hiroute.decision-services/v1",
+    "hiroute.decision-services/v2",
+    "hiroute.decision-source-state/v1",
     "hiroute.delegation-accepted/v1",
     "hiroute.delegation-cancel-request/v1",
     "hiroute.delegation-cancel/v1",
@@ -505,6 +515,24 @@
     "hiroute.worker-wait-request/v1"
   ],
   "subjects": [
+    {
+      "subject": "decision_service_lists",
+      "audited_prefixes": ["hiroute.decision-services"],
+      "current_contracts": ["hiroute.decision-services/v1", "hiroute.decision-services/v2"],
+      "legacy_support": [],
+      "owner": "decision-foundation",
+      "reason": "The released V1 query remains explicit and rejects a V2 latest record; the V2 query returns both strict retained service versions and safe source state.",
+      "removal_condition": "Retire the V1 query only with an explicit supported-client compatibility decision."
+    },
+    {
+      "subject": "decision_cli_options",
+      "audited_prefixes": ["hiroute.cli-decision-options"],
+      "current_contracts": ["hiroute.cli-decision-options/v1", "hiroute.cli-decision-options/v2"],
+      "legacy_support": [],
+      "owner": "decision-foundation",
+      "reason": "V1 options retain System One semantics while V2 options expose the same preset catalog with an explicit wire codec.",
+      "removal_condition": "Retire V1 options only with an explicit supported-client compatibility decision."
+    },
     {
       "subject": "system_one_native_applicability",
       "audited_prefixes": [
@@ -1194,9 +1222,20 @@
         "hiroute.compute-management-preview/v2",
         "hiroute.compute-management-preview/v3",
         "hiroute.compute-management-preview/v4",
-        "hiroute.compute-management-source/v3"
+        "hiroute.compute-management-source/v4"
       ],
       "legacy_support": [
+        {
+          "contract": "hiroute.compute-management-source/v3",
+          "mode": "legacy_adapter",
+          "owner": "compute-management",
+          "reason": "Read released sources and retained Operations without changing their canonical content; they have no decision destinations.",
+          "removal_condition": "Remove only after every supported release, retained operation and recoverable source using v3 is retired under the support policy.",
+          "allowed_paths": [
+            "crates/domain/src/compute/management/mod.rs",
+            "crates/local-storage/tests/fixtures/v0.2.0-compute-operation.json"
+          ]
+        },
         {
           "contract": "hiroute.compute-management-mutation/v2",
           "mode": "frozen_fixture",
@@ -1884,6 +1923,22 @@
       ]
     },
     {
+      "contract": "hiroute.system-one-c/v2",
+      "field": "sealed default assessment before editable feedback guidance changes",
+      "mode": "frozen_fixture",
+      "owner": "decision-foundation",
+      "reason": "Keep existing C v2 default publications and retained Operations readable with their original effective assessment text and authenticated identities. New explicit edits resolve the current default; frozen validation never re-resolves it. The baseline fixture preserves stock questions plus the exact feedback suffix from source 52d2b9b0f131ef423930f8c2834683b27696ad2d.",
+      "removal_condition": "Retire only through the release support policy after all retained inputs with these sealed defaults are no longer supported; a newer editable default alone does not retire them.",
+      "allowed_paths": [
+        "crates/domain/src/routing/fixtures/baseline-c-v2-default-publication.json",
+        "crates/domain/src/routing/assessment.rs",
+        "crates/domain/src/routing/assessment_feedback_tests.rs",
+        "crates/domain/src/routing/authoring/tests.rs",
+        "crates/domain/src/routing/system_one_c.rs",
+        "crates/application/src/routing/authoring/tests.rs"
+      ]
+    },
+    {
       "contract": "hiroute.plan-editor/v2",
       "field": "released competence text without default/custom intent",
       "mode": "legacy_adapter",
@@ -2186,15 +2241,15 @@
     },
     {
       "contract": "hiroute.compute-management-mutation/v2",
-      "field": "pre-schema34 compute_management_effects has SQL NULL api_link_before and api_link_after",
+      "field": "pre-schema35 compute_management_effects has SQL NULL api_link_before and api_link_after",
       "mode": "recovery_read_only",
       "owner": "compute-management",
       "allowed_paths": [
         "crates/local-storage/src/control/compute/management/api_link.rs",
         "crates/local-storage/src/control/compute/management/tests/released_lifecycle.rs"
       ],
-      "reason": "Supported released V2 and retained pre-schema34 V3 source effects did not own association metadata. SQL NULL in both new columns means no association witness; witnessed absence is the JSON string null. Never infer a V4 association change from a historical effect or rewrite its canonical source proof.",
-      "removal_condition": "Remove only after all supported sources and retained unfinished pre-schema34 operations are explicitly retired under the release support policy. Current writes always record both witnesses and V4 requires exact sealed witnesses."
+      "reason": "Supported released V2 and retained pre-schema35 V3 source effects did not own association metadata. SQL NULL in both new columns means no association witness; witnessed absence is the JSON string null. Never infer a V4 association change from a historical effect or rewrite its canonical source proof.",
+      "removal_condition": "Remove only after all supported sources and retained unfinished pre-schema35 operations are explicitly retired under the release support policy. Current writes always record both witnesses and V4 requires exact sealed witnesses."
     }
   ]
 }
