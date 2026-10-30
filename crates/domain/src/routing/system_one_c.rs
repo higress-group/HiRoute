@@ -152,6 +152,10 @@ impl NativeProtocolV1 {
             .competence
             .instructions
             .push_str(guidance["feedback"].as_str().expect("feedback guidance"));
+        judgment.competence.criteria[2] = guidance["highest_criterion"]
+            .as_str()
+            .expect("highest competence criterion")
+            .into();
     }
 
     pub(crate) fn is_stock_assessment(&self, judgment: &JudgmentSettingsV1) -> bool {
@@ -240,25 +244,42 @@ impl FrozenNativeProtocolV1 {
         judgments: impl IntoIterator<Item = (String, JudgmentSettingsV1)>,
     ) -> Result<Self, NativeProtocolError> {
         protocol.validate()?;
-        let mut scopes = BTreeMap::new();
         let selection = super::NativeProtocolSelectionV1 {
             schema: protocol.schema.clone(),
             prior_context_max_turns: protocol.prior_context_max_turns,
         };
+        let judgments = judgments
+            .into_iter()
+            .map(|(id, judgment)| {
+                // Freezing is also used directly by compiler/diagnostic callers. Resolve
+                // default intent here rather than relying on an editor to replace text.
+                // Existing v1 publications carry the stock editable question as Default.
+                // Validate and rebuild those bytes as written, without replacing them with
+                // today's default. New editor publications resolve before reaching here.
+                let judgment = if protocol.schema == SYSTEM_ONE_C_V1
+                    && judgment.competence.standard == Some(super::AssessmentStandardV1::Default)
+                    && protocol.is_stock_assessment(&judgment)
+                {
+                    judgment
+                } else {
+                    judgment.resolve_assessment(Some(&selection))?
+                };
+                Ok((id, judgment))
+            })
+            .collect::<Result<Vec<_>, NativeProtocolError>>()?;
+        Self::freeze_resolved(protocol, decision, judgments)
+    }
+
+    // Effective configuration is already sealed. Rechecking it must not resolve
+    // Default against the current binary's editable wording.
+    fn freeze_resolved(
+        protocol: &NativeProtocolV1,
+        decision: DecisionDefinitionV1,
+        judgments: impl IntoIterator<Item = (String, JudgmentSettingsV1)>,
+    ) -> Result<Self, NativeProtocolError> {
+        protocol.validate()?;
+        let mut scopes = BTreeMap::new();
         for (id, judgment) in judgments {
-            // Freezing is also used directly by compiler/diagnostic callers. Resolve
-            // default intent here rather than relying on an editor to replace text.
-            // Existing v1 publications carry the stock editable question as Default.
-            // Validate and rebuild those bytes as written, without replacing them with
-            // today's default. New editor publications resolve before reaching here.
-            let judgment = if protocol.schema == SYSTEM_ONE_C_V1
-                && judgment.competence.standard == Some(super::AssessmentStandardV1::Default)
-                && protocol.is_stock_assessment(&judgment)
-            {
-                judgment
-            } else {
-                judgment.resolve_assessment(Some(&selection))?
-            };
             if !judgment.validate() {
                 return Err(NativeProtocolError::ContentMismatch);
             }
@@ -368,7 +389,7 @@ impl FrozenNativeProtocolV1 {
     }
     pub fn validate_smart(&self, judgment: &JudgmentSettingsV1) -> Result<(), NativeProtocolError> {
         self.validate()?;
-        let expected = Self::freeze(
+        let expected = Self::freeze_resolved(
             &self.protocol,
             judgment.degree.definition().into(),
             [(super::SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
@@ -387,7 +408,7 @@ impl FrozenNativeProtocolV1 {
         if branches.iter().any(|branch| branch.judgment.is_none()) {
             return Err(NativeProtocolError::ContentMismatch);
         }
-        let expected = Self::freeze(
+        let expected = Self::freeze_resolved(
             &self.protocol,
             c_v1_branch_decision_definition(branches, default_id),
             branches
