@@ -6,9 +6,18 @@ use std::io::BufRead;
 
 fn sql_count(root: &Path, table: &str) -> u64 {
     assert!(matches!(table, "apply_capabilities" | "operations"));
+    let database = root.join("storage/live/control.db");
+    assert!(
+        database.is_file(),
+        "owned fixture database missing at {database:?}; root entries: {:?}",
+        std::fs::read_dir(root)
+            .unwrap()
+            .map(|v| v.unwrap().file_name())
+            .collect::<Vec<_>>()
+    );
     let output = Command::new("python3").args(["-c",
-        "import sqlite3,sys; d=sqlite3.connect('file:'+sys.argv[1]+'?mode=ro',uri=True); print(d.execute('SELECT COUNT(*) FROM '+sys.argv[2]).fetchone()[0])"])
-        .arg(root.join("storage/live/control.db")).arg(table).output().unwrap();
+        "import sqlite3,sys,pathlib; p=pathlib.Path(sys.argv[1]); assert p.is_file(),str(p); d=sqlite3.connect(p.as_uri()+'?mode=ro',uri=True); print(d.execute('SELECT COUNT(*) FROM '+sys.argv[2]).fetchone()[0])"])
+        .arg(database).arg(table).output().unwrap();
     assert!(
         output.status.success(),
         "{}",
