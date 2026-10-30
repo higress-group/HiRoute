@@ -464,7 +464,9 @@ fn assert_complete_content_operation(
                 .into(),
             prior_context_max_turns: 8,
         });
-        *judgment = serde_json::from_value(baseline["judgment"].clone()).unwrap();
+        let old_judgment: JudgmentSettingsV1 =
+            serde_json::from_value(baseline["judgment"].clone()).unwrap();
+        *judgment = old_judgment.clone();
         if baseline["frozen"]["protocol"]["schema"] == SYSTEM_ONE_C_V1 {
             let compiled = crate::compiler::compile_agent_plan_v2(
                 preview.plan_version.compiled.body.identity.clone(),
@@ -492,7 +494,7 @@ fn assert_complete_content_operation(
             panic!("sealed native protocol missing")
         };
         *frozen = Some(serde_json::from_value(baseline["frozen"].clone()).unwrap());
-        *compiled_judgment = Some(judgment.clone());
+        *compiled_judgment = Some(old_judgment);
         body.materialized_route_digest = body.materialized.route_digest().unwrap();
         let compiled = CompiledAgentPlanV1::seal_current(body).unwrap();
         preview.plan_version =
