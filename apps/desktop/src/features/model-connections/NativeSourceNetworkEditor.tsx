@@ -25,6 +25,11 @@ export function NativeSourceNetworkEditor({ sourceId, language, mutable, onSaved
   const dirtyCallback = useRef(onDirty); dirtyCallback.current = onDirty;
   const submission = useRef<{ key: string; digest: string; operation?: OperationReference } | null>(null);
   const changed = Boolean(view && !networkPolicyEqual(view.policy, networkEdit(draft).policy));
+  function changeDraft(value: NativeNetworkDraft) {
+    setDraft(value); setSaved(false); setError('');
+    // Notify callers before a pending test can return and replace this editor.
+    dirtyCallback.current?.(Boolean(view && !networkPolicyEqual(view.policy, networkEdit(value).policy)));
+  }
   useEffect(() => { dirtyCallback.current?.(changed || pending || busy); }, [changed, pending, busy]);
   useEffect(() => () => dirtyCallback.current?.(false), []);
   useEffect(() => {
@@ -83,7 +88,7 @@ export function NativeSourceNetworkEditor({ sourceId, language, mutable, onSaved
       submission.current.operation = accepted.operation;
       if (live.current) await finish(accepted.operation);
     } catch (cause) {
-      if (saveFailureDefinitelyPreAdmission(cause) || saveFailureDefinitelyPreAdmission(safeConnectionErrorCode(cause, true))) { submission.current = null; if (live.current) setError(zh ? '尚未提交。输入已保留，请重试或重新读取最新设置。' : 'The change was not submitted. Your input is retained. Retry or reload the latest settings.'); }
+      if (!submission.current?.operation && (saveFailureDefinitelyPreAdmission(cause) || saveFailureDefinitelyPreAdmission(safeConnectionErrorCode(cause, true)))) { submission.current = null; if (live.current) setError(zh ? '尚未提交。输入已保留，请重试或重新读取最新设置。' : 'The change was not submitted. Your input is retained. Retry or reload the latest settings.'); }
       else if (live.current) { setPending(Boolean(submission.current)); setError(zh ? '保存结果尚未确认，请刷新原操作结果。' : 'The save is not confirmed. Refresh the original operation result.'); }
     } finally { working.current = false; if (live.current) setBusy(false); }
   }
@@ -113,7 +118,7 @@ export function NativeSourceNetworkEditor({ sourceId, language, mutable, onSaved
   return <section className="native-source-network" aria-label={zh ? '接入网络设置' : 'Connection network settings'}>
     {loading && <p role="status">{zh ? '正在读取网络设置…' : 'Reading network settings…'}</p>}
     {view && (preview ? <><NativeNetworkImpact before={preview.before.policy} after={preview.after} models={view.models} decisions={view.decisions} language={language} /><div className="native-network-actions"><button className="btn" type="button" disabled={busy || pending} onClick={() => { setPreview(null); setReturnReveal(value => value + 1); }}>{zh ? '返回修改' : 'Back'}</button><button className="btn btn-primary" type="button" disabled={busy || pending || !mutable} onClick={() => void apply()}>{busy ? zh ? '正在保存…' : 'Saving…' : zh ? '确认并保存' : 'Confirm and save'}</button></div></> : <>
-      <NativeNetworkSettings reveal={reveal + returnReveal} value={draft} onChange={value => { setDraft(value); setSaved(false); setError(''); }} language={language} disabled={!mutable || busy || pending || loading} target={{ kind: 'saved', source_id: sourceId, expected_source_revision: view.source_revision, protocol: null }} />
+      <NativeNetworkSettings reveal={reveal + returnReveal} value={draft} onChange={changeDraft} language={language} disabled={!mutable || busy || pending || loading} target={{ kind: 'saved', source_id: sourceId, expected_source_revision: view.source_revision, protocol: null }} />
       <p className="field-help" role="status">{view.application_state === 'applied' ? zh ? `已保存的网络配置已应用 · 版本 ${view.applied_revision}，连通性尚需检测。` : `Saved network configuration applied · revision ${view.applied_revision}. Connectivity requires a check.` : view.application_state === 'pending' ? zh ? '正在应用配置，请等待原操作完成。' : 'Configuration is being applied. Wait for the original operation.' : zh ? '配置暂不可用，请检查设置。' : 'Configuration is unavailable. Review the settings.'}</p>
       {changed && <div className="native-network-actions"><button className="btn" type="button" disabled={busy || pending || loading} onClick={() => { void confirmDiscard(language).then(allowed => { if (allowed) setDraft(networkDraft(view.policy, view.network_revision)); }); }}>{zh ? '放弃修改' : 'Discard changes'}</button><button className="btn btn-primary" type="button" disabled={busy || pending || loading || !mutable || !!manualProxyError(draft)} onClick={() => void prepare()}>{zh ? '保存网络设置' : 'Save network settings'}</button></div>}
     </>)}

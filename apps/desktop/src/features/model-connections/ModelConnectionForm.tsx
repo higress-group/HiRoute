@@ -618,7 +618,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       .map(model => manualModelIdError(model.upstream_model_id, allowedIds)).find(Boolean);
     if (idError) { setError(idError); return; }
     const passwordElement = password.current;
-    if (!networkReady || manualProxyError(current.network ?? networkDraft())) { setNetworkReveal(v => v + 1); return; }
+    if (!networkReady || manualProxyError(current.network ?? networkDraft())) { setScreen('connection'); setNetworkReveal(v => v + 1); return; }
     const enteredSecret = passwordElement?.value ?? '';
     if (!current.display_name.trim() || new TextEncoder().encode(current.display_name.trim()).length > 256 || current.display_name.includes('\0')) {
       setError('MODEL_CONNECTION_NAME_REQUIRED');

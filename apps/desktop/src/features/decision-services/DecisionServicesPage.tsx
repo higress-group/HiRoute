@@ -55,6 +55,10 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
   const [protocol, setProtocol] = useState(false), [menu, setMenu] = useState(false), [deleting, setDeleting] = useState(false);
   const sourceGeneration = useRef(0), serviceGeneration = useRef(0), testSequence = useRef<Record<string, number>>({});
   const useGeneration = useRef(0);
+  function networkChanged(dirty: boolean) {
+    if (dirty) useGeneration.current++;
+    setNetworkDirty(dirty);
+  }
   const selected = views.find(view => view.service.id === selectedId);
   const editingView = editing && !editing.isNew ? views.find(view => view.service.id === editing.key) ?? null : null;
   useDiscardGuard('decisions', busy || networkDirty, language, async () => false);
@@ -284,9 +288,9 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       </nav></aside>
       <section className="detail-pane"><div className="oc-model-back"><button className="btn btn-quiet" type="button" disabled={networkDirty} onClick={() => { useGeneration.current++; setShowList(true); }}><UiIcon name="arrowLeft" />{t('返回列表', 'Back to list')}</button></div>
         {editing ? editing.kind === 'native'
-          ? <DecisionModelForm key={editing.key} initial={editing.draft} saved={!editing.isNew} view={editingView} revision={editing.isNew ? 0 : editing.expected} sources={sources} language={language} mutable={mutable && !busy} onNetworkDirty={setNetworkDirty} onRetrySources={async () => { await Promise.all([loadSources(), refresh()]); }} onManageSource={onManageSource ? manageSource : undefined} onSave={save} onCancel={cancelEdit} />
+          ? <DecisionModelForm key={editing.key} initial={editing.draft} saved={!editing.isNew} view={editingView} revision={editing.isNew ? 0 : editing.expected} sources={sources} language={language} mutable={mutable && !busy} onNetworkDirty={networkChanged} onRetrySources={async () => { await Promise.all([loadSources(), refresh()]); }} onManageSource={onManageSource ? manageSource : undefined} onSave={save} onCancel={cancelEdit} />
           : <DecisionConnectionForm key={editing.key} initial={editing.record} saved={!editing.isNew} language={language} mutable={mutable && !busy} onSave={(service, secret, runTest) => save(service, secret, runTest, [])} onCancel={cancelEdit} onProtocol={() => setProtocol(true)} />
-          : selected ? <DecisionConnectionDetail key={testKey(selected.service)} view={selected} network={networks[testKey(selected.service)] ?? null} networkDirty={networkDirty} onNetworkDirty={setNetworkDirty} onNetworkSaved={async () => { await Promise.all([refresh(), loadSources()]); }} language={language} mutable={mutable} busy={busy || selected.service.id === unverifiedSave?.id} state={rowState(selected)} result={tests[testKey(selected.service)]} savedBeforeTest={savedBeforeTest === testKey(selected.service)} plans={plans} drafts={drafts} onEdit={() => edit(selected)} onTest={() => void testSelected()} onRefresh={() => void Promise.all([refresh(), loadSources()]).catch(() => {})} onDelete={() => setDeleting(true)} onProtocol={() => setProtocol(true)} onOpenRoute={onOpenRoute} onUse={onUse ? () => { useGeneration.current++; onUse(selected.service); } : undefined} onManageSource={onManageSource ? manageSource : undefined} />
+          : selected ? <DecisionConnectionDetail key={testKey(selected.service)} view={selected} network={networks[testKey(selected.service)] ?? null} networkDirty={networkDirty} onNetworkDirty={networkChanged} onNetworkSaved={async () => { await Promise.all([refresh(), loadSources()]); }} language={language} mutable={mutable} busy={busy || selected.service.id === unverifiedSave?.id} state={rowState(selected)} result={tests[testKey(selected.service)]} savedBeforeTest={savedBeforeTest === testKey(selected.service)} plans={plans} drafts={drafts} onEdit={() => edit(selected)} onTest={() => void testSelected()} onRefresh={() => void Promise.all([refresh(), loadSources()]).catch(() => {})} onDelete={() => setDeleting(true)} onProtocol={() => setProtocol(true)} onOpenRoute={onOpenRoute} onUse={onUse ? () => { useGeneration.current++; onUse(selected.service); } : undefined} onManageSource={onManageSource ? manageSource : undefined} />
           : <div className="empty-state"><p>{t('选择连接查看详情，或添加决策模型。', 'Select a connection or add a decision model.')}</p></div>}
       </section>
     </div>

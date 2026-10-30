@@ -15,7 +15,8 @@ export function InheritedSourceNetwork({ sourceId, target, route: providedRoute,
   const [editorReveal, setEditorReveal] = useState(0);
   const callback = useRef(onDirty); callback.current = onDirty;
   const context = JSON.stringify({ sourceId, target, refreshKey, revision });
-  useEffect(() => { callback.current?.(dirty); return () => callback.current?.(false); }, [dirty]);
+  function networkChanged(dirty: boolean) { setDirty(dirty); callback.current?.(dirty); }
+  useEffect(() => () => callback.current?.(false), []);
   useEffect(() => { if (reveal > 0) { setOpened(true); setOpen(true); setEditorReveal(value => value + 1); } }, [reveal]);
   useEffect(() => {
     if (providedRoute !== undefined) return;
@@ -37,6 +38,6 @@ export function InheritedSourceNetwork({ sourceId, target, route: providedRoute,
         : loading ? zh ? '正在读取网络设置…' : 'Reading network settings…' : zh ? '网络状态暂不可读' : 'Network state unavailable';
   return <div className="decision-inherited-network">
     <div className="native-network-actions"><span className="field-help" role="status">{zh ? '使用 API 接入的网络设置' : 'Network settings from API connection'}{mode ? ` · ${mode}` : ''} · {detail}{dirty ? zh ? ' · 网络修改尚未完成' : ' · Network changes unfinished' : ''}</span><button className="btn btn-quiet" type="button" aria-expanded={open} aria-controls={id} onClick={() => { setOpened(true); setOpen(value => !value); if (!open) setEditorReveal(value => value + 1); }}>{open ? zh ? '收起网络设置' : 'Close network settings' : zh ? '网络设置' : 'Network settings'}</button></div>
-    {opened && <div id={id} hidden={!open}><NativeSourceNetworkEditor key={sourceId} sourceId={sourceId} language={language} mutable={mutable} reveal={editorReveal} onDirty={setDirty} onSaved={async () => { setRevision(value => value + 1); await onSaved?.(); }} /></div>}
+    {opened && <div id={id} hidden={!open}><NativeSourceNetworkEditor key={sourceId} sourceId={sourceId} language={language} mutable={mutable} reveal={editorReveal} onDirty={networkChanged} onSaved={async () => { setRevision(value => value + 1); await onSaved?.(); }} /></div>}
   </div>;
 }
