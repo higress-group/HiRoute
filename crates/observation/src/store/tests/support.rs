@@ -111,7 +111,7 @@ impl Fixture {
         }
     }
 
-    fn request_content_events(
+    pub(crate) fn request_content_events(
         &self,
         bytes: &[u8],
         occurred_at_ms: i64,

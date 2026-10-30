@@ -118,6 +118,8 @@ impl RequestObservation {
                     bytes,
                     public_ref: Some(public_ref.clone()),
                     whole_digest: &whole_digest,
+                    message_instance_id: &message_id,
+                    content_id: &public_ref.content_id,
                     starts_content,
                     transport_frame_id: None,
                     downstream_delivery: None,

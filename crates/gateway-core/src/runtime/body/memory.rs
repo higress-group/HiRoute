@@ -266,6 +266,21 @@ impl StreamBudget {
         Ok(snapshot_from_stream(stream))
     }
 
+    /// Optional scratch may use spare capacity without displacing required
+    /// request work. A later allocation still goes through normal admission.
+    pub fn available_bytes(&self) -> Result<usize, BodyError> {
+        let inner = lock(&self.handle.inner);
+        let stream = inner
+            .streams
+            .get(&self.handle.id)
+            .ok_or(BodyError::UnknownStreamBudget)?;
+        Ok(stream
+            .limit
+            .saturating_sub(stream.live)
+            .min(inner.worker_limit.saturating_sub(inner.worker_live))
+            .min(inner.process_limit.saturating_sub(inner.process_live)))
+    }
+
     fn observe_memory(&self, role: MemoryRole, snapshot: BudgetMemorySnapshot) {
         if let Some(telemetry) = &self.handle.telemetry {
             telemetry.memory_role(role, snapshot);

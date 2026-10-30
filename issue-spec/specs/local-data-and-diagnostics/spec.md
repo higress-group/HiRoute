@@ -198,6 +198,13 @@ a complete old backup with a binary verified to read that source. Supported data
 configuration, and public CLI/Gateway semantics are ongoing obligations, not waived
 by internal refactoring or development-stage terminology.
 
+Manual recovery instructions MUST also preserve the adjacent newer upgrade
+coordinator directory outside its active discovery location by a same-filesystem
+rename before starting the old binary. Restored old databases MUST NOT be paired with newer coordinator
+metadata. Moving that directory may also move the selected backup and guide;
+recovery continues from the guide's new containing directory without deleting or
+rewriting preserved batches. This requires no legacy reader in the runtime.
+
 ### Requirement: Local retention does not imply automatic external upload
 
 Conversation bodies, per-request detail, and route-stage quality samples default
@@ -467,6 +474,27 @@ Recovery presentation SHALL distinguish correcting prerequisites, current-batch 
 
 Source Issue:
 - https://github.com/higress-group/HiRoute/issues/176
+
+### Requirement: Background orphan discovery remains bounded as history grows
+
+Background content-blob orphan discovery SHALL bound identities examined as well
+as candidates deleted per pass, using ordered progress through existing indexes.
+An unfinished sweep SHALL yield between pages; completed and failed passes SHALL
+back off from completion. Changes behind a process-local cursor SHALL remain
+discoverable on a later sweep or restart. Read-only discovery SHALL NOT occupy
+the capture writer or authorize deletion: the existing writer transaction SHALL
+recheck live references and capacity protection before removing files or metadata.
+Explicit deletion, logical visibility, capacity retirement and recovery formats
+retain their current contracts.
+
+#### Scenario: Large live history does not turn an empty GC pass into a full scan
+
+- **WHEN** background collection encounters many live blobs before any orphan
+- **THEN** each pass examines only a bounded indexed page, yields while the sweep
+  is unfinished and eventually reaches later orphans; deleting a full candidate
+  batch does not skip the rest of its page. New live references win the final
+  deletion recheck, and an interrupted or failed sweep cannot permanently hide
+  unprocessed garbage.
 
 ### Requirement: Optional capacity retention uses restrained observation maintenance
 

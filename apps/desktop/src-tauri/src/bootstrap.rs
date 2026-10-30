@@ -737,7 +737,10 @@ impl Resident {
             return Err("TRUSTED_AUTHORITY_UNAVAILABLE".into());
         }
         let result = self.register_once(digest, revisions, operation);
-        if result.is_err() {
+        if result
+            .as_ref()
+            .is_err_and(|error| error != channel::REGISTRATION_BUSY)
+        {
             // A partial/timed-out channel cannot be reused for a different registration.
             // Local Control can remain live, but protected observation reads also need authority.
             if let Some(owned) = &mut self.owned {
@@ -981,6 +984,9 @@ pub(crate) fn acquire_host_lock(root: &Path) -> Result<File, String> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod busy_tests;
 
 #[cfg(all(test, target_os = "macos"))]
 mod channel_native_tests;

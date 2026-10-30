@@ -18,6 +18,8 @@ mod native_routing_view;
 pub mod observation;
 #[path = "profiles/mod.rs"]
 pub mod profiles;
+#[path = "core_runtime/timing.rs"]
+mod timing;
 
 use std::future::Future;
 use std::pin::Pin;
@@ -33,6 +35,7 @@ use hiroute_gateway_core::runtime::driver::{
     BoundRequestAdmission, DecisionCandidateAuthority, GatewayCoreLifecycle,
     GatewayCoreLifecycleLimits, NoopGatewayFilterManager, ObservationLabel,
 };
+use hiroute_gateway_core::runtime::timing::{LocalPhase, WaitKind, set_phase, wait};
 use hiroute_gateway_core::transport::pingora::PingoraConnectorAdapter;
 use hiroute_gateway_core::transport::{
     GatewayLifecycle, GatewayRequestHead, GatewayResponseHead, GatewaySession, SessionReuse,
@@ -63,9 +66,7 @@ use crate::server::composition::{
 use crate::server::dispatch::{
     DispatchError, GatewayRequestAuthority, ModelSelector, RunRequestAuthorityPort,
 };
-use crate::server::publication::{
-    CatalogError, GatewayCatalog, SEALED_CANDIDATE_EXECUTION_SCHEMA_V1, SealedCandidateExecutionV1,
-};
+use crate::server::publication::{CatalogError, GatewayCatalog};
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
 use self::observation::{
@@ -222,7 +223,16 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
         &self,
         session: &mut dyn GatewaySession,
     ) -> Result<SessionReuse, TransportError> {
-        let request = session.request_head()?;
+        timing::process(self, session).await
+    }
+}
+
+impl ProductionGatewayRuntime {
+    async fn process_request(
+        &self,
+        session: &mut dyn GatewaySession,
+        request: GatewayRequestHead,
+    ) -> Result<SessionReuse, TransportError> {
         let path = request
             .path_and_query
             .split_once('?')
@@ -360,7 +370,12 @@ impl GatewayLifecycle for ProductionGatewayRuntime {
         let selector_deadline = authenticated.selector_deadline();
         let mut selector = Box::new(ModelSelector::new(self.authority().selector_limit()));
         let served_model_id = loop {
-            match session.read_request_body_before(selector_deadline).await {
+            match wait(
+                WaitKind::ClientRead,
+                session.read_request_body_before(selector_deadline),
+            )
+            .await
+            {
                 Err(TransportError::DeadlineExceeded) => {
                     return write_dispatch_error(session, DispatchError::RequestDeadlineExceeded)
                         .await;
@@ -432,6 +447,7 @@ impl ProductionGatewayRuntime {
         budget: StreamBudget,
     ) -> Pin<Box<dyn Future<Output = Result<SessionReuse, TransportError>> + Send + 'a>> {
         Box::pin(async move {
+            set_phase(LocalPhase::Replay);
             let (replay, raw_body) = match read_replay_body(
                 session,
                 ingress,
@@ -483,6 +499,7 @@ impl ProductionGatewayRuntime {
                     .await;
                 }
             };
+            set_phase(LocalPhase::Parse);
             let ingress_stats = match replay.reader(&raw_body).and_then(scan_ingress_document) {
                 Ok(stats) => stats,
                 Err(ReplayError::StructureLimit) => {
@@ -564,11 +581,11 @@ impl ProductionGatewayRuntime {
                 };
                 return write_typed_error_phase(session, status, code, "canonical_request").await;
             }
+            set_phase(LocalPhase::Parse);
             let parse_started = Instant::now();
-            let mut canonical_request = match adapters::decode_ingress_request_with_replay(
-                protocol,
-                &document,
-                Some(&replay),
+            let identity_document = crate::context_hold::context_document(&document);
+            let mut canonical_request = match adapters::decode_owned_ingress_request_with_replay(
+                protocol, document, &replay,
             )
             .map(Box::new)
             {
@@ -614,6 +631,7 @@ impl ProductionGatewayRuntime {
             // Move large canonical content into the request-owned aggregate pool
             // before candidate facts or Planner input are built. Planner owns and
             // later returns this compact IR; no full request clone is retained.
+            set_phase(LocalPhase::Externalize);
             let externalize_started = Instant::now();
             if externalize_model_request(&mut canonical_request, &replay, 8 * 1024).is_err() {
                 return write_typed_error_phase(
@@ -625,6 +643,7 @@ impl ProductionGatewayRuntime {
                 .await;
             }
             let externalize_elapsed = externalize_started.elapsed();
+            set_phase(LocalPhase::History);
             let routing_view = native_routing_view::NativeRoutingView::prepare(
                 &request.headers,
                 &canonical_request,
@@ -639,7 +658,7 @@ impl ProductionGatewayRuntime {
                 ContextRequest {
                     ingress: protocol,
                     headers: &request.headers,
-                    document: &document,
+                    document: &identity_document,
                     request: &canonical_request,
                     semantic_request: Some(routing_request),
                     user_origin_unverified: routing_view.origin_unverified()
@@ -652,8 +671,9 @@ impl ProductionGatewayRuntime {
             );
             let current_input_origin_unverified = routing_view.origin_unverified()
                 || identity.input_origin_unverified(prepared_hold.as_ref());
-            drop(document);
+            drop(identity_document);
             drop(ingress_workspace);
+            set_phase(LocalPhase::Prevalidate);
             let prevalidate_started = Instant::now();
             let mut replay_references = model_content_refs(&canonical_request);
             replay_references.push(raw_body.clone());
@@ -667,6 +687,7 @@ impl ProductionGatewayRuntime {
                 .await;
             }
             let prevalidate_elapsed = prevalidate_started.elapsed();
+            set_phase(LocalPhase::Prepare);
             let request_observation = self.observation.begin_request_with_content(
                 &authorized,
                 protocol,
@@ -683,7 +704,7 @@ impl ProductionGatewayRuntime {
             request_observation.record_input_selection(
                 routing_view.excerpt_selection(&canonical_request, current_input_origin_unverified),
             );
-            request_observation.capture_request(&canonical_request, &replay);
+            request_observation.capture_request_async(&canonical_request, &replay);
             let mut hold_ticket;
             let mut agent_turn_guard = None;
             let mut correlated_branch = None;
@@ -719,6 +740,7 @@ impl ProductionGatewayRuntime {
                         prepared_hold.as_ref(),
                     )
                 });
+                set_phase(LocalPhase::History);
                 let tracking = match self.begin_authorized_decision_history(
                     &request_observation,
                     PlanSnapshot {
@@ -750,6 +772,7 @@ impl ProductionGatewayRuntime {
                 correlated_branch = tracking.correlated;
                 hold_ticket = tracking.hold_ticket;
                 let turn_history = tracking.history;
+                set_phase(LocalPhase::Decision);
                 let mut classification = Box::pin(self.classify_for_planner(
                     &strategy,
                     classification::ClassificationRequest {
@@ -843,33 +866,37 @@ impl ProductionGatewayRuntime {
                 None
             };
             drop(routing_view);
-            let mut planner_input = match with_active_request(request_observation.clone(), async {
-                self.planner_inputs
-                    .build_input(*canonical_request, &authorized)
-                    .map(Box::new)
-            })
-            .await
-            {
-                Ok(input) => input,
-                Err(crate::server::composition::PortError::InvalidReasoningControl) => {
-                    return write_typed_error_phase(
-                        session,
-                        StatusCode::BAD_REQUEST,
-                        "FIXED_REASONING_UNSUPPORTED",
-                        "planner",
-                    )
-                    .await;
-                }
-                Err(_) => {
-                    return write_typed_error_phase(
-                        session,
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "PLANNER_INPUT_UNAVAILABLE",
-                        "planner",
-                    )
-                    .await;
-                }
-            };
+            set_phase(LocalPhase::Prepare);
+            let prepared_planner_input =
+                match with_active_request(request_observation.clone(), async {
+                    self.planner_inputs
+                        .build_prepared_input(*canonical_request, &authorized, &budget)
+                        .map(Box::new)
+                })
+                .await
+                {
+                    Ok(input) => input,
+                    Err(crate::server::composition::PortError::InvalidReasoningControl) => {
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::BAD_REQUEST,
+                            "FIXED_REASONING_UNSUPPORTED",
+                            "planner",
+                        )
+                        .await;
+                    }
+                    Err(_) => {
+                        return write_typed_error_phase(
+                            session,
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "PLANNER_INPUT_UNAVAILABLE",
+                            "planner",
+                        )
+                        .await;
+                    }
+                };
+            let mut planner_input = Box::new(prepared_planner_input.input);
+            let mut prepared_templates = prepared_planner_input.templates;
             planner_input.context_hold =
                 hold_ticket.as_ref().and_then(|ticket| ticket.hint.clone());
             if let Some(previous) = hold_ticket
@@ -930,8 +957,12 @@ impl ProductionGatewayRuntime {
             // The Planner is invoked exactly once for this request. Everything
             // below consumes its frozen output; no runtime fallback path may
             // reconstruct order from the publication candidate set.
+            set_phase(LocalPhase::Plan);
             let plan_started = Instant::now();
-            let planner_output = match profiles::Planner.plan(&planner_input).map(Box::new) {
+            let planner_output = match profiles::Planner
+                .plan_published(&planner_input, &authorized.planner_facts())
+                .map(Box::new)
+            {
                 Ok(output) => output,
                 Err(_) => {
                     return write_typed_error_phase(
@@ -944,6 +975,7 @@ impl ProductionGatewayRuntime {
                 }
             };
             request_observation.record_plan_stage(plan_started.elapsed());
+            set_phase(LocalPhase::Prepare);
             request_observation.record_planner(
                 &planner_input,
                 &planner_output,
@@ -1025,55 +1057,24 @@ impl ProductionGatewayRuntime {
                 let configs = attempt.acquire_attempt_configs().map_err(|_| {
                     TransportError::Io("sealed candidate config acquisition failed".into())
                 })?;
-                let candidate: crate::server::publication::CandidateBindingV1 =
-                    serde_json::from_slice(
-                        &configs
-                            .value(config_id)
-                            .ok_or_else(|| {
-                                TransportError::Io("sealed candidate config is unavailable".into())
-                            })?
-                            .bytes,
-                    )
-                    .map_err(|_| TransportError::Io("sealed candidate config is invalid".into()))?;
-                let selected_profile =
-                    serde_json::to_value(&facts.protocol_profile).map_err(|_| {
-                        TransportError::Io("planner profile serialization failed".into())
+                let config = configs.value(config_id).ok_or_else(|| {
+                    TransportError::Io("sealed candidate config is unavailable".into())
+                })?;
+                let compiled = authorized
+                    .candidate_config(binding.local_id(), config)
+                    .ok_or_else(|| {
+                        TransportError::Io("sealed candidate config is invalid".into())
                     })?;
-                let profile_is_member = candidate.protocol_profiles.iter().any(|profile| {
-                    serde_json::to_value(profile)
-                        .ok()
-                        .and_then(|value| {
-                            serde_json::from_value::<profiles::CandidateProtocolProfile>(value).ok()
-                        })
-                        .and_then(|profile| {
-                            profile.for_request_reasoning(&planner_input.request).ok()
-                        })
-                        .and_then(|profile| serde_json::to_value(profile).ok())
-                        .is_some_and(|profile| profile == selected_profile)
-                });
-                if candidate.local_id != binding.local_id()
-                    || candidate.stable_target_key != frozen.stable_binding_id
-                    || !profile_is_member
+                if compiled.binding.local_id != binding.local_id()
+                    || compiled.binding.stable_target_key != frozen.stable_binding_id
                 {
                     return Err(TransportError::Io(
                         "sealed candidate profile mismatch".into(),
                     ));
                 }
-                let execution = SealedCandidateExecutionV1 {
-                    schema_version: SEALED_CANDIDATE_EXECUTION_SCHEMA_V1.into(),
-                    stable_target_key: candidate.stable_target_key,
-                    source_binding_id: candidate.source_binding_id,
-                    credential_destination_ref: candidate.credential_destination_ref,
-                    logical_endpoint: candidate.endpoint,
-                    upstream_model_id: candidate.upstream_model_id,
-                    native_transport_model: candidate.native_transport_model,
-                    connector_runtime: candidate.connector_runtime,
-                    operational_target: candidate.operational_target,
-                    operational_target_digest: candidate.operational_target_digest,
-                    protocol_set_digest: candidate.protocol_profile_digest,
-                    profile_digest: facts.profile_digest.clone(),
-                    protocol_profile: facts.protocol_profile.clone(),
-                };
+                let execution = compiled
+                    .execution_for(facts, &planner_input.request)
+                    .map_err(|_| TransportError::Io("sealed candidate profile mismatch".into()))?;
                 let pool = with_active_request(request_observation.clone(), async {
                     credentials::bind_current(&self.ports, &mut authorized, binding, &execution)
                 })
@@ -1114,9 +1115,8 @@ impl ProductionGatewayRuntime {
                     .map_err(|_| {
                         TransportError::Io("current candidate binding unavailable".into())
                     })?;
-                let profile = serde_json::to_vec(&execution).map_err(|_| {
-                    TransportError::Io("planner profile serialization failed".into())
-                })?;
+                let profile = execution.bytes().clone();
+                prepared_templates.insert_execution(binding.local_id(), execution);
                 frozen_candidates.push(DecisionCandidateAuthority {
                     binding,
                     stable_target: ObservationLabel::new(frozen.stable_binding_id.clone())
@@ -1135,7 +1135,7 @@ impl ProductionGatewayRuntime {
                         })?,
                     ),
                     reason_ledger_identity: Some(reason_ledger_identity.clone()),
-                    provider_profile: Some(profile.into()),
+                    provider_profile: Some(profile),
                 });
                 hold_candidates.push((
                     binding,
@@ -1286,6 +1286,7 @@ impl ProductionGatewayRuntime {
                 }),
             };
             let seed = Arc::new(ProductionReplaySeedEnvelope::new(ProductionReplaySeed {
+                templates: prepared_templates,
                 ingress: protocol,
                 replay,
                 raw_body,
@@ -1303,6 +1304,7 @@ impl ProductionGatewayRuntime {
                 runtime_state_authority: runtime_state_authority.clone(),
                 continuation_scanner: active_continuation.scanner(),
             });
+            set_phase(LocalPhase::Stream);
             let execution = Box::pin(self.execution.process_bound_with_context(
                 &mut *core_session,
                 admission,
@@ -1312,6 +1314,10 @@ impl ProductionGatewayRuntime {
             let execution = adapters::with_active_response_delivery(active_continuation, execution);
             let execution = Box::pin(with_active_request(request_observation.clone(), execution));
             let result = execution.await;
+            #[cfg(feature = "e2e-test-control")]
+            if let Err(error) = &result {
+                eprintln!("Gateway fixture execution failed: {error:?}");
+            }
             let response_started = core_session.response_started;
             drop(core_session);
             let runtime_state_authority_failed =
@@ -1328,8 +1334,13 @@ impl ProductionGatewayRuntime {
                     request_cancelled,
                 )
             };
+            set_phase(LocalPhase::History);
             if let Some(mut guard) = agent_turn_guard.take() {
-                request_observation.finish_agent_turn_output().await;
+                wait(
+                    WaitKind::LocalWork,
+                    request_observation.finish_agent_turn_output(),
+                )
+                .await;
                 let executions = request_observation
                     .accepted_attempt_identity()
                     .and_then(|(candidate_id, _, _)| {
@@ -1659,7 +1670,7 @@ impl GatewaySession for ReplayBodySession<'_> {
         }
         let captured = head.clone();
         self.response_started = true;
-        self.inner.write_response_head(head).await?;
+        timing::write_head(self.inner, head).await?;
         self.response_capture.accepted_head(&captured);
         Ok(())
     }
@@ -1670,7 +1681,11 @@ impl GatewaySession for ReplayBodySession<'_> {
         end_stream: bool,
     ) -> Result<(), TransportError> {
         let captured = body.clone();
-        self.inner.write_response_body(body, end_stream).await?;
+        wait(
+            WaitKind::DownstreamWrite,
+            self.inner.write_response_body(body, end_stream),
+        )
+        .await?;
         self.continuation_scanner
             .accept_bytes(&captured, Instant::now());
         self.response_capture.accepted_frame(&captured, end_stream);
@@ -1749,13 +1764,15 @@ async fn read_replay_body(
         replay, mut body, ..
     } = ingress;
     loop {
-        let chunk = session
-            .read_request_body_before(authorized.deadline())
-            .await
-            .map_err(|error| match error {
-                TransportError::DeadlineExceeded => ReplayBodyError::Deadline,
-                error => ReplayBodyError::Transport(error),
-            })?;
+        let chunk = wait(
+            WaitKind::ClientRead,
+            session.read_request_body_before(authorized.deadline()),
+        )
+        .await
+        .map_err(|error| match error {
+            TransportError::DeadlineExceeded => ReplayBodyError::Deadline,
+            error => ReplayBodyError::Transport(error),
+        })?;
         let Some(chunk) = chunk else {
             break;
         };
@@ -1847,10 +1864,12 @@ async fn write_response(
                 .map_err(|error| TransportError::Io(error.to_string().into()))?,
         );
     }
-    session
-        .write_response_head(GatewayResponseHead { status, headers })
-        .await?;
-    session.write_response_body(body, true).await?;
+    timing::write_head(session, GatewayResponseHead { status, headers }).await?;
+    wait(
+        WaitKind::DownstreamWrite,
+        session.write_response_body(body, true),
+    )
+    .await?;
     Ok(SessionReuse::Close)
 }
 

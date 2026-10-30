@@ -2,7 +2,7 @@
 use super::{ContextHoldKey, HistoryContinuity, PreparedHold};
 use crate::context_hold::routing::{NativeCheckpoint, NativeUserOrigin};
 
-impl PreparedHold {
+impl PreparedHold<'_> {
     pub(crate) fn history_is_proven(&self) -> bool {
         if self.native.user_origin == NativeUserOrigin::Observed {
             return false;

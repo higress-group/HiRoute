@@ -1234,7 +1234,9 @@ fn real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap() {
             execution_mode: "fail_once",
             content_mode: "panic_once",
             otel_mode: "healthy",
-            queue_bytes: 4 * 1024,
+            // Keep enough room for bounded capture work, so this fixture
+            // reaches the failing sinks. Capacity exhaustion is independent.
+            queue_bytes: 512 * 1024,
         },
     );
 
@@ -1249,7 +1251,6 @@ fn real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap() {
 
     let root = fixture.observation_root.as_deref().unwrap();
     for (file, expected_reason) in [
-        ("lifecycle.jsonl", "queue_bytes_exceeded"),
         ("execution-fact.jsonl", "sink_nack"),
         ("conversation-content.jsonl", "sink_panicked"),
     ] {
@@ -1283,6 +1284,9 @@ fn real_hirouted_isolates_slow_fail_and_panic_sinks_and_reports_each_gap() {
     );
     assert_eq!(second.calls(), 2);
 }
+
+#[path = "p0_gateway_observation/capture_capacity.rs"]
+mod capture_capacity;
 
 fn wait_records(root: &Path, file: &str, minimum: usize) -> Vec<Value> {
     let deadline = Instant::now() + Duration::from_secs(5);

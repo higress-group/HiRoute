@@ -689,11 +689,15 @@ impl ProductionControlRuntime {
                 .map_err(|error| error.to_string())?,
         );
         let delegation_finalization = Arc::new(DelegationFinalization::default());
+        let launcher_capability_registrar = stores
+            .open_launcher_capability_registrar()
+            .map_err(|error| error.to_string())?;
         let adapter = Arc::new(LocalControlAdapter {
             publication_diagnostics: Mutex::new(Default::default()),
             publication_marker_cache: Mutex::new(None),
             settings_publication_candidate: Mutex::new(None),
             stores: Mutex::new(stores),
+            launcher_capability_registrar,
             price_snapshot: Arc::new(hiroute_application::prices::PriceSnapshotSlot::default()),
             delegation_digest_authority: digest_authority,
             delegation_observation: observation.clone(),
@@ -995,6 +999,14 @@ impl ProductionControlRuntime {
         self.protected_authority()
             .register_apply_capability(registration)
     }
+
+    pub(crate) fn try_register_apply_capability(
+        &self,
+        registration: hiroute_local_storage::ApplyCapabilityRegistrationV1,
+    ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
+        self.protected_authority()
+            .try_register_apply_capability(registration)
+    }
 }
 
 fn delegation_epoch() -> Result<String, String> {
@@ -1015,6 +1027,7 @@ struct LocalControlAdapter {
     settings_publication_candidate: Mutex<Option<publication::SettingsCandidate>>,
     price_snapshot: Arc<hiroute_application::prices::PriceSnapshotSlot>,
     stores: Mutex<LocalStorageSet>,
+    launcher_capability_registrar: hiroute_local_storage::LauncherCapabilityRegistrar,
     delegation_digest_authority: DigestAuthority,
     delegation_observation: Arc<LocalObservationStore>,
     observation_workspace_key: Zeroizing<[u8; 32]>,
@@ -1765,6 +1778,16 @@ mod early_cancel_tests;
 
 pub(crate) use protected_inputs::RuntimeAuthority;
 impl RuntimeAuthority {
+    pub(crate) fn try_register_apply_capability(
+        &self,
+        registration: ApplyCapabilityRegistrationV1,
+    ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
+        self.adapter
+            .launcher_capability_registrar
+            .try_register(registration)
+            .map_err(|error| error.to_string())
+    }
+
     pub(crate) fn register_apply_capability(
         &self,
         registration: ApplyCapabilityRegistrationV1,

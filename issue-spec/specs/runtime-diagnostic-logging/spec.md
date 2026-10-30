@@ -150,6 +150,7 @@ Storage startup SHALL retain bounded typed cause/action facts through its existi
 
 Source Issue:
 - https://github.com/higress-group/HiRoute/issues/176
+- https://github.com/higress-group/HiRoute/issues/245
 
 ## Implementation references
 
@@ -160,3 +161,52 @@ Source Issue:
 - [Private capture supervisor](../../../scripts/private-stream-capture.py) and
   [ownership/expiry scenarios](../../../scripts/test-private-stream-capture.py).
 - [Smoke evidence contract](../product-smoke-verification/spec.md).
+
+### Requirement: Info request timing is exclusive and keeps asynchronous ingestion separate
+
+Each production model HTTP request MUST produce at most one typed
+`request_timing_summary` at Info, including rejected and cancelled requests. It
+starts at lifecycle entry, freezes at lifecycle completion or cancellation, and
+reuses the accepted request's diagnostic context and request token. Rejection
+before a request identity exists retains its own span and no invented token.
+Readiness and model-discovery GETs are excluded.
+
+Local phase counters and classified pending-wait counters MUST form one exclusive
+partition of the elapsed time. Local phases include ingress, Replay, parsing,
+externalization, prevalidation, history projection, decision handling, planning,
+preparation and response processing. Waits distinguish client input, decision
+service, upstream connect/write/receipt, downstream writes, local background work
+and unclassified work. Nested waits belong to the leaf; concurrent waits with
+different owners remain unclassified. Pending waits include scheduling delay;
+local polling time is elapsed local work, not a CPU-time measurement. Existing
+transport spans and reader-suppression facts overlap and MUST NOT be added to the
+partition.
+
+Asynchronous observation queue and sink timing MUST remain outside the request
+partition. Report record counts, delivered/lost counts, maximum record queue wait,
+summed sink-call work and the delay from frozen request completion until release.
+The summary may be emitted after existing bounded capture/ingestion work releases
+its request ownership; no request waits for this diagnostic summary or a sink
+flush. Sink delivery work includes projection, locking, commit and ACK validation,
+and may overlap other channels. It is not a CPU measurement or an additional
+request latency. Disabled observation still permits the timing summary.
+
+Instrumentation MUST use fixed request counters and existing bounded producers,
+without payload fields, per-chunk log events, new worker threads, global request
+registries, new settings or persistence-format changes. Timing metadata MUST be
+included in the existing queue byte accounting. Diagnostic loss/degradation keeps
+its existing best-effort semantics and cannot change the business result.
+
+#### Scenario: Large input, streaming and relay preserve the partition
+
+A request crossing the Replay spill threshold, or relaying to a second candidate,
+retains one request token and one summary. Sum of local and wait buckets equals
+the frozen elapsed time. Codec polling remains local, and downstream waiting is
+not counted again as upstream waiting.
+
+#### Scenario: Slow or lost observation records do not extend the request
+
+A blocked sink allows the model request to finish. Later queue/sink work changes
+only the separate asynchronous counters. Queue overflow, invalid ACK, NACK and
+panic retain explicit loss accounting, while cancellation freezes the request
+clock once and still releases its summary through the existing logger.

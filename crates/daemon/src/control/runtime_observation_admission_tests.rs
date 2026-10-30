@@ -4,6 +4,71 @@ use hiroute_application_api::{
 };
 
 #[test]
+fn protected_grant_admission_is_independent_of_the_global_control_mutex() {
+    #[cfg(unix)]
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::tests::observation_admission_tests::protected_grant_admission_is_independent_of_the_global_control_mutex",
+    ) {
+        return;
+    }
+    let temp = tempfile::tempdir().unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(temp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let runtime = Arc::new(
+        ProductionControlRuntime::open_with_release_catalog(
+            temp.path(),
+            crate::release_catalog::fixture_catalog(),
+        )
+        .unwrap(),
+    );
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let registration = |token: &str| {
+        ApplyCapabilityRegistrationV1::from_protected_launcher(
+            token.into(),
+            "interactive-user",
+            WorkspaceId::default(),
+            "ListSessionsV2",
+            CanonicalDigest::of_bytes(b"exact query"),
+            RevisionSetV1 {
+                target: 0,
+                dependencies: Default::default(),
+            },
+            now + 60,
+        )
+        .unwrap()
+    };
+    let guard = runtime.adapter.stores.lock().unwrap();
+    let worker = runtime.clone();
+    let value = registration(&"a".repeat(64));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        tx.send(worker.try_register_apply_capability(value))
+            .unwrap()
+    });
+    let result = rx.recv_timeout(Duration::from_millis(500));
+    drop(guard);
+    thread.join().unwrap();
+    assert_eq!(
+        result
+            .expect("grant admission waited for the Control mutex")
+            .unwrap(),
+        hiroute_local_storage::ApplyCapabilityRegistrationOutcome::Registered
+    );
+    assert_eq!(
+        runtime
+            .try_register_apply_capability(registration(&"b".repeat(64)))
+            .unwrap(),
+        hiroute_local_storage::ApplyCapabilityRegistrationOutcome::Registered
+    );
+}
+
+#[test]
 fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
     #[cfg(unix)]
     if crate::test_support::isolated_agent_home(

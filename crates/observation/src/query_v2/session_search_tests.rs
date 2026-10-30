@@ -541,7 +541,9 @@ thread_local! {
 }
 
 fn yield_first_index_cycle(sql: &str) {
-    if sql == "SELECT value FROM observation_meta WHERE key='store_revision'" {
+    // The source watermark is read every cycle; the broad store revision is
+    // intentionally no longer polled by an idle index builder.
+    if sql == "SELECT 1 FROM observation_meta WHERE key='text_index_dirty_from_v1'" {
         let first = INDEX_CHECKPOINTS.with(|count| {
             let previous = count.get();
             count.set(previous + 1);

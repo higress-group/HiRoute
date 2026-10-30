@@ -202,11 +202,9 @@ fn emit_signal(request: &RequestObservation, kind: &'static str, signal: OtelSig
     let correlation = request.correlation();
     let request_id = request.metadata().request_id.clone();
     let key = request.inner.key;
-    request
-        .inner
-        .channels
-        .otel
-        .publish(move |producer, sequence, loss| {
+    request.inner.channels.otel.publish_timed(
+        request.inner.latency.clone(),
+        move |producer, sequence, loss| {
             let sequence_bytes = sequence.to_be_bytes();
             OtelGenAiRecordV1 {
                 schema_version: OTEL_GEN_AI_SCHEMA.into(),
@@ -226,7 +224,8 @@ fn emit_signal(request: &RequestObservation, kind: &'static str, signal: OtelSig
                 signal,
                 loss_watermark: loss,
             }
-        });
+        },
+    );
 }
 
 fn span_status(outcome: &str) -> &'static str {

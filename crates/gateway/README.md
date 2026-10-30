@@ -8,6 +8,54 @@ bind authority, prepare the canonical request and Replay, obtain a request-owned
 branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
+[Compiled candidate facts](src/publication/candidate.rs) retain typed profiles
+and their existing digests per execution. Requests still acquire current core
+configuration and compare its exact bytes/generation before consuming those
+facts. Planner reuses a digest only when every corresponding immutable field
+matches; its ordinary untrusted-input entry retains complete digest validation.
+[Prepared execution facts](src/publication/execution.rs) also retain the existing
+sealed envelope, exact lease target and their canonical digests. A bounded
+request-local handoff can reuse them only for the same binding and exact sealed
+byte allocation. Copied or changed envelopes retain full validation; request
+reasoning derives a separately checked profile. The current attempt still checks
+its target, profile identity, protocol, credentials and operational authority.
+Live credential/grant checks stay at their existing request/attempt boundaries.
+
+The [model selector](src/dispatch/selector.rs) and
+[structural scanner](src/content_ref/ingress/scanner.rs) skip ordinary string runs
+while preserving scalar escape, control and boundary transitions. Small
+memory-backed ingress and nested arguments feed the existing serde parser from a
+temporary, budgeted slice; disk-backed and pressured inputs retain the bounded reader.
+[Runtime fingerprints](src/runtime_fingerprint.rs) reuse complete normalized
+content within one request. MD5 here is an ephemeral equality check with framed
+domains; authorization, native proofs and persisted observation HMACs retain
+their cryptographic algorithms. [Prepared input](src/composition/prepared.rs)
+may retain bounded candidate templates until the selected attempt uses them;
+current authority/profile checks still run, and cleanup rebuilds the template.
+Template serialization borrows the existing JSON tree while expanding its wire
+markers. Replay serializes each canonical range under its existing memory gate
+and derives range lengths from the same checked stream counters.
+Production ingress moves its native tree into the canonical request; context
+identity keeps only the original `metadata` and `client_metadata` roots so
+externalizing native content cannot change Claude/Codex identity enrichment.
+
+[Optional content encoding](src/observation/content_work.rs) uses one ordered,
+bounded worker per observation channel set. Its immutable snapshot retains only
+instructions, messages, tools and charged semantic Replay backing. It does not
+retain the raw ingress body. Request capture closes before response capture so
+their transcript roots remain related. Accepted-output history and usage update
+at delivery; neither waits for content encoding or SQLite. Capacity or capture
+failure reports a gap and stops dependent capture for that request. The final
+Replay owner releases files and reservations on all paths.
+The existing content queue splits its byte ceiling between optional jobs and
+encoded records. Fixed slots hold pointers; each admitted job's existing charge
+covers its allocated header, rather than preallocating 256 maximum-size tasks.
+Only the content worker can park on record credit, with a
+bounded stalled-record wait; foreground producers remain nonblocking. Encoded
+bursts leave room for concurrent foreground jobs; queued work still leaves room
+for one complete chunk record. Both use the same unchanged byte ceiling. Delivery
+releases credit through a condition variable, and a stalled job reports loss
+without publishing dependent completion roots.
 
 Ordinary Responses, Chat Completions, Messages and model-catalog clients may carry
 their HiRoute connection token as `Authorization: Bearer <token>`. The current
@@ -296,6 +344,14 @@ timeline does not manufacture pending user turns. Older unmarked facts remain
 visible under their original conservative interpretation.
 Each admission owns a unique ticket and frozen assessment snapshot. ContextHold
 commits are branch-scoped; optional cache misses cannot discard execution capture.
+Transient history-metadata contention waits for the in-memory checkpoint/admission
+transition rather than dropping that request's assessment. No request, external
+call or streaming lifetime holds the mutex. Incoming projection and transcript
+measurement run outside it. [Idle maintenance](src/agent_turn_history/store/maintenance.rs)
+visits at most 32 indexed entries plus the current scope's 32 heads; current-scope
+TTL remains exact and protects pending requests and pinned snapshots. The
+[contention and expiry regressions](src/agent_turn_history/admission_contention_tests.rs)
+cover both admission entrances, unrelated growth and eventual reclamation.
 Freezing request membership does not prove that the stage ended. The store keeps
 capture coverage, actual provider outcomes and stage-closure proof independently.
 A known successful tool response can leave its stage open; an unknown provider
@@ -316,6 +372,9 @@ Request JSON observation uses the same Replay-aware canonical serialization as
 comparison, with bounded chunks and integrity checks instead of retaining internal
 locators. [Observation regressions](src/observation/content/request_json_replay_tests.rs)
 cover nested strings, tool JSON, literal-marker isolation and missing backing.
+Content-part owners compute message/content identities once and pass them to their
+chunks; the capture lifetime owns its fixed fork identity. Digest algorithms,
+transcript ordering and queued envelope shapes remain unchanged.
 Response ciphertext remains excluded from retained observation content.
 The response tracker retains accepted lifecycle evidence separately from that
 presentation policy. Converted responses use the protocol renderer's omission
@@ -695,3 +754,23 @@ Admission exclusions also join the existing request-local preparation summary wh
 another candidate remains. Mixed permanent failures do not become a pure cooling
 response, and an actual upstream attempt retains its existing response. These errors
 contain no credentials or provider text and have no `Retry-After`.
+
+## Bounded local text processing
+
+The ingress serde reader uses an accounted 8 KiB buffer to amortize Replay reads;
+syntax/end validation and the Replay terminal checks remain authoritative. The
+sequential request encoder copies unchanged text runs and raw JSON in bulk from
+its existing bounded content buffer, retaining scalar escaping only at special
+bytes. It still respects write quantum, exact declared length and release rules.
+[Boundary tests and the opt-in release benchmark](src/adapters/tests/local_work.rs)
+exercise the same parser/encoder with memory and disk backing. Benchmark timings
+cover those local operations; actual request summaries also include history,
+observation capture and scheduling, and are not CPU-time measurements.
+Canonical JSON range construction coalesces the existing serializer's small writes
+through a fixed 8 KiB stack buffer. It seals a range only after a successful final
+flush; partial writes, interruptions and errors retain the existing Replay failure
+semantics. It adds no heap admission, retained body or alternative serializer.
+Request-local spill seals completed writes with the existing handle/length checks,
+without a durable flush. Independent readers retain their pinned handles; restart
+cleans orphaned spill rather than recovering in-flight requests. Observation storage
+and recoverable publication keep their own durability barriers.

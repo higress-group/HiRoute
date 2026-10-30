@@ -247,6 +247,7 @@ impl AuthenticatedRequest {
             Arc::clone(&execution.planner_policy),
             execution.classifier.as_ref().map(Arc::clone),
             Arc::clone(&execution.candidates),
+            Arc::clone(&execution.candidate_configs),
             Arc::clone(&execution.pricing_bindings),
             core,
         )

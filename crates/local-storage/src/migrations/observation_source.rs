@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn observation_only_startup_preserves_complete_group_options_and_matching_package_once() {
         let directory = crate::test_tempdir().unwrap();
-        let root = directory.path().join("storage");
+        let root = directory.path().join("storage.custom");
         drop(crate::LocalStorageSet::open_for_daemon_startup(&root).unwrap());
         let observation = root.join("observation");
         crate::prepare_owner_directory(&observation).unwrap();
@@ -194,6 +194,14 @@ mod tests {
             .unwrap()
             .join(link["backup_name"].as_str().unwrap());
         crate::backup::source_snapshot::verify(&backup).unwrap();
+        // Old binaries discover the adjacent coordinator independently of the
+        // restored databases. The manual guide must preserve it away from that
+        // active location, including for a non-default storage basename.
+        let coordinator = directory.path().join("storage.custom.upgrade-backups");
+        for guide in ["RECOVERY.md", "恢复说明.md"] {
+            let body = fs::read_to_string(backup.join("source").join(guide)).unwrap();
+            assert!(body.contains(coordinator.to_str().unwrap()), "{guide}");
+        }
         assert_eq!(
             fs::read(backup.join("source/storage/observation/body")).unwrap(),
             b"original content"

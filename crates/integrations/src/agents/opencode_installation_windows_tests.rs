@@ -3,7 +3,7 @@ use hiroute_platform::windows::security;
 use hiroute_platform_test_support::junction::create as junction;
 
 struct NpmFixture {
-    _root: tempfile::TempDir,
+    _root: crate::agents::probe_files::PrivateProbeRoot,
     bin: PathBuf,
     wrapper: PathBuf,
     native: PathBuf,

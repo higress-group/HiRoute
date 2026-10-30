@@ -165,6 +165,200 @@ impl ObservationRecordSink for SlowOnceSink {
     }
 }
 
+#[test]
+fn optional_worker_parks_for_credit_without_spinning_and_ack_releases_it() {
+    const CAPACITY: usize = 64 * 1024;
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer =
+        ByteBoundedObservationProducer::new(identity("credit"), CAPACITY, 128, sink.clone())
+            .unwrap();
+    let work = producer.reserve_work(producer.work_capacity()).unwrap();
+    assert!(
+        producer.reserve_work(1).is_none(),
+        "queued work must leave record headroom"
+    );
+    assert!(matches!(
+        producer.try_publish(|_| vec![0; 8192]),
+        ObservationPublishOutcome::Enqueued { .. }
+    ));
+    let worker = producer.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        let result = worker.publish_timed(
+            None,
+            Some(Instant::now() + Duration::from_secs(1)),
+            8192 + RECORD_ACCOUNTING_BYTES,
+            |_| vec![1; 8192],
+        );
+        sender.send(result).unwrap();
+    });
+    producer.wait_until_credit_blocked();
+    assert_eq!(producer.shared.credit_waits.load(Ordering::Acquire), 1);
+    assert!(receiver.try_recv().is_err());
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    assert!(matches!(
+        receiver.recv_timeout(Duration::from_secs(2)).unwrap(),
+        ObservationPublishOutcome::Enqueued { .. }
+    ));
+    thread.join().unwrap();
+    producer.flush(Duration::from_secs(2)).unwrap();
+    drop(work);
+    assert_eq!(producer.stats().queued_bytes, 0);
+    assert_eq!(producer.stats().dropped, 0);
+    assert_eq!(sink.records.lock().unwrap().len(), 2);
+    assert!(producer.stats().queue_high_water_bytes <= CAPACITY);
+}
+
+#[test]
+fn background_record_credit_leaves_room_for_a_concurrent_foreground_job() {
+    const CAPACITY: usize = 512 * 1024;
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer = ByteBoundedObservationProducer::new(
+        identity("foreground-credit"),
+        CAPACITY,
+        128,
+        sink.clone(),
+    )
+    .unwrap();
+    let active_work = producer.reserve_work(5 * CAPACITY / 8).unwrap();
+    let worker = producer.clone();
+    let thread = std::thread::spawn(move || {
+        for _ in 0..8 {
+            assert!(matches!(
+                worker.publish_timed(
+                    None,
+                    Some(Instant::now() + Duration::from_secs(1)),
+                    32 * 1024 + RECORD_ACCOUNTING_BYTES,
+                    |_| { vec![b'x'; 32 * 1024] }
+                ),
+                ObservationPublishOutcome::Enqueued { .. }
+            ));
+        }
+    });
+    producer.wait_until_credit_blocked();
+    let foreground = producer.reserve_work(64 * 1024);
+    // Release the sink even if the assertion below fails, keeping the failed
+    // negative-control run bounded instead of stranding a delivery thread.
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    assert!(
+        foreground.is_some(),
+        "optional encoded bursts displaced an admissible foreground job"
+    );
+    thread.join().unwrap();
+    producer.flush(Duration::from_secs(2)).unwrap();
+    drop(foreground);
+    drop(active_work);
+    assert_eq!(producer.stats().queued_bytes, 0);
+    assert_eq!(producer.stats().dropped, 0);
+    assert_eq!(sink.records.lock().unwrap().len(), 8);
+    assert!(producer.stats().queue_high_water_bytes <= CAPACITY);
+}
+
+#[test]
+fn background_credit_wait_does_not_claim_the_sequence_needed_to_drain() {
+    const CAPACITY: usize = 512 * 1024;
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer = ByteBoundedObservationProducer::new(
+        identity("sequence-credit"),
+        CAPACITY,
+        128,
+        sink.clone(),
+    )
+    .unwrap();
+    let _work = producer.reserve_work(320 * 1024).unwrap();
+    assert!(matches!(
+        producer.try_publish(|_| vec![0; 96 * 1024 - RECORD_ACCOUNTING_BYTES]),
+        ObservationPublishOutcome::Enqueued { sequence: 1 }
+    ));
+    let worker = producer.clone();
+    let thread = std::thread::spawn(move || {
+        worker.publish_timed(
+            None,
+            Some(Instant::now() + Duration::from_secs(1)),
+            90 * 1024 + RECORD_ACCOUNTING_BYTES,
+            |_| vec![1; 90 * 1024],
+        )
+    });
+    producer.wait_until_credit_blocked();
+    let foreground = producer.try_publish(|_| vec![2; 32 * 1024]);
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    // The waiting background builder must not leave a hole ahead of this
+    // foreground record, whose ACK is needed to make that credit available.
+    assert_eq!(
+        foreground,
+        ObservationPublishOutcome::Enqueued { sequence: 2 }
+    );
+    assert_eq!(
+        thread.join().unwrap(),
+        ObservationPublishOutcome::Enqueued { sequence: 3 }
+    );
+    producer.flush(Duration::from_secs(2)).unwrap();
+    assert_eq!(
+        *sink.deliveries.lock().unwrap(),
+        [(1, false), (2, false), (3, false)]
+    );
+    assert_eq!(producer.stats().dropped, 0);
+    assert!(producer.stats().queue_high_water_bytes <= CAPACITY);
+}
+
+#[test]
+fn exhausted_background_credit_deadline_keeps_explicit_loss_and_releases_work() {
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer =
+        ByteBoundedObservationProducer::new(identity("credit-stalled"), 65536, 128, sink.clone())
+            .unwrap();
+    let work = producer.reserve_work(producer.work_capacity()).unwrap();
+    producer.try_publish(|_| vec![0; 8192]);
+    assert!(matches!(
+        producer.publish_timed(
+            None,
+            Some(Instant::now()),
+            8192 + RECORD_ACCOUNTING_BYTES,
+            |_| vec![1; 8192]
+        ),
+        ObservationPublishOutcome::Dropped { .. }
+    ));
+    assert_eq!(producer.shared.credit_waits.load(Ordering::Acquire), 0);
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    producer.flush(Duration::from_secs(2)).unwrap();
+    drop(work);
+    assert_eq!(producer.stats().queued_bytes, 0);
+    assert_eq!(producer.stats().dropped, 1);
+    assert_eq!(sink.gaps.lock().unwrap().len(), 1);
+}
+
 fn identity(name: &str) -> ObservationProducerIdentity {
     ObservationProducerIdentity {
         channel: Arc::from(name.to_owned()),
@@ -174,6 +368,93 @@ fn identity(name: &str) -> ObservationProducerIdentity {
         producer_epoch: Arc::from(format!("{name}-epoch")),
         stream_id: Arc::from(format!("{name}-stream")),
     }
+}
+
+#[test]
+fn request_timing_follows_bounded_delivery_without_waiting_on_the_request() {
+    use super::super::super::latency::RequestLatency;
+    use hiroute_diagnostics::runtime::{DiagnosticRuntime, RuntimeConfig};
+    use hiroute_diagnostics::{event::ProcessRole, level::DiagnosticLevel, record::Component};
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-async-timing-{}-{}",
+        std::process::id(),
+        super::super::super::unix_nanos()
+    ));
+    let runtime = DiagnosticRuntime::start(RuntimeConfig {
+        root: root.clone(),
+        role: ProcessRole::Daemon,
+        component: Component::Gateway,
+        parent_session_id: None,
+        level_override: Some(DiagnosticLevel::Info),
+    });
+    let latency = RequestLatency::new(runtime.port().handle().context(), None, Instant::now());
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let sink = Arc::new(SlowOnceSink {
+        gate: gate.clone(),
+        slow: AtomicBool::new(true),
+        records: Mutex::new(Vec::new()),
+        gaps: Mutex::new(Vec::new()),
+        deliveries: Mutex::new(Vec::new()),
+    });
+    let producer =
+        ByteBoundedObservationProducer::new(identity("timed"), 8_192, 64, sink.clone()).unwrap();
+    for _ in 0..2 {
+        assert!(matches!(
+            producer.try_publish_timed(Some(latency.clone()), |_| vec![1; 64]),
+            ObservationPublishOutcome::Enqueued { .. }
+        ));
+    }
+    assert!(matches!(
+        producer.try_publish_timed(Some(latency.clone()), |_| vec![1; 16_384]),
+        ObservationPublishOutcome::Dropped { .. }
+    ));
+    let work = producer.reserve_work(producer.work_capacity()).unwrap();
+    assert!(matches!(
+        producer.publish_timed(
+            Some(latency.clone()),
+            Some(Instant::now()),
+            8192,
+            |_| panic!("refused credit must not build an envelope"),
+        ),
+        ObservationPublishOutcome::Dropped { .. }
+    ));
+    drop(work);
+    // The request completes while the sink is still blocked. Neither timing nor
+    // delivery requires a request-side flush or another worker.
+    latency.finish(
+        hiroute_diagnostics::event::RequestOutcome::Completed,
+        Some(200),
+    );
+    drop(latency);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while sink.slow.load(Ordering::Acquire) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(!sink.slow.load(Ordering::Acquire));
+    std::thread::sleep(Duration::from_millis(5));
+    *gate.0.lock().unwrap() = true;
+    gate.1.notify_all();
+    producer.flush(Duration::from_secs(2)).unwrap();
+    runtime.shutdown();
+    let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
+    let summaries = log
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter_map(|record| record["event"].get("request_timing_summary").cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(summaries.len(), 1, "{log}");
+    let summary = &summaries[0];
+    assert_eq!(summary["asynchronous"]["records"], 4);
+    assert_eq!(summary["asynchronous"]["delivered"], 2);
+    assert_eq!(summary["asynchronous"]["dropped"], 2);
+    assert!(
+        summary["asynchronous"]["queue_wait_max_us"]
+            .as_u64()
+            .unwrap()
+            >= 5_000
+    );
+    assert!(summary["asynchronous"]["sink_work_us"].as_u64().unwrap() >= 5_000);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 fn content_record(sequence: u64, chunk_ordinal: u32) -> ObservationRecord {
@@ -230,6 +511,7 @@ fn content_record(sequence: u64, chunk_ordinal: u32) -> ObservationRecord {
     };
     let payload: Arc<[u8]> = serde_json::to_vec(&envelope).unwrap().into();
     ObservationRecord {
+        timing: None,
         stamp: ObservationSequenceStamp {
             identity: producer_identity,
             sequence,

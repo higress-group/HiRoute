@@ -30,12 +30,11 @@ use crate::server::composition::{
 };
 use crate::server::core_runtime::adapters;
 use crate::server::core_runtime::profiles::{
-    AuthenticationSemantics, CandidateProtocolProfile, ClientProtocolProfile, CostClassV1,
-    PlannerCandidateFactsV1,
+    AuthenticationSemantics, CandidateProtocolProfile, ClientProtocolProfile,
 };
 
 use super::response::{connector_error_profile, failure_facts};
-use crate::server::publication::lease_target;
+use crate::server::publication::PreparedCandidateExecution;
 
 use super::{
     MATERIALIZATION_AUTHORITY_FAILED, MATERIALIZATION_BINDING_COOLING_PREFIX,
@@ -162,6 +161,7 @@ pub(super) fn begin_request(
         observed_body_bytes: 0,
         body_eos: false,
         ir: Some(seed.ir),
+        templates: seed.templates,
         frozen_candidates,
         runtime_state_authority: seed.runtime_state_authority,
         route_context: Some(seed.route_context),
@@ -230,47 +230,29 @@ pub(super) async fn materialize_attempt(
     if candidate.stable_target.as_str() != stable_target {
         return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
     }
-    let execution: crate::server::publication::SealedCandidateExecutionV1 = serde_json::from_slice(
-        candidate
-            .provider_profile
-            .as_deref()
-            .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
-    )
-    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let bytes = candidate
+        .provider_profile
+        .as_ref()
+        .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let prepared_execution = match logical
+        .templates
+        .execution(context.binding_id().local_id(), bytes)
+    {
+        Some(prepared) => prepared,
+        None => PreparedCandidateExecution::from_untrusted_bytes(bytes)
+            .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?,
+    };
+    let execution = prepared_execution.execution();
     let profile = &execution.protocol_profile;
     let expected_profile_digest = candidate
         .profile_digest
         .as_ref()
         .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
         .as_str();
-    if execution.schema_version != crate::server::publication::SEALED_CANDIDATE_EXECUTION_SCHEMA_V1
-        || execution.stable_target_key != stable_target
-        || execution.credential_destination_ref.trim().is_empty()
-        || execution.logical_endpoint.trim().is_empty()
-        || execution.upstream_model_id.trim().is_empty()
-        || execution.native_transport_model.trim().is_empty()
-        || profile.capability.native_model != execution.native_transport_model
-        || (execution.connector_runtime == hiroute_domain::ConnectorRuntimeKind::BuiltinNative
-            && execution.upstream_model_id != execution.native_transport_model)
-        || profile_digest(profile)? != expected_profile_digest
+    if execution.stable_target_key != stable_target
         || execution.profile_digest != expected_profile_digest
         || profile.ingress_protocol != logical.ingress
-        || (execution.connector_runtime != hiroute_domain::ConnectorRuntimeKind::CpaBridge
-            && profile.native_target.is_none()
-            && execution
-                .operational_target
-                .for_protocol_path(&profile.connector.request_path)
-                .is_none())
-        || !execution
-            .operational_target
-            .validate_for(execution.connector_runtime, &execution.logical_endpoint)
-        || !matches!(
-            hiroute_domain::CanonicalDigest::of(&execution.operational_target),
-            Ok(digest) if digest == execution.operational_target_digest
-        )
-        || hiroute_domain::CanonicalDigest::parse(execution.protocol_set_digest.as_str()).is_err()
         || !operational_target_matches_plan(&execution.operational_target, plan)
-        || profile.connector.authentication.exact().is_none()
     {
         return Err(Arc::from(MATERIALIZATION_PROTOCOL_FAILED));
     }
@@ -279,9 +261,21 @@ pub(super) async fn materialize_attempt(
         .as_ref()
         .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
     let cleanup_prefix = logical.reasoning_cleanup.prefix_for(context.binding_id());
-    let mut prepared =
-        adapters::project_candidate_request_template_with_cleanup(ir, profile, cleanup_prefix)
-            .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let mut prepared = match logical.templates.take(
+        candidate
+            .candidate_id
+            .as_ref()
+            .map(|id| id.as_str())
+            .unwrap_or(""),
+        expected_profile_digest,
+        cleanup_prefix,
+    ) {
+        Some(prepared) => prepared,
+        None => {
+            adapters::project_candidate_request_template_with_cleanup(ir, profile, cleanup_prefix)
+                .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+        }
+    };
     let streaming = ir.stream;
     let served_model_alias = ir.served_model_id.clone();
     let client_profile = client_profile_for_candidate(profile)?;
@@ -304,9 +298,8 @@ pub(super) async fn materialize_attempt(
         plan.precommit_event_capacity,
     )
     .map_err(safe_error)?;
-    let lease_target = lease_target::for_request(&execution, profile)?;
-    let lease_target_digest = hiroute_domain::CanonicalDigest::of(&lease_target)
-        .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
+    let lease_target = prepared_execution.lease_target();
+    let lease_target_digest = prepared_execution.lease_target_digest();
     let endpoint_state_key = if profile.native_target.is_some() {
         native_endpoint_state_key(stable_target, expected_profile_digest)
             .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
@@ -439,7 +432,7 @@ pub(super) async fn materialize_attempt(
             if execution.connector_runtime == hiroute_domain::ConnectorRuntimeKind::CpaBridge {
                 return Err(Arc::from(MATERIALIZATION_AUTHORITY_FAILED));
             }
-            let target = transport_target_for_profile(plan, &lease_target)?;
+            let target = transport_target_for_profile(plan, lease_target)?;
             provider.target_resolver.resolve(target, &scope).await?
         }
     };
@@ -1048,20 +1041,6 @@ fn operational_target_matches_plan(
                     })
         }
     }
-}
-
-fn profile_digest(profile: &CandidateProtocolProfile) -> Result<String, Arc<str>> {
-    PlannerCandidateFactsV1::seal(
-        "digest-check",
-        "digest-check",
-        profile.clone(),
-        1,
-        None,
-        CostClassV1::Free,
-        None,
-    )
-    .map(|candidate| candidate.profile_digest)
-    .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))
 }
 
 #[cfg(test)]

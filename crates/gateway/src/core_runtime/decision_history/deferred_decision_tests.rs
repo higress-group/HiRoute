@@ -1,16 +1,9 @@
 use super::*;
 
 #[test]
-fn initial_index_contention_recovers_exact_same_scope_pair_without_borrowing_sibling() {
+fn contended_checkpoint_keeps_each_session_actual_predecessor_complete() {
     let fixture = Fixture::new();
-    let a = Fixture::request(json!([{"role":"user","content":"A missed capture"}]));
-    let bypassed = fixture
-        .runtime
-        .agent_turn_history
-        .with_lock_for_runtime_test(|| fixture.begin(&a, fixture.prepare_in_scope(&a, 1)));
-    assert!(bypassed.guard.is_none());
-    assert!(bypassed.hold_ticket.is_none());
-
+    let a = Fixture::request(json!([{"role":"user","content":"A actual input"}]));
     let sibling = Fixture::request(json!([{"role":"user","content":"independent sibling"}]));
     let mut other = fixture.begin(&sibling, fixture.prepare_in_scope(&sibling, 2));
     fixture.finish_named(
@@ -20,14 +13,35 @@ fn initial_index_contention_recovers_exact_same_scope_pair_without_borrowing_sib
         "sibling-request",
     );
     drop(other);
-    let c = Fixture::request(json!([
-        {"role":"user","content":"A missed capture"},
-        {"role":"assistant","content":"client claims missed A output"},
-        {"role":"user","content":"fresh C"}
-    ]));
-    let mut captured = fixture.begin(&c, fixture.prepare_in_scope(&c, 1));
+    let prepared = fixture.prepare_in_scope(&a, 1);
+    let mut captured = std::thread::scope(|threads| {
+        let (started, entrance) = std::sync::mpsc::sync_channel(0);
+        let (finished, completion) = std::sync::mpsc::channel();
+        let worker = fixture
+            .runtime
+            .agent_turn_history
+            .with_lock_for_runtime_test(|| {
+                let fixture = &fixture;
+                let a = &a;
+                let worker = threads.spawn(move || {
+                    started.send(()).unwrap();
+                    let captured = fixture.begin(a, prepared);
+                    finished.send(()).unwrap();
+                    captured
+                });
+                entrance.recv().unwrap();
+                let while_locked = completion.recv_timeout(Duration::from_millis(50));
+                (worker, while_locked)
+            });
+        let captured = worker.0.join().unwrap();
+        assert!(matches!(
+            worker.1,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        captured
+    });
     assert!(captured.guard.is_some());
-    assert!(captured.history.history_partial);
+    assert!(!captured.history.history_partial);
     assert!(captured.history.assessment_target.is_none());
     let captured_id = captured
         .guard
@@ -38,29 +52,26 @@ fn initial_index_contention_recovers_exact_same_scope_pair_without_borrowing_sib
         .clone();
     fixture.finish_named(
         &mut captured,
-        &[text_event("C actual output")],
+        &[text_event("A actual output")],
         true,
-        "c-request",
+        "a-request",
     );
     drop(captured);
-    let d = Fixture::request(json!([
-        {"role":"user","content":"A missed capture"},
-        {"role":"assistant","content":"client claims missed A output"},
-        {"role":"user","content":"fresh C"},
-        {"role":"assistant","content":"C actual output"},
-        {"role":"user","content":"fresh D"}
+    let next = Fixture::request(json!([
+        {"role":"user","content":"A actual input"},
+        {"role":"assistant","content":"A actual output"},
+        {"role":"user","content":"next input"}
     ]));
-    let recovered = fixture.begin(&d, fixture.prepare_in_scope(&d, 1));
+    let recovered = fixture.begin(&next, fixture.prepare_in_scope(&next, 1));
     let target = recovered.history.assessment_target.as_ref().unwrap();
     assert_eq!(target.through_turn_id, captured_id);
     assert!(!target.target_partial);
     let membership = serde_json::to_value(&target.history_membership).unwrap();
-    assert!(membership.to_string().contains("c-request"));
+    assert!(membership.to_string().contains("a-request"));
     assert!(!membership.to_string().contains("sibling-request"));
     let visible = serde_json::to_string(&recovered.history.visible_conversation).unwrap();
-    assert!(visible.contains("C actual output"));
+    assert!(visible.contains("A actual output"));
     assert!(!visible.contains("sibling actual output"));
-    assert!(!visible.contains("client claims missed A output"));
 }
 
 fn decision() -> profiles::BranchDecisionV1 {

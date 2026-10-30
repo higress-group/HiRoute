@@ -13,7 +13,7 @@ native Windows acceptance uses `scripts/windows-headless-ci.ps1`.
 | `p0-gateway-final-gates.yml` | Manual | Aggregate the three current hosted workflows |
 | `build-release.yml` | Manual, exact dispatch SHA | Builds macOS/Linux candidates independently; only Windows archives require the reusable Windows validation gate; uploads candidate assets and integrity evidence for the existing release publisher |
 | `build-release-platform.yml` | Reusable, or explicit manual x64 Windows build | Shared per-target candidate build and evidence upload; the manual defaults build only an NSIS acceptance input with an `awaiting_runtime` identity |
-| `windows-compile.yml` | Path-filtered PR or manual | One cached x64 MSVC check of CLI, daemon, platform, local-storage and the console shell, including test targets and transitive production libraries. The shell compile excludes release payload resources; packaging validates the real payload separately. No runtime tests. |
+| `windows-compile.yml` | Path-filtered PR or manual | One cached x64 MSVC check of CLI, daemon, platform, local-storage, integrations and the console shell, including test targets and transitive production libraries. Bounded installation, storage/recovery, grant admission and shell component tests run on the same host. The shell compile excludes release payload resources; packaging validates the real payload separately. Component tests do not establish installed product or standard-user acceptance. |
 | `windows-headless.yml` | Release-candidate call, explicit manual diagnosis | Native MSVC primitives, shared business libraries, foreground control/Gateway and fixed upstream clients; complete background artifacts with explicit deferred Task acceptance; x64 artifact replay on Windows 11 ARM64 |
 
 PR and main pushes do not automatically run the Windows matrix. During normal
@@ -90,7 +90,10 @@ Most Windows jobs use the standard hosted `windows-2025` image. Native inventori
 required case; zero, ignored or missing required cases fail. The shared library
 scope executes the complete ordinary native test inventory. Explicitly registered
 installation-input gates and child fixtures have their own execution entries;
-unregistered ignored cases fail the ordinary inventory. Fixed Agent gates
+source-declared Release timing, large-history and private stopped-source tests
+are explicit opt-ins in `Invoke-LibraryTests` and run with their declared inputs
+outside ordinary core CI. Ordinary core success does not assess those gates;
+unregistered ignored cases still fail the ordinary inventory. Fixed Agent gates
 explicitly select their opt-in real client tests. Their npm versions and all
 transitive package integrities come from `tools/windows-agent-fixtures/package-lock.json`.
 Qoder's fixed official archive has an independent SHA-256 check. The ordinary

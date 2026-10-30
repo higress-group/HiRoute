@@ -129,6 +129,10 @@ version, protocol, authorization and session; unrelated plan publication does no
 invalidate that route, and each request still reauthorizes.
 [Optional history admission](../../crates/gateway/src/core_runtime/decision_history.rs)
 derives execution scope from request authority independently of ContextHold.
+Its metadata admission synchronizes briefly instead of discarding a session on
+contention; [bounded expiry](../../crates/gateway/src/agent_turn_history/store/maintenance.rs)
+keeps unrelated session growth out of the routine scan. Incoming projection and
+fingerprinting stay outside that lock; no model execution owns it.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
 [Opening evidence](../../crates/gateway/src/agent_turn_history/store/opening.rs)

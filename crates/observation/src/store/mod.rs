@@ -1,6 +1,7 @@
 //! Physical `activity.db` plus an external content-object directory.
 pub(crate) mod agent_attribution;
 mod backfill;
+pub(crate) mod blob_gc;
 pub(crate) mod capacity;
 mod extensions;
 mod unified_retention;
