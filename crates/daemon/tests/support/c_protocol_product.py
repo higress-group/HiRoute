@@ -29,7 +29,7 @@ def native_protocol(repository):
     guidance = json.loads((repository / 'assets/decision-services/default-assessment-guidance.json').read_text())
     return {'prior_context_max_turns': 8}, {
             'instructions': 'Distinguish those meanings' + suffix + ' ' + guidance['feedback'],
-            'criteria': stock['q1']['criteria']}
+            'criteria': stock['q1']['criteria'][:2] + [guidance['highest_criterion']]}
 
 
 

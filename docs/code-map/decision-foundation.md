@@ -61,7 +61,10 @@ recognizes exact legacy default instructions and all criteria. Existing
 publications are never rewritten; assessment inheritance and thresholds keep
 their existing owners. Desktop has one connection test with the current request
 example; CLI/acceptance retains the explicit maximum-shape diagnostic.
-The editable native default adds shared [feedback guidance](../../assets/decision-services/default-assessment-guidance.json).
+The editable native default adds shared [feedback guidance and its highest criterion](../../assets/decision-services/default-assessment-guidance.json),
+including explicit acceptance after correction. Frozen validation compares the
+sealed assessment rather than resolving the current default again; changing the
+default does not rewrite existing C v1/v2 publications or retained Operations.
 The separate [C v2 questions](../../crates/domain/src/routing/fixtures/system_one_c_v2.json)
 change only applicability, leaving the fixed C v1 bundle untouched. The [baseline publication fixture](../../crates/domain/src/routing/fixtures/baseline-c-default-publication.json)
 checks that sealed stock questions and retained Operations keep their original bytes.

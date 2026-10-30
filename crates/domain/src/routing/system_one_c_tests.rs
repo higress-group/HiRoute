@@ -124,7 +124,7 @@ fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
 fn frozen_content_and_effective_authoring_must_both_agree() {
     let p = NativeProtocolV1::default();
     let mut j = JudgmentSettingsV1::default();
-    p.stock_assessment(&mut j);
+    p.current_assessment(&mut j);
     j.competence.standard = Some(super::super::AssessmentStandardV1::Default);
     let frozen = FrozenNativeProtocolV1::freeze(
         &p,
@@ -218,7 +218,7 @@ fn legacy_omission_and_rubric_digest_remain_byte_stable() {
 fn categorical_default_assessment_is_labeled_from_authoring_intent() {
     let p = NativeProtocolV1::default();
     let mut j = JudgmentSettingsV1::default();
-    p.stock_assessment(&mut j);
+    p.current_assessment(&mut j);
     j.competence.standard = Some(super::super::AssessmentStandardV1::Default);
     let branch = super::super::MaterializedBranchV1 {
         id: "writing".into(),

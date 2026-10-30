@@ -1878,6 +1878,22 @@
       ]
     },
     {
+      "contract": "hiroute.system-one-c/v2",
+      "field": "sealed default assessment before editable feedback guidance changes",
+      "mode": "frozen_fixture",
+      "owner": "decision-foundation",
+      "reason": "Keep existing C v2 default publications and retained Operations readable with their original effective assessment text and authenticated identities. New explicit edits resolve the current default; frozen validation never re-resolves it. The baseline fixture preserves stock questions plus the exact feedback suffix from source 52d2b9b0f131ef423930f8c2834683b27696ad2d.",
+      "removal_condition": "Retire only through the release support policy after all retained inputs with these sealed defaults are no longer supported; a newer editable default alone does not retire them.",
+      "allowed_paths": [
+        "crates/domain/src/routing/fixtures/baseline-c-v2-default-publication.json",
+        "crates/domain/src/routing/assessment.rs",
+        "crates/domain/src/routing/assessment_feedback_tests.rs",
+        "crates/domain/src/routing/authoring/tests.rs",
+        "crates/domain/src/routing/system_one_c.rs",
+        "crates/application/src/routing/authoring/tests.rs"
+      ]
+    },
+    {
       "contract": "hiroute.plan-editor/v2",
       "field": "released competence text without default/custom intent",
       "mode": "legacy_adapter",

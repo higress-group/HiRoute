@@ -271,38 +271,55 @@ fn consumed_draft_binds_identity_and_revision_but_publishes_the_submitted_editor
 
 #[test]
 fn complete_content_operation_binds_the_version_head_and_publication() {
-    assert_complete_content_operation(false, None, false);
+    assert_complete_content_operation(false, None, None);
 }
 
 #[test]
 fn retained_native_operation_uses_frozen_semantics_and_still_rejects_tampering() {
-    assert_complete_content_operation(true, None, false);
+    assert_complete_content_operation(true, None, None);
 }
 
 #[test]
 fn retained_v1_native_operation_reconstructs_its_sealed_publication() {
-    assert_complete_content_operation(false, None, true);
+    retained_v1_operation_plan();
+}
+
+#[test]
+fn retained_v2_default_operation_reopens_after_the_editable_default_changes() {
+    assert_complete_content_operation(
+        false,
+        None,
+        Some(include_str!(
+            "../../../../domain/src/routing/fixtures/baseline-c-v2-default-publication.json"
+        )),
+    );
 }
 
 pub(crate) fn retained_v1_operation_plan() -> TransactionPlanV1 {
-    assert_complete_content_operation(false, None, true)
+    assert_complete_content_operation(
+        false,
+        None,
+        Some(include_str!(
+            "../../../../domain/src/routing/fixtures/baseline-c-default-publication.json"
+        )),
+    )
 }
 
 #[test]
 fn current_custom_operations_preserve_parked_source_and_reject_sealed_input_tampering() {
     for mode in [PlanEditorMode::SmartSaving, PlanEditorMode::CustomBranches] {
-        assert_complete_content_operation(false, Some(mode), false);
+        assert_complete_content_operation(false, Some(mode), None);
     }
 }
 
 fn assert_complete_content_operation(
     legacy_native: bool,
     custom_mode: Option<PlanEditorMode>,
-    sealed_v1: bool,
+    sealed_default: Option<&str>,
 ) -> TransactionPlanV1 {
     let mut change = change();
     let mut state = state();
-    if legacy_native || sealed_v1 {
+    if legacy_native || sealed_default.is_some() {
         let service = DecisionServiceV1 {
             id: "decision/retained-operation".into(),
             revision: 1,
@@ -429,11 +446,8 @@ fn assert_complete_content_operation(
                 .is_none()
         );
     }
-    if sealed_v1 {
-        let baseline: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../domain/src/routing/fixtures/baseline-c-default-publication.json"
-        ))
-        .unwrap();
+    if let Some(source) = sealed_default {
+        let baseline: serde_json::Value = serde_json::from_str(source).unwrap();
         let mut configuration = preview.plan_version.configuration.clone();
         let AgentPlanStrategyV2::SmartSaving {
             native_protocol,
@@ -444,25 +458,45 @@ fn assert_complete_content_operation(
             unreachable!()
         };
         *native_protocol = Some(NativeProtocolSelectionV1 {
-            schema: SYSTEM_ONE_C_V1.into(),
+            schema: baseline["frozen"]["protocol"]["schema"]
+                .as_str()
+                .unwrap()
+                .into(),
             prior_context_max_turns: 8,
         });
-        *judgment = serde_json::from_value(baseline["judgment"].clone()).unwrap();
-        let compiled = crate::compiler::compile_agent_plan_v2(
-            preview.plan_version.compiled.body.identity.clone(),
-            preview.plan_version.reference.content_revision,
-            &configuration,
-            &state.facts,
-        )
-        .unwrap();
+        let old_judgment: JudgmentSettingsV1 =
+            serde_json::from_value(baseline["judgment"].clone()).unwrap();
+        *judgment = old_judgment.clone();
+        if baseline["frozen"]["protocol"]["schema"] == SYSTEM_ONE_C_V1 {
+            let compiled = crate::compiler::compile_agent_plan_v2(
+                preview.plan_version.compiled.body.identity.clone(),
+                preview.plan_version.reference.content_revision,
+                &configuration,
+                &state.facts,
+            )
+            .unwrap();
+            let RequestOwnedRouteV1::Classified {
+                native_protocol: Some(frozen),
+                ..
+            } = &compiled.body.materialized.request_owned
+            else {
+                panic!("sealed v1 protocol missing")
+            };
+            assert_eq!(serde_json::to_value(frozen).unwrap(), baseline["frozen"]);
+        }
+        let mut body = (*preview.plan_version.compiled.body).clone();
         let RequestOwnedRouteV1::Classified {
-            native_protocol: Some(frozen),
+            native_protocol: frozen,
+            judgment: compiled_judgment,
             ..
-        } = &compiled.body.materialized.request_owned
+        } = &mut body.materialized.request_owned
         else {
-            panic!("sealed v1 protocol missing")
+            panic!("sealed native protocol missing")
         };
-        assert_eq!(serde_json::to_value(frozen).unwrap(), baseline["frozen"]);
+        *frozen = Some(serde_json::from_value(baseline["frozen"].clone()).unwrap());
+        *compiled_judgment = Some(old_judgment);
+        body.materialized_route_digest = body.materialized.route_digest().unwrap();
+        let compiled = CompiledAgentPlanV1::seal_current(body).unwrap();
         preview.plan_version =
             PlanVersionV1::new(state.workspace.clone(), configuration, compiled).unwrap();
         preview.plan_head.reference = preview.plan_version.reference.clone();
@@ -526,7 +560,7 @@ fn assert_complete_content_operation(
     )
     .unwrap();
     assert_eq!(roundtrip.plan_content_control().unwrap().unwrap(), content);
-    if sealed_v1 {
+    if let Some(source) = sealed_default {
         let stored = StoredOperationInputV1::freeze(&plan).unwrap();
         let bytes = serde_json::to_vec(&stored).unwrap();
         let reopened: StoredOperationInputV1 = serde_json::from_slice(&bytes).unwrap();
@@ -543,7 +577,7 @@ fn assert_complete_content_operation(
                 .native_protocol()
                 .unwrap()
                 .schema,
-            SYSTEM_ONE_C_V1
+            serde_json::from_str::<serde_json::Value>(source).unwrap()["frozen"]["protocol"]["schema"].as_str().unwrap()
         );
     }
     // Alter both envelope copies and the change digest consistently: rejection must
