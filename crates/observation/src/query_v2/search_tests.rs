@@ -52,15 +52,28 @@ pub(super) fn index(store: &LocalObservationStore) {
             .connection
             .lock()
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM observation_text_index_v2 WHERE state='building')",
+                // A bounded cycle can yield between sources, before any row
+                // enters building. Ready released caches can also still lack
+                // their lookup publication. Failed sources are terminal here;
+                // the corruption tests must keep reporting them as partial.
+                "SELECT EXISTS(SELECT 1 FROM observation_text_index_v2 WHERE state='building')
+                  OR EXISTS(
+                    SELECT 1 FROM content_blobs_v2 b WHERE b.state='complete'
+                      AND (b.media_type LIKE 'text/%' OR b.media_type='application/json' OR b.media_type LIKE 'application/vnd.hiroute.%')
+                      AND NOT EXISTS(SELECT 1 FROM observation_text_index_v2 i WHERE i.workspace=b.workspace_id AND i.digest=b.blob_digest)
+                      AND EXISTS(SELECT 1 FROM content_instances_v2 c WHERE c.workspace_id=b.workspace_id AND c.content_blob_digest=b.blob_digest AND c.state='complete'))
+                  OR EXISTS(
+                    SELECT 1 FROM observation_text_index_v2 i WHERE i.state='ready'
+                      AND NOT EXISTS(SELECT 1 FROM observation_text_lookup_sources_v1 k WHERE k.workspace=i.workspace AND k.digest=i.digest))",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
         if !pending {
-            break;
+            return;
         }
     }
+    panic!("search fixture still has pending indexing work after 20 maintenance cycles");
 }
 #[test]
 fn search_indexes_cross_block_literals_with_original_offsets_and_pages_forward() {

@@ -558,7 +558,8 @@ fn index_fixture_drains_sources_beyond_one_maintenance_batch() {
         .unwrap();
     assert!(
         !first.index_partial,
-        "fixture left sources unpublished: {first:?}"
+        "fixture left sources unpublished after returning {} sessions",
+        first.hits.len()
     );
     assert_eq!(first.hits.len(), 200);
     assert!(first.next_cursor.is_some());
@@ -581,10 +582,14 @@ fn live_search_deletion_removes_lookup_and_body_without_invalidating_other_sessi
     add(&store, "old", "old", 100, "needle old");
     index(&store);
     let mut q = query("needle", 1);
-    q.cursor = store
+    let first = store
         .search_observed_sessions(&reader(true), &q, 500)
-        .unwrap()
-        .next_cursor;
+        .unwrap();
+    assert!(!first.index_partial);
+    assert_eq!(first.hits.len(), 1);
+    assert_eq!(first.hits[0].session_id, "new");
+    assert!(first.next_cursor.is_some());
+    q.cursor = first.next_cursor;
     let principal = ObservationPrincipalV1::local_user(WorkspaceId::default());
     let spec = SessionDeletionSpecV1 {
         workspace_id: WorkspaceId::default(),
@@ -605,6 +610,8 @@ fn live_search_deletion_removes_lookup_and_body_without_invalidating_other_sessi
     let next = store
         .search_observed_sessions(&reader(true), &q, 500)
         .unwrap();
+    assert!(!next.index_partial);
+    assert_eq!(next.hits.len(), 1);
     assert_eq!(next.hits[0].session_id, "old");
     assert!(next.next_cursor.is_none());
     assert_eq!(store.connection.lock().query_row("SELECT count(*) FROM observation_text_lookup_v1 WHERE observation_text_lookup_v1 MATCH ?1",[crate::text_index::lookup::expression("deleted")],|r|r.get::<_,u64>(0)).unwrap(),0);
