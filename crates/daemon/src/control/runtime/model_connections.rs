@@ -205,7 +205,24 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             });
         };
         Ok(ComputeSubscriptionCandidatesV2 {
-            candidates: self.refresh_subscription_candidates()?,
+            candidates: self.refresh_subscription_candidates(false)?,
+            discovery_state: ComputeSubscriptionDiscoveryStateV2::Complete,
+            reason_code: None,
+        })
+    }
+
+    fn native_subscription_candidates(
+        &self,
+    ) -> Result<ComputeSubscriptionCandidatesV2, ComputeManagementControlError> {
+        let Some(_) = self.cpa_runtime.as_ref() else {
+            return Ok(ComputeSubscriptionCandidatesV2 {
+                candidates: Vec::new(),
+                discovery_state: ComputeSubscriptionDiscoveryStateV2::RuntimeUnavailable,
+                reason_code: Some("subscription_runtime_unavailable".into()),
+            });
+        };
+        Ok(ComputeSubscriptionCandidatesV2 {
+            candidates: self.refresh_subscription_candidates(true)?,
             discovery_state: ComputeSubscriptionDiscoveryStateV2::Complete,
             reason_code: None,
         })

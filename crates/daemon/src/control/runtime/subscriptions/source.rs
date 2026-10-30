@@ -95,6 +95,7 @@ impl LocalControlAdapter {
     pub(super) fn subscription_discovery_sources(
         &self,
         kind: CpaAccountKind,
+        native_only: bool,
     ) -> Result<Vec<SubscriptionSource>, ComputeManagementControlError> {
         let Some(runtimes) = self.cpa_runtime.as_ref() else {
             return Ok(Vec::new());
@@ -105,9 +106,11 @@ impl LocalControlAdapter {
         {
             sources.push(SubscriptionSource::Native(source));
         }
-        for session in runtimes.login_sessions(kind) {
-            if session.state == CpaLoginState::Authorized {
-                sources.push(SubscriptionSource::managed(session)?);
+        if !native_only {
+            for session in runtimes.login_sessions(kind) {
+                if session.state == CpaLoginState::Authorized {
+                    sources.push(SubscriptionSource::managed(session)?);
+                }
             }
         }
         Ok(sources)

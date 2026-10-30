@@ -235,6 +235,67 @@ fn saved_reuse_resolves_original_owner_among_multiple_logins() {
     }
 }
 
+#[test]
+fn native_scan_excludes_managed_logins_without_reading_credentials_or_starting_cpa() {
+    if isolated_discovery(
+        "native_scan_excludes_managed_logins_without_reading_credentials_or_starting_cpa",
+    ) {
+        return;
+    }
+    let fixture = Fixture::new();
+    let login = fixture.authorize(SubscriptionLoginProviderV1::Codex);
+    let home = std::path::PathBuf::from(std::env::var_os("CODEX_HOME").unwrap());
+    fs::create_dir_all(&home).unwrap();
+    // Discovery only inspects native metadata. An unreadable OAuth document must
+    // remain a pending candidate; it is never parsed or admitted by this read.
+    fs::write(home.join("auth.json"), b"not an OAuth document").unwrap();
+    let all = fixture.adapter().compute_subscriptions().unwrap();
+    assert_eq!(all.candidates.len(), 2);
+    let managed = login.candidate.unwrap();
+    assert!(
+        all.candidates
+            .iter()
+            .any(|value| value.candidate == managed)
+    );
+    let application = ApplicationService::new(fixture.runtime().application_ports());
+    let request = |payload| LocalControlRequestV2 {
+        schema_version: LOCAL_CONTROL_SCHEMA_V2,
+        request_id: "native-only-discovery".into(),
+        principal: PrincipalV1::interactive_user(),
+        operation_id: "ListComputeSubscriptions".into(),
+        payload,
+        protected_grant: None,
+    };
+    let before = fixture.spawns();
+    let response = application.dispatch(request(serde_json::json!({"native_only":true})));
+    assert_eq!(response.status, MachineStatus::Succeeded, "{response:?}");
+    let native: hiroute_application_api::ComputeSubscriptionCandidatesV2 =
+        serde_json::from_value(response.data.unwrap()).unwrap();
+    assert_eq!(native.candidates.len(), 1);
+    assert_ne!(native.candidates[0].candidate, managed);
+    assert_eq!(
+        native.candidates[0].fact_state,
+        hiroute_application_api::ComputeCandidateFactStateV2::PendingApproval
+    );
+    assert_eq!(fixture.spawns(), before);
+    let invalid = application.dispatch(request(serde_json::json!({
+        "native_only":true,"source":{"source_id":"saved","expected_source_revision":1}
+    })));
+    assert_eq!(
+        invalid.error.unwrap().code,
+        hiroute_application_api::ErrorCode::InvalidArguments
+    );
+    assert!(
+        fixture
+            .adapter()
+            .compute_subscriptions()
+            .unwrap()
+            .candidates
+            .iter()
+            .any(|value| value.candidate == managed)
+    );
+}
+
 fn source_for(fixture: &Fixture, kind: CpaAccountKind) -> CpaRegisteredSourceV1 {
     // The old aggregate API is intentionally used only to locate both initially
     // healthy fixtures. The regression exercises unchanged public daemon ports.

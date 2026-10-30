@@ -33,6 +33,10 @@ pub const RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2: &str = "ReleaseSubscriptionCh
 pub struct ComputeSubscriptionCandidatesQueryV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<ComputeSavedSubscriptionSourceV1>,
+    /// Device discovery excludes HiRoute-owned independent sign-ins. Empty callers
+    /// retain the complete candidate set for login continuation and existing clients.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub native_only: bool,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -458,7 +462,15 @@ mod tests {
     fn saved_subscription_lookup_is_opt_in_and_revision_bound() {
         let empty: ComputeSubscriptionCandidatesQueryV1 =
             serde_json::from_value(json!({})).unwrap();
+        assert!(!empty.native_only);
         assert_eq!(serde_json::to_value(empty).unwrap(), json!({}));
+        let native: ComputeSubscriptionCandidatesQueryV1 =
+            serde_json::from_value(json!({"native_only":true})).unwrap();
+        assert!(native.source.is_none());
+        assert_eq!(
+            serde_json::to_value(native).unwrap(),
+            json!({"native_only":true})
+        );
         let scoped: ComputeSubscriptionCandidatesQueryV1 = serde_json::from_value(json!({
             "source": {"source_id":"source/saved", "expected_source_revision":7}
         }))

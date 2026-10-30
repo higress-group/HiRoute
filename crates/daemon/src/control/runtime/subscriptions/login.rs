@@ -294,7 +294,7 @@ impl LocalControlAdapter {
             .iter()
             .any(|session| session.state == CpaLoginState::Authorized)
         {
-            self.refresh_subscription_candidates()?
+            self.refresh_subscription_candidates(false)?
         } else {
             Vec::new()
         };

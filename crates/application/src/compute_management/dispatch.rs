@@ -71,12 +71,16 @@ pub(crate) fn dispatch_compute_management(
             };
             match query.source {
                 Some(source)
-                    if source.source_id.trim().is_empty()
+                    if query.native_only
+                        || source.source_id.trim().is_empty()
                         || source.expected_source_revision == 0 =>
                 {
                     failed(ErrorCode::InvalidArguments, request_id)
                 }
                 Some(source) => result(management.saved_subscription_candidate(source), request_id),
+                None if query.native_only => {
+                    result(management.native_subscription_candidates(), request_id)
+                }
                 None => result(management.compute_subscriptions(), request_id),
             }
         }

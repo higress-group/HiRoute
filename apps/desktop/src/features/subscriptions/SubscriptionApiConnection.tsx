@@ -27,6 +27,7 @@ export function SubscriptionApiPicker(props: Common & { value: string; modelIds:
     <p className="field-help">{zh ? '保存订阅后，也会向此 API 接入导入相同 ID 的模型。以后追加导入继续同步；API 失败不影响订阅，可稍后重试。候选组和优先级由你选择。' : 'After saving the subscription, import matching model IDs into this API connection too. Later imports also sync. API failures keep the subscription intact and can be retried. You choose candidate groups and their priority.'}</p>
     <button className="btn btn-quiet" type="button" disabled={!props.mutable || props.busy} onClick={() => setCreating(true)}>{zh ? '新建关联 API 接入' : 'Create an associated API connection'}</button>
     {creating && <ModelConnectionForm language={props.language} mutable={props.mutable}
+      initialConnectionOptionId="openai.platform.global.v1"
       initialDraft={draft.current} initialSelectedModelIds={props.modelIds}
       existingNames={props.snapshot.sources.map(source => source.display_name)} expectedRevisions={props.snapshot.revisions}
       connectionChoice={<p className="field-help">{zh ? 'API 接入独立保存并使用自己的 API Key。完成后返回订阅，保存关联。' : 'The API connection is saved separately and uses its own API key. Return to the subscription afterward to save the association.'}</p>}

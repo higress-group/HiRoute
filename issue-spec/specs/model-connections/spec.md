@@ -321,6 +321,15 @@ Independent CPA sign-in is the default recommendation; NativeBorrowed is an expl
 option and saved choices do not migrate automatically. Login completion alone does
 not enable routes or import all models.
 
+Device scanning SHALL list only native-client subscription logins available for
+reuse. HiRoute-owned independent sign-ins remain in subscription login management
+and SHALL NOT appear as additional device discoveries. Returning from an independent
+sign-in to the device list restores this native-only scope. Independent login
+continuation still resolves its exact candidate, and appending models to a saved
+subscription resolves the saved credential owner at its current source revision.
+Empty legacy candidate queries retain their complete result; native-only discovery
+is explicit, metadata-only, and does not enumerate managed sign-ins or start CPA.
+
 Desktop subscription checks and model selection SHALL use subscription-specific
 titles. Native discovery controls, including Hermes profile scanning, SHALL remain
 on the device scan list and stay hidden in subscription details. Returning to the
@@ -628,7 +637,12 @@ Source SPEC comments:
 
 Independent Codex login and local-login discovery SHALL offer an optional saved or new
 native API connection. New API credentials use the ordinary protected API form and
-remain separate from subscription OAuth. The association is durable metadata and may
+remain separate from subscription OAuth. Creating an API connection from Codex
+association SHALL initially select the current OpenAI API product, with its registered
+endpoint and authentication defaults, so only an API key is required. The user may
+explicitly change service. Missing or unavailable OpenAI configuration SHALL NOT
+silently select another provider; ordinary API entry defaults remain unchanged.
+The association is durable metadata and may
 be adjusted or removed on the saved subscription. Removing it retains both sources,
 API credentials and already imported models. Removing the API leaves a visible
 unavailable association; removing the subscription clears its association.

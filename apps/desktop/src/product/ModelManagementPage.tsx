@@ -165,6 +165,7 @@ export function ModelManagementPage({
   const [management, setManagement] = useState<ManagementSnapshot | null>(null);
   const [focusedSource, setFocusedSource] = useState<string | null>(initialSourceId);
   const [subscriptions, setSubscriptions] = useState<SubscriptionCandidate[]>([]);
+  const [nativeSubscriptions, setNativeSubscriptions] = useState<SubscriptionCandidate[]>([]);
   const [subscriptionChecks, setSubscriptionChecks] = useState<Record<string, SubscriptionCheckResult | undefined>>({});
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [subscriptionAction, setSubscriptionAction] = useState<'checking' | 'saving' | null>(null);
@@ -255,12 +256,13 @@ export function ModelManagementPage({
     setSubscriptionError(current => current?.phase === 'scan' ? null : current);
     setComputeScanError('');
     const [subscriptionResult, computeResult] = await Promise.allSettled([
-      invoke<SubscriptionScanResult>('compute_subscriptions'),
+      invoke<SubscriptionScanResult>('compute_subscriptions', { nativeOnly: true }),
       invoke<ComputeScanResult>('compute_scan', { nativeTarget: hermesScanTarget.current }),
     ]);
     if (!alive.current || subscriptionScan.current !== scan) return;
     if (subscriptionResult.status === 'fulfilled') {
       setSubscriptions(subscriptionResult.value.candidates);
+      setNativeSubscriptions(subscriptionResult.value.candidates);
       setSubscriptionDiscoveryState(subscriptionResult.value.discovery_state);
     } else {
       setSubscriptionDiscoveryState('complete');
@@ -865,7 +867,9 @@ export function ModelManagementPage({
       setRepairingSubscriptionSource(null); setSelectedSubscriptionRef(null);
       setAddStage('scan'); setAdding(true); setSubscriptionLoading(true);
       try {
-        const result = await invoke<SubscriptionScanResult>('compute_subscriptions');
+        const result = await invoke<SubscriptionScanResult>('compute_subscriptions', {
+          sourceId: source.source_id, expectedSourceRevision: source.revision,
+        });
         if (!alive.current) return;
         setSubscriptions(result.candidates);
         const candidate = result.candidates.find(item => item.existing_source_id === source.source_id);
@@ -1055,7 +1059,7 @@ export function ModelManagementPage({
           {(subscriptionError?.phase === 'scan' || computeScanError || subscriptionDiscoveryState === 'runtime_unavailable') && <button type="button" className="btn btn-primary" onClick={rescanDevice}>{language === 'zh' ? '重新扫描' : 'Scan again'}</button>}
         </>
       : <>
-          <button type="button" className="btn" onClick={() => { setSelectedSubscriptionRef(null); setSubscriptionError(null); }}>{language === 'zh' ? '返回' : 'Back'}</button>
+          <button type="button" className="btn" onClick={rescanDevice}>{language === 'zh' ? '返回' : 'Back'}</button>
           {subscriptionReady
             ? <button type="button" className="btn btn-primary" disabled={!trustedAuthority || subscriptionBusy || !effectiveSubscription || (repairingSelectedSubscription ? !repairSelectionValid : !canSaveSubscription(effectiveSubscription, true, selectedSubscriptionModels))} onClick={() => effectiveSubscription && void saveSubscription({ candidate: effectiveSubscription.candidate, validation: effectiveSubscription.validation, selected_model_refs: [...selectedSubscriptionModels], intent: saveIntent(true) })}>{repairingSelectedSubscription ? (language === 'zh' ? '更新订阅' : 'Update subscription') : (language === 'zh' ? '保存接入' : 'Save connection')}</button>
             : selectedSubscriptionCheck?.status === 'checking'
@@ -1202,7 +1206,7 @@ export function ModelManagementPage({
           onRefresh={refreshManagement} onOperation={onOperation} onUncertain={onRecoveryRefresh} />}
       </div> : <DeviceScanList
         language={language}
-        subscriptions={subscriptions}
+        subscriptions={nativeSubscriptions}
         computeItems={computeScanItems}
         agents={agents}
         subscriptionScanFailed={subscriptionError?.phase === 'scan'}

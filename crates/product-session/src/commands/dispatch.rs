@@ -15,6 +15,7 @@ pub async fn dispatch(
             struct Arguments {
                 source_id: Option<String>,
                 expected_source_revision: Option<u64>,
+                native_only: Option<bool>,
             }
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
@@ -23,6 +24,7 @@ pub async fn dispatch(
                 state,
                 input.source_id,
                 input.expected_source_revision,
+                input.native_only,
             )
             .await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())

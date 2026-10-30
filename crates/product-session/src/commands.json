@@ -412,7 +412,8 @@
     "name": "compute_subscriptions",
     "args": [
       { "name": "source_id", "type": "Option<String>" },
-      { "name": "expected_source_revision", "type": "Option<u64>" }
+      { "name": "expected_source_revision", "type": "Option<u64>" },
+      { "name": "native_only", "type": "Option<bool>" }
     ],
     "result": "Result<WebComputeSubscriptionCandidatesV2, DesktopFailure>",
     "host_only": false

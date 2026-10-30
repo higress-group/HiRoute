@@ -40,7 +40,7 @@ import type {
 } from './types';
 import { checkFailureCode, modelAvailabilityMessage } from './copy';
 import { metadataModelPrefill } from './metadata-prefill';
-import { customApiPrefillOptions, metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortRegisteredOptions, templateEndpointForProtocol } from './registered-metadata';
+import { customApiPrefillOptions, initialRegisteredOption, metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortRegisteredOptions, templateEndpointForProtocol } from './registered-metadata';
 import { ConnectionDirectory } from './ConnectionDirectory';
 import { ConnectionEditingSession, type ConnectionSelection } from './connection-session';
 import './connection-flow.css';
@@ -456,10 +456,10 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   }
 
   useEffect(() => {
-    if (!props.singleProductShortcut || !catalogEnabled || free || props.appendTo || props.savedSource || screen !== 'catalog' || shortcutDecided.current || optionsLoading || !optionsReady) return;
-    const executable = registeredOptions.filter(option => option.registered_check_available);
-    if (executable.length === 1) chooseConnection(executable[0]);
-  }, [props.singleProductShortcut, props.appendTo, props.savedSource, catalogEnabled, free, screen, optionsLoading, optionsReady, registeredOptions]);
+    if ((!props.initialConnectionOptionId && !props.singleProductShortcut) || !catalogEnabled || free || props.appendTo || props.savedSource || screen !== 'catalog' || shortcutDecided.current || optionsLoading || !optionsReady) return;
+    const initial = initialRegisteredOption(registeredOptions, props.initialConnectionOptionId, props.singleProductShortcut);
+    if (initial) chooseConnection(initial);
+  }, [props.initialConnectionOptionId, props.singleProductShortcut, props.appendTo, props.savedSource, catalogEnabled, free, screen, optionsLoading, optionsReady, registeredOptions]);
 
   function updateManualModel(model: ModelDeclaration) {
     invalidate(current => ({ ...current, models: current.models.map(value => value.client_id === model.client_id ? model : value) }), false, 'manual');
@@ -836,7 +836,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     : screen === 'catalog'
       ? <><button className="btn" type="button" onClick={() => void requestClose('back')}>{zh ? '返回' : 'Back'}</button><span className="field-help">{zh ? '选择服务后继续配置' : 'Choose a service to continue'}</span></>
       : screen === 'connection'
-      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && props.singleProductShortcut ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || (!custom && (optionsLoading || !registeredExecutable))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
+      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && (props.singleProductShortcut || props.initialConnectionOptionId) ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || (!custom && (optionsLoading || !registeredExecutable))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
       : screen === 'manual'
         ? <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><button className="btn btn-primary" type="submit" form="mc-manual-form" disabled={!props.mutable}>{zh ? '检查并保存' : 'Check and save'}</button></>
         : <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><span className="connection-selection-count">{zh ? `已选择 ${selectedCount} 个模型` : `${selectedCount} models selected`}</span><button className="btn btn-primary" type="button" disabled={!props.mutable || !selectedCount} onClick={() => void saveSelected()}>{zh ? '保存连接' : 'Save connection'}</button></>;

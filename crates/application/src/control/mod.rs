@@ -474,6 +474,12 @@ pub trait ComputeManagementControlPort: Send + Sync {
         &self,
     ) -> Result<ComputeSubscriptionCandidatesV2, ComputeManagementControlError>;
 
+    fn native_subscription_candidates(
+        &self,
+    ) -> Result<ComputeSubscriptionCandidatesV2, ComputeManagementControlError> {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+
     fn saved_subscription_candidate(
         &self,
         _source: hiroute_application_api::ComputeSavedSubscriptionSourceV1,

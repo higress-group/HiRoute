@@ -52,6 +52,7 @@ pub async fn compute_subscriptions(
     state: &CommandState<'_>,
     source_id: Option<String>,
     expected_source_revision: Option<u64>,
+    native_only: Option<bool>,
 ) -> Result<WebComputeSubscriptionCandidatesV2, DesktopFailure> {
     main_window(window)?;
     let client = state
@@ -62,11 +63,21 @@ pub async fn compute_subscriptions(
         .ok_or("RESIDENT_UNAVAILABLE")?
         .client
         .clone();
-    match (source_id, expected_source_revision) {
-        (None, None) => {
+    match (
+        source_id,
+        expected_source_revision,
+        native_only.unwrap_or(false),
+    ) {
+        (None, None, true) => envelope_data(
+            client
+                .native_subscription_candidates(&crate::random_id()?)
+                .await?,
+        )
+        .map(Into::into),
+        (None, None, false) => {
             envelope_data(client.compute_subscriptions(&crate::random_id()?).await?).map(Into::into)
         }
-        (Some(source_id), Some(expected_source_revision)) => {
+        (Some(source_id), Some(expected_source_revision), false) => {
             let value: hiroute_application_api::ComputeSubscriptionCandidatesV2 =
                 crate::session::query(
                     &client,
@@ -76,6 +87,7 @@ pub async fn compute_subscriptions(
                             source_id,
                             expected_source_revision,
                         }),
+                        native_only: false,
                     },
                 )
                 .await?;
