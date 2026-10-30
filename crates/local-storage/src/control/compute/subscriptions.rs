@@ -109,10 +109,15 @@ fn save_handoff_binding(
     // subscription-validation handoff; other authorized compute writes must pass through.
     let desired = &operation.plan.spec().desired_state;
     let change = match desired.get("schema").and_then(serde_json::Value::as_str) {
-        Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5) => desired
-            .get("change")
-            .and_then(|value| value.get("change"))
-            .ok_or_else(|| error(PortErrorCode::Corrupt, "subscription.handoff.change"))?,
+        Some(schema)
+            if schema == hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
+                || hiroute_domain::is_legacy_subscription_api_change(desired) =>
+        {
+            desired
+                .get("change")
+                .and_then(|value| value.get("change"))
+                .ok_or_else(|| error(PortErrorCode::Corrupt, "subscription.handoff.change"))?
+        }
         Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3) => desired
             .get("change")
             .filter(|value| {
