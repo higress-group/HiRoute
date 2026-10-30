@@ -20,7 +20,9 @@ Object.assign(window, { __DECISION_DOCS__: { samples, captureCalls }, __TAURI_IN
   invoke: async (command: string, args?: { request?: { intent: { view: string; query: DocsQualityQuery } } }) => {
     captureCalls.push(command);
     if (command === 'plan_editor_options') return options;
-    if (command === 'decision_services') return { services };
+    // Documentation records use independent keys; digests are fixed placeholders read only by diagnostics.
+    if (command === 'decision_services_v2') return { services: services.map((service, index) => ({ service, configuration_digest: `sha256:${String(index + 1).repeat(64)}`, credential_state_revision: `sha256:${'a'.repeat(64)}`, source: null, related_sources: [] })) };
+    if (command === 'decision_connection_sources') return { sources: [] };
     if (command === 'compute_management_snapshot') return { sources: [{ display_name: 'Bailian', display_template_id: 'bailian-token-plan', models: models.map(m => ({ binding_id: m.model_configuration_id })) }] };
     if (command === 'observation_read' && args?.request?.intent.view === 'plan_quality') return queryDocsSamples(samples, args.request.intent.query);
     throw new Error('DOCUMENTATION_DEMO_NO_LIVE_ACTIONS');

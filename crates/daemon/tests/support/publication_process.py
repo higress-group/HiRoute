@@ -28,18 +28,9 @@ def ensure_native_model_evidence(product, agent_id):
     checked = getattr(product, 'native_model_checked_agents', set())
     if agent_id in checked:
         return
-    check = {'agent_id': agent_id, 'scope': 'native_authentication',
-             'suite': 'quick', 'allow_model_call': False}
-    revisions = product.preview(
-        'routing preview', {'change': plan_change(product, 'update')})['expected_revisions']
-    consent = {'change_digest': 'sha256:' + hashlib.sha256(encoded(check)).hexdigest(),
-               'expected_revisions': revisions}
-    sequence = getattr(product, 'native_model_check_sequence', 0) + 1
-    product.native_model_check_sequence = sequence
-    capability = product.grant(
-        'CheckAgentConnection', consent, 'native-model-check-' + str(sequence))
-    product.cli('agents check ' + agent_id + ' --scope native-authentication',
-                capability=capability)
+    # This same-user native-authentication check makes no provider/model call.
+    # Follow the ordinary CLI path; Apply grants belong to protected live checks.
+    product.cli('agents check ' + agent_id + ' --scope native-authentication')
     checked.add(agent_id)
     product.native_model_checked_agents = checked
 

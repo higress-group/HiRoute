@@ -17,8 +17,13 @@ use crate::{
 
 mod defaults;
 pub use defaults::*;
+mod decision_target;
+pub use decision_target::*;
+mod decision_transition;
+pub use decision_transition::*;
 
 pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2: &str = "hiroute.compute-management-source/v3";
+pub const COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V4: &str = "hiroute.compute-management-source/v4";
 pub const COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V2: &str = "hiroute.compute-management-mutation/v2";
 pub const COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2: &str = "hiroute.compute-management-change/v2";
 
@@ -413,6 +418,8 @@ pub struct ComputeManagementSourceV2 {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub additional_native_endpoints: Vec<ComputeNativeEndpointV3>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decision_targets: Vec<ComputeDecisionTargetV4>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub credentials: Vec<ComputeManagedCredentialV2>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validation: Option<ComputeManagementValidationV2>,
@@ -422,7 +429,11 @@ pub struct ComputeManagementSourceV2 {
 
 impl ComputeManagementSourceV2 {
     pub fn validate(&self) -> Result<(), ComputeManagementErrorV2> {
-        if self.schema != COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2
+        if !matches!(
+            self.schema.as_str(),
+            COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2 | COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V4
+        ) || (self.schema == COMPUTE_MANAGEMENT_SOURCE_SCHEMA_V2
+            && !self.decision_targets.is_empty())
             || self.revision == 0
             || self.last_candidate_revision == 0
             || !valid_digest(&self.lineage_digest)
@@ -437,6 +448,21 @@ impl ComputeManagementSourceV2 {
         validate_authentication(&self.authentication)?;
         if self.provenance.is_connector_owned() && !self.additional_native_endpoints.is_empty() {
             return Err(ComputeManagementErrorV2::InvalidTarget);
+        }
+        if !self.provenance.is_native() && !self.decision_targets.is_empty() {
+            return Err(ComputeManagementErrorV2::InvalidTarget);
+        }
+        let mut decision_destinations = BTreeSet::new();
+        let mut decision_consumers = BTreeSet::new();
+        for target in &self.decision_targets {
+            target.validate_for(&self.source_id, &self.lineage_digest)?;
+            if !decision_destinations.insert(&target.destination_id)
+                || target.consumers.iter().any(|consumer| {
+                    !decision_consumers.insert((&consumer.service_id, consumer.revision))
+                })
+            {
+                return Err(ComputeManagementErrorV2::DuplicateIdentity);
+            }
         }
         let mut protocols = BTreeSet::from([self.target.upstream_protocol]);
         for endpoint in &self.additional_native_endpoints {
@@ -491,6 +517,9 @@ impl ComputeManagementSourceV2 {
                 || self.additional_native_endpoints.iter().any(|endpoint| {
                     endpoint.authentication != GatewayAuthenticationSemanticsV1::None
                 }));
+        if !self.decision_targets.is_empty() && !requires_native_key {
+            return Err(ComputeManagementErrorV2::InvalidCredential);
+        }
         if connector_owned && !self.credentials.is_empty()
             || !requires_native_key && native && !self.credentials.is_empty()
             || native != self.validation.is_none()
@@ -525,6 +554,10 @@ impl ComputeManagementSourceV2 {
         let mut destinations = BTreeSet::from([self.target.credential_destination()?]);
         for endpoint in &self.additional_native_endpoints {
             destinations.insert(endpoint.target.credential_destination()?);
+        }
+        for target in &self.decision_targets {
+            target.validate_for(&self.source_id, &self.lineage_digest)?;
+            destinations.insert(target.destination_id.clone());
         }
         Ok(destinations)
     }
@@ -644,6 +677,22 @@ impl ComputeManagementMutationV2 {
                 || expected.digest()? != *self.expected_digest.as_ref().unwrap())
         {
             return Err(ComputeManagementErrorV2::InvalidMutation);
+        }
+        // An ordinary model-management Operation cannot add, remove or retarget
+        // decision consumers. Only the compound decision Operation owns that change.
+        match (&self.expected, &self.desired) {
+            (None, Some(desired)) if !desired.decision_targets.is_empty() => {
+                return Err(ComputeManagementErrorV2::InvalidMutation);
+            }
+            (Some(expected), Some(desired))
+                if expected.decision_targets != desired.decision_targets =>
+            {
+                return Err(ComputeManagementErrorV2::InvalidMutation);
+            }
+            (Some(expected), None) if !expected.decision_targets.is_empty() => {
+                return Err(ComputeManagementErrorV2::InvalidMutation);
+            }
+            _ => {}
         }
         Ok(())
     }

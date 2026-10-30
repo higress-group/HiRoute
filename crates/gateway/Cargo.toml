@@ -33,6 +33,8 @@ hiroute-gateway-core = { path = "../gateway-core" }
 hiroute-domain = { path = "../domain" }
 hiroute-host-runtime = { path = "../host-runtime" }
 http.workspace = true
+md-5 = "0.10.6"
+memchr = "2.8.3"
 parking_lot.workspace = true
 pingora-core = { git = "https://github.com/cloudflare/pingora.git", rev = "0046038bd402bc82912da862dadf9a479f31e9f1", features = ["rustls"] }
 rcgen = { version = "0.13.2", optional = true }
@@ -47,6 +49,9 @@ unicode-normalization.workspace = true
 unicode-segmentation.workspace = true
 rustls = { version = "0.23.43", optional = true }
 zeroize.workspace = true
+
+[dev-dependencies]
+ring = "0.17.14"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.175"
@@ -64,6 +69,14 @@ windows-sys = { version = "0.61.2", features = [
 
 [[bench]]
 name = "gateway_replay_paths"
+harness = false
+
+[[bench]]
+name = "gateway_hash_paths"
+harness = false
+
+[[bench]]
+name = "gateway_parse_reuse"
 harness = false
 
 [[bench]]

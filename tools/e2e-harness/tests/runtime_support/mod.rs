@@ -602,6 +602,29 @@ impl RuntimeFixture {
         Self::launch_builtin_branches_at_level(providers, smart, Some("debug"))
     }
 
+    pub fn launch_local_work_benchmark(
+        providers: &[&NativeProvider],
+        replay_threshold: usize,
+    ) -> Self {
+        Self::launch_configured(
+            providers,
+            1,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                classified_route: true,
+                rest_classifier: true,
+                decision_branch_preset: Some(true),
+                observation: Some(ObservationFaults::healthy()),
+                test_control: true,
+                diagnostic_level: Some("info"),
+                replay_threshold,
+                ..Default::default()
+            },
+        )
+    }
+
     fn launch_builtin_branches_at_level(
         providers: &[&NativeProvider],
         smart: bool,
@@ -765,6 +788,27 @@ impl RuntimeFixture {
             RuntimeLaunchOptions {
                 classified_route: true,
                 observation: Some(faults),
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
+    pub fn launch_with_timing_diagnostics(
+        providers: &[&NativeProvider],
+        max_attempts: u32,
+        observation: Option<ObservationFaults>,
+    ) -> Self {
+        Self::launch_configured(
+            providers,
+            max_attempts,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                diagnostic_level: Some("info"),
+                all_ingress_protocols: true,
+                observation,
+                replay_threshold: 1024 * 1024,
                 ..RuntimeLaunchOptions::default()
             },
         )

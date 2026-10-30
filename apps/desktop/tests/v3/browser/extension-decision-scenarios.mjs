@@ -10,7 +10,7 @@ export function extensionDecisionScenarios({ fresh, routing, click, until, all, 
     `Extension ${branches ? 'categories' : 'difficulty routing'} preserves parked settings (${language})`, async () => {
       let plan;
       await fresh(() => {
-        control().handlers.decision_services = () => ({ services: [custom, native] });
+        control().handlers.decision_services_v2 = () => ({ services: [custom, native].map(service => control().decisionView(service)) });
         control().handlers.desktop_snapshot = payload => {
           const snapshot = structuredClone(control().fixtureResponse('desktop_snapshot', payload));
           plan = snapshot.catalog.plans[0];
@@ -73,7 +73,7 @@ export function extensionDecisionScenarios({ fresh, routing, click, until, all, 
       assert(document.querySelector(`[data-decision-field="${branches ? 'branch-0' : 'smart'}-floor"]`).value === before, 'Temporary numeric input corrupted the parked integer');
       await click(t('自定义扩展', 'Custom extension'));
       await until(() => !document.querySelector('.decision-judgment-fields'), 'custom fields hidden again');
-      assert(!calls('test_classifier_decision').length, 'Source switching implicitly probed the connection');
+      assert(!calls('test_decision_service_v2').length, 'Source switching implicitly probed the connection');
       for (const element of all('.decision-selector, .branch-routing-card, .field-label')) {
         const rect = element.getBoundingClientRect();
         assert(rect.width > 30 && rect.right <= innerWidth + 1, 'Editor label or control overflowed');
@@ -82,7 +82,7 @@ export function extensionDecisionScenarios({ fresh, routing, click, until, all, 
     }
   )));
   return [...editorScenarios, ...['zh', 'en'].map(language => scenario(`desktop.extension.help.${language}`, ['extension-decision'], `Current custom protocol help (${language})`, async () => {
-    await fresh(() => { control().handlers.decision_services = () => ({ services: [custom] }); });
+    await fresh(() => { control().handlers.decision_services_v2 = () => ({ services: [control().decisionView(custom)] }); });
     const t = (zh, en) => language === 'zh' ? zh : en;
     localStorage.setItem('hiroute.language', language); control().remount();
     await click(t('模型', 'Models')); await click(t('决策模型', 'Decision models'));

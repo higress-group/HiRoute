@@ -588,7 +588,7 @@ fn enable_c_in_publication(
     enable_c_in_publication_with(publication, &hiroute_domain::NativeProtocolV1::default())
 }
 
-fn enable_c_in_publication_with(
+pub(super) fn enable_c_in_publication_with(
     publication: &mut hiroute_gateway::server::publication::GatewayPublicationSnapshotV3,
     protocol: &hiroute_domain::NativeProtocolV1,
 ) -> hiroute_domain::FrozenNativeProtocolV1 {
@@ -670,7 +670,7 @@ fn enable_c_in_publication_with(
         _ => unreachable!(),
     }
 }
-fn c_answer(smart: bool, applicable: bool) -> &'static [u8] {
+pub(super) fn c_answer(smart: bool, applicable: bool) -> &'static [u8] {
     match (smart,applicable) {
         (true,true) => br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}},"q1":{"type":"score","score":0.2},"q2":{"type":"choice","probabilities":{"applicable":0.9,"not_established":0.1}}}}"#,
         (true,false) => br#"{"answers":{"q0":{"type":"score","probabilities":{"0":0.9,"1":0.1}},"q1":{"type":"score","score":0.2},"q2":{"type":"choice","probabilities":{"applicable":0.1,"not_established":0.9}}}}"#,

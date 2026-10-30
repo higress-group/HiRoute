@@ -43,6 +43,8 @@ pub enum ControlReadError {
     Unavailable,
     Corrupt,
     Denied,
+    /// A retained service uses a representation that this legacy operation cannot return.
+    ClientVersionRequired,
     /// A model-only Codex profile cannot own the collaboration Skill in the original HOME.
     CollaborationRootRequired,
 }
@@ -54,6 +56,13 @@ pub enum ControlReadAttempt<T> {
 }
 
 pub trait ClassifierDiagnosticPort: Send + Sync {
+    fn test_decision_service_v2(
+        &self,
+        _service: &hiroute_domain::DecisionServiceRecord,
+        _configuration_digest: &CanonicalDigest,
+    ) -> Result<hiroute_application_api::DecisionServiceTestResultV2, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn test_classifier_c(
         &self,
         _request: &hiroute_application_api::HistoricalApplicabilityTestRequestV1,
@@ -574,6 +583,32 @@ pub trait ComputeManagementControlPort: Send + Sync {
 }
 
 pub trait RoutingFactsPort: Send + Sync {
+    fn decision_source_summary(
+        &self,
+        _source_id: &str,
+    ) -> Result<hiroute_application_api::DecisionSourceSummaryV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn decision_connection_sources(
+        &self,
+        _workspace: &WorkspaceId,
+    ) -> Result<hiroute_application_api::DecisionConnectionSourcesV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn decision_services_v2(
+        &self,
+        _workspace: &WorkspaceId,
+    ) -> Result<hiroute_application_api::DecisionServicesV2, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn decision_service_record(
+        &self,
+        _workspace: &WorkspaceId,
+        _id: &str,
+        _revision: u64,
+    ) -> Result<Option<hiroute_domain::DecisionServiceRecord>, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn decision_service(
         &self,
         _workspace: &WorkspaceId,

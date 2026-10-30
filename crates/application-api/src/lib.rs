@@ -20,6 +20,8 @@ pub use previous_routing::*;
 mod classifier_diagnostic;
 mod classifier_diagnostic_c;
 pub use classifier_diagnostic_c::*;
+mod decision_connections;
+pub use decision_connections::*;
 mod client_access;
 mod work_plans;
 pub use work_plans::*;
@@ -298,7 +300,7 @@ mod protocol_tests {
     #[test]
     fn p0_registry_and_staging_invariants_remain_closed() {
         let commands = planned_commands();
-        assert_eq!(commands.len(), 109);
+        assert_eq!(commands.len(), 113);
         assert_eq!(
             commands
                 .iter()
@@ -346,7 +348,7 @@ mod protocol_tests {
             CommandLifecycle::Released
         );
         let release = release_manifest();
-        assert_eq!(release.commands.len(), 76);
+        assert_eq!(release.commands.len(), 80);
         assert!(release.commands.iter().all(|command| {
             command.lifecycle == CommandLifecycle::Released
                 && command.positive.state == CoverageState::Executable

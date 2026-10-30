@@ -13,6 +13,9 @@ use hiroute_gateway_core::runtime::body::{
 use super::secure_path;
 use super::{ReplayConfig, ReplayError, ReplayRange, ReplayStore};
 
+#[path = "stream/json_buffer.rs"]
+mod json_buffer;
+
 pub(super) struct ReplayStreamBuilder {
     directory: Arc<secure_path::SecureDirectory>,
     ordinal: u64,
@@ -56,6 +59,10 @@ pub(super) struct ReplayStream {
 }
 
 impl ReplayStream {
+    pub(super) fn is_raw(&self) -> bool {
+        self.role == MemoryRole::RawRequest
+    }
+
     pub(super) fn contains(&self, reference: &ContentRef) -> bool {
         *reference == self.reference
             || self
@@ -82,13 +89,18 @@ impl ReplayStream {
     }
 
     #[cfg(test)]
-    pub(super) fn truncate_last_byte(&self) -> Result<(), ReplayError> {
+    pub(super) fn truncate_last_byte(&self, reference: &ContentRef) -> Result<(), ReplayError> {
         let StreamBacking::Disk { file, .. } = &self.backing else {
             return Err(ReplayError::Integrity);
         };
         let file = lock(file);
         let file = file.as_ref().ok_or(ReplayError::Integrity)?;
-        let len = file.metadata()?.len();
+        // One stream can contain several authenticated ranges. Corrupt the
+        // supplied range, not a possibly unrelated trailing range in the file.
+        let len = reference
+            .byte_offset()
+            .checked_add(reference.byte_len())
+            .ok_or(ReplayError::LengthOverflow)?;
         file.set_len(len.checked_sub(1).ok_or(ReplayError::Integrity)?)?;
         file.sync_all()?;
         Ok(())
@@ -229,6 +241,14 @@ impl ReplayStreamBuilder {
     }
 
     pub(super) fn append(&mut self, bytes: &[u8]) -> Result<(), ReplayError> {
+        let gate = Arc::clone(&self.memory_gate);
+        let _guard = lock(&gate);
+        self.append_under_memory_gate(bytes)
+    }
+
+    // Callers hold the request's memory gate for the complete append or range.
+    // A JSON serializer can issue thousands of tiny writes for one value.
+    fn append_under_memory_gate(&mut self, bytes: &[u8]) -> Result<(), ReplayError> {
         self.total_len = self
             .total_len
             .checked_add(bytes.len() as u64)
@@ -238,8 +258,6 @@ impl ReplayStreamBuilder {
             .checked_add(json_escaped_len(bytes)?)
             .ok_or(ReplayError::LengthOverflow)?;
         if matches!(self.mode, BuilderMode::Memory(_)) {
-            let gate = Arc::clone(&self.memory_gate);
-            let _guard = lock(&gate);
             let memory_can_retain = match &self.mode {
                 BuilderMode::Memory(memory) => {
                     let global_remaining = self
@@ -276,6 +294,8 @@ impl ReplayStreamBuilder {
     }
 
     pub(super) fn append_range(&mut self, bytes: &[u8]) -> Result<ContentRef, ReplayError> {
+        let gate = Arc::clone(&self.memory_gate);
+        let _guard = lock(&gate);
         let mut range = ReplayRangeSink::new(self);
         range
             .write_all(bytes)
@@ -287,8 +307,13 @@ impl ReplayStreamBuilder {
         &mut self,
         value: &serde_json::Value,
     ) -> Result<ContentRef, ReplayError> {
+        let gate = Arc::clone(&self.memory_gate);
+        let _guard = lock(&gate);
         let mut range = ReplayRangeSink::new(self);
-        let result = write_canonical_json(&mut range, value);
+        let result = {
+            let mut writer = json_buffer::JsonBuffer::new(&mut range);
+            write_canonical_json(&mut writer, value).and_then(|_| writer.flush())
+        };
         if result.is_err() {
             return Err(range.error.take().unwrap_or(ReplayError::InvalidJson));
         }
@@ -450,7 +475,10 @@ impl ProvisionalDisk {
     }
 
     fn seal(self, total_len: u64) -> Result<StreamBacking, ReplayError> {
-        self.file.sync_all()?;
+        // This file belongs only to the live request. Completed writes are
+        // readable through its pinned handle; restart removes orphaned spill
+        // instead of recovering an in-flight request. A durability barrier here
+        // blocks unrelated requests without protecting any recoverable state.
         if self.file.metadata()?.len() != total_len {
             return Err(ReplayError::Integrity);
         }
@@ -705,32 +733,45 @@ impl Drop for ReplayStream {
 }
 
 fn json_escaped_len(bytes: &[u8]) -> Result<u64, ReplayError> {
-    bytes.iter().try_fold(0_u64, |total, byte| {
-        let width = match byte {
-            b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t' => 2,
-            0x00..=0x1f => 6,
-            _ => 1,
-        };
-        total.checked_add(width).ok_or(ReplayError::LengthOverflow)
-    })
+    // Counts are bounded by the slice length. Reductions can be vectorized;
+    // overflow is checked once on the result rather than on every input byte.
+    let short = bytes
+        .iter()
+        .filter(|&&byte| {
+            matches!(
+                byte,
+                b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t'
+            )
+        })
+        .count() as u64;
+    let long = bytes
+        .iter()
+        .filter(|&&byte| {
+            matches!(byte, 0x00..=0x1f)
+                && !matches!(byte, b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t')
+        })
+        .count() as u64;
+    (bytes.len() as u64)
+        .checked_add(short)
+        .and_then(|len| long.checked_mul(5).and_then(|extra| len.checked_add(extra)))
+        .ok_or(ReplayError::LengthOverflow)
 }
 
 struct ReplayRangeSink<'a> {
     builder: &'a mut ReplayStreamBuilder,
     byte_offset: u64,
-    byte_len: u64,
-    json_escaped_len: u64,
+    escaped_offset: u64,
     error: Option<ReplayError>,
 }
 
 impl<'a> ReplayRangeSink<'a> {
     fn new(builder: &'a mut ReplayStreamBuilder) -> Self {
         let byte_offset = builder.total_len;
+        let escaped_offset = builder.json_escaped_len;
         Self {
             builder,
             byte_offset,
-            byte_len: 0,
-            json_escaped_len: 0,
+            escaped_offset,
             error: None,
         }
     }
@@ -742,8 +783,8 @@ impl<'a> ReplayRangeSink<'a> {
         Ok(ContentRef::new(
             self.builder.ordinal,
             self.byte_offset,
-            self.byte_len,
-            self.json_escaped_len,
+            self.builder.total_len - self.byte_offset,
+            self.builder.json_escaped_len - self.escaped_offset,
         ))
     }
 }
@@ -753,29 +794,12 @@ impl Write for ReplayRangeSink<'_> {
         if self.error.is_some() {
             return Err(std::io::Error::other("replay range is poisoned"));
         }
-        let byte_len = self
-            .byte_len
-            .checked_add(bytes.len() as u64)
-            .ok_or(ReplayError::LengthOverflow);
-        let escaped = json_escaped_len(bytes).and_then(|value| {
-            self.json_escaped_len
-                .checked_add(value)
-                .ok_or(ReplayError::LengthOverflow)
-        });
-        let result = byte_len.and_then(|byte_len| escaped.map(|escaped| (byte_len, escaped)));
-        let (byte_len, escaped) = match result {
-            Ok(lengths) => lengths,
-            Err(error) => {
-                self.error = Some(error);
-                return Err(std::io::Error::other("replay range length overflow"));
-            }
-        };
-        if let Err(error) = self.builder.append(bytes) {
+        // The builder already checks both counters. Their deltas describe
+        // this range exactly, without scanning every serializer write twice.
+        if let Err(error) = self.builder.append_under_memory_gate(bytes) {
             self.error = Some(error);
             return Err(std::io::Error::other("replay range backing write failed"));
         }
-        self.byte_len = byte_len;
-        self.json_escaped_len = escaped;
         Ok(bytes.len())
     }
 
@@ -828,4 +852,28 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(test)]
+mod escaped_length_tests {
+    use super::*;
+
+    #[test]
+    fn reduced_counts_match_scalar_widths_for_every_byte_and_fragment() {
+        let mut bytes = (0..=255u8).cycle().take(512 * 1024).collect::<Vec<_>>();
+        bytes.extend_from_slice("plain Unicode 路由🦀 \"\\\n".repeat(1024).as_bytes());
+        for size in [1, 2, 7, 31, 8192, 16384, bytes.len()] {
+            for chunk in bytes.chunks(size) {
+                let expected = chunk.iter().fold(0u64, |sum, byte| {
+                    sum + match byte {
+                        b'"' | b'\\' | b'\x08' | b'\x0c' | b'\n' | b'\r' | b'\t' => 2,
+                        0x00..=0x1f => 6,
+                        _ => 1,
+                    }
+                });
+                assert_eq!(json_escaped_len(chunk).unwrap(), expected);
+            }
+        }
+        assert_eq!(json_escaped_len(&[]).unwrap(), 0);
+    }
 }

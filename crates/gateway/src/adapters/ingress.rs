@@ -56,6 +56,26 @@ pub(crate) fn decode_ingress_request_with_replay(
     body: &Value,
     replay: Option<&ReplayStore>,
 ) -> Result<ModelRequestIRV1, ModelIrError> {
+    let mut request = decode_request_fields(protocol, body, replay)?;
+    request.native_body = Some(body.clone());
+    Ok(request)
+}
+
+pub(crate) fn decode_owned_ingress_request_with_replay(
+    protocol: IngressProtocol,
+    body: Value,
+    replay: &ReplayStore,
+) -> Result<ModelRequestIRV1, ModelIrError> {
+    let mut request = decode_request_fields(protocol, &body, Some(replay))?;
+    request.native_body = Some(body);
+    Ok(request)
+}
+
+fn decode_request_fields(
+    protocol: IngressProtocol,
+    body: &Value,
+    replay: Option<&ReplayStore>,
+) -> Result<ModelRequestIRV1, ModelIrError> {
     let context = &DecodeContext {
         replay,
         ..DecodeContext::default()
@@ -65,7 +85,6 @@ pub(crate) fn decode_ingress_request_with_replay(
         IngressProtocol::ChatCompletions => decode_chat(context, body),
         IngressProtocol::Messages => decode_messages(context, body),
     }?;
-    request.native_body = Some(body.clone());
     request.native_only = context.native_only.get();
     Ok(request)
 }

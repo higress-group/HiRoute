@@ -67,6 +67,10 @@ impl RequestObservation {
             }
             *started = true;
             let fork_id = self.fork_id(direction, attempt);
+            match direction {
+                "request_input" => state.request_content_fork = Some(fork_id.clone()),
+                _ => state.response_content_fork = Some(fork_id.clone()),
+            }
             let parent_transcript_root = (direction == "response_delivered")
                 .then(|| state.request_result_transcript_root.clone())
                 .flatten();
@@ -119,10 +123,10 @@ impl RequestObservation {
         if !self.captures_content() {
             return;
         }
-        let message_instance_id =
-            self.message_instance_id(chunk.direction, chunk.message_ordinal, chunk.role);
-        let content_id =
-            self.content_id(&message_instance_id, chunk.part_ordinal, chunk.whole_digest);
+        // The part owner already authenticated these IDs before publishing its
+        // ContentRef. Reuse them for every chunk of that same part.
+        let message_instance_id = chunk.message_instance_id;
+        let content_id = chunk.content_id;
         let parent_transcript_root = self.content_parent_root(chunk.direction);
         let (chunk_ordinal, attempt_id, fork_id) = {
             let mut state = self.lock_state();
@@ -135,7 +139,7 @@ impl RequestObservation {
                 if chunk.starts_content
                     && let Some(transcript) = &mut state.request_transcript
                 {
-                    update_transcript(transcript, &message_instance_id, &content_id);
+                    update_transcript(transcript, message_instance_id, content_id);
                 }
                 current
             } else {
@@ -147,7 +151,7 @@ impl RequestObservation {
                 if chunk.starts_content
                     && let Some(transcript) = &mut state.response_transcript
                 {
-                    update_transcript(transcript, &message_instance_id, &content_id);
+                    update_transcript(transcript, message_instance_id, content_id);
                 }
                 current
             };
@@ -160,7 +164,12 @@ impl RequestObservation {
             (
                 current,
                 chunk.attempt.map(|attempt| attempt.attempt_id.clone()),
-                self.fork_id(chunk.direction, chunk.attempt),
+                if chunk.direction == "request_input" {
+                    state.request_content_fork.clone()
+                } else {
+                    state.response_content_fork.clone()
+                }
+                .expect("content capture begins before appending"),
             )
         };
         self.emit_content(ContentEvent {
@@ -170,10 +179,10 @@ impl RequestObservation {
             fork_id,
             parent_transcript_root,
             result_transcript_root: None,
-            message_instance_id: Some(message_instance_id),
+            message_instance_id: Some(message_instance_id.into()),
             message_role: Some(chunk.role.into()),
             content_kind: Some(chunk.kind.into()),
-            content_id: Some(content_id),
+            content_id: Some(content_id.into()),
             content_blob_digest: Some(chunk.whole_digest.into()),
             message_ordinal: Some(chunk.message_ordinal),
             part_ordinal: Some(chunk.part_ordinal),
@@ -364,14 +373,29 @@ impl RequestObservation {
     }
 
     fn emit_content(&self, event: ContentEvent) {
+        if self.content_credit_wait.is_some()
+            && self
+                .inner
+                .async_content
+                .get()
+                .is_some_and(|status| status.failed())
+        {
+            return;
+        }
         let correlation = self.correlation();
         let request_id = self.metadata().request_id.clone();
         let key = self.inner.key;
         let event_kind = event.phase;
-        self.inner
-            .channels
-            .content
-            .publish(move |producer, sequence, loss| {
+        let occurred_at_unix_nanos = self.content_occurred_at.unwrap_or_else(unix_nanos);
+        let credit_bytes = self
+            .content_credit_wait
+            .map_or(0, |_| event.record_credit_bytes(&correlation));
+        let published = self.inner.channels.content.publish_with_credit(
+            self.inner.latency.clone(),
+            self.content_credit_wait
+                .map(|limit| std::time::Instant::now() + limit),
+            credit_bytes,
+            move |producer, sequence, loss| {
                 let sequence_bytes = sequence.to_be_bytes();
                 ConversationContentEnvelopeV1 {
                     schema_version: CONVERSATION_CONTENT_SCHEMA.into(),
@@ -411,14 +435,23 @@ impl RequestObservation {
                     content_ref: event.content_ref,
                     downstream_delivery: event.downstream_delivery,
                     abort_reason: event.abort_reason,
-                    occurred_at_unix_nanos: unix_nanos(),
+                    occurred_at_unix_nanos,
                     completeness_delta: loss
                         .as_ref()
                         .map(|_| "partial".into())
                         .or(event.completeness_delta),
                     loss_watermark: loss,
                 }
-            });
+            },
+        );
+        if !published
+            && self.content_credit_wait.is_some()
+            && let Some(status) = self.inner.async_content.get()
+        {
+            // The producer has already declared the exact lost sequence.
+            // Suppress dependent terminal roots after this failed command.
+            status.stop();
+        }
     }
 }
 
@@ -481,10 +514,8 @@ impl AcceptedResponseCapture {
                         )
                     });
                 if let Err(reason) = result {
-                    self.request
-                        .begin_content("response_delivered", Some(&attempt));
-                    self.request
-                        .terminal_content("response_delivered", "abort", Some(reason));
+                    self.request.begin_response_content(&attempt);
+                    self.request.finish_response_content("abort", Some(reason));
                 }
             }
         }
@@ -500,11 +531,24 @@ impl RequestObservation {
         &self,
         attempt: &AttemptObservation,
         frame_id: &str,
-        delivery: CanonicalFrameDelivery,
+        mut delivery: CanonicalFrameDelivery,
     ) {
         if let Some((store, ticket)) = self.inner.agent_turn_output.get() {
             store.accept_output(ticket, &delivery.events);
         }
+        let usage = delivery.usage.take();
+        self.defer_response_content(attempt, frame_id, delivery);
+        if let Some(usage) = usage {
+            self.usage_model(&usage);
+        }
+    }
+
+    pub(super) fn emit_response_content(
+        &self,
+        attempt: &AttemptObservation,
+        frame_id: &str,
+        delivery: CanonicalFrameDelivery,
+    ) {
         if self.captures_content() {
             for event in delivery.events {
                 let Some(kind) = canonical_response_content_kind(&event.event) else {
@@ -547,15 +591,14 @@ impl RequestObservation {
                         bytes: chunk,
                         public_ref: Some(content_ref.clone()),
                         whole_digest: &whole_digest,
+                        message_instance_id: &message_instance_id,
+                        content_id: &content_ref.content_id,
                         starts_content: index == 0,
                         transport_frame_id: Some(frame_id),
                         downstream_delivery: Some("full_frame_transport_accepted"),
                     });
                 }
             }
-        }
-        if let Some(usage) = delivery.usage {
-            self.usage_model(&usage);
         }
     }
 }
@@ -614,14 +657,10 @@ impl Drop for AcceptedResponseCapture {
             capture.cancel_unless_terminal("downstream_transport_incomplete");
         }
         if let Some(attempt) = &self.attempt {
-            self.request
-                .begin_content("response_delivered", Some(attempt));
+            self.request.begin_response_content(attempt);
         }
-        self.request.terminal_content(
-            "response_delivered",
-            "abort",
-            Some("downstream_transport_incomplete"),
-        );
+        self.request
+            .finish_response_content("abort", Some("downstream_transport_incomplete"));
     }
 }
 
@@ -636,6 +675,8 @@ struct ContentChunk<'a> {
     bytes: &'a [u8],
     public_ref: Option<ContentRefV1>,
     whole_digest: &'a str,
+    message_instance_id: &'a str,
+    content_id: &'a str,
     starts_content: bool,
     transport_frame_id: Option<&'a str>,
     downstream_delivery: Option<&'a str>,
@@ -663,6 +704,58 @@ struct ContentEvent {
     downstream_delivery: Option<String>,
     abort_reason: Option<String>,
     completeness_delta: Option<String>,
+}
+
+impl ContentEvent {
+    fn record_credit_bytes(&self, correlation: &super::schema::CorrelationV1) -> usize {
+        // Fixed keys, producer IDs, event ID, numbers and accounting fit 4 KiB.
+        // Variable metadata gets JSON's worst-case six bytes per input byte;
+        // base64 is already safe ASCII. Do not reserve a full 64 KiB chunk for
+        // a short final chunk or terminal marker. Actual serialized size is
+        // still checked by the producer, including unusually large envelopes.
+        let strings = [
+            Some(self.direction),
+            Some(self.phase),
+            Some(self.fork_id.as_str()),
+            self.attempt_id.as_deref(),
+            self.parent_transcript_root.as_deref(),
+            self.result_transcript_root.as_deref(),
+            self.message_instance_id.as_deref(),
+            self.message_role.as_deref(),
+            self.content_kind.as_deref(),
+            self.content_id.as_deref(),
+            self.content_blob_digest.as_deref(),
+            self.transport_frame_id.as_deref(),
+            self.canonical_media_type.as_deref(),
+            self.downstream_delivery.as_deref(),
+            self.abort_reason.as_deref(),
+            self.completeness_delta.as_deref(),
+            Some(correlation.workspace_id.as_str()),
+            Some(correlation.conversation_id.as_str()),
+            Some(correlation.session_scope.as_str()),
+            Some(correlation.correlation_provenance.as_str()),
+            Some(correlation.turn_id.as_str()),
+            Some(correlation.request_id.as_str()),
+        ];
+        let metadata = strings
+            .into_iter()
+            .flatten()
+            .fold(4096usize, |bytes, text| {
+                bytes.saturating_add(text.len().saturating_mul(6))
+            });
+        let metadata = self.content_ref.as_ref().map_or(metadata, |reference| {
+            [
+                &reference.content_id,
+                &reference.digest,
+                &reference.media_type,
+            ]
+            .iter()
+            .fold(metadata, |bytes, text| {
+                bytes.saturating_add(text.len().saturating_mul(6))
+            })
+        });
+        metadata.saturating_add(self.canonical_bytes_base64.as_ref().map_or(0, String::len))
+    }
 }
 
 fn update_transcript(transcript: &mut WorkspaceHmac, message_instance_id: &str, content_id: &str) {

@@ -36,7 +36,23 @@ pub struct Planner;
 
 impl Planner {
     pub fn plan(&self, input: &PlannerInputV1) -> Result<PlannerOutputV1, PlannerError> {
-        validate_input(input)?;
+        self.plan_with_publication(input, None)
+    }
+
+    pub(crate) fn plan_published(
+        &self,
+        input: &PlannerInputV1,
+        published: &crate::server::publication::PublishedPlannerFacts<'_>,
+    ) -> Result<PlannerOutputV1, PlannerError> {
+        self.plan_with_publication(input, Some(published))
+    }
+
+    fn plan_with_publication(
+        &self,
+        input: &PlannerInputV1,
+        published: Option<&crate::server::publication::PublishedPlannerFacts<'_>>,
+    ) -> Result<PlannerOutputV1, PlannerError> {
+        validate_input(input, published)?;
         let (branch, complexity, complexity_facts, group_ids, mut reason_ledger) =
             select_groups(input)?;
         // Deliberately digest only content-free planning facts. A Routing
@@ -364,7 +380,10 @@ fn apply_context_hold(
     Ok(())
 }
 
-fn validate_input(input: &PlannerInputV1) -> Result<(), PlannerError> {
+fn validate_input(
+    input: &PlannerInputV1,
+    published: Option<&crate::server::publication::PublishedPlannerFacts<'_>>,
+) -> Result<(), PlannerError> {
     if input.schema_version != PLANNER_INPUT_SCHEMA
         || input.request.schema_version
             != crate::server::core_runtime::model_ir::MODEL_REQUEST_IR_SCHEMA
@@ -404,7 +423,8 @@ fn validate_input(input: &PlannerInputV1) -> Result<(), PlannerError> {
             "budgeted paid policy requires a request-owned ceiling",
         ));
     }
-    if policy.recompute_digest()? != policy.policy_digest {
+    let compiled_policy = published.is_some_and(|facts| facts.policy_matches(policy));
+    if !compiled_policy && policy.recompute_digest()? != policy.policy_digest {
         return Err(PlannerError::PolicyDigestMismatch);
     }
 
@@ -583,7 +603,9 @@ fn validate_input(input: &PlannerInputV1) -> Result<(), PlannerError> {
                 candidate.candidate_id.clone(),
             ));
         }
-        if candidate.recompute_profile_digest()? != candidate.profile_digest {
+        let compiled_profile = published
+            .is_some_and(|facts| facts.profile_matches(candidate, input.request.ingress_protocol));
+        if !compiled_profile && candidate.recompute_profile_digest()? != candidate.profile_digest {
             return Err(PlannerError::ProfileDigestMismatch(
                 candidate.candidate_id.clone(),
             ));

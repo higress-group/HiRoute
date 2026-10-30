@@ -13,6 +13,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 mod compensation;
+mod decision_runtime;
 mod defaults;
 mod references;
 mod runtime_pool;
@@ -387,7 +388,7 @@ fn mutation_from_control(control: &Value) -> PortResult<Option<ComputeManagement
     Ok(Some(envelope.compute_management_mutation))
 }
 
-fn read_source(
+pub(in crate::control) fn read_source(
     connection: &rusqlite::Connection,
     workspace: &WorkspaceId,
     source_id: &str,
@@ -422,7 +423,7 @@ fn decode_source(
         .transpose()
 }
 
-fn write_source(
+pub(in crate::control) fn write_source(
     transaction: &Transaction<'_>,
     workspace: &WorkspaceId,
     source: &ComputeManagementSourceV2,
@@ -452,6 +453,7 @@ fn write_source(
             ],
         )
         .map_err(|_| port("compute.management.write"))?;
+    decision_runtime::write_source(transaction, workspace, source, operation_id)?;
     Ok(())
 }
 

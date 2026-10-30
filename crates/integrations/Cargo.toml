@@ -36,4 +36,5 @@ sha2.workspace = true
 unicode-normalization.workspace = true
 
 [target.'cfg(windows)'.dev-dependencies]
+base64.workspace = true
 hiroute-platform-test-support = { path = "../platform/test-support" }

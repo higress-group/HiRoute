@@ -1,0 +1,49 @@
+{
+  "decision_connection_sources": {
+    "args": {},
+    "result": {
+      "sources": [{
+        "source_id": "source/example",
+        "lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "revision": 7,
+        "display_name": "Example API",
+        "provider_label": "Example",
+        "endpoint_host": "example.test",
+        "auth_kind": "native_api_key",
+        "state": "ready",
+        "credential_state_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "suggestion": {"model": "gpt-6-luna", "endpoint": "https://example.test/v1/decisions", "wire_protocol": "openai_decisions"}
+      }]
+    }
+  },
+  "decision_services_v2": {
+    "args": {},
+    "result": {
+      "services": [
+        {
+          "service": {"id": "decision/legacy", "revision": 1, "name": "Legacy", "connection": {"kind": "system_one", "provider": "example", "model": "model", "endpoint": "https://example.test/systemone", "timeout_ms": 10000, "auth_header": {"name": "Authorization", "value_secret_ref": "decision/legacy/reference"}}},
+          "configuration_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+          "credential_state_revision": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "source": null,
+          "related_sources": []
+        },
+        {
+          "service": {"schema": "hiroute.decision-service/v2", "id": "decision/example", "revision": 2, "name": "Decision example", "connection": {"kind": "native", "provider": "openai", "wire_protocol": "openai_decisions", "model": "gpt-6-luna", "endpoint": "https://example.test/v1/decisions", "timeout_ms": 10000, "authentication": {"kind": "shared_source", "source_id": "source/example", "source_lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}}},
+          "configuration_digest": "sha256:afccec4b1bc785ae5b365da7c0d25e9bea3a9e27e4573009d059f1b75ddde090",
+          "credential_state_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "source": {"source_id": "source/example", "lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "revision": 7, "display_name": "Example API", "provider_label": "Example", "endpoint_host": "example.test", "auth_kind": "native_api_key", "state": "ready", "credential_state_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "suggestion": {"model": "gpt-6-luna", "endpoint": "https://example.test/v1/decisions", "wire_protocol": "openai_decisions"}},
+          "related_sources": [{"source_id": "source/example", "lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "revision": 7, "display_name": "Example API", "provider_label": "Example", "endpoint_host": "example.test", "auth_kind": "native_api_key", "state": "ready", "credential_state_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "suggestion": {"model": "gpt-6-luna", "endpoint": "https://example.test/v1/decisions", "wire_protocol": "openai_decisions"}}]
+        }
+      ]
+    }
+  },
+  "save_decision_service_v2": {
+    "args": {"input": {"change": {"id": "decision/example", "expected_revision": 1, "service": {"schema": "hiroute.decision-service/v2", "id": "decision/example", "revision": 2, "name": "Decision example", "connection": {"kind": "native", "provider": "openai", "wire_protocol": "openai_decisions", "model": "gpt-6-luna", "endpoint": "https://example.test/v1/decisions", "timeout_ms": 10000, "authentication": {"kind": "shared_source", "source_id": "source/example", "source_lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}}}, "expected_source_revisions": [{"source_id": "source/example", "revision": 7}]}, "secret": null}},
+    "result": {"operation_id": "operation/example", "accepted_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555", "state": "succeeded"}
+  },
+  "test_decision_service_v2": {
+    "args": {"input": {"id": "decision/example", "revision": 2, "expected_configuration_digest": "sha256:afccec4b1bc785ae5b365da7c0d25e9bea3a9e27e4573009d059f1b75ddde090"}},
+    "result": {"schema": "hiroute.decision-service-test-result/v2", "outcome": "passed", "failure_code": null, "duration_millis": 42, "tested_configuration_digest": "sha256:afccec4b1bc785ae5b365da7c0d25e9bea3a9e27e4573009d059f1b75ddde090", "tested_credential_state_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222"}
+  },
+  "classifier_v2": {"kind": "decision_service_v2", "service": {"schema": "hiroute.decision-service/v2", "id": "decision/example", "revision": 2, "name": "Decision example", "connection": {"kind": "native", "provider": "openai", "wire_protocol": "openai_decisions", "model": "gpt-6-luna", "endpoint": "https://example.test/v1/decisions", "timeout_ms": 10000, "authentication": {"kind": "shared_source", "source_id": "source/example", "source_lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"}}}}
+}

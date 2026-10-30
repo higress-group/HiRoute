@@ -63,7 +63,53 @@ impl ModelSelector {
         }
     }
 
-    pub fn feed(&mut self, chunk: &[u8]) -> Result<Option<String>, SelectorError> {
+    pub fn feed(&mut self, mut chunk: &[u8]) -> Result<Option<String>, SelectorError> {
+        if let Some(model) = &self.selected {
+            return Ok(Some(model.clone()));
+        }
+        while !chunk.is_empty() {
+            if matches!(
+                self.state,
+                State::String(StringKind::Skipped | StringKind::Nested)
+            ) && !self.escaped
+            {
+                // Unretained plain string runs cannot change selector state.
+                // Keep controls, delimiters and split escapes on the exact
+                // scalar transition, including the observed-byte limit.
+                let end = memchr::memchr2(b'"', b'\\', chunk).unwrap_or(chunk.len());
+                let plain = chunk[..end]
+                    .iter()
+                    .position(|byte| *byte < 0x20)
+                    .unwrap_or(end);
+                let take = plain.min(self.limit.saturating_sub(self.observed));
+                self.observed += take;
+                chunk = &chunk[take..];
+                if self.observed == self.limit {
+                    return Err(SelectorError::LimitExceeded(self.limit));
+                }
+                if chunk.is_empty() {
+                    break;
+                }
+            }
+            if self.observed == self.limit {
+                return Err(SelectorError::LimitExceeded(self.limit));
+            }
+            self.observed += 1;
+            let byte = chunk[0];
+            chunk = &chunk[1..];
+            self.step(byte)?;
+            if let Some(model) = &self.selected {
+                return Ok(Some(model.clone()));
+            }
+        }
+        if self.observed == self.limit {
+            return Err(SelectorError::LimitExceeded(self.limit));
+        }
+        Ok(None)
+    }
+
+    #[cfg(test)]
+    fn feed_scalar(&mut self, chunk: &[u8]) -> Result<Option<String>, SelectorError> {
         if let Some(model) = &self.selected {
             return Ok(Some(model.clone()));
         }

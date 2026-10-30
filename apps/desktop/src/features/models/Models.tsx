@@ -165,6 +165,7 @@ export function Models(props: Props) {
     setQuery('');
     setSelectedModelId(null);
     setSelectedSourceId(props.initialSourceId);
+    setDetailOpen(true);
   }, [props.initialSourceId, props.snapshot.sources]);
 
   useEffect(() => {

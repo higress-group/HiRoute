@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:72195f5b4681247f9aec441f8c1fee8de3cbd2dea745e26a9b0795a42df2679c",
+  "descriptor_digest": "sha256:ed6ce2dcbf77cda13cfbcc9606011981e80c73c2b53260030464d0709a53fbe4",
   "visibility": "planned",
   "commands": [
     {
@@ -3522,6 +3522,196 @@
       },
       "negative": {
         "scenario_id": "p0.decision.services.apply.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.sources.list",
+      "path": [
+        "decision",
+        "sources",
+        "list"
+      ],
+      "operation_id": "ListDecisionConnectionSourcesV1",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.decision-connection-sources/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "List safe source summaries available to decision connections.",
+        "usage": "hiroute decision sources list [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision sources list --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.sources.list"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.sources.list.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.sources.list.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.connections.list",
+      "path": [
+        "decision",
+        "connections",
+        "list"
+      ],
+      "operation_id": "ListDecisionServicesV2",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.decision-services/v2",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "List versioned decision connections with current source state.",
+        "usage": "hiroute decision connections list [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision connections list --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.connections.list"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.connections.list.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.connections.list.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.connections.apply",
+      "path": [
+        "decision",
+        "connections",
+        "apply"
+      ],
+      "operation_id": "ApplyDecisionServiceV2",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "apply",
+      "request_schema": "hiroute.change-preview-or-apply-request/v1",
+      "response_schema": "hiroute.change-preview-or-operation/v1",
+      "effect": "high_impact_write",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
+      "idempotency": "required",
+      "help": {
+        "purpose": "Save a versioned decision connection with exact source and credential revisions.",
+        "usage": "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Same-UID Application-owned journaled operation after exact spec, digest, revision, and idempotency checks.",
+        "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
+        "automation": "Use decision connections options for the current presets and decision sources list for reusable managed sources. Choose --source ID or register an independent credential with protected-input and pass --candidate REF. Native presets carry an explicit wire protocol; --wire-protocol can select system_one or openai_decisions. Preview first; --apply-file creates a private exact request without saving. Save does not contact a provider. Test the saved ID@REVISION explicitly after reading it back.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision connections apply --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.connections.apply"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.connections.apply.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.connections.apply.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.connections.test",
+      "path": [
+        "decision",
+        "connections",
+        "test"
+      ],
+      "operation_id": "TestDecisionServiceV2",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "external_probe",
+      "request_schema": "hiroute.decision-service-test-request/v2",
+      "response_schema": "hiroute.decision-service-test-result/v2",
+      "effect": "bounded_probe",
+      "network": "local_control_then_registered_gateway",
+      "model_call": "never",
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Test an exact saved decision connection revision with a synthetic request.",
+        "usage": "hiroute decision connections test (--service ID@REVISION | --request-file PATH | --request-stdin)",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "One explicit bounded probe through a registered connector; no inference request or fallback probe.",
+        "network_and_model_use": "Uses only the selected registered endpoint; never sends a model inference request.",
+        "automation": "An explicit potentially billed probe. --service ID@REVISION resolves an exact current listed connection; historical pinned versions remain available through the typed request. Inspect data.outcome and failure_code even when the command itself succeeded. Passing establishes this synthetic connection test, not semantic decision quality, execution model availability or native loading. Never silently switch a selected service to local_rules after failure.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision connections test --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.connections.test"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.connections.test.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.connections.test.negative",
         "polarity": "negative",
         "state": "executable"
       }

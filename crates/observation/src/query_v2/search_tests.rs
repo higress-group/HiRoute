@@ -48,19 +48,88 @@ pub(super) fn index(store: &LocalObservationStore) {
     let mut builder = TextIndexBuilder::new(store).unwrap();
     for _ in 0..20 {
         builder.cycle(store).unwrap();
-        let pending: bool = store
-            .connection
-            .lock()
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM observation_text_index_v2 WHERE state='building')",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        if !pending {
-            break;
+        if !index_pending(store) {
+            return;
         }
     }
+    assert!(
+        !index_pending(store),
+        "fixture sources still await text indexing"
+    );
+}
+
+fn index_pending(store: &LocalObservationStore) -> bool {
+    store.connection.lock().query_row(
+        "SELECT EXISTS(SELECT 1 FROM content_blobs_v2 b
+         WHERE b.state='complete' AND (b.media_type LIKE 'text/%' OR b.media_type='application/json' OR b.media_type LIKE 'application/vnd.hiroute.%')
+           AND EXISTS(SELECT 1 FROM content_instances_v2 c WHERE c.workspace_id=b.workspace_id AND c.content_blob_digest=b.blob_digest AND c.state='complete')
+           AND NOT EXISTS(SELECT 1 FROM observation_text_index_v2 i WHERE i.workspace=b.workspace_id AND i.digest=b.blob_digest
+             AND (i.state='failed' OR (i.state='ready' AND EXISTS(SELECT 1 FROM observation_text_lookup_sources_v1 k
+               WHERE k.workspace=i.workspace AND k.digest=i.digest)))))",
+        [], |row|row.get(0),
+    ).unwrap()
+}
+
+#[test]
+fn fixture_readiness_includes_ready_sources_awaiting_lookup_backfill() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    source(&store, b"lookup needle");
+    index(&store);
+    store
+        .connection
+        .lock()
+        .execute("DELETE FROM observation_text_lookup_sources_v1", [])
+        .unwrap();
+    let ready_without_building: bool = store
+        .connection
+        .lock()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM observation_text_index_v2 WHERE state='ready')
+         AND NOT EXISTS(SELECT 1 FROM observation_text_index_v2 WHERE state='building')",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        ready_without_building,
+        "the old fixture completion check reports ready"
+    );
+    assert!(index_pending(&store));
+    let page = store
+        .search_observed_sessions(&reader(true), &query("needle", 10), 500)
+        .unwrap();
+    assert!(page.index_partial && page.hits.is_empty());
+    index(&store);
+    assert!(!index_pending(&store));
+    let page = store
+        .search_observed_sessions(&reader(true), &query("needle", 10), 500)
+        .unwrap();
+    assert!(!page.index_partial);
+    assert_eq!(page.hits.len(), 1);
+}
+
+#[test]
+fn fixture_readiness_includes_sources_not_yet_selected_by_the_indexer() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    source(&store, b"waiting for the first index cycle");
+    let building: bool = store
+        .connection
+        .lock()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM observation_text_index_v2 WHERE state='building')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(
+        !building,
+        "the old building-only check falsely reports readiness"
+    );
+    assert!(index_pending(&store));
+    index(&store);
+    assert!(!index_pending(&store));
 }
 #[test]
 fn search_indexes_cross_block_literals_with_original_offsets_and_pages_forward() {

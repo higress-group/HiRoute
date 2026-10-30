@@ -23,7 +23,16 @@ impl ObservationControl {
         }
         let now = self.clock.now_ms().map_err(map_control)?;
         let analysis = matches!(&request.intent, ObservationReadIntentV2::Analysis(_));
-        let deadline = started + hiroute_domain::ObservationReaderContext::QUERY_BUDGET;
+        let search = matches!(
+            request.intent,
+            ObservationReadIntentV2::Search(_) | ObservationReadIntentV2::SessionSearch(_)
+        ) || matches!(&request.intent, ObservationReadIntentV2::Analysis(q) if q.query.is_some());
+        let budget = if search {
+            ObservationReaderContext::SEARCH_QUERY_BUDGET
+        } else {
+            ObservationReaderContext::QUERY_BUDGET
+        };
+        let deadline = started + budget;
         let admitted = if let Some(grant) = grant {
             if grant.principal_kind.is_collaboration() {
                 return Err(ObservationQueryError::Unauthorized);
@@ -59,10 +68,6 @@ impl ObservationControl {
                 | ObservationReadIntentV2::Search(_)
                 | ObservationReadIntentV2::SessionSearch(_)
         ) || matches!(&request.intent, ObservationReadIntentV2::Analysis(q) if q.view.content() || q.query.is_some());
-        let search = matches!(
-            request.intent,
-            ObservationReadIntentV2::Search(_) | ObservationReadIntentV2::SessionSearch(_)
-        ) || matches!(&request.intent, ObservationReadIntentV2::Analysis(q) if q.query.is_some());
         // The transport authenticates same-OS-user Local Control. Explicit content
         // selection needs no second GUI-issued ticket; supplied grants are still
         // validated on every page. Visibility, expiry and cursor scopes remain checked.
@@ -75,7 +80,7 @@ impl ObservationControl {
             }
             .into(),
             generation,
-            now.saturating_add(1000),
+            now.saturating_add(budget.as_millis() as i64),
             content,
             search,
         )?;
@@ -90,7 +95,11 @@ impl ObservationControl {
                 | ObservationReadIntentV2::PlanTrustReplay(_)
                 | ObservationReadIntentV2::PlanTrustSuggestions(_)
         );
-        let reader = reader.with_query_deadline(deadline);
+        let reader = if search {
+            reader.with_search_query_deadline(deadline)
+        } else {
+            reader.with_query_deadline(deadline)
+        };
         let result = match request.intent {
             ObservationReadIntentV2::Analysis(q) => {
                 if (q.analysis_scope.is_some() || q.cursor.is_some()) && !q.time.is_empty() {

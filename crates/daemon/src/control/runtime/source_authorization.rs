@@ -5,12 +5,33 @@ use hiroute_application::{
     RegisteredComputeSourceMaterializationV1,
 };
 use hiroute_domain::{
-    CredentialPoolIdentityV1, CredentialPoolV1, PortError, PortErrorCode, PortResult,
+    ComputeManagementRepositoryPort, CredentialPoolIdentityV1, CredentialPoolV1, PortError,
+    PortErrorCode, PortResult,
 };
 
 use super::LocalControlAdapter;
 
 impl ConnectionOptionAuthorizationPort for LocalControlAdapter {
+    fn decision_source(
+        &self,
+        source_id: &str,
+    ) -> PortResult<Option<hiroute_domain::ComputeManagementSourceV2>> {
+        self.stores_lock()?
+            .control()
+            .compute_management_source(source_id)
+    }
+
+    fn decision_service_record(
+        &self,
+        id: &str,
+        revision: u64,
+    ) -> PortResult<Option<hiroute_domain::DecisionServiceRecord>> {
+        self.stores_lock()?.control().decision_service_record(
+            &hiroute_domain::WorkspaceId::default(),
+            id,
+            revision,
+        )
+    }
     fn connection_option_authorization(
         &self,
         connection_option_id: &str,
@@ -235,6 +256,9 @@ fn map_control_read(error: hiroute_application::control::ControlReadError) -> Po
             PortErrorCode::PermissionDenied
         }
         hiroute_application::control::ControlReadError::Corrupt => PortErrorCode::Corrupt,
+        hiroute_application::control::ControlReadError::ClientVersionRequired => {
+            PortErrorCode::InvalidData
+        }
     };
     PortError::new(code, "release.compute.discovery")
 }

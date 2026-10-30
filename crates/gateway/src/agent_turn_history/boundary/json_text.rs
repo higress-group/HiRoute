@@ -59,5 +59,5 @@ impl<'de> Visitor<'de> for Seed<'_> {
 
 fn plain_digest(text: &str, budget: &mut FingerprintBudget) -> Option<([u8; 32], bool)> {
     budget.bytes(text.len())?;
-    Some((Sha256::digest(text.as_bytes()).into(), !text.is_empty()))
+    Some((RuntimeHash::digest(text.as_bytes()), !text.is_empty()))
 }

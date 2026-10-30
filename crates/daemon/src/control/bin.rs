@@ -922,8 +922,16 @@ fn protected_inherited_writer(_: i32) -> Result<std::fs::File, String> {
     Err("protected launcher channels are unavailable on this platform".into())
 }
 fn write_ack(file: &mut std::fs::File, registration_id: &str) -> Result<(), String> {
+    write_ack_result(file, registration_id, true)
+}
+
+fn write_ack_result(
+    file: &mut std::fs::File,
+    registration_id: &str,
+    registered: bool,
+) -> Result<(), String> {
     let frame = format!(
-        "{{\"schema\":\"hiroute.protected-apply-ack/v2\",\"registration_id\":\"{registration_id}\",\"registered\":true}}\n"
+        "{{\"schema\":\"hiroute.protected-apply-ack/v2\",\"registration_id\":\"{registration_id}\",\"registered\":{registered}}}\n"
     );
     let deadline = std::time::Instant::now() + PROTECTED_FRAME_DEADLINE;
     let mut remaining = frame.as_bytes();

@@ -60,6 +60,14 @@ package, following the generated recovery guide. Never mix old business stores
 with newer Observation data or restore only `activity.db`. An independent copy
 and full-content check can be made offline, outside service startup.
 
+Before starting the old program, also move the adjacent
+`<storage-directory-name>.upgrade-backups` directory to a distinct unused
+name on the same filesystem and preserve it completely. Older programs inspect its active migration
+metadata independently of the restored databases and can reject a newer batch.
+The selected source and its guide may move with this directory; continue using
+that guide's new containing directory. Do not delete or rewrite the preserved
+batches. This step also applies to retained guides that do not yet mention it.
+
 Branch-route publications may contain `source_binding_id` in the persisted active,
 prepared or last-known-good Gateway aggregate. Version 0.3.1 and earlier strict readers
 reject this field, even though the enclosing contract remains

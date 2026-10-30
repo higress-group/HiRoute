@@ -34,6 +34,16 @@ permitted relay or failure; unobserved upstream permission changes may still rea
 provider and receive its final rejection. A later revoke never automatically replays
 an already sent Attempt or expands source membership.
 
+Immutable policy/profile and sealed execution facts MAY be validated and retained
+by their owning compiled execution. Consumption SHALL still match the current
+config generation and exact bytes, binding, effective request profile and target.
+A bounded request-local handoff may reuse the same sealed allocation; copied or
+changed envelopes SHALL use full validation. Request-specific reasoning receives
+its own existing digest and validation. Reuse SHALL NOT pin unrelated candidate
+generations, cache secrets or bypass current credential/grant/attempt authority.
+Resource refusal SHALL retain the ordinary validated path and existing limits;
+this adds no public or persisted format.
+
 ### Requirement: Cross-protocol projection preserves declared semantics
 
 Responses, Messages, and Chat requests parse once into bounded ModelRequestIR,
@@ -225,6 +235,21 @@ including native user-message partitioning. A borrowed routing-only view may
 supply the semantic digest at identical message positions; its normalized batches
 cannot authorize provider affinity or reasoning-cleanup reuse.
 
+Runtime equality fingerprints use complete normalized content, with distinct
+domains and explicit lengths, types, roles, order and part boundaries. They MAY
+reuse a bounded, charged request-local content fingerprint; changing supplied
+content must change its evidence even when length, prefix and suffix match.
+The process-local MD5 equality representation is shared by incoming and accepted
+output evidence and is independent of transport fragmentation and Replay backing.
+It is not authentication or persisted observation integrity. Cache pressure uses
+the existing bounded uncached/unknown behavior without rejecting model delivery.
+The later branch-scoped check MAY reuse a complete measurement and its single
+prefix checkpoint from the same immutable request and runtime key. Reuse SHALL
+require the exact requested prefix position; a different request, semantic view,
+key or position retains the original complete scan. Choosing a likely checkpoint
+position is an optimization only and cannot establish continuity. No retained
+per-message digest index or cross-request prefix trust is introduced.
+
 The history store defaults to 500,000,000 bytes and one-hour idle TTL, retaining
 bounded independent captures, branch heads and immutable assessment membership.
 It does not read Observation disk/SQLite to reconstruct routing history. Concurrent
@@ -238,7 +263,15 @@ request already in flight SHALL NOT serialize or displace another request. Witho
 a unique strong predecessor, an admitted request may evaluate a retained completed
 stage as explicitly uncertain context; that target is not a proven parent. Known
 missing execution remains partial, while source or association uncertainty alone
-does not make a complete target partial. An exhausted/busy history store loses only
+does not make a complete target partial. Transient contention of the accepted-history
+metadata mutex SHALL NOT discard admission or assessment. Only bounded in-memory
+state transitions synchronize; incoming request projection, Replay reads and
+transcript fingerprinting run outside that mutex, and no external request or
+streaming lifetime holds it. Routine idle expiry visits at most 32 indexed entries
+plus the current scope's at most 32 branch heads per admission. Current-scope TTL
+remains exact; pending requests and pinned snapshots cannot expire. Optional
+affinity lookup and decision publication may still miss or defer under contention.
+A genuinely exhausted history store loses only
 unavailable history/assessment and decision inheritance; a usable current input
 still classifies independently. Only unavailable classification, including a request
 without usable current input, uses the existing temporary decision fallback.
@@ -409,14 +442,32 @@ and read sequentially through pinned handles. System-temp aliases are canonicali
 explicit/replay leaf symlinks remain rejected, and ordinary OS-access policy is not
 an owner/mode repair operation.
 
+Spill belongs only to the live request and its existing readers. Sealing SHALL
+finish all writes and validate the pinned handle and exact length before publishing
+ranges; it SHALL NOT synchronously force these temporary bytes to durable storage.
+Restart removes orphaned spill instead of resuming an in-flight request. This
+temporary-file boundary does not relax durable observation acknowledgements,
+publication, installation or recovery barriers.
+
 Replay cannot encrypt/authenticate/hash/fingerprint the entire raw body, pre-scan it
 again before provider solely for integrity, or seal-copy a second full representation.
 Existing syntax/depth/structure checks remain. ContentRef contains request-local
 locator/length, not a digest. Reads reject range violations, early EOF, or whole
 backing length mismatch; equal-length same-OS-user modification is not a cryptographic
-integrity guarantee. ContextHold alone may stream HMAC relevant externalized fields
-through the existing reader for continuity without another cache; failed reads
-create no hold.
+integrity guarantee. Runtime history may fingerprint relevant externalized fields
+through the existing reader and reuse their complete request-local equality digest;
+failed reads create no hold. Registered sealed ranges retain their request-local
+identity; this cache does not add a raw-body fingerprint or persistent cache.
+
+For memory-backed ingress of at most 1 MiB, parsing MAY borrow a contiguous slice
+or gather one temporary, fully budget-charged slice using the same syntax and
+protocol decoder. It SHALL leave conservative capacity for semantic backing and
+fall back to the bounded reader when optional scratch cannot be admitted. This
+scratch is released before subsequent request preparation; it is not another
+sealed body owner, a cache, a size limit, or permission to gather large disk input.
+Nested native JSON arguments MAY reuse this same optional small-memory path,
+retaining the existing Value-compatible syntax, number and terminal checks.
+Failure to admit optional scratch SHALL retain the bounded Reader path.
 
 Semantic JSON ranges have one canonical writer: object keys are ordered
 recursively, while values and array order remain significant. Canonical provenance
@@ -437,6 +488,13 @@ still apply. Control objects needed by reasoning/output handling remain structur
 readable after externalization. Termination/cancel/deadline/orphan maintenance removes
 owned spill, and IR/wire/scratch/config leases release at their last consumer under
 [Core ownership](../gateway-core-foundation/spec.md).
+
+Optional asynchronous content capture MAY retain a charged, immutable snapshot
+of only its canonical fields and a read-only view of registered semantic Replay
+streams. The view SHALL exclude raw ingress, preserve range/provenance checks and
+keep backing/metadata charged until the last consumer. Request-directory cleanup
+belongs to the final owning view; cancellation and failed queue admission release
+their ownership. This is not a second raw-body owner or a persistent body cache.
 
 ### Requirement: Native response output and evidence extraction are independent
 
@@ -516,6 +574,24 @@ references; explicit content policy is separate and secrets are never exportable
 Each valid RequestFinished closes its [immutable request receipt](../session-history/spec.md)
 without waiting for AgentTurnFinished.
 
+Content encoding MAY run on a shared bounded worker before the existing storage
+producers. Additional snapshot/job memory and encoded records share the Content
+channel's byte ceiling. When a snapshot becomes the single active encoding job,
+its snapshot charge transfers to its existing request/process reservation;
+queued job metadata and encoded records retain their Content charges. The
+optional extended lifetime of shared semantic Replay
+backing, including disk bytes, is charged to the existing request/process budget;
+it is not a second payload in the Content queue. If this retention cannot be
+reserved, request capture uses its original synchronous path without introducing
+a capture gap solely for that optimization. The optional encoder SHALL reserve
+record capacity before assigning its sequence; waiting for capacity with an earlier
+sequence must not prevent the ordered sink from acknowledging later ready records.
+Request content closes before response content begins, preserving the
+request transcript root as the response parent. Accepted runtime history and
+usage keep their actual delivery boundary and do not wait for content encoding
+or SQLite. Queue/worker failure records bounded loss and explicit partial content;
+it never fabricates complete roots, blocks delivery or causes a model retry.
+
 ### Requirement: Listening configuration cannot expose local management
 
 CLI/Linux and Desktop/macOS share persisted Gateway bind IP/port and explicit restart.
@@ -569,6 +645,8 @@ blanket unmeasured performance/native/Windows result.
   [credential/preparation failures](../../../crates/gateway/src/runtime/driver/selection/preparation.rs).
 - [Replay implementation/default regression](../../../crates/gateway/src/replay/tests.rs) and
   [native response evidence](../../../crates/gateway/src/adapters/response/native_passthrough_evidence.rs).
+- [Sequential encoding byte-equivalence and fixed-input benchmark](../../../crates/gateway/src/adapters/tests/local_work.rs)
+  cover chunk boundaries, escaped/Unicode content, memory and disk backing, and bounded parser rejection.
 - [Real runtime listener corpus](../../../tools/e2e-harness/tests/p0_gateway_runtime.rs),
   [protocol corpus](../../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs), and
   [strict product fact projection](../../../crates/integrations/src/gateway/tests.rs).

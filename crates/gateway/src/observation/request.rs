@@ -63,9 +63,14 @@ pub struct RequestObservationMetadata {
 #[derive(Clone)]
 pub struct RequestObservation {
     pub(super) inner: Arc<RequestObservationInner>,
+    // A worker-local view freezes the enqueue boundary without mutating shared
+    // request state or changing lifecycle/execution timestamps.
+    pub(super) content_occurred_at: Option<u64>,
+    pub(super) content_credit_wait: Option<std::time::Duration>,
 }
 
 pub(super) struct RequestObservationInner {
+    pub(super) async_content: OnceLock<Arc<super::content_work::ContentStatus>>,
     pub(super) agent_turn_output: OnceLock<(
         Arc<crate::agent_turn_history::AgentTurnHistoryStore>,
         crate::agent_turn_history::AgentTurnTicket,
@@ -80,6 +85,7 @@ pub(super) struct RequestObservationInner {
     pub(super) context: DiagnosticContext,
     pub(super) request_token: Option<CorrelationToken>,
     pub(super) started_at: Instant,
+    pub(super) latency: Option<super::latency::RequestLatency>,
     pub(super) state: Mutex<RequestObservationState>,
 }
 
@@ -105,6 +111,8 @@ pub(super) struct RequestObservationState {
     pub(super) request_content_terminal: bool,
     pub(super) response_content_started: bool,
     pub(super) response_content_terminal: bool,
+    pub(super) request_content_fork: Option<String>,
+    pub(super) response_content_fork: Option<String>,
     pub(super) request_transcript: Option<WorkspaceHmac>,
     pub(super) response_transcript: Option<WorkspaceHmac>,
     pub(super) request_content_stats: ContentCaptureStats,
@@ -208,10 +216,19 @@ impl RequestObservation {
         metadata: RequestObservationMetadata,
         diagnostics: DiagnosticsPort,
     ) -> Self {
-        let context = diagnostics.handle().context();
+        let latency = super::latency::RequestLatency::current();
+        let context = latency
+            .as_ref()
+            .map_or_else(|| diagnostics.handle().context(), |timing| timing.context());
         let request_token = context.token(CorrelationDomain::ModelRequest, &metadata.request_id);
+        if let Some(timing) = &latency {
+            timing.bind(request_token);
+        }
         let value = Self {
+            content_occurred_at: None,
+            content_credit_wait: None,
             inner: Arc::new(RequestObservationInner {
+                async_content: OnceLock::new(),
                 agent_turn_output: OnceLock::new(),
                 prices,
                 enabled: capture.enabled,
@@ -223,6 +240,7 @@ impl RequestObservation {
                 context,
                 request_token,
                 started_at: Instant::now(),
+                latency,
                 state: Mutex::new(RequestObservationState {
                     next_attempt_ordinal: 1,
                     ..RequestObservationState::default()
@@ -677,6 +695,9 @@ impl RequestObservation {
             outcome: outcome.into(),
         });
         if let Some(outcome) = request_outcome(outcome) {
+            if let Some(latency) = &self.inner.latency {
+                latency.request_outcome(outcome);
+            }
             self.emit_diagnostic(DiagnosticEvent::RequestEnd(RequestEnd {
                 request_token: self.inner.request_token,
                 outcome,

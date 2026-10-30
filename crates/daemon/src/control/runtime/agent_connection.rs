@@ -736,6 +736,7 @@ mod tests {
             publication_diagnostics: Mutex::new(Default::default()),
             publication_marker_cache: Mutex::new(None),
             settings_publication_candidate: Mutex::new(None),
+            launcher_capability_registrar: stores.open_launcher_capability_registrar().unwrap(),
             stores: Mutex::new(stores),
             delegation_digest_authority: hiroute_observation::DigestAuthority::new([7; 32]),
             delegation_observation: Arc::new(

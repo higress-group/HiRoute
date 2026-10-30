@@ -413,7 +413,7 @@ fn locator_upgrade_from_admitted_32_preserves_unrelated_publication_damage() {
     let upgraded = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
     assert_eq!(
         database_version(&root.join("live/control.db")).unwrap(),
-        Some(33)
+        Some(LATEST_SCHEMA_VERSION)
     );
     assert_eq!(
         upgraded
@@ -520,7 +520,7 @@ fn locator_upgrade_resumes_each_store_commit_and_precompletion_from_verified_32(
         for path in &paths {
             assert_eq!(
                 database_version(path).unwrap(),
-                Some(33),
+                Some(LATEST_SCHEMA_VERSION),
                 "boundary {boundary}"
             );
         }
@@ -530,7 +530,11 @@ fn locator_upgrade_resumes_each_store_commit_and_precompletion_from_verified_32(
         );
         upgraded.validate_recovered_grant_publications().unwrap();
         drop(upgraded);
-        let completed = BackupSet::open(&crate::test_storage_authority(), &backup_root).unwrap();
+        let archived = backup_root
+            .parent()
+            .unwrap()
+            .join(format!("migration-set.{set_id}"));
+        let completed = BackupSet::open(&crate::test_storage_authority(), &archived).unwrap();
         assert_eq!(completed.set_id(), set_id, "boundary {boundary}");
         assert_eq!(
             completed.phase(),
@@ -538,9 +542,12 @@ fn locator_upgrade_resumes_each_store_commit_and_precompletion_from_verified_32(
             "boundary {boundary}"
         );
         assert_eq!(
-            fs::read(backup_root.join("control.db")).unwrap(),
+            fs::read(archived.join("control.db")).unwrap(),
             original_backup
         );
+        let current = BackupSet::open(&crate::test_storage_authority(), &backup_root).unwrap();
+        assert_eq!(current.target_schema_version(), LATEST_SCHEMA_VERSION);
+        assert_eq!(current.phase(), BackupSetPhase::Completed);
         LocalStorageSet::open_for_daemon_startup(&root).unwrap();
     }
 }

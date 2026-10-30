@@ -3,10 +3,17 @@ use rusqlite::StatementStatus;
 
 thread_local! {
     static STATEMENTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static SOURCE_WINDOWS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 fn count_statement(_: &str) {
     STATEMENTS.with(|count| count.set(count.get() + 1));
+}
+
+fn count_source_windows(sql: &str) {
+    if sql.starts_with("SELECT MAX(rowid) FROM (SELECT rowid FROM content_blobs_v2") {
+        SOURCE_WINDOWS.with(|count| count.set(count.get() + 1));
+    }
 }
 
 #[test]
@@ -26,11 +33,11 @@ fn idle_indexer_does_not_rescan_ready_history_after_settlement_or_analysis_reads
     store.connection.lock().trace(Some(count_statement));
     for _ in 0..32 {
         builder.cycle(&store).unwrap();
-        if builder.idle_checkpoint.is_some() {
+        if builder.idle {
             break;
         }
     }
-    assert!(builder.idle_checkpoint.is_some());
+    assert!(builder.idle);
     for _ in 0..3 {
         // These are the ordinary idle maintenance and query paths that share
         // the production store; neither changes content needing an index.
@@ -58,17 +65,11 @@ fn idle_indexer_does_not_rescan_ready_history_after_settlement_or_analysis_reads
         assert_eq!(builder.cycle(&store).unwrap(), 0);
         assert!(STATEMENTS.with(|count| count.get()) < 8);
     }
-    // A real source revision wakes the same bounded scanner. This control
-    // demonstrates the work an unconditional idle rescan would repeat.
+    // A generic revision (including accepted facts) cannot dirty text sources.
     crate::store::increment_store_revision(&store.connection.lock()).unwrap();
     STATEMENTS.with(|count| count.set(0));
-    for _ in 0..32 {
-        builder.cycle(&store).unwrap();
-        if builder.idle_checkpoint.is_some() {
-            break;
-        }
-    }
-    assert!(STATEMENTS.with(|count| count.get()) > 32);
+    assert_eq!(builder.cycle(&store).unwrap(), 0);
+    assert!(STATEMENTS.with(|count| count.get()) < 8);
 }
 
 #[test]
@@ -84,11 +85,10 @@ fn indexer_rechecks_a_late_live_source_changed_by_a_peer_writer() {
         .unwrap();
     let mut builder = TextIndexBuilder::new(&store).unwrap();
     assert_eq!(builder.cycle(&store).unwrap(), 0);
-    assert!(builder.idle_checkpoint.is_some());
+    assert!(builder.idle);
     let peer = rusqlite::Connection::open(&store.activity_path).unwrap();
     peer.execute("UPDATE content_instances_v2 SET state='complete'", [])
         .unwrap();
-    crate::store::increment_store_revision(&peer).unwrap();
     assert_eq!(builder.cycle(&store).unwrap(), 1);
     let hits = store
         .search_observed_text(
@@ -112,18 +112,57 @@ fn indexer_does_not_declare_idle_when_a_source_changes_behind_the_cursor() {
         .execute("UPDATE content_instances_v2 SET state='installing'", [])
         .unwrap();
     let mut builder = TextIndexBuilder::new(&store).unwrap();
-    // Resume a bounded pass after it visited the old source. Completion raced
-    // that pass, so its final checkpoint must not cover the unvisited change.
-    builder.scan_checkpoint = Some(source_checkpoint(&store).unwrap());
+    // Completion races a pass that already visited the old source. Its
+    // notification survives exhaustion and rewinds the next bounded cycle.
+    super::super::sources::take_dirty(&store).unwrap();
     builder.scan_after = 1;
+    assert!(next(&store, &mut builder.scan_after).unwrap().1);
     store
         .connection
         .lock()
         .execute("UPDATE content_instances_v2 SET state='complete'", [])
         .unwrap();
-    assert_eq!(builder.cycle(&store).unwrap(), 0);
-    assert!(builder.idle_checkpoint.is_none());
+    builder.idle = true;
     assert_eq!(builder.cycle(&store).unwrap(), 1);
+}
+
+#[test]
+fn a_new_source_seeks_past_indexed_history_without_scanning_it_again() {
+    let root = tempfile::tempdir().unwrap();
+    let store =
+        LocalObservationStore::open(root.path(), crate::DigestAuthority::new([2; 32])).unwrap();
+    store.connection.lock().execute_batch(
+        "WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<16384)
+         INSERT INTO content_blobs_v2 SELECT 'workspace','blob-'||i,'unused',0,'text/plain','complete',1 FROM n;
+         INSERT INTO observation_text_index_v2 SELECT workspace_id,blob_digest,'ready',rowid FROM content_blobs_v2;
+         INSERT INTO observation_text_lookup_sources_v1 SELECT workspace,digest FROM observation_text_index_v2;",
+    ).unwrap();
+    let mut builder = TextIndexBuilder::new(&store).unwrap();
+    for _ in 0..64 {
+        builder.cycle(&store).unwrap();
+        if builder.idle {
+            break;
+        }
+    }
+    assert!(builder.idle);
+    crate::query_v2::search_tests::source(&store, b"fresh needle");
+    store.connection.lock().trace(Some(count_source_windows));
+    SOURCE_WINDOWS.with(|count| count.set(0));
+    assert_eq!(builder.cycle(&store).unwrap(), 1);
+    assert!(SOURCE_WINDOWS.with(|count| count.get()) <= 2);
+    let hits = store
+        .search_observed_text(
+            &crate::query_v2::search_tests::reader(true),
+            &crate::query_v2::search_tests::query("needle", 10),
+            500,
+        )
+        .unwrap();
+    assert_eq!(hits.hits.len(), 1);
+    // Negative control: the former broad-revision wakeup restarted at zero.
+    let mut after = 0;
+    SOURCE_WINDOWS.with(|count| count.set(0));
+    while !next(&store, &mut after).unwrap().1 {}
+    assert!(SOURCE_WINDOWS.with(|count| count.get()) > 64);
 }
 
 #[test]

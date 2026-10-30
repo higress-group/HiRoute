@@ -180,7 +180,8 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
             collect_nested_json_refs(format, &mut refs);
         }
     }
-    let replay_template = prepare_replay_json_template(&body.wire_value(), refs)?;
+    let replay_template =
+        prepare_replay_json_template(&crate::content_ref::borrowed_wire_value(&body), refs)?;
     let wire_len = replay_template.wire_len;
     let PreparedReplayTemplate {
         bytes,
@@ -214,8 +215,8 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
     })
 }
 
-pub(crate) fn prepare_replay_json_template(
-    body: &serde_json::Value,
+pub(crate) fn prepare_replay_json_template<T: serde::Serialize + ?Sized>(
+    body: &T,
     refs: impl IntoIterator<Item = RequestedReplacement>,
 ) -> Result<PreparedReplayTemplate, ProtocolAdapterError> {
     let bytes = serde_json::to_vec(body)

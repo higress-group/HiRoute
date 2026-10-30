@@ -18,6 +18,8 @@ pub struct PlanAuthoringSnapshotV2 {
     pub facts: AgentPlanCompilationFactsV1,
     /// Exact saved connection revision selected by the effective editor, not its latest version.
     pub decision_service: Option<DecisionServiceV1>,
+    pub decision_service_v2: Option<DecisionServiceV2>,
+    pub decision_source: Option<ComputeManagementSourceV2>,
     pub expected_revisions: RevisionSetV1,
 }
 
@@ -63,6 +65,53 @@ pub fn preview_plan_content(
         && state.decision_service.as_ref() != Some(service)
     {
         return Err(PlanPreviewError::InvalidDecisionService);
+    }
+    if let Some(service) = configuration.decision_service_v2()
+        && state.decision_service_v2.as_ref() != Some(service)
+    {
+        return Err(PlanPreviewError::InvalidDecisionService);
+    }
+    if let Some(service) = configuration.decision_service_v2()
+        && let DecisionConnectionV2::Native {
+            endpoint,
+            model,
+            wire_protocol,
+            authentication:
+                DecisionAuthenticationV2::SharedSource {
+                    source_id,
+                    source_lineage_digest,
+                },
+            ..
+        } = &service.connection
+    {
+        let source = state
+            .decision_source
+            .as_ref()
+            .ok_or(PlanPreviewError::InvalidDecisionService)?;
+        let target = ComputeDecisionTargetV4::new(endpoint, *wire_protocol)
+            .map_err(|_| PlanPreviewError::InvalidDecisionService)?;
+        let consumer = target
+            .consumer(
+                source_id,
+                source_lineage_digest,
+                &service.id,
+                service.revision,
+                model,
+            )
+            .map_err(|_| PlanPreviewError::InvalidDecisionService)?;
+        if source.source_id != *source_id
+            || source.lineage_digest != *source_lineage_digest
+            || source.validate().is_err()
+            || !source.decision_targets.iter().any(|saved| {
+                saved.destination_id == target.destination_id
+                    && saved.endpoint == target.endpoint
+                    && saved.wire_protocol == target.wire_protocol
+                    && saved.authentication == target.authentication
+                    && saved.consumers.contains(&consumer)
+            })
+        {
+            return Err(PlanPreviewError::InvalidDecisionService);
+        }
     }
     if let Some(selected) = &change.consumed_draft {
         let draft = state.draft.as_ref().ok_or(PlanPreviewError::Stale)?;

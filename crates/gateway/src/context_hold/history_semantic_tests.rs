@@ -175,3 +175,107 @@ fn borrowed_semantic_view_cannot_replace_strict_execution_evidence_or_positions(
             .is_none()
     );
 }
+
+#[test]
+fn complete_history_fingerprints_detect_same_length_edits_and_part_boundaries() {
+    let mut original = request("system");
+    let text = "x".repeat(128 * 1024);
+    original.messages[1].content = vec![ContentPart::Text { text: text.clone() }];
+    let baseline = measure(&original, original.messages.len());
+    let anchors = branch_anchors(&original, &[37; 32], None, &[2]).unwrap();
+    for index in [0, text.len() / 2, text.len() - 1] {
+        let mut changed = original.clone();
+        let mut bytes = text.as_bytes().to_vec();
+        bytes[index] = b'y';
+        changed.messages[1].content = vec![ContentPart::Text {
+            text: String::from_utf8(bytes).unwrap(),
+        }];
+        let actual = measure(&changed, changed.messages.len());
+        assert_ne!(actual.complete_digest, baseline.complete_digest);
+        assert_ne!(
+            actual.semantic_complete_digest,
+            baseline.semantic_complete_digest
+        );
+        assert_ne!(
+            branch_anchors(&changed, &[37; 32], None, &[2])
+                .unwrap()
+                .prefixes,
+            anchors.prefixes
+        );
+    }
+    let mut split = original.clone();
+    split.messages[1].content = vec![
+        ContentPart::Text {
+            text: text[..text.len() / 2].into(),
+        },
+        ContentPart::Text {
+            text: text[text.len() / 2..].into(),
+        },
+    ];
+    assert_ne!(
+        measure(&split, split.messages.len()).complete_digest,
+        baseline.complete_digest
+    );
+    assert_eq!(
+        measure(&original, original.messages.len()).complete_digest,
+        baseline.complete_digest
+    );
+}
+
+#[test]
+fn strict_semantic_and_branch_evidence_reuse_full_request_content() {
+    use crate::content_ref::externalize_model_request;
+    use crate::replay::{ReplayConfig, ReplayManager};
+    use hiroute_gateway_core::runtime::body::BudgetTree;
+    for threshold in [31, 1024 * 1024] {
+        let root = std::env::temp_dir().join(format!(
+            "hiroute-history-fingerprints-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let manager = ReplayManager::open(ReplayConfig {
+            root: root.clone(),
+            memory_threshold_bytes: threshold,
+            record_bytes: 31,
+            orphan_ttl: std::time::Duration::from_secs(60),
+        })
+        .unwrap();
+        let budget = BudgetTree::new(8 * 1024 * 1024, 8 * 1024 * 1024)
+            .unwrap()
+            .stream(8 * 1024 * 1024)
+            .unwrap();
+        let store = manager.begin_request(budget.clone()).unwrap();
+        let mut input = request("system");
+        input.messages[1].content = vec![ContentPart::Text {
+            text: "full content 中文".repeat(4096),
+        }];
+        let plain = measure(&input, input.messages.len());
+        externalize_model_request(&mut input, &store, 0).unwrap();
+        let history = visible_history_with_replay(&input, &[37; 32], Some(&store)).unwrap();
+        let first = history.measure(Some(input.messages.len())).unwrap();
+        assert_eq!(first.complete_digest, plain.complete_digest);
+        assert_eq!(
+            first.semantic_complete_digest,
+            plain.semantic_complete_digest
+        );
+        let measured = store.runtime_fingerprint_computations();
+        assert!(measured > 0);
+        for _ in 0..3 {
+            assert_eq!(
+                history
+                    .measure(Some(input.messages.len()))
+                    .unwrap()
+                    .complete_digest,
+                first.complete_digest
+            );
+            branch_anchors(&input, &[37; 32], Some(&store), &[2]).unwrap();
+            assert_eq!(store.runtime_fingerprint_computations(), measured);
+        }
+        drop((input, store, manager));
+        assert_eq!(budget.snapshot().unwrap().live, 0);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}

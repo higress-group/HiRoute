@@ -98,6 +98,24 @@ native login/configuration; late checks, saves, and maintenance cannot recreate 
 removed source. A future scan requires explicit approval again. Released legacy
 save semantics remain replacement semantics; append/delete are explicit intents.
 
+Native API sources may also authorize versioned decision consumers. Ordinary model
+editing, recheck, append and Key replacement MUST preserve registered decision
+targets. Retained decision-service revisions and their publication/recovery
+references participate in writer-side deletion checks. Removing a decision service
+does not remove the API source, ordinary models or shared Keys; only unreferenced
+decision destinations are removed through the coordinated recoverable change.
+Decision sources remain distinct from subscription/OAuth login ownership. Their
+complete lifecycle is defined in
+[decision connections](../decision-services/spec.md#requirement-native-decision-models-may-reuse-an-existing-api-connection).
+
+#### Scenario: Shared decision reference blocks source deletion
+
+- **WHEN** a retained decision-service revision still references an API source
+- **THEN** source deletion is rejected under the writer without removing shared Keys or unrelated model membership.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488572844
+
 ### Requirement: Raw upstream model IDs are opaque, not internal identifiers
 
 Connection options MAY provide an explicitly requested, source-product-scoped

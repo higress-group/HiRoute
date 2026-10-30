@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 mod decision_service;
 pub use decision_service::DecisionServiceChangeV1;
+mod decision_service_v2;
+pub use decision_service_v2::*;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
@@ -945,7 +947,7 @@ fn validate_registered_plan(
     if spec.schema_version.major != crate::CHANGE_SPEC_SCHEMA_V1.major
         // Routing content has its own exact, typed validator. A REST classifier
         // endpoint is legitimate there and must survive durable reconstruction.
-        || (!matches!(spec.command_id.as_str(), "routing.apply" | "decision.services.apply") && contains_disabled_or_url(&spec.desired_state))
+        || (!matches!(spec.command_id.as_str(), "routing.apply" | "decision.services.apply" | "decision.connections.apply") && contains_disabled_or_url(&spec.desired_state))
         || spec
             .resource_id
             .as_deref()
@@ -955,6 +957,14 @@ fn validate_registered_plan(
     }
     match spec.command_id.as_str() {
         "decision.services.apply" => decision_service::validate_plan(
+            spec,
+            control,
+            credential_pool,
+            secrets,
+            runtime,
+            external,
+        ),
+        "decision.connections.apply" => decision_service_v2::validate_plan(
             spec,
             control,
             credential_pool,

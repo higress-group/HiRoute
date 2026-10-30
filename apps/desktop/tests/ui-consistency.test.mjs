@@ -186,7 +186,9 @@ test('all product commands have a console route and host commands cannot enter i
   const catalog = JSON.parse(read('../../crates/product-session/src/commands.json'));
   const shared = read('../../crates/product-session/src/commands/dispatch.rs');
   const hostSettings = read('../../crates/daemon/src/console/host_settings.rs');
-  const routes = new Set([...shared.matchAll(/"([a-z][a-z0-9_]*)"\s*=>/g)].map(item => item[1]));
+  // A Rust match arm can route multiple names through one shared decoder.
+  const routes = new Set([...shared.matchAll(/("[a-z][a-z0-9_]*"(?:\s*\|\s*"[a-z][a-z0-9_]*")*)\s*=>/g)]
+    .flatMap(arm => [...arm[1].matchAll(/"([a-z][a-z0-9_]*)"/g)].map(item => item[1])));
   for (const name of ['gateway_listener_status', 'gateway_listener_apply', 'gateway_listener_recover', 'subscription_proxy_status', 'subscription_proxy_apply', 'diagnostic_status', 'set_diagnostic_level']) {
     assert.ok(hostSettings.includes(`"${name}"`)); routes.add(name);
   }

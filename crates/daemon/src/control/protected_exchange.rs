@@ -17,6 +17,7 @@ pub(super) fn process(
     };
     let started = std::time::Instant::now();
     let mut phase = ProtectedExchangePhase::Register;
+    let mut registration_busy = false;
     let result = (|| {
         match frame {
             ProtectedChannelFrame::Upgrade(request) => {
@@ -25,7 +26,15 @@ pub(super) fn process(
                 return write_status(writer, &status);
             }
             ProtectedChannelFrame::Apply { registration, .. } => {
-                role.register_apply_capability(registration)?
+                if role.try_register_apply_capability(registration)?
+                    == hiroute_local_storage::ApplyCapabilityRegistrationOutcome::Busy
+                {
+                    // No writer was acquired and no grant was accepted. Finish
+                    // the exact reply so the host can retain synchronization.
+                    registration_busy = true;
+                    phase = ProtectedExchangePhase::AcknowledgementWrite;
+                    return write_ack_result(writer, &id, false);
+                }
             }
             ProtectedChannelFrame::InputRegister {
                 candidate, secret, ..
@@ -47,7 +56,8 @@ pub(super) fn process(
         error: result
             .as_ref()
             .err()
-            .map(|_| ProtectedExchangeError::Unavailable),
+            .map(|_| ProtectedExchangeError::Unavailable)
+            .or(registration_busy.then_some(ProtectedExchangeError::Busy)),
         authority_lost: false,
     }));
     result

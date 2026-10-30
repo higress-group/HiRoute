@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:72195f5b4681247f9aec441f8c1fee8de3cbd2dea745e26a9b0795a42df2679c",
+  "descriptor_digest": "sha256:ed6ce2dcbf77cda13cfbcc9606011981e80c73c2b53260030464d0709a53fbe4",
   "expected_red_reasons": [],
   "planned_commands": [
     "console.open",
@@ -75,6 +75,10 @@
     "routing.apply",
     "decision.services.list",
     "decision.services.apply",
+    "decision.sources.list",
+    "decision.connections.list",
+    "decision.connections.apply",
+    "decision.connections.test",
     "decision.services.test",
     "routing.classifier.secret.apply",
     "models.list",
@@ -171,6 +175,10 @@
     "routing.apply",
     "decision.services.list",
     "decision.services.apply",
+    "decision.sources.list",
+    "decision.connections.list",
+    "decision.connections.apply",
+    "decision.connections.test",
     "decision.services.test",
     "models.feed.status",
     "models.feed.refresh",

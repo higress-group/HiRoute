@@ -16,7 +16,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 109); // Includes complete metadata and saved-default intent queries.
+    assert_eq!(commands.len(), 113); // Includes versioned decision connections and safe source queries.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));
@@ -83,6 +83,10 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "routing.apply",
             "decision.services.list",
             "decision.services.apply",
+            "decision.sources.list",
+            "decision.connections.list",
+            "decision.connections.apply",
+            "decision.connections.test",
             "decision.services.test",
             "models.feed.status",
             "models.feed.refresh",

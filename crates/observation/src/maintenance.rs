@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 
 const MAINTENANCE_INTERVAL: Duration = Duration::from_millis(250);
 const BLOB_GC_IDLE_INTERVAL: Duration = Duration::from_secs(5);
-const BLOB_GC_BATCH: usize = 32;
 
 pub struct ObservationMaintenance {
     stop: mpsc::Sender<()>,
@@ -79,6 +78,7 @@ fn run(
     let mut blob_gc = BlobGcSchedule {
         next_due: Instant::now(),
     };
+    let mut blob_cursor = crate::store::blob_gc::BlobGcCursor::default();
     let mut interval = MAINTENANCE_INTERVAL;
     while matches!(
         stop.recv_timeout(interval),
@@ -141,7 +141,11 @@ fn run(
         // Only physical blob collection backs off. Expiry, indexing, settlement and hooks
         // retain their existing cadence; explicit user deletion still collects immediately.
         let gc_failed = blob_gc
-            .run_if_due(Instant::now, || store.collect_garbage_batch(BLOB_GC_BATCH))
+            .run_if_due(Instant::now, || {
+                store
+                    .collect_garbage_incremental(&mut blob_cursor)
+                    .map(|(_, more)| more)
+            })
             .is_err();
         let hook_failed = match (hook.as_ref(), now_ms) {
             (Some(hook), Some(now)) => hook.cycle(now).is_err(),
@@ -171,7 +175,7 @@ fn run(
     }
 }
 
-/// A full batch may leave a backlog. Idle and failed passes wait longer, measured
+/// An unfinished scan continues in bounded pages. Completed and failed passes wait longer, measured
 /// from completion so a slow query cannot immediately schedule another expensive pass.
 struct BlobGcSchedule {
     next_due: Instant,
@@ -181,13 +185,13 @@ impl BlobGcSchedule {
     fn run_if_due(
         &mut self,
         clock: impl Fn() -> Instant,
-        collect: impl FnOnce() -> Result<u64, hiroute_domain::ObservationQueryError>,
+        collect: impl FnOnce() -> Result<bool, hiroute_domain::ObservationQueryError>,
     ) -> Result<(), hiroute_domain::ObservationQueryError> {
         if clock() < self.next_due {
             return Ok(());
         }
         let result = collect();
-        let interval = if matches!(result, Ok(count) if count == BLOB_GC_BATCH as u64) {
+        let interval = if matches!(result, Ok(true)) {
             MAINTENANCE_INTERVAL
         } else {
             BLOB_GC_IDLE_INTERVAL
@@ -234,13 +238,8 @@ mod tests {
     use std::cell::Cell;
 
     #[test]
-    fn blob_gc_idle_partial_and_failed_passes_wait_five_seconds() {
-        for outcome in [
-            Ok(0),
-            Ok(1),
-            Ok(31),
-            Err(ObservationQueryError::Unavailable),
-        ] {
+    fn blob_gc_completed_and_failed_passes_wait_five_seconds() {
+        for outcome in [Ok(false), Err(ObservationQueryError::Unavailable)] {
             let start = Instant::now();
             let mut gc = BlobGcSchedule { next_due: start };
             let failed = outcome.is_err();
@@ -258,7 +257,7 @@ mod tests {
                 || start + BLOB_GC_IDLE_INTERVAL,
                 || {
                     called.set(true);
-                    Ok(0)
+                    Ok(false)
                 },
             )
             .unwrap();
@@ -275,7 +274,7 @@ mod tests {
             || clock.get(),
             || {
                 clock.set(start + Duration::from_secs(2));
-                Ok(BLOB_GC_BATCH as u64)
+                Ok(true)
             },
         )
         .unwrap();
@@ -298,7 +297,7 @@ mod tests {
         gc.run_if_due(|| clock.get(), || panic!("retry measured from start"))
             .unwrap();
         clock.set(clock.get() + Duration::from_millis(1));
-        gc.run_if_due(|| clock.get(), || Ok(0)).unwrap();
+        gc.run_if_due(|| clock.get(), || Ok(false)).unwrap();
     }
 
     struct BlockedCycle {
