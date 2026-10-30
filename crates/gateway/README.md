@@ -35,6 +35,10 @@ current authority/profile checks still run, and cleanup rebuilds the template.
 Template serialization borrows the existing JSON tree while expanding its wire
 markers. Replay serializes each canonical range under its existing memory gate
 and derives range lengths from the same checked stream counters.
+The Replay-backed Core session forwards its already charged reader chunks directly,
+respecting smaller caller bounds without reserving the opaque network-codec maximum
+or copying each chunk again. Range/EOF verification and final-owner cleanup remain
+with the same Replay reader.
 Production ingress moves its native tree into the canonical request; context
 identity keeps only the original `metadata` and `client_metadata` roots so
 externalizing native content cannot change Claude/Codex identity enrichment.

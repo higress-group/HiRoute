@@ -297,6 +297,25 @@ async fn replay_body_reader_uses_bounded_credit_under_retained_request_pressure(
             continuation_scanner: active.scanner(),
         };
         let mut actual = Vec::new();
+        let before = budget.snapshot().unwrap().live;
+        let first = session
+            .read_request_body_charged(&budget, 4 * 1024 * 1024)
+            .await
+            .expect("bounded Replay reads must not reserve an opaque network-sized allowance")
+            .unwrap();
+        assert_eq!(first.role(), MemoryRole::RawRequest);
+        assert_eq!(budget.snapshot().unwrap().live - before, 16 * 1024);
+        actual.extend_from_slice(first.bytes());
+        drop(first);
+        assert!(session.read_request_body_charged(&budget, 0).await.is_err());
+        let small = session
+            .read_request_body_charged(&budget, 7)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(small.bytes().len(), 7);
+        actual.extend_from_slice(small.bytes());
+        drop(small);
         while let Some(chunk) = session
             .read_request_body_charged(&budget, 4 * 1024 * 1024)
             .await
@@ -307,5 +326,15 @@ async fn replay_body_reader_uses_bounded_credit_under_retained_request_pressure(
         }
         assert_eq!(actual, body);
         assert!(session.request_body.is_none());
+        assert_eq!(
+            budget.snapshot().unwrap().role_peak[MemoryRole::TransportInflight as usize],
+            0
+        );
+        drop(session);
+        drop(active);
+        drop(store);
+        drop(manager);
+        drop(_retained);
+        assert_eq!(budget.snapshot().unwrap().live, 0);
     }
 }
