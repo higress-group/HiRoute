@@ -11,6 +11,7 @@ import {
   saveFailureDefinitelyPreAdmission,
   saveIntent,
   selectionRows,
+  subscriptionSelectionAfterRefresh,
   statusText,
   validatedSubscriptionCandidate,
 } from '../src/features/subscriptions/model.ts';
@@ -201,4 +202,34 @@ test('independent re-login retains repair membership when an old model leaves th
   assert.equal(repairSourceAfterLogin(saved.source_id, { ...checked, existing_source_id: 'source/other' }), null);
   assert.equal(canSaveRepair({ ...checked, validation: null }, saved, selected), false);
   assert.equal(canSaveRepair(checked, saved, new Set()), false, 'repair cannot silently drop models');
+});
+
+
+test('native refresh preserves independent Codex and Claude check, selection, and append intent', () => {
+  for (const provider of ['codex', 'claude']) {
+    const ref = `candidate/cpa/${provider}/managed/account`;
+    for (const existing_source_id of [undefined, `source/${provider}`]) {
+      const selected = candidate({ candidate: { candidate_ref: ref, candidate_revision: 2 }, existing_source_id });
+      const checked = { ...selected, validation };
+      const result = { status: 'verified', checked_candidate: checked };
+      const chosen = new Set(checked.models.map(model => model.model_ref));
+      const native = candidate({ candidate: { candidate_ref: `candidate/cpa/${provider}/native`, candidate_revision: 1 } });
+      const retained = subscriptionSelectionAfterRefresh(selected, [native]);
+      assert.equal(retained, selected);
+      assert.equal(retained.existing_source_id, existing_source_id);
+      assert.deepEqual(validatedSubscriptionCandidate(retained, result), checked);
+      assert.equal(canSave(validatedSubscriptionCandidate(retained, result), true, chosen), true);
+      assert.equal(subscriptionSelectionAfterRefresh(null, [native]), null, 'explicit return to scan stays unselected');
+    }
+  }
+});
+
+test('native refresh updates only the selected identity and requires a new check for newer facts', () => {
+  const selected = candidate();
+  const checked = { status: 'verified', checked_candidate: { ...selected, validation } };
+  const updated = { ...selected, candidate: { ...selected.candidate, candidate_revision: 3 } };
+  const other = candidate({ candidate: { candidate_ref: 'candidate/other', candidate_revision: 99 } });
+  assert.equal(subscriptionSelectionAfterRefresh(selected, [other, updated]), updated);
+  assert.equal(validatedSubscriptionCandidate(updated, checked), null);
+  assert.equal(subscriptionSelectionAfterRefresh(selected, []), selected);
 });

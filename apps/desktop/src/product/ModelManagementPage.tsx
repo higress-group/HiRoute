@@ -54,7 +54,7 @@ import type {
   SubscriptionCandidate,
   SubscriptionCheckResult,
 } from '../features/subscriptions/types';
-import { canSave as canSaveSubscription, canSaveRepair, repairSourceAfterLogin, saveFailureDefinitelyPreAdmission, saveIntent, selectionRows, validatedSubscriptionCandidate } from '../features/subscriptions/model';
+import { canSave as canSaveSubscription, canSaveRepair, repairSourceAfterLogin, saveFailureDefinitelyPreAdmission, saveIntent, selectionRows, subscriptionSelectionAfterRefresh, validatedSubscriptionCandidate } from '../features/subscriptions/model';
 import { safeDiagnosticCode } from '../error-code';
 
 type SubscriptionSaveSelection = {
@@ -166,12 +166,11 @@ export function ModelManagementPage({
 }) {
   const [management, setManagement] = useState<ManagementSnapshot | null>(null);
   const [focusedSource, setFocusedSource] = useState<string | null>(initialSourceId);
-  const [subscriptions, setSubscriptions] = useState<SubscriptionCandidate[]>([]);
   const [nativeSubscriptions, setNativeSubscriptions] = useState<SubscriptionCandidate[]>([]);
   const [subscriptionChecks, setSubscriptionChecks] = useState<Record<string, SubscriptionCheckResult | undefined>>({});
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [subscriptionAction, setSubscriptionAction] = useState<'checking' | 'saving' | null>(null);
-  const [selectedSubscriptionRef, setSelectedSubscriptionRef] = useState<string | null>(null);
+  const [selectedSubscription, setSelectedSubscription] = useState<SubscriptionCandidate | null>(null);
   const [subscriptionSelections, setSubscriptionSelections] = useState<Record<string, string[]>>({});
   const [repairingSubscriptionSource, setRepairingSubscriptionSource] = useState<string | null>(null);
   const [subscriptionNotice, setSubscriptionNotice] = useState('');
@@ -263,7 +262,7 @@ export function ModelManagementPage({
     ]);
     if (!alive.current || subscriptionScan.current !== scan) return;
     if (subscriptionResult.status === 'fulfilled') {
-      setSubscriptions(subscriptionResult.value.candidates);
+      setSelectedSubscription(current => subscriptionSelectionAfterRefresh(current, subscriptionResult.value.candidates));
       setNativeSubscriptions(subscriptionResult.value.candidates);
       setSubscriptionDiscoveryState(subscriptionResult.value.discovery_state);
     } else {
@@ -288,7 +287,7 @@ export function ModelManagementPage({
     setSubscriptionChecks({});
     setSubscriptionBusy(false);
     setSubscriptionAction(null);
-    setSelectedSubscriptionRef(null);
+    setSelectedSubscription(null);
     setSubscriptionSelections({});
     setSubscriptionApiChoices({});
     setRepairingSubscriptionSource(null);
@@ -527,7 +526,7 @@ export function ModelManagementPage({
     const generation = ++discoveryGeneration.current;
     subscriptionAttempt.current += 1;
     discoveryInFlight.current = true;
-    setSelectedSubscriptionRef(null);
+    setSelectedSubscription(null);
     setSelectedDiscovery(item);
     setPreparedDiscovery(null);
     setDiscoverySelections([]);
@@ -565,7 +564,7 @@ export function ModelManagementPage({
 
   function rescanDevice() {
     returnToScanList();
-    setSelectedSubscriptionRef(null);
+    setSelectedSubscription(null);
     setSubscriptionError(null);
     void refreshSubscriptions();
   }
@@ -866,14 +865,13 @@ export function ModelManagementPage({
     setAppendingSource(source); setAppendManual(false); setAdding(false);
     if (source.provenance === 'connector_owned') {
       subscriptionTouched.current = true;
-      setRepairingSubscriptionSource(null); setSelectedSubscriptionRef(null);
+      setRepairingSubscriptionSource(null); setSelectedSubscription(null);
       setAddStage('scan'); setAdding(true); setSubscriptionLoading(true);
       try {
         const result = await invoke<SubscriptionScanResult>('compute_subscriptions', {
           sourceId: source.source_id, expectedSourceRevision: source.revision,
         });
         if (!alive.current) return;
-        setSubscriptions(result.candidates);
         const candidate = result.candidates.find(item => item.existing_source_id === source.source_id);
         if (!candidate) throw { code: 'SUBSCRIPTION_NOT_FOUND' };
         openSubscription(candidate);
@@ -940,7 +938,6 @@ export function ModelManagementPage({
   }
 
   const hasSources = Boolean(management?.sources.length);
-  const selectedSubscription = subscriptions.find(item => item.candidate.candidate_ref === selectedSubscriptionRef) ?? null;
   const repairingSource = repairingSubscriptionSource
     ? management?.sources.find(source => source.source_id === repairingSubscriptionSource) ?? null
     : null;
@@ -988,7 +985,7 @@ export function ModelManagementPage({
 
   function openSubscription(candidate: SubscriptionCandidate) {
     returnToScanList();
-    setSelectedSubscriptionRef(candidate.candidate.candidate_ref);
+    setSelectedSubscription(candidate);
     const savedSource = management?.sources.find(source => source.source_id === candidate.existing_source_id);
     if (savedSource) {
       setSubscriptionSelections(current => ({
@@ -1002,7 +999,7 @@ export function ModelManagementPage({
 
   function repairSubscription(sourceId: string) {
     if (!trustedAuthority) return;
-    setSelectedSubscriptionRef(null);
+    setSelectedSubscription(null);
     setRepairingSubscriptionSource(sourceId);
     setSubscriptionError(null);
     setSubscriptionNotice('');
@@ -1119,7 +1116,7 @@ export function ModelManagementPage({
           <div><strong>{language === 'zh' ? '连接订阅' : 'Connect subscription'}</strong><span>{language === 'zh' ? '独立登录 Codex / Claude Code，自动刷新登录凭据' : 'Sign in independently to Codex / Claude Code with automatic credential refresh'}</span></div>
           <UiIcon name="chevronRight" />
         </button>
-        <button className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => { returnToScanList(); setSelectedSubscriptionRef(null); setRepairingSubscriptionSource(null); setSubscriptionNotice(''); setAddStage('scan'); void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]); }}>
+        <button className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => { returnToScanList(); setSelectedSubscription(null); setRepairingSubscriptionSource(null); setSubscriptionNotice(''); setAddStage('scan'); void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]); }}>
           <span className="choice-icon"><UiIcon name="scan" /></span>
           <div><strong>{language === 'zh' ? '扫描本机' : 'Scan this device'}</strong><span>{language === 'zh' ? '发现已有的 Agent、Codex / Claude Code 订阅和模型配置' : 'Find local agents, Codex / Claude Code subscriptions, and model configurations'}</span></div>
           <UiIcon name="chevronRight" />
@@ -1142,7 +1139,6 @@ export function ModelManagementPage({
           const result = await invoke<SubscriptionScanResult>('compute_subscriptions');
           const candidate = result.candidates.find(item => item.candidate.candidate_ref === candidateRef.candidate_ref && item.candidate.candidate_revision === candidateRef.candidate_revision);
           if (!candidate) throw new Error('SUBSCRIPTION_LOGIN_STALE');
-          setSubscriptions(result.candidates);
           setSubscriptionDiscoveryState(result.discovery_state);
           setSubscriptionLoading(false);
           setRepairingSubscriptionSource(current => repairSourceAfterLogin(current, candidate));

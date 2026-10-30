@@ -5,6 +5,12 @@ export function saveIntent(enable: boolean): SubscriptionSaveIntent {
   return enable ? 'save_ready' : 'save_disabled';
 }
 
+/** Native scan results refresh the list without discarding an independent login's detail. */
+export function subscriptionSelectionAfterRefresh(selected: SubscriptionCandidate | null, nativeCandidates: readonly SubscriptionCandidate[]): SubscriptionCandidate | null {
+  if (!selected) return null;
+  return nativeCandidates.find(candidate => candidate.candidate.candidate_ref === selected.candidate.candidate_ref) ?? selected;
+}
+
 export function validatedSubscriptionCandidate(candidate: SubscriptionCandidate, check?: SubscriptionCheckResult): SubscriptionCandidate | null {
   if (check && (check.status !== 'verified' || !check.checked_candidate)) return null;
   const current = check?.checked_candidate ?? candidate;
