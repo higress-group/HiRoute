@@ -239,7 +239,8 @@ limit. Only complete digest-verified live indexes yield hits. Missing/failed/pen
 indexes inside the authorized range set `index_partial`; out-of-scope gaps remain
 private. Bounded backfill is resumable without rewriting original bodies or dates.
 No ready matches is complete empty only when no authorized index gap remains.
-Four reader permits and the real 1 s SQLite deadline remain; timeout is retryable
+Four reader permits remain. Text and session search use a real shared 5 s SQLite
+deadline, including index-readiness checks; timeout is retryable
 failure, never empty success. Failure clears continuation and retry starts fresh.
 
 #### Scenario: Search repeated native conversation history
@@ -307,7 +308,9 @@ Source SPEC comments:
 ### Requirement: Management observation reads share one bounded budget
 
 SQL-backed management observation reads SHALL have a default query budget of
-one second. V2 entry admission, deadline-aware analysis control/price reads and
+one second. Text search, session search and analysis containing a text query SHALL
+use a five-second budget. Ordinary observation reads retain one second.
+V2 entry admission, deadline-aware analysis control/price reads and
 storage queries share the same absolute deadline; a nested reader or later SQL
 statement SHALL NOT restart it. The query deadline bounds SQLite work and
 existing deadline-aware composition, not all legacy or trust metadata operations
@@ -320,6 +323,12 @@ authorization, deletion and cursor rules remain. Timeout SHALL interrupt the
 read and retain its existing error meaning, never return empty-success evidence.
 This budget does not change Gateway execution, background ingestion, capacity
 maintenance or automatic retry policy.
+
+#### Scenario: Search keeps its budget through nested readers
+
+- **WHEN** an authorized text/session search or text-filtered analysis is admitted
+- **THEN** its storage and nested readers retain the same five-second absolute deadline without recapping it to the ordinary one-second default.
+- **AND** an earlier caller deadline, cancellation, visibility and authorization checks remain effective; ordinary non-search observation reads keep their one-second budget.
 
 #### Scenario: A composed reader cannot extend its caller's deadline
 

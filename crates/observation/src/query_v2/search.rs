@@ -154,7 +154,7 @@ impl crate::LocalObservationStore {
             'candidates: while let Some(row) = rows.next()? {
                 if candidates == 200
                     || bytes >= 8 * 1024 * 1024
-                    || started.elapsed() >= hiroute_domain::ObservationReaderContext::QUERY_BUDGET
+                    || started.elapsed() >= reader.query_budget()
                 {
                     if candidates == 0 {
                         return Err(ObservationV2Error::Unavailable);
