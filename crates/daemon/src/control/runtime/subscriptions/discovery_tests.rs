@@ -242,7 +242,7 @@ fn native_scan_excludes_managed_logins_without_reading_credentials_or_starting_c
     ) {
         return;
     }
-    let fixture = Fixture::new();
+    let fixture = Fixture::with_native_codex(true);
     let login = fixture.authorize(SubscriptionLoginProviderV1::Codex);
     let home = std::path::PathBuf::from(std::env::var_os("CODEX_HOME").unwrap());
     fs::create_dir_all(&home).unwrap();

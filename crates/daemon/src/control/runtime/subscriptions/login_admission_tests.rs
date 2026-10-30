@@ -53,6 +53,10 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_native_codex(false)
+    }
+
+    fn with_native_codex(native_codex: bool) -> Self {
         let root = crate::test_support::private_tempdir();
         let source = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -89,9 +93,22 @@ impl Fixture {
                             instance_id: format!("template-{provider}"),
                             state_root: root.path().join("cpa/state"),
                             auth_dir: root.path().join(format!("cpa/template-{provider}-auth")),
-                            borrowed_codex_auth: None,
+                            borrowed_codex_auth: (native_codex && kind == CpaAccountKind::Codex)
+                                .then(|| {
+                                    hiroute_cpa_bridge::BorrowedCodexAuthSpec::new(
+                                        std::path::PathBuf::from(
+                                            std::env::var_os("CODEX_HOME").unwrap(),
+                                        )
+                                        .join("auth.json"),
+                                    )
+                                    .with_executable(root.path().join("missing-codex"))
+                                }),
                             borrowed_claude_auth: None,
-                            managed_oauth: Some(kind),
+                            managed_oauth: if native_codex && kind == CpaAccountKind::Codex {
+                                None
+                            } else {
+                                Some(kind)
+                            },
                             bindings: vec![CpaProfileBinding {
                                 account_kind: kind,
                                 connector_id: format!("connector.cpa.{provider}"),
