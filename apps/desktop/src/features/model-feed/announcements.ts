@@ -1,13 +1,11 @@
-import bundled from '../../../../../assets/model-feed/featured.json' with { type: 'json' };
-import type { ModelAnnouncement, ModelAvailabilityResult } from './types';
+import type { ModelAvailabilityResult } from './types';
 
-/** The maintained editorial input is also shipped with the client. Model facts
- * and executable bindings still come exclusively from the service's catalog. */
+/** Recommendations come only from the selected official feed. An empty list
+ * withdraws recommendations while the model catalog remains available. */
 export function modelAnnouncements(data: ModelAvailabilityResult) {
   const fromFeed = data.featured.length > 0;
-  const announcements = fromFeed ? data.featured : bundled as ModelAnnouncement[];
   return {
     fromFeed,
-    entries: announcements.filter(entry => data.models.some(model => model.model_configuration_id === entry.model_configuration_id)),
+    entries: data.featured.filter(entry => data.models.some(model => model.model_configuration_id === entry.model_configuration_id)),
   };
 }

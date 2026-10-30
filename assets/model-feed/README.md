@@ -98,11 +98,43 @@ revisions and user-preserved facts remain intact.
 
 ## Production publication
 
-Only production website deployment may publish the exact artifact validated by Rust
-and Node on the same revision. PR builds publish nothing. Bootstrap `null` skips
-network access and feed staging while normal website deployment continues. Release a
+The independent [`model-feed` workflow](../../.github/workflows/model-feed.yml)
+checks the complete metadata source, model-data and release-bundle projections,
+then validates the publication with Rust client admission and Node on the same
+revision. Model metadata, editorial announcements and recorded release changes
+trigger it on PRs and pushes to `main`; it can also be dispatched on `main`.
+After the workflow reaches the default branch, run it independently from
+Actions → `model-feed` → **Run workflow**, selecting `main`, or with:
+
+```sh
+gh workflow run model-feed.yml --repo higress-group/HiRoute --ref main
+```
+
+Dispatching another branch validates its artifacts but does not publish. A manual
+run retains the same bootstrap, compatibility and publication checks as a push.
+Reviewed changes must include regenerated artifacts and the required semantic
+revision/publication sequence increases. CI checks those bytes rather than
+editing the catalog or committing generated changes.
+
+Only its production deployment may upload the exact validated artifact to
+`model-feed/v2.json`. It uses `website-production` and the existing OSS credentials,
+serializing uploads with website/release deployment through `hiroute-ai-production`.
+All three publishers queue pending uploads instead of canceling one another.
+It needs no static website build, experiment downloads or release-package checks.
+Ordinary website uploads refuse a `model-feed` prefix. PR builds publish nothing.
+Bootstrap `null` skips network access, feed staging and OSS CLI installation while
+normal website deployment continues. Release a
 compatible v2 client and record its exact source before enabling the first publication.
 No supported recorded release currently establishes a served v1 compatibility endpoint.
+
+The feed carries the complete metadata catalog, capabilities, documented prices,
+reference scores and connection hints. `featured.json` independently selects and
+orders the optional Home/trial recommendations; metadata membership alone never
+recommends a model. Clients show only entries in the selected validated feed,
+including its retained cache, whose model references resolve. An absent or empty
+list shows no recommendations, with no bundled announcement fallback. Clearing
+recommendations changes publication bytes and requires a higher publication
+sequence, but does not require a data revision increase by itself.
 
 The publisher retrieves the fixed v2 URL without redirects. A genuine 404 permits
 bootstrap; retrieval failure, invalid served content, publication rollback, semantic

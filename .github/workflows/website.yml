@@ -4,17 +4,6 @@ on:
   pull_request:
     paths:
       - 'apps/website/**'
-      - 'assets/model-feed/**'
-      - 'assets/model-data/**'
-      - 'assets/release-facts/**'
-      - 'contracts/releases/**'
-      - 'crates/domain/**'
-      - 'crates/integrations/**'
-      - 'tools/release-facts/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - '.github/actions/ci-setup/**'
       - 'news/**'
       - 'experiments/**'
       - 'decision-extensions/**'
@@ -37,17 +26,6 @@ on:
     branches: [main]
     paths:
       - 'apps/website/**'
-      - 'assets/model-feed/**'
-      - 'assets/model-data/**'
-      - 'assets/release-facts/**'
-      - 'contracts/releases/**'
-      - 'crates/domain/**'
-      - 'crates/integrations/**'
-      - 'tools/release-facts/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'rust-toolchain.toml'
-      - '.github/actions/ci-setup/**'
       - 'news/**'
       - 'experiments/**'
       - 'decision-extensions/**'
@@ -72,7 +50,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('website-pr-{0}', github.event.pull_request.number) || 'hiroute-ai-production' }}
+  group: website-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -89,22 +67,6 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: apps/website/package-lock.json
-      - uses: ./.github/actions/ci-setup
-      - name: Validate model feed with the client admission code
-        env:
-          MODEL_FEED_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          feed_args=()
-          if [[ -n "$MODEL_FEED_BASE" && "$MODEL_FEED_BASE" != "0000000000000000000000000000000000000000" ]]; then feed_args=(--base "$MODEL_FEED_BASE"); fi
-          cargo run -p hiroute-release-facts -- feed build --check "${feed_args[@]}"
-      - name: Check feed structure
-        run: node apps/website/scripts/model-feed.mjs check
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hiroute-model-feed-${{ github.sha }}
-          path: assets/model-feed/payload.json
-          if-no-files-found: error
-          retention-days: 7
       - run: npm ci --ignore-scripts
         working-directory: apps/website
       - name: Verify published experiment evidence
@@ -136,6 +98,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: website-production
+    concurrency:
+      group: hiroute-ai-production
+      cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,12 +113,6 @@ jobs:
         with:
           name: hiroute-website-${{ github.sha }}
           path: apps/website/dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: hiroute-model-feed-${{ github.sha }}
-          path: ${{ runner.temp }}/validated-model-feed
-      - name: Prepare validated model feed before upload
-        run: node apps/website/scripts/model-feed.mjs publish --payload "$RUNNER_TEMP/validated-model-feed/payload.json"
       - name: Install Aliyun CLI
         run: .github/scripts/install-aliyun-cli.sh "$RUNNER_TEMP/bin"
       - name: Upload static website to hiroute-ai

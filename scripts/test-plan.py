@@ -86,7 +86,8 @@ def project_agent_tooling(path):
             return []
     return None
 
-WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/release.yml"}
+WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/model-feed.yml",
+                   ".github/workflows/release.yml"}
 RELEASE_BUILD_TESTS = ("test-build-cpa.py", "test-build-release.py", "test-linux-release.py", "test-package-desktop.py",
                        "test-standalone-install.py", "test-windows-ci-package.py", "test-third-party-licenses.py")
 RELEASE_BUILD_TOOLING = {"scripts/linux-release-abi.py", "scripts/linux-release-runtime.py",
@@ -290,7 +291,8 @@ WORKER_PRODUCT_CHECKS["opencode_delegation"] = {
 
 OPT_IN_WORKER_TARGETS = set(WORKER_PRODUCT_CHECKS)
 PRODUCT_GUIDES = {entry["guide"] for entry in WORKER_PRODUCT_CHECKS.values()} | {
-    "crates/daemon/tests/support/NATIVE_CONTEXT_BOUNDARIES.md"}
+    "crates/daemon/tests/support/NATIVE_CONTEXT_BOUNDARIES.md",
+    "assets/model-feed/README.md"}
 
 # Qoder-only leaves and the shared settings/Skill boundaries consumed by its main-Agent
 # journey. Model-specific Codex/Claude settings do not select unrelated native journeys.
@@ -476,7 +478,7 @@ def select(paths, full=False):
             release_build_tooling = True
             continue
         if path in PRODUCT_GUIDES:
-            continue  # Navigation-only guide; not embedded in a product binary.
+            continue  # Maintainer/navigation guide; not embedded in a product binary.
         if path in WORKER_FIXTURE_TOOLING:
             worker_fixture_tooling = True
             continue

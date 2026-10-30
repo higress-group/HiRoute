@@ -461,6 +461,7 @@ class SelectionTests(unittest.TestCase):
             "experiments/reproduce.py",
             "experiments/cases/example/results/evidence.json",
             ".github/workflows/website.yml",
+            ".github/workflows/model-feed.yml",
             ".github/workflows/release.yml",
             ".github/scripts/deploy-website-oss.sh",
         ])
@@ -469,6 +470,16 @@ class SelectionTests(unittest.TestCase):
         self.assertFalse(result["frontend"])
         self.assertFalse(result["native_required"])
         self.assertIn(["python3", "scripts/test-contract-convergence.py"], result["commands"])
+
+    def test_feed_workflow_and_maintainer_guide_keep_the_dedicated_feed_checks(self):
+        for path in (".github/workflows/model-feed.yml", "assets/model-feed/README.md"):
+            with self.subTest(path=path):
+                result = plan.select([path])
+                self.assertEqual(result["mode"], "affected")
+                self.assertFalse(result["rust"])
+                self.assertFalse(result["frontend"])
+                self.assertFalse(result["native_required"])
+                self.assertEqual(result["product_checks"], [])
 
     def test_release_catalog_selects_upgrade_reader(self):
         reader = ["cargo", "test", "--locked", "-p", "hiroute-host-runtime",

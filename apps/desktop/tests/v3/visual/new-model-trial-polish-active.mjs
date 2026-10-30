@@ -48,13 +48,13 @@ try {
   for (const [lang, theme, width, height] of matrix) {
     const suffix = `${lang}-${theme}-${width}`;
     await check(`home-current-announcement-${suffix}`, async () => {
-      await open('view=home&bundled=1', width, height, theme, lang);
+      await open('view=home&current-announcement=1', width, height, theme, lang);
       await waitFor(client, `!!document.querySelector('.new-model-card')`);
       assert.deepEqual(await evaluate(client, `[...document.querySelectorAll('.new-model-card h3')].map(e=>e.textContent)`), ['DeepSeek V4.1 Flash 1017']);
       const text = await evaluate(client, `document.querySelector('.new-models').textContent`);
       assert.ok(!text.includes('Older directory model'));
       assert.ok(!text.includes(lang === 'zh' ? '签名已校验' : 'Signature verified'));
-      assert.equal(await evaluate(client, `document.querySelector('.new-models .model-feed-disclosure')`), null);
+      assert.ok(await evaluate(client, `!!document.querySelector('.new-models .model-feed-disclosure')`));
       const card = await evaluate(client, `document.querySelector('.new-model-card').innerText`);
       assert.ok(card.includes(lang === 'zh' ? '从范围明确的小任务开始试用，并观察实际表现。' : 'Start with a well-scoped task and observe the results.'));
       assert.ok(!card.includes(lang === 'zh' ? '接入服务' : 'connection provider'));
@@ -86,6 +86,18 @@ try {
       await shot(`home-current-announcement-${suffix}`);
       await click('.new-model-card button', lang === 'zh' ? '查看模型表现' : 'View model performance');
       assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='open-plan').length`), 1);
+    });
+    await check(`home-empty-recommendations-${suffix}`, async () => {
+      await open('view=home&no-recommendations=1', width, height, theme, lang);
+      await waitFor(client, `!!document.querySelector('.new-models > .field-help')`);
+      assert.equal(await evaluate(client, `document.querySelectorAll('.new-model-card').length`), 0);
+      const text = await evaluate(client, `document.querySelector('.new-models').innerText`);
+      assert.ok(text.includes(lang === 'zh' ? '暂无推荐' : 'No featured models'));
+      assert.ok(!text.includes('DeepSeek V4.1 Flash 1017'));
+      assert.equal(await evaluate(client, `document.querySelector('.new-models .model-feed-disclosure')`), null);
+      assert.ok(await evaluate(client, `!document.querySelector('.new-models header button').disabled`));
+      assert.ok(await evaluate(client, `document.documentElement.scrollWidth<=innerWidth+1 && [...document.querySelectorAll('.new-models,.new-models > .field-help')].every(e=>e.scrollWidth<=e.clientWidth+1)`));
+      await shot(`home-empty-recommendations-${suffix}`);
     });
     for (const [scenario, from] of [['unrelated', Date.UTC(2026, 9, 20, 12, 34, 56)], ['retention', Date.UTC(2026, 9, 24, 12, 34, 56)], ['no-announcement', Date.UTC(2026, 9, 20, 12, 34, 56)]]) {
       await check(`home-scope-${scenario}-${suffix}`, async () => {
