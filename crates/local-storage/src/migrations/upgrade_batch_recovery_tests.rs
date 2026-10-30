@@ -218,7 +218,7 @@ fn missing_original_backup_for_old_mixed_versions_refuses_without_adopting_data(
 
 #[test]
 fn prior_target_batch_finishes_and_archives_before_a_new_current_batch() {
-    for target in [24, 25, 32, 33, 34] {
+    for target in [24, 25, 32, 33, 34, 35] {
         for persist_phase in [false, true] {
             let directory = crate::test_tempdir().unwrap();
             let root = directory.path().join("storage");

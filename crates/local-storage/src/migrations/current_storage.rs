@@ -121,9 +121,11 @@ pub(crate) fn validate_current_storage(
         return audit_current_storage(control, runtime, secrets);
     }
     if version >= 35 {
-        super::source_network_v35::validate(&control.connection.borrow())?;
+        super::source_network_v35::validate(&control.connection.borrow())
+            .map_err(|error| error.at_upgrade_stage("source network policy"))?;
     }
     dependencies::validate(control, runtime, secrets)
+        .map_err(|error| error.at_upgrade_stage("current dependencies"))
 }
 
 pub(crate) fn audit_current_storage(
