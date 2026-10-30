@@ -248,8 +248,12 @@ fn launcher_registrar_retains_startup_ownership_and_exact_durable_registration()
     );
     assert_eq!(grants(&stores), 1);
     drop(stores);
-    assert!(
-        matches!(LocalStorageSet::open_for_daemon_startup(&root), Err(LocalStorageError::Recovery { recovery, .. }) if recovery.cause == hiroute_host_runtime::StorageRecoveryCause::Locked)
+    let refused = LocalStorageSet::open_for_daemon_startup(&root)
+        .err()
+        .expect("the registrar must retain startup exclusion");
+    assert_eq!(
+        refused.recovery().cause,
+        hiroute_host_runtime::StorageRecoveryCause::Locked
     );
     drop(registrar);
     let stores = LocalStorageSet::open_for_daemon_startup(&root).unwrap();
