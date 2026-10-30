@@ -102,19 +102,23 @@
     "hiroute.compute-connection-options/v1",
     "hiroute.compute-connection-preview/v1",
     "hiroute.compute-connection-test-request/v1",
+    "hiroute.compute-connection-test-request/v2",
     "hiroute.compute-control-projection/v1",
     "hiroute.compute-discovery-evidence/v1",
     "hiroute.compute-management-binding/v2",
     "hiroute.compute-management-change/v2",
     "hiroute.compute-management-change/v3",
+    "hiroute.compute-management-change/v4",
     "hiroute.compute-management-change/v5",
     "hiroute.compute-management-key/v2",
     "hiroute.compute-management-lineage/v3",
     "hiroute.compute-management-mutation/v2",
     "hiroute.compute-management-mutation/v3",
+    "hiroute.compute-management-mutation/v4",
     "hiroute.compute-management-mutation/v5",
     "hiroute.compute-management-preview/v2",
     "hiroute.compute-management-preview/v3",
+    "hiroute.compute-management-preview/v4",
     "hiroute.compute-management-preview/v5",
     "hiroute.compute-management-query/v2",
     "hiroute.compute-management-snapshot/v2",
@@ -182,6 +186,7 @@
     "hiroute.decision-service-operation/v2",
     "hiroute.decision-service-test-request/v2",
     "hiroute.decision-service-test-result/v2",
+    "hiroute.decision-service-test-result/v3",
     "hiroute.decision-service/v2",
     "hiroute.decision-services/v1",
     "hiroute.decision-services/v2",
@@ -278,6 +283,7 @@
     "hiroute.model-availability/v2",
     "hiroute.model-catalog-query/v1",
     "hiroute.model-catalog-view/v1",
+    "hiroute.model-connection-check/v2",
     "hiroute.model-data/v1",
     "hiroute.model-feed-removal-preview/v2",
     "hiroute.model-feed-remove/v1",
@@ -297,6 +303,8 @@
     "hiroute.native-file-reference/v1",
     "hiroute.native-files/v1",
     "hiroute.native-launch/v1",
+    "hiroute.native-network-mutation/v1",
+    "hiroute.native-network-policy/v1",
     "hiroute.native-observation/v2",
     "hiroute.native-plugin-restore/v1",
     "hiroute.native-protocol-diagnostic/v1",
@@ -512,15 +520,7 @@
     "hiroute.worker-result-request/v1",
     "hiroute.worker-settings/v1",
     "hiroute.worker-status-request/v1",
-    "hiroute.worker-wait-request/v1",
-    "hiroute.compute-connection-test-request/v2",
-    "hiroute.compute-management-change/v4",
-    "hiroute.compute-management-mutation/v4",
-    "hiroute.compute-management-preview/v4",
-    "hiroute.decision-service-test-result/v3",
-    "hiroute.model-connection-check/v2",
-    "hiroute.native-network-mutation/v1",
-    "hiroute.native-network-policy/v1"
+    "hiroute.worker-wait-request/v1"
   ],
   "subjects": [
     {
@@ -762,7 +762,6 @@
       "current_contracts": [
         "agent-plan-compiler/v3",
         "hiroute.compiled-agent-plan/v3",
-        "hiroute.stable-route/v1",
         "hiroute.plan-content-change/v2",
         "hiroute.publication-checkpoint-change/v1",
         "hiroute.publication-checkpoint-control/v1",
@@ -770,6 +769,7 @@
         "hiroute.publication-checkpoint-preview/v1",
         "hiroute.routing-control/v2",
         "hiroute.routing-publication-effect/v2",
+        "hiroute.stable-route/v1",
         "hiroute.stored-plan/v1"
       ],
       "legacy_support": [
@@ -1083,8 +1083,8 @@
         "hiroute.launcher-upgrade-status"
       ],
       "current_contracts": [
-        "hiroute.launcher-upgrade/v1",
-        "hiroute.launcher-upgrade-status/v1"
+        "hiroute.launcher-upgrade-status/v1",
+        "hiroute.launcher-upgrade/v1"
       ],
       "legacy_support": []
     },
@@ -1102,13 +1102,13 @@
         "hiroute.upgrade-installer-decision"
       ],
       "current_contracts": [
-        "hiroute.windows-desktop-package/v1",
-        "hiroute.windows-desktop-restore/v1",
-        "hiroute.website.releases/v3",
-        "hiroute.desktop-upgrade-handoff/v1",
-        "hiroute.upgrade-installer-started/v1",
         "hiroute.daemon-upgrade-progress/v1",
-        "hiroute.upgrade-installer-decision/v1"
+        "hiroute.desktop-upgrade-handoff/v1",
+        "hiroute.upgrade-installer-decision/v1",
+        "hiroute.upgrade-installer-started/v1",
+        "hiroute.website.releases/v3",
+        "hiroute.windows-desktop-package/v1",
+        "hiroute.windows-desktop-restore/v1"
       ],
       "legacy_support": [
         {
@@ -1233,18 +1233,18 @@
       "current_contracts": [
         "hiroute.compute-management-change/v2",
         "hiroute.compute-management-change/v3",
+        "hiroute.compute-management-change/v4",
         "hiroute.compute-management-change/v5",
         "hiroute.compute-management-mutation/v2",
         "hiroute.compute-management-mutation/v3",
+        "hiroute.compute-management-mutation/v4",
         "hiroute.compute-management-mutation/v5",
         "hiroute.compute-management-preview/v2",
         "hiroute.compute-management-preview/v3",
-        "hiroute.compute-management-preview/v5",
-        "hiroute.compute-management-source/v4",
-        "hiroute.compute-management-change/v4",
-        "hiroute.compute-management-mutation/v4",
         "hiroute.compute-management-preview/v4",
-        "hiroute.compute-management-source/v3"
+        "hiroute.compute-management-preview/v5",
+        "hiroute.compute-management-source/v3",
+        "hiroute.compute-management-source/v4"
       ],
       "legacy_support": [
         {
@@ -1311,8 +1311,8 @@
         "hiroute.classifier-decision-test-result"
       ],
       "current_contracts": [
-        "hiroute.classifier-decision-test/v1",
-        "hiroute.classifier-decision-test-result/v1"
+        "hiroute.classifier-decision-test-result/v1",
+        "hiroute.classifier-decision-test/v1"
       ],
       "legacy_support": []
     },
@@ -1323,8 +1323,8 @@
         "hiroute.historical-applicability-test-result"
       ],
       "current_contracts": [
-        "hiroute.historical-applicability-test/v1",
-        "hiroute.historical-applicability-test-result/v1"
+        "hiroute.historical-applicability-test-result/v1",
+        "hiroute.historical-applicability-test/v1"
       ],
       "legacy_support": []
     },
@@ -1370,8 +1370,8 @@
         "hiroute.model-feed.acceptance"
       ],
       "current_contracts": [
-        "hiroute.model-feed.state/v2",
-        "hiroute.model-feed.acceptance/v2"
+        "hiroute.model-feed.acceptance/v2",
+        "hiroute.model-feed.state/v2"
       ],
       "legacy_support": [
         {
@@ -1513,7 +1513,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
