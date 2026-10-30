@@ -17,8 +17,9 @@ candidate metadata is input for review, never an automatically published release
 
 ## Product version lifecycle
 
-All shipped product versions and their Cargo/npm lockfile entries follow the
-Desktop Tauri version. Use the shared tool rather than updating individual files:
+All shipped product versions, their Cargo/npm lockfile entries and the generated
+Local Control handshake schema/digest follow the Desktop Tauri version. Use the
+shared tool rather than updating individual files:
 
 ```sh
 python3 scripts/product-version.py check
@@ -33,6 +34,13 @@ version; `advance` opens the next patch development cycle only when needed.
 The independent `product-version` CI checks every PR/main push for consistent
 components and a version later than the latest recorded stable release. Adding
 only Git build metadata to the released number does not satisfy this rule.
+
+Release numbers may skip intermediate patches or minors. To release `0.5.0`
+directly from `0.3.2-dev.1`, run `python3 scripts/product-version.py set 0.5.0`,
+commit the resulting changes, and build/tag that exact committed candidate as
+`v0.5.0` through the normal publication flow below. A tag alone does not change
+the compiled version. After stable `0.5.0` is recorded, advancement prepares
+`0.5.1-dev.1`, preserving an already newer planned version.
 
 The post-publication contract PR also prepares the next development version and
 lockfiles. It requires normal review/merge, preserves an already newer planned

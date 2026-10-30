@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Product version lifecycle and automation ownership regressions."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -29,6 +30,11 @@ def fixture(root, version="1.2.3"):
             "node_modules/example": {"version": "1.2.3"}}}, indent=2) + "\n")
     lock = '\n\n'.join(f'[[package]]\nname = "{name}"\nversion = "{version}"' for name in product.CARGO_PACKAGES.values())
     write("Cargo.lock", lock + '\n\n[[package]]\nname = "example"\nversion = "1.2.3"\n')
+    hello = json.dumps({"properties": {"client_version": {"const": version}}}, indent=2) + "\n"
+    write("contracts/cli/local-control-hello.v2.schema.json", hello)
+    write("contracts/cli/contract-set.v1.json", json.dumps({"files": {
+        "local-control-hello.v2.schema.json": "sha256:" + hashlib.sha256(hello.encode()).hexdigest(),
+        "unrelated.json": "sha256:" + "a" * 64}}, indent=2) + "\n")
     write("contracts/releases/index.v1.json", json.dumps({"schema": "hiroute.release-contract-index/v1",
           "latest_stable": "v1.2.3", "releases": [{"tag": "v1.2.3", "channel": "stable", "revision": "a" * 40}]}))
 
@@ -74,6 +80,41 @@ class ProductVersionTests(unittest.TestCase):
         self.assertEqual(product.advance(self.root)["changed"], [])
         self.assertEqual(product.sources_at(self.root), before)
         self.assertEqual(product.check(self.root)["version"], "1.2.4-dev.1")
+
+    def test_version_change_updates_local_control_schema_and_its_digest(self):
+        product.advance(self.root)
+        path = self.root / "contracts/cli/local-control-hello.v2.schema.json"
+        self.assertEqual(json.loads(path.read_text())["properties"]["client_version"]["const"], "1.2.4-dev.1")
+        contracts = json.loads((self.root / "contracts/cli/contract-set.v1.json").read_text())
+        self.assertEqual(contracts["files"][path.name], "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest())
+        self.assertEqual(contracts["files"]["unrelated.json"], "sha256:" + "a" * 64)
+
+    def test_check_rejects_stale_local_control_schema_and_digest(self):
+        product.advance(self.root)
+        hello = self.root / "contracts/cli/local-control-hello.v2.schema.json"
+        original = hello.read_text()
+        hello.write_text(original.replace('"const": "1.2.4-dev.1"', '"const": "1.2.3"'))
+        with self.assertRaisesRegex(ValueError, "release version mismatch.*local-control-hello"):
+            product.check(self.root)
+        hello.write_text(original)
+        index = self.root / "contracts/cli/contract-set.v1.json"
+        value = json.loads(index.read_text())
+        value["files"][hello.name] = "sha256:" + "0" * 64
+        index.write_text(json.dumps(value, indent=2) + "\n")
+        with self.assertRaisesRegex(ValueError, "Local Control schema digest"):
+            product.check(self.root)
+
+    def test_next_release_can_skip_directly_to_a_new_minor(self):
+        fixture(self.root, "0.3.1")
+        index = self.root / "contracts/releases/index.v1.json"
+        index.write_text(index.read_text().replace("1.2.3", "0.3.1"))
+        self.assertEqual(product.advance(self.root)["version"], "0.3.2-dev.1")
+        product.set_version(self.root, "0.5.0")
+        self.assertEqual(product.check(self.root)["version"], "0.5.0")
+        index.write_text(index.read_text().replace("0.3.1", "0.5.0"))
+        self.assertEqual(product.advance(self.root)["version"], "0.5.1-dev.1")
+        self.assertEqual(product.advance(self.root)["changed"], [])
+        self.assertEqual(product.check(self.root)["latest_stable"], "0.5.0")
 
     def test_newer_planned_minor_or_release_candidate_is_preserved(self):
         for version in ("1.3.0-dev.7", "1.2.4-rc.1", "2.0.0"):
@@ -136,6 +177,18 @@ class ProductVersionTests(unittest.TestCase):
         product.advance(self.root)
         path = self.root / product.JSON_MANIFESTS[0]
         path.write_text(path.read_text().replace('"test": "unchanged"', '"test": "unrelated command"'))
+        self.commit()
+        with self.assertRaisesRegex(ValueError, "more than product version"):
+            product.scope(self.root, base)
+
+    def test_automation_scope_rejects_unrelated_generated_contract_changes(self):
+        base = self.history()
+        product.advance(self.root)
+        path = self.root / "contracts/cli/local-control-hello.v2.schema.json"
+        value = json.loads(path.read_text())
+        value["required"] = ["unrelated-field"]
+        path.write_text(json.dumps(value, indent=2) + "\n")
+        product.set_version(self.root, "1.2.4-dev.1")
         self.commit()
         with self.assertRaisesRegex(ValueError, "more than product version"):
             product.scope(self.root, base)

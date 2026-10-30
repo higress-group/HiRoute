@@ -60,11 +60,25 @@ fi
 
 git config user.name 'github-actions[bot]'
 git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+python3 "$root/scripts/product-version.py" paths > "$scratch/version-paths"
 if git ls-remote --exit-code --heads origin "$branch" > "$scratch/remote-ref"; then
   git fetch origin "$branch:refs/remotes/origin/$branch"
   git worktree add --detach "$worktree" "origin/$branch"
   python3 "$root/scripts/product-version.py" scope --repo "$worktree" --base origin/main > /dev/null
-  git -C "$worktree" merge --no-edit --signoff origin/main
+  if ! git -C "$worktree" merge-base --is-ancestor origin/main HEAD; then
+    # Scope proved these files differ from the common ancestor only in owned
+    # version fields. Remove that projection before merging so main's newer
+    # version, dependencies and generated contracts merge normally. Advance it
+    # again below against the merged release ledger, without rewriting history.
+    ancestor=$(git -C "$worktree" merge-base origin/main HEAD)
+    while IFS= read -r path; do
+      git -C "$worktree" restore --source "$ancestor" --staged --worktree -- "$path"
+    done < "$scratch/version-paths"
+    if ! git -C "$worktree" diff --cached --quiet; then
+      git -C "$worktree" commit -s -m "chore(release): refresh version projection before merging main"
+    fi
+    git -C "$worktree" merge --no-edit --signoff origin/main
+  fi
 else
   status=$?
   [[ "$status" == 2 ]] || exit "$status"
@@ -81,7 +95,6 @@ python3 "$root/scripts/release-contracts.py" check --repo "$root" \
 python3 "$root/scripts/product-version.py" advance --repo "$worktree" > /dev/null
 python3 "$root/scripts/product-version.py" check --repo "$worktree" > /dev/null
 git -C "$worktree" add -- contracts/releases
-python3 "$root/scripts/product-version.py" paths > "$scratch/version-paths"
 while IFS= read -r path; do
   git -C "$worktree" add -- "$path"
 done < "$scratch/version-paths"
@@ -102,6 +115,7 @@ The release publication and package-verification jobs succeeded before this upda
 Merging this PR advances the recorded stable baseline when this is a newer stable release;
 it also prepares the next patch development version when main has not already advanced,
 keeping all shipped components and lockfiles consistent without lowering a newer planned version.
+The Local Control schema and its contract digest follow the same product version.
 Previous snapshots remain immutable, including revision-bound archives when an explicitly
 authorized unpromoted release is replaced. This inventory does not claim migration acceptance.
 

@@ -11,7 +11,8 @@ This specification covers the application shell, installation, and upgrade hando
 ### Requirement: Development versions follow the latest recorded stable release
 
 The product version used by CLI, daemon, Desktop, Windows shell and diagnostics
-SHALL be consistent across their manifests and Cargo/npm lockfiles. Once a stable
+SHALL be consistent across their manifests, Cargo/npm lockfiles and generated
+Local Control handshake schema/digest. Once a stable
 release is recorded, subsequent development SHALL use a version with greater
 SemVer precedence than that release. The next patch prerelease is the default:
 after `0.3.1`, use `0.3.2-dev.1`, which remains below stable `0.3.2`. Build metadata
@@ -37,6 +38,16 @@ development build and SHALL offer the next matching stable release when availabl
 
 - **WHEN** a `0.3.2-dev.1` build checks stable releases
 - **THEN** `0.3.1` is not an update, while a matching `0.3.2` package can be selected without weakening the exact-version client/service handshake.
+
+#### Scenario: Skip directly to a later minor release
+
+- **WHEN** the next chosen release is `0.5.0` while development declares `0.3.2-dev.1`
+- **THEN** the shared tool can prepare `0.5.0` for a committed release candidate without requiring intermediate releases; recording stable `0.5.0` prepares `0.5.1-dev.1` unless main already plans a newer version.
+
+#### Scenario: Retry an open post-release PR after main advances
+
+- **WHEN** the generated contract/version PR remains open while main adopts a newer version and changes dependencies
+- **THEN** retry preserves main's planned version and dependency changes, recomputes the owned version projections, and reuses the existing PR without changing frozen released snapshots.
 
 ### Requirement: Service health and setup progress are separate facts
 

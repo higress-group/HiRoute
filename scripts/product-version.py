@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Maintain one product version across shipped components and their lockfiles."""
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -20,7 +21,9 @@ JSON_MANIFESTS = (
     "apps/shell/src-tauri/tauri.conf.json", "apps/shell/package.json",
 )
 NPM_LOCKS = ("apps/desktop/package-lock.json", "apps/shell/package-lock.json")
-VERSION_PATHS = (*CARGO_PACKAGES, *JSON_MANIFESTS, *NPM_LOCKS, "Cargo.lock")
+HELLO_SCHEMA = "contracts/cli/local-control-hello.v2.schema.json"
+CONTRACT_SET = "contracts/cli/contract-set.v1.json"
+VERSION_PATHS = (*CARGO_PACKAGES, *JSON_MANIFESTS, *NPM_LOCKS, "Cargo.lock", HELLO_SCHEMA, CONTRACT_SET)
 CORE = r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
 SEMVER = re.compile(CORE + r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?")
 PACKAGE = re.compile(r"(?ms)^\[package\]\s*\n(.*?)(?=^\[|\Z)")
@@ -65,6 +68,7 @@ def version_values(sources):
         if len(matches) != 1:
             raise ValueError("missing or ambiguous product lock entry: " + name)
         values["Cargo.lock:" + name] = matches[0]
+    values[HELLO_SCHEMA] = json.loads(sources[HELLO_SCHEMA])["properties"]["client_version"]["const"]
     return values
 
 
@@ -73,13 +77,28 @@ def sources_at(root):
 
 
 def assert_versions(root, expected=None):
-    values = version_values(sources_at(root))
+    sources = sources_at(root)
+    values = version_values(sources)
     expected = expected or values[JSON_MANIFESTS[0]]
     parse_version(expected)
     for path, actual in values.items():
         if actual != expected:
             raise ValueError(f"release version mismatch: {path} is {actual}, expected {expected}")
+    recorded = json.loads(sources[CONTRACT_SET])["files"][Path(HELLO_SCHEMA).name]
+    if recorded != schema_digest(sources[HELLO_SCHEMA]):
+        raise ValueError("stale Local Control schema digest in " + CONTRACT_SET)
     return expected
+
+
+def schema_digest(source):
+    return "sha256:" + hashlib.sha256(source.encode()).hexdigest()
+
+
+def json_string(source, pattern, value):
+    result, count = re.subn(pattern, lambda match: match[1] + json.dumps(value), source, flags=re.M)
+    if count != 1:
+        raise ValueError("expected one version projection field")
+    return result
 
 
 def json_version(source, version, indent):
@@ -134,6 +153,15 @@ def project(sources, version):
     updates["Cargo.lock"] = LOCK_PACKAGE.sub(
         lambda match: match[0].replace(f'version = "{match[2]}"', f'version = "{version}"')
         if match[1] in CARGO_PACKAGES.values() else match[0], sources["Cargo.lock"])
+    # These are the only version-dependent fields in the CLI generator output.
+    # Preserve every other contract byte; the Rust generator parity test remains
+    # authoritative for the complete contract set.
+    updates[HELLO_SCHEMA] = json_string(sources[HELLO_SCHEMA],
+        r'^(    "client_version": \{\n      "const": )"[^"]+"', version)
+    filename = Path(HELLO_SCHEMA).name
+    json.loads(sources[CONTRACT_SET])["files"][filename]
+    updates[CONTRACT_SET] = json_string(sources[CONTRACT_SET],
+        r'^(    "' + re.escape(filename) + r'": )"[^"]+"', schema_digest(updates[HELLO_SCHEMA]))
     return updates
 
 

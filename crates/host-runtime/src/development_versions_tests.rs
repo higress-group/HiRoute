@@ -35,32 +35,44 @@ fn macos_development_build_ignores_previous_release_and_selects_next_stable() {
             .unwrap();
         WebsiteReleasesV2::parse(&projection).unwrap()
     };
-    let previous = macos("0.3.1");
-    assert!(
-        previous
-            .desktop_update("0.3.2-dev.1", "arm64")
-            .unwrap()
-            .is_none()
-    );
-    let next = macos("0.3.2");
-    assert_eq!(
-        next.desktop_update("0.3.2-dev.1", "arm64")
-            .unwrap()
-            .unwrap()
-            .version,
-        "0.3.2"
-    );
-    assert!(next.desktop_update("0.3.2", "arm64").unwrap().is_none());
+    for (previous, current, next) in [
+        ("0.3.1", "0.3.2-dev.1", "0.3.2"),
+        ("0.3.1", "0.3.2-dev.1", "0.5.0"),
+        ("0.5.0", "0.5.1-dev.1", "0.5.1"),
+    ] {
+        assert!(
+            macos(previous)
+                .desktop_update(current, "arm64")
+                .unwrap()
+                .is_none()
+        );
+        let update = macos(next);
+        assert_eq!(
+            update
+                .desktop_update(current, "arm64")
+                .unwrap()
+                .unwrap()
+                .version,
+            next
+        );
+        assert!(update.desktop_update(next, "arm64").unwrap().is_none());
+    }
 }
 
 #[test]
 fn windows_development_build_ignores_previous_release_and_selects_next_stable() {
-    let previous = WebsiteReleasesV3::parse(&catalog("0.3.1", true)).unwrap();
-    assert!(previous.windows_update("0.3.2-dev.1").unwrap().is_none());
-    let next = WebsiteReleasesV3::parse(&catalog("0.3.2", true)).unwrap();
-    assert_eq!(
-        next.windows_update("0.3.2-dev.1").unwrap().unwrap().version,
-        "0.3.2"
-    );
-    assert!(next.windows_update("0.3.2").unwrap().is_none());
+    for (previous, current, next) in [
+        ("0.3.1", "0.3.2-dev.1", "0.3.2"),
+        ("0.3.1", "0.3.2-dev.1", "0.5.0"),
+        ("0.5.0", "0.5.1-dev.1", "0.5.1"),
+    ] {
+        let old = WebsiteReleasesV3::parse(&catalog(previous, true)).unwrap();
+        assert!(old.windows_update(current).unwrap().is_none());
+        let update = WebsiteReleasesV3::parse(&catalog(next, true)).unwrap();
+        assert_eq!(
+            update.windows_update(current).unwrap().unwrap().version,
+            next
+        );
+        assert!(update.windows_update(next).unwrap().is_none());
+    }
 }

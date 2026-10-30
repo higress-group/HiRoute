@@ -123,11 +123,15 @@ package identities, then publishes the installers/site. Only after those jobs su
 `record-contracts` call [the PR publisher](../.github/scripts/release-contract-pr.sh).
 It reads the verified manifest revision and exact released source, cross-checks published asset
 sizes/digests, and proposes `contracts/releases/` plus the product version fields and
-lockfile entries on `chore/release-contracts-<tag>`. The shared
+lockfile entries, including the generated handshake schema/digest, on
+`chore/release-contracts-<tag>`. The shared
 [version tool](../scripts/product-version.py) opens the next patch development
 cycle after a stable release when main has not already moved ahead. It preserves
 a newer planned version. Retries accept only those version fields and contract
 records; unrelated edits inside a version manifest remain ownership conflicts.
+If main advances while that PR is open, retry first removes only the automation's
+version projection against its common ancestor, merges main's version and
+dependency changes, then prepares the development version against the merged ledger.
 
 Normal review/checks and merge into `main` advance the repository's baseline. The workflow never
 approves or merges its own PR. Existing snapshots are immutable; older reruns and previews retain
