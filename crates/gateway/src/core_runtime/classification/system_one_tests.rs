@@ -401,8 +401,7 @@ fn openai_maximum_branch_request_is_one_call_and_ignores_unused_invalid_degree()
         .enumerate()
         .map(|(index, answer)| {
             if index == 2 {
-                r#"{"name":"q2","type":"score","score":1e999,"probabilities":[]}"#
-                    .to_owned()
+                r#"{"name":"q2","type":"score","score":1e999,"probabilities":[]}"#.to_owned()
             } else {
                 serde_json::to_string(answer).unwrap()
             }

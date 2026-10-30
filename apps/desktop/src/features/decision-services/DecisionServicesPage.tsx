@@ -129,9 +129,10 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     useGeneration.current++;
     onManageSource?.(id);
   }
-  async function returnToCaller() {
-    if (!onReturn || busy || !await requestEditorReplacement('decisions')) return;
+  function returnToCaller() {
+    if (!onReturn || busy) return;
     useGeneration.current++;
+    // The caller owns navigation/discard approval; do not ask the same guard twice.
     onReturn();
   }
   async function test(view: DecisionServiceView): Promise<boolean> {

@@ -83,12 +83,26 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       assert(nativeField('name')?.value === 'Second unsaved decision', 'A late test selected the old service or closed the new draft');
       assert(!all('dialog.discard-dialog[open]').length, 'A stale completion tried to navigate through the new draft');
       assert(store.services.length === 1 && calls('preview_plan_editor').length === 0, 'The newer draft was silently saved or published');
+      const back = context === 'route' ? '返回路由' : '返回试用';
+      await click(back);
+      await until(() => all('dialog.discard-dialog[open]').length, 'caller return honors the newer draft guard');
+      await click('继续编辑');
+      assert(nativeField('name')?.value === 'Second unsaved decision', 'Cancelling return lost the newer draft');
       c().handlers.test_decision_service_v2 = originalTest;
       await click('仅保存');
       await until(() => parentName()?.value === `Retained ${context} name`, 'explicit use returns to the retained caller');
       const second = store.services.find(service => service.name === 'Second unsaved decision');
       assert(second && all('.decision-selector select').some(select => select.value === second.id), 'Explicit use did not choose the newer service');
       assert(calls('test_decision_service_v2').length === 1 && calls('preview_plan_editor').length === 0, 'The return implicitly tested or published');
+      await click('添加决策模型');
+      await until(() => nativeField('source'), 'another unsaved decision');
+      choose(nativeField('source'), sourceId); await pause(40);
+      setInput(nativeField('name'), 'Discard this decision'); await pause(40);
+      await click(back);
+      await until(() => all('dialog.discard-dialog[open]').length, 'one discard approval');
+      await click('放弃修改');
+      await until(() => parentName()?.value === `Retained ${context} name`, 'one approval returns to the caller');
+      assert(!all('dialog.discard-dialog[open]').length, 'The caller asked the same discard guard twice');
     })),
   ];
 }
