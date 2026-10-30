@@ -671,6 +671,14 @@ initially select the registered OpenAI API for Codex or Anthropic API for Claude
 its endpoint and authentication defaults. The user may explicitly change service. A
 missing preferred product SHALL NOT silently select another provider; ordinary API
 entry defaults remain unchanged.
+Retained earlier association stores and operation envelopes SHALL remain recoverable
+when their version markers overlap a native-network format. Admission MUST distinguish
+complete known layouts and sealed witnesses, preserve original journal bytes, source
+identities, credentials and memberships, and use the ordinary complete-source backup
+and recovery path. Unknown or corrupt shapes MUST remain preserved and refused, not
+reconstructed as an empty store or an implicit network-policy repair. Current
+association producers use V5 independently of native-network V4.
+
 The association is durable metadata and may
 be adjusted or removed on the saved subscription. Removing it retains both sources,
 API credentials and already imported models. Removing the API leaves a visible

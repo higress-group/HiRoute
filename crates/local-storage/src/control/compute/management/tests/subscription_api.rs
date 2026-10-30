@@ -29,6 +29,19 @@ fn apply(
     hiroute_application_api::ComputeSavePreviewV2,
     serde_json::Value,
 ) {
+    apply_with_format(stores, registry, change, intent, key, false)
+}
+fn apply_with_format(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    change: ComputeManagementChangeV2,
+    intent: ComputeSubscriptionApiLinkIntentV1,
+    key: &str,
+    legacy: bool,
+) -> (
+    hiroute_application_api::ComputeSavePreviewV2,
+    serde_json::Value,
+) {
     let input = ProtectedInput;
     let planner =
         ComputeManagementPlanner::new(registry, stores.control(), stores.secrets(), &input);
@@ -40,6 +53,13 @@ fn apply(
             api_link: Some(intent),
         })
         .unwrap();
+    let preview = if legacy {
+        let mut input = preview.result.spec.desired_state.clone();
+        input["schema"] = serde_json::json!(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4);
+        planner.preview_saved_state(input).unwrap()
+    } else {
+        preview
+    };
     let runtime = TransactionRuntime::default();
     let external = NoExternal;
     let coordinator = TransactionCoordinator::new(
@@ -88,6 +108,21 @@ fn connect_provider(
         serde_json::Value,
     ),
 ) {
+    connect_with_format(stores, registry, api, provider, false)
+}
+fn connect_with_format(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    api: &ComputeManagementSourceV2,
+    provider: &str,
+    legacy: bool,
+) -> (
+    ComputeManagementSourceV2,
+    (
+        hiroute_application_api::ComputeSavePreviewV2,
+        serde_json::Value,
+    ),
+) {
     let mut facts = subscription_selection::subscription(&format!(
         "candidate/cpa/{provider}/managed/test-account"
     ));
@@ -102,7 +137,7 @@ fn connect_provider(
         &facts,
         "approval-api-link",
     );
-    let preview = apply(
+    let preview = apply_with_format(
         stores,
         registry,
         subscription_selection::change(stores, &facts, &["model/one"]),
@@ -110,6 +145,7 @@ fn connect_provider(
             api_source_id: api.source_id.clone(),
         },
         "link-initial",
+        legacy,
     );
     let subscription = sources(stores)
         .into_iter()
@@ -532,5 +568,124 @@ fn subscription_api_metadata_reproduces_full_saved_defaults_without_changing_the
             .unwrap()
             .models,
         sub.models
+    );
+}
+
+fn frozen_payloads(stores: &LocalStorageSet) -> Vec<(String, String, String)> {
+    stores.control().with_connection(|db| {
+        let mut query = db.prepare("SELECT operation_id,digest,payload_json FROM operation_payloads ORDER BY operation_id,digest").unwrap();
+        let rows = query.query_map([], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap();
+        rows.map(Result::unwrap).collect()
+    })
+}
+fn retained_association_schema35(root: &std::path::Path, leave_network_witness: bool) {
+    for database in ["control", "runtime", "secrets"] {
+        let mut db = rusqlite::Connection::open(root.join(format!("live/{database}.db"))).unwrap();
+        let tx = db.transaction().unwrap();
+        if database == "control" {
+            tx.execute_batch("DROP TABLE native_source_network;")
+                .unwrap();
+            if !leave_network_witness {
+                tx.execute_batch("ALTER TABLE compute_management_effects DROP COLUMN network_before; ALTER TABLE compute_management_effects DROP COLUMN network_after;").unwrap();
+            }
+            let cookie: i64 = tx
+                .pragma_query_value(None, "schema_version", |row| row.get(0))
+                .unwrap();
+            tx.execute("UPDATE agent_locator_coverage SET schema_version=?1 WHERE singleton=1 AND tampered=0",[cookie]).unwrap();
+        }
+        tx.execute("DELETE FROM schema_migrations WHERE version>35", [])
+            .unwrap();
+        tx.pragma_update(None, "user_version", 35).unwrap();
+        tx.commit().unwrap();
+    }
+}
+
+#[test]
+fn retained_association_schema35_preserves_v4_journals_and_sources_during_upgrade() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    // Reproduce the retained pre-integration wire format, never a current producer.
+    let (sub, preview) = connect_with_format(&stores, &registry, &api, "codex", true);
+    assert_eq!(
+        preview.0.spec.desired_state["schema"],
+        hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+    );
+    assert!(hiroute_domain::is_legacy_subscription_api_change(
+        &preview.0.spec.desired_state
+    ));
+    let before_sources = sources(&stores);
+    let before_links = links(&stores);
+    let before_payloads = frozen_payloads(&stores);
+    assert!(before_payloads.iter().any(|row| {
+        row.2
+            .contains(hiroute_domain::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4)
+    }));
+    drop(stores);
+    retained_association_schema35(root.path(), false);
+    let upgraded = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    assert_eq!(sources(&upgraded), before_sources);
+    assert_eq!(links(&upgraded), before_links);
+    assert_eq!(frozen_payloads(&upgraded), before_payloads);
+    let policy = upgraded
+        .control()
+        .native_source_network(&api.source_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(policy.policy, hiroute_domain::NativeNetworkPolicyV1::Direct);
+    let current = apply(
+        &upgraded,
+        &registry,
+        metadata(&upgraded, &sub),
+        ComputeSubscriptionApiLinkIntentV1::Remove,
+        "current-detach-after-legacy",
+    );
+    assert_eq!(
+        current.0.spec.desired_state["schema"],
+        hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
+    );
+    assert!(links(&upgraded).is_empty());
+}
+
+#[test]
+fn incomplete_legacy_layout_is_preserved_and_never_reconstructed_as_direct() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    connect(&stores, &registry, &api);
+    let before = sources(&stores);
+    drop(stores);
+    retained_association_schema35(root.path(), true);
+    assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
+    let db = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM compute_subscription_api_links",
+            [],
+            |row| row.get::<_, u32>(0)
+        )
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM compute_management_sources",
+            [],
+            |row| row.get::<_, u32>(0)
+        )
+        .unwrap(),
+        before.len() as u32
+    );
+    assert!(
+        !db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='native_source_network')",
+            [],
+            |row| row.get::<_, bool>(0)
+        )
+        .unwrap()
     );
 }

@@ -53,3 +53,10 @@ Codex borrowing uses file credentials only. A selected non-file credential store
 stale auth.json and directs the user to independent sign-in; Claude keeps its existing
 file and explicit Keychain check. Error copy separates missing login, unsupported mode or
 store, unreadable credentials, missing account identity and runtime/network unavailability.
+
+Current association saves use V5, independently of Native network V4. Retained
+association V4 receipts keep their original wire bytes and protected source proofs.
+The exact association-only schema35 layout is upgraded through the normal backed-up
+three-store pipeline to schema36, adding main's Native policy companion without
+recreating association rows or rewriting journals. Ambiguous/corrupt layouts fail
+closed. The compatibility register owns retirement of this retained input support.

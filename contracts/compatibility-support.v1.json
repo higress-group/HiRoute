@@ -1270,6 +1270,46 @@
             "crates/domain/src/compute/management/mod.rs",
             "crates/daemon/tests/support/released_grant_upgrade.py"
           ]
+        },
+        {
+          "contract": "hiroute.compute-management-change/v4",
+          "field": "retained association envelope and association-only schema35 layout, distinguished from current Native network V4/35",
+          "mode": "legacy_adapter",
+          "owner": "compute-management",
+          "allowed_paths": [
+            "crates/domain/src/compute/network/transaction.rs",
+            "crates/domain/src/compute/management/api_link.rs",
+            "crates/domain/src/operation/compute_management.rs",
+            "crates/application/src/compute_management/mutations/defaults.rs",
+            "crates/product-session/src/commands/model_connection_web.rs",
+            "crates/daemon/src/control/runtime/model_connections/network_settings.rs",
+            "crates/local-storage/src/migrations/legacy_subscription_api_v35.rs",
+            "crates/local-storage/src/migrations/source_network_v35.rs",
+            "crates/local-storage/src/migrations/mod.rs",
+            "crates/local-storage/src/control/compute/management/tests/subscription_api.rs"
+          ],
+          "reason": "Retained pre-integration association stores already contain signed V4 association operations. Exact envelope/layout recognition preserves their original bytes, source/key identities and association witnesses while the backed-up schema36 conversion adds the absent Native policy companion. Main's network V4 remains current; new association producers use V5. Missing or conflicting layout evidence is refused.",
+          "removal_condition": "Retire only after every retained pre-integration association profile, unfinished V4 association Operation and recoverable backup is explicitly migrated or retired under the storage support policy. Never remove support merely because current producers use V5."
+        },
+        {
+          "contract": "hiroute.compute-management-mutation/v4",
+          "field": "retained association envelope and association-only schema35 layout, distinguished from current Native network V4/35",
+          "mode": "legacy_adapter",
+          "owner": "compute-management",
+          "allowed_paths": [
+            "crates/domain/src/compute/network/transaction.rs",
+            "crates/domain/src/compute/management/api_link.rs",
+            "crates/domain/src/operation/compute_management.rs",
+            "crates/application/src/compute_management/mutations/defaults.rs",
+            "crates/product-session/src/commands/model_connection_web.rs",
+            "crates/daemon/src/control/runtime/model_connections/network_settings.rs",
+            "crates/local-storage/src/migrations/legacy_subscription_api_v35.rs",
+            "crates/local-storage/src/migrations/source_network_v35.rs",
+            "crates/local-storage/src/migrations/mod.rs",
+            "crates/local-storage/src/control/compute/management/tests/subscription_api.rs"
+          ],
+          "reason": "Retained pre-integration association stores already contain signed V4 association operations. Exact envelope/layout recognition preserves their original bytes, source/key identities and association witnesses while the backed-up schema36 conversion adds the absent Native policy companion. Main's network V4 remains current; new association producers use V5. Missing or conflicting layout evidence is refused.",
+          "removal_condition": "Retire only after every retained pre-integration association profile, unfinished V4 association Operation and recoverable backup is explicitly migrated or retired under the storage support policy. Never remove support merely because current producers use V5."
         }
       ]
     },

@@ -4,6 +4,15 @@ use super::*;
 pub const COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5: &str = "hiroute.compute-management-change/v5";
 pub const COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5: &str = "hiroute.compute-management-mutation/v5";
 
+/// Recovery discriminator for retained association previews predating main's network V4.
+/// The strict envelope reader and mutation validation still own admission.
+pub fn is_legacy_subscription_api_change(value: &serde_json::Value) -> bool {
+    value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+        && value.get("api_link").is_some()
+        && value.get("network").is_none()
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComputeSubscriptionApiLinkV1 {
@@ -44,7 +53,13 @@ pub struct ComputeManagementMutationV5 {
 }
 impl ComputeManagementMutationV5 {
     pub fn validate(&self, spec: &ChangeSpecV1) -> Result<(), ComputeManagementErrorV2> {
-        if self.schema != COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5
+        let legacy = self.schema == crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4;
+        let expected_change = if legacy {
+            crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+        } else {
+            COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
+        };
+        if (!legacy && self.schema != COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5)
             || matches!(
                 &*self.source_mutation,
                 ComputeManagementMutation::V4(_) | ComputeManagementMutation::V5(_)
@@ -53,7 +68,7 @@ impl ComputeManagementMutationV5 {
                 .desired_state
                 .get("schema")
                 .and_then(serde_json::Value::as_str)
-                != Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
+                != Some(expected_change)
             || CanonicalDigest::of(spec).map_err(|_| ComputeManagementErrorV2::InvalidDigest)?
                 != self.change_spec_digest
         {
@@ -63,7 +78,10 @@ impl ComputeManagementMutationV5 {
             .source_mutation
             .desired()
             .ok_or(ComputeManagementErrorV2::InvalidMutation)?;
-        if !ComputeSubscriptionApiLinkV1::supports_source(source) {
+        if !ComputeSubscriptionApiLinkV1::supports_source(source)
+            || (legacy
+                && !matches!(&source.provenance, ComputeManagementProvenanceV2::ConnectorOwned {connector_id, ..} if connector_id == "connector.cpa.codex"))
+        {
             return Err(ComputeManagementErrorV2::InvalidProvenance);
         }
         for link in self

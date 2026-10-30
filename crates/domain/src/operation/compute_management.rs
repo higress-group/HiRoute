@@ -82,9 +82,27 @@ impl TransactionPlanV1 {
         })
     }
     pub fn with_subscription_api_link(
+        self,
+        before: Option<crate::ComputeSubscriptionApiLinkV1>,
+        intent: crate::ComputeSubscriptionApiLinkIntentV1,
+    ) -> Result<Self, OperationValidationError> {
+        self.with_subscription_api_link_format(before, intent, false)
+    }
+
+    /// Reproduce retained pre-integration previews; normal producers always use V5.
+    pub fn with_legacy_subscription_api_link_v4(
+        self,
+        before: Option<crate::ComputeSubscriptionApiLinkV1>,
+        intent: crate::ComputeSubscriptionApiLinkIntentV1,
+    ) -> Result<Self, OperationValidationError> {
+        self.with_subscription_api_link_format(before, intent, true)
+    }
+
+    fn with_subscription_api_link_format(
         mut self,
         before: Option<crate::ComputeSubscriptionApiLinkV1>,
         intent: crate::ComputeSubscriptionApiLinkIntentV1,
+        legacy: bool,
     ) -> Result<Self, OperationValidationError> {
         validate_management_plan(&self.spec, &self.control, &self.secrets, &[], &[])?;
         let source_mutation: crate::ComputeManagementMutation = serde_json::from_value(
@@ -103,9 +121,20 @@ impl TransactionPlanV1 {
             }
             crate::ComputeSubscriptionApiLinkIntentV1::Remove => None,
         };
-        self.spec.desired_state = json!({"schema": crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5, "change": self.spec.desired_state, "api_link": intent});
+        let schema = if legacy {
+            crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+        } else {
+            crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
+        };
+        self.spec.desired_state =
+            json!({"schema": schema, "change": self.spec.desired_state, "api_link": intent});
         let mutation = crate::ComputeManagementMutationV5 {
-            schema: crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5.into(),
+            schema: if legacy {
+                crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4
+            } else {
+                crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5
+            }
+            .into(),
             source_mutation: Box::new(source_mutation),
             api_link_before: before,
             api_link_after: after,

@@ -40,6 +40,7 @@ mod delegation_native_lifecycle_v21;
 mod delegation_v10;
 #[cfg(test)]
 mod integration_v17_tests;
+mod legacy_subscription_api_v35;
 mod plan_authoring_v10;
 mod source_defaults_v31;
 mod source_network_v35;
@@ -313,7 +314,16 @@ fn migrate(
             crate::control::agent_locator::validate_coverage(&transaction)
                 .map_err(|_| LocalStorageError::InvalidData)?;
         }
-        transaction.execute_batch(migration_sql(kind, version)?)?;
+        if kind == DatabaseKind::Control
+            && version == 36
+            && legacy_subscription_api_v35::recognized_layout(&transaction)?
+        {
+            // This source already owns association DDL. Add only main's missing
+            // policy companion, retaining all association rows and old receipts.
+            transaction.execute_batch(source_network_v35::CONTROL)?;
+        } else {
+            transaction.execute_batch(migration_sql(kind, version)?)?;
+        }
         if kind == DatabaseKind::Control && version == 8 {
             compute_v8::migrate_semantic_identities(&transaction)?;
         }

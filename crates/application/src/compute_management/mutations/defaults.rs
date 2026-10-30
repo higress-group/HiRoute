@@ -11,7 +11,14 @@ where
 {
     pub fn preview_v3(
         &self,
+        change: ComputeManagementChangeV3,
+    ) -> Result<ComputeManagementPreparedPreviewV2, ComputeManagementPlanningErrorV2> {
+        self.preview_v3_with_link_format(change, false)
+    }
+    fn preview_v3_with_link_format(
+        &self,
         mut change: ComputeManagementChangeV3,
+        legacy: bool,
     ) -> Result<ComputeManagementPreparedPreviewV2, ComputeManagementPlanningErrorV2> {
         if change.schema != COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3 {
             return Err(ComputeManagementPlanningErrorV2::InvalidChange);
@@ -153,13 +160,21 @@ where
                 .compute_subscription_api_links(&self.workspace, Some(&source.source_id))?
                 .into_iter()
                 .next();
-            preview.plan = preview
-                .plan
-                .with_subscription_api_link(before, intent)
-                .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
+            preview.plan = if legacy {
+                preview
+                    .plan
+                    .with_legacy_subscription_api_link_v4(before, intent)
+            } else {
+                preview.plan.with_subscription_api_link(before, intent)
+            }
+            .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
             preview.result.spec = preview.plan.spec().clone();
             preview.result.accept_digest = CanonicalDigest::of(&(
-                "hiroute.compute-management-preview/v5",
+                if legacy {
+                    "hiroute.compute-management-preview/v4"
+                } else {
+                    "hiroute.compute-management-preview/v5"
+                },
                 &preview.result.spec,
                 &preview.result.expected_revisions,
                 preview.plan.control(),
@@ -181,8 +196,10 @@ where
         &self,
         value: serde_json::Value,
     ) -> Result<ComputeManagementPreparedPreviewV2, ComputeManagementPlanningErrorV2> {
-        if value.get("schema").and_then(serde_json::Value::as_str)
-            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
+        let legacy = hiroute_domain::is_legacy_subscription_api_change(&value);
+        if legacy
+            || value.get("schema").and_then(serde_json::Value::as_str)
+                == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
         {
             let saved: hiroute_application_api::ComputeManagementChangeV5 =
                 serde_json::from_value(value)
@@ -192,7 +209,7 @@ where
             }
             let mut change = saved.change;
             change.api_link = Some(saved.api_link);
-            return self.preview_v3(change);
+            return self.preview_v3_with_link_format(change, legacy);
         }
         if value.get("schema").and_then(serde_json::Value::as_str)
             == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)

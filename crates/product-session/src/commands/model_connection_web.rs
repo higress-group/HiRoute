@@ -346,6 +346,7 @@ struct WebSavedNetworkChangeV4 {
 fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
+        || hiroute_domain::is_legacy_subscription_api_change(&value)
     {
         let linked: hiroute_application_api::ComputeManagementChangeV5 =
             serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
@@ -404,6 +405,7 @@ fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'stati
 fn change_for_native(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
+        || hiroute_domain::is_legacy_subscription_api_change(&value)
     {
         let linked: WebComputeManagementChangeV5 =
             serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
@@ -735,11 +737,19 @@ mod tests {
     }
 
     #[test]
-    fn association_v4_preview_and_apply_restore_exact_native_revision() {
+    fn association_v5_preview_and_apply_restore_exact_native_revision() {
         round_trip_native_change(true, true);
     }
 
+    #[test]
+    fn legacy_association_v4_preview_and_apply_preserve_the_original_wire_envelope() {
+        round_trip_native_change_with_format(true, true, true);
+    }
+
     fn round_trip_native_change(with_defaults: bool, with_link: bool) {
+        round_trip_native_change_with_format(with_defaults, with_link, false);
+    }
+    fn round_trip_native_change_with_format(with_defaults: bool, with_link: bool, legacy: bool) {
         let revisions = RevisionSetV1 {
             target: 3,
             dependencies: BTreeMap::new(),
@@ -770,7 +780,7 @@ mod tests {
         };
         if with_link {
             desired = serde_json::json!({
-                "schema": hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5,
+                "schema": if legacy { hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4 } else { hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5 },
                 "change": desired,
                 "api_link": { "intent": "associate", "api_source_id": "source/api" }
             });
