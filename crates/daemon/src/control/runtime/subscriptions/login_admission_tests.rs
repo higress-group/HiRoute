@@ -897,62 +897,67 @@ fn current_default_save_rechecks_withdrawn_subscription_before_admission() {
 }
 
 #[test]
-fn subscription_association_v4_retains_handoff_and_metadata_edits_after_restart() {
-    if isolated("subscription_association_v4_retains_handoff_and_metadata_edits_after_restart") {
+fn subscription_association_v5_retains_handoff_and_metadata_edits_after_restart() {
+    if isolated("subscription_association_v5_retains_handoff_and_metadata_edits_after_restart") {
         return;
     }
-    let mut fixture = Fixture::new();
-    let session = fixture.authorize(SubscriptionLoginProviderV1::Codex);
-    let checked = fixture.check(&session);
-    let request = fixture.current_candidate_link_request(
-        &checked,
-        "v4-subscription-save",
-        Some(hiroute_domain::ComputeSubscriptionApiLinkIntentV1::Remove),
-    );
-    assert_eq!(
-        request.spec.desired_state["schema"],
-        hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
-    );
-    fixture.save(request);
-    let before = fixture.snapshot().sources.remove(0);
-    fixture.reopen(true);
-    let change = ComputeManagementChangeV2 {
-        schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
-        subject: ComputeManagementSubjectV2::SavedSource {
-            source_id: before.source_id.clone(),
-        },
-        expected_revisions: fixture.snapshot().revisions,
-        selected_model_refs: before.models.iter().map(|m| m.model_ref.clone()).collect(),
-        intent: ComputeManagementIntentV2::SaveReady,
-        key_edits: vec![],
-        validation: None,
-        edit: None,
-    };
-    let preview = fixture
-        .adapter()
-        .preview_compute_save_v3(hiroute_application_api::ComputeManagementChangeV3 {
-            schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
-            change,
-            default_preferences: Default::default(),
-            api_link: Some(hiroute_domain::ComputeSubscriptionApiLinkIntentV1::Remove),
-        })
-        .unwrap();
-    fixture.save(ComputeConnectionApplyRequestV1 {
-        spec: preview.spec,
-        accept_digest: preview.accept_digest,
-        expected_revisions: preview.expected_revisions,
-        idempotency_key: "v4-metadata-reopen".into(),
-    });
-    let after = fixture.snapshot().sources.remove(0);
-    assert_eq!(after.models, before.models);
-    assert_eq!(after.validation, before.validation);
-    assert_eq!(after.credentials, before.credentials);
-    assert_eq!(after.revision, before.revision + 1);
-    assert!(
-        fixture
+    for provider in [
+        SubscriptionLoginProviderV1::Codex,
+        SubscriptionLoginProviderV1::Claude,
+    ] {
+        let mut fixture = Fixture::new();
+        let session = fixture.authorize(provider);
+        let checked = fixture.check(&session);
+        let request = fixture.current_candidate_link_request(
+            &checked,
+            "v5-subscription-save",
+            Some(hiroute_domain::ComputeSubscriptionApiLinkIntentV1::Remove),
+        );
+        assert_eq!(
+            request.spec.desired_state["schema"],
+            hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
+        );
+        fixture.save(request);
+        let before = fixture.snapshot().sources.remove(0);
+        fixture.reopen(true);
+        let change = ComputeManagementChangeV2 {
+            schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
+            subject: ComputeManagementSubjectV2::SavedSource {
+                source_id: before.source_id.clone(),
+            },
+            expected_revisions: fixture.snapshot().revisions,
+            selected_model_refs: before.models.iter().map(|m| m.model_ref.clone()).collect(),
+            intent: ComputeManagementIntentV2::SaveReady,
+            key_edits: vec![],
+            validation: None,
+            edit: None,
+        };
+        let preview = fixture
             .adapter()
-            .retained_subscription_candidate_for_source(&after)
-            .unwrap()
-            .is_some()
-    );
+            .preview_compute_save_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                change,
+                default_preferences: Default::default(),
+                api_link: Some(hiroute_domain::ComputeSubscriptionApiLinkIntentV1::Remove),
+            })
+            .unwrap();
+        fixture.save(ComputeConnectionApplyRequestV1 {
+            spec: preview.spec,
+            accept_digest: preview.accept_digest,
+            expected_revisions: preview.expected_revisions,
+            idempotency_key: "v5-metadata-reopen".into(),
+        });
+        let after = fixture.snapshot().sources.remove(0);
+        assert_eq!(after.models, before.models);
+        assert_eq!(after.validation, before.validation);
+        assert_eq!(after.credentials, before.credentials);
+        assert_eq!(after.revision, before.revision + 1);
+        assert!(
+            fixture
+                .adapter()
+                .retained_subscription_candidate_for_source(&after)
+                .unwrap()
+                .is_some()
+        );
+    }
 }
