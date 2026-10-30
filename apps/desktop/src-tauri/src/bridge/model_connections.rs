@@ -5,6 +5,7 @@ pub async fn compute_subscriptions(
     state: State<'_, DesktopState>,
     source_id: Option<String>,
     expected_source_revision: Option<u64>,
+    native_only: Option<bool>,
 ) -> Result<WebComputeSubscriptionCandidatesV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -37,6 +38,7 @@ pub async fn compute_subscriptions(
         &product_state,
         source_id,
         expected_source_revision,
+        native_only,
     )
     .await
 }
