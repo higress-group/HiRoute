@@ -9,6 +9,8 @@ struct Fixture {
     root: crate::private_test_support::TempDir,
     address: SocketAddr,
     patches: Arc<AtomicUsize>,
+    account_reads: Arc<AtomicUsize>,
+    catalog_reads: Arc<AtomicUsize>,
     reject_patch: Arc<AtomicBool>,
     patch_delay_ms: Arc<AtomicUsize>,
     account_read_delay_ms: Arc<AtomicUsize>,
@@ -41,6 +43,8 @@ impl Fixture {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let patches = Arc::new(AtomicUsize::new(0));
+        let account_reads = Arc::new(AtomicUsize::new(0));
+        let catalog_reads = Arc::new(AtomicUsize::new(0));
         let reject_patch = Arc::new(AtomicBool::new(false));
         let patch_delay_ms = Arc::new(AtomicUsize::new(0));
         let account_read_delay_ms = Arc::new(AtomicUsize::new(0));
@@ -49,6 +53,8 @@ impl Fixture {
         let (count, reject, stopped) = (patches.clone(), reject_patch.clone(), stop.clone());
         let delay = patch_delay_ms.clone();
         let account_delay = account_read_delay_ms.clone();
+        let account_read_count = account_reads.clone();
+        let catalog_read_count = catalog_reads.clone();
         let fault_value = fault.clone();
         let worker = thread::spawn(move || {
             let mut account_reads = 0;
@@ -97,6 +103,7 @@ impl Fixture {
                     }
                 } else if header.starts_with("GET /v0/management/auth-files?name=") {
                     account_reads += 1;
+                    account_read_count.fetch_add(1, Ordering::SeqCst);
                     thread::sleep(Duration::from_millis(
                         account_delay.load(Ordering::SeqCst) as u64
                     ));
@@ -146,6 +153,7 @@ impl Fixture {
                     };
                     (200, body)
                 } else if header.starts_with("GET /v1/models ") {
+                    catalog_read_count.fetch_add(1, Ordering::SeqCst);
                     let body = if fault_value.load(Ordering::SeqCst) == 3 {
                         r#"{"data":[]}"#
                     } else {
@@ -175,6 +183,8 @@ impl Fixture {
             root,
             address,
             patches,
+            account_reads,
+            catalog_reads,
             reject_patch,
             patch_delay_ms,
             account_read_delay_ms,
