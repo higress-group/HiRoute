@@ -562,7 +562,7 @@
           "contract": "hiroute.system-one-c/v1",
           "mode": "frozen_fixture",
           "owner": "decision-foundation",
-          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v2.",
+          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v3.",
           "removal_condition": "Retire only when the supported release and retained-publication policy permits removing all v1 readers and authenticated historical evidence.",
           "allowed_paths": [
             "apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs",
