@@ -100,7 +100,7 @@ fn refusal_is_not_accepted_for_inputs_or_an_invalid_ack_frame() {
         (
             hiroute_diagnostics::event::ProtectedExchangeKind::Grant,
             "",
-            "hiroute.protected-apply-ack/v1",
+            "unexpected-ack-schema",
         ),
     ] {
         let root = tempfile::tempdir().unwrap();
