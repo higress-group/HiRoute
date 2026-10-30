@@ -236,3 +236,62 @@ fn budget() -> StreamBudget {
         .stream(512 * 1024)
         .unwrap()
 }
+
+#[tokio::test]
+async fn replay_body_reader_uses_bounded_credit_under_retained_request_pressure() {
+    use crate::replay::{ReplayConfig, ReplayManager};
+    use hiroute_gateway_core::runtime::body::MemoryRole;
+
+    for threshold in [1, 2 * 1024 * 1024] {
+        let root = tempfile::tempdir().unwrap();
+        let tree = BudgetTree::new(16 * 1024 * 1024, 16 * 1024 * 1024).unwrap();
+        let budget = tree.stream(8 * 1024 * 1024).unwrap();
+        let manager = ReplayManager::open(ReplayConfig {
+            root: root.path().to_owned(),
+            memory_threshold_bytes: threshold,
+            ..ReplayConfig::production_default()
+        })
+        .unwrap();
+        let store = manager.begin_request(budget.clone()).unwrap();
+        let body = b"complete native history\n".repeat(48 * 1024);
+        let mut writer = store.begin_raw().unwrap();
+        for chunk in body.chunks(16 * 1024) {
+            writer.append(chunk).unwrap();
+        }
+        let raw = writer.seal().unwrap();
+        let reader = store.reader(&raw).unwrap();
+        let _retained = budget
+            .reserve(MemoryRole::ModelIrBacking, 9 * 1024 * 1024 / 2)
+            .unwrap();
+        assert!(budget.snapshot().unwrap().live > 4 * 1024 * 1024);
+        let active =
+            adapters::ActiveResponseDelivery::new(IngressProtocol::Responses, budget.clone());
+        let mut downstream = FailSecondBodyWrite {
+            writes: 0,
+            accepted: Vec::new(),
+        };
+        let mut session = ReplayBodySession {
+            inner: &mut downstream,
+            request_head: request_head(),
+            request_body: Some(reader),
+            budget: budget.clone(),
+            response_capture: AcceptedResponseCapture::new(
+                observation::accepted_request_for_runtime_test(),
+            ),
+            response_started: false,
+            runtime_state_authority: Default::default(),
+            continuation_scanner: active.scanner(),
+        };
+        let mut actual = Vec::new();
+        while let Some(chunk) = session
+            .read_request_body_charged(&budget, 4 * 1024 * 1024)
+            .await
+            .expect("bounded Replay reads must not reserve an opaque network-sized allowance")
+        {
+            assert!(chunk.bytes().len() <= 16 * 1024);
+            actual.extend_from_slice(chunk.bytes());
+        }
+        assert_eq!(actual, body);
+        assert!(session.request_body.is_none());
+    }
+}
