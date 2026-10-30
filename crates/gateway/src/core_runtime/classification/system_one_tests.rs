@@ -7,6 +7,9 @@ use crate::server::core_runtime::classification::diagnostic_request;
 use hiroute_domain::{BranchExecutionV1, CategoryOptionV1, ExecutionGroupV1, JudgmentSettingsV1};
 use std::sync::Arc;
 
+#[path = "openai_isolation_tests.rs"]
+mod openai_isolation_tests;
+
 fn authority() -> RestBranchClassifierAuthorityV1 {
     let mode = hiroute_domain::ComplexityClassifierModeV1::DecisionService {
         service: Box::new(hiroute_domain::DecisionServiceV1 {
@@ -391,6 +394,30 @@ fn openai_maximum_branch_request_is_one_call_and_ignores_unused_invalid_degree()
     assert_eq!(result.probabilities.unwrap()["simple"], 0.8);
     assert_eq!(result.assessment.unwrap().score, 0.475);
     assert_eq!(result.applicability, None);
+
+    // Raw bytes retain numbers outside f64 rather than normalizing through Value.
+    let raw_answers = answers
+        .iter()
+        .enumerate()
+        .map(|(index, answer)| {
+            if index == 2 {
+                r#"{"name":"q2","type":"score","score":1e999,"probabilities":[]}"#
+                    .to_owned()
+            } else {
+                serde_json::to_string(answer).unwrap()
+            }
+        })
+        .collect::<Vec<_>>();
+    let body = format!(r#"{{"answers":[{}]}}"#, raw_answers.join(","));
+    let result = super::super::openai_decisions::parse_response(
+        body.as_bytes(),
+        prepared.bindings.as_ref().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(result.branch_id, "branch-0");
+    assert!(!result.degree_failed);
+    assert_eq!(result.probabilities.unwrap()["simple"], 0.8);
+    assert_eq!(result.assessment.unwrap().score, 0.475);
 
     // Name framing is global; the type and contents of an unselected degree are local.
     for malformed in [json!({"name":"q2"}), json!({"name":"q2","type":7})] {

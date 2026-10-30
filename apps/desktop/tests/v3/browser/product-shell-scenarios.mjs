@@ -2,6 +2,7 @@ import { scenario, scenarioCatalog, runScenarios } from './scenario-selection.mj
 import { productShellRequired } from './scenario-requirements.mjs';
 import { extensionDecisionScenarios } from './extension-decision-scenarios.mjs';
 import { cProtocolScenarios } from './c-protocol-scenarios.mjs';
+import { decisionReviewScenarios } from './decision-review-scenarios.mjs';
 import { nativeConnectionScenarios } from './native-connection-scenarios.mjs';
 import { presentationScenarios } from './presentation-interactions.mjs';
 import { trustProgressScenarios } from './trust-progress-scenarios.mjs';
@@ -153,6 +154,7 @@ const scenarios = [
   ...nativeConnectionScenarios({ fresh, click, until, text, calls, control: c }),
   ...extensionDecisionScenarios({ fresh, routing, click, until, all, calls, control: c }),
   ...cProtocolScenarios({ fresh, routing, click, until, all, text, calls, setInput, control: c }),
+  ...decisionReviewScenarios({ fresh, routing, click, until, all, text, calls, setInput, nativeField, choose, decisionStore, control: c }),
   ...presentationScenarios,
   scenario('desktop.routing.recovered-mapping-session', ['routing-editor', 'sessions'], 'A resumed Agent mapping opens the observed session through the shell and releases its dialog', async () => {
     const sessionId = 'session/recovered-mapping';
