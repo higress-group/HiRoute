@@ -510,6 +510,7 @@ impl WebComputeConnectionApplyRequestV1 {
             .get("schema")
             .and_then(serde_json::Value::as_str)
             == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+            && !hiroute_domain::is_legacy_subscription_api_change(&self.spec.desired_state)
     }
 }
 
@@ -820,6 +821,7 @@ mod tests {
                 "idempotency_key": "subscription-save:example"
             }))
             .unwrap();
+        assert!(!request.is_native_network_save());
         let native = ComputeConnectionApplyRequestV1::try_from(request).unwrap();
         assert_eq!(native.spec.desired_state, desired);
         let restored =

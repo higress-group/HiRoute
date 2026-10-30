@@ -60,6 +60,7 @@ pub fn native_network_feature_gate_state(
             .get("schema")
             .and_then(serde_json::Value::as_str)
             != Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+        || crate::is_legacy_subscription_api_change(&spec.desired_state)
     {
         return Ok(std::borrow::Cow::Borrowed(&spec.desired_state));
     }

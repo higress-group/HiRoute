@@ -27,7 +27,7 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .unwrap();
-    if kind == DatabaseKind::Control && matches!(version, 34 | 35 | 36) {
+    if kind == DatabaseKind::Control && matches!(version, 34..=36) {
         crate::control::agent_locator::validate_coverage(&transaction).unwrap();
     }
     transaction

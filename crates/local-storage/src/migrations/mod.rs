@@ -309,7 +309,7 @@ fn migrate(
 
     for version in (current + 1)..=target {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if kind == DatabaseKind::Control && matches!(version, 34 | 35 | 36) {
+        if kind == DatabaseKind::Control && matches!(version, 34..=36) {
             // Validate coverage before the known additive DDL changes its cookie.
             crate::control::agent_locator::validate_coverage(&transaction)
                 .map_err(|_| LocalStorageError::InvalidData)?;
