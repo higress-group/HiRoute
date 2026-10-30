@@ -819,7 +819,6 @@ export function DesktopApp() {
             onOpenServices={addDecisionForRoute}
             initialEditor={routingIntent.editor}
             suggestionPlanIds={trustSuggestions.plans.map(p => p.plan_id)}
-            onTryModel={() => void openTrial({})}
             notice={routingIntent.notice}
             onRefresh={async () => { setObserving(true); await home.refreshDesktop(); setRefreshVersion(v => v + 1); }}
             onOpenAgent={agentId => { void (async () => { if (!await allowPageChange('agents')) return; setAgentIntent({ key: `agents/${randomId()}`, agentId }); openPage('agents'); })(); }}
