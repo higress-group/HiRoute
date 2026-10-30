@@ -1,4 +1,5 @@
 use super::*;
+use crate::CanonicalDigest;
 
 fn prior_default() -> (JudgmentSettingsV1, FrozenNativeProtocolV1) {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
