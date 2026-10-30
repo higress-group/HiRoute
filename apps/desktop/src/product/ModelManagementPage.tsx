@@ -290,6 +290,7 @@ export function ModelManagementPage({
     setSubscriptionAction(null);
     setSelectedSubscriptionRef(null);
     setSubscriptionSelections({});
+    setSubscriptionApiChoices({});
     setRepairingSubscriptionSource(null);
     setSubscriptionNotice('');
     setSubscriptionError(null);

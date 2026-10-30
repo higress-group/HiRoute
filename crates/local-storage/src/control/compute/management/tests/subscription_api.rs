@@ -151,6 +151,26 @@ fn connect_with_format(
         .into_iter()
         .find(|s| !s.provenance.is_native())
         .unwrap();
+    let receipt = stores
+        .control()
+        .compute_subscription_validation(
+            &hiroute_domain::OperationId::parse(
+                &facts
+                    .validation
+                    .as_ref()
+                    .unwrap()
+                    .approval_operation
+                    .operation_id,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        receipt.state,
+        crate::ComputeSubscriptionValidationStateV1::Retained
+    );
+    assert!(receipt.save_operation_id.is_some());
     (subscription, preview)
 }
 fn metadata(
@@ -763,6 +783,170 @@ fn retained_association_schema35_resumes_each_committed_store_without_changing_t
                 before
             );
         }
+    }
+}
+
+#[test]
+fn retained_association_schema35_recovers_pending_handoff_on_success_and_rollback() {
+    for rollback in [false, true] {
+        let root = tempdir().unwrap();
+        populate_saved_source(root.path(), &WorkspaceId::default());
+        let id;
+        let approval;
+        let original_payloads;
+        {
+            let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            let api = lifecycle::saved(&stores);
+            let registry = TrustedComputeCandidateRegistry::new();
+            let mut facts =
+                subscription_selection::subscription("candidate/cpa/codex/managed/pending");
+            facts.provenance = ComputeCandidateProvenanceV2::ConnectorOwned {
+                connector_id: "connector.cpa.codex".into(),
+                account_ref: "account/subscription".into(),
+            };
+            subscription_selection::register_verified_subscription(
+                &stores,
+                &registry,
+                &facts,
+                "legacy-check",
+            );
+            approval = hiroute_domain::OperationId::parse(
+                &facts
+                    .validation
+                    .as_ref()
+                    .unwrap()
+                    .approval_operation
+                    .operation_id,
+            )
+            .unwrap();
+            let input = ProtectedInput;
+            let planner = ComputeManagementPlanner::new(
+                &registry,
+                stores.control(),
+                stores.secrets(),
+                &input,
+            );
+            let preview = planner
+                .preview_v3(ComputeManagementChangeV3 {
+                    schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                    change: subscription_selection::change(&stores, &facts, &["model/one"]),
+                    default_preferences: Default::default(),
+                    api_link: Some(ComputeSubscriptionApiLinkIntentV1::Associate {
+                        api_source_id: api.source_id.clone(),
+                    }),
+                })
+                .unwrap();
+            let mut desired = preview.result.spec.desired_state;
+            desired["schema"] =
+                serde_json::json!(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4);
+            let preview = planner.preview_saved_state(desired).unwrap();
+            let prepared = planner
+                .prepare_apply(ComputeConnectionApplyRequestV1 {
+                    spec: preview.result.spec,
+                    accept_digest: preview.result.accept_digest,
+                    expected_revisions: preview.result.expected_revisions,
+                    idempotency_key: "legacy-pending-save".into(),
+                })
+                .unwrap();
+            let runtime = TransactionRuntime::default();
+            let external = NoExternal;
+            let coordinator = TransactionCoordinator::new(
+                stores.control(),
+                stores.secrets(),
+                stores.runtime(),
+                &external,
+                &input,
+                &runtime,
+            );
+            coordinator.reconcile_startup_and_open().unwrap();
+            let accepted = coordinator
+                .accept_prepared(
+                    &WorkspaceId::default(),
+                    &VerifiedPrincipal::for_local_control(),
+                    prepared,
+                )
+                .unwrap();
+            id = accepted.operation().operation_id.clone();
+            // The original V4 producer committed this handoff at admission, before
+            // the interrupted save. Freeze that retained source fact explicitly.
+            stores.control().with_connection(|db| db.execute(
+                "UPDATE compute_subscription_validations SET save_operation_id=?2 WHERE operation_id=?1 AND state='verified'",
+                rusqlite::params![approval.as_str(), id.as_str()],
+            ).unwrap());
+            original_payloads = frozen_payloads(&stores);
+        }
+        retained_association_schema35(root.path(), false);
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let pending = stores
+            .control()
+            .compute_subscription_validation(&approval)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            pending.state,
+            crate::ComputeSubscriptionValidationStateV1::Verified
+        );
+        assert_eq!(pending.save_operation_id.as_deref(), Some(id.as_str()));
+        if rollback {
+            stores.control().with_connection(|db| db.execute_batch(
+                "CREATE TEMP TRIGGER fail_legacy_save BEFORE INSERT ON main.compute_management_sources BEGIN SELECT RAISE(ABORT, 'fixture_legacy_save_failure'); END;",
+            ).unwrap());
+        }
+        {
+            let input = ProtectedInput;
+            let runtime = TransactionRuntime::default();
+            let external = NoExternal;
+            let coordinator = TransactionCoordinator::new(
+                stores.control(),
+                stores.secrets(),
+                stores.runtime(),
+                &external,
+                &input,
+                &runtime,
+            );
+            let recovered = coordinator.reconcile_startup_and_open().unwrap();
+            assert!(recovered.iter().any(|op| op.operation_id == id
+                && op.state
+                    == if rollback {
+                        OperationState::RolledBack
+                    } else {
+                        OperationState::Succeeded
+                    }));
+        }
+        let receipt = stores
+            .control()
+            .compute_subscription_validation(&approval)
+            .unwrap()
+            .unwrap();
+        if rollback {
+            assert_eq!(
+                receipt.state,
+                crate::ComputeSubscriptionValidationStateV1::Verified
+            );
+            assert!(receipt.save_operation_id.is_none());
+            assert_eq!(sources(&stores).len(), 1);
+            assert!(links(&stores).is_empty());
+        } else {
+            assert_eq!(
+                receipt.state,
+                crate::ComputeSubscriptionValidationStateV1::Retained
+            );
+            assert_eq!(receipt.save_operation_id.as_deref(), Some(id.as_str()));
+            assert_eq!(sources(&stores).len(), 2);
+            assert_eq!(links(&stores).len(), 1);
+        }
+        let after = frozen_payloads(&stores);
+        assert!(original_payloads.iter().all(|row| after.contains(row)));
+        drop(stores);
+        let reopened = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        assert_eq!(
+            reopened
+                .control()
+                .compute_subscription_validation(&approval)
+                .unwrap()
+                .unwrap(),
+            receipt
+        );
     }
 }
 
