@@ -752,7 +752,7 @@ pub(super) fn reserve_address() -> SocketAddr {
 }
 
 fn listener_ports(process_id: u32) -> std::ops::Range<u16> {
-    const FIRST_PORT: u16 = 20_000;
+    const FIRST_PORT: u16 = 5_000;
     const PORTS_PER_PROCESS: usize = 100;
     const PROCESS_BUCKETS: usize = 250;
     let process_bucket = usize::try_from(process_id).unwrap() % PROCESS_BUCKETS;
