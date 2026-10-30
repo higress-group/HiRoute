@@ -536,13 +536,31 @@ fn released_block_cache_backfills_without_changing_bodies_offsets_or_occurrence_
     );
 }
 
+thread_local! {
+    static INDEX_CHECKPOINTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn yield_first_index_cycle(sql: &str) {
+    if sql == "SELECT value FROM observation_meta WHERE key='store_revision'" {
+        let first = INDEX_CHECKPOINTS.with(|count| {
+            let previous = count.get();
+            count.set(previous + 1);
+            previous == 0
+        });
+        if first {
+            // Inject one preemption after cycle timing starts, before a source
+            // enters building. This exhausts the existing 500 ms cycle budget;
+            // it is the fault trigger, not a readiness wait or a new deadline.
+            std::thread::sleep(std::time::Duration::from_millis(510));
+        }
+    }
+}
+
 #[test]
-fn index_fixture_drains_sources_beyond_one_maintenance_batch() {
+fn index_fixture_drains_sources_after_a_cycle_yields_before_building() {
     let root = tempfile::tempdir().unwrap();
     let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
-    // A production cycle completes at most 200 sources and may yield earlier
-    // at its scan-time budget, with no source currently in the building state.
-    for n in 0..201 {
+    for n in 0..3 {
         add(
             &store,
             &format!("session-{n}"),
@@ -551,8 +569,17 @@ fn index_fixture_drains_sources_beyond_one_maintenance_batch() {
             &format!("needle {n}"),
         );
     }
+    INDEX_CHECKPOINTS.with(|count| count.set(0));
+    store.connection.lock().trace(Some(yield_first_index_cycle));
     index(&store);
-    let mut q = query("needle", 200);
+    store.connection.lock().trace(None);
+    INDEX_CHECKPOINTS.with(|count| {
+        assert!(
+            count.get() >= 2,
+            "fixture stopped after the injected empty cycle"
+        );
+    });
+    let mut q = query("needle", 2);
     let first = store
         .search_observed_sessions(&reader(true), &q, 500)
         .unwrap();
@@ -561,7 +588,7 @@ fn index_fixture_drains_sources_beyond_one_maintenance_batch() {
         "fixture left sources unpublished after returning {} sessions",
         first.hits.len()
     );
-    assert_eq!(first.hits.len(), 200);
+    assert_eq!(first.hits.len(), 2);
     assert!(first.next_cursor.is_some());
     q.cursor = first.next_cursor;
     let last = store
