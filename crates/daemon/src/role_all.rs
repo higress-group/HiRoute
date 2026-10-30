@@ -289,6 +289,14 @@ impl RoleAllHandle {
         self._runtime.register_apply_capability(registration)
     }
 
+    /// An exact inherited grant may be refused before acquiring any writer.
+    pub fn try_register_apply_capability(
+        &self,
+        registration: ApplyCapabilityRegistrationV1,
+    ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
+        self._runtime.try_register_apply_capability(registration)
+    }
+
     pub fn register_manual_protected_input(
         &self,
         candidate: hiroute_application_api::ComputeCandidateRefV2,

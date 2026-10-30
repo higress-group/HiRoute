@@ -994,6 +994,14 @@ impl ProductionControlRuntime {
         self.protected_authority()
             .register_apply_capability(registration)
     }
+
+    pub(crate) fn try_register_apply_capability(
+        &self,
+        registration: hiroute_local_storage::ApplyCapabilityRegistrationV1,
+    ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
+        self.protected_authority()
+            .try_register_apply_capability(registration)
+    }
 }
 
 fn delegation_epoch() -> Result<String, String> {
@@ -1726,6 +1734,28 @@ mod early_cancel_tests;
 
 pub(crate) use protected_inputs::RuntimeAuthority;
 impl RuntimeAuthority {
+    pub(crate) fn try_register_apply_capability(
+        &self,
+        registration: ApplyCapabilityRegistrationV1,
+    ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
+        registration
+            .check_current()
+            .map_err(|error| error.to_string())?;
+        let stores = match self.adapter.stores.try_lock() {
+            Ok(stores) => stores,
+            Err(std::sync::TryLockError::WouldBlock) => {
+                return Ok(hiroute_local_storage::ApplyCapabilityRegistrationOutcome::Busy);
+            }
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                return Err("capability registrar is unavailable".into());
+            }
+        };
+        stores
+            .apply_capability_registrar()
+            .try_register(registration)
+            .map_err(|error| error.to_string())
+    }
+
     pub(crate) fn register_apply_capability(
         &self,
         registration: ApplyCapabilityRegistrationV1,

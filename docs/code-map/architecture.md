@@ -252,6 +252,15 @@ copy and verification; key/journal durability and old recovery formats are uncha
 
 ## Changing boundaries
 
+Native grant admission belongs to
+[`Control capability registration`](../../crates/local-storage/src/control/capability_registration.rs)
+and the daemon's [protected exchange](../../crates/daemon/src/control/protected_exchange.rs).
+The [Desktop channel](../../apps/desktop/src-tauri/src/bootstrap/channel.rs) distinguishes
+an exact unregistered busy reply from lost framing; success still follows durable
+registration, and recovery never replays the original business request. Representative
+cases cover [writer admission](../../crates/local-storage/src/control/capability_registration/tests.rs)
+and [native channel synchronization](../../apps/desktop/src-tauri/src/bootstrap/busy_tests.rs).
+
 Compact Observation format admission and fresh-generation initialization belong to
 [`store/upgrade`](../../crates/observation/src/store/upgrade.rs) and the
 [`store` factory](../../crates/observation/src/store/mod.rs); complete original-source

@@ -22,9 +22,10 @@ pub use backup::{BackupSet, SingleWriterBackupBarrier, SqliteBackup};
 pub use control::{
     ActivePublicationIdentity, AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope,
     AgentLocatorSummary, AgentLocatorWitness, AgentNativeTargetWitness, ApplyCapabilityRegistrar,
-    ApplyCapabilityRegistrationV1, CapturedActivePublication, CapturedAgentLocator,
-    ComputeSubscriptionValidationRecordV1, ComputeSubscriptionValidationStateV1, ControlReadStamp,
-    ControlStore, ManagedArtifactStore, SucceededAgentOperationV1,
+    ApplyCapabilityRegistrationOutcome, ApplyCapabilityRegistrationV1, CapturedActivePublication,
+    CapturedAgentLocator, ComputeSubscriptionValidationRecordV1,
+    ComputeSubscriptionValidationStateV1, ControlReadStamp, ControlStore, ManagedArtifactStore,
+    SucceededAgentOperationV1,
 };
 pub use physical_read_stamp::AgentReadStamp;
 pub use runtime::RuntimeStore;

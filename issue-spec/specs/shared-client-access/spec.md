@@ -65,8 +65,39 @@ Source SPEC comments:
 
 ### Requirement: Native connection loss is truthful and safely recoverable
 
+Protected grant registration SHALL try admission at the shared Control mutex and
+SQLite writer reservation without waiting behind an existing owner. A refusal
+before writer admission SHALL create no capability or business operation and
+SHALL finish the exact acknowledgement with `registered:false`. This result is a
+retryable registration refusal, never successful authorization. Only a complete,
+strictly decoded grant reply with the original schema and registration identity
+may preserve the synchronized native connection. Desktop SHALL return the busy
+failure without issuing or automatically replaying the business request.
+
+Successful registration SHALL retain its existing durable commit before
+`registered:true`. Errors after writer admission, uncertain commit, expiry,
+identity or framing failures SHALL NOT become a busy refusal. The connection's
+ordinary SQLite wait policy SHALL be restored on all normal return paths.
+The existing two-second host deadline remains unchanged; it still detects an
+uncertain response or slow durable operation. Input and upgrade exchanges retain
+their current strict meanings.
+
+Positive v2 acknowledgement bytes remain compatible. A previous host may
+conservatively reject the newly meaningful negative reply; paired current host
+and daemon provide retryable busy behavior. No alternate long-lived handshake or
+persistent-format conversion is introduced.
+
+#### Scenario: Busy grant admission preserves a synchronized connection
+
+- **WHEN** the global Control mutex or an external SQLite writer is held while
+  Desktop registers an exact grant
+- **THEN** the daemon promptly returns a matching unregistered acknowledgement,
+  no grant or business effect exists, and Desktop keeps its channel usable. A
+  later user request after release uses a fresh registration and may succeed
+  with the same daemon PID. A failed write/commit cannot claim this refusal.
+
 A responsive daemon SHALL NOT establish that the Desktop's inherited protected
-channel remains usable. Failed, timed-out, malformed or mismatched exchanges SHALL
+channel remains usable. Uncertain, timed-out, malformed or mismatched exchanges SHALL
 invalidate that channel without accepting a late response for another registration.
 Protected observations and actions SHALL fail closed with an actionable connection
 failure; service status SHALL distinguish that failure from daemon unavailability
