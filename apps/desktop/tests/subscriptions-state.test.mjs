@@ -231,5 +231,6 @@ test('native refresh updates only the selected identity and requires a new check
   const other = candidate({ candidate: { candidate_ref: 'candidate/other', candidate_revision: 99 } });
   assert.equal(subscriptionSelectionAfterRefresh(selected, [other, updated]), updated);
   assert.equal(validatedSubscriptionCandidate(updated, checked), null);
+  assert.equal(subscriptionSelectionAfterRefresh(updated, [selected]), updated, 'late older scan cannot revive an earlier check');
   assert.equal(subscriptionSelectionAfterRefresh(selected, []), selected);
 });
