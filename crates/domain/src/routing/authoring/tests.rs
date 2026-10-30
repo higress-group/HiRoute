@@ -351,7 +351,7 @@ fn retained_native_operation_validates_its_original_default_and_new_edit_uses_cu
         );
         assert_eq!(serde_json::to_vec(&frozen).unwrap(), before);
         let current = editor.effective().unwrap();
-        assert_eq!(current.native_protocol().unwrap().schema, SYSTEM_ONE_C_V2);
+        assert_eq!(current.native_protocol().unwrap().schema, SYSTEM_ONE_C_V3);
         assert_ne!(
             current.assessment_scopes()[SMART_SAVING_SCOPE_ID]
                 .competence
@@ -417,7 +417,7 @@ fn retained_native_branch_operation_preserves_default_and_override_stock_questio
             frozen
         );
         let next = editor.effective().unwrap();
-        assert_eq!(next.native_protocol().unwrap().schema, SYSTEM_ONE_C_V2);
+        assert_eq!(next.native_protocol().unwrap().schema, SYSTEM_ONE_C_V3);
         assert_ne!(
             next.assessment_scopes()["default"].competence.instructions,
             frozen.assessment_scopes()["default"]
@@ -499,7 +499,7 @@ fn inherited_defaults_and_independent_custom_overrides_resolve_separately() {
     let internal = serde_json::to_value(&authored).unwrap();
     assert_eq!(
         internal["strategy"]["routing"]["native_protocol"]["schema"],
-        SYSTEM_ONE_C_V2
+        SYSTEM_ONE_C_V3
     );
     let editor = serde_json::to_value(authored.editor(None).unwrap()).unwrap();
     assert!(

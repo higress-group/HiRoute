@@ -13,7 +13,7 @@ with no current runtime or product entry.
 
 | Capability | Production owner | Representative evidence |
 | --- | --- | --- |
-| Publish or diagnose a versioned native applicability bundle | [Versioned fixed content](../../crates/domain/src/routing/system_one_c.rs), [diagnostic schema](../../crates/application-api/src/generated/native_protocol.rs), [request builder](../../crates/gateway/src/core_runtime/classification/c_request.rs) | [v1/v2 bundle and policy identity](../../crates/domain/src/routing/system_one_c_tests.rs), [v1 Operation recovery](../../crates/application/src/operations/tests/native_v1_recovery.rs), [both-version diagnostic and publication path](../../crates/daemon/tests/support/c_protocol_product.py), [version-separated cohorts](../../crates/observation/src/store/tests/plan_quality/routing_observations.rs) |
+| Publish or diagnose a versioned native applicability bundle | [Versioned fixed content](../../crates/domain/src/routing/system_one_c.rs), [diagnostic schema](../../crates/application-api/src/generated/native_protocol.rs), [request builder](../../crates/gateway/src/core_runtime/classification/c_request.rs) | [v1/v2/v3 bundle and policy identity](../../crates/domain/src/routing/system_one_c_tests.rs), [v1 Operation recovery](../../crates/application/src/operations/tests/native_v1_recovery.rs), [supported-version diagnostic and publication path](../../crates/daemon/tests/support/c_protocol_product.py), [version-separated cohorts](../../crates/observation/src/store/tests/plan_quality/routing_observations.rs) |
 | Inspect or repair a shared decision model's network route | [Request snapshot and classification](../../crates/gateway/src/core_runtime/classification.rs), [admitted test projection](../../crates/daemon/src/role_all/decision_network.rs), [compact inherited settings](../../apps/desktop/src/features/decision-services/InheritedSourceNetwork.tsx) | [Actual decision URL, port bypass and live policy changes](../../crates/daemon/tests/support/native_network_decision_product.py) distinguish network identity from Key state without republishing or probing on refresh. |
 | Discover CLI presets, securely connect, edit, test or delete a decision model/custom extension | [CLI journey](../../crates/cli/src/quickstart/decision.rs), [shared presets](../../assets/decision-services/providers.v1.json), [terminal credential input](../../crates/cli/src/protected_prompt.rs), [Connection UI](../../apps/desktop/src/features/decision-services/DecisionServicesPage.tsx), [shared product transaction](../../crates/product-session/src/session/decision_services.rs), [store](../../crates/local-storage/src/control/decision_services.rs) | [Desktop shell scenarios](../../apps/desktop/tests/v3/browser/product-shell-scenarios.mjs), [real CLI lifecycle](../../crates/daemon/tests/support/decision_services_product.py), [installed secure onboarding](../../crates/daemon/tests/support/quickstart_decision.py) |
 | Reuse an API connection or configure a decision model independently in Desktop | [Decision model form](../../apps/desktop/src/features/decision-services/DecisionModelForm.tsx), [mode/bundle/credential rules](../../apps/desktop/src/features/decision-services/form-state.ts), [V2 contract](../../apps/desktop/src/features/decision-services/contracts.ts), [management detour](../../apps/desktop/src/product/DesktopApp.tsx) | `desktop.decisions.shared-source`, `desktop.decisions.source-closure`, `desktop.decisions.test-freshness`, `desktop.decisions.nested-detour`, `desktop.decisions.source-read-states` and `desktop.decisions.selector-labels` in [Desktop shell scenarios](../../apps/desktop/tests/v3/browser/product-shell-scenarios.mjs), [form-state rules](../../apps/desktop/tests/decision-presentation.test.mjs), [captures](../../apps/desktop/tests/v3/visual/decision-model-captures.mjs) |
@@ -61,7 +61,7 @@ the custom-extension v1 shape has no old-format negotiation. New native publicat
 wire envelope. Earlier built-in frozen publications keep their original execution semantics.
 
 Editor input/readback has no native protocol or background selection. Effective
-native authoring records C v2 as the current internal protocol, with a fixed eight-turn
+native authoring records C v3 as the current internal protocol, with a fixed eight-turn
 background. Compiled execution freezes actual fixed/effective content and digest;
 supported C v1 publications and retained Operations resolve their own original bundle.
 Legacy omission remains frozen execution support only and is registered for
@@ -75,10 +75,13 @@ The editable native default adds shared [feedback guidance and its highest crite
 including explicit acceptance after correction. Frozen validation compares the
 sealed assessment rather than resolving the current default again; changing the
 default does not rewrite existing C v1/v2 publications or retained Operations.
-The separate [C v2 questions](../../crates/domain/src/routing/fixtures/system_one_c_v2.json)
-change only applicability, leaving the fixed C v1 bundle untouched. The [baseline publication fixture](../../crates/domain/src/routing/fixtures/baseline-c-default-publication.json)
+The current [C v3 questions](../../crates/domain/src/routing/fixtures/system_one_c_v3.json)
+structure applicability around original obligations, unmet outcomes, completed correction and
+current dependencies. Partial praise does not establish acceptance of the overall result;
+originally requested usability or clarity can remain unmet without a technical diagnosis.
+Only applicability wording changes. The frozen C v1 and C v2 bundles remain untouched. The [baseline publication fixture](../../crates/domain/src/routing/fixtures/baseline-c-default-publication.json)
 checks that sealed stock questions and retained Operations keep their original bytes.
-Explicit diagnostics accept either exact schema/bundle pair; observations and cohorts
+Explicit diagnostics accept each supported exact schema/bundle pair; observations and cohorts
 retain the executed version and content identity.
 
 ## Provider and routing policy

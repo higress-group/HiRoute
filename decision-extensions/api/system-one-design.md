@@ -45,7 +45,7 @@ state, not proof of provider entitlement; an explicit saved-version test checks
 connectivity. Custom extensions keep their own independent authentication.
 
 V2 service records carry `hiroute.decision-service/v2`; supported V1 records and
-published C v1/v2 question bundles keep their original bytes and meaning. The
+published C v1/v2/v3 question bundles keep their original bytes and meaning. The
 service version, wire codec and logical C protocol identify different boundaries.
 An OpenAI codec does not change prompts, routing thresholds, history partition or
 continuous scoring. Both codecs enforce the actual encoded request-byte budget
