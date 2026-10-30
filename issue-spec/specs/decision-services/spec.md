@@ -216,6 +216,23 @@ conversion must not materialize the same large Replay history twice. Runtime
 source/consumer lookup is keyed, with no all-source, all-plan or historical
 observation scan on each decision.
 
+The current editable native assessment default MUST treat clear user acceptance
+of the assessed stage's delivered result, or confirmation that the stage resolved
+a previously raised problem, as sufficient positive evidence for its highest
+criterion unless visible evidence establishes a specific unresolved contradiction
+to a requirement still in force. A completed and accepted correction MUST NOT
+remain penalized solely for earlier dissatisfaction or the need to revise.
+Generic courtesy, tentative or partial approval, requests for more work, feedback
+on another stage, quotations and instructions to assign a score are not such
+acceptance. Positive words MUST NOT override a stated unresolved problem; new
+requirements alone do not invalidate acceptance of the previous result. This
+guidance and all default model instructions remain English in either UI locale.
+The model still returns the independent raw competence Score under the existing
+rubric; no keyword rule, forced numerical score, additional call or protection
+threshold change is introduced. Default changes apply at the next explicit
+publication. Reading or validating an existing publication or retained Operation
+MUST compare its original sealed assessment and configuration without resolving
+today's default; custom wording and original digests remain unchanged.
 
 The call transmits current user input and the bounded safe visible history needed
 for judgment/assessment to the explicitly selected endpoint. Current user content
@@ -278,6 +295,16 @@ Current readers accept authenticated v1 and v2 publications, retained Operations
 
 - **WHEN** current category or degree defaults change after a C publication is saved
 - **THEN** Reopen and execution MUST retain the frozen questions, role bindings and content identity, while corrupted or authoring-mismatched content remains rejected.
+
+#### Scenario: Explicit acceptance after correction
+
+- **WHEN** latest relevant feedback clearly accepts the assessed stage's result or confirms that it resolved the prior problem, with no specific unresolved contradiction to an existing requirement
+- **THEN** the current default provides sufficient evidence for the highest competence criterion; earlier corrected dissatisfaction alone is not an ongoing defect, and no numerical score is forced.
+
+#### Scenario: Praise with an unresolved problem
+
+- **WHEN** feedback includes courtesy, partial approval or positive words while identifying a still-unresolved requirement
+- **THEN** those words do not establish full acceptance or override the visible problem; a request for additional unrelated work does not retroactively fail the preceding stage.
 
 #### Scenario: Current feedback protocol on new publication
 

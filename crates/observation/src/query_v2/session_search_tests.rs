@@ -536,6 +536,70 @@ fn released_block_cache_backfills_without_changing_bodies_offsets_or_occurrence_
     );
 }
 
+thread_local! {
+    static INDEX_CHECKPOINTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn yield_first_index_cycle(sql: &str) {
+    if sql == "SELECT value FROM observation_meta WHERE key='store_revision'" {
+        let first = INDEX_CHECKPOINTS.with(|count| {
+            let previous = count.get();
+            count.set(previous + 1);
+            previous == 0
+        });
+        if first {
+            // Inject one preemption after cycle timing starts, before a source
+            // enters building. This exhausts the existing 500 ms cycle budget;
+            // it is the fault trigger, not a readiness wait or a new deadline.
+            std::thread::sleep(std::time::Duration::from_millis(510));
+        }
+    }
+}
+
+#[test]
+fn index_fixture_drains_sources_after_a_cycle_yields_before_building() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    for n in 0..3 {
+        add(
+            &store,
+            &format!("session-{n}"),
+            &format!("request-{n}"),
+            100 + n,
+            &format!("needle {n}"),
+        );
+    }
+    INDEX_CHECKPOINTS.with(|count| count.set(0));
+    store.connection.lock().trace(Some(yield_first_index_cycle));
+    index(&store);
+    store.connection.lock().trace(None);
+    INDEX_CHECKPOINTS.with(|count| {
+        assert!(
+            count.get() >= 2,
+            "fixture stopped after the injected empty cycle"
+        );
+    });
+    let mut q = query("needle", 2);
+    let first = store
+        .search_observed_sessions(&reader(true), &q, 500)
+        .unwrap();
+    assert!(
+        !first.index_partial,
+        "fixture left sources unpublished after returning {} sessions",
+        first.hits.len()
+    );
+    assert_eq!(first.hits.len(), 2);
+    assert!(first.next_cursor.is_some());
+    q.cursor = first.next_cursor;
+    let last = store
+        .search_observed_sessions(&reader(true), &q, 500)
+        .unwrap();
+    assert!(!last.index_partial);
+    assert_eq!(last.hits.len(), 1);
+    assert_eq!(last.hits[0].session_id, "session-0");
+    assert!(last.next_cursor.is_none());
+}
+
 #[test]
 fn live_search_deletion_removes_lookup_and_body_without_invalidating_other_sessions() {
     let root = tempfile::tempdir().unwrap();
@@ -545,10 +609,14 @@ fn live_search_deletion_removes_lookup_and_body_without_invalidating_other_sessi
     add(&store, "old", "old", 100, "needle old");
     index(&store);
     let mut q = query("needle", 1);
-    q.cursor = store
+    let first = store
         .search_observed_sessions(&reader(true), &q, 500)
-        .unwrap()
-        .next_cursor;
+        .unwrap();
+    assert!(!first.index_partial);
+    assert_eq!(first.hits.len(), 1);
+    assert_eq!(first.hits[0].session_id, "new");
+    assert!(first.next_cursor.is_some());
+    q.cursor = first.next_cursor;
     let principal = ObservationPrincipalV1::local_user(WorkspaceId::default());
     let spec = SessionDeletionSpecV1 {
         workspace_id: WorkspaceId::default(),
@@ -569,6 +637,8 @@ fn live_search_deletion_removes_lookup_and_body_without_invalidating_other_sessi
     let next = store
         .search_observed_sessions(&reader(true), &q, 500)
         .unwrap();
+    assert!(!next.index_partial);
+    assert_eq!(next.hits.len(), 1);
     assert_eq!(next.hits[0].session_id, "old");
     assert!(next.next_cursor.is_none());
     assert_eq!(store.connection.lock().query_row("SELECT count(*) FROM observation_text_lookup_v1 WHERE observation_text_lookup_v1 MATCH ?1",[crate::text_index::lookup::expression("deleted")],|r|r.get::<_,u64>(0)).unwrap(),0);

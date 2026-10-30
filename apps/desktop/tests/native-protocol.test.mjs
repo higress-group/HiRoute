@@ -11,7 +11,11 @@ test('native default adds feedback guidance without mutating old input or thresh
   original.competence.floor_millis = 317;
   const before = structuredClone(original), current = resolveAssessment(original, true);
   assert.equal(assessmentStandard(current), 'default');
-  assert.deepEqual(current.competence.criteria, stock.q1.criteria);
+  assert.deepEqual(current.competence.criteria.slice(0, 2), stock.q1.criteria.slice(0, 2));
+  assert.equal(current.competence.criteria[2], guidance.highest_criterion);
+  assert.match(current.competence.criteria[2], /Clear user acceptance/);
+  assert.match(current.competence.criteria[2], /specific unresolved contradiction/);
+  assert.match(current.competence.instructions, /Generic courtesy, tentative or partial approval/);
   assert.ok(current.competence.instructions.endsWith(guidance.feedback));
   const wrapper = stock.q1.instructions.split(' Distinguish those meanings')[0];
   assert.equal(current.competence.instructions, `${stock.q1.instructions.slice(wrapper.length + 1)} ${guidance.feedback}`);
@@ -36,6 +40,6 @@ test('reset restores the native default; custom extensions retain their existing
   const custom = structuredClone(defaultJudgment); custom.competence.instructions = 'custom'; custom.competence.standard = 'custom';
   const current = stockAssessment(custom, true);
   assert.equal(current.competence.standard, 'default');
-  assert.deepEqual(current.competence.criteria, stock.q1.criteria);
+  assert.deepEqual(current.competence.criteria, [...stock.q1.criteria.slice(0, 2), guidance.highest_criterion]);
   assert.deepEqual(stockAssessment(custom).competence.criteria, defaultJudgment.competence.criteria);
 });
