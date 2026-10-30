@@ -198,6 +198,13 @@ a complete old backup with a binary verified to read that source. Supported data
 configuration, and public CLI/Gateway semantics are ongoing obligations, not waived
 by internal refactoring or development-stage terminology.
 
+Manual recovery instructions MUST also preserve the adjacent newer upgrade
+coordinator directory outside its active discovery location by a same-filesystem
+rename before starting the old binary. Restored old databases MUST NOT be paired with newer coordinator
+metadata. Moving that directory may also move the selected backup and guide;
+recovery continues from the guide's new containing directory without deleting or
+rewriting preserved batches. This requires no legacy reader in the runtime.
+
 ### Requirement: Local retention does not imply automatic external upload
 
 Conversation bodies, per-request detail, and route-stage quality samples default
