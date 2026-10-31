@@ -7,14 +7,15 @@
 </p>
 
 <p align="center">
-  <strong>让 Codex 和 Claude Code 的订阅更耐用。</strong><br>
-  在熟悉的 Agent 中组合订阅、API 和本地模型。<br>
-  常规工作交给经济模型，困难任务留给主力；经济模型没做好，主力随时接手。
+  <strong>只在需要的地方，为最强的模型付费。</strong><br>
+  常规工作交给经济模型，复杂任务交给主力；经济模型没做好，主力随时接手。<br>
+  继续使用 Codex、Claude Code 等 Agent，组合订阅、API 和本地模型。
 </p>
 
 <p align="center">
   <a href="https://hiroute.ai/download/">下载</a> ·
   <a href="#快速开始">快速开始</a> ·
+  <a href="#相同验收标准成本降低约-90">成本效果</a> ·
   <a href="#选模效果用实验检验">实验结果</a> ·
   <a href="https://hiroute.ai/docs/">使用文档</a> ·
   <a href="CONTRIBUTING.md">参与贡献</a>
@@ -26,6 +27,25 @@
   <a href="https://hiroute.ai/download/"><img alt="支持 macOS 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
+## 相同验收标准，成本降低约 90%
+
+长任务的大部分工作是常规的：读代码、整理资料、按已知方法修改。只有少数决策需要最强的模型。
+HiRoute 为每个阶段选择合适的模型，常规部分不再按主力的价格付费。
+
+在一次技术调研与架构评审任务中，Qwen 3.8 Flash 完成六份调研交付，GPT-6 Astra 撰写关键决策备忘录。
+三组对照中有两组双方都达到同一整单验收标准；在这两组里，混合模式比全部使用 Astra **省下 91%–92%**，
+关键决策均通过评审。只用 Qwen 时，三次关键决策只有一次没有重大错误。
+
+[![相同验收标准下的整单成本：HiRoute 混合约为全 Astra 的十二分之一](news/assets/research-cost-zh.svg)](news/2026-10-04-astra-qwen.zh-CN.md)
+
+切换模型不会吃掉省下的钱。HiRoute 在同一轮的工具调用中保持同一个模型，切换只损失一次缓存。
+即使 Qwen 一次缓存都没命中，节省比例仍在 90% 以上。
+
+<sub>费用为 API 等价估算，包含全部尝试和路由判断。[实验记录](experiments/cases/research-cost-quality/README.md)
+保留了第三组结果和验收标准。</sub>
+
+[完整案例](news/2026-10-04-astra-qwen.zh-CN.md) · [切换模型会损失缓存，智能路由还省钱吗？](news/2026-10-14-routing-cache-cost.zh-CN.md)
+
 ## 熟悉的 Agent，更多模型选择
 
 继续使用 **Codex、Claude Code、Qoder、Pi、OpenCode、Hermes 或 DeepSeek Harness**。
@@ -34,8 +54,8 @@ HiRoute 在本地运行，将受支持的订阅、API 接入和本地模型集�
 
 | 你希望做到 | HiRoute 提供什么 |
 | --- | --- |
+| **少花在最强的模型上** | 常规工作交给经济模型，主力只负责复杂阶段和低分保护。 |
 | **保留熟悉的工作流** | 继续在原来的 Agent 中工作，让不同模型在同一会话中分工。 |
-| **让主力额度更耐用** | 把合适的工作交给经济模型，由主力提供低分保护。 |
 | **逐步试用新模型** | 自选初始信任程度，熟悉的主力兜底，再根据自己任务的证据调整。 |
 | **看懂每次选择** | 查看实际模型、切换依据、阶段表现、用量和费用估算。 |
 

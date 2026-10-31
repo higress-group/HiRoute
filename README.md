@@ -7,15 +7,16 @@
 </p>
 
 <p align="center">
-  <strong>Make Codex and Claude Code subscriptions go further.</strong><br>
-  Combine subscriptions, APIs and local models in the Agent you already use.<br>
-  Give routine work to economical models, keep your primary model for the hard parts,<br>
-  and let it step in when an economical model falls short.
+  <strong>Pay for your strongest model only where the work needs it.</strong><br>
+  Economical models handle routine turns; your primary model takes the complex work<br>
+  and steps in when an economical model falls short.<br>
+  Keep using Codex, Claude Code and other Agents with your subscriptions, APIs and local models.
 </p>
 
 <p align="center">
   <a href="https://hiroute.ai/en/download/">Download</a> ·
   <a href="#get-started">Quickstart</a> ·
+  <a href="#about-90-lower-cost-at-the-same-acceptance-standard">Cost results</a> ·
   <a href="#how-well-does-the-routing-policy-work">Experiments</a> ·
   <a href="https://hiroute.ai/en/docs/">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -27,6 +28,30 @@
   <a href="https://hiroute.ai/en/download/"><img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
+## About 90% lower cost at the same acceptance standard
+
+Most of a long task is routine: reading code, collecting facts, applying known fixes. A few
+decisions need your strongest model. HiRoute sends each stage to the model it needs, so you
+stop paying primary-model prices for the routine parts.
+
+In a technical-research and architecture-review task, Qwen 3.8 Flash produced six research
+deliverables and GPT-6 Astra wrote the critical decision memo. In the two of three paired runs
+where both setups met the same delivery standard, the mixed setup cost **91–92% less** than
+running everything on Astra, and both passed the critical-decision review. Qwen alone avoided
+major errors in only one of three critical decisions.
+
+[![Cost of the same task at the same acceptance standard: HiRoute mixed costs about one twelfth of all Astra](news/assets/research-cost-en.svg)](news/2026-10-04-astra-qwen.en.md)
+
+Switching models does not eat the savings. HiRoute keeps one model through each turn's tool
+calls, so a switch loses the cache only once. Even with no cache hits on Qwen, the saving
+stayed above 90%.
+
+<sub>Costs are API-equivalent estimates and include every attempt and routing decision. The
+[experiment record](experiments/cases/research-cost-quality/README.md) keeps the third pair's results and
+the acceptance criteria.</sub>
+
+[Full case study](news/2026-10-04-astra-qwen.en.md) · [Switching models loses cache, not the savings](news/2026-10-14-routing-cache-cost.en.md)
+
 ## Familiar Agents, more model choices
 
 Keep working in **Codex, Claude Code, Qoder, Pi, OpenCode, Hermes or DeepSeek Harness**.
@@ -36,8 +61,8 @@ or use a smaller and a stronger model from the same supported source.
 
 | What you want | What HiRoute provides |
 | --- | --- |
+| **Spend less on your strongest model** | Route routine work to economical models and keep the primary model for complex stages and low-score protection. |
 | **Keep your workflow** | Continue in your familiar Agent while models share the work within a session. |
-| **Make strong-model capacity last** | Route suitable work to economical models, with low-score protection from your primary model. |
 | **Try a new model gradually** | Start at a trust level you choose, keep a familiar primary model as backup and adjust with evidence from your own tasks. |
 | **Understand each decision** | Inspect the actual models, routing reasons, stage performance, usage and cost estimates. |
 
