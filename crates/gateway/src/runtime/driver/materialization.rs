@@ -379,7 +379,7 @@ pub(super) async fn materialize_attempt(
                 .ok_or_else(|| Arc::from(MATERIALIZATION_CREDENTIAL_EXHAUSTED))?,
         )
     };
-    let spend_estimate = if ir.native_only.is_empty() {
+    let spend_estimate = if !ir.native_only {
         crate::server::core_runtime::observation::active_request()
             .and_then(|observation| {
                 observation.spending_price(
