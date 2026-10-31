@@ -789,6 +789,8 @@ pub fn run() {
             get_model_metadata,
             compute_defaults,
             preview_compute_save_v3,
+            compute_key_budgets,
+            preview_compute_key_budgets,
             native_source_network,
             preview_native_network_route,
             preview_native_source_network,

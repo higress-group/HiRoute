@@ -33,6 +33,8 @@ pub(crate) fn is_compute_management_operation(operation: &str) -> bool {
                 | GET_COMPUTE_OPERATION_V3
                 | hiroute_application_api::GET_COMPUTE_KEY_MASKS_OPERATION_V1
                 | GET_COMPUTE_CANDIDATE_OPERATION_V2
+                | "GetComputeKeyBudgets"
+                | "PreviewComputeKeyBudgets"
                 | "GetComputeDefaults"
                 | "PreviewComputeSaveV3"
                 | PREVIEW_COMPUTE_SAVE_OPERATION_V2
@@ -245,6 +247,28 @@ pub(crate) fn dispatch_compute_management(
                 management.get_compute_candidate(&query.candidate),
                 request_id,
             )
+        }
+        "GetComputeKeyBudgets" => {
+            if request.protected_grant.is_some() {
+                return failed(ErrorCode::CapabilityDenied, request_id);
+            }
+            let Ok(query) = serde_json::from_value::<
+                hiroute_application_api::ComputeKeyBudgetsQueryV1,
+            >(request.payload) else {
+                return failed(ErrorCode::InvalidArguments, request_id);
+            };
+            result(management.compute_key_budgets(query), request_id)
+        }
+        "PreviewComputeKeyBudgets" => {
+            if request.protected_grant.is_some() {
+                return failed(ErrorCode::CapabilityDenied, request_id);
+            }
+            let Ok(query) = serde_json::from_value::<
+                hiroute_application_api::ComputeKeyBudgetSaveRequestV1,
+            >(request.payload) else {
+                return failed(ErrorCode::InvalidArguments, request_id);
+            };
+            result(management.preview_compute_key_budgets(query), request_id)
         }
         "GetComputeDefaults" => {
             if request.protected_grant.is_some() {

@@ -37,6 +37,7 @@ mod discovered;
 mod error;
 mod feed_admission;
 mod hermes_points;
+mod key_budgets;
 mod key_inputs;
 mod key_masks;
 mod network_checks;
@@ -516,6 +517,19 @@ impl ComputeManagementControlPort for LocalControlAdapter {
     ) -> Result<hiroute_application_api::ComputeDefaultsResultV1, ComputeManagementControlError>
     {
         LocalControlAdapter::compute_defaults(self, query)
+    }
+    fn compute_key_budgets(
+        &self,
+        query: hiroute_application_api::ComputeKeyBudgetsQueryV1,
+    ) -> Result<hiroute_application_api::ComputeKeyBudgetsResultV1, ComputeManagementControlError>
+    {
+        self.read_key_budgets(query)
+    }
+    fn preview_compute_key_budgets(
+        &self,
+        request: hiroute_application_api::ComputeKeyBudgetSaveRequestV1,
+    ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError> {
+        self.preview_key_budgets(request)
     }
     fn preview_compute_save_v3(
         &self,

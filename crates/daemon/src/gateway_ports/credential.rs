@@ -98,7 +98,9 @@ where
         )
         .map_err(|_| PortError::Rejected)?;
         scope.ensure_active().map_err(|_| PortError::Rejected)?;
-        Ok(Some(result))
+        Ok(Some(
+            result.with_spend_authority(self.native.key_spend_authority()),
+        ))
     }
 
     fn current_credential_refs(
@@ -164,6 +166,7 @@ where
                     authorization_header(request.authentication)?,
                 )
                 .map_err(|_| PortError::Rejected)?
+                .with_spend_authority(self.native.key_spend_authority())
             }
             ConnectorRuntimeKind::CpaBridge => {
                 let GatewayOperationalTargetV1::ManagedCpaLoopback {

@@ -23,6 +23,9 @@ pub(super) fn validate(
         .map_err(|_| LocalStorageError::InvalidData)?;
     let connection = control.connection.borrow();
     let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version >= 37 {
+        super::super::key_budgets_v37::validate(&connection)?;
+    }
     if version >= 36 {
         super::super::subscription_api_v36::validate_links(&connection)?;
     }

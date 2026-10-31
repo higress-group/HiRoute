@@ -699,3 +699,33 @@ pub async fn preview_compute_save_v3(
     .await?;
     result.try_into().map_err(DesktopFailure::from)
 }
+
+pub async fn compute_key_budgets(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: ComputeKeyBudgetsQueryV1,
+) -> Result<ComputeKeyBudgetsResultV1, DesktopFailure> {
+    super::model_feed::query(window, state, "GetComputeKeyBudgets", &input).await
+}
+pub async fn preview_compute_key_budgets(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    change: WebComputeManagementChangeV2,
+    default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+    network_edit: Option<hiroute_domain::NativeNetworkEditV1>,
+    key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
+) -> Result<WebComputeSavePreviewV2, DesktopFailure> {
+    let input = ComputeKeyBudgetSaveRequestV1 {
+        change: ComputeManagementChangeV3 {
+            schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+            change: change.try_into().map_err(DesktopFailure::from)?,
+            default_preferences,
+            api_link: None,
+        },
+        network_edit,
+        key_budget_edits,
+    };
+    let result: ComputeSavePreviewV2 =
+        super::model_feed::query(window, state, "PreviewComputeKeyBudgets", &input).await?;
+    result.try_into().map_err(DesktopFailure::from)
+}

@@ -393,6 +393,33 @@ pub(super) fn finalize_attempt_facts(
     if let Some(usage) = usage.filter(|usage| !usage.is_empty()) {
         facts.usage = Some(model_usage_fact(usage));
     }
+    if let Some(spending) = &state.spending {
+        use hiroute_domain::{KeySpendSettlementV1 as Settlement, KeySpendUsageV1};
+        let settlement = if completion.commits.upstream_request
+            == hiroute_gateway_core::runtime::attempt::CommitFence::Clear
+        {
+            Settlement::Unsent
+        } else if completion.stream
+            == hiroute_gateway_core::runtime::driver::AttemptStreamOutcome::CompletedEos
+        {
+            facts
+                .usage
+                .as_ref()
+                .map(|usage| Settlement::Usage {
+                    usage: KeySpendUsageV1 {
+                        input_tokens: usage.input_tokens,
+                        output_tokens: usage.output_tokens,
+                        cache_read_tokens: usage.cache_read_tokens,
+                        cache_write_tokens: usage.cache_write_tokens,
+                        reasoning_tokens: usage.reasoning_tokens,
+                    },
+                })
+                .unwrap_or(Settlement::Unknown)
+        } else {
+            Settlement::Unknown
+        };
+        spending.settle(settlement);
+    }
     facts.ended_at = Some(completion.ended_at);
     facts
 }

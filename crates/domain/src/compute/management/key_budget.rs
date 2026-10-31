@@ -257,6 +257,7 @@ impl ComputeManagementMutationV6 {
         ) {
             return Err(ComputeManagementErrorV2::InvalidProvenance);
         }
+        self.validate_edits(spec, source)?;
         for key in self.budgets.bindings_after.keys() {
             if !source
                 .credentials
@@ -288,6 +289,141 @@ impl ComputeManagementMutationV6 {
                     .is_none_or(|d| *remaining > d.policy.amount_micros)
             {
                 return Err(ComputeManagementErrorV2::InvalidMutation);
+            }
+        }
+        Ok(())
+    }
+    fn validate_edits(
+        &self,
+        spec: &ChangeSpecV1,
+        source: &ComputeManagementSourceV2,
+    ) -> Result<(), ComputeManagementErrorV2> {
+        let bad = ComputeManagementErrorV2::InvalidMutation;
+        let edits: Vec<KeyBudgetEditV1> = serde_json::from_value(
+            spec.desired_state
+                .get("key_budget_edits")
+                .cloned()
+                .ok_or(bad)?,
+        )
+        .map_err(|_| bad)?;
+        if edits.is_empty() || edits.len() > 256 {
+            return Err(bad);
+        }
+        let before: BTreeMap<_, _> = self
+            .budgets
+            .definitions_before
+            .iter()
+            .map(|v| (v.budget_id.clone(), v))
+            .collect();
+        let after: BTreeMap<_, _> = self
+            .budgets
+            .definitions_after
+            .iter()
+            .map(|v| (v.budget_id.clone(), v))
+            .collect();
+        if before.len() != self.budgets.definitions_before.len()
+            || after.len() != self.budgets.definitions_after.len()
+        {
+            return Err(bad);
+        }
+        if self.budgets.bindings_before.keys().any(|key| {
+            self.source_mutation
+                .expected()
+                .is_none_or(|s| !s.credentials.iter().any(|v| &v.key_id == key))
+        }) {
+            return Err(bad);
+        }
+        let mut bindings = self.budgets.bindings_before.clone();
+        bindings.retain(|key, _| source.credentials.iter().any(|v| &v.key_id == key));
+        let mut keys = std::collections::BTreeSet::new();
+        let mut mentioned = std::collections::BTreeSet::new();
+        let mut configured = std::collections::BTreeSet::new();
+        let mut initial = BTreeMap::new();
+        for edit in &edits {
+            let key = edit.key.resolve(&source.source_id)?;
+            if !keys.insert(key.clone()) || !source.credentials.iter().any(|v| v.key_id == key) {
+                return Err(bad);
+            }
+            match &edit.assignment {
+                KeyBudgetAssignmentV1::Unlimited => {
+                    bindings.remove(&key);
+                }
+                KeyBudgetAssignmentV1::Share {
+                    budget_id,
+                    expected_revision,
+                } => {
+                    if before
+                        .get(budget_id)
+                        .is_none_or(|v| v.revision != *expected_revision)
+                        || !after.contains_key(budget_id)
+                    {
+                        return Err(bad);
+                    }
+                    mentioned.insert(budget_id.clone());
+                    bindings.insert(key, budget_id.clone());
+                }
+                KeyBudgetAssignmentV1::Configure {
+                    budget_id,
+                    expected_revision,
+                    display_name,
+                    policy,
+                    initial_remaining_micros,
+                } => {
+                    let id = if let Some(id) = budget_id {
+                        id.clone()
+                    } else {
+                        let digest = CanonicalDigest::of(&(
+                            "hiroute.key-budget/v1",
+                            &source.source_id,
+                            &key,
+                            &spec.desired_state["change"],
+                        ))
+                        .map_err(|_| bad)?;
+                        format!("budget/{}", &digest.as_str()[7..39])
+                    };
+                    if !configured.insert(id.clone()) {
+                        return Err(bad);
+                    }
+                    let value = after.get(&id).ok_or(bad)?;
+                    if value.policy != *policy
+                        || value.display_name != *display_name
+                        || value.revision != expected_revision.checked_add(1).ok_or(bad)?
+                    {
+                        return Err(bad);
+                    }
+                    if let Some(previous) = before.get(&id) {
+                        if budget_id.is_none()
+                            || previous.revision != *expected_revision
+                            || previous.policy.currency != policy.currency
+                            || initial_remaining_micros.is_some()
+                            || self.budgets.bindings_before.get(&key) != Some(&id)
+                        {
+                            return Err(bad);
+                        }
+                    } else {
+                        if budget_id.is_some() || *expected_revision != 0 {
+                            return Err(bad);
+                        }
+                        initial.insert(
+                            id.clone(),
+                            initial_remaining_micros.unwrap_or(policy.amount_micros),
+                        );
+                    }
+                    mentioned.insert(id.clone());
+                    bindings.insert(key, id);
+                }
+            }
+        }
+        if bindings != self.budgets.bindings_after
+            || initial != self.budgets.initial_remaining
+            || after.keys().any(|id| !mentioned.contains(id))
+            || before.keys().any(|id| !mentioned.contains(id))
+        {
+            return Err(bad);
+        }
+        for (id, old) in before {
+            if !configured.contains(&id) && after.get(&id) != Some(&old) {
+                return Err(bad);
             }
         }
         Ok(())

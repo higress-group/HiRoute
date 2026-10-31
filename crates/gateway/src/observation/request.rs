@@ -1131,3 +1131,23 @@ fn fallback_reason(start_reason: &str) -> FallbackReason {
         _ => FallbackReason::OtherStableReason,
     }
 }
+
+impl RequestObservation {
+    /// Pure lookup in the immutable request price snapshot, also available when
+    /// telemetry is disabled. Admission never waits for an observation writer.
+    pub(crate) fn spending_price(
+        &self,
+        binding: &str,
+        model: &str,
+        profile: &str,
+    ) -> Option<hiroute_domain::ExecutionPricingEvidenceV1> {
+        let at = (super::unix_nanos() / 1_000_000) as i64;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.inner
+                .prices
+                .freeze_attempt(binding, model, profile, at)
+        }))
+        .ok()
+        .filter(|v| v.validate().is_ok())
+    }
+}

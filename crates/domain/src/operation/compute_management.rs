@@ -5,6 +5,44 @@ use std::collections::BTreeMap;
 use super::*;
 
 impl TransactionPlanV1 {
+    pub fn with_key_budgets(
+        mut self,
+        edits: Vec<crate::KeyBudgetEditV1>,
+        budgets: crate::KeyBudgetMutationV1,
+    ) -> Result<Self, OperationValidationError> {
+        let invalid = OperationValidationError::UnregisteredEffectPlan;
+        validate_management_plan(
+            &self.spec,
+            &self.control,
+            &self.secrets,
+            &self.runtime,
+            &self.external,
+        )?;
+        let source_mutation: crate::ComputeManagementMutation = serde_json::from_value(
+            self.control
+                .get("compute_management_mutation")
+                .cloned()
+                .ok_or(invalid)?,
+        )
+        .map_err(|_| invalid)?;
+        self.spec.desired_state = json!({"schema":crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6,"change":self.spec.desired_state,"key_budget_edits":edits});
+        let mutation = crate::ComputeManagementMutationV6 {
+            schema: crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V6.into(),
+            source_mutation: Box::new(source_mutation),
+            budgets,
+            change_spec_digest: CanonicalDigest::of(&self.spec).map_err(|_| invalid)?,
+        };
+        mutation.validate(&self.spec).map_err(|_| invalid)?;
+        self.control = json!({"compute_management_mutation":mutation});
+        validate_management_plan(
+            &self.spec,
+            &self.control,
+            &self.secrets,
+            &self.runtime,
+            &self.external,
+        )?;
+        Ok(self)
+    }
     pub fn with_source_network(
         mut self,
         network: crate::NativeNetworkMutationV1,

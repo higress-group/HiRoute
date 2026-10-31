@@ -196,6 +196,14 @@ where
         &self,
         value: serde_json::Value,
     ) -> Result<ComputeManagementPreparedPreviewV2, ComputeManagementPlanningErrorV2> {
+        if value.get("schema").and_then(serde_json::Value::as_str)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6)
+        {
+            return self.preview_v6(
+                serde_json::from_value(value)
+                    .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?,
+            );
+        }
         let legacy = hiroute_domain::is_legacy_subscription_api_change(&value);
         if legacy
             || value.get("schema").and_then(serde_json::Value::as_str)

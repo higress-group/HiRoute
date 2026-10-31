@@ -175,6 +175,7 @@ impl ProductionReplaySeedEnvelope {
 }
 
 pub struct ProductionAttemptState {
+    spending: Option<crate::ports::KeySpendGuard>,
     managed_cpa: bool,
     request_reasoning_projection: Option<RequestReasoningProjection>,
     request_projection_loss: adapters::RequestProjectionLoss,

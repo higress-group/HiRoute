@@ -1057,6 +1057,24 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Preview a combined source and network policy save."
     ),
     command!(
+        "compute.budgets.get",
+        ["compute", "budgets", "get"],
+        "GetComputeKeyBudgets",
+        ["CLI-079", "APP-079"],
+        Released,
+        Query,
+        "Read Key allowance bindings, balances and periodic renewal."
+    ),
+    command!(
+        "compute.budgets.preview",
+        ["compute", "budgets", "preview"],
+        "PreviewComputeKeyBudgets",
+        ["CLI-080", "APP-080"],
+        Released,
+        Preview,
+        "Preview an atomic source, Key and spending allowance save."
+    ),
+    command!(
         "compute.defaults.get",
         ["compute", "defaults", "get"],
         "GetComputeDefaults",

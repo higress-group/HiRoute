@@ -26,9 +26,47 @@ pub struct ComputeManagementChangeV5 {
     pub api_link: hiroute_domain::ComputeSubscriptionApiLinkIntentV1,
 }
 
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeKeyBudgetSaveRequestV1 {
+    pub change: ComputeManagementChangeV3,
+    pub network_edit: Option<NativeNetworkEditV1>,
+    pub key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeManagementChangeV6 {
+    pub schema: String,
+    pub change: serde_json::Value,
+    pub key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeKeyBudgetsQueryV1 {
+    pub source_id: Option<String>,
+    pub cursor: Option<String>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ComputeKeyBudgetsResultV1 {
+    pub source_id: Option<String>,
+    pub bindings: std::collections::BTreeMap<String, String>,
+    pub budgets: Vec<hiroute_domain::KeyBudgetViewV1>,
+    pub next_cursor: Option<String>,
+}
+
 pub fn saved_compute_change(
     value: serde_json::Value,
 ) -> Result<ComputeManagementChangeV2, serde_json::Error> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6)
+    {
+        let change: ComputeManagementChangeV6 = serde_json::from_value(value)?;
+        return saved_compute_change(change.change);
+    }
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
         || value.get("schema").and_then(serde_json::Value::as_str)

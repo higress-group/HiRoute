@@ -63,19 +63,34 @@
   },
   {
     "name": "save_decision_service_v2",
-    "args": [{ "name": "input", "type": "DecisionServiceSaveInputV2" }],
+    "args": [
+      {
+        "name": "input",
+        "type": "DecisionServiceSaveInputV2"
+      }
+    ],
     "result": "Result<ApplyResultV1, DesktopFailure>",
     "host_only": false
   },
   {
     "name": "test_decision_service_v2",
-    "args": [{ "name": "input", "type": "hiroute_application_api::DecisionServiceTestRequestV2" }],
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::DecisionServiceTestRequestV2"
+      }
+    ],
     "result": "Result<hiroute_application_api::DecisionServiceTestResultV2, DesktopFailure>",
     "host_only": false
   },
   {
     "name": "test_decision_service_v3",
-    "args": [{ "name": "input", "type": "hiroute_application_api::DecisionServiceTestRequestV2" }],
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::DecisionServiceTestRequestV2"
+      }
+    ],
     "result": "Result<hiroute_application_api::DecisionServiceTestResultV3, DesktopFailure>",
     "host_only": false
   },
@@ -422,9 +437,18 @@
   {
     "name": "compute_subscriptions",
     "args": [
-      { "name": "source_id", "type": "Option<String>" },
-      { "name": "expected_source_revision", "type": "Option<u64>" },
-      { "name": "native_only", "type": "Option<bool>" }
+      {
+        "name": "source_id",
+        "type": "Option<String>"
+      },
+      {
+        "name": "expected_source_revision",
+        "type": "Option<u64>"
+      },
+      {
+        "name": "native_only",
+        "type": "Option<bool>"
+      }
     ],
     "result": "Result<WebComputeSubscriptionCandidatesV2, DesktopFailure>",
     "host_only": false
@@ -1105,6 +1129,40 @@
       }
     ],
     "result": "Result<ModelConnectionCheckViewV2, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "compute_key_budgets",
+    "args": [
+      {
+        "name": "input",
+        "type": "hiroute_application_api::ComputeKeyBudgetsQueryV1"
+      }
+    ],
+    "result": "Result<hiroute_application_api::ComputeKeyBudgetsResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_compute_key_budgets",
+    "args": [
+      {
+        "name": "change",
+        "type": "WebComputeManagementChangeV2"
+      },
+      {
+        "name": "default_preferences",
+        "type": "hiroute_domain::SourceDefaultPreferencesV1"
+      },
+      {
+        "name": "network_edit",
+        "type": "Option<hiroute_domain::NativeNetworkEditV1>"
+      },
+      {
+        "name": "key_budget_edits",
+        "type": "Vec<hiroute_domain::KeyBudgetEditV1>"
+      }
+    ],
+    "result": "Result<WebComputeSavePreviewV2, DesktopFailure>",
     "host_only": false
   }
 ]

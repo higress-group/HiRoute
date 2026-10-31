@@ -4,7 +4,7 @@
 //! owned sources. It contains only opaque credential references and keyed fingerprints. Secret
 //! bytes, input slots, filesystem locators, and OAuth capabilities have no representation here.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -20,6 +20,8 @@ mod defaults;
 pub use api_link::*;
 mod key_budget;
 pub use key_budget::*;
+mod key_spend;
+pub use key_spend::*;
 #[cfg(test)]
 mod key_budget_tests;
 pub use defaults::*;
@@ -758,6 +760,18 @@ pub struct ComputeManagementStoredSnapshotV2 {
 /// Narrow safe-record persistence port. All writes still enter through the existing Operation
 /// control effect; this trait intentionally offers reads only.
 pub trait ComputeManagementRepositoryPort {
+    fn key_budget_bindings(&self, _source_id: &str) -> PortResult<BTreeMap<String, String>> {
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "compute.key_budget.repository",
+        ))
+    }
+    fn key_budget_definition(&self, _budget_id: &str) -> PortResult<Option<KeyBudgetDefinitionV1>> {
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "compute.key_budget.repository",
+        ))
+    }
     fn compute_subscription_api_links(
         &self,
         _workspace: &WorkspaceId,

@@ -998,6 +998,41 @@ pub async fn dispatch(
             )?;
             Ok(Value::Null)
         }
+        "compute_key_budgets" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: hiroute_application_api::ComputeKeyBudgetsQueryV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(compute_key_budgets(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_compute_key_budgets" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                change: WebComputeManagementChangeV2,
+                default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+                network_edit: Option<hiroute_domain::NativeNetworkEditV1>,
+                key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(
+                preview_compute_key_budgets(
+                    window,
+                    state,
+                    input.change,
+                    input.default_preferences,
+                    input.network_edit,
+                    input.key_budget_edits,
+                )
+                .await?,
+            )
+            .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "compute_defaults" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]

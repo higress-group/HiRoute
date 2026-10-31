@@ -16,6 +16,7 @@ mod api_link;
 mod compensation;
 mod decision_runtime;
 mod defaults;
+mod key_budgets;
 mod network;
 mod references;
 mod runtime_pool;
@@ -44,6 +45,7 @@ pub(in crate::control) fn stage_control(
         .validate_against(current.as_ref())
         .map_err(|_| conflict("compute.management.stage.cas"))?;
     defaults::validate_before(transaction, workspace, &mutation)?;
+    key_budgets::validate_before(transaction, workspace, &mutation)?;
     api_link::validate_before(transaction, workspace, &mutation)?;
     references::validate_removal(transaction, workspace, &mutation)?;
     let identity = mutation
@@ -93,6 +95,7 @@ pub(in crate::control) fn stage_control(
     defaults::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
     api_link::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
     network::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
+    key_budgets::stage(transaction, workspace, operation_id.as_str(), &mutation)?;
     Ok(())
 }
 
@@ -131,6 +134,7 @@ pub(in crate::control) fn activate(
         .validate_against(current.as_ref())
         .map_err(|_| conflict("compute.management.activate.cas"))?;
     defaults::validate_before(transaction, workspace, &mutation)?;
+    key_budgets::validate_before(transaction, workspace, &mutation)?;
     api_link::validate_before(transaction, workspace, &mutation)?;
     references::validate_removal(transaction, workspace, &mutation)?;
     let preferences = defaults::after(transaction, workspace, &mutation)?;
@@ -145,6 +149,13 @@ pub(in crate::control) fn activate(
             operation_id,
         )?;
         defaults::write(transaction, workspace, mutation.source_id(), &preferences)?;
+        key_budgets::apply(
+            transaction,
+            workspace,
+            mutation.source_id(),
+            operation_id,
+            false,
+        )?;
         api_link::apply_effect(transaction, workspace, &mutation, operation_id, false)
     } else {
         let deleted = transaction.execute("DELETE FROM compute_management_sources WHERE workspace_id=?1 AND source_id=?2 AND revision=?3", params![workspace.as_str(), mutation.source_id(), mutation.expected_revision()])
@@ -152,6 +163,13 @@ pub(in crate::control) fn activate(
         if deleted != 1 {
             return Err(conflict("compute.management.delete.cas"));
         }
+        key_budgets::apply(
+            transaction,
+            workspace,
+            mutation.source_id(),
+            operation_id,
+            false,
+        )?;
         api_link::apply_effect(transaction, workspace, &mutation, operation_id, false)
     }
 }
@@ -186,6 +204,14 @@ pub(in crate::control) fn current_matches(
     if let Some(after) = defaults::effect(connection, operation_id.as_str(), false)?
         && defaults::read(connection, workspace, mutation.source_id())? != after
     {
+        return Ok(false);
+    }
+    if !key_budgets::current_matches(
+        connection,
+        workspace,
+        mutation.source_id(),
+        operation_id.as_str(),
+    )? {
         return Ok(false);
     }
     if !api_link::current_matches(connection, workspace, &mutation, operation_id.as_str())? {
@@ -253,7 +279,15 @@ pub(in crate::control) fn compensate(
         }
         None => current.is_none() && deletion_owned(transaction, workspace, operation_id)?,
     };
-    if !owns || !api_link::current_matches(transaction, workspace, &mutation, operation_id)? {
+    if !owns
+        || !key_budgets::current_matches(
+            transaction,
+            workspace,
+            mutation.source_id(),
+            operation_id,
+        )?
+        || !api_link::current_matches(transaction, workspace, &mutation, operation_id)?
+    {
         return Ok(false);
     }
     let mut restored_owner = operation_id.to_owned();
@@ -284,6 +318,13 @@ pub(in crate::control) fn compensate(
     if let Some(before) = defaults::effect(transaction, operation_id, true)? {
         defaults::write(transaction, workspace, mutation.source_id(), &before)?;
     }
+    key_budgets::apply(
+        transaction,
+        workspace,
+        mutation.source_id(),
+        operation_id,
+        true,
+    )?;
     api_link::apply_effect(transaction, workspace, &mutation, operation_id, true)?;
     network::restore(
         transaction,
@@ -296,6 +337,19 @@ pub(in crate::control) fn compensate(
 }
 
 impl ComputeManagementRepositoryPort for ControlStore {
+    fn key_budget_bindings(
+        &self,
+        source_id: &str,
+    ) -> PortResult<std::collections::BTreeMap<String, String>> {
+        ControlStore::key_budget_bindings(self, source_id)
+    }
+    fn key_budget_definition(
+        &self,
+        budget_id: &str,
+    ) -> PortResult<Option<hiroute_domain::KeyBudgetDefinitionV1>> {
+        ControlStore::key_budget_definition(self, budget_id)
+    }
+
     fn compute_subscription_api_links(
         &self,
         workspace: &WorkspaceId,

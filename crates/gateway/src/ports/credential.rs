@@ -50,6 +50,7 @@ pub struct CredentialLease {
     authorization: Arc<dyn CredentialAuthorizationCapability>,
     authorization_header: Option<HeaderName>,
     transport_override: Option<CredentialTransportOverride>,
+    spend: Option<Arc<dyn hiroute_domain::KeySpendAuthorityV1>>,
 }
 
 /// Request-scoped target supplied by a trusted managed connector authority.
@@ -113,6 +114,7 @@ impl CredentialLease {
             authorization: Arc::new(BearerAuthorization(authorization)),
             authorization_header: Some(header::AUTHORIZATION),
             transport_override: None,
+            spend: None,
         })
     }
 
@@ -143,6 +145,7 @@ impl CredentialLease {
             }),
             authorization_header: Some(header_name),
             transport_override: None,
+            spend: None,
         })
     }
 
@@ -164,6 +167,7 @@ impl CredentialLease {
             authorization,
             authorization_header: Some(header::AUTHORIZATION),
             transport_override: None,
+            spend: None,
         })
     }
 
@@ -191,6 +195,31 @@ impl CredentialLease {
         Ok(lease)
     }
 
+    pub fn with_spend_authority(
+        mut self,
+        authority: Option<Arc<dyn hiroute_domain::KeySpendAuthorityV1>>,
+    ) -> Self {
+        self.spend = authority;
+        self
+    }
+    pub fn reserve_spending(
+        &self,
+        estimate: Option<&hiroute_domain::KeySpendEstimateV1>,
+    ) -> Result<Option<KeySpendGuard>, hiroute_domain::KeyBudgetGateErrorV1> {
+        let Some(authority) = &self.spend else {
+            return Ok(None);
+        };
+        let Some(reservation) = authority.reserve(self.key_id(), self.generation(), estimate)?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(KeySpendGuard {
+            authority: Arc::clone(authority),
+            id: reservation.reservation_id,
+            finished: std::sync::atomic::AtomicBool::new(false),
+            sent: false,
+        }))
+    }
     pub fn credential_ref(&self) -> &str {
         &self.credential_ref
     }
@@ -333,5 +362,39 @@ mod tests {
         assert!(headers[header::AUTHORIZATION].is_sensitive());
         headers.remove(header::AUTHORIZATION);
         assert_eq!(headers, before);
+    }
+}
+
+/// A dropped/cancelled in-flight request retains its reservation. Only proven
+/// unsent requests or complete protocol usage release it.
+pub struct KeySpendGuard {
+    authority: Arc<dyn hiroute_domain::KeySpendAuthorityV1>,
+    id: String,
+    finished: std::sync::atomic::AtomicBool,
+    sent: bool,
+}
+impl KeySpendGuard {
+    pub fn mark_sent(&mut self) -> hiroute_domain::PortResult<()> {
+        self.authority.mark_sent(&self.id)?;
+        self.sent = true;
+        Ok(())
+    }
+    pub fn settle(&self, settlement: hiroute_domain::KeySpendSettlementV1) {
+        use std::sync::atomic::Ordering;
+        if self.finished.load(Ordering::Acquire) {
+            return;
+        }
+        if self.authority.settle(&self.id, &settlement).is_ok() {
+            self.finished.store(true, Ordering::Release);
+        }
+    }
+}
+impl Drop for KeySpendGuard {
+    fn drop(&mut self) {
+        self.settle(if self.sent {
+            hiroute_domain::KeySpendSettlementV1::Unknown
+        } else {
+            hiroute_domain::KeySpendSettlementV1::Unsent
+        });
     }
 }
