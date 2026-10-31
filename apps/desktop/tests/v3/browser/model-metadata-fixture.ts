@@ -7,7 +7,7 @@ const modelRecords = [
   catalog.model_records.find(record => record.model_record_key === 'hermes-agent/openai-codex/gpt-5.3-codex-spark')!,
 ];
 const snapshot = {generation:1,data_revision:officialData.data_revision,data_digest:officialData.data_digest};
-const state = { fail: false, stale: false, evidenceFail: false, evidenceStale: false, linkFail: false };
+const state = { fail: false, stale: false, evidenceFail: false, evidenceStale: false, linkFail: false, automaticReasoning: false, fallbackReasoning: false };
 Object.assign(window,{metadataFixture:state});
 export function metadataFixtureInvoke(command: string, payload: any, params: URLSearchParams): unknown {
   if(command === 'open_external_url') {
@@ -18,7 +18,7 @@ export function metadataFixtureInvoke(command: string, payload: any, params: URL
     if(state.fail) throw Error('DAEMON_UNAVAILABLE');
     const source = readyManagement.sources.find(s=>s.source_id===payload.input.source_id)!;
     const values = {tool:true,vision:false,streaming:true,context_tokens:128000,max_output_tokens:32000,native_reasoning:{kind:'fixed',profile:'provider-default'}};
-    return {source_id:source.source_id,source_revision:source.revision,revisions:readyManagement.revisions,reviewed_on:'2026-10-21',models:source.models.map(model=>({binding_id:model.binding_id,model_configuration_id:model.catalog_configuration_id,fields:Object.fromEntries(Object.entries(values).map(([key,value])=>[key,{saved_value:key==='context_tokens'?64000:value,effective_value:value,intent:key==='vision'?'preserve_saved':'follow_official',origin:key==='vision'?'preserved':'website_cache',locator:{model_configuration_id:'model/qwen',upstream_model_id:model.upstream_model_id,connector_id:'connector/fixture',endpoint_profile_id:'endpoint/fixture',protocol_endpoint_id:'endpoint/fixture/chat'}}]))}))};
+    return {source_id:source.source_id,source_revision:source.revision,revisions:readyManagement.revisions,reviewed_on:'2026-10-21',models:source.models.map(model=>({binding_id:model.binding_id,model_configuration_id:model.catalog_configuration_id,fields:Object.fromEntries(Object.entries(values).map(([key,value])=>[key,key==='native_reasoning' && state.automaticReasoning ? {saved_value:state.fallbackReasoning?{kind:'toggle',parameter:'enable_thinking'}:null,effective_value:{kind:'discrete',parameter:'reasoning_effort',profiles:['low','medium','high','xhigh','max'],default_profile:'medium'},intent:'preserve_saved',origin:'website_cache',locator:null} : {saved_value:key==='context_tokens'?64000:value,effective_value:value,intent:key==='vision'?'preserve_saved':'follow_official',origin:key==='vision'?'preserved':'website_cache',locator:{model_configuration_id:'model/qwen',upstream_model_id:model.upstream_model_id,connector_id:'connector/fixture',endpoint_profile_id:'endpoint/fixture',protocol_endpoint_id:'endpoint/fixture/chat'}}]))}))};
   }
   if (command === 'preview_compute_save_v3') {
     if(state.fail) throw Error('CHANGE_PREVIEW_STALE');

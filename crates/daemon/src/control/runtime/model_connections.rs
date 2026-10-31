@@ -49,6 +49,9 @@ mod registered;
 mod saved;
 mod saved_prefill;
 
+#[cfg(test)]
+mod api_reasoning_tests;
+
 use error::{map_check_error, map_target_error};
 
 pub(super) fn registered_source_matches_current_option(

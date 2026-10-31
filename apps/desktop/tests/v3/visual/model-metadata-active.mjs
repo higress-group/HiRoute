@@ -31,6 +31,20 @@ try {
     await waitFor(client,`document.querySelectorAll('.model-default-field').length===6`);
     await evaluate(client,`document.querySelector('.model-defaults-editor').scrollIntoView({block:'center'});true`);
     assert.equal(await evaluate(client,`document.querySelector('#model-default-vision').value`),'preserve_saved');
+    // Missing facts and derived generic fallbacks share the metadata projection;
+    // FollowOfficial still offers a literal Preserve saved option.
+    assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning option[value=preserve_saved]').textContent.includes(${JSON.stringify(lang==='zh'?'保留已保存值':'Preserve saved')})`),true);
+    for(const fallback of [false,true]) {
+      await evaluate(client,`metadataFixture.automaticReasoning=true;metadataFixture.fallbackReasoning=${fallback};dispatchEvent(new Event('model-feed-changed'));true`);
+      await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.selectedOptions[0].textContent.includes(${JSON.stringify(lang==='zh'?'按模型元信息补齐':'Model metadata default')})`);
+      assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').value`),'preserve_saved');
+      assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').closest('dd').querySelector('strong').textContent`),'low / medium / high / xhigh / max');
+      await geometry(width);await shot(`reasoning-automatic-${fallback?'fallback':'missing'}-${lang}-${theme}-${width}`);
+    }
+    results.push({id:`metadata.reasoning-automatic.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked IPC; missing and derived fallback facts'});
+    await evaluate(client,`metadataFixture.automaticReasoning=false;dispatchEvent(new Event('model-feed-changed'));true`);
+    await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='follow_official'`);
+
     await select('#model-default-context_tokens','preserve_saved');
     await click('.model-defaults-editor button',lang==='zh'?'预览修改':'Preview changes');
     await waitFor(client,`[...document.querySelectorAll('.model-defaults-editor button')].some(e=>e.textContent.includes(${JSON.stringify(lang==='zh'?'保存默认值选择':'Save default choices')}))`);

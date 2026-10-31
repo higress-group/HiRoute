@@ -17,15 +17,17 @@ pub fn missing_api_reasoning_default(
     saved: &ComputeManagementFactValueV2<NativeReasoningCapabilityV1>,
     preference: Option<&ModelDefaultPreferenceV1>,
 ) -> Option<ApiReasoningDefault> {
-    // Explicit values and intent retain source-local authority. Only the derived
-    // fallback (or an absent fact) may receive current descriptive defaults.
-    if preference.is_some()
-        || !matches!(
-            (&saved.value, saved.basis),
-            (None, ComputeManagementFactBasisV2::Unknown)
-                | (Some(_), ComputeManagementFactBasisV2::RuntimeFallback)
-        )
-        || target.scheme != "https"
+    // PreserveSaved is also established automatically on imports with no fact.
+    // Preserve meaningful source values, not the absence of reasoning metadata;
+    // an explicit official locator still keeps its own exact-scoped semantics.
+    if matches!(
+        preference,
+        Some(ModelDefaultPreferenceV1::FollowOfficial { .. })
+    ) || !matches!(
+        (&saved.value, saved.basis),
+        (None, ComputeManagementFactBasisV2::Unknown)
+            | (Some(_), ComputeManagementFactBasisV2::RuntimeFallback)
+    ) || target.scheme != "https"
         || target.port != 443
     {
         return None;
@@ -250,7 +252,7 @@ mod tests {
             &provenance,
             &target,
             &authentication,
-            "claude-opus-5",
+            "claude-opus-5-5",
             &unknown(),
             None,
         )
@@ -262,10 +264,22 @@ mod tests {
             result.render_convention,
             Some(NativeReasoningRenderConventionV1::ClaudeAdaptiveEffortMessages)
         );
+        assert!(
+            missing_api_reasoning_default(
+                &catalog,
+                &provenance,
+                &target,
+                &authentication,
+                "claude-opus-5",
+                &unknown(),
+                None,
+            )
+            .is_none()
+        );
     }
 
     #[test]
-    fn manual_configuration_and_explicit_saved_intent_are_never_replaced() {
+    fn manual_configuration_is_never_replaced_but_empty_saved_defaults_can_be_completed() {
         let catalog = catalog();
         let (provenance, target, authentication) = scope(
             &catalog,
@@ -294,23 +308,33 @@ mod tests {
                     &authentication,
                     "gpt-6.1-sol",
                     &saved,
-                    None
+                    Some(&ModelDefaultPreferenceV1::PreserveSaved)
                 )
                 .is_none()
             );
         }
-        assert!(
-            missing_api_reasoning_default(
-                &catalog,
-                &provenance,
-                &target,
-                &authentication,
-                "gpt-6.1-sol",
-                &unknown(),
-                Some(&ModelDefaultPreferenceV1::PreserveSaved)
-            )
-            .is_none()
-        );
+        for saved in [
+            unknown(),
+            ComputeManagementFactValueV2 {
+                value: Some(NativeReasoningCapabilityV1::Toggle {
+                    parameter: "enable_thinking".into(),
+                }),
+                basis: ComputeManagementFactBasisV2::RuntimeFallback,
+            },
+        ] {
+            assert!(
+                missing_api_reasoning_default(
+                    &catalog,
+                    &provenance,
+                    &target,
+                    &authentication,
+                    "gpt-6.1-sol",
+                    &saved,
+                    Some(&ModelDefaultPreferenceV1::PreserveSaved),
+                )
+                .is_some()
+            );
+        }
     }
 
     #[test]

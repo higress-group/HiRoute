@@ -560,7 +560,7 @@ pub(super) fn materialize_management_candidate(
         credential_destination_ref: Some(fact.target.credential_destination().ok()?),
         source_state: hiroute_domain::MaterializationState::Ready,
         inventory_model_matched: false,
-        reasoning: fact.native_reasoning.clone(),
+        reasoning: reasoning.capability.clone(),
         rating: None,
         ordering_price: None,
         free_evidence: None,

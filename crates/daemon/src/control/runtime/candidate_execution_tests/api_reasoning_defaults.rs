@@ -116,7 +116,7 @@ fn old_anthropic_api_imports_render_effort_and_adaptive_thinking_together() {
         &catalog,
         "anthropic.platform.global.v1",
         UpstreamProtocol::Messages,
-        "claude-opus-5",
+        "claude-opus-5-5",
     );
     let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
     candidate.validate().unwrap();
@@ -187,6 +187,16 @@ fn manual_api_controls_and_saved_default_preferences_keep_their_original_meaning
         materialize_management_candidate(&fact, Some(&catalog))
             .unwrap()
             .reasoning,
-        fact.native_reasoning
+        NativeReasoningCapabilityV1::Discrete {
+            parameter: "reasoning_effort".into(),
+            profiles: vec![
+                "low".into(),
+                "medium".into(),
+                "high".into(),
+                "xhigh".into(),
+                "max".into()
+            ],
+            default_profile: Some("medium".into()),
+        }
     );
 }

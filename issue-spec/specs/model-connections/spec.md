@@ -166,7 +166,11 @@ SHALL retain their distinct native fields and required companion controls.
 Labels, another product's subscription membership, an unknown ID or an ambiguous
 mapping SHALL NOT establish these defaults.
 
-Explicit source capability values and saved-default intent SHALL take precedence.
+Explicit non-fallback source capability values and exact FollowOfficial intent
+SHALL take precedence. PreserveSaved on an absent or derived-fallback reasoning
+fact SHALL allow this missing-value projection, including preferences established
+automatically by earlier imports. Explicit fixed non-thinking settings, manual
+profile subsets and defaults SHALL retain their saved meaning.
 Resolving a missing value SHALL NOT rewrite stored sources, keys, membership,
 admission evidence or already published reasoning selections. The effective value
 and its metadata origin SHALL be visible separately from a missing saved value.

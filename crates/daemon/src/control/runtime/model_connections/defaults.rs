@@ -135,6 +135,17 @@ impl LocalControlAdapter {
                 protocol_endpoint_id: cap.protocol_endpoint_id.clone(),
             });
             let fields_preferences = preferences.get(&saved.binding_id);
+            let api_reasoning_default =
+                hiroute_integrations::compute::missing_api_reasoning_default(
+                    &catalog,
+                    &source.provenance,
+                    &source.target,
+                    &source.authentication,
+                    &saved.upstream_model_id,
+                    &saved.capabilities.native_reasoning,
+                    fields_preferences.and_then(|p| p.get(&ModelDefaultFieldV1::NativeReasoning)),
+                )
+                .is_some();
             let mut fields = BTreeMap::new();
             macro_rules! field {
                 ($name:ident, $key:ident) => {{
@@ -164,10 +175,9 @@ impl LocalControlAdapter {
                             }
                             .into(),
                             origin: if follows
-                                || (saved_fact.value.is_none()
-                                    && effective.capabilities.$name.value.is_some()
-                                    && effective.capabilities.$name.basis
-                                        == ComputeManagementFactBasisV2::RuntimeFallback)
+                                || (ModelDefaultFieldV1::$key
+                                    == ModelDefaultFieldV1::NativeReasoning
+                                    && api_reasoning_default)
                             {
                                 if catalog.official_data_from_feed() {
                                     "website_cache"
