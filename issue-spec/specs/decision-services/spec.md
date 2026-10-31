@@ -309,7 +309,7 @@ Current readers accept authenticated v1, v2 and v3 publications, retained Operat
 #### Scenario: Current feedback protocol on new publication
 
 - **WHEN** a new native route is explicitly saved and published with otherwise eligible same-core rejection feedback
-- **THEN** the sealed protocol is C v2 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
+- **THEN** the sealed protocol is C v3 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
 
 #### Scenario: Supported v1 execution and recovery
 

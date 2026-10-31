@@ -208,27 +208,65 @@ pub fn startup_failure_host_code(code: StartupFailureCode) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hiroute_diagnostics::{Component, DiagnosticRuntime, RuntimeConfig, event::StartupEnd};
+    use hiroute_diagnostics::{
+        Component, DiagnosticRuntime, EmitOutcome, RuntimeConfig,
+        event::{ProcessStart, StartupEnd},
+        files::WRITER_LOCK_FILE,
+        identity::{TargetTriple, VersionToken},
+        record::RecordSchema,
+    };
+    use std::time::{Duration, Instant};
+
+    // Consumer cases need complete admitted bytes, not a promise that an asynchronous
+    // writer finished within the product's deliberately bounded shutdown budget.
+    fn fixture_attempt(diagnostics: &Path, outcome: Option<StartupOutcome>) {
+        let root = PrivateDir::open_or_create(diagnostics).unwrap();
+        let role = root.child_dir(role_dir_name(ProcessRole::Daemon)).unwrap();
+        if let Some(file) = role.open_read(CURRENT_LOG_FILE).unwrap() {
+            let identity = file.identity();
+            drop(file);
+            role.remove_verified(CURRENT_LOG_FILE, identity).unwrap();
+        }
+        let boot_id = BootId::random().unwrap();
+        let mut events = vec![DiagnosticEvent::ProcessStart(ProcessStart {
+            role: ProcessRole::Daemon,
+            version: VersionToken::current_package(),
+            source_revision: VersionToken::source_revision(),
+            target: TargetTriple::current(),
+            parent_session_id: None,
+        })];
+        if let Some(outcome) = outcome {
+            events.push(DiagnosticEvent::StartupEnd(StartupEnd {
+                outcome,
+                elapsed_ms: 1,
+            }));
+        }
+        let mut file = role.create_new(CURRENT_LOG_FILE).unwrap();
+        for (index, event) in events.into_iter().enumerate() {
+            let record = DiagnosticRecordV1 {
+                schema: RecordSchema,
+                timestamp_ms: index as u64,
+                monotonic_ms: index as u64,
+                component: Component::Daemon,
+                boot_id,
+                sequence: index as u64 + 1,
+                level: event.level(),
+                level_revision: 0,
+                parent_session_id: None,
+                span_id: None,
+                parent_span_id: None,
+                event,
+            };
+            file.append(&record.encode_jsonl().unwrap()).unwrap();
+        }
+        file.sync().unwrap();
+    }
+
     #[test]
     fn boundary_requires_a_new_failure_and_rejects_incomplete_or_unreadable_attempts() {
         let directory = tempfile::tempdir().unwrap();
         let diagnostics = directory.path().join("diagnostics");
-        let emit = |outcome| {
-            let runtime = DiagnosticRuntime::start(RuntimeConfig {
-                root: diagnostics.clone(),
-                role: ProcessRole::Daemon,
-                component: Component::Daemon,
-                parent_session_id: None,
-                level_override: None,
-            });
-            if let Some(outcome) = outcome {
-                runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
-                    outcome,
-                    elapsed_ms: 1,
-                }));
-            }
-            runtime.shutdown();
-        };
+        let emit = |outcome| fixture_attempt(&diagnostics, outcome);
         let first_attempt = StartupFailureBoundary::capture(&diagnostics);
         emit(Some(StartupOutcome::Failure {
             code: StartupFailureCode::StorageLocked,
@@ -281,20 +319,12 @@ mod tests {
     fn boundary_accepts_completion_of_the_observed_boot_without_reusing_its_old_failure() {
         let directory = tempfile::tempdir().unwrap();
         let diagnostics = directory.path().join("diagnostics");
-        let runtime = DiagnosticRuntime::start(RuntimeConfig {
-            root: diagnostics.clone(),
-            role: ProcessRole::Daemon,
-            component: Component::Daemon,
-            parent_session_id: None,
-            level_override: None,
-        });
-        runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
-            outcome: StartupOutcome::Failure {
+        fixture_attempt(
+            &diagnostics,
+            Some(StartupOutcome::Failure {
                 code: StartupFailureCode::StorageLocked,
-            },
-            elapsed_ms: 1,
-        }));
-        runtime.shutdown();
+            }),
+        );
         let log = diagnostics.join("daemon").join(CURRENT_LOG_FILE);
         let complete = std::fs::read(&log).unwrap();
         let start = complete
@@ -337,18 +367,7 @@ mod tests {
                 Some(previous.clone())
             );
             let diagnostics = storage.join("diagnostics");
-            let runtime = DiagnosticRuntime::start(RuntimeConfig {
-                root: diagnostics.clone(),
-                role: ProcessRole::Daemon,
-                component: Component::Daemon,
-                parent_session_id: None,
-                level_override: None,
-            });
-            runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
-                outcome: StartupOutcome::Failure { code },
-                elapsed_ms: 1,
-            }));
-            runtime.shutdown();
+            fixture_attempt(&diagnostics, Some(StartupOutcome::Failure { code }));
             let report = StorageRecovery::read_for_failed_startup(storage, &diagnostics);
             match code {
                 StartupFailureCode::StorageUnavailable => assert_eq!(
@@ -386,29 +405,12 @@ mod tests {
         ] {
             let directory = tempfile::tempdir().unwrap();
             let root = directory.path().join("diagnostics");
-            let config = || RuntimeConfig {
-                root: root.clone(),
-                role: ProcessRole::Daemon,
-                component: Component::Daemon,
-                parent_session_id: None,
-                level_override: None,
-            };
-            let runtime = DiagnosticRuntime::start(config());
-            runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
-                outcome: StartupOutcome::Failure { code },
-                elapsed_ms: 1,
-            }));
-            runtime.shutdown();
+            fixture_attempt(&root, Some(StartupOutcome::Failure { code }));
             assert_eq!(
                 StorageRecovery::read_failed_startup_code(&root),
                 Some(expected)
             );
-            let runtime = DiagnosticRuntime::start(config());
-            runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
-                outcome: StartupOutcome::Success,
-                elapsed_ms: 1,
-            }));
-            runtime.shutdown();
+            fixture_attempt(&root, Some(StartupOutcome::Success));
             assert_eq!(StorageRecovery::read_failed_startup_code(&root), None);
         }
     }
@@ -430,18 +432,7 @@ mod tests {
         ] {
             let directory = tempfile::tempdir().unwrap();
             let diagnostics = directory.path().join("diagnostics");
-            let runtime = DiagnosticRuntime::start(RuntimeConfig {
-                root: diagnostics.clone(),
-                role: ProcessRole::Daemon,
-                component: Component::Daemon,
-                parent_session_id: None,
-                level_override: None,
-            });
-            runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
-                outcome: StartupOutcome::Failure { code },
-                elapsed_ms: 1,
-            }));
-            runtime.shutdown();
+            fixture_attempt(&diagnostics, Some(StartupOutcome::Failure { code }));
             let storage = directory.path().join("inaccessible-storage");
             let report = StorageRecovery::read_for_failed_startup(&storage, &diagnostics).unwrap();
             assert_eq!(report.cause, cause);
@@ -458,6 +449,90 @@ mod tests {
             );
             assert_eq!(report.backup_batch, None);
             assert!(!storage.exists());
+        }
+    }
+
+    #[test]
+    fn real_writer_boots_are_read_after_complete_output_and_role_release() {
+        let directory = tempfile::tempdir().unwrap();
+        let diagnostics = directory.path().join("diagnostics");
+        for outcome in [
+            Some(StartupOutcome::Failure {
+                code: StartupFailureCode::StorageLocked,
+            }),
+            Some(StartupOutcome::Failure {
+                code: StartupFailureCode::GatewayUnavailable,
+            }),
+            Some(StartupOutcome::Success),
+            None,
+        ] {
+            let boundary = StartupFailureBoundary::capture(&diagnostics);
+            let runtime = DiagnosticRuntime::start(RuntimeConfig {
+                root: diagnostics.clone(),
+                role: ProcessRole::Daemon,
+                component: Component::Daemon,
+                parent_session_id: None,
+                level_override: None,
+            });
+            assert_eq!(runtime.status().unavailable, None);
+            let boot = runtime.boot_id().unwrap();
+            if let Some(outcome) = outcome {
+                assert_eq!(
+                    runtime.emit(DiagnosticEvent::StartupEnd(StartupEnd {
+                        outcome,
+                        elapsed_ms: 1,
+                    })),
+                    EmitOutcome::Queued,
+                );
+            }
+            runtime.shutdown();
+            // Shutdown is bounded. This integration case separately waits for actual
+            // role release, so neither reading nor the next boot races the producer.
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let role = PrivateDir::open_existing(&diagnostics.join("daemon")).unwrap();
+            let lock = role.open_lock(WRITER_LOCK_FILE).unwrap();
+            loop {
+                match lock.try_lock_exclusive() {
+                    Ok(()) => break,
+                    Err(FileSafetyError::Locked) if Instant::now() < deadline => {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    error => panic!("diagnostic writer did not release its role: {error:?}"),
+                }
+            }
+            let bytes = diagnostic_tail(&diagnostics).unwrap();
+            assert!(bytes.ends_with(b"\n"));
+            let records = bytes
+                .split(|byte| *byte == b'\n')
+                .filter(|line| !line.is_empty())
+                .map(|line| DiagnosticRecordV1::parse_line(line).unwrap())
+                .collect::<Vec<_>>();
+            assert!(records.iter().all(|record| record.boot_id == boot));
+            assert!(
+                records
+                    .iter()
+                    .any(|record| matches!(record.event, DiagnosticEvent::ProcessStart(_)))
+            );
+            let terminal = records.iter().find_map(|record| match &record.event {
+                DiagnosticEvent::StartupEnd(end) => Some(end.outcome),
+                _ => None,
+            });
+            assert_eq!(terminal, outcome);
+            match outcome {
+                Some(StartupOutcome::Failure { code }) => {
+                    let (actual, report) = boundary
+                        .read_failure(directory.path(), &diagnostics)
+                        .unwrap();
+                    assert_eq!(actual, startup_failure_host_code(code));
+                    assert_eq!(report, StorageRecovery::from_admission_code(code));
+                }
+                _ => assert!(
+                    boundary
+                        .read_failure(directory.path(), &diagnostics)
+                        .is_none()
+                ),
+            }
+            lock.unlock().unwrap();
         }
     }
 }
