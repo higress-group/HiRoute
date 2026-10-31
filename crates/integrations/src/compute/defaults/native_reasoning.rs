@@ -1,6 +1,7 @@
 //! Optional reasoning defaults for an already admitted official API target.
 //! This projection is not membership, credential, price or protocol qualification.
 use super::*;
+mod provider_records;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ApiReasoningDefault {
@@ -72,6 +73,7 @@ pub fn missing_api_reasoning_default(
     let wire_target = format!("{}{}", endpoint.base_url, endpoint.request_path);
     let metadata = catalog.model_metadata();
     let mut result = None;
+    let mut openai_interface = false;
     for product in &metadata.access_products {
         // These are the two existing native wire conventions, not a rule for
         // every provider that happens to expose an OpenAI-compatible protocol.
@@ -92,6 +94,7 @@ pub fn missing_api_reasoning_default(
             {
                 continue;
             }
+            openai_interface |= product.product_key == "openai-platform-global";
             for binding in metadata.endpoint_bindings.iter().filter(|binding| {
                 binding.product_key == product.product_key
                     && binding.upstream_model_id == upstream_model_id
@@ -148,7 +151,18 @@ pub fn missing_api_reasoning_default(
             }
         }
     }
-    result
+    result.or_else(|| {
+        openai_interface
+            .then(|| {
+                provider_records::openai_provider_default(
+                    metadata,
+                    endpoint.protocol,
+                    &wire_target,
+                    upstream_model_id,
+                )
+            })
+            .flatten()
+    })
 }
 
 #[cfg(test)]

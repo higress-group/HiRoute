@@ -164,7 +164,14 @@ The projection SHALL be shared by model/default reads, recheck prefill, routing
 options and new publication inputs. OpenAI effort and Anthropic adaptive effort
 SHALL retain their distinct native fields and required companion controls.
 Labels, another product's subscription membership, an unknown ID or an ambiguous
-mapping SHALL NOT establish these defaults.
+mapping SHALL NOT establish these defaults. Where an API product has no exact
+binding for that ID, complete API-scoped provider/model prefill records MAY supply
+OpenAI efforts only after their sole exact API root, supported protocol, API-key
+kind and model ID match the already qualified official connector. The installed
+connector owns the native parameter path. Model hints SHALL NOT supply new wire
+conventions, provider defaults, membership or billing. Conflicting or unsupported
+efforts, ambiguous URLs and explicit withdrawn/rejected API bindings SHALL keep
+missing controls unresolved; subscription records SHALL NOT supply API defaults.
 
 Explicit non-fallback source capability values and exact FollowOfficial intent
 SHALL take precedence. PreserveSaved on an absent or derived-fallback reasoning

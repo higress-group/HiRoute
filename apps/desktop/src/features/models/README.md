@@ -30,3 +30,9 @@ preserves explicit source values, exact FollowOfficial intent and frozen
 publications. PreserveSaved protects meaningful saved facts; an absent or generic
 runtime-fallback reasoning fact can still receive this missing-value default.
 The read projection does not rewrite stored sources or qualify entitlement.
+
+OpenAI API-scoped provider/model records can fill absent binding metadata only
+when the exact API root, authentication, protocol and ID match the installed
+official connector's native effort convention. Their effort sets are ordered
+natively; conflicts and withdrawn bindings stay unresolved. Subscription records
+never supply API controls.

@@ -72,6 +72,8 @@ fn api_reasoning_survives_normal_v3_save_reopen_and_preserves_manual_values() {
     };
     for (option, model, manual) in [
         ("openai.platform.global.v1", "gpt-6.1-sol", None),
+        ("openai.platform.global.v1", "gpt-5.6-luna", None),
+        ("openai.platform.global.v1", "gpt-6-astra", None),
         ("anthropic.platform.global.v1", "claude-opus-5-5", None),
         ("openai.platform.global.v1", "gpt-6.1-sol", Some(fixed)),
         ("openai.platform.global.v1", "gpt-6.1-sol", Some(subset)),
