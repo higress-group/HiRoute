@@ -97,7 +97,7 @@ export function cProtocolScenarios({ fresh, routing, click, until, all, text, ca
       previousDefinition=definition;
       for(const key of ['historical_applicability','native_protocol','prior_context_max_turns'])assert(!(key in input.editor.smart),'Retired field entered editor input: '+key);
       assert(input.editor.smart.judgment.competence.floor_millis===510&&input.editor.smart.judgment.degree.simple_threshold_millis===800,'Threshold changed');
-      assert(!calls('test_decision_service_v2').length,'Opening/publication dispatched a model request');
+      assert(!calls('test_decision_service_v3').length,'Opening/publication dispatched a model request');
     }
   }),scenario('desktop.routing.custom-assessment',['routing-editor','decision-services','c-protocol'],'Custom text survives native editing and reset restores current defaults',async()=>{
     for(const language of ['zh','en'])for(const branches of [false,true]){
@@ -110,15 +110,15 @@ export function cProtocolScenarios({ fresh, routing, click, until, all, text, ca
       await until(()=>document.querySelector(selector).value!==original,'reset current default');assertCopy();geometry();
       const input=await publish(t);const j=branches?input.editor.branch_routing.branches[0].judgment:input.editor.smart.judgment;
       assert(j.competence.standard==='default','Reset did not record intent');assert(JSON.stringify(j.competence.criteria)===JSON.stringify([...stock.q1.criteria.slice(0,2),guidance.highest_criterion]),'Reset returned legacy defaults');
-      assert(!calls('test_decision_service_v2').length,'Edit implicitly probed');
+      assert(!calls('test_decision_service_v3').length,'Edit implicitly probed');
     }
   }),scenario('desktop.decisions.connectivity-test',['decision-services','c-protocol'],'The connection page runs one connectivity test of the read-back V1 record by digest',async()=>{
     for(const language of ['zh','en']){
-      await fresh(()=>{control().handlers.decision_services_v2=()=>({services:[control().decisionView(service)]});control().handlers.test_decision_service_v2=({input})=>{const view=control().decisionView(service);assert(input.id===service.id&&input.revision===7&&input.expected_configuration_digest===view.configuration_digest&&!input.request,'Connection switched contract');return {schema:'hiroute.decision-service-test-result/v2',outcome:'passed',failure_code:null,duration_millis:1,tested_configuration_digest:view.configuration_digest,tested_credential_state_revision:view.credential_state_revision};};});
+      await fresh(()=>{control().handlers.decision_services_v2=()=>({services:[control().decisionView(service)]});control().handlers.test_decision_service_v3=({input})=>{const view=control().decisionView(service);assert(input.id===service.id&&input.revision===7&&input.expected_configuration_digest===view.configuration_digest&&!input.request,'Connection switched contract');return control().decisionNetworkTest({schema:'hiroute.decision-service-test-result/v2',outcome:'passed',failure_code:null,duration_millis:1,tested_configuration_digest:view.configuration_digest,tested_credential_state_revision:view.credential_state_revision});};});
       localStorage.setItem('hiroute.language',language);control().remount();const t=(zh,en)=>language==='zh'?zh:en;
       await click(t('模型','Models'));await click(t('决策模型','Decision models'));await until(()=>document.querySelector('.decision-heading h2')?.textContent===service.name,'connection details');await click(t('测试连接','Test connection'));
       await until(()=>text().includes(t('连接测试通过','Connection test passed')),'connection test');
-      assert(!all('select').some(e=>e.getAttribute('aria-label')?.includes('shape')),'Shape selector remains');assert(calls('test_decision_service_v2').length===1,'Connection sent more than one request');assertCopy();
+      assert(!all('select').some(e=>e.getAttribute('aria-label')?.includes('shape')),'Shape selector remains');assert(calls('test_decision_service_v3').length===1,'Connection sent more than one request');assertCopy();
     }
   }),scenario('desktop.quality.c-observations', ['routing-editor', 'sessions', 'c-protocol'], 'Retained C counts, denominators, partial coverage and empty states remain readable', async () => {
     for (const language of ['zh', 'en']) {

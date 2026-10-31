@@ -10,7 +10,8 @@ import type { ComputeCandidateView } from '../../../src/features/model-connectio
 import type { SubscriptionCandidate, SubscriptionCheckResult } from '../../../src/features/subscriptions/types';
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
 import type { AuthoringOptions, Draft, Editor, Plan } from '../../../src/plan-editor';
-import type { DecisionServiceRecord, DecisionServiceView, DecisionSourceSummary } from '../../../src/features/decision-services/contracts';
+import type { DecisionServiceRecord, DecisionServiceView, DecisionSourceSummary, DecisionServiceTestResult, DecisionServiceNetworkTestResult } from '../../../src/features/decision-services/contracts';
+import type { NativeNetworkRoute } from '../../../src/features/model-connections/native-network';
 import type { DesktopSnapshot } from '../../../src/product/home-projections';
 import { fixture as legacyHomeFixture } from '../../mvp16/browser/fixtures';
 import connectionRegistry from '../../../../../assets/release-facts/current/bundle/connector-registry.json';
@@ -532,6 +533,16 @@ export function fixtureDecisionView(service: DecisionServiceRecord, sources: Dec
     credential_state_revision: source ? source.credential_state_revision : independent ? fixtureDigest(independent) : null,
     source, related_sources: source ? [source] : [],
   };
+}
+
+/** Current connection-test envelope; the nested check retains its V2 contract. */
+export function fixtureDecisionNetworkRoute(): NativeNetworkRoute {
+  return { mode: 'direct', route: 'direct', reason: 'policy_direct', destination: 'api.openai.test:443',
+    state_revision: fixtureDigest(['decision-network', 'direct']), failure: null };
+}
+export function fixtureDecisionNetworkTest(check: DecisionServiceTestResult): DecisionServiceNetworkTestResult {
+  return { schema: 'hiroute.decision-service-test-result/v3', check,
+    network: { policy: { mode: 'direct' }, expected_network_revision: 0, route: fixtureDecisionNetworkRoute() }, failure: null };
 }
 
 export function mockProductInvoke(command: string, payload: Record<string, any> | undefined, scenario: ProductScenario) {

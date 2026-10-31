@@ -10,6 +10,8 @@ import '../../../src/occami/styles.css';
 
 const query = new URLSearchParams(location.search);
 const state = query.get('case') ?? 'login';
+let holdDesktop = query.get('startup') === 'held';
+const pendingDesktopReads: (() => void)[] = [];
 localStorage.setItem('hiroute.language', query.get('language') ?? 'zh');
 localStorage.setItem('hiroute.theme', query.get('theme') ?? 'light');
 sessionStorage.clear();
@@ -23,6 +25,8 @@ const control = {
   hostRequests: [] as {command:string;args:Record<string,unknown>}[],
   loginEnabled: true,
   capabilities: hostCapabilities,
+  desktopPending: () => pendingDesktopReads.length,
+  releaseDesktop: () => { holdDesktop = false; for (const release of pendingDesktopReads.splice(0)) release(); },
 };
 if (query.get('host') === 'shell-console') {
   const unavailable = query.get('update') === 'catalog-unavailable';
@@ -59,6 +63,7 @@ window.fetch = async (input, options) => {
   });
   const command = decodeURIComponent(url.pathname.split('/').at(-1)!);
   const args = options?.body ? JSON.parse(String(options.body)) : {};
+  if (command === 'desktop_snapshot' && holdDesktop) await new Promise<void>(resolve => pendingDesktopReads.push(resolve));
   if (command === 'observe_operation' || command === 'web_confirmation_snapshot') return reply(null);
   if (command === 'gateway_listener_status') return reply({config:{schema_version:'hiroute.gateway-listener/v1',desired:{address:'127.0.0.1',port_mode:'automatic'},applied:{address:'127.0.0.1',port:5829,applied_at_unix:1}},connect_address:'127.0.0.1:5829',suggested_agent_base_url:'http://127.0.0.1:5829',existing_agent_count:0,ready:true});
   if (command === 'worker_task_list') return reply({ status: 'succeeded', data: { schema: 'hiroute.worker-task-list/v1', tasks: [], next_cursor: null }, next_actions: [], error: null });

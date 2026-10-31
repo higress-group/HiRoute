@@ -234,7 +234,13 @@ existing 150-second subprocess bound; the outer task covers both calls.
 The runner records the actual client version before the call and preserves partial
 stdout/stderr when its bounded wait expires. Such a timeout is a failed attempt,
 not an inference verdict. The bounded public-CLI action also accepts `sessions`
-for product receipt readback; protected content still uses the product's authority.
+for product receipt readback, and `models feed status` plus `models metadata list|get`
+for directory identity and record readback. These model commands are read-only;
+refresh and other model mutations remain native UI actions. Protected content
+still uses the product's authority.
+Native UI observations deduplicate Runtime IDs and include visible elements only,
+with raw, unique and visible counts retained in `ui.json`. The 1,600-element limit
+applies before and after actions; scroll to observe additional list content.
 For a connection failure, `network-probe --source-id SOURCE` resolves one ready
 saved HTTPS source through the installed CLI and performs a bounded, verified TLS
 handshake in the same account. It sends no HTTP request or credentials, changes no

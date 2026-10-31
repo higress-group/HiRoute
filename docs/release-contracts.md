@@ -114,7 +114,7 @@ published 0.1.0 records remain immutable historical facts, while 0.2.0 is the fi
 
 ## Publication and retry
 
-Prepare the macOS ARM64/Intel and Linux x86_64/ARM64 assets with the
+Prepare the macOS ARM64/Intel, Linux x86_64/ARM64 and Windows x64 Desktop assets with the
 [release candidate builder](release-builds.md). It supplies measured website
 artifact rows; this workflow consumes the reviewed catalog and published bytes.
 

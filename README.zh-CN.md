@@ -22,7 +22,7 @@
 <p align="center">
   <a href="https://github.com/higress-group/HiRoute/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/higress-group/HiRoute?display_name=tag&amp;sort=semver&amp;style=flat-square"></a>
   <a href="LICENSE"><img alt="Apache-2.0 许可证" src="https://img.shields.io/badge/license-Apache--2.0-5A6FE8?style=flat-square"></a>
-  <a href="https://hiroute.ai/download/"><img alt="支持 macOS 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
+  <a href="https://hiroute.ai/download/"><img alt="支持 macOS、Windows 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
 ## 真实场景的成本节省
@@ -129,16 +129,23 @@ HiRoute 结合这些判断与你的路由计划，选择实际执行的模型。
 [安装指南](https://hiroute.ai/docs/) ·
 [最新版本](https://github.com/higress-group/HiRoute/releases/latest)
 
+HiRoute 提供 **macOS 桌面版、Windows x64 桌面版、Linux Web UI 与 CLI**。
+已发布的安装包见[下载页](https://hiroute.ai/download/)。
+
 1. **接入模型**：加入受支持的订阅或 API，选择经济模型与主力。
 2. **配置分工**：在**模型 → 决策模型**中连接判断服务，选择信任程度，发布并映射到 Agent。
    内置连接支持百炼、OpenAI、OpenRouter Jev、TypeSafe 与兼容接入点，无需自行部署 Jev。
 3. **照常工作**：继续在原来的 Agent 中使用，到 HiRoute 查看模型切换和执行报告。
 
 <details>
-<summary>macOS Desktop 与 Linux 无界面版安装</summary>
+<summary>macOS、Windows 与 Linux 安装</summary>
 
 **macOS：** 下载 DMG，拖入“应用程序”；如系统要求批准，请按
 [自签名安装说明](docs/macos-installation.zh-CN.md)操作。支持 macOS 15+、Apple 芯片与 Intel。
+
+**Windows：** 使用 x64 桌面安装包。按当前用户安装，自带后台服务、
+WebView2 引导安装器和 CLI，不要求 Python 或管理员权限。校验摘要、首次启动和恢复步骤见
+[Windows 安装指南](https://hiroute.ai/docs/install-windows/)。
 
 **Linux：** 支持 x86_64 与 ARM64，无需 `sudo`，安装到当前用户目录：
 
@@ -148,8 +155,18 @@ hiroute service start --output json
 hiroute system status --output json
 ```
 
-安装器校验已发布的 manifest 与文件摘要；服务由用户显式启动。详见
-[Linux 安装指南](https://hiroute.ai/docs/install-linux/)与 [CLI 参考](docs/standalone-cli.zh-CN.md)。
+打开 Web UI，在浏览器中接入模型、配置路由与 Agent、查看会话：
+
+```sh
+hiroute console init --mode loopback --port 5838
+hiroute service restart --output json
+hiroute console open
+```
+
+在浏览器打开输出的一次性登录链接。远程主机可按
+[远程访问或 SSH 隧道说明](docs/web-console.md#access-from-another-device)连接。
+CLI 继续支持终端和自动化工作流。安装器校验已发布的 manifest 与文件摘要；服务由用户显式启动。详见
+[Linux Web UI 与 CLI 指南](https://hiroute.ai/docs/install-linux/)与 [CLI 参考](docs/standalone-cli.zh-CN.md)。
 
 </details>
 

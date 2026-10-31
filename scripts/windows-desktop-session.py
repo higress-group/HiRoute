@@ -62,6 +62,7 @@ public class DesktopWindow {
  [StructLayout(LayoutKind.Sequential)] public struct Point {public int X,Y;public Point(int x,int y){X=x;Y=y;}}
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window,int command);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
  [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
@@ -222,6 +223,20 @@ if([DesktopWindow]::GetForegroundWindow() -ne $p.MainWindowHandle){
  throw 'Native Desktop is not foreground; inspect focus.json'
 }
 $root=[Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
+function VisibleUnique($elements) {
+ $seen=@{}
+ $visible=[Collections.Generic.List[Windows.Automation.AutomationElement]]::new()
+ foreach($e in $elements) {
+  $id=$e.GetRuntimeId() -join '.'
+  if(-not $seen.ContainsKey($id)) {
+   $seen[$id]=$true
+   if(-not $e.Current.IsOffscreen){$visible.Add($e)}
+  }
+ }
+ $script:observation=@{raw_count=$elements.Count;unique_count=$seen.Count;visible_count=$visible.Count;limit=1600}
+ if($visible.Count -gt 1600){throw 'UI Automation tree exceeds observation bound'}
+ return $visible.ToArray()
+}
 function Observe($root) {
  $all=$root.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
  # Some WebView2 fragment roots are reachable by a native accessibility hit
@@ -232,18 +247,18 @@ function Observe($root) {
   $top=$hit
   for($i=0;$i -lt 40;$i++) {
    if($top.Current.ControlType -eq [Windows.Automation.ControlType]::Document){
-    return @($all)+@($top)+@($top.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition))
+    return @(VisibleUnique (@($all)+@($top)+@($top.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition))))
    }
    $top=[Windows.Automation.TreeWalker]::RawViewWalker.GetParent($top)
    if($null -eq $top -or $top.Equals($root)){break}
   }
  }
- return @($all)
+ return @(VisibleUnique @($all))
 }
 $all=@(Observe $root)
-if($all.Count -gt 1600){throw 'UI Automation tree exceeds observation bound'}
 if($q.action -in @('invoke','text','close','click','scroll')) {
  if($q.action -eq 'close') {
+  $closeHandle=$p.MainWindowHandle
   $root.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
  } elseif($q.action -in @('click','scroll')) {
   $r=$root.Current.BoundingRectangle
@@ -278,7 +293,10 @@ if($q.action -in @('invoke','text','close','click','scroll')) {
  }
  Start-Sleep -Milliseconds 750
  $p.Refresh()
- if($p.MainWindowHandle -eq 0){@{closed=$true;pid=$p.Id}|ConvertTo-Json -Compress;exit 0}
+ # Close-to-tray can retain a nonzero HWND even after the window is hidden.
+ if($p.MainWindowHandle -eq 0 -or ($q.action -eq 'close' -and -not [DesktopWindow]::IsWindowVisible($closeHandle))){
+  @{closed=$true;pid=$p.Id;process_alive=(-not $p.HasExited)}|ConvertTo-Json -Compress;exit 0
+ }
  $root=[Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
  $all=@(Observe $root)
 }
@@ -296,7 +314,7 @@ try {
  $graphics.CopyFromScreen([int]$r.X,[int]$r.Y,0,0,$bitmap.Size)
  $bitmap.Save((Join-Path $PSScriptRoot 'window.png'),[Drawing.Imaging.ImageFormat]::Png)
 } finally {$graphics.Dispose();$bitmap.Dispose()}
-@{pid=$p.Id;handle=$p.MainWindowHandle.ToInt64();width=$r.Width;height=$r.Height;window=$root.Current.Name;nodes=$nodes}|ConvertTo-Json -Depth 6 -Compress
+@{pid=$p.Id;handle=$p.MainWindowHandle.ToInt64();width=$r.Width;height=$r.Height;window=$root.Current.Name;observation=$script:observation;nodes=$nodes}|ConvertTo-Json -Depth 6 -Compress
 '''
 
 
@@ -929,7 +947,9 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
         args = request['cli_args']
         if (not isinstance(args, list) or not args or len(args) > 40
                 or any(not isinstance(a, str) or len(a) > 64 * 1024 or '\x00' in a for a in args)
-                or args[0] not in ('system', 'service', 'agents', 'agent', 'plans', 'routing', 'gateway', 'compute', 'operations', 'console', 'sessions')):
+                or (args[0] not in ('system', 'service', 'agents', 'agent', 'plans', 'routing', 'gateway', 'compute', 'operations', 'console', 'sessions')
+                    and args[:3] not in (['models', 'feed', 'status'],
+                                        ['models', 'metadata', 'list'], ['models', 'metadata', 'get']))):
             raise ValueError('Only bounded public product CLI families are accepted')
         environment = os.environ.copy()
         environment.update(request['config']['environment'])

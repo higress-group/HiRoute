@@ -32,6 +32,29 @@ desktop = load('windows-desktop-session')
 
 
 class Runner(unittest.TestCase):
+    def test_installed_cli_allows_model_directory_readback_without_model_mutations(self):
+        cli = self.root / 'hiroute.exe'
+        result = types.SimpleNamespace(returncode=0, stdout=b'{}', stderr=b'')
+        with patch.object(desktop, 'installed', return_value=({'stable_cli': cli}, {}, None)), \
+                patch.object(desktop.subprocess, 'run', return_value=result) as run:
+            for command in (['models', 'feed', 'status'], ['models', 'metadata', 'list'],
+                            ['models', 'metadata', 'get']):
+                request = dict(desktop_action='cli', cli_args=command + ['--output', 'json'],
+                               config=dict(environment={}, path=[]))
+                receipt = desktop.execute(request, self.root, None, None, None,
+                                          dict(administrator_groups=False), None, None)
+                self.assertEqual(receipt['exit_code'], 0)
+                self.assertEqual(run.call_args.args[0], [str(cli), *command, '--output', 'json'])
+                self.assertEqual(run.call_args.kwargs['timeout'], 150)
+            run.reset_mock()
+            for command in (['models', 'feed', 'refresh'], ['models', 'feed', 'settings', 'apply'],
+                            ['models', 'feed', 'remove', 'apply'], ['models', 'metadata'],
+                            ['models', 'metadata', 'unknown']):
+                with self.subTest(command=command), self.assertRaisesRegex(ValueError, 'bounded public'):
+                    desktop.execute(dict(desktop_action='cli', cli_args=command), self.root,
+                                    None, None, None, dict(administrator_groups=False), None, None)
+            run.assert_not_called()
+
     def test_incomplete_installation_page_requires_exact_repair_and_no_storage_retry_in_both_languages(self):
         (self.root/'window.png').write_bytes(b'captured native image placeholder')
         (self.root/'ui.json').write_text('{}')

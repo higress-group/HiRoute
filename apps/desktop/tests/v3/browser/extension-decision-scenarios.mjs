@@ -73,7 +73,7 @@ export function extensionDecisionScenarios({ fresh, routing, click, until, all, 
       assert(document.querySelector(`[data-decision-field="${branches ? 'branch-0' : 'smart'}-floor"]`).value === before, 'Temporary numeric input corrupted the parked integer');
       await click(t('自定义扩展', 'Custom extension'));
       await until(() => !document.querySelector('.decision-judgment-fields'), 'custom fields hidden again');
-      assert(!calls('test_decision_service_v2').length, 'Source switching implicitly probed the connection');
+      assert(!calls('test_decision_service_v3').length, 'Source switching implicitly probed the connection');
       for (const element of all('.decision-selector, .branch-routing-card, .field-label')) {
         const rect = element.getBoundingClientRect();
         assert(rect.width > 30 && rect.right <= innerWidth + 1, 'Editor label or control overflowed');

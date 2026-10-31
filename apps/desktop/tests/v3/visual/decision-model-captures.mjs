@@ -33,7 +33,7 @@ const driver = `(() => {
       if (input.change.service) state.services.push(structuredClone(input.change.service));
       return { operation_id: 'operation/decision', accepted_digest: 'sha256:' + '5'.repeat(64), state: 'succeeded' };
     };
-    c.handlers.test_decision_service_v2 = ({ input }) => ({ schema: 'hiroute.decision-service-test-result/v2', outcome: 'passed', failure_code: null, duration_millis: 412, tested_configuration_digest: input.expected_configuration_digest, tested_credential_state_revision: c.decisionView(state.services[0], state.sources).credential_state_revision });
+    c.handlers.test_decision_service_v3 = ({ input }) => c.decisionNetworkTest({ schema: 'hiroute.decision-service-test-result/v2', outcome: 'passed', failure_code: null, duration_millis: 412, tested_configuration_digest: input.expected_configuration_digest, tested_credential_state_revision: c.decisionView(state.services[0], state.sources).credential_state_revision });
     return state;
   }
   const setInput = (element, value) => { Object.getOwnPropertyDescriptor(element.constructor.prototype, 'value').set.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })); };
@@ -69,6 +69,38 @@ const driver = `(() => {
     await click(label('决策模型', 'Decision models'));
   };
   return {
+    async detail() {
+      store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
+      await open(); await click(label('测试连接', 'Test connection'));
+      await until(() => document.querySelector('.decision-test-result.passed'), 'passed detail');
+      return '.decision-models-page .detail-pane';
+    },
+    async 'removal-entry'() {
+      store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
+      await open(); document.querySelector('.decision-removal').scrollIntoView({ block: 'center' });
+      return '.decision-removal';
+    },
+    async removal() {
+      store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
+      await open(); await click(label('移除模型', 'Remove model'));
+      await until(() => document.querySelector('[role="dialog"]'), 'removal confirmation');
+      return '[role="dialog"]';
+    },
+    async 'removal-blocked'() {
+      store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
+      c.handlers.save_decision_service_v2 = () => { throw { code: 'DECISION_IN_USE' }; };
+      await open(); await click(label('移除模型', 'Remove model'));
+      await until(() => document.querySelector('[role="dialog"] .btn-danger'), 'removal confirmation');
+      document.querySelector('[role="dialog"] .btn-danger').click();
+      await until(() => document.querySelector('[role="dialog"] .callout.warn'), 'retained reference rejection');
+      return '[role="dialog"]';
+    },
+    async 'shared-edit'() {
+      store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
+      await open(); await click(label('编辑', 'Edit'));
+      await until(() => field('model'), 'saved shared editor');
+      return '.decision-connection-form';
+    },
     async shared() {
       store([], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
       await open(); await click(label('添加决策模型', 'Add decision model'));
@@ -130,7 +162,8 @@ const driver = `(() => {
 
 export async function decisionModelCaptures(client, baseUrl, output) {
   const results = [];
-  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) for (const state of ['shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent']) {
+  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 840, height: 975 }, { width: 755, height: 600 }]) for (const state of ['detail', 'removal-entry', 'removal', 'removal-blocked', 'shared-edit', 'shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent']) {
+    if (viewport.width === 840 && state !== 'shared-edit') continue;
     await navigate(client, new URL('product-shell.html', baseUrl).href, viewport);
     await waitFor(client, 'Boolean(window.productShell)');
     await evaluate(client, `(() => { const c = window.productShell; c.reset(); localStorage.setItem('hiroute.language', ${JSON.stringify(language)}); localStorage.setItem('hiroute.theme', ${JSON.stringify(theme)}); })()`);
@@ -147,12 +180,55 @@ export async function decisionModelCaptures(client, baseUrl, output) {
       const box = document.querySelector(${JSON.stringify(anchor)}), b = box.getBoundingClientRect();
       const clipped = [...box.querySelectorAll('button, input, select, label, p, strong')].filter(item => item.offsetParent !== null && item.scrollWidth > item.clientWidth + 1 && getComputedStyle(item).overflowX !== 'visible' && !['INPUT', 'SELECT'].includes(item.tagName)).map(item => item.textContent.trim().slice(0, 60));
       const leaks = document.body.innerText.includes('sha256:');
-      return { bodyOverflow: document.documentElement.scrollWidth > innerWidth + 1, overflow: box.scrollWidth > box.clientWidth + 1, width: b.width, clipped, digestVisible: leaks };
+      const endpoint = box.querySelector('.decision-endpoint');
+      const endpointBox = endpoint?.getBoundingClientRect(), endpointLabel = endpoint?.previousElementSibling?.getBoundingClientRect();
+      const footer = box.querySelector('.decision-form-actions')?.getBoundingClientRect();
+      const fields = box.querySelector('.decision-form-fields')?.getBoundingClientRect();
+      const pane = box.closest('.detail-pane'), split = pane?.parentElement;
+      const paneFillsGrid = !pane || !split || pane.getBoundingClientRect().height >= split.getBoundingClientRect().height - 1;
+      const removal = box.matches('.decision-removal') ? box.querySelector('button') : box.querySelector('.decision-removal button');
+      const removalBox = removal?.getBoundingClientRect();
+      return { bodyOverflow: document.documentElement.scrollWidth > innerWidth + 1, overflow: box.scrollWidth > box.clientWidth + 1, width: b.width, clipped, digestVisible: leaks,
+        endpointFontSize: endpoint ? parseFloat(getComputedStyle(endpoint).fontSize) : null,
+        endpointAligned: !endpointBox || !endpointLabel || Math.abs(endpointBox.left - endpointLabel.left) < 1,
+        footerClearance: !footer || !fields || fields.bottom <= footer.top + 1,
+        footerVisible: !footer || (footer.top >= 0 && footer.bottom <= innerHeight + 1), paneFillsGrid,
+        removalVisible: !!removalBox && removalBox.width > 0 && removalBox.left >= 0 && removalBox.right <= innerWidth + 1 && removalBox.top >= 0 && removalBox.bottom <= innerHeight + 1 };
     })()`);
     if (geometry.bodyOverflow || geometry.overflow || geometry.clipped.length || geometry.digestVisible) throw new Error(`Decision model geometry: ${JSON.stringify({ language, theme, viewport, state, geometry })}`);
+    if (state === 'detail' && (geometry.endpointFontSize < 13 || !geometry.endpointAligned)) throw new Error(`Decision endpoint readability: ${JSON.stringify(geometry)}`);
+    if (state === 'removal-entry' && !geometry.removalVisible) throw new Error(`The standalone decision removal action cannot be brought into view: ${JSON.stringify(geometry)}`);
+    if (['shared', 'shared-edit', 'independent'].includes(state) && (!geometry.footerClearance || !geometry.footerVisible)) throw new Error(`Decision editor footer is covered or outside the viewport: ${JSON.stringify(geometry)}`);
+    if (['shared', 'shared-edit', 'independent'].includes(state) && !geometry.paneFillsGrid) throw new Error(`Decision editor is compressed by an extra grid row: ${JSON.stringify({ viewport, geometry })}`);
     const id = `decision-${state}-${language}-${theme}-${viewport.width}`;
     const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile(path.join(output, `${id}.png`), Buffer.from(shot.data, 'base64'));
+    if (language === 'zh' && theme === 'light' && viewport.width === 1200 && ['detail', 'shared-edit'].includes(state)) {
+      // An inert copy of the rendered production DOM/CSS for independent style inspection.
+      const capture = await evaluate(client, `(() => {
+        const clone = document.documentElement.cloneNode(true), assets = [];
+        clone.querySelectorAll('script').forEach(node => node.remove());
+        clone.querySelectorAll('input').forEach((node, index) => {
+          const original = document.querySelectorAll('input')[index];
+          if (node.type !== 'password') node.setAttribute('value', original.value);
+        });
+        clone.querySelectorAll('select').forEach((node, index) => [...node.options].forEach((option, i) => option.toggleAttribute('selected', i === document.querySelectorAll('select')[index].selectedIndex)));
+        clone.querySelectorAll('img').forEach((node, index) => {
+          const url = document.querySelectorAll('img')[index].src;
+          if (url.startsWith('data:')) return;
+          assets.push(url); node.setAttribute('src', 'capture-asset-' + (assets.length - 1));
+        });
+        return { html: '<!doctype html>' + clone.outerHTML, assets };
+      })()`);
+      for (const [index, url] of capture.assets.entries()) {
+        if (new URL(url).origin !== new URL(baseUrl).origin) throw new Error('Unexpected external capture asset');
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Capture asset failed: ${response.status}`);
+        const asset = `data:${response.headers.get('content-type')};base64,${Buffer.from(await response.arrayBuffer()).toString('base64')}`;
+        capture.html = capture.html.replace(`capture-asset-${index}`, asset);
+      }
+      await writeFile(path.join(output, `${id}.html`), capture.html);
+    }
     results.push({ id, state: 'green', language, theme, viewport, geometry, screenshot: `${id}.png` });
   }
   return results;

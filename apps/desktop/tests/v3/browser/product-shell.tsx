@@ -5,7 +5,7 @@ import { invoke } from '../../../src/host/index.ts';
 import { trialAgentRead } from './trial-agent-fixture';
 import { agentHomeRead } from './agent-home-fixture';
 import { DesktopApp } from '../../../src/product/DesktopApp';
-import { fixtureDecisionSource, fixtureDecisionView, fixturePlanAuthoring, mockProductInvoke, readyAgents, readyDesktop, readyManagement } from './product-fixtures';
+import { fixtureDecisionSource, fixtureDecisionView, fixtureDecisionNetworkRoute, fixtureDecisionNetworkTest, fixturePlanAuthoring, mockProductInvoke, readyAgents, readyDesktop, readyManagement } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
 // Only the IPC boundary is synthetic. Navigation, settings, forms and operation
@@ -22,6 +22,7 @@ const control = {
   callHost: invoke,
   decisionView: fixtureDecisionView,
   decisionSource: fixtureDecisionSource,
+  decisionNetworkTest: fixtureDecisionNetworkTest,
   handlers: {} as Record<string, (payload: Record<string, unknown>) => unknown>,
   fixtureResponse: (command: string, payload: Record<string, unknown>) => {
     const response = mockProductInvoke(command, payload, 'ready');
@@ -58,6 +59,10 @@ mockIPC((command, payload) => {
   const args = (payload ?? {}) as Record<string, unknown>;
   control.commands.push({ command, payload: args });
   if (control.handlers[command]) return control.handlers[command](args);
+  if (command === 'preview_native_network_route') return fixtureDecisionNetworkRoute();
+  if (command === 'native_source_network') return { source_id: (args.input as { source_id: string }).source_id,
+    source_revision: 1, network_revision: 0, policy: { mode: 'direct' }, applied_revision: 0,
+    application_state: 'applied', operation: null, routes: [fixtureDecisionNetworkRoute()], models: [], decisions: [] };
   if (command === 'plugin:window|set_theme') return undefined;
   if (command === 'startup_status') return { state: 'ready', recovery_available: false };
   if (command === 'desktop_snapshot') return structuredClone(control.desktop);
