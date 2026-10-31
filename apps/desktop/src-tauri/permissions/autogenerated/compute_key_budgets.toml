@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-compute-key-budgets"
+description = "Enables the compute_key_budgets command without any pre-configured scope."
+commands.allow = ["compute_key_budgets"]
+
+[[permission]]
+identifier = "deny-compute-key-budgets"
+description = "Denies the compute_key_budgets command without any pre-configured scope."
+commands.deny = ["compute_key_budgets"]

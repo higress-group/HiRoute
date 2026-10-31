@@ -1060,7 +1060,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "compute.budgets.get",
         ["compute", "budgets", "get"],
         "GetComputeKeyBudgets",
-        ["CLI-079", "APP-079"],
+        ["CLI-081", "APP-081"],
         Released,
         Query,
         "Read Key allowance bindings, balances and periodic renewal."
@@ -1069,7 +1069,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "compute.budgets.preview",
         ["compute", "budgets", "preview"],
         "PreviewComputeKeyBudgets",
-        ["CLI-080", "APP-080"],
+        ["CLI-082", "APP-082"],
         Released,
         Preview,
         "Preview an atomic source, Key and spending allowance save."

@@ -27,7 +27,7 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .unwrap();
-    if kind == DatabaseKind::Control && matches!(version, 34..=36) {
+    if kind == DatabaseKind::Control && matches!(version, 34..=37) {
         crate::control::agent_locator::validate_coverage(&transaction).unwrap();
     }
     transaction
@@ -46,6 +46,9 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     }
     if kind == DatabaseKind::Control && version == 36 {
         subscription_api_v36::initialize(&transaction).unwrap();
+    }
+    if kind == DatabaseKind::Control && version == 37 {
+        key_budgets_v37::initialize(&transaction).unwrap();
     }
     transaction
         .pragma_update(None, "user_version", version)

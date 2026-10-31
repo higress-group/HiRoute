@@ -16,8 +16,19 @@ struct Wallet {
     epoch: u64,
 }
 fn failure() -> PortError {
-    port("compute.key_budget.authority")
+    port(PortErrorCode::Unavailable, "compute.key_budget.authority")
 }
+
+fn encode<T: serde::Serialize>(value: &T) -> PortResult<String> {
+    serde_json::to_string(value).map_err(|_| failure())
+}
+fn decode<T: serde::de::DeserializeOwned>(value: &str) -> PortResult<T> {
+    serde_json::from_str(value).map_err(|_| failure())
+}
+fn invalid(context: &'static str) -> PortError {
+    port(PortErrorCode::InvalidData, context)
+}
+
 fn now_ms() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -125,6 +125,8 @@
     "allow-preview-compute-save-v4",
     "allow-check-model-connection-v2",
     "allow-check-registered-model-connection-v2",
-    "allow-check-saved-model-connection-v2"
+    "allow-check-saved-model-connection-v2",
+    "allow-compute-key-budgets",
+    "allow-preview-compute-key-budgets"
   ]
 }
