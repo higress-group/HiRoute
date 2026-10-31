@@ -437,10 +437,27 @@ pub(super) fn materialize_management_candidate(
         required_adapter_revision: protocol_endpoint.adapter_revision,
         evidence_digest: fact.capability_evidence_digest.clone(),
     };
+    let metadata_reasoning = catalog.and_then(|catalog| {
+        hiroute_integrations::compute::missing_api_reasoning_default(
+            catalog,
+            &fact.provenance,
+            &fact.target,
+            &fact.authentication,
+            &fact.upstream_model_id,
+            &fact.capabilities.native_reasoning,
+            fact.default_preferences
+                .get(&hiroute_domain::ModelDefaultFieldV1::NativeReasoning),
+        )
+    });
     let reasoning = ModelNativeReasoningV1 {
         model_configuration_id: model_configuration_id.clone(),
-        capability: fact.native_reasoning.clone(),
-        native_render_convention: qualified_native_render_convention(fact, catalog),
+        capability: metadata_reasoning.as_ref().map_or_else(
+            || fact.native_reasoning.clone(),
+            |value| value.capability.clone(),
+        ),
+        native_render_convention: metadata_reasoning
+            .and_then(|value| value.render_convention)
+            .or_else(|| qualified_native_render_convention(fact, catalog)),
     };
     let mut protocol_faces = vec![ProtocolFace {
         protocol: protocol_endpoint.protocol,

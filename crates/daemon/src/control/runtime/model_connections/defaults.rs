@@ -84,6 +84,20 @@ pub(in crate::control::runtime) fn project_source(
                     .is_some_and(|id| catalog.model_data().model(id).is_none()),
             )
         });
+        if let Some(default) = hiroute_integrations::compute::missing_api_reasoning_default(
+            catalog,
+            &source.provenance,
+            &source.target,
+            &source.authentication,
+            &model.upstream_model_id,
+            &model.capabilities.native_reasoning,
+            fields.get(&ModelDefaultFieldV1::NativeReasoning),
+        ) {
+            model.capabilities.native_reasoning = ComputeManagementFactValueV2 {
+                value: Some(default.capability),
+                basis: ComputeManagementFactBasisV2::RuntimeFallback,
+            };
+        }
     }
     effective
 }
@@ -149,7 +163,12 @@ impl LocalControlAdapter {
                                 "preserve_saved"
                             }
                             .into(),
-                            origin: if follows {
+                            origin: if follows
+                                || (saved_fact.value.is_none()
+                                    && effective.capabilities.$name.value.is_some()
+                                    && effective.capabilities.$name.basis
+                                        == ComputeManagementFactBasisV2::RuntimeFallback)
+                            {
                                 if catalog.official_data_from_feed() {
                                     "website_cache"
                                 } else {

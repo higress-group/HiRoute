@@ -156,6 +156,32 @@ A registered check SHALL submit option identity, expected provenance, edit corre
 
 Saved source/binding identity, selected membership, credentials, target and historical admission provenance SHALL survive compatible metadata updates. A catalog-derived capability SHALL resolve from the current selected snapshot for new authoring/publication. A catalog digest change or a compatible change of context limit, tool/vision/streaming support or supported reasoning values alone SHALL NOT invalidate an otherwise legal saved connection. Existing user-declared values SHALL retain their source-local meaning and editable authority. Refresh SHALL neither fabricate a successful connection check nor overwrite historical save evidence.
 
+New and already saved observed models on the registered OpenAI and Anthropic APIs
+SHALL resolve absent or derived-fallback reasoning controls from one current
+metadata snapshot when the exact registered destination, protocol, authentication,
+product and upstream model ID match a supported native reasoning convention.
+The projection SHALL be shared by model/default reads, recheck prefill, routing
+options and new publication inputs. OpenAI effort and Anthropic adaptive effort
+SHALL retain their distinct native fields and required companion controls.
+Labels, another product's subscription membership, an unknown ID or an ambiguous
+mapping SHALL NOT establish these defaults.
+
+Explicit source capability values and saved-default intent SHALL take precedence.
+Resolving a missing value SHALL NOT rewrite stored sources, keys, membership,
+admission evidence or already published reasoning selections. The effective value
+and its metadata origin SHALL be visible separately from a missing saved value.
+This control default SHALL NOT grant entitlement, prices, free qualification or
+otherwise bypass ordinary account/endpoint/model admission.
+
+#### Scenario: An existing API import has no reasoning fact
+
+- **WHEN** a previously imported OpenAI API model has an absent reasoning fact and
+  its exact model/product/wire metadata provides supported effort profiles
+- **THEN** model details and new route editing SHALL expose those profiles without
+  reimporting the model or changing its source/Binding identities
+- **AND** publication SHALL freeze the chosen profile with the native API parameter,
+  while explicit manual source settings and existing publications retain meaning.
+
 New selection, check, recheck and publication SHALL qualify against one current snapshot. A withdrawn model, unsupported adapter, invalid source/account, or previously selected reasoning setting that is no longer supported SHALL produce a specific unavailable/conflict reason. The user SHALL be able to review a valid replacement; the service SHALL NOT silently change reasoning choice, drop selected members or publish a replacement Plan. Renaming a source, removing another member or changing Keys SHALL preserve unchanged saved model values and identity; newly added/rechecked members receive current admission. Withdrawal SHALL not prevent an otherwise legal removal/disable action.
 
 Already published revisions SHALL keep their compiled model facts, candidate order and reasoning configuration. Their existing runs, new sessions, newly delegated Workers and Continue SHALL not depend on the mutable catalog or held copy, including after restart. Current authorization, cancellation and credential revocation still apply. Applying new capability defaults to execution SHALL use normal preview/publication. New logical requests through old publications still obtain current source-scoped valuation independently of frozen execution; settled history remains unchanged.

@@ -21,3 +21,10 @@ Purpose is optional for routing, and required when enabling delegation. The Doma
 enforces this condition on publication and reopen; Agent and Gateway catalogs use
 the route display name when its saved purpose is empty, preserving their nonempty
 description contracts.
+
+Missing reasoning on saved registered OpenAI/Anthropic API models is resolved by
+the shared scoped metadata default in `hiroute-integrations`. The daemon uses the
+same default for model/default reads and candidate materialization. It matches the
+registered target, protocol, authentication, product and exact upstream ID, and
+preserves explicit source values, saved-default intent and frozen publications.
+The read projection does not rewrite stored sources or qualify entitlement.

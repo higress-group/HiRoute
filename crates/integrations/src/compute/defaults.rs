@@ -1,6 +1,8 @@
 //! Resolve current defaults only after the caller has established exact source/endpoint authority.
 use super::TrustedReleaseCatalog;
 use hiroute_domain::*;
+mod native_reasoning;
+pub use native_reasoning::{ApiReasoningDefault, missing_api_reasoning_default};
 mod scoped;
 pub use scoped::*;
 use std::collections::BTreeMap;
