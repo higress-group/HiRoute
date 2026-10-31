@@ -52,7 +52,7 @@ is 1900×2072 from a 2× recording, with the pointer resting on the selected tur
 The README's [trial setup](readme-trial-en.png) ([中文](readme-trial-zh-CN.png)) and
 [model performance report](readme-report-en.png) ([中文](readme-report-zh-CN.png)) images
 render the production `TrialQuickStart` and Plan editor model-performance components in
-headless Chrome at device scale 2, light theme, 1200-pixel viewport width. They are cropped
+headless Chrome at device scale 2, dark theme (matching the session recordings), 1200-pixel viewport width. They are cropped
 to the form cards and the report section without repainting.
 
 The data is synthetic: the browser fixtures under `apps/desktop/tests/v3/browser`, served
@@ -63,9 +63,9 @@ $3.42 routed versus $11.86 primary-reference estimate. Counts, suggestions and s
 fixture values, not measured results.
 
 To reproduce, run `node_modules/.bin/vite` from `apps/desktop` and open
-`/readme-docs.html?view=quickstart&native=1&lang=en` (choose the first new model, dismiss the
+`/readme-docs.html?view=quickstart&native=1&theme=dark&lang=en` (choose the first new model, dismiss the
 directory notice, pick GPT-6-Astra with high reasoning) and
-`/readme-docs.html?polish=1&native=1&view=editor&lang=en` (open Model performance). Use
+`/readme-docs.html?polish=1&native=1&view=editor&theme=dark&lang=en` (open Model performance). Use
 `lang=zh` for Chinese.
 
 ## Current product component captures
