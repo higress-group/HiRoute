@@ -1,14 +1,20 @@
 ---
 name: hiroute-ui-quality
-description: Verify HiRoute Desktop layout, text wrapping, visual hierarchy and form states using production styles and observable geometry. Apply to UI implementation or layout repairs; not backend-only work or a request to discuss a design without implementing it.
+description: Design and verify consistent HiRoute Desktop/Web interactions, form and confirmation states, layout and visual hierarchy using production components and observable evidence. Apply to UI implementation or interaction/layout repairs; not backend-only work or discussion without implementation.
 ---
 
-# HiRoute UI quality
+# HiRoute interaction and UI quality
 
 Implement the confirmed interaction as a readable, consistent, usable real page.
 Wrapping, hierarchy and state layout are delivery quality; compilation or control
 presence is insufficient. Routine layout choices within the user's design need
 no extra approval.
+
+Use the [shared interaction guidelines](../../../docs/desktop-interactions.md)
+when a UI flow is added or changed. Compare an existing equivalent capability
+before choosing new controls, wording, save behavior or confirmation layout.
+Read the relevant feature contract for actual authority and side effects; visual
+uniformity must not erase meaningful domain or host differences.
 
 ## Find the production owner
 
@@ -21,6 +27,11 @@ e.g. horizontal `.field-label`; override vertically only in the affected form.
 Fix dimensions only when the product requires them; controls/columns must shrink.
 
 ## Select coverage by the change
+
+Record the affected entry, user job, analogous pattern and relevant state
+transitions. Include Cancel/Back, busy, read-only, error and uncertain-result
+behavior when affected. Check that non-mutating exits remain usable and that a
+confirmation keeps its captured object/revision. No new approval gate is added.
 
 Read the [Desktop test map](../../../apps/desktop/tests/README.md) and use
 [HiRoute validation](../hiroute-validation/SKILL.md) to select and execute checks.
@@ -38,6 +49,12 @@ Record selected combinations:
   normally need geometry in one theme and contrast sampling in the other.
 
 ## Inspect real pages and protect regressions
+
+Capture a source-bound before/after for every changed interaction, with the same
+data, state, language, theme and viewport. Keep complete original screenshots;
+state the practical improvement and its tradeoff. For a shared primitive, cover
+representative consumers and smoke the remaining affected entries. Comparison
+is part of delivery quality, not a request to redesign already suitable flows.
 
 Run production browser scenarios first. Native save/restart/authorization/real
 requests require a capable Codex host and [HiRoute CU](../hiroute-cu/SKILL.md).

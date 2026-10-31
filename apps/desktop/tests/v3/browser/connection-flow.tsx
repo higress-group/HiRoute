@@ -8,10 +8,14 @@ import { mockProductInvoke, readyManagement } from './product-fixtures';
 import { PresentationRoot } from '../../../src/ui/PresentationRoot';
 import { requestEditorReplacement } from '../../../src/ui/discard-guard';
 import { blankModel } from '../../../src/features/model-connections/state';
+import { mockIPC } from './host-mock';
 import '../../../src/occami/styles.css';
 
 const params = new URLSearchParams(location.search);
 const kind = params.get('kind') === 'free' ? 'free' : params.get('kind') === 'custom' ? 'custom' : 'known';
+// Network settings use the production host adapter even when the form's protected
+// Check/Apply backend is controlled separately by this scenario.
+mockIPC((command, payload) => mockProductInvoke(command, payload, 'ready'));
 const trace = { checks: [] as unknown[], registered: [] as string[], released: [] as string[], saves: [] as unknown[], applies: [] as unknown[], accepted: [] as unknown[], uncertain: [] as unknown[], optionReads: 0 };
 const pendingChecks: (() => void)[] = [];
 const pendingApplies: (() => void)[] = [];
@@ -28,7 +32,7 @@ function Harness() {
   const [savedName, setSavedName] = useState('');
   const appendTo = params.has('append') ? { ...readyManagement.sources[0], display_name: '已有 · 接入', state: 'disabled' as const } : undefined;
   const initial = useMemo(() => appendTo ? { ...newModelConnectionDraft('custom'),
-    existing_source_id: appendTo.source_id, display_name: appendTo.display_name, base_url: 'https://api.example.test',
+    existing_source_id: appendTo.source_id, expected_source_revision: appendTo.revision, display_name: appendTo.display_name, base_url: 'https://api.example.test',
   } : { ...newModelConnectionDraft(kind), ...(params.has('initial_model') ? { models: [blankModel('existing-model')] } : {}) }, []);
   const [language, setLanguage] = useState<'zh' | 'en'>(params.get('lang') === 'en' ? 'en' : 'zh');
   Object.assign(window, { setConnectionLanguage: setLanguage });

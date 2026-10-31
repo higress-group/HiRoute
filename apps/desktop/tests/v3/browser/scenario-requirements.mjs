@@ -63,6 +63,12 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.interactions.read-only-exit',
+  'desktop.interactions.tab-navigation',
+  'desktop.interactions.unknown-cli',
+  'desktop.interactions.route-actions',
+  'desktop.interactions.read-only-routing',
+  'desktop.interactions.diagnostics-save',
   'desktop.trial.connected-models-and-models-return',
   'desktop.home.observation-reader-bound',
   'desktop.home.observation-busy-recovers',

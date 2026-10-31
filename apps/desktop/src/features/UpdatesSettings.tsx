@@ -37,6 +37,7 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
     return () => { current = false; window.clearInterval(timer); };
   }, [active, busy]);
   const act = async (command: 'update_check' | 'update_download' | 'update_install' | 'update_cancel') => {
+    if (actionPending) return;
     setActionPending(true); setError('');
     try { setView(await invoke<UpdateView>(command)); }
     catch (failure) { setError(safeDiagnosticCode(failure, 'UPGRADE_UNAVAILABLE')); }
@@ -63,7 +64,7 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
         {!busy && <button className="btn" type="button" disabled={actionPending} onClick={() => void act('update_check')}>{text('检查更新', 'Check for updates')}</button>}
         {view && !busy && view.available && !view.package_ready && <button className="btn" type="button" disabled={actionPending || !view.can_install} onClick={() => void act('update_download')}>{text('下载更新', 'Download update')}</button>}
         {view?.package_ready && !busy && <button className="btn" type="button" disabled={actionPending || restartRequired} onClick={() => void act('update_install')}>{text('安装并重启', 'Install and restart')}</button>}
-        {canCancel && <button className="btn" type="button" onClick={() => void act('update_cancel')}>{text('取消升级', 'Cancel update')}</button>}
+        {canCancel && <button className="btn" type="button" disabled={actionPending} onClick={() => void act('update_cancel')}>{text('取消升级', 'Cancel update')}</button>}
       </div>
     </div>
     {view?.available && !busy && <div className="gateway-risk">{view.available.notes[language]}</div>}

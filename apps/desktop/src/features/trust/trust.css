@@ -46,10 +46,10 @@
 .trust-replay-legend > span > span { color: var(--text-muted); }
 .trust-replay .field-help { margin: 0; }
 .trust-suggestion { --tone: var(--text-muted); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 20px; min-width: 0; margin-bottom: 12px; padding: 16px 20px; border: 1px solid var(--border); border-left: 3px solid var(--tone); border-radius: var(--radius-md); background: var(--panel); }
-.trust-suggestion.info { --tone: var(--accent); background: linear-gradient(90deg, var(--accent-soft), transparent 70%), var(--panel); }
-.trust-suggestion.warn { --tone: var(--yellow); background: linear-gradient(90deg, var(--yellow-soft), transparent 70%), var(--panel); }
-.trust-suggestion.cyan { --tone: var(--cyan); background: linear-gradient(90deg, var(--cyan-soft), transparent 70%), var(--panel); }
-.trust-suggestion.bad { --tone: var(--red); background: linear-gradient(90deg, var(--red-soft), transparent 70%), var(--panel); }
+.trust-suggestion.info { --tone: var(--accent); background: var(--panel); }
+.trust-suggestion.warn { --tone: var(--yellow); background: var(--panel); }
+.trust-suggestion.cyan { --tone: var(--cyan); background: var(--panel); }
+.trust-suggestion.bad { --tone: var(--red); background: var(--panel); }
 .trust-suggestion-main { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
 .trust-suggestion-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 .trust-suggestion-line strong { font-size: calc(15px * var(--hr-text-scale)); font-weight: 650; }
@@ -79,7 +79,7 @@
 .trust-card-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 @container (max-width: 760px) { .trust-card-pair { grid-template-columns: minmax(0, 1fr); } }
 .plan-quality > .trust-card { margin-top: 16px; }
-.trust-protection { border-color: color-mix(in srgb, var(--purple) 28%, transparent); background: linear-gradient(180deg, var(--purple-soft), transparent 80%), var(--panel); }
+.trust-protection { border-color: color-mix(in srgb, var(--purple) 28%, transparent); background: var(--panel); }
 .trust-cost-row { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding-block: 6px; border-bottom: 1px solid var(--divider); color: var(--text-soft); font-size: calc(13px * var(--hr-text-scale)); }
 .trust-cost-row strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .trust-cost-row strong.more { color: var(--red); }

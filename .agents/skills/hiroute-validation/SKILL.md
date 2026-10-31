@@ -18,6 +18,7 @@ loading every execution, diagnosis and retention guide.
 | Operation | Read next |
 | --- | --- |
 | Select checks and consumers | [Test selection](../../../docs/test-selection.md), using the [test map](../../../docs/code-map/testing.md) to find the owning assertion. |
+| Validate changed UI interactions or shared presentation | [Interaction and UI quality](../hiroute-ui-quality/SKILL.md), then the affected production flows and representative consumers. |
 | Execute backend, Desktop or Pilot checks | [Validation routing](../../../docs/validation-routing.md#commands); follow only the selected local/SSH runner or [Desktop Pilot](../../../docs/desktop-tauri-pilot.md) guide. Hosted CI has its [own entry](../../../docs/github-actions-validation.md). |
 | Iterate on Windows behavior | [Cross-compilation and development-machine execution](../../../docs/validation-routing.md#windows-iteration-and-release-validation), including `validation.py windows` and HOME machine configuration. Reserve the hosted matrix for release candidates or an explicitly needed manual diagnosis. |
 | Diagnose a failure | The run's result, report and relevant logs, then [failure repair](../../../docs/validation-feedback.md#required-agent-feedback-loop). For product-path failures, also use [diagnostic troubleshooting](../../../docs/diagnostic-troubleshooting.md#diagnose-failures-before-rerunning). |
@@ -31,6 +32,11 @@ loading every execution, diagnosis and retention guide.
   gates, and record justified scope adjustments. Docs/tooling use their own checks;
   product smoke covers affected business paths. Expand for cross-boundary contracts,
   dependencies or unresolved impact, rather than location or test duration alone.
+- For UI changes, include the affected edit/Cancel/Back, submitting, read-only,
+  error and recovery states as applicable. Require source-bound same-state
+  comparisons and an observable assertion for a reproduced defect. Shared controls
+  need representative consumer coverage; an unrelated backend change does not
+  acquire a full UI matrix. Use the UI-quality owner for the current interaction rules.
 - Run selected Python/Node checks directly. Use `scripts/validation.py` and the
   caller's configured host for Cargo and Desktop/Pilot execution. Final evidence
   uses an exact committed candidate locally and a pushed candidate remotely.

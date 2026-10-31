@@ -367,8 +367,9 @@ export function TrialFixture({language}:{language:'zh'|'en'}) {
  const [snapshot,setSnapshot]=useState<DesktopSnapshot>(structuredClone(desktop));
  const [operation,setOperation]=useState<DesktopOperation|null>(null);
  const [open,setOpen]=useState(false);
+ const [mutable,setMutable]=useState(true);
  const [reopened,setReopened]=useState(false);
- Object.assign(window,{reopenPublishedTrial:()=>setReopened(true),setTrialLanguage:setCurrentLanguage});
+ Object.assign(window,{reopenPublishedTrial:()=>setReopened(true),setTrialLanguage:setCurrentLanguage,setTrialMutable:setMutable});
  if (reopened && desktop.catalog.plans[0]) return <div className="trial-page-host" style={{height:'100vh'}}><PlanEditor plan={desktop.catalog.plans[0]} language={currentLanguage} onDone={async()=>{}} onClose={()=>setReopened(false)} /></div>;
- return open ? <div className="trial-page-host" style={{height:'100vh'}}><TrialQuickStart initialModelId={trialModel.model_configuration_id} initialBindingId="binding/bailian/qwen-coder" language={currentLanguage} mutable snapshot={snapshot} operation={operation} onOperation={setOperation} onRefresh={async()=>{setSnapshot(structuredClone(desktop));setOperation(observed);}} onClose={()=>setOpen(false)} onOpenAgent={()=>{}} /></div> : <NewModels language={currentLanguage} active plans={snapshot.catalog.plans} refreshVersion={0} onTry={()=>setOpen(true)} />;
+ return open ? <div className="trial-page-host" style={{height:'100vh'}}><TrialQuickStart initialModelId={trialModel.model_configuration_id} initialBindingId="binding/bailian/qwen-coder" language={currentLanguage} mutable={mutable} snapshot={snapshot} operation={operation} onOperation={setOperation} onRefresh={async()=>{setSnapshot(structuredClone(desktop));setOperation(observed);}} onClose={()=>setOpen(false)} onOpenAgent={()=>{}} /></div> : <NewModels language={currentLanguage} active plans={snapshot.catalog.plans} refreshVersion={0} onTry={()=>setOpen(true)} />;
 }

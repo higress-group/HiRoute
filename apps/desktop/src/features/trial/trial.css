@@ -11,6 +11,8 @@
 .trial-steps li.done > span { border-color: var(--accent); color: var(--accent-bright); }
 .trial-saved { margin: 0; color: var(--green); font-size: calc(13px * var(--hr-text-scale)); }
 .trial-setup { display: grid; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.trial-fields { display: grid; gap: 16px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.trial-card .field { margin: 0; }
 .trial-card { display: grid; gap: 14px; min-width: 0; padding: 20px 22px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel); overflow-wrap: anywhere; }
 .trial-card h3 { margin: 0; font-size: calc(16px * var(--hr-text-scale)); font-weight: 650; }
 .trial-card-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; }
@@ -29,7 +31,7 @@
 .trial-model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 196px), 1fr)); gap: 10px; }
 .trial-model-card, .trial-choice { display: grid; align-content: start; gap: 4px; min-width: 0; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel-high); color: var(--text); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
 .trial-model-card:hover:not(:disabled), .trial-choice:hover { border-color: var(--border-strong); }
-.trial-model-card.selected, .trial-choice.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 5%, var(--panel-high)); }
+.trial-model-card.selected, .trial-choice.selected { border-color: var(--accent); box-shadow: none; background: color-mix(in srgb, var(--accent) 5%, var(--panel-high)); }
 .trial-model-card:disabled { cursor: not-allowed; opacity: .55; }
 .trial-model-card:focus-visible, .trial-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .trial-model-card strong, .trial-choice strong { font-size: calc(14px * var(--hr-text-scale)); font-weight: 650; }
@@ -86,7 +88,7 @@
 .trial-publication-status p { margin: 0; }
 .trial-review-actions { padding-block: 8px; }
 .trial-review-actions .btn-primary { min-width: 220px; max-width: 100%; }
-.trial-footer { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-inline: -4px; margin-top: 112px; padding: 12px 4px; border-top: 1px solid var(--divider); background: var(--bg); }
+.trial-footer { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-inline: -4px; margin-top: 24px; padding: 12px 4px; border-top: 1px solid var(--divider); background: var(--bg); }
 .trial-footer-hint { flex: 1 1 200px; min-width: 0; color: var(--text-muted); font-size: calc(13px * var(--hr-text-scale)); text-align: right; }
 .trial-review-card .plan-editor { min-width: 0; }
 .trial-review-card .actions, .trial-mapping .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px 0; }

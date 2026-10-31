@@ -7,7 +7,7 @@ import { DiagnosticsSettings } from '../features/diagnostics/DiagnosticsSettings
 import { UpdatesSettings } from '../features/UpdatesSettings';
 import { ShellHostSettings } from '../features/ShellHostSettings';
 import { safeDiagnosticCode } from '../error-code';
-import { ProductPage } from '../ui';
+import { ProductPage, TabList } from '../ui';
 import type { Language, LanguagePreference, ThemePreference } from '../ui/preferences';
 import { listenerApplyRequest, listenerScopeFromAddress, type GatewayListenerScope } from './gateway-listener-scope';
 
@@ -95,11 +95,14 @@ export function SettingsPage(props: SettingsPageProps) {
     let current = true;
     setCliError('');
     setListenerError('');
-    if (hostCapabilities().cli_entry) void invoke<CliEntryView>('cli_entry_status').then(value => {
+    if (hostCapabilities().cli_entry) {
+      setCliBusy(true);
+      void invoke<CliEntryView>('cli_entry_status').then(value => {
       if (current) setCliEntry(value);
     }).catch(error => {
-      if (current) setCliError(safeDiagnosticCode(error, 'CLI_ENTRY_UNAVAILABLE'));
-    });
+      if (current) { setCliEntry(null); setCliError(safeDiagnosticCode(error, 'CLI_ENTRY_UNAVAILABLE')); }
+    }).finally(() => { if (current) setCliBusy(false); });
+    }
     void invoke<GatewayListenerView>('gateway_listener_status').then(value => {
       if (!current) return;
       setListener(value);
@@ -120,6 +123,14 @@ export function SettingsPage(props: SettingsPageProps) {
     } finally {
       setCliBusy(false);
     }
+  };
+
+  const retryCliRead = async () => {
+    if (cliBusy) return;
+    setCliBusy(true); setCliError('');
+    try { setCliEntry(await invoke<CliEntryView>('cli_entry_status')); }
+    catch (error) { setCliEntry(null); setCliError(safeDiagnosticCode(error, 'CLI_ENTRY_UNAVAILABLE')); }
+    finally { setCliBusy(false); }
   };
 
   const saveListener = async () => {
@@ -178,15 +189,8 @@ export function SettingsPage(props: SettingsPageProps) {
     { id: 'runtime', label: text('服务与接入', 'Service & access') },
     { id: 'records', label: text('记录与诊断', 'Records & diagnostics') },
   ] as const;
-  const tabs = <nav className="settings-tabs" role="tablist" aria-label={text('设置分组', 'Settings areas')}>
-    {groups.map((group, index) => <button key={group.id} id={`${sectionId}-tab-${group.id}`} type="button" role="tab" aria-selected={section === group.id} aria-controls={`${sectionId}-panel-${group.id}`} tabIndex={section === group.id ? 0 : -1} onClick={() => setSection(group.id)} onKeyDown={event => {
-      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? groups.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + groups.length) % groups.length;
-      setSection(groups[next].id);
-      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
-    }}>{group.label}</button>)}
-  </nav>;
+  const tabs = <TabList<'general' | 'runtime' | 'records'> className="settings-tabs" label={text('设置分组', 'Settings areas')} value={section} onChange={setSection} activation="automatic"
+    items={groups.map(group => ({ value: group.id, label: group.label, id: `${sectionId}-tab-${group.id}`, controls: `${sectionId}-panel-${group.id}` }))} />;
 
   return <ProductPage title={text('设置', 'Settings')} subtitle={text('偏好与本机服务', 'Preferences and local service')} className="settings-page" tabs={tabs}>
     <div className="settings-wrap">
@@ -220,7 +224,8 @@ export function SettingsPage(props: SettingsPageProps) {
             {cliEntry && !cliEntry.daemon_available && <span>{text('CLI 入口与服务可用性相互独立；当前本机服务尚未就绪。', 'The CLI entry and daemon availability are independent; the local service is not ready.')}</span>}
           </div>
           <div className="worker-settings-control">
-            {cliEntry?.state !== 'valid' && <button className="btn" type="button" disabled={cliBusy || cliEntry?.state === 'conflict'} onClick={() => void updateCliEntry('cli_entry_install')}>{cliEntry?.state === 'broken' ? text('修复', 'Repair') : text('安装', 'Install')}</button>}
+            {!cliEntry && <button className="btn" type="button" disabled={cliBusy || !cliError} onClick={() => void retryCliRead()}>{cliBusy || !cliError ? text('正在检查…', 'Checking…') : text('重试', 'Retry')}</button>}
+            {cliEntry && cliEntry.state !== 'valid' && <button className="btn" type="button" disabled={cliBusy || cliEntry.state === 'conflict'} onClick={() => void updateCliEntry('cli_entry_install')}>{cliEntry.state === 'broken' ? text('修复', 'Repair') : text('安装', 'Install')}</button>}
             {cliEntry?.state === 'valid' && <button className="btn" type="button" disabled={cliBusy} onClick={() => void updateCliEntry('cli_entry_remove')}>{text('移除', 'Remove')}</button>}
           </div>
         </div>{cliError && <div className="settings-inline-error" role="status">{text(`CLI 入口不可用（${cliError}）`, `CLI entry unavailable (${cliError})`)}</div>}</div></section>}

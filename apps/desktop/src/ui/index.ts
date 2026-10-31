@@ -1,5 +1,6 @@
 export * from './BrandIcon';
 export * from './Dialog';
+export * from './TabList';
 export * from './Disclosure';
 export * from './HiRouteMark';
 export * from './money';

@@ -36,6 +36,7 @@ import {
 import type { OperationReference } from '../features/model-connections/types';
 import {
   PresentationRoot,
+  TabList,
   UiIcon,
   WebConfirmationHost,
   syncNativeWindowTheme,
@@ -425,10 +426,11 @@ export function DesktopApp() {
     openPage('routing');
   }
 
-  const modelTabs = <nav className="model-category-tabs" aria-label={language === 'zh' ? '模型类型' : 'Model categories'}>
-    <button type="button" aria-pressed={modelTab === 'general'} onClick={() => void switchModelTab('general')}>{language === 'zh' ? '通用模型' : 'General models'}</button>
-    <button type="button" aria-pressed={modelTab === 'decisions'} onClick={() => void switchModelTab('decisions')}>{language === 'zh' ? '决策模型' : 'Decision models'}</button>
-  </nav>;
+  const modelTabs = <TabList className="model-category-tabs" label={language === 'zh' ? '模型类型' : 'Model categories'} value={modelTab}
+    onChange={next => void switchModelTab(next)} items={[
+      { value: 'general', label: language === 'zh' ? '通用模型' : 'General models' },
+      { value: 'decisions', label: language === 'zh' ? '决策模型' : 'Decision models' },
+    ]} />;
 
   function acceptOperation(
     reference: OperationReference | DesktopOperation | null,

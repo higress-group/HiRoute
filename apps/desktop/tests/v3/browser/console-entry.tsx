@@ -12,6 +12,7 @@ const query = new URLSearchParams(location.search);
 const state = query.get('case') ?? 'login';
 let holdDesktop = query.get('startup') === 'held';
 const pendingDesktopReads: (() => void)[] = [];
+const pendingHostCancels: (() => void)[] = [];
 localStorage.setItem('hiroute.language', query.get('language') ?? 'zh');
 localStorage.setItem('hiroute.theme', query.get('theme') ?? 'light');
 sessionStorage.clear();
@@ -27,6 +28,8 @@ const control = {
   capabilities: hostCapabilities,
   desktopPending: () => pendingDesktopReads.length,
   releaseDesktop: () => { holdDesktop = false; for (const release of pendingDesktopReads.splice(0)) release(); },
+  pendingHostCancels: () => pendingHostCancels.length,
+  releaseHostCancels: () => { for (const release of pendingHostCancels.splice(0)) release(); },
 };
 if (query.get('host') === 'shell-console') {
   const unavailable = query.get('update') === 'catalog-unavailable';
@@ -36,7 +39,10 @@ if (query.get('host') === 'shell-console') {
       if (command.startsWith('update_') || command.startsWith('login_start_') || ['open_in_browser','restart_service','reconnect'].includes(command)) {
         control.hostRequests.push({command,args});
         if (command==='login_start_set') control.loginEnabled=Boolean(args.enabled);
-        if (command==='update_cancel') { view.phase='ready';view.active_calls=0;view.active_tasks=0; }
+        if (command==='update_cancel') {
+          if (query.has('hold-cancel')) await new Promise<void>(resolve => pendingHostCancels.push(resolve));
+          view.phase='ready';view.active_calls=0;view.active_tasks=0;
+        }
         return (command.startsWith('update_')?view:command.startsWith('login_start_')?{enabled:control.loginEnabled}:null) as T;
       }
       return consoleTransport.call<T>(command,args);

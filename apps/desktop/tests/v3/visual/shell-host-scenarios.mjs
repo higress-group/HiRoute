@@ -6,9 +6,9 @@ export async function runShellHostScenarios(client,baseUrl,output) {
   const results=[];
   const assert=(value,message)=>{if(!value)throw new Error(message);};
   const screenshot=async(name)=>{const shot=await client.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});await writeFile(path.join(output,name),Buffer.from(shot.data,'base64'));return name;};
-  const open=async(language,theme,width,height,update='ready',state='ready')=>{
+  const open=async(language,theme,width,height,update='ready',state='ready',extra={})=>{
     const url=new URL('console-entry.html',baseUrl);
-    for(const [key,value]of Object.entries({case:state,host:'shell-console',language,theme,update}))url.searchParams.set(key,value);
+    for(const [key,value]of Object.entries({case:state,host:'shell-console',language,theme,update,...extra}))url.searchParams.set(key,value);
     await navigate(client,url.href,{width,height});
     try { await waitFor(client,'Boolean(window.consoleComponent)'); }
     catch(error) {
@@ -55,6 +55,21 @@ export async function runShellHostScenarios(client,baseUrl,output) {
   assert(await evaluate(client,'document.querySelector("[role=dialog] input").value==="C:\\\\example\\\\diagnostics"'),'Removing the host banner lost the directory-path dialog');
   await evaluate(client,'document.querySelector("button[aria-label=Close]").click()');
   results.push({id:'shell.host-command-routing',state:'green'});
+  await open('en','light',1200,813,'waiting','ready',{'hold-cancel':'1'});
+  await evaluate(client,'[...document.querySelectorAll("button")].find(b=>b.textContent==="Cancel update").click()');
+  await waitFor(client,'window.consoleComponent.pendingHostCancels()===1');
+  assert(await evaluate(client,'[...document.querySelectorAll("button")].find(b=>b.textContent==="Cancel update").disabled'),'Pending update cancellation can be submitted again');
+  await evaluate(client,'[...document.querySelectorAll("button")].find(b=>b.textContent==="Cancel update").click()');
+  assert(await evaluate(client,'window.consoleComponent.hostRequests.filter(r=>r.command==="update_cancel").length===1'),'Update cancellation was duplicated');
+  await evaluate(client,'window.consoleComponent.releaseHostCancels()');
+  await waitFor(client,'!document.body.innerText.includes("Cancel update")');
+  await evaluate(client,'[...document.querySelectorAll("button")].find(b=>b.textContent==="Restart service…").click()');
+  await waitFor(client,'Boolean(document.querySelector("[role=dialog]"))');
+  assert(await evaluate(client,'document.querySelector("[role=dialog] .modal-foot button").textContent==="Cancel"'),'Restart confirmation differs from shared action order');
+  await evaluate(client,'document.querySelector("[role=dialog] .modal-foot button").click()');
+  await waitFor(client,'!document.querySelector("[role=dialog]")');
+  assert(await evaluate(client,'!window.consoleComponent.hostRequests.some(r=>r.command==="restart_service")'),'Cancelling the restart changed the service');
+  results.push({id:'shell.pending-cancel-and-restart-dismiss',state:'green'});
   await open('en','light',1200,813,'ready','expired');
   await waitFor(client,'window.consoleComponent.hostRequests.some(r=>r.command==="reconnect")');
   assert(await evaluate(client,'!document.querySelector("input[name=access-token]")&&!sessionStorage.getItem("hiroute.console.session")'),'Shell expiry exposed a token login or retained its bearer');

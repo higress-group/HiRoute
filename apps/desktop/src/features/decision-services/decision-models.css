@@ -1,6 +1,6 @@
 .model-category-tabs { display: flex; gap: 24px; padding: 0 28px; border-bottom: 1px solid var(--divider); flex-shrink: 0; }
 .model-category-tabs button { padding: 13px 0; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-muted); font: inherit; cursor: pointer; }
-.model-category-tabs button[aria-pressed='true'] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 650; }
+.model-category-tabs button[aria-selected='true'] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 650; }
 .decision-add-menu { display: flex; position: relative; gap: 4px; }
 .decision-menu { position: absolute; z-index: 20; right: 0; top: calc(100% + 6px); min-width: 210px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px #0002; background: var(--panel); }
 .decision-menu button { display: block; width: 100%; padding: 10px 12px; border: 0; border-radius: 6px; text-align: left; background: none; color: var(--text); font: inherit; cursor: pointer; }
@@ -137,7 +137,7 @@
 .decision-models-page .detail-pane { display: flex; flex-direction: column; }
 .decision-models-page .oc-model-back { flex-shrink: 0; }
 .decision-detail-sheet { flex-shrink: 0; }
-.decision-models-page .decision-connection-form { display: flex; flex: 1; min-height: 0; }
+.decision-models-page .decision-connection-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .decision-models-page .decision-connection-form > .detail-fieldset { display: flex; flex: 1; min-width: 0; min-height: 0; flex-direction: column; }
 .decision-models-page .decision-connection-form .decision-heading { flex-shrink: 0; }
 .decision-models-page .decision-connection-form .decision-form-fields { flex: 1; min-height: 0; overflow-y: auto; border-bottom: 0; }
@@ -183,8 +183,6 @@
 .decision-form-actions { padding: 14px 24px 18px; }
 .decision-form-actions > .field-help { margin: 0 0 12px; font-size: 12px; line-height: 1.65; }
 .decision-form-actions .field-actions { justify-content: flex-end; margin: 0; gap: 8px; }
-.decision-connection-form .btn-primary,
-.decision-detail-sheet .btn-primary { background: color-mix(in srgb, var(--accent) 85%, var(--text)); color: var(--panel-solid); box-shadow: none; }
 .decision-connection-form .btn:disabled { opacity: 1; color: var(--text-muted); background: var(--bg-soft); border-color: var(--divider); box-shadow: none; }
 @container detail-pane (max-width: 460px) {
   .decision-models-page .decision-detail-sheet,

@@ -30,5 +30,6 @@
 /* Apply the existing editor's container breakpoints in every entry path. */
 .new-plan-workspace, .setup-body { container: detail-pane / inline-size; }
 
-.agent-discovery-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding-right: 20px; }
+.agent-discovery-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; min-width: 0; padding: 0 20px; border-bottom: 1px solid var(--divider); }
+.agent-discovery-toolbar .tab-list { border-bottom: 0; }
 .agent-resource-path { overflow-wrap: anywhere; }

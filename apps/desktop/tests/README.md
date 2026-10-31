@@ -43,6 +43,7 @@ proves native authorization, persistence, process cleanup or real model calls.
 
 | User capability | Representative tests | Unique guarantee |
 | --- | --- | --- |
+| Keep Desktop/Web interactions consistent across features | [Interaction guidelines](../../../docs/desktop-interactions.md), [shared view tabs](../src/ui/TabList.tsx), [interaction scenarios](v3/browser/interaction-consistency-scenarios.mjs), [comparative captures](v3/visual/interaction-audit-captures.mjs) | Read-only decision drafts can Cancel; read-only routes keep view navigation; guarded tabs preserve drafts until explicit activation; unknown CLI state offers a read retry; route creation and host restart follow shared action order. The capture matrix covers main pages, dialogs, trial, model defaults, trust suggestions, console entry and Windows host states with identical fixtures in both revisions. Native effects remain separate. |
 | Find and edit core configuration consistently | [Shared interaction scenarios](v3/browser/frontend-consistency-scenarios.mjs), [paired-state captures](v3/visual/frontend-consistency-captures.mjs) | Settings areas support keyboard navigation and retain unsaved input without submitting. Related Agent actions stay together; opening/Cancel performs no mutation or live test. API fields precede optional prefill, and both decision editors put Cancel before secondary/primary saves. Production geometry covers seven screens, zh/en, light/dark and 1200×813 / 755×600. An exact older production checkout can use identical read-only fixture data for comparison; baseline regressions remain expected-red, not product acceptance. |
 | Control Home/trial recommendations through the official feed | [Announcement selection](model-announcements.test.mjs), `home-current-announcement-*` and `home-empty-recommendations-*` in [production captures](v3/visual/new-model-trial-polish-active.mjs) | Only resolved entries from the selected feed are recommended. An absent or cleared list stays empty even when the catalog contains previously featured models; the installed catalog remains available for manual selection. Both languages, themes and supported sizes retain readable empty states. Browser IPC is synthetic; real feed retrieval remains a separate native boundary. |
 | Keep current Home startup and service results | `desktop.home.stale-startup-*` in [Home startup scenarios](v3/browser/home-startup-scenarios.mjs) | Late snapshot success, failure follow-up and an independent startup poll cannot overwrite a newer accepted result. Controlled completion ordering uses production React components; actual cold-start recovery remains a native gate. |
@@ -256,6 +257,16 @@ the model-to-route scenario. Focused browser flags remain available:
 `--claude-collaboration-only`, `--worker-replacement-only`, `--route-save-only`,
 `--subscription-proxy-only`, and `--shell-only` (after the output directory). Unknown flags fail. For selection
 logic alone, run `node --test tests/scenario-selection.test.mjs`.
+
+For a full interaction comparison, use `HIROUTE_UI_FULL_AUDIT=1` with the shell
+runner and the six `desktop.interactions.*` IDs in `HIROUTE_BROWSER_SCENARIOS`.
+It captures Chinese/English, light/dark and 1200×813 / 755×600 under production
+styles. `HIROUTE_AUDIT_STATES` selects an affected surface; `HIROUTE_AUDIT_QUICK=1`
+is an exploratory single-display pass. Baseline mode (`HIROUTE_UI_CAPTURE_BASELINE=1`)
+retains intended failures and original images, and never counts as product acceptance.
+Use an exact older production checkout with identical test-only fixtures. The
+capture context alone receives deterministic synthetic ids/date; real product
+sessions, credentials, native authorization and persistence are not covered by it.
 
 Choose the configured native Desktop/Pilot entry separately for real authorization,
 recovery, file changes, task cancellation and external-browser/download acceptance.

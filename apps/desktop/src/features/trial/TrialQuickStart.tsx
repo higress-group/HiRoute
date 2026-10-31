@@ -495,7 +495,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   };
   const step = mapped ? 4 : published ? 3 : review ? 2 : 1;
   const steps = [t('选择模型', 'Choose models'), t('核对并发布', 'Review and publish'), t('映射 Agent', 'Map the Agent'), t('开始使用', 'Start using it')];
-  const setup = data && <fieldset disabled={catalogLoading || !mutable} className="trial-setup">
+  const setup = data && <div className="trial-setup"><fieldset disabled={catalogLoading || !mutable} className="trial-fields">
     <p className="field-help trial-required-hint">{t('* 表示需要完成的项目', '* marks required items')}</p>
     <section className="trial-card" data-trial-target="trial" tabIndex={-1}>
       <div className="trial-card-head"><h3>{t('要试用的模型', 'Model to try')}<TrialRequiredMark language={language} /></h3>{featured.length > 0 && <span>{t('由 hiroute.ai 维护的推荐', 'Featured by hiroute.ai')}</span>}</div>
@@ -562,12 +562,13 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
         <Disclosure className="trial-criteria" label={t('胜任评分标准', 'Competence criteria')} language={language}><p>{criteriaHelp}</p><p className="field-help">{t('下一步核对时可以修改实际提示词。', 'You can edit the actual prompt in the next step.')}</p></Disclosure></>}
       </div>
     </section>
+    </fieldset>
     {attempted && readiness.blockers.length > 0 && <div className="trial-validation-summary callout warn" role="alert"><strong>{t(`还需完成 ${readiness.blockers.length} 项才能继续`, `Complete ${readiness.blockers.length} items before continuing`)}</strong><ul>{readiness.blockers.map(blocker => <li key={blocker.code}><button type="button" className="btn btn-quiet" onClick={() => focusBlocker(blocker)}>{blocker.message}</button></li>)}</ul></div>}
     <div className="trial-footer" data-trial-target="refresh">
-      <span className="trial-footer-hint" role="status">{missing}</span>
-      <button type="button" data-trial-retry className="btn btn-quiet" onClick={() => void refresh(true)}>{t('刷新可用状态', 'Refresh availability')}</button>
       <button type="button" className="btn" onClick={leave}>{t('取消', 'Cancel')}</button>
-      <button type="button" className="btn btn-primary" disabled={readiness.systemBlocked} onClick={() => {
+      <span className="trial-footer-hint" role="status">{missing}</span>
+      <button type="button" data-trial-retry className="btn btn-quiet" disabled={catalogLoading} onClick={() => void refresh(true)}>{t('刷新可用状态', 'Refresh availability')}</button>
+      <button type="button" className="btn btn-primary" disabled={catalogLoading || !mutable || readiness.systemBlocked} onClick={() => {
         setAttempted(true);
         if (!ready) { if (readiness.blockers[0]) focusBlocker(readiness.blockers[0]); return; }
         if (!selectedTrial || !selectedPrimary || !trialReasoning || !primaryReasoning || classifier.kind === 'local_rules') return;
@@ -582,7 +583,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
         setReview(editor);
       }}>{t('检查改动', 'Review changes')}</button>
     </div>
-  </fieldset>;
+  </div>;
   return <ProductPage className="trial-page" title={t('试用新模型', 'Try a new model')} subtitle={custom ? t('由自定义扩展选择执行组。发布前会列出全部改动。', 'Your custom extension chooses the execution group. Every change is listed before publishing.') : t('新模型先上，主力兜底。发布前会列出全部改动。', 'The new model goes first and Primary catches what it misses. Every change is listed before publishing.')} actions={<button type="button" className="btn btn-quiet" onClick={leave}><UiIcon name="arrowLeft" />{t('返回', 'Back')}</button>}>
     <div className="trial-wizard">
       <ol className="trial-steps" aria-label={t('试用步骤', 'Trial steps')}>{steps.map((label, i) => <li key={label} className={i + 1 < step ? 'done' : i + 1 === step ? 'current' : undefined} aria-current={i + 1 === step ? 'step' : undefined}><span>{i + 1}</span>{label}</li>)}</ol>

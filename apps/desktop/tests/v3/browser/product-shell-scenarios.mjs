@@ -10,6 +10,7 @@ import { homeStartupScenarios } from './home-startup-scenarios.mjs';
 import { trialModelNavigationScenarios } from './trial-model-navigation-scenarios.mjs';
 import { operationRecoveryScenarios } from './operation-recovery-scenarios.mjs';
 import { frontendConsistencyScenarios } from './frontend-consistency-scenarios.mjs';
+import { interactionConsistencyScenarios } from './interaction-consistency-scenarios.mjs';
 const c = () => window.productShell;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -121,6 +122,7 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  ...interactionConsistencyScenarios,
   ...frontendConsistencyScenarios,
   ...trialModelNavigationScenarios(scenario),
   scenario('desktop.operation.hidden-summaries-defer', ['operation-feedback'], 'Terminal confirmation does not scan a hidden Agent page or unrelated Home summaries', async () => {
