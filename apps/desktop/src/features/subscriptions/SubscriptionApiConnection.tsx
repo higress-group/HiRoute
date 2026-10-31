@@ -84,30 +84,46 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
   const choices = props.snapshot.sources.filter(source => source.provenance !== 'connector_owned');
   const preferred = choices.filter(source => source.connection_identity?.connection_option_id === associatedApiOption(props.provider));
   const others = choices.filter(source => !preferred.includes(source));
+  const usingExisting = props.value !== '' && props.value !== NEW_SUBSCRIPTION_API;
   const option = (source: ManagedSource) => <option key={source.source_id} value={source.source_id}>{source.display_name}{source.state !== 'ready' ? (zh ? '（当前不可用）' : ' (unavailable)') : ''}</option>;
   const locked = !props.mutable || props.busy || setup.awaitingSave;
+  function subscriptionOnly() {
+    if (locked) return;
+    if (key.current) key.current.value = '';
+    void setup.dispose(); setResult(null); setKeyRequired(false); props.onChange('');
+  }
   return <section className="detail-section subscription-api-setup" data-subscription-api-setup>
-    <label className="field"><span className="field-label">{zh ? '同时接入 API（可选）' : 'Connect an API too (optional)'}</span>
-      <select className="select" data-subscription-api-choice disabled={locked} value={props.value} onChange={event => { setResult(null); props.onChange(event.target.value); }}>
-        <option value="">{zh ? '仅使用订阅' : 'Subscription only'}</option>
-        <option value={NEW_SUBSCRIPTION_API}>{zh ? `填写 ${providerName} API Key` : `Enter a ${providerName} API key`}</option>
-        {props.value && props.value !== NEW_SUBSCRIPTION_API && !choices.some(source => source.source_id === props.value) && <option value={props.value}>{zh ? '关联的 API 接入已删除' : 'Associated API connection was deleted'}</option>}
-        {preferred.length > 0 && <optgroup label={zh ? `已有 ${providerName} API 接入` : `Existing ${providerName} API connections`}>{preferred.map(option)}</optgroup>}
-        {others.length > 0 && <optgroup label={zh ? '其他已有 API 接入' : 'Other existing API connections'}>{others.map(option)}</optgroup>}
-      </select>
-    </label>
-    <p className="field-help">{zh ? '沿用订阅中已选的模型，无需重复选择。一个保存动作完成订阅与 API 设置；API 失败时订阅仍会保留。' : 'Reuse the subscription’s model selection. One save completes subscription and API setup; API failures keep the subscription intact.'}</p>
+    <p className="field-help">{usingExisting
+      ? (zh ? '沿用订阅中已选的模型，向下方已有 API 接入同步导入，无需重复选择。' : 'Reuse the subscription’s model selection in the existing API connection below.')
+      : setup.hasCredential && !setup.hasSavedApi
+        ? (zh ? 'Key 已暂存，可重试或更换；清除 Key 后可仅使用订阅。订阅已选模型会沿用，无需重复选择。' : 'The key is retained for retry or replacement. Clear it to use only the subscription. Its model selection is reused.')
+      : (zh ? 'Key 留空则仅使用订阅。填写后沿用订阅已选模型，无需重复选择；同一个保存按钮完成接入，API 失败时订阅仍会保留。' : 'Leave the key blank to use only the subscription. Enter a key to reuse its selected models. One save completes setup; API failures keep the subscription intact.')}</p>
     {result && result.state !== 'saved' && <p ref={feedback} tabIndex={-1} className="callout warn subscription-api-feedback" role="status">{result.failure ? networkFailureText(result.failure, zh) : inlineApiResultText(result, zh)}</p>}
     {setup.hasSavedApi && result?.state !== 'saved' && <p className="field-help">{zh ? '这份 API 接入已独立保存，重试关联不会重复创建。' : 'This API connection is saved independently. Retrying the association will not create another.'}</p>}
-    {props.value === NEW_SUBSCRIPTION_API && <div className="subscription-api-key">
-      <label className="field"><span className="field-label">{providerName} API Key</span>
-        <input ref={key} className="input" type="password" autoComplete="new-password" spellCheck={false} data-subscription-api-key disabled={locked || setup.hasSavedApi} aria-invalid={keyRequired || undefined} placeholder={setup.hasCredential ? (zh ? 'Key 已暂存，重新输入可替换' : 'Key retained; enter a new key to replace it') : (zh ? '填写 API Key' : 'Enter API key')} onChange={() => setKeyRequired(false)} />
+    {!usingExisting && <div className="subscription-api-key">
+      <label className="field"><span className="field-label">{providerName} API Key{zh ? '（可选）' : ' (optional)'}</span>
+        <input ref={key} className="input" type="password" autoComplete="new-password" spellCheck={false} data-subscription-api-key disabled={locked || setup.hasSavedApi} aria-invalid={keyRequired || undefined} placeholder={setup.hasCredential ? (zh ? 'Key 已暂存，重新输入可替换' : 'Key retained; enter a new key to replace it') : (zh ? '留空则仅使用订阅' : 'Leave blank for subscription only')} onChange={event => {
+          setKeyRequired(false); setResult(null);
+          if (!setup.hasCredential && !setup.hasSavedApi && !setup.awaitingSave) props.onChange(event.target.value.trim() ? NEW_SUBSCRIPTION_API : '');
+        }} />
         {keyRequired && <span className="field-help" role="alert">{zh ? '请填写 Key，或选择仅使用订阅。' : 'Enter a key, or choose subscription only.'}</span>}
         <span className="field-help">{zh ? '如使用订阅 API 赠金，请填写接收赠金的 API 组织下的 Key。' : 'To use subscription API credits, use a key from the organization receiving those credits.'}</span>
       </label>
+      {setup.hasCredential && !setup.hasSavedApi && <button type="button" className="btn btn-quiet" disabled={locked} onClick={subscriptionOnly}>{zh ? '清除 Key，仅使用订阅' : 'Clear key; use subscription only'}</button>}
       <NativeNetworkSettings language={props.language} value={network} onChange={setNetwork} disabled={locked || setup.hasSavedApi} reveal={reveal} failure={result?.failure}
         target={{ kind: 'registered', connection_option_id: associatedApiOption(props.provider), protocol: props.provider === 'codex' ? 'responses' : 'messages' }} />
     </div>}
+    {(choices.length > 0 || usingExisting) && <Disclosure className="subscription-api-existing" language={props.language} defaultOpen={usingExisting} label={zh ? '使用已有 API 接入' : 'Use an existing API connection'}>
+      <label className="field"><span className="field-label">{zh ? '已保存的 API 接入' : 'Saved API connection'}</span>
+        <select className="select" data-subscription-api-choice disabled={locked} value={usingExisting ? props.value : ''} onChange={event => { setResult(null); props.onChange(event.target.value); }}>
+          <option value="">{zh ? '不使用已有接入' : 'Do not use an existing connection'}</option>
+          {usingExisting && !choices.some(source => source.source_id === props.value) && <option value={props.value}>{zh ? '关联的 API 接入已删除' : 'Associated API connection was deleted'}</option>}
+          {preferred.length > 0 && <optgroup label={zh ? `已有 ${providerName} API 接入` : `Existing ${providerName} API connections`}>{preferred.map(option)}</optgroup>}
+          {others.length > 0 && <optgroup label={zh ? '其他已有 API 接入' : 'Other existing API connections'}>{others.map(option)}</optgroup>}
+        </select>
+      </label>
+      {usingExisting && <button className="btn btn-quiet" type="button" disabled={locked} onClick={subscriptionOnly}>{zh ? `改填 ${providerName} API Key` : `Enter a ${providerName} API key instead`}</button>}
+    </Disclosure>}
     <SubscriptionApiCredits provider={props.provider} language={props.language} />
   </section>;
 });

@@ -1248,11 +1248,11 @@ export function ModelManagementPage({
                 : (language === 'zh' ? '账号可见 · 能力资料待补充，暂不能用于路由' : 'Visible to this account · capability data pending; not yet routable')}</span>}</div></label>)}</div></>
             : <p className="oc-meta">{language === 'zh' ? '检查已完成，但没有可接入的模型。' : 'The check completed, but no connectable model was found.'}</p>
           : <p className="oc-meta">{language === 'zh' ? '检查会使用这项订阅验证连接；保存后才加入模型列表。' : 'The check uses this subscription to verify the connection. Save it to add the model.'}</p>}
-        {management && candidateSubscriptionProvider(selectedSubscription.candidate.candidate_ref) && <SubscriptionApiPicker ref={subscriptionApiPicker} key={selectedSubscription.candidate.candidate_ref}
+        {subscriptionReady && management && candidateSubscriptionProvider(selectedSubscription.candidate.candidate_ref) && <SubscriptionApiPicker ref={subscriptionApiPicker} key={selectedSubscription.candidate.candidate_ref}
           provider={candidateSubscriptionProvider(selectedSubscription.candidate.candidate_ref)!}
           language={language} snapshot={management} mutable={trustedAuthority} busy={subscriptionWorking}
           value={subscriptionApiChoices[selectedSubscription.candidate.candidate_ref] ?? management.subscription_api_links?.find(link => link.source_id === selectedSubscription.existing_source_id)?.api_source_id ?? ''}
-          onChange={value => setSubscriptionApiChoices(previous => ({ ...previous, [selectedSubscription.candidate.candidate_ref]: value }))}
+          onChange={value => { setSubscriptionApiChoices(previous => ({ ...previous, [selectedSubscription.candidate.candidate_ref]: value })); setSubscriptionCompletion(current => current ? { source: current.source } : null); }}
           onAssociate={subscriptionApi.associate} onRefresh={refreshManagement} onOperation={onOperation} onUncertain={onRecoveryRefresh} />}
         {subscriptionCompletion?.result && subscriptionApiChoices[selectedSubscription.candidate.candidate_ref] !== NEW_SUBSCRIPTION_API && subscriptionCompletion.result.state !== 'saved' && <p className="field-help" role="status">{inlineApiResultText(subscriptionCompletion.result, language === 'zh')}</p>}
       </div> : <DeviceScanList

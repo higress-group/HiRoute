@@ -36,6 +36,12 @@ its native results separate from a selected independent-login candidate.
 `SubscriptionApiConnection.tsx` owns optional existing-API selection and inline Key
 entry for the registered OpenAI API (Codex) or Anthropic API (Claude). The subscription
 flow keeps one primary save action and no nested API dialog or model picker.
+After subscription checking, the optional Key field is shown directly: blank means
+subscription only, typing opts into API creation, and clearing an unsubmitted Key
+opts out. Existing API selection is a secondary disclosure. A protected Key retained
+after failure is explicitly marked and can be cleared before admission. Editing an
+existing API's Key/network still belongs to that API's normal connection editor;
+subscription association edits do not silently overwrite a shared API configuration.
 `ModelManagementPage.tsx` validates input, confirms the subscription save, and only
 then calls `new-api.ts` to check/save exact API-observed selectable counterparts of
 the saved subscription membership. The mounted inline credential owner survives

@@ -667,7 +667,13 @@ Source SPEC comments:
 Independent Codex and Claude login and local-login discovery SHALL offer an optional
 saved or new native API connection in the same subscription flow. New API credentials
 use an inline protected Key field and remain separate from subscription OAuth. New
-associated API setup SHALL use the registered OpenAI API for Codex or Anthropic API
+associated API setup SHALL directly show the optional Key field after subscription
+checking, without a separate API opt-in selector. An untouched blank Key SHALL save
+only the subscription; typing a Key opts into API creation. Clearing an unsubmitted
+Key restores subscription-only behavior. A retained protected Key SHALL be identified
+as retained and offer explicit clearing before admission. Existing API selection
+SHALL remain available through a secondary entry.
+New associated API setup SHALL use the registered OpenAI API for Codex or Anthropic API
 for Claude, with its endpoint and authentication defaults and optional independent
 network settings. It SHALL NOT open a second connection dialog. A
 missing preferred product SHALL NOT silently select another provider; ordinary API
