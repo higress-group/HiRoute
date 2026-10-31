@@ -17,6 +17,8 @@ use zeroize::Zeroizing;
 
 const CAPABILITY_BYTES: usize = 32;
 const MAX_CAPABILITY_FILE_BYTES: u64 = 512;
+const MAX_MANAGED_CONFIG_FILE_BYTES: u64 = 64 * 1024;
+const DISABLE_CLAUDE_CLOAK_MODE: bool = false;
 
 pub(crate) struct SecretText(Zeroizing<String>);
 
@@ -156,7 +158,7 @@ pub(crate) fn render_managed_config(
         disable_cooling: true,
         save_cooldown_status: false,
         transient_error_cooldown_seconds: -1,
-        disable_claude_cloak_mode: true,
+        disable_claude_cloak_mode: DISABLE_CLAUDE_CLOAK_MODE,
         request_retry: 0,
         max_retry_credentials: 1,
         max_retry_interval: 0,
@@ -209,6 +211,31 @@ const TOP_LEVEL_KEYS: [&str; 23] = [
     "streaming",
 ];
 
+// CPA may persist a bcrypt management secret, so the full rendered-byte contract
+// cannot validate its live file. Check this generated policy after authenticating
+// the orphan, without exposing credentials or reading an unbounded configuration.
+pub(crate) fn has_current_claude_cloaking_policy(path: &Path) -> Result<bool, CpaConfigError> {
+    validate_private_file(path)?;
+    #[cfg(windows)]
+    let file = crate::windows_private::file(path).map_err(CpaConfigError::Io)?;
+    #[cfg(not(windows))]
+    let file = fs::File::open(path).map_err(CpaConfigError::Io)?;
+    let mut bytes = Zeroizing::new(Vec::new());
+    file.take(MAX_MANAGED_CONFIG_FILE_BYTES + 1)
+        .read_to_end(bytes.as_mut())
+        .map_err(CpaConfigError::Io)?;
+    if bytes.len() as u64 > MAX_MANAGED_CONFIG_FILE_BYTES {
+        return Ok(false);
+    }
+    let Ok(value) = serde_yaml::from_slice::<serde_yaml::Value>(&bytes) else {
+        return Ok(false);
+    };
+    Ok(value
+        .get("disable-claude-cloak-mode")
+        .and_then(serde_yaml::Value::as_bool)
+        == Some(DISABLE_CLAUDE_CLOAK_MODE))
+}
+
 fn validate_wire_value(value: &serde_yaml::Value) -> Result<(), CpaConfigError> {
     let map = value.as_mapping().ok_or(CpaConfigError::InvalidConfig)?;
     let keys = map
@@ -244,7 +271,11 @@ fn validate_wire_value(value: &serde_yaml::Value) -> Result<(), CpaConfigError> 
     expect_bool(value, "disable-cooling", true)?;
     expect_bool(value, "save-cooldown-status", false)?;
     expect_integer(value, "transient-error-cooldown-seconds", -1)?;
-    expect_bool(value, "disable-claude-cloak-mode", true)?;
+    expect_bool(
+        value,
+        "disable-claude-cloak-mode",
+        DISABLE_CLAUDE_CLOAK_MODE,
+    )?;
     expect_integer(value, "request-retry", 0)?;
     expect_integer(value, "max-retry-credentials", 1)?;
     expect_integer(value, "max-retry-interval", 0)?;
@@ -617,6 +648,43 @@ mod tests {
             .unwrap()
             .replace("host: 127.0.0.1", "host: 0.0.0.0");
         assert!(CpaManagedConfigContract::validate_rendered(remote.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn managed_config_requires_cloaking_and_recovers_a_hashed_live_configuration() {
+        let temp = tempfile::tempdir().unwrap();
+        let auth = temp.path().join("auth");
+        ensure_private_dir(&auth).unwrap();
+        let secrets = InstanceSecrets::generate().unwrap();
+        let bytes = render_managed_config(18082, &auth, &secrets).unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(text.contains("disable-claude-cloak-mode: false"));
+        let disabled = text.replace(
+            "disable-claude-cloak-mode: false",
+            "disable-claude-cloak-mode: true",
+        );
+        assert!(CpaManagedConfigContract::validate_rendered(disabled.as_bytes()).is_err());
+        let path = temp.path().join("config.yaml");
+        let hashed = text.replace(
+            secrets.management.expose(),
+            "$2a$12$synthetic-bcrypt-secret",
+        );
+        private_atomic_write(&path, hashed.as_bytes()).unwrap();
+        assert!(has_current_claude_cloaking_policy(&path).unwrap());
+        for stale in [
+            disabled,
+            text.replace("disable-claude-cloak-mode: false", ""),
+            text.replace(
+                "disable-claude-cloak-mode: false",
+                "disable-claude-cloak-mode: invalid",
+            ),
+            "[]".into(),
+            "false".into(),
+            "x".repeat(MAX_MANAGED_CONFIG_FILE_BYTES as usize + 1),
+        ] {
+            private_atomic_write(&path, stale.as_bytes()).unwrap();
+            assert!(!has_current_claude_cloaking_policy(&path).unwrap());
+        }
     }
 
     #[test]

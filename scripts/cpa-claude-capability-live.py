@@ -560,7 +560,7 @@ def execute(arguments):
         scenario = gateway(product, source, png, preparation['image'])
         report['scenario'] = dict(scenario, state='green', provider='claude', scenario='image-and-plan-thinking')
         stage = 'observation'
-        report['observation'] = native.observed_usage(product, [scenario], live.encoded)
+        report['observation'] = native.observed_usage(product, [report['scenario']], live.encoded)
         report['observation']['scope'] = 'fresh_runtime_single_request_absolute_totals'
         report['wire'] = wire_facts(product)
         report['access_only_cpa_after'] = live.access_only_cpa_audit(product, 'claude')

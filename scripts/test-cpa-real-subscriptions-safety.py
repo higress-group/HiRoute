@@ -17,6 +17,13 @@ spec.loader.exec_module(acceptance)
 
 
 class NativeHostFilter(unittest.TestCase):
+    def test_local_source_uses_the_same_owner_only_filter_without_ssh(self):
+        with patch.object(acceptance.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                [], 0, stdout=b'{"sha256":"fixture"}')) as invoke:
+            self.assertEqual(acceptance.remote_source('local', 'claude', 'snapshot'), {'sha256': 'fixture'})
+        command = invoke.call_args.args[0]
+        self.assertEqual(command, [sys.executable, '-c', acceptance.REMOTE_READ, 'claude', 'snapshot'])
+
     def filtered(self, kind, source, expected):
         with tempfile.TemporaryDirectory() as name:
             home = Path(name)

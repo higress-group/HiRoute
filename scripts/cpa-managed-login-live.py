@@ -25,6 +25,9 @@ import tempfile
 import time
 import webbrowser
 
+# This driver may load helpers from a retained validation checkout.
+sys.dont_write_bytecode = True
+
 
 def support_module(name):
     spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + '.py'))
@@ -352,8 +355,13 @@ def access_only_cpa_audit(product, provider):
     value = private_read(files[0])
     require(not native.forbidden_refresh(value), provider + ':refresh_authority_in_cpa')
     require(not any('expir' in key.lower() for key in value), provider + ':expiry_in_cpa')
+    cloak_line = next((line for line in configurations[0].read_text().splitlines()
+                       if line.startswith('disable-claude-cloak-mode:')), None)
+    require(cloak_line in ('disable-claude-cloak-mode: true', 'disable-claude-cloak-mode: false'),
+            provider + ':cloak_policy_absent')
     return {'auth_file_count': 1, 'sha256': sha256(files[0]), 'mode': '0o600',
-            'refresh_authority': False, 'expiry_in_cpa': False}
+            'refresh_authority': False, 'expiry_in_cpa': False,
+            'claude_cloaking_enabled': cloak_line.endswith('false')}
 
 
 def native_borrowed_selected(arguments, configuration):
@@ -375,6 +383,7 @@ def native_borrowed_selected(arguments, configuration):
     for kind in ('codex', 'claude'):
         configuration[kind + '_cli'] = str(getattr(arguments, kind + '_cli').resolve())
     product = make_product(configuration, fresh=True)
+    product.requested_claude_model = getattr(arguments, 'claude_model', None)
     before, stage = {}, 'credentials'
 
     def record(scenario):
@@ -445,6 +454,8 @@ def native_borrowed_selected(arguments, configuration):
         report['state'] = 'green'
     except BaseException as error:
         report['failure'] = {'stage': stage, 'class': type(error).__name__, 'code': safe_code(error)}
+        if hasattr(product, 'observation_usage_evidence'):
+            report['observation'] = product.observation_usage_evidence
         report['failure'].update(evidence.failure_projection(product, stage))
         record({'scenario': stage, 'provider': provider, 'state': 'red'})
         report['diagnostics_final'] = product.diagnostics_snapshot()
@@ -1032,6 +1043,7 @@ def main():
     borrowed.add_argument('--claude-cli', required=True, type=Path)
     borrowed.add_argument('--codex-host', required=True)
     borrowed.add_argument('--claude-host', required=True)
+    borrowed.add_argument('--claude-model', help='Require this exact selectable Haiku model')
     borrowed.add_argument('--provider', choices=('codex', 'claude'))
     borrowed.add_argument('--report', required=True, type=Path)
     authorized = commands.add_parser('authorize')
