@@ -115,12 +115,12 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             response!(ComputeSavePreviewV2),
         ),
         "compute.budgets.get" => (
-            schema::<ComputeKeyBudgetsQueryV1>(false),
-            schema::<ComputeKeyBudgetsResultV1>(true),
+            request!(ComputeKeyBudgetsQueryV1),
+            response!(ComputeKeyBudgetsResultV1),
         ),
         "compute.budgets.preview" => (
-            schema::<ComputeKeyBudgetSaveRequestV1>(false),
-            schema::<ComputeSavePreviewV2>(true),
+            request!(ComputeKeyBudgetSaveRequestV1),
+            response!(ComputeSavePreviewV2),
         ),
         "compute.defaults.get" => (
             request!(ComputeDefaultsQueryV1),

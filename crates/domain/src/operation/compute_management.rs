@@ -10,7 +10,7 @@ impl TransactionPlanV1 {
         edits: Vec<crate::KeyBudgetEditV1>,
         budgets: crate::KeyBudgetMutationV1,
     ) -> Result<Self, OperationValidationError> {
-        let invalid = OperationValidationError::UnregisteredEffectPlan;
+        let invalid = || OperationValidationError::UnregisteredEffectPlan;
         validate_management_plan(
             &self.spec,
             &self.control,
@@ -22,17 +22,17 @@ impl TransactionPlanV1 {
             self.control
                 .get("compute_management_mutation")
                 .cloned()
-                .ok_or(invalid)?,
+                .ok_or_else(invalid)?,
         )
-        .map_err(|_| invalid)?;
+        .map_err(|_| invalid())?;
         self.spec.desired_state = json!({"schema":crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6,"change":self.spec.desired_state,"key_budget_edits":edits});
         let mutation = crate::ComputeManagementMutationV6 {
             schema: crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V6.into(),
             source_mutation: Box::new(source_mutation),
             budgets,
-            change_spec_digest: CanonicalDigest::of(&self.spec).map_err(|_| invalid)?,
+            change_spec_digest: CanonicalDigest::of(&self.spec).map_err(|_| invalid())?,
         };
-        mutation.validate(&self.spec).map_err(|_| invalid)?;
+        mutation.validate(&self.spec).map_err(|_| invalid())?;
         self.control = json!({"compute_management_mutation":mutation});
         validate_management_plan(
             &self.spec,
