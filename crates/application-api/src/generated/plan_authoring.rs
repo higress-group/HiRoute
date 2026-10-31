@@ -112,6 +112,7 @@ fn definitions() -> Value {
         ],
         json!({
             "schema":{"const":"hiroute.plan-editor/v2"},"display_name":{"type":"string","maxLength":128},"purpose":{"type":"string","maxLength":512},
+            "follow_request_reasoning":{"type":"boolean","default":false},
             "custom_alias":{"type":"string","maxLength":64},"mode":{"enum":["fixed_model","smart_saving","custom_branches","free_first"]},"branch_routing":{"oneOf":[{"type":"null"},routing]},
             "candidates":reference("candidates"),"smart":smart,"free":free,"delegation_enabled":{"type":"boolean"},"requirements":requirements,"limits":limits,
             "work":object(&["harness","protocol"],json!({"harness":{"enum":["codex_cli","claude_code","qoder_cli","pi","deepseek_harness","opencode"]},"protocol":{"enum":["responses","messages"]}}))
@@ -160,4 +161,53 @@ pub(super) fn files() -> Vec<(&'static str, String)> {
         "$schema":"https://json-schema.org/draft/2020-12/schema", "$id":format!("hiroute://contracts/cli/{path}"),
         "$ref":format!("#/$defs/{name}"), "$defs": definitions(),
     })))).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn published_editor_schema_admits_current_and_legacy_policy_fields() {
+        let released: Value = serde_json::from_str(include_str!(
+            "../../../domain/src/routing/authoring/fixtures/released-plan-editor.v2.json"
+        ))
+        .unwrap();
+        for policy in [None, Some(false), Some(true)] {
+            let mut wire = released["editor"].clone();
+            if let Some(policy) = policy {
+                wire["follow_request_reasoning"] = policy.into();
+            }
+            let editor: hiroute_domain::PlanEditorStateV2 =
+                serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(editor.follow_request_reasoning, policy.unwrap_or(false));
+            let current = serde_json::to_value(editor).unwrap();
+            for (_, source) in files() {
+                let schema: Value = serde_json::from_str(&source).unwrap();
+                let editor = &schema["$defs"]["editor"];
+                let properties = editor["properties"].as_object().unwrap();
+                assert!(
+                    current
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .all(|key| properties.contains_key(key))
+                );
+                assert!(
+                    wire.as_object()
+                        .unwrap()
+                        .keys()
+                        .all(|key| properties.contains_key(key))
+                );
+                assert_eq!(properties["follow_request_reasoning"]["type"], "boolean");
+                assert_eq!(properties["follow_request_reasoning"]["default"], false);
+                assert!(
+                    !editor["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&json!("follow_request_reasoning"))
+                );
+            }
+        }
+    }
 }
