@@ -52,7 +52,7 @@ fn dispatch<T: DeserializeOwned>(
         payload: serde_json::to_value(payload).unwrap(),
         protected_grant: None,
     });
-    assert!(response.error.is_none(), "{response:?}");
+    assert!(response.error.is_none(), "{operation}: {response:?}");
     serde_json::from_value(response.data.unwrap()).unwrap()
 }
 
@@ -442,7 +442,7 @@ fn fresh_registered_api_prices_are_editable_in_the_key_budget_currency() {
             &app,
             "PreviewComputeKeyBudgets",
             json!({
-                "change":{"schema":"hiroute.compute-management-change/v3","change":{
+                "change":{"schema":"hiroute.compute-management-change/v3","default_preferences":{},"change":{
                     "schema":"hiroute.compute-management-change/v2","subject":{"kind":"saved_source","source_id":source.source_id},
                     "expected_revisions":initial.revisions,"selected_model_refs":[source.models[0].model_ref],"intent":"save_ready","key_edits":[]}},
                 "network_edit":null,"key_budget_edits":[{"key":{"kind":"saved","key_id":source.keys[0].key_id},"assignment":{
