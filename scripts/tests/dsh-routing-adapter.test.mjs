@@ -84,6 +84,71 @@ test("DSH Desktop 0.2.1-rc.3 keeps its real input before native skill and time c
   }, { isolatedLlm: true, events: [turn(1), event(current), ...context.map(event)] });
 });
 
+test("DSH repeat-tool reminders retain the current input and complete scope on all native protocols", async () => {
+  const prior = user("prior", "PREVIOUS TASK");
+  const current = user("current", "EXPORT THE ACCOUNT DATA");
+  const reminder = { ...user("reminder", "Inspect the previous tool result before trying another approach.", "repeat-tool-reminder"),
+    source: { kind: "repeat-tool-reminder", form: "notice", summary: "bash × 3" } };
+  await fixture(async ({ request, send, events }) => {
+    for (const protocol of ["responses", "chat/completions", "messages"]) {
+      const envelope = message => ({ role: "user", content: protocol === "responses"
+        ? message.content.map(part => ({ type: "input_text", text: part.text })) : message.content });
+      const messages = [prior, current];
+      const wire = messages.map(envelope);
+      const before = (await send(request(messages), wire, protocol)).input;
+      assert.equal(before.event_id, "5");
+      events.push(event(reminder));
+      const continued = [...wire, { role: "assistant", content: "Checking the tool result." }];
+      if (protocol === "messages") continued.push({ role: "user", content: [
+        { type: "tool_result", tool_use_id: "export", content: "EXPORT COMPLETE" },
+      ] });
+      continued.push(envelope(reminder));
+      const after = (await send(request([...messages, reminder]), continued, protocol)).input;
+      assert.ok(after, "the native repeat-tool reminder discarded current-input proof: " + protocol);
+      assert.equal(after.event_id, before.event_id, "a runtime reminder became another native activation");
+      assert.deepEqual(after.messages, before.messages, "a runtime reminder became current human input");
+      assert.equal(after.scope_digest, hash([...messages, reminder].map(message => hash(message.content.map(part => part.text)))),
+        "the reminder was omitted from the complete final User scope");
+      events.pop();
+    }
+  }, { isolatedLlm: true, events: [turn(4), event(prior), turn(5), event(current)] });
+});
+
+test("DSH repeat-tool reminder recognition preserves wire integrity and rejects unverified sources", async () => {
+  const current = user("current", "TASK");
+  const reminder = user("reminder", "ARBITRARY NATIVE NOTICE", "repeat-tool-reminder");
+  await fixture(async ({ request, send }) => {
+    const messages = [current, reminder];
+    const wire = messages.map(message => ({ role: "user", content: message.content }));
+    assert.ok((await send(request(messages), wire)).input, "recognized native source must retain proof regardless of wording");
+    for (const changed of [wire.slice(0, 1), [wire[0], { role: "user", content: "CHANGED NOTICE" }],
+      [wire[1], wire[0]], [...wire, wire[1]]]) {
+      assert.equal((await send(request(messages), changed)).input, undefined, "an incomplete or changed reminder scope was accepted");
+    }
+    for (const kind of ["user", "future-source", "agent-message", "model-selection", "subagent-settled", undefined]) {
+      const unverified = { ...reminder, source: kind ? { kind } : undefined };
+      assert.equal((await send(request([current, unverified]), wire)).input, undefined,
+        "reminder wording overrode an unverified or genuine-input source: " + kind);
+    }
+  }, { events: [turn(5), event(current), event(reminder)] });
+});
+
+test("DSH repeat-tool reminder text sent by a human remains a new input", async () => {
+  const current = user("current", "TASK");
+  const reminder = user("reminder", "Inspect the previous tool result before trying another approach.", "repeat-tool-reminder");
+  const next = user("next", reminder.content);
+  await fixture(async ({ request, send, events }) => {
+    const messages = [current, reminder];
+    const wire = messages.map(message => ({ role: "user", content: message.content }));
+    const before = (await send(request(messages), wire)).input;
+    assert.ok(before);
+    events.push(turn(6), event(next));
+    const after = (await send(request([...messages, next]), [...wire, { role: "user", content: next.content }])).input;
+    assert.equal(after.event_id, "6");
+    assert.deepEqual(after.messages, [{ index: 2, sha256: hash(reminder.content.map(part => part.text)) }]);
+  }, { events: [turn(5), event(current), event(reminder)] });
+});
+
 test("DSH current and older instruction-role projections require the complete wire User scope", async () => {
   const current = user("current", "CURRENT");
   await fixture(async ({ request, send }) => {
