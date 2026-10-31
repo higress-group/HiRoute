@@ -117,6 +117,12 @@ New Agent feature code imports its local owners directly.
 
 ## Current call paths
 
+The three capability sections keep their actions together at the trailing edge.
+Task routing exposes its independent Disable beside Edit, rather than inside
+connection recovery. Management preparation/restoration is a normal action button:
+it follows the existing draft/Preview flow and is not an immediate settings toggle.
+The controls retain their existing authority, pending and recovery guards.
+
 1. The page invokes `agent_snapshot`. The native
    [bridge](../../../src-tauri/src/bridge.rs) and
    [Agent session](../../../src-tauri/src/agent_session.rs) use Client Core to read

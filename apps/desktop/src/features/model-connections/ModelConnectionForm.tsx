@@ -890,18 +890,6 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
             {credentialReentry && !password.current?.value && !pendingSecret.current && <p className="field-help" role="status">{zh ? '使用需要认证的方式时，请重新输入之前的 Key。' : 'Re-enter the previous key when using authentication.'}</p>}
             {!custom && registeredOption && <div className="connection-key-help"><span className="field-help">{zh ? '请使用上方产品对应的 Key。' : 'Use the key for the product shown above.'}</span>{connectionTemplate(registeredOption.connection_option_id)?.documentation_url && <a href={connectionTemplate(registeredOption.connection_option_id)?.documentation_url} target="_blank" rel="noreferrer" onClick={event => void openDocumentation(event, connectionTemplate(registeredOption.connection_option_id)?.documentation_url)}>{zh ? '获取 API Key' : 'Get an API key'}<UiIcon name="arrow" /></a>}{externalLinkError && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{zh ? '无法打开默认浏览器；当前表单内容已保留。' : 'The default browser could not be opened. Your form input is retained.'}</span></div>}</div>}
             {custom ? <>
-              {!optionsLoading && metadataPrefills.length > 0 && <Disclosure className="connection-details" language={language} label={zh ? '使用接入资料预填（可选）' : 'Use connection prefill (optional)'}><div className="connection-fields metadata-prefill-fields">
-                <label className="field"><span className="field-label">{zh ? '接入资料预填（可选）' : 'Connection prefill (optional)'}</span><select className="select" value={metadataPrefillKey} onChange={event => selectMetadataPrefill(event.target.value)}>
-                  <option value="">{zh ? '不使用预填' : 'No prefill'}</option>
-                  <optgroup label={zh ? '内置接入' : 'Built-in connections'}>
-                    {metadataPrefills.filter(prefill => prefill.kind === 'template').map(prefill => <option key={prefill.key} value={prefill.key}>{connectionName(prefill.option.connection_option_id, language, prefill.option.display_name)}</option>)}
-                  </optgroup>
-
-                </select></label>
-                {selectedPrefill && <p className="field-help">{zh
-                  ? `已收录 ${metadataCandidates.length} 个模型，检查接入后统一选择；未知能力采用可编辑兜底：上下文 200K、输出 32K、工具与流式开启、视觉关闭、思考开关。`
-                  : `${metadataCandidates.length} models in this catalog. Choose after checking the connection; missing capabilities use editable defaults (200K context, 32K output, tools and streaming on, vision off, reasoning toggle).`}</p>}
-              </div></Disclosure>}
               <label className="field"><span className="field-label">Base URL</span><input className="input" inputMode="url" value={draft.base_url} placeholder="https://example.com/v1" onChange={event => invalidate(current => ({ ...current, base_url: event.target.value }), true, 'connection')} /><PlaintextHttpWarning baseUrl={draft.base_url} zh={zh} /></label>
               <label className="field"><span className="field-label">{zh ? '协议' : 'Protocol'}</span><select className="select" value={draft.protocol} onChange={event => {
                 const protocol = event.target.value as UpstreamProtocol;
@@ -934,6 +922,18 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
                   };
                 }, true, 'connection');
               }}><option value="chat_completions">OpenAI Chat Completions</option><option value="responses">OpenAI Responses</option><option value="messages">Anthropic Messages</option></select></label>
+              {!optionsLoading && metadataPrefills.length > 0 && <Disclosure className="connection-details" language={language} label={zh ? '使用接入资料预填（可选）' : 'Use connection prefill (optional)'}><div className="connection-fields metadata-prefill-fields">
+                <label className="field"><span className="field-label">{zh ? '接入资料预填（可选）' : 'Connection prefill (optional)'}</span><select className="select" value={metadataPrefillKey} onChange={event => selectMetadataPrefill(event.target.value)}>
+                  <option value="">{zh ? '不使用预填' : 'No prefill'}</option>
+                  <optgroup label={zh ? '内置接入' : 'Built-in connections'}>
+                    {metadataPrefills.filter(prefill => prefill.kind === 'template').map(prefill => <option key={prefill.key} value={prefill.key}>{connectionName(prefill.option.connection_option_id, language, prefill.option.display_name)}</option>)}
+                  </optgroup>
+
+                </select></label>
+                {selectedPrefill && <p className="field-help">{zh
+                  ? `已收录 ${metadataCandidates.length} 个模型，检查接入后统一选择；未知能力采用可编辑兜底：上下文 200K、输出 32K、工具与流式开启、视觉关闭、思考开关。`
+                  : `${metadataCandidates.length} models in this catalog. Choose after checking the connection; missing capabilities use editable defaults (200K context, 32K output, tools and streaming on, vision off, reasoning toggle).`}</p>}
+              </div></Disclosure>}
             </> : optionsLoading
               ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{zh ? '正在读取接入方式' : 'Loading connection'}</strong><p>{zh ? '从本机可信目录确认当前支持的产品。' : 'Checking supported products in the local trusted catalog.'}</p></div></div>
               : registeredExecutable && registeredOption

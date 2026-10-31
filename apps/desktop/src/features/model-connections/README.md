@@ -8,6 +8,10 @@ service → configuration → model steps and editable source name. `ConnectionE
 retains each product's draft and credential only while that dialog is open; returning
 between steps preserves it, while closing or saving releases unused protected inputs.
 Saved-source edit and append enter configuration directly and retain their lifecycle rules.
+Required connection fields precede optional metadata prefill. Form fields use one
+vertical gap, without adding generic field margins to the grid gap; service identity
+stays a compact neutral header. This presentation does not change the per-prefill
+draft or protected-credential owner.
 The trial host can opt in to entering a single eligible product after a successful
 scoped options read. Returning to the directory or interacting with it ends that
 automatic choice for the current opening. The host's custom-entry permission is

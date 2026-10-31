@@ -12,6 +12,16 @@ and Gateway cancellation evidence. Interrupting the guardian requests cleanup on
 [Code map](README.md) · [Desktop scenarios](../../apps/desktop/tests/README.md) ·
 [Agent/Worker scenarios](worker-context.md#representative-scenarios)
 
+Shared Desktop configuration presentation is exercised by
+[interaction scenarios](../../apps/desktop/tests/v3/browser/frontend-consistency-scenarios.mjs)
+and [production captures](../../apps/desktop/tests/v3/visual/frontend-consistency-captures.mjs).
+The production owners are [Agent sections](../../apps/desktop/src/agents.tsx),
+[API connection forms](../../apps/desktop/src/features/model-connections/ModelConnectionForm.tsx),
+[decision editors](../../apps/desktop/src/features/decision-services/DecisionModelForm.tsx)
+and [Settings areas](../../apps/desktop/src/product/SettingsPage.tsx).
+Comparative fixture captures bind each image to its own production revision; they
+do not establish actual native configuration writes or provider effects.
+
 [Execution locations](../validation-routing.md) owns caller HOME routing,
 per-origin SSH workbenches, shared compiler capacity and separate candidate/driver
 revision identities. A runner setup failure is not a product test result. Ordinary local and SSH runs

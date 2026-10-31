@@ -157,6 +157,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(s => s.capabilities.includes('frontend-consistency'))) {
+        checks.push(...await (await import('./frontend-consistency-captures.mjs')).frontendConsistencyCaptures(client, baseUrl, outputRoot, { baseline: process.env.HIROUTE_UI_CAPTURE_BASELINE === '1' }));
+      }
       if (selected.some(s => s.id === 'desktop.home.saved-settings-are-not-verified')) {
         checks.push(...await (await import('./home-summary-captures.mjs')).homeSummaryCaptures(client, baseUrl, outputRoot));
       }

@@ -43,6 +43,7 @@ proves native authorization, persistence, process cleanup or real model calls.
 
 | User capability | Representative tests | Unique guarantee |
 | --- | --- | --- |
+| Find and edit core configuration consistently | [Shared interaction scenarios](v3/browser/frontend-consistency-scenarios.mjs), [paired-state captures](v3/visual/frontend-consistency-captures.mjs) | Settings areas support keyboard navigation and retain unsaved input without submitting. Related Agent actions stay together; opening/Cancel performs no mutation or live test. API fields precede optional prefill, and both decision editors put Cancel before secondary/primary saves. Production geometry covers seven screens, zh/en, light/dark and 1200×813 / 755×600. An exact older production checkout can use identical read-only fixture data for comparison; baseline regressions remain expected-red, not product acceptance. |
 | Control Home/trial recommendations through the official feed | [Announcement selection](model-announcements.test.mjs), `home-current-announcement-*` and `home-empty-recommendations-*` in [production captures](v3/visual/new-model-trial-polish-active.mjs) | Only resolved entries from the selected feed are recommended. An absent or cleared list stays empty even when the catalog contains previously featured models; the installed catalog remains available for manual selection. Both languages, themes and supported sizes retain readable empty states. Browser IPC is synthetic; real feed retrieval remains a separate native boundary. |
 | Keep current Home startup and service results | `desktop.home.stale-startup-*` in [Home startup scenarios](v3/browser/home-startup-scenarios.mjs) | Late snapshot success, failure follow-up and an independent startup poll cannot overwrite a newer accepted result. Controlled completion ordering uses production React components; actual cold-start recovery remains a native gate. |
 | Restore a lost native connection while the daemon responds | `desktop.connection.loss-retry-recovery`, `desktop.connection.pending-and-failed-recovery`, `desktop.connection.unowned-service` in [shell scenarios](v3/browser/native-connection-scenarios.mjs), [production captures](v3/visual/native-connection-captures.mjs) | Accurate Home/Sessions read errors, explicit recovery, duplicate prevention, pending/failure states, external ownership refusal, and zh/en light/dark geometry at both window sizes. Native Resident/daemon faults, exact reply synchronization with unchanged daemon identity, running work, old confirmation expiry and retained data require separate macOS execution. |
@@ -107,6 +108,12 @@ Run the focused production-component cases with
 `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --session-live-refresh`
 or `--presentation` from the Desktop directory. They use production styles and
 controlled IPC; they do not establish native persistence or real model outcomes.
+
+Select `desktop.settings.group-navigation,desktop.agents.capability-actions` through
+`HIROUTE_BROWSER_SCENARIOS` with `agent-trust.mjs OUTPUT --shell-only` for the shared
+interaction checks and 56 captures. The Settings fixtures explicitly supply read-only
+CLI, listener, diagnostics and update status. Paired comparisons keep the production
+versions distinct and use the same fixture/capture files, locale, theme and viewport.
 
 `--routing-presentation` exercises evidence-backed pending-to-resolved layout,
 focus and bounded exact-name/source reads. `--trust-continuous` exercises exact

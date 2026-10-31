@@ -196,3 +196,4 @@
   .decision-inherited-network > .native-network-actions { flex-wrap: wrap; }
   .decision-form-actions { padding: 14px 20px; }
 }
+.decision-form-actions .field-actions > .btn:first-child { margin-right:auto; }

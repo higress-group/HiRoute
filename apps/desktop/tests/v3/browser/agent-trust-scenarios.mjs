@@ -274,16 +274,16 @@ const scenarios = [
       resource: { directory: '/selected/skills/hiroute-management', native_available: true, runtime_loading: 'unobserved', shared_context_count: 2, file_ownership: 'borrowed_identical' } };
     await tick();
     [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Qoder')).click();
-    await until(() => facet('management_skill')?.getAttribute('aria-checked') === 'true', 'Enabled management switch');
+    await until(() => facet('management_skill')?.textContent === '停用', 'Enabled management action');
     c().handlers.preview_agent_settings = payload => {
       const spec = payload.input.spec;
-      assert(spec.management_skill.intent === 'restore' && spec.management_skill.restore_point_ref === 'restore/management-only', 'Management switch did not restore its own reference');
-      assert(spec.model.intent === 'keep' && spec.collaboration.intent === 'keep', 'Management switch disabled another facet');
+      assert(spec.management_skill.intent === 'restore' && spec.management_skill.restore_point_ref === 'restore/management-only', 'Management action did not restore its own reference');
+      assert(spec.model.intent === 'keep' && spec.collaboration.intent === 'keep', 'Management action disabled another facet');
       agent.settings.management_skill.state = 'restored'; agent.settings.management_skill.restore_point_ref = null;
       agent.settings.management_skill.resource.shared_context_count = 1;
       return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } };
     };
-    facet('management_skill').click(); await until(() => configureSpecs().length === 1 && facet('management_skill')?.getAttribute('aria-checked') === 'false', 'Management restore observed');
+    facet('management_skill').click(); await until(() => configureSpecs().length === 1 && facet('management_skill')?.textContent === '启用', 'Management restore observed');
     assert(document.querySelector('[data-agent-management]').textContent.includes('外部') && document.querySelector('[data-agent-management]').textContent.includes('可能仍然可用'), 'Restore claimed global removal of external files');
   }),
   scenario('hermes.collaboration.native-model-independent', ['hermes', 'agent-collaboration'], 'Hermes chooses either delegation policy independently of model and management preparation', async () => {
@@ -893,7 +893,7 @@ const scenarios = [
     c().handlers.preview_agent_settings = () => ({ preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } });
     const details = document.querySelector('.native-details'); details.querySelector('summary').click(); await tick();
     assert(!details.querySelector('input[type="password"]'), 'Qoder recovery exposed a model token');
-    [...details.querySelectorAll('button')].find(button => button.textContent === '停用任务路由').click();
+    document.querySelector('[data-agent-disable="collaboration"]').click();
     await until(() => configureSpecs().some(spec => spec.collaboration.intent === 'restore'), 'collaboration restore submitted');
     const spec = configureSpecs().at(-1);
     assert(spec.model.intent === 'keep' && spec.collaboration.restore_point_ref === 'task-restore/qoder', 'Restore changed a model facet or used the wrong Skill owner');
@@ -993,7 +993,7 @@ const scenarios = [
     agent.settings = c().qoderRouted().agents[0].settings; c().refresh(); await tick();
     await until(() => facet('model')?.textContent === '调整' && !facet('model').disabled, 'model connection refreshed');
     const recovery = document.querySelector('.native-details'); if (!recovery.open) recovery.querySelector('summary').click(); await tick();
-    [...recovery.querySelectorAll('button')].find(button => button.textContent === '停用任务路由').click();
+    document.querySelector('[data-agent-disable="collaboration"]').click();
     await until(() => configureSpecs().some(spec => spec.collaboration.intent === 'restore'), 'independent collaboration restore');
     assert(configureSpecs().at(-1).model.intent === 'keep' && agent.settings.current_selection.mode === 'qoder_additional', 'Collaboration restore removed model routes');
   }),
