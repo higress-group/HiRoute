@@ -50,7 +50,7 @@ fn model_feed_projection_includes_complete_existing_models() {
     );
 }
 #[test]
-fn model_feed_bootstrap_checks_real_shared_metadata_and_is_repeatable() {
+fn model_feed_checked_in_publication_checks_real_shared_metadata_and_is_repeatable() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     build(&root, true).unwrap();
     build(&root, true).unwrap();
@@ -205,7 +205,7 @@ fn model_feed_projection_closes_a_real_model_graph_and_preserves_first_inclusion
 }
 
 #[test]
-fn model_feed_bootstrap_rejects_invalid_editorial_inputs_before_release_lookup() {
+fn model_feed_rejects_invalid_editorial_inputs_before_release_lookup() {
     let root = tempfile::tempdir().unwrap();
     let directory = root.path().join("assets/model-feed");
     std::fs::create_dir_all(&directory).unwrap();
@@ -223,7 +223,7 @@ fn model_feed_bootstrap_rejects_invalid_editorial_inputs_before_release_lookup()
     let error = build(root.path(), true).unwrap_err();
     assert!(
         !error.contains("cannot read"),
-        "schema validation must run in bootstrap: {error}"
+        "schema validation must run before release lookup: {error}"
     );
 }
 
@@ -253,6 +253,7 @@ fn feed_payload_check_survives_a_bundle_changing_squash_merge() {
         br#"{"minimum_feed_client":"0.3.1"}"#,
     )
     .unwrap();
+    std::fs::write(root.join("assets/model-feed/payload.json"), b"null\n").unwrap();
     let run = |args: &[&str]| {
         let out = Command::new("git")
             .current_dir(root)
@@ -318,6 +319,13 @@ fn feed_payload_check_survives_a_bundle_changing_squash_merge() {
         .unwrap(),
         std::fs::read(root.join("assets/release-facts/current/bundle/model-data.json")).unwrap()
     );
+    // Development publication must not bypass compatibility evidence for recorded readers.
+    std::fs::write(root.join("contracts/releases/v0.3.1.json"), b"{}").unwrap();
+    assert!(
+        build(root, true)
+            .unwrap_err()
+            .contains("release snapshot digest mismatch")
+    );
 }
 
 #[test]
@@ -338,7 +346,7 @@ fn model_feed_current_and_recorded_v2_sources_require_the_complete_snapshot() {
     }
 }
 
-fn bootstrap_repository() -> (tempfile::TempDir, String) {
+fn unpublished_repository() -> (tempfile::TempDir, String) {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();
@@ -388,10 +396,39 @@ fn repository_git(root: &Path, args: &[&str]) -> String {
 }
 
 #[test]
-fn bootstrap_rejects_changed_embedded_data_without_a_revision_increase() {
-    let (directory, base) = bootstrap_repository();
+fn development_source_publishes_without_release_records_or_package_verification() {
+    let (directory, base) = unpublished_repository();
     let root = directory.path();
+    assert!(
+        build_against(root, true, Some(&base))
+            .unwrap_err()
+            .contains("payload is stale")
+    );
+    build_against(root, false, Some(&base)).unwrap();
+    let file = root.join("assets/model-feed/payload.json");
+    let first = std::fs::read(&file).unwrap();
+    let feed = parse_feed(&first).unwrap();
+    assert_eq!(feed.payload.snapshot(), current().official_snapshot());
+    assert!(!feed.payload.featured.is_empty());
+    assert_eq!(
+        feed.payload.source_revision,
+        repository_git(
+            root,
+            &["rev-parse", "HEAD:assets/release-facts/current/bundle"]
+        )
+    );
+    build_against(root, false, Some(&base)).unwrap();
+    assert_eq!(std::fs::read(&file).unwrap(), first);
     build_against(root, true, Some(&base)).unwrap();
+    repository_git(root, &["add", "."]);
+    repository_git(root, &["commit", "-m", "Publish from development source"]);
+    build_against(root, true, Some(&base)).unwrap();
+}
+
+#[test]
+fn unpublished_source_rejects_changed_embedded_data_without_a_revision_increase() {
+    let (directory, base) = unpublished_repository();
+    let root = directory.path();
     let file = root.join("assets/release-facts/current/bundle/official-model-data.json");
     let mut snapshot: hiroute_domain::OfficialModelSnapshotV1 =
         serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
@@ -421,17 +458,26 @@ fn bootstrap_rejects_changed_embedded_data_without_a_revision_increase() {
     );
     snapshot.data_revision += 1;
     write(&snapshot);
-    build_against(root, true, Some(&base)).unwrap();
-    build_against(root, true, Some(&base)).unwrap();
-    assert_eq!(
-        std::fs::read(root.join("assets/model-feed/payload.json")).unwrap(),
-        b"null\n"
+    assert!(
+        build_against(root, false, Some(&base))
+            .unwrap_err()
+            .contains("commit current metadata")
     );
+    repository_git(root, &["add", "."]);
+    repository_git(root, &["commit", "-m", "Advance corrected data revision"]);
+    build_against(root, false, Some(&base)).unwrap();
+    build_against(root, true, Some(&base)).unwrap();
+    build_against(root, true, Some(&base)).unwrap();
+    let payload: FeedPayload = serde_json::from_slice(
+        &std::fs::read(root.join("assets/model-feed/payload.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(payload.snapshot(), snapshot);
 }
 
 #[test]
-fn bootstrap_rejects_an_embedded_revision_rollback_with_unchanged_content() {
-    let (directory, _) = bootstrap_repository();
+fn unpublished_source_rejects_an_embedded_revision_rollback_with_unchanged_content() {
+    let (directory, _) = unpublished_repository();
     let root = directory.path();
     let file = root.join("assets/release-facts/current/bundle/official-model-data.json");
     let mut snapshot: hiroute_domain::OfficialModelSnapshotV1 =

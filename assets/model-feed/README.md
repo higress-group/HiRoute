@@ -14,8 +14,8 @@ website catalog. Public metadata includes records without an executable binding.
 | `assets/release-facts/current/bundle/official-model-data.json` | Generated shared data revision, semantic digest and complete body |
 | `featured.json` | Optional bilingual editorial announcements; links stay under `https://hiroute.ai/` |
 | `publication.json` | Monotonic publication sequence and UTC issue time; changed exact bytes require a higher sequence |
-| `policy.json` | Earliest intended reader; a version string does not prove a compatible reader shipped |
-| `payload.json` | Generated publication, or `null` while no compatible supported client is recorded |
+| `policy.json` | Earliest recorded stable reader included in compatibility checks; not a development-publication gate |
+| `payload.json` | Complete generated publication from the current committed development source |
 
 Follow the [metadata workflow](../../.agents/skills/model-metadata-maintainer/SKILL.md),
 regenerate model data and the release bundle, then run the producer and check twice:
@@ -35,11 +35,12 @@ and commit its generated payload. This preserves the bundle-tree provenance thro
 a squash merge. Supply the PR/push comparison revision with `feed build --check
 --base BASE`; HEAD also protects uncommitted regeneration.
 
-The Rust producer validates the complete candidate even during bootstrap. Before
-release gating it rejects an embedded revision rollback or different semantic content
-at the same revision against HEAD and the supplied baseline, including when
-`payload.json` remains `null`. It checks recorded supported source readers before
-enabling publication. Unsupported execution
+The Rust producer validates the complete candidate and rejects an embedded revision
+rollback or different semantic content at the same revision against HEAD and the
+supplied baseline. Current development source is sufficient publication basis;
+no stable release record, development package verification or prior client acceptance
+is required. Recorded supported source readers still receive compatibility checks.
+Unsupported execution
 requirements remain descriptive; they do not remove otherwise valid metadata. The
 publication's `source_revision` names the committed release-bundle tree, which is
 stable through a squash merge. Keep that tree reachable in main history.
@@ -111,7 +112,7 @@ gh workflow run model-feed.yml --repo higress-group/HiRoute --ref main
 ```
 
 Dispatching another branch validates its artifacts but does not publish. A manual
-run retains the same bootstrap, compatibility and publication checks as a push.
+run retains the same compatibility and publication checks as a push.
 Reviewed changes must include regenerated artifacts and the required semantic
 revision/publication sequence increases. CI checks those bytes rather than
 editing the catalog or committing generated changes.
@@ -122,9 +123,9 @@ serializing uploads with website/release deployment through `hiroute-ai-producti
 All three publishers queue pending uploads instead of canceling one another.
 It needs no static website build, experiment downloads or release-package checks.
 Ordinary website uploads refuse a `model-feed` prefix. PR builds publish nothing.
-Bootstrap `null` skips network access, feed staging and OSS CLI installation while
-normal website deployment continues. Release a
-compatible v2 client and record its exact source before enabling the first publication.
+The producer generates a complete publication even before the first stable v2
+client ships. A retained legacy `null` input skips network access, feed staging and
+OSS CLI installation, but is no longer the generated output for development source.
 No supported recorded release currently establishes a served v1 compatibility endpoint.
 
 The feed carries the complete metadata catalog, capabilities, documented prices,

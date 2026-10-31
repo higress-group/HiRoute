@@ -379,7 +379,7 @@ Generation SHALL include all maintained descriptive records, including existing 
 
 Only the production model-feed deployment SHALL publish the exact validated artifact. It SHALL run independently of the static website build after reviewed metadata, publication or recorded release changes reach main, using the same production environment and serialized deployment boundary as the website. It SHALL upload only the versioned feed object; ordinary website uploads SHALL refuse a model-feed prefix. PR jobs SHALL validate without publishing or requiring production credentials. The fixed HTTPS origin and production pipeline establish trust; the direct JSON needs no independent signature or signing-key lifecycle. Deployment SHALL retrieve and validate the currently served publication before replacement. A genuine HTTP 404 permits first publication; redirects, unsuccessful retrieval or invalid served content stop publication and preserve the served copy. Identical content may be a no-op; changed publication bytes require a strictly greater sequence, and changed semantic model data require a strictly greater data revision. Deployment SHALL record publication sequence, data revision, digests and source revision.
 
-Before a compatible supported client release is recorded, production publication for that contract SHALL be skipped while ordinary website delivery remains possible. The compatible release's embedded metadata and parser limits SHALL be validated before publication activation. An incompatible wire change used by an already supported release SHALL use a versioned endpoint and intentional legacy support recorded in the existing compatibility register. Older supported readers retain their supported contract and rollback protections; unreleased experimental formats create no compatibility promise. Persisted user choices and supported cache/configuration inputs SHALL retain their meaning through upgrade or receive explicit versioned recovery, never a silent reset.
+Current committed development source and its complete metadata SHALL be sufficient basis for publication before any compatible stable client release is recorded. A development package, release record or prior client acceptance verification SHALL NOT be required to enable publication. Content, provenance, size and rollback validation SHALL remain mandatory, and recorded supported readers SHALL retain their compatibility checks; development publication SHALL NOT claim unverified released executable support. An incompatible wire change used by an already supported release SHALL use a versioned endpoint and intentional legacy support recorded in the existing compatibility register. Older supported readers retain their supported contract and rollback protections; unreleased experimental formats create no compatibility promise. Persisted user choices and supported cache/configuration inputs SHALL retain their meaning through upgrade or receive explicit versioned recovery, never a silent reset.
 
 Source generation and publication SHALL remain reproducible from the recorded reviewed source revision, including squash-stable provenance. A deployment or validation failure SHALL leave the prior website snapshot served and clients' last usable snapshots intact.
 
@@ -408,20 +408,20 @@ Source generation and publication SHALL remain reproducible from the recorded re
 - **WHEN** a changed publication increases its sequence but reuses a data revision for different semantic content or supplies an older data revision
 - **THEN** publication validation rejects it; an intentional correction must use a new data revision.
 
-#### Scenario: Guard embedded semantic identity before publication activation
+#### Scenario: Guard embedded semantic identity before the first publication
 
-- **WHEN** reviewed embedded data changes before any compatible supported release has enabled website publication
-- **THEN** validation still rejects a lower data revision or different semantic content at the same revision against HEAD and the supplied PR/push baseline, for uncommitted and committed changes; a greater data revision with valid content passes while the publication remains skipped.
+- **WHEN** reviewed embedded data changes before any compatible supported release has been recorded
+- **THEN** validation still rejects a lower data revision or different semantic content at the same revision against HEAD and the supplied PR/push baseline, for uncommitted and committed changes; committed valid content with a greater data revision can produce a complete publication.
 
 #### Scenario: Validate a pull request
 
 - **WHEN** a pull-request workflow checks metadata and generated publication artifacts
 - **THEN** it validates deterministic completeness, compatibility and bounds without publishing or requiring production deployment credentials.
 
-#### Scenario: Activate a compatible first publication
+#### Scenario: Publish for development clients before a stable release
 
-- **WHEN** no compatible supported release has been recorded, then a compatible release is recorded and a valid data publication is reviewed
-- **THEN** the first state skips feed publication; the later production deployment can publish for that recorded contract without assuming a successful website build already published data.
+- **WHEN** no compatible stable release has been recorded and current development source supplies a valid complete snapshot and reviewed publication
+- **THEN** generation produces the complete feed and the production model-feed deployment can publish it without a verified development package or prior client acceptance; a compatible development client can retrieve it through the ordinary fixed HTTPS path.
 
 #### Scenario: Preserve released readers during a contract change
 

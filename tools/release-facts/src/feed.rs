@@ -1,4 +1,4 @@
-//! Deterministic feed projection from current ReleaseFacts and recorded supported releases.
+//! Deterministic feed projection from current source, with recorded-reader compatibility checks.
 use hiroute_domain::{CanonicalDigest, OfficialModelSnapshotV1};
 use hiroute_integrations::{TrustedReleaseCatalog, model_feed::*};
 use serde::Deserialize;
@@ -67,7 +67,8 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
         |file| read(&format!("assets/release-facts/current/bundle/{file}")),
         true,
     )?;
-    // Validate the complete candidate before release gating, including bootstrap builds.
+    // Current development source is sufficient publication authority. Package validation
+    // and a recorded stable release are not prerequisites; content checks still apply.
     let candidate = FeedPayload::from_snapshot(
         current.official_snapshot(),
         publication.sequence,
@@ -158,86 +159,75 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
     if let Some(previous) = &previous {
         previous.validate().map_err(|e| e.to_string())?;
     }
-    let bytes = if clients.is_empty() {
-        if previous.is_some() {
-            return Err("cannot replace an existing publication with bootstrap".into());
-        }
-        b"null\n".to_vec()
-    } else {
-        // A committed bundle tree survives a squash merge while the PR commit ID does not.
-        let revision = git(
+    // A committed bundle tree survives a squash merge while the PR commit ID does not.
+    let revision = git(
+        root,
+        &["rev-parse", "HEAD:assets/release-facts/current/bundle"],
+    )?;
+    let revision = revision.trim();
+    if revision.len() != 40 || !revision.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("metadata source tree is unavailable".into());
+    }
+    let unchanged = Command::new("git")
+        .current_dir(root)
+        .args([
+            "diff",
+            "--quiet",
+            "HEAD",
+            "--",
+            "assets/model-data/current/inputs/metadata-catalog.json",
+            "assets/release-facts/current/bundle",
+        ])
+        .status()
+        .map_err(|_| "cannot compare metadata source")?;
+    if !unchanged.success() {
+        return Err(
+            "commit current metadata and ReleaseFacts before generating a publication".into(),
+        );
+    }
+    let payload = project(
+        &current,
+        &clients,
+        publication.sequence,
+        &publication.issued_at,
+        revision,
+        featured,
+        previous.as_ref(),
+    )?;
+    if let Some(base) = base {
+        let reference = git(
             root,
-            &["rev-parse", "HEAD:assets/release-facts/current/bundle"],
+            &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
         )?;
-        let revision = revision.trim();
-        if revision.len() != 40 || !revision.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err("metadata source tree is unavailable".into());
-        }
-        let unchanged = Command::new("git")
-            .current_dir(root)
-            .args([
-                "diff",
-                "--quiet",
-                "HEAD",
+        let reference = reference.trim();
+        let exists = git(
+            root,
+            &[
+                "ls-tree",
+                "--name-only",
+                reference,
                 "--",
-                "assets/model-data/current/inputs/metadata-catalog.json",
-                "assets/release-facts/current/bundle",
-            ])
-            .status()
-            .map_err(|_| "cannot compare metadata source")?;
-        if !unchanged.success() {
-            return Err(
-                "commit current metadata and ReleaseFacts before generating a publication".into(),
-            );
-        }
-        let payload = project(
-            &current,
-            &clients,
-            publication.sequence,
-            &publication.issued_at,
-            revision,
-            featured,
-            previous.as_ref(),
+                "assets/model-feed/payload.json",
+            ],
         )?;
-        if let Some(previous) = &previous {
-            validate_transition(previous, &payload)?;
-        }
-        if let Some(base) = base {
-            let reference = git(
-                root,
-                &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
-            )?;
-            let reference = reference.trim();
-            let exists = git(
+        if !exists.trim().is_empty() {
+            let baseline: Option<FeedPayload> = serde_json::from_slice(&git_bytes(
                 root,
                 &[
-                    "ls-tree",
-                    "--name-only",
-                    reference,
-                    "--",
-                    "assets/model-feed/payload.json",
+                    "show",
+                    &format!("{reference}:assets/model-feed/payload.json"),
                 ],
-            )?;
-            if !exists.trim().is_empty() {
-                let baseline: Option<FeedPayload> = serde_json::from_slice(&git_bytes(
-                    root,
-                    &[
-                        "show",
-                        &format!("{reference}:assets/model-feed/payload.json"),
-                    ],
-                )?)
-                .map_err(|_| "invalid baseline payload")?;
-                if let Some(baseline) = baseline {
-                    validate_transition(&baseline, &payload)?;
-                }
+            )?)
+            .map_err(|_| "invalid baseline payload")?;
+            if let Some(baseline) = baseline {
+                validate_transition(&baseline, &payload)?;
             }
         }
-        let bytes = super::canonical_sorted_json_line(&payload).map_err(|e| e.to_string())?;
-        if bytes.len() > MAX_MODEL_FEED_BYTES {
-            return Err("generated payload cannot fit the bounded envelope".into());
-        }
-        bytes
-    };
+    }
+    let bytes = super::canonical_sorted_json_line(&payload).map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_MODEL_FEED_BYTES {
+        return Err("generated payload cannot fit the bounded envelope".into());
+    }
     let output = root.join("assets/model-feed/payload.json");
     if check {
         if std::fs::read(&output).map_err(|_| "missing generated payload")? != bytes {
@@ -249,7 +239,7 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
     println!(
         "model feed: {}",
         if clients.is_empty() {
-            "bootstrap (no feed-capable release)"
+            "current development source (no recorded feed-capable release required)"
         } else {
             "validated against recorded clients"
         }
@@ -381,9 +371,6 @@ pub fn project(
     featured: Vec<FeaturedModel>,
     previous: Option<&FeedPayload>,
 ) -> Result<FeedPayload, String> {
-    if clients.is_empty() {
-        return Err("no supported clients".into());
-    }
     let payload = FeedPayload::from_snapshot(
         current.official_snapshot(),
         sequence,
