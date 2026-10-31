@@ -1,6 +1,6 @@
 .key-budget-editor { min-width: 0; padding-block: 12px; }
 .key-budget-toggle { display: flex; align-items: center; gap: 8px; font-size: var(--font-size-sm, 13px); line-height: 1.6; cursor: pointer; }
-.key-budget-toggle input { flex: 0 0 auto; accent-color: var(--accent); }
+.key-budget-editor .key-budget-toggle input[type=checkbox] { flex: 0 0 14px; width: 14px; min-width: 14px; max-width: 14px; height: 14px; accent-color: var(--accent); }
 .key-budget-fields { margin-top: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-subtle, var(--bg)); }
 .key-budget-editor .field { display: flex; flex-direction: column; min-width: 0; margin-block: 0 12px; gap: 6px; }
 .key-budget-editor .field-label { display: block; margin: 0; }
