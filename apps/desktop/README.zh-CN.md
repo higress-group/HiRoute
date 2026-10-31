@@ -6,7 +6,7 @@ Desktop 提供模型管理、路由配置、Agent 接入、任务结果及会话
 
 本目录负责共享产品 UI 与 macOS 原生宿主。Windows x64 桌面版通过
 [Windows 壳](../shell/README.md)打开 daemon 提供的控制台；Linux 无需桌面环境，直接在浏览器中使用同一产品界面。
-Windows 桌面版与 Linux Web UI 从 0.5.0 起提供。各平台的宿主专属功能与安装路径保持独立，详见
+各平台的宿主专属功能与安装路径保持独立，详见
 [Web 控制台指南](../../docs/web-console.md)。
 
 ## 开发入口

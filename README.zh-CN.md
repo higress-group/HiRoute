@@ -129,8 +129,8 @@ HiRoute 结合这些判断与你的路由计划，选择实际执行的模型。
 [安装指南](https://hiroute.ai/docs/) ·
 [最新版本](https://github.com/higress-group/HiRoute/releases/latest)
 
-HiRoute **0.5.0 新增 Windows x64 桌面版和 Linux Web UI**，继续提供 macOS 桌面版与 CLI。
-[下载页](https://hiroute.ai/download/)列出已发布的安装包；新增界面需要 0.5.0 或更高版本。
+HiRoute 提供 **macOS 桌面版、Windows x64 桌面版、Linux Web UI 与 CLI**。
+已发布的安装包见[下载页](https://hiroute.ai/download/)。
 
 1. **接入模型**：加入受支持的订阅或 API，选择经济模型与主力。
 2. **配置分工**：在**模型 → 决策模型**中连接判断服务，选择信任程度，发布并映射到 Agent。
@@ -143,7 +143,7 @@ HiRoute **0.5.0 新增 Windows x64 桌面版和 Linux Web UI**，继续提供 ma
 **macOS：** 下载 DMG，拖入“应用程序”；如系统要求批准，请按
 [自签名安装说明](docs/macos-installation.zh-CN.md)操作。支持 macOS 15+、Apple 芯片与 Intel。
 
-**Windows：** 使用 0.5.0 或更高版本的 x64 桌面安装包。按当前用户安装，自带后台服务、
+**Windows：** 使用 x64 桌面安装包。按当前用户安装，自带后台服务、
 WebView2 引导安装器和 CLI，不要求 Python 或管理员权限。校验摘要、首次启动和恢复步骤见
 [Windows 安装指南](https://hiroute.ai/docs/install-windows/)。
 
@@ -155,7 +155,7 @@ hiroute service start --output json
 hiroute system status --output json
 ```
 
-在 **0.5.0 或更高版本**中，可以打开 Web UI，在浏览器中接入模型、配置路由与 Agent、查看会话：
+打开 Web UI，在浏览器中接入模型、配置路由与 Agent、查看会话：
 
 ```sh
 hiroute console init --mode loopback --port 5838

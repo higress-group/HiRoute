@@ -146,9 +146,8 @@ to evaluate decision prompts against your own tasks.
 [Installation guides](https://hiroute.ai/en/docs/) ·
 [Latest release](https://github.com/higress-group/HiRoute/releases/latest)
 
-HiRoute **0.5.0 adds Windows x64 Desktop and a Linux Web UI** alongside macOS Desktop
-and the CLI. The [download page](https://hiroute.ai/en/download/) lists published packages;
-these new interfaces require 0.5.0 or later.
+HiRoute provides **macOS Desktop, Windows x64 Desktop, Linux Web UI, and CLI**.
+The [download page](https://hiroute.ai/en/download/) lists published packages.
 
 1. **Connect your models.** Add a supported subscription or API connection and choose an
    economical model plus a primary model.
@@ -165,7 +164,7 @@ these new interfaces require 0.5.0 or later.
 [self-signed package instructions](docs/macos-installation.md) if macOS asks for approval.
 Supports macOS 15+ on Apple silicon and Intel.
 
-**Windows:** use the x64 Desktop installer from 0.5.0 or later. It installs for the
+**Windows:** use the x64 Desktop installer. It installs for the
 current user and includes the background service, WebView2 bootstrapper and CLI;
 no Python or administrator privileges are required. See the
 [Windows installation guide](https://hiroute.ai/en/docs/install-windows/) for
@@ -179,7 +178,7 @@ hiroute service start --output json
 hiroute system status --output json
 ```
 
-On **0.5.0 or later**, open the Web UI to connect models, configure routes and Agents,
+Open the Web UI to connect models, configure routes and Agents,
 and inspect sessions in your browser:
 
 ```sh

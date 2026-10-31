@@ -107,9 +107,7 @@ The canonical manifest uses schema `hiroute.website.releases/v3`. Preparation em
 `releases-v3.json` for Windows Desktop and a `releases.json` V2 projection without
 Windows artifacts for supported older macOS readers. Linux archives include the
 Web UI assets as well as the CLI and service; this does not change their
-`standalone` package kind. Public copy must distinguish these capabilities from
-the packages actually present in the selected published release. Windows Desktop
-and the Linux Web UI start at 0.5.0; older Linux releases provide the CLI.
+`standalone` package kind.
 
 The manifest intentionally has no
 release-level Git revision. A release record cannot contain the SHA of the commit
@@ -122,9 +120,7 @@ Windows NSIS installer with its `.identity.json` sidecar when Windows is in scop
 Windows headless archives are internal payloads and must not be published. The
 installer identity must bind the exact source/hash and every required native case
 from `scripts/windows-desktop-cases.json`, with the actual OS/build recorded.
-For 0.5.0, the maintainer-approved scope in #193 uses the existing Server host
-for the Windows 11 desktop selection; all selected standard-user cases still
-apply. Compilation alone does not establish native acceptance. After
+Compilation alone does not establish native acceptance. After
 reviewing those assets, add their exact filenames, sizes, and digests to the
 manifest on `main`. Publish the GitHub Release only after that record lands.
 The workflow freezes that `main` revision for the website, resolves the tag's
