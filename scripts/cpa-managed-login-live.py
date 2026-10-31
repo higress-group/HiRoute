@@ -375,6 +375,7 @@ def native_borrowed_selected(arguments, configuration):
     for kind in ('codex', 'claude'):
         configuration[kind + '_cli'] = str(getattr(arguments, kind + '_cli').resolve())
     product = make_product(configuration, fresh=True)
+    product.requested_claude_model = getattr(arguments, 'claude_model', None)
     before, stage = {}, 'credentials'
 
     def record(scenario):
@@ -1032,6 +1033,7 @@ def main():
     borrowed.add_argument('--claude-cli', required=True, type=Path)
     borrowed.add_argument('--codex-host', required=True)
     borrowed.add_argument('--claude-host', required=True)
+    borrowed.add_argument('--claude-model', help='Require this exact selectable Haiku model')
     borrowed.add_argument('--provider', choices=('codex', 'claude'))
     borrowed.add_argument('--report', required=True, type=Path)
     authorized = commands.add_parser('authorize')

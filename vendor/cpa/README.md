@@ -4,6 +4,15 @@
 `local-management-stdin.patch` includes the parent-pipe management credential
 bootstrap and Codex account model discovery. Build with `scripts/build-cpa.py`.
 
+The managed artifact uses upstream v8.0.48. Its model discovery patch retains the
+upstream auth/config publication fence and boolean reconciliation result. A
+same-account generation handoff shares one five-second discovery budget; a
+superseded publication is reported as discarded rather than successful.
+The upstream flat configuration reader remains the managed configuration boundary.
+Environment routing explicitly keeps the managed parent's uppercase-first proxy
+precedence across the upstream x/net dependency change. Malformed effective proxy
+settings fail closed for both inference and Claude OAuth.
+
 ## Browser sign-in callbacks
 
 The pinned browser flow receives Codex and Claude callbacks directly on temporary

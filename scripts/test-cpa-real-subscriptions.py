@@ -177,7 +177,10 @@ def subscription_save(product, kind, apply_control, prepare_control_apply):
     models = [item for item in candidate['models'] if item['selectable']]
     if kind == 'claude':
         models = [item for item in models if 'haiku' in item['upstream_model_id'].lower()]
-        preferred = ('claude-haiku-4-5-20251001', 'claude-haiku-4-5')
+        requested = getattr(product, 'requested_claude_model', None)
+        if requested:
+            models = [item for item in models if item['upstream_model_id'] == requested]
+        preferred = (requested,) if requested else ('claude-haiku-4-5-20251001', 'claude-haiku-4-5')
     else:
         preferred = ('gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5.1-codex-mini')
         models = [item for item in models if item['upstream_model_id'] in preferred]
@@ -431,6 +434,10 @@ def auth_audit(product, require_both=True):
         require(root.is_dir(), directory + ':runtime_absent')
         configurations = list(root.rglob('config.yaml'))
         require(len(configurations) == 1, directory + ':config_absent')
+        cloak_line = next((line for line in configurations[0].read_text().splitlines()
+                           if line.startswith('disable-claude-cloak-mode:')), None)
+        require(cloak_line in ('disable-claude-cloak-mode: true', 'disable-claude-cloak-mode: false'),
+                directory + ':cloak_policy_absent')
         auth_line = next((line for line in configurations[0].read_text().splitlines()
                           if line.startswith('auth-dir:')), None)
         require(auth_line is not None, directory + ':auth_directory_absent')
@@ -445,7 +452,8 @@ def auth_audit(product, require_both=True):
             require(not forbidden_refresh(value), directory + ':refresh_authority_in_cpa')
             require(not any('expir' in key.lower() for key in value), directory + ':expiry_in_cpa')
             auth.append({'sha256': digest(path), 'mode': '0o600', 'refresh_authority': False})
-        result[directory] = {'auth_file_count': len(auth), 'auth': auth}
+        result[directory] = {'auth_file_count': len(auth), 'auth': auth,
+                             'claude_cloaking_enabled': cloak_line.endswith('false')}
     if require_both:
         require(result['cpa']['auth_file_count'] == 1 and result['cpa-claude']['auth_file_count'] == 1,
                 'both_providers_must_have_one_access_only_lease')
@@ -532,6 +540,7 @@ def run(arguments):
     os.environ['HIROUTE_VALIDATION_PRODUCT_BIN_DIR'] = str(arguments.product_bin.resolve())
     temporary = tempfile.TemporaryDirectory(prefix='hiroute-real-subscriptions-')
     product = RealProduct(repository, root=Path(temporary.name) / 'p')
+    product.requested_claude_model = getattr(arguments, 'claude_model', None)
     report = {'candidate_sha': candidate, 'state': 'red', 'scenarios': [], 'native_sources': {},
               'binaries': {name: digest(arguments.product_bin / name) for name in ('hiroute', 'hirouted')},
               'cpa': {'version': pin['version'], 'commit': pin['commit'], 'patch_sha256': pin['patch_sha256'],
@@ -679,6 +688,7 @@ if __name__ == '__main__':
     parser.add_argument('--claude-cli', required=True, type=Path)
     parser.add_argument('--codex-host', required=True)
     parser.add_argument('--claude-host', required=True)
+    parser.add_argument('--claude-model', help='Require this exact selectable Haiku model; never substitute another generation')
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--isolated-source-failure', action='store_true')

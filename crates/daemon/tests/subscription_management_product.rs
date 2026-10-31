@@ -37,7 +37,7 @@ import re
 import sys
 import urllib.parse
 
-VERSION = "8.0.4-hiroute.9"
+VERSION = "8.0.48-hiroute.1"
 MANAGED_NAME = "hiroute-managed-codex.json"
 MODEL_ID = "gpt-5.3-codex-spark"
 ADDED_MODEL_ID = "gpt-5.5"

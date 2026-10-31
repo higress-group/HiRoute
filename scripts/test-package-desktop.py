@@ -103,9 +103,9 @@ class BundleIdentityTests(unittest.TestCase):
 
     def test_cpa_is_explicitly_signed_before_release_probe(self):
         events = []
-        release = ("CLIProxyAPI Version: 8.0.4-hiroute.9, Commit: "
-                   "a270e7b9e57aaecd8f82555f44c2108518ad2330, "
-                   "BuiltAt: 2026-09-29T00:00:00Z")
+        release = ("CLIProxyAPI Version: 8.0.48-hiroute.1, Commit: "
+                   "dbb706215a3afd2f0ea3c96482d4233856466caa, "
+                   "BuiltAt: 2026-10-31T00:00:00Z")
         with patch.object(package, "sign", side_effect=lambda *_: events.append("sign")), \
                 patch.object(package, "run", side_effect=lambda *_args, **_kwargs:
                              events.append("probe") or release):
