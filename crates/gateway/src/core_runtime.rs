@@ -141,6 +141,7 @@ impl ProductionGatewayRuntime {
                     // Replay and retained state use the shared memory owner;
                     // the model proxy adds no cumulative request byte quota.
                     max_request_body_bytes: usize::MAX,
+                    memory_accounting_only: true,
                     ..GatewayCoreLifecycleLimits::default()
                 },
             )

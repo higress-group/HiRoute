@@ -7,6 +7,38 @@ use hiroute_gateway_core::runtime::body::BudgetTree;
 use serde_json::json;
 
 #[tokio::test]
+async fn production_model_memory_accounting_does_not_reject_required_resident_state() {
+    use hiroute_gateway_core::runtime::body::{ChargedBytes, MemoryRole};
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-production-memory-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let publications =
+        Arc::new(GatewayPublicationInstaller::open(root.join("publication.json")).unwrap());
+    let runtime = ProductionGatewayRuntime::compose(ProductionPorts::fail_closed(publications));
+    let budget = runtime.execution.allocate_bound_stream_budget().unwrap();
+    let bytes = ChargedBytes::from_exact_vec(
+        &budget,
+        MemoryRole::ModelIrBacking,
+        vec![1; 12 * 1024 * 1024],
+    )
+    .expect("required resident state must not be rejected by the old 8 MiB target");
+    assert_eq!(bytes.bytes().first(), Some(&1));
+    assert_eq!(bytes.bytes().last(), Some(&1));
+    assert_eq!(budget.snapshot().unwrap().live, 12 * 1024 * 1024);
+    assert_eq!(budget.last_rejection(), None);
+    drop(bytes);
+    assert_eq!(budget.snapshot().unwrap().live, 0);
+    drop((budget, runtime));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
 async fn optional_projection_capacity_falls_back_without_changing_input_or_source_liveness() {
     let root = std::env::temp_dir().join(format!(
         "hiroute-classifier-resource-{}-{}",

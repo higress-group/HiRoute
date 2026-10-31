@@ -59,6 +59,19 @@ pub(super) struct ReplayStream {
 }
 
 impl ReplayStream {
+    pub(super) fn retained_memory_bytes(&self) -> usize {
+        match &self.backing {
+            StreamBacking::Memory {
+                retained,
+                _metadata: metadata,
+                ..
+            } => metadata.iter().fold(*retained, |bytes, charge| {
+                bytes.saturating_add(charge.bytes())
+            }),
+            StreamBacking::Disk { .. } => 0,
+        }
+    }
+
     pub(super) fn is_raw(&self) -> bool {
         self.role == MemoryRole::RawRequest
     }

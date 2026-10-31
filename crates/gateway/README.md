@@ -51,8 +51,13 @@ their transcript roots remain related. Accepted-output history and usage update
 at delivery; neither waits for content encoding or SQLite. Capacity or capture
 failure reports a gap and stops dependent capture for that request. The final
 Replay owner releases files and reservations on all paths.
-The existing content queue splits its byte ceiling between optional jobs and
-encoded records. Fixed slots hold pointers; each admitted job's existing charge
+The existing content queue admits snapshots, lease metadata and retained shared
+RAM within its byte ceiling; disk payload length is not RAM. Queued jobs share
+that ceiling with encoded records. The single active source was admitted under
+the same ceiling, bounding source plus queue residency by twice that ceiling.
+Model-proxy allocation counters record ownership and peaks without rejecting an
+admitted request at stream, worker or process accounting targets. The input
+read quantum remains independent of these targets. Fixed slots hold pointers; each admitted job's existing charge
 covers its allocated header, rather than preallocating 256 maximum-size tasks.
 Only the content worker can park on record credit, with a
 bounded stalled-record wait; foreground producers remain nonblocking. Encoded
