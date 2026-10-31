@@ -2,6 +2,16 @@ use super::*;
 
 #[async_trait]
 impl AttemptTransport for PingoraClientSession {
+    fn configure_network_route(
+        &mut self,
+        route: Option<&NetworkDialRoute>,
+    ) -> Result<(), AttemptError> {
+        if self.connected.is_some() {
+            return Err(AttemptError::ReconnectAfterCommit);
+        }
+        self.network_route = route.cloned();
+        Ok(())
+    }
     fn requires_codec_reservation(&self) -> bool {
         true
     }
@@ -19,14 +29,20 @@ impl AttemptTransport for PingoraClientSession {
                 "transport authority requires exact-target resolution".into(),
             ));
         }
-        let peer = build_peer(target, address, self.connection_config_fingerprint)?;
-        let connector = self
-            .registry
-            .connector_for(target, self.connection_config_fingerprint)?;
-        let (session, reused) = connector
-            .get_http_session(&peer)
-            .await
-            .map_err(|error| AttemptError::Transport(error.to_string().into()))?;
+        let peer = build_peer(
+            target,
+            address,
+            super::super::connector::network_fingerprint(
+                self.connection_config_fingerprint,
+                self.network_route.as_ref(),
+            ),
+        )?;
+        let connector = self.registry.connector_for_network(
+            target,
+            self.connection_config_fingerprint,
+            self.network_route.as_ref(),
+        )?;
+        let (session, reused) = connector.get_http_session(&peer).await?;
         let protocol = if session.as_http2().is_some() {
             HttpProtocol::Http2
         } else {
@@ -42,6 +58,12 @@ impl AttemptTransport for PingoraClientSession {
             reused,
             protocol,
             request_eos: false,
+            forward_proxy_authority: (target.scheme == TransportScheme::Http
+                && self
+                    .network_route
+                    .as_ref()
+                    .is_some_and(|r| r.proxy.is_some()))
+            .then(|| Arc::clone(&target.authority)),
         });
         self.request_head_written = false;
         self.response_eos_emitted = false;

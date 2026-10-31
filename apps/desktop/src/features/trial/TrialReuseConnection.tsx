@@ -1,3 +1,6 @@
+import { NativeSourceNetworkEditor } from '../model-connections/NativeSourceNetworkEditor';
+import { networkFailureText, networkRepairable, type NativeNetworkFailure } from '../model-connections/native-network';
+import { checkSavedNativeConnection } from '../model-connections/backend';
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import { randomId } from '../../random-id.ts';
@@ -24,6 +27,8 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
   onOperation(operation: OperationReference): void; onClose(recoverable: boolean): void;
 }) {
   const zh = language === 'zh', text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  const [networkFailure, setNetworkFailure] = useState<NativeNetworkFailure | null>(null);
+  const [networkDirty, setNetworkDirty] = useState(false), [networkRepair, setNetworkRepair] = useState(false);
   const [source, setSource] = useState<ManagedSource>();
   const [requestId, setRequestId] = useState('');
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
@@ -32,7 +37,7 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
   const initialId = useRef(''), live = useRef(true), working = useRef(false), completed = useRef(false);
   const submitted = useRef<Submission | undefined>(undefined);
   const check = useRef<{ apiId?: string; subscription?: SubscriptionCheckResult; handedOff: boolean }>({ handedOff: false });
-  useDiscardGuard('models', () => !completed.current && (working.current || (!submitted.current && requestId !== initialId.current)), language, working.current ? async () => false : undefined);
+  useDiscardGuard('models', () => !completed.current && (networkDirty || working.current || (!submitted.current && requestId !== initialId.current)), language, busy || networkDirty ? async () => false : undefined);
 
   async function load() {
     setLoading(true); setError('');
@@ -94,10 +99,11 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
     }
     const checkId = `trial-reuse/${randomId()}`;
     check.current.apiId = checkId;
-    const result = await invoke<ModelConnectionCheckView>('check_saved_model_connection', { request: {
+    const result = await checkSavedNativeConnection({
       source_id: sourceId, expected_source_revision: current.revision, edit_revision: 1, check_id: checkId,
-    } });
+    });
     if (!checkMatches(result, { candidateRef: null, editRevision: 1, checkId }) || result.candidate.existing_source_id !== sourceId) throw Error('CHECK_CORRELATION_MISMATCH');
+    if (result.failure && result.failure.phase !== 'directory') throw { code: 'NATIVE_NETWORK_FAILED', networkFailure: result.failure };
     if (result.reachability === 'transport_failed') throw Error('MODEL_CONNECTION_TRANSPORT_FAILED');
     if (result.authentication === 'rejected') throw Error('MODEL_CONNECTION_AUTHENTICATION_REJECTED');
     if (!saveEligibility(result, true).allowed) throw Error('MODEL_CONNECTION_FAILED');
@@ -155,10 +161,10 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
   }
 
   async function useConnection() {
-    if (!mutable || working.current || submitted.current || !source) return;
+    if (!mutable || working.current || submitted.current || !source || networkDirty) return;
     const idError = manualModelIdError(requestId, new Set([...source.models.map(model => model.upstream_model_id), initialId.current]));
     if (!requestId || idError) { setError(connectionErrorMessage(idError || 'MODEL_ID_REQUIRED', zh)); return; }
-    working.current = true; setBusy(true); setError('');
+    working.current = true; setBusy(true); setError(''); setNetworkFailure(null);
     try {
       const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
       if (!live.current) return;
@@ -193,7 +199,9 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
       submission.operation = accepted.operation; onOperation(accepted.operation);
       const saved = await invoke<ComputeSaveResult>('get_compute_save_result', { operation: accepted.operation });
       if (live.current) await finish(saved);
-    } catch {
+    } catch (cause) {
+      const failure = (cause as { networkFailure?: NativeNetworkFailure } | null)?.networkFailure;
+      if (live.current && failure) { setNetworkFailure(failure); setError(networkFailureText(failure, zh)); return; }
       if (live.current) {
         if (submitted.current && !receipt) setUncertain(true);
         setError(submitted.current ? text('正在核实保存结果；请刷新原操作。', 'Check the original operation to confirm the save.') : text('这个接入或模型暂时不可用。请检查状态后重试，当前 ID 已保留。', 'This connection or model is unavailable. Check its state and retry; the ID is retained.'));
@@ -202,7 +210,7 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
   }
 
   const close = () => void requestEditorReplacement('models').then(allowed => { if (allowed) onClose(!!submitted.current); });
-  return <Dialog open={visible} title={text('复用已有接入', 'Reuse an existing connection')} closeLabel={text('返回试用', 'Back to trial')} className="trial-dialog" closeDisabled={busy} onClose={close}><section className="trial-reuse-connection" aria-busy={loading || busy}>
+  return <Dialog open={visible} title={text('复用已有接入', 'Reuse an existing connection')} closeLabel={text('返回试用', 'Back to trial')} className="trial-dialog" closeDisabled={busy || networkDirty} onClose={close}><section className="trial-reuse-connection" aria-busy={loading || busy}>
     <h3>{model.display_name}</h3>
     <p className="field-help">{text('保留已选的试用模型，复用这个接入的端点和凭据。', 'Keep your trial model and reuse this connection’s endpoints and credentials.')}</p>
     {loading ? <p role="status">{text('正在读取接入…', 'Reading connection…')}</p> : <>
@@ -212,11 +220,20 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
         {source.state !== 'ready' && <p role="status">{text('此接入尚未就绪，请先到模型页处理。', 'This connection is not ready. Review it in Models first.')}</p>}
       </>}
       {error && <p className="oc-inline-error" id="trial-reuse-error" role="alert">{error}</p>}
+      {networkRepairable(networkFailure) && <button type="button" className="btn" onClick={() => setNetworkRepair(true)}>{text('检查网络设置', 'Review network settings')}</button>}
+      {networkRepair && source && !submitted.current && <NativeSourceNetworkEditor sourceId={sourceId} language={language} mutable={mutable && !busy} onDirty={setNetworkDirty} reveal={1} onSaved={async () => {
+        await releaseCheck();
+        const management = await invoke<ManagementSnapshot>('compute_management_snapshot');
+        if (!live.current) return;
+        setSource(management.sources.find(item => item.source_id === sourceId)); setNetworkFailure(null);
+        setError(text('网络设置已保存，所选模型和 ID 已保留。请重新检查。', 'Network settings saved. Your model and ID are retained. Check again.'));
+      }} />}
       {(receipt || uncertain) && <p role="status">{receipt ? text('接入已保存，正在核实所选绑定。', 'Connection saved; confirming the selected binding.') : text('保存结果尚未确认，不会重复提交。', 'The save is unconfirmed; it will not be submitted again.')}</p>}
+      {networkDirty && <p className="field-help" role="status">{text('请先保存或放弃网络修改，再继续试用；保存结果未确认时，请刷新原操作。', 'Save or discard the network changes before continuing the trial. If a save is unconfirmed, refresh its original operation.')}</p>}
       <div className="actions">
-        <button type="button" className="btn" disabled={busy} onClick={close}>{text('返回试用', 'Back to trial')}</button>
+        <button type="button" className="btn" disabled={busy || networkDirty} onClick={close}>{text('返回试用', 'Back to trial')}</button>
         {!source && <button type="button" className="btn" onClick={() => void load()}>{text('重试', 'Retry')}</button>}
-        {submitted.current ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void refreshResult()}>{text('刷新结果', 'Refresh result')}</button> : source && <button type="button" className="btn btn-primary" disabled={!mutable || busy || source.state !== 'ready'} onClick={() => void useConnection()}>{busy ? text('正在确认…', 'Checking…') : savedRequestModel(source, requestId) ? text('使用此接入', 'Use this connection') : text('检查并添加', 'Check and add')}</button>}
+        {submitted.current ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void refreshResult()}>{text('刷新结果', 'Refresh result')}</button> : source && <button type="button" className="btn btn-primary" disabled={!mutable || busy || networkDirty || source.state !== 'ready'} onClick={() => void useConnection()}>{busy ? text('正在确认…', 'Checking…') : savedRequestModel(source, requestId) ? text('使用此接入', 'Use this connection') : text('检查并添加', 'Check and add')}</button>}
       </div>
     </>}
   </section></Dialog>;

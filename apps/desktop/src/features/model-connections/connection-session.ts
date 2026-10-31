@@ -1,3 +1,4 @@
+import { networkDraft } from './native-network.ts';
 import type { ComputeCandidateRef, ModelConnectionCheckView, ModelConnectionDraft, ModelDeclaration } from './types';
 
 export type ConnectionSelection = { result: ModelConnectionCheckView; refs: Set<string> };
@@ -27,7 +28,7 @@ function editableDraft(draft: ModelConnectionDraft, placeholders: Map<string, Mo
     upstream_model_id: model.upstream_model_id, display_name: model.display_name,
     capabilities: Object.fromEntries(Object.entries(model.capabilities).map(([key, fact]) => [key, fact.value])),
   })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  return { display_name: draft.display_name, display_template_id: draft.display_template_id ?? null,
+  return { network: draft.network ?? networkDraft(), display_name: draft.display_name, display_template_id: draft.display_template_id ?? null,
     ...endpoint(draft), additional_endpoints: draft.additional_endpoints.map(endpoint), models };
 }
 
@@ -43,6 +44,12 @@ export class ConnectionEditingSession {
   get hasDrafts() { return this.drafts.size > 0; }
   begin(key: string, draft: ModelConnectionDraft) {
     if (!this.baselines.has(key)) this.baselines.set(key, structuredClone(draft));
+  }
+  applyNetworkBaseline(key: string | null, network: import('./native-network').NativeNetworkDraft) {
+    if (!key) return;
+    const baseline = this.baselines.get(key);
+    if (baseline) baseline.network = structuredClone(network);
+    for (const value of this.prefillBaselines.get(key)?.values() ?? []) value.network = structuredClone(network);
   }
   beginPrefill(key: string | null, prefill: string, draft: ModelConnectionDraft) {
     if (!key) return;

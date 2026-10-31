@@ -34,6 +34,8 @@ use records::*;
 mod branches;
 #[path = "store/evaluation.rs"]
 mod evaluation;
+#[path = "store/maintenance.rs"]
+mod maintenance;
 #[path = "store/opening.rs"]
 mod opening;
 #[path = "store/retry.rs"]
@@ -58,6 +60,7 @@ pub(super) struct StoreInner {
     next_id: u64,
     accounted_bytes: usize,
     peak_accounted_bytes: usize,
+    expiry_cursor: Option<AgentTurnHistoryKey>,
 }
 
 struct SessionEntry {
@@ -211,6 +214,20 @@ impl AgentTurnHistoryStore {
     }
 
     #[cfg(test)]
+    pub(crate) fn with_exhausted_request_tokens_for_runtime_test<T>(
+        &self,
+        action: impl FnOnce() -> T,
+    ) -> T {
+        let previous = {
+            let mut inner = self.inner.lock();
+            std::mem::replace(&mut inner.next_request_token, u64::MAX)
+        };
+        let result = action();
+        self.inner.lock().next_request_token = previous;
+        result
+    }
+
+    #[cfg(test)]
     pub(crate) fn clear_decision_for_runtime_test(&self, ticket: &AgentTurnTicket) {
         let mut inner = self.inner.lock();
         let entry = inner
@@ -238,6 +255,7 @@ impl AgentTurnHistoryStore {
                 next_id: 1,
                 accounted_bytes: store_fixed_bytes(),
                 peak_accounted_bytes: store_fixed_bytes(),
+                expiry_cursor: None,
             })),
         }
     }
@@ -321,16 +339,18 @@ impl AgentTurnHistoryStore {
         if analyzed.turns.is_empty() {
             return Err(AgentTurnHistoryError::NoUserTurn);
         }
+        // Contention is not capacity exhaustion. Only this in-memory admission
+        // is serialized; projection/Replay reads happened before taking the lock
+        // and the request's external execution never owns it.
+        let mut inner = self.inner.lock();
+        // Include gaps reported while this entrance was waiting. A later gap
+        // still advances the fence and cannot be acknowledged by this admission.
         let gap_epoch = self.capture_gap_epoch(&key).load(Ordering::Acquire);
-        let mut inner = self
-            .inner
-            .try_lock()
-            .ok_or(AgentTurnHistoryError::Resource)?;
-        inner.purge_expired(now, self.idle_ttl);
+        inner.purge_expired(now, self.idle_ttl, &key);
         self.observe_capture_gap_epoch(&mut inner, &key, gap_epoch);
         // Projection ran before either cache lock. Validate and reserve the
         // checkpoint before changing active turns, tool outcomes or snapshots.
-        // The callback must not wait: both stores use try_lock admission.
+        // The callback must not wait or acquire the history lock again.
         let Some(admission) = admit() else {
             inner.note_capture_gap(&key);
             return Ok(None);

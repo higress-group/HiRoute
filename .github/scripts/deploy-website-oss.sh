@@ -7,6 +7,7 @@ manifest=${2:?usage: deploy-website-oss.sh DIST MANIFEST}
 : "${ACCESS_KEYSECRET:?ACCESS_KEYSECRET is required}"
 [[ -f "$dist/index.html" && -f "$manifest" ]] || { echo "Website build or release manifest missing" >&2; exit 1; }
 [[ ! -e "$dist/releases" ]] || { echo "Website output must not contain release packages" >&2; exit 1; }
+[[ ! -e "$dist/model-feed" ]] || { echo "Website output must not contain the independently published model feed" >&2; exit 1; }
 
 bucket=hiroute-ai
 endpoint=oss-cn-hongkong.aliyuncs.com

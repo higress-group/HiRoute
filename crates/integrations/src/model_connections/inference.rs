@@ -11,14 +11,10 @@ pub(super) fn send(
     model: &str,
     credential: Option<ModelConnectionProbeCredentialV1<'_>>,
     limits: ModelConnectionProbeLimitsV1,
+    route: Option<&hiroute_domain::ResolvedNativeNetworkRouteV1>,
 ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
     use ModelDirectoryTransportErrorV1 as Error;
-    let client = reqwest::blocking::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(limits.total_timeout)
-        .build()
-        .map_err(|_| Error::Unavailable)?;
+    let client = super::network::client(limits.total_timeout, route)?;
     let messages =
         serde_json::json!([{"role":"user","content":"Call hiroute_probe with value ok."}]);
     let parameters = serde_json::json!({"type":"object","properties":{"value":{"type":"string","enum":["ok"]}},"required":["value"],"additionalProperties":false});
@@ -50,7 +46,9 @@ pub(super) fn send(
     if let Some(credential) = credential {
         request = probe::apply_authorization(request, credential)?;
     }
-    let response = request.send().map_err(|_| Error::Unavailable)?;
+    let response = request.send().map_err(|error| {
+        super::network::request_error(error, route, &target.candidate_target.scheme)
+    })?;
     let status = response.status().as_u16();
     let mut body = Vec::new();
     // Error responses may echo credentials. They are neither read nor returned.

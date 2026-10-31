@@ -204,12 +204,18 @@ pub(crate) struct HoldTicket {
 }
 
 /// A read-only continuity scan. It cannot invalidate a live request's checkpoint.
-pub(crate) struct PreparedHold {
+pub(crate) struct PreparedHold<'request> {
     key: ContextHoldKey,
     snapshot: Option<BeginSnapshot>,
     history_key: Option<ContextHoldKey>,
     instruction_digest: [u8; 32],
     measured: HistoryDigests,
+    // An immutable request borrow prevents mutation/address reuse while its
+    // complete measurement is eligible for the later branch-scoped check.
+    measured_source: Option<(
+        &'request crate::server::core_runtime::model_ir::ModelRequestIRV1,
+        [u8; 32],
+    )>,
     native: super::routing::NativeCheckpoint,
 }
 
@@ -400,22 +406,43 @@ impl ContextHoldStore {
         self.commit(self.prepare_with_measure(key, history, now, measure)?, now)
     }
 
+    #[cfg(test)]
     pub(crate) fn prepare(
         &self,
         key: ContextHoldKey,
         history: &HistoryEvidence<'_>,
         now: Instant,
-    ) -> Option<PreparedHold> {
+    ) -> Option<PreparedHold<'static>> {
         self.prepare_with_measure(key, history, now, |prefix| history.measure(prefix))
     }
 
-    fn prepare_with_measure(
+    pub(crate) fn prepare_request<'request>(
+        &self,
+        key: ContextHoldKey,
+        history: &HistoryEvidence<'_>,
+        request: &'request crate::server::core_runtime::model_ir::ModelRequestIRV1,
+        now: Instant,
+    ) -> Option<PreparedHold<'request>> {
+        let mut prepared = self.prepare_with_measure(key, history, now, |prefix| {
+            // Reuse the existing single checkpoint slot. Its suggested
+            // position grants nothing: the later branch must ask for exactly
+            // this position, otherwise it performs its original full scan.
+            history.measure(prefix.or_else(|| history.preceding_assistant_index()))
+        })?;
+        let digest_key = self.digest_key()?;
+        if history.matches_original(request, &digest_key) {
+            prepared.measured_source = Some((request, digest_key));
+        }
+        Some(prepared)
+    }
+
+    fn prepare_with_measure<'request>(
         &self,
         key: ContextHoldKey,
         history: &HistoryEvidence<'_>,
         now: Instant,
         measure: impl FnOnce(Option<usize>) -> Option<HistoryDigests>,
-    ) -> Option<PreparedHold> {
+    ) -> Option<PreparedHold<'request>> {
         self.key?;
         let snapshot = {
             let mut inner = self.inner.try_lock()?;
@@ -433,17 +460,18 @@ impl ContextHoldStore {
             history_key: None,
             instruction_digest: history.instruction_digest,
             measured,
+            measured_source: None,
             native: Default::default(),
         })
     }
 
-    pub(crate) fn commit(&self, prepared: PreparedHold, now: Instant) -> Option<HoldTicket> {
+    pub(crate) fn commit(&self, prepared: PreparedHold<'_>, now: Instant) -> Option<HoldTicket> {
         self.reserve_commit(prepared, now).map(HoldCommit::commit)
     }
 
     pub(crate) fn commit_on_branch(
         &self,
-        prepared: PreparedHold,
+        prepared: PreparedHold<'_>,
         branch: &[u8; 32],
         request: &crate::server::core_runtime::model_ir::ModelRequestIRV1,
         replay: &crate::replay::ReplayStore,
@@ -451,7 +479,25 @@ impl ContextHoldStore {
     ) -> Option<HoldTicket> {
         let digest_key = self.digest_key()?;
         let evidence = super::observed_history_with_replay(request, &digest_key, Some(replay))?;
-        let mut scoped = self.prepare(prepared.key.on_branch(branch)?, &evidence, now)?;
+        let reusable = prepared
+            .measured_source
+            .is_some_and(|(source, key)| std::ptr::eq(source, request) && key == digest_key);
+        let mut scoped =
+            self.prepare_with_measure(prepared.key.on_branch(branch)?, &evidence, now, |prefix| {
+                if reusable
+                    && (prefix.is_none() || prefix == prepared.measured.prefix_message_count)
+                {
+                    let mut measured = prepared.measured;
+                    if prefix.is_none() {
+                        measured.prefix_message_count = None;
+                        measured.prefix_digest = None;
+                        measured.semantic_prefix_digest = None;
+                    }
+                    Some(measured)
+                } else {
+                    evidence.measure(prefix)
+                }
+            })?;
         scoped.native = prepared.native;
         scoped.history_key = prepared.history_key;
         self.commit(scoped, now)
@@ -459,7 +505,7 @@ impl ContextHoldStore {
 
     pub(crate) fn reserve_commit(
         &self,
-        prepared: PreparedHold,
+        prepared: PreparedHold<'_>,
         now: Instant,
     ) -> Option<HoldCommit<'_>> {
         let history_continuity = prepared.history_continuity();
@@ -469,6 +515,7 @@ impl ContextHoldStore {
             history_key: _,
             instruction_digest,
             measured,
+            measured_source: _,
             native,
         } = prepared;
         let mut inner = self.inner.try_lock()?;

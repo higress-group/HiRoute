@@ -327,7 +327,35 @@ struct WebComputeManagementChangeV3 {
     default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct WebSavedNetworkChangeV4 {
+    schema: String,
+    change: serde_json::Value,
+    network: hiroute_domain::NativeNetworkMutationV1,
+}
+
 fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+    {
+        let mut outer: WebSavedNetworkChangeV4 =
+            serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
+        if !matches!(
+            outer
+                .change
+                .get("schema")
+                .and_then(serde_json::Value::as_str),
+            Some(
+                hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+            )
+        ) {
+            return Err("REQUEST_INVALID");
+        }
+        outer.change = change_for_web(outer.change)?;
+        return serde_json::to_value(outer).map_err(|_| "REQUEST_INVALID");
+    }
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
     {
@@ -347,6 +375,26 @@ fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'stati
     }
 }
 fn change_for_native(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+    {
+        let mut outer: WebSavedNetworkChangeV4 =
+            serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
+        if !matches!(
+            outer
+                .change
+                .get("schema")
+                .and_then(serde_json::Value::as_str),
+            Some(
+                hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+            )
+        ) {
+            return Err("REQUEST_INVALID");
+        }
+        outer.change = change_for_native(outer.change)?;
+        return serde_json::to_value(outer).map_err(|_| "REQUEST_INVALID");
+    }
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
     {
@@ -406,6 +454,16 @@ pub struct WebComputeConnectionApplyRequestV1 {
     accept_digest: CanonicalDigest,
     expected_revisions: RevisionSetV1,
     idempotency_key: String,
+}
+
+impl WebComputeConnectionApplyRequestV1 {
+    pub(super) fn is_native_network_save(&self) -> bool {
+        self.spec
+            .desired_state
+            .get("schema")
+            .and_then(serde_json::Value::as_str)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+    }
 }
 
 impl TryFrom<WebComputeConnectionApplyRequestV1> for ComputeConnectionApplyRequestV1 {

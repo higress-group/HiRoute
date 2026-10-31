@@ -73,6 +73,7 @@
     "hiroute.claude-subscription-discovery-evidence/v1",
     "hiroute.claude-subscription-source/v1",
     "hiroute.cli-decision-options/v1",
+    "hiroute.cli-decision-options/v2",
     "hiroute.cli-input-diagnostic/v1",
     "hiroute.cli-prepared-preview/v1",
     "hiroute.cli-quickstart/v1",
@@ -101,21 +102,26 @@
     "hiroute.compute-connection-options/v1",
     "hiroute.compute-connection-preview/v1",
     "hiroute.compute-connection-test-request/v1",
+    "hiroute.compute-connection-test-request/v2",
     "hiroute.compute-control-projection/v1",
     "hiroute.compute-discovery-evidence/v1",
     "hiroute.compute-management-binding/v2",
     "hiroute.compute-management-change/v2",
     "hiroute.compute-management-change/v3",
+    "hiroute.compute-management-change/v4",
     "hiroute.compute-management-key/v2",
     "hiroute.compute-management-lineage/v3",
     "hiroute.compute-management-mutation/v2",
     "hiroute.compute-management-mutation/v3",
+    "hiroute.compute-management-mutation/v4",
     "hiroute.compute-management-preview/v2",
     "hiroute.compute-management-preview/v3",
+    "hiroute.compute-management-preview/v4",
     "hiroute.compute-management-query/v2",
     "hiroute.compute-management-snapshot/v2",
     "hiroute.compute-management-snapshot/v3",
     "hiroute.compute-management-source/v3",
+    "hiroute.compute-management-source/v4",
     "hiroute.compute-management-target/v2",
     "hiroute.compute-probe-lease/v1",
     "hiroute.compute-projection-control/v1",
@@ -172,7 +178,16 @@
     "hiroute.daemon-ready/v1",
     "hiroute.daemon-startup-failure/v1",
     "hiroute.daemon-upgrade-progress/v1",
+    "hiroute.decision-connection-sources/v1",
+    "hiroute.decision-header-state/v1",
+    "hiroute.decision-service-operation/v2",
+    "hiroute.decision-service-test-request/v2",
+    "hiroute.decision-service-test-result/v2",
+    "hiroute.decision-service-test-result/v3",
+    "hiroute.decision-service/v2",
     "hiroute.decision-services/v1",
+    "hiroute.decision-services/v2",
+    "hiroute.decision-source-state/v1",
     "hiroute.delegation-accepted/v1",
     "hiroute.delegation-cancel-request/v1",
     "hiroute.delegation-cancel/v1",
@@ -265,6 +280,7 @@
     "hiroute.model-availability/v2",
     "hiroute.model-catalog-query/v1",
     "hiroute.model-catalog-view/v1",
+    "hiroute.model-connection-check/v2",
     "hiroute.model-data/v1",
     "hiroute.model-feed-removal-preview/v2",
     "hiroute.model-feed-remove/v1",
@@ -284,6 +300,8 @@
     "hiroute.native-file-reference/v1",
     "hiroute.native-files/v1",
     "hiroute.native-launch/v1",
+    "hiroute.native-network-mutation/v1",
+    "hiroute.native-network-policy/v1",
     "hiroute.native-observation/v2",
     "hiroute.native-plugin-restore/v1",
     "hiroute.native-protocol-diagnostic/v1",
@@ -441,6 +459,7 @@
     "hiroute.subscription-proxy/v1",
     "hiroute.system-one-c/v1",
     "hiroute.system-one-c/v2",
+    "hiroute.system-one-c/v3",
     "hiroute.system-one-legacy/v1",
     "hiroute.system-status/v1",
     "hiroute.trial-setup-snapshot/v1",
@@ -503,19 +522,47 @@
   ],
   "subjects": [
     {
+      "subject": "decision_service_lists",
+      "audited_prefixes": [
+        "hiroute.decision-services"
+      ],
+      "current_contracts": [
+        "hiroute.decision-services/v1",
+        "hiroute.decision-services/v2"
+      ],
+      "legacy_support": [],
+      "owner": "decision-foundation",
+      "reason": "The released V1 query remains explicit and rejects a V2 latest record; the V2 query returns both strict retained service versions and safe source state.",
+      "removal_condition": "Retire the V1 query only with an explicit supported-client compatibility decision."
+    },
+    {
+      "subject": "decision_cli_options",
+      "audited_prefixes": [
+        "hiroute.cli-decision-options"
+      ],
+      "current_contracts": [
+        "hiroute.cli-decision-options/v1",
+        "hiroute.cli-decision-options/v2"
+      ],
+      "legacy_support": [],
+      "owner": "decision-foundation",
+      "reason": "V1 options retain System One semantics while V2 options expose the same preset catalog with an explicit wire codec.",
+      "removal_condition": "Retire V1 options only with an explicit supported-client compatibility decision."
+    },
+    {
       "subject": "system_one_native_applicability",
       "audited_prefixes": [
         "hiroute.system-one-c"
       ],
       "current_contracts": [
-        "hiroute.system-one-c/v2"
+        "hiroute.system-one-c/v3"
       ],
       "legacy_support": [
         {
           "contract": "hiroute.system-one-c/v1",
           "mode": "frozen_fixture",
           "owner": "decision-foundation",
-          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v2.",
+          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v3.",
           "removal_condition": "Retire only when the supported release and retained-publication policy permits removing all v1 readers and authenticated historical evidence.",
           "allowed_paths": [
             "apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs",
@@ -523,6 +570,25 @@
             "crates/daemon/tests/support/c_protocol_product.py",
             "crates/domain/src/routing/fixtures/baseline-c-default-publication.json",
             "crates/domain/src/routing/system_one_c.rs"
+          ]
+        },
+        {
+          "contract": "hiroute.system-one-c/v2",
+          "mode": "frozen_fixture",
+          "owner": "decision-foundation",
+          "reason": "Execute sealed C v2 publications, retained Operations, observations and explicit diagnostics with their exact original applicability bundle after C v3 becomes the current authoring producer. Do not replace historical questions or regrade old stages.",
+          "removal_condition": "Retire only when the release and retained-publication support policy permits removing all C v2 readers and authenticated evidence.",
+          "allowed_paths": [
+            "contracts/cli/historical-applicability-test.v1.schema.json",
+            "crates/domain/src/routing/assessment.rs",
+            "crates/domain/src/routing/c_observation.rs",
+            "crates/domain/src/routing/fixtures/system_one_c_v2.json",
+            "crates/domain/src/routing/fixtures/baseline-c-v2-default-publication.json",
+            "crates/domain/src/routing/system_one_c.rs",
+            "crates/domain/src/routing/system_one_c_tests.rs",
+            "crates/gateway/src/core_runtime/classification/system_one_tests.rs",
+            "crates/daemon/tests/support/c_protocol_product.py",
+            "decision-extensions/api/system-one-design.md"
           ]
         }
       ]
@@ -1184,13 +1250,28 @@
       "current_contracts": [
         "hiroute.compute-management-change/v2",
         "hiroute.compute-management-change/v3",
+        "hiroute.compute-management-change/v4",
         "hiroute.compute-management-mutation/v2",
         "hiroute.compute-management-mutation/v3",
+        "hiroute.compute-management-mutation/v4",
         "hiroute.compute-management-preview/v2",
         "hiroute.compute-management-preview/v3",
-        "hiroute.compute-management-source/v3"
+        "hiroute.compute-management-preview/v4",
+        "hiroute.compute-management-source/v3",
+        "hiroute.compute-management-source/v4"
       ],
       "legacy_support": [
+        {
+          "contract": "hiroute.compute-management-source/v3",
+          "mode": "legacy_adapter",
+          "owner": "compute-management",
+          "reason": "Read released sources and retained Operations without changing their canonical content; they have no decision destinations.",
+          "removal_condition": "Remove only after every supported release, retained operation and recoverable source using v3 is retired under the support policy.",
+          "allowed_paths": [
+            "crates/domain/src/compute/management/mod.rs",
+            "crates/local-storage/tests/fixtures/v0.2.0-compute-operation.json"
+          ]
+        },
         {
           "contract": "hiroute.compute-management-mutation/v2",
           "mode": "frozen_fixture",
@@ -1340,6 +1421,34 @@
           ]
         }
       ]
+    },
+    {
+      "subject": "decision_service_tests",
+      "audited_prefixes": [
+        "hiroute.decision-service-test-result"
+      ],
+      "current_contracts": [
+        "hiroute.decision-service-test-result/v2",
+        "hiroute.decision-service-test-result/v3"
+      ],
+      "legacy_support": [],
+      "owner": "decision-foundation/native-network",
+      "reason": "The explicit V2 test operation retains its strict result. The network-aware V3 operation wraps the same V2 check and independently records admitted Native network evidence; both call one production diagnostic.",
+      "removal_condition": "Retire an explicit operation only with the supported-client compatibility decision; do not add network fields to the strict V2 result."
+    },
+    {
+      "subject": "compute_connection_test_requests",
+      "audited_prefixes": [
+        "hiroute.compute-connection-test-request"
+      ],
+      "current_contracts": [
+        "hiroute.compute-connection-test-request/v1",
+        "hiroute.compute-connection-test-request/v2"
+      ],
+      "legacy_support": [],
+      "owner": "compute-management-network",
+      "reason": "The released explicit V1 probe union stays strict; the separate V2 operation accepts network-aware Native/registered/saved requests. Neither injects fields into the other carrier.",
+      "removal_condition": "Retire an explicit operation only under the supported-client compatibility policy."
     }
   ],
   "forbidden_contracts": [
@@ -1878,6 +1987,22 @@
       ]
     },
     {
+      "contract": "hiroute.system-one-c/v2",
+      "field": "sealed default assessment before editable feedback guidance changes",
+      "mode": "frozen_fixture",
+      "owner": "decision-foundation",
+      "reason": "Keep existing C v2 default publications and retained Operations readable with their original effective assessment text and authenticated identities. New explicit edits resolve the current default; frozen validation never re-resolves it. The baseline fixture preserves stock questions plus the exact feedback suffix from source 52d2b9b0f131ef423930f8c2834683b27696ad2d.",
+      "removal_condition": "Retire only through the release support policy after all retained inputs with these sealed defaults are no longer supported; a newer editable default alone does not retire them.",
+      "allowed_paths": [
+        "crates/domain/src/routing/fixtures/baseline-c-v2-default-publication.json",
+        "crates/domain/src/routing/assessment.rs",
+        "crates/domain/src/routing/assessment_feedback_tests.rs",
+        "crates/domain/src/routing/authoring/tests.rs",
+        "crates/domain/src/routing/system_one_c.rs",
+        "crates/application/src/routing/authoring/tests.rs"
+      ]
+    },
+    {
       "contract": "hiroute.plan-editor/v2",
       "field": "released competence text without default/custom intent",
       "mode": "legacy_adapter",
@@ -2176,6 +2301,89 @@
         "crates/observation/src/query_v2/routing_timeline/projection.rs",
         "crates/observation/src/store/tests/fixtures/routing-timeline-base-952917.json",
         "crates/observation/src/store/tests/plan_quality/stage_admission.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.compute-management-change/v2",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-network",
+      "reason": "Released strict source/default save carriers retain their canonical bytes and accepted digests. Existing callers preserve the source-owned companion policy; explicit network edits use the V4 wrapper rather than adding fields to V2/V3.",
+      "removal_condition": "Retire only after the supported released CLI and retained Operation inputs no longer require these carriers and their compatibility tests are explicitly retired.",
+      "allowed_paths": [
+        "crates/application-api/src/compute_management.rs",
+        "crates/application-api/src/compute_defaults.rs",
+        "crates/application/src/compute_management/mutations/defaults.rs",
+        "crates/application/src/compute_management/mutations/network.rs",
+        "crates/domain/src/compute/network/transaction.rs",
+        "crates/product-session/src/commands/model_connection_web.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs"
+      ],
+      "field": "released save shape without a network edit wrapper"
+    },
+    {
+      "contract": "hiroute.compute-management-change/v3",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-network",
+      "reason": "Released strict source/default save carriers retain their canonical bytes and accepted digests. Existing callers preserve the source-owned companion policy; explicit network edits use the V4 wrapper rather than adding fields to V2/V3.",
+      "removal_condition": "Retire only after the supported released CLI and retained Operation inputs no longer require these carriers and their compatibility tests are explicitly retired.",
+      "allowed_paths": [
+        "crates/application-api/src/compute_management.rs",
+        "crates/application-api/src/compute_defaults.rs",
+        "crates/application/src/compute_management/mutations/defaults.rs",
+        "crates/application/src/compute_management/mutations/network.rs",
+        "crates/domain/src/compute/network/transaction.rs",
+        "crates/product-session/src/commands/model_connection_web.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs"
+      ],
+      "field": "released save shape without a network edit wrapper"
+    },
+    {
+      "contract": "hiroute.compute-management-source/v3",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-network",
+      "reason": "Production schema-35 startup assigns Direct revision 1 to supported pre-policy Native sources after their existing source conversion. Source JSON, model/key identities, Secret destination binding and retained Operation bytes remain unchanged; missing or corrupt policy at current schema is refused.",
+      "removal_condition": "Retire only when all supported pre-policy source schemas and retained upgrade batches are outside the release support policy and the released-input upgrade scenarios are explicitly retired.",
+      "allowed_paths": [
+        "crates/local-storage/src/control/compute/management/network.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs",
+        "crates/local-storage/src/lib.rs",
+        "crates/local-storage/src/migrations/mod.rs",
+        "crates/local-storage/src/migrations/source_network_v35.rs"
+      ],
+      "field": "pre-policy saved source without companion state"
+    },
+    {
+      "contract": "hiroute.compute-management-source/v4",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-network",
+      "reason": "Production schema-35 startup assigns Direct revision 1 to supported pre-policy Native sources after their existing source conversion. Source JSON, model/key identities, Secret destination binding and retained Operation bytes remain unchanged; missing or corrupt policy at current schema is refused.",
+      "removal_condition": "Retire only when all supported pre-policy source schemas and retained upgrade batches are outside the release support policy and the released-input upgrade scenarios are explicitly retired.",
+      "allowed_paths": [
+        "crates/local-storage/src/control/compute/management/network.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs",
+        "crates/local-storage/src/lib.rs",
+        "crates/local-storage/src/migrations/mod.rs",
+        "crates/local-storage/src/migrations/source_network_v35.rs"
+      ],
+      "field": "pre-policy saved source without companion state"
+    },
+    {
+      "contract": "hiroute.system-one-c/v2",
+      "field": "immutable native C v2 applicability bundle and sealed execution identity",
+      "mode": "frozen_fixture",
+      "owner": "decision-foundation",
+      "reason": "C v3 clarifies unmet outcomes and partial acceptance. Retained C v2 publications keep their fixed question bytes and policy/content digests, and continue to execute and reopen without resolution to the new default.",
+      "removal_condition": "Retire only after explicit support-policy retirement of retained C v2 publications and Operations.",
+      "allowed_paths": [
+        "contracts/cli/historical-applicability-test.v1.schema.json",
+        "crates/domain/src/routing/assessment.rs",
+        "crates/domain/src/routing/c_observation.rs",
+        "crates/domain/src/routing/fixtures/system_one_c_v2.json",
+        "crates/domain/src/routing/fixtures/baseline-c-v2-default-publication.json",
+        "crates/domain/src/routing/system_one_c.rs",
+        "crates/domain/src/routing/system_one_c_tests.rs",
+        "crates/gateway/src/core_runtime/classification/system_one_tests.rs",
+        "crates/daemon/tests/support/c_protocol_product.py"
       ]
     }
   ]

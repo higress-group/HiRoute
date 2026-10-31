@@ -145,32 +145,52 @@ impl AttemptRequestBodyReader for SequentialNativeBody {
         let mut output = ChargedBytesBuilder::new(&self.budget, MemoryRole::AttemptWire, capacity)?;
         while self.emitted < self.template.wire_len && output.len() < capacity {
             if self.escape_offset < self.escape_len {
-                output.push(self.escape[self.escape_offset])?;
-                self.escape_offset += 1;
-                self.emitted += 1;
+                let end = self
+                    .escape_len
+                    .min(self.escape_offset + capacity - output.len());
+                output.extend_from_slice(&self.escape[self.escape_offset..end])?;
+                self.emitted += end - self.escape_offset;
+                self.escape_offset = end;
                 continue;
             }
             if self.content_reader.is_some() {
-                match self.next_content_byte()? {
-                    Some(byte) => {
-                        let encoding = self
-                            .template
-                            .replacements
-                            .get(self.replacement_index)
-                            .ok_or_else(|| {
-                                AttemptError::Transport("missing template replacement".into())
-                            })?
-                            .encoding;
-                        self.prepare_output(byte, encoding);
-                        continue;
+                if self.fill_content_buffer()? {
+                    let encoding = self
+                        .template
+                        .replacements
+                        .get(self.replacement_index)
+                        .ok_or_else(|| {
+                            AttemptError::Transport("missing template replacement".into())
+                        })?
+                        .encoding;
+                    let available = &self.content_buffer[self.content_offset
+                        ..self
+                            .content_len
+                            .min(self.content_offset + capacity - output.len())];
+                    let count = if encoding == ReplacementEncoding::RawJson {
+                        available.len()
+                    } else {
+                        available
+                            .iter()
+                            .position(|byte| matches!(byte, b'"' | b'\\' | 0..=0x1f))
+                            .unwrap_or(available.len())
+                    };
+                    if count > 0 {
+                        output.extend_from_slice(&available[..count])?;
+                        self.content_offset += count;
+                        self.emitted += count;
+                    } else {
+                        let byte = self.content_buffer[self.content_offset];
+                        self.content_offset += 1;
+                        self.prepare_output(byte);
                     }
-                    None => {
-                        self.content_reader.take();
-                        let replacement = &self.template.replacements[self.replacement_index];
-                        self.template_offset = replacement.end;
-                        self.replacement_index += 1;
-                        continue;
-                    }
+                    continue;
+                } else {
+                    self.content_reader.take();
+                    let replacement = &self.template.replacements[self.replacement_index];
+                    self.template_offset = replacement.end;
+                    self.replacement_index += 1;
+                    continue;
                 }
             }
             let next_start = self
@@ -262,7 +282,7 @@ impl SequentialNativeBody {
         Ok(())
     }
 
-    fn next_content_byte(&mut self) -> Result<Option<u8>, AttemptError> {
+    fn fill_content_buffer(&mut self) -> Result<bool, AttemptError> {
         if self.content_offset == self.content_len {
             let reader = self
                 .content_reader
@@ -272,22 +292,12 @@ impl SequentialNativeBody {
                 .read(&mut self.content_buffer)
                 .map_err(|_| AttemptError::SequentialBodyContractViolation)?;
             self.content_offset = 0;
-            if self.content_len == 0 {
-                return Ok(None);
-            }
         }
-        let byte = self.content_buffer[self.content_offset];
-        self.content_offset += 1;
-        Ok(Some(byte))
+        Ok(self.content_len != 0)
     }
 
-    fn prepare_output(&mut self, byte: u8, encoding: ReplacementEncoding) {
+    fn prepare_output(&mut self, byte: u8) {
         self.escape_offset = 0;
-        if encoding == ReplacementEncoding::RawJson {
-            self.escape[0] = byte;
-            self.escape_len = 1;
-            return;
-        }
         let escape_len = match byte {
             b'"' => {
                 self.escape[..2].copy_from_slice(br#"\""#);

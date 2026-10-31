@@ -28,10 +28,12 @@ use crate::transport::HttpProtocol;
 mod error;
 mod exchange;
 mod gate;
+mod network;
 mod transport;
 
 pub use error::*;
 pub use exchange::*;
 pub(crate) use gate::PreexchangeDispositionGate;
 pub use gate::*;
+pub use network::*;
 pub use transport::*;

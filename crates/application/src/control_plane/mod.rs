@@ -226,6 +226,7 @@ pub(crate) fn dispatch_apply_compute(
                 Some(
                     COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
                         | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                        | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
                 )
             )
         {
@@ -543,5 +544,33 @@ pub(crate) fn replay_apply(
             request_id.to_owned(),
         )),
         Err(error) => Some(failed(map_control_error(error), request_id.to_owned())),
+    }
+}
+
+/// Network-aware successor to the explicit same-user connection probe.
+pub(crate) fn dispatch_test_compute_v2(
+    service: &ApplicationService,
+    request: LocalControlRequestV2,
+) -> MachineEnvelopeV2<Value> {
+    if request.protected_grant.is_some() {
+        return failed(ErrorCode::CapabilityDenied, request.request_id);
+    }
+    let Ok(test) = serde_json::from_value::<hiroute_application_api::ComputeConnectionTestRequestV2>(
+        request.payload,
+    ) else {
+        return failed(ErrorCode::InvalidArguments, request.request_id);
+    };
+    let Some(management) = management_port(service) else {
+        return failed(ErrorCode::DaemonUnavailable, request.request_id);
+    };
+    use hiroute_application_api::ComputeConnectionTestRequestV2 as Test;
+    let result = match test {
+        Test::Native { request } => management.check_native_model_connection_v2(request),
+        Test::Registered { request } => management.check_registered_model_connection_v2(request),
+        Test::Saved { request } => management.check_saved_model_connection_v2(request),
+    };
+    match result {
+        Ok(result) => succeeded(result, request.request_id),
+        Err(error) => failed(map_management_error(error), request.request_id),
     }
 }

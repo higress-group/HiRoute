@@ -161,6 +161,9 @@ pub(super) fn retryable_failure(value: &Value) -> Option<u32> {
             Some(CpaDiscoveryReason::HttpRejected) => {
                 matches!(attempt.http_status, Some(408 | 500 | 502 | 503 | 504))
             }
+            Some(CpaDiscoveryReason::ProxyRejected) => {
+                matches!(attempt.proxy_status, Some(408 | 500 | 502 | 503 | 504))
+            }
             _ => false,
         };
         (attempt.outcome == CpaDiscoveryOutcome::Failed

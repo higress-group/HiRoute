@@ -51,6 +51,7 @@
     "docs/local-user-configuration.md",
     "docs/macos-installation.md",
     "docs/macos-installation.zh-CN.md",
+    "docs/native-api-proxy.md",
     "docs/release-builds.md",
     "docs/release-contracts.md",
     "docs/remote-rust-validation.md",

@@ -1,7 +1,9 @@
 use std::collections::HashSet;
-use std::io::Read;
+use std::io::{BufReader, Read};
 
-use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation};
+use hiroute_gateway_core::runtime::body::{
+    ChargedBytes, ChargedBytesBuilder, MemoryRole, Reservation,
+};
 use serde::de::{DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, de};
 use serde_json::Value;
@@ -10,17 +12,33 @@ use crate::replay::{ReplayContentWriter, ReplayError, ReplayReader, ReplayStore}
 use crate::server::request_plan::IngressProtocol;
 
 use super::MARKER_PREFIX;
+mod scanner;
 mod schema;
+use scanner::StructuralScanner;
 
 const MAX_JSON_DEPTH: usize = 128;
 const INLINE_CONTENT_BYTES: usize = 8 * 1024;
 const STRUCTURE_RESERVATION_BYTES: usize = 128;
+const MAX_SLICE_PARSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct IngressDocumentStats {
     pub(crate) structure_units: usize,
     pub(crate) max_depth: usize,
     pub(crate) max_string_bytes: usize,
+}
+
+/// Retention bound for an already serde-validated inline JSON tree and its
+/// encoded bytes. Sizing uncertainty disables optional reuse, never admission.
+pub(crate) fn inline_document_retention_bytes(bytes: &[u8]) -> Option<usize> {
+    let mut scanner = StructuralScanner::default();
+    scanner.feed(bytes).ok()?;
+    let stats = scanner.finish().ok()?;
+    stats
+        .structure_units
+        .checked_mul(STRUCTURE_RESERVATION_BYTES)?
+        .checked_add(bytes.len().checked_mul(4)?)?
+        .checked_add(4096)
 }
 
 impl IngressDocumentStats {
@@ -81,7 +99,6 @@ pub(crate) fn parse_ingress_document(
     stats: IngressDocumentStats,
 ) -> Result<(Value, IngressWorkspace), ReplayError> {
     let parse = stats.reserve_streaming_workspace(replay)?;
-    let mut reader = replay.reader(raw)?;
     let mut state = IngressParserState {
         replay,
         pool: None,
@@ -91,22 +108,22 @@ pub(crate) fn parse_ingress_document(
         inline_remaining: INLINE_CONTENT_BYTES,
         failure: None,
     };
-    let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
-    let parsed = IngressSeed {
-        state: &mut state,
-        field: None,
-        depth: 0,
-    }
-    .deserialize(&mut deserializer);
-    let mut document = match parsed.and_then(|value| {
-        deserializer.end()?;
-        Ok(value)
-    }) {
-        Ok(value) => value,
-        Err(_) => return Err(state.failure.take().unwrap_or(ReplayError::InvalidJson)),
+    let mut document = if let Some(bytes) = memory_parse_input(replay, raw, stats)? {
+        let mut decoder = serde_json::Deserializer::from_slice(bytes.bytes());
+        decode_document(&mut decoder, &mut state)?
+    } else {
+        // Disk and budget-constrained requests keep the bounded reader path.
+        let capacity = raw.byte_len().min(8 * 1024) as usize;
+        let _buffer = replay
+            .budget()
+            .reserve(MemoryRole::ModelIrBacking, capacity)?;
+        let mut reader = BufReader::with_capacity(capacity, replay.reader(raw)?);
+        let mut decoder = serde_json::Deserializer::from_reader(&mut reader);
+        let document = decode_document(&mut decoder, &mut state)?;
+        drop(decoder);
+        reader.get_mut().verify_terminal()?;
+        document
     };
-    drop(deserializer);
-    reader.verify_terminal()?;
     // serde's largest-string scratch is gone after the deserializer drops.
     // Restoration below may retain that string, but never overlaps the
     // parser's transient copy in the request memory budget.
@@ -125,6 +142,54 @@ pub(crate) fn parse_ingress_document(
             generated_markers: state.generated_markers,
         },
     ))
+}
+
+fn decode_document<'de, R: serde_json::de::Read<'de>>(
+    decoder: &mut serde_json::Deserializer<R>,
+    state: &mut IngressParserState<'_>,
+) -> Result<Value, ReplayError> {
+    let parsed = IngressSeed {
+        state,
+        field: None,
+        depth: 0,
+    }
+    .deserialize(&mut *decoder);
+    parsed
+        .and_then(|value| {
+            decoder.end()?;
+            Ok(value)
+        })
+        .map_err(|_| state.failure.take().unwrap_or(ReplayError::InvalidJson))
+}
+
+fn memory_parse_input(
+    replay: &ReplayStore,
+    raw: &super::ContentRef,
+    stats: IngressDocumentStats,
+) -> Result<Option<ChargedBytes>, ReplayError> {
+    let length = usize::try_from(raw.byte_len()).map_err(|_| ReplayError::LengthOverflow)?;
+    if length > MAX_SLICE_PARSE_BYTES || replay.snapshot().disk_backed {
+        return Ok(None);
+    }
+    // Leave conservative room for semantic backing, range metadata, retained
+    // strings and the next Replay segment. Scratch refusal is not an error.
+    let headroom = length
+        .saturating_mul(3)
+        .saturating_add(stats.structure_units.saturating_mul(256))
+        .saturating_add(64 * 1024);
+    if replay.budget().available_bytes()? < headroom {
+        return Ok(None);
+    }
+    let Ok(mut bytes) =
+        ChargedBytesBuilder::new(replay.budget(), MemoryRole::ModelIrBacking, length)
+    else {
+        return Ok(None);
+    };
+    bytes.resize_zeroed(length)?;
+    let mut reader = replay.reader(raw)?;
+    reader.read_exact(bytes.as_mut_slice())?;
+    reader.verify_terminal()?;
+    Ok(Some(bytes.finish()))
 }
 
 struct IngressParserState<'a> {
@@ -464,16 +529,40 @@ fn valid_json_argument(
         Err(ReplayError::Body(_)) => return Ok(true),
         Err(error) => return Err(error),
     };
-    let mut reader = replay.reader(reference)?;
     // Validate with the same number/string semantics as serde_json::Value,
     // without materializing a second copy of a large tool argument.
-    let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
-    let valid = ValidModelJson::deserialize(&mut deserializer)
-        .and_then(|_| deserializer.end())
-        .is_ok();
-    drop(deserializer);
-    reader.verify_terminal()?;
-    Ok(valid)
+    match decode_json_argument::<ValidModelJson>(replay, reference, stats) {
+        Ok(_) => Ok(true),
+        Err(ReplayError::InvalidJson) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+fn decode_json_argument<T: serde::de::DeserializeOwned>(
+    replay: &ReplayStore,
+    reference: &super::ContentRef,
+    stats: IngressDocumentStats,
+) -> Result<T, ReplayError> {
+    // Reuse ingress's charged, optional small-memory path. Disk and pressure
+    // keep the same bounded Reader, syntax/end check and terminal verification.
+    if let Some(bytes) = memory_parse_input(replay, reference, stats)? {
+        let mut decoder = serde_json::Deserializer::from_slice(bytes.bytes());
+        return T::deserialize(&mut decoder)
+            .and_then(|value| decoder.end().map(|()| value))
+            .map_err(|_| ReplayError::InvalidJson);
+    }
+    let source = replay.reader(reference)?;
+    let capacity = reference.byte_len().min(8 * 1024) as usize;
+    let buffer = replay
+        .budget()
+        .reserve(MemoryRole::ModelIrBacking, capacity)
+        .ok();
+    let mut reader = BufReader::with_capacity(if buffer.is_some() { capacity } else { 0 }, source);
+    let mut decoder = serde_json::Deserializer::from_reader(&mut reader);
+    let parsed = T::deserialize(&mut decoder).and_then(|value| decoder.end().map(|()| value));
+    drop(decoder);
+    reader.get_mut().verify_terminal()?;
+    parsed.map_err(|_| ReplayError::InvalidJson)
 }
 
 struct ValidModelJson;
@@ -844,18 +933,12 @@ impl Compactor<'_> {
             Err(ReplayError::Body(_)) => return Ok(()),
             Err(error) => return Err(error),
         };
-        let mut reader = self.replay.reader(&reference)?;
-        let mut deserializer = serde_json::Deserializer::from_reader(&mut reader);
-        let parsed = Value::deserialize(&mut deserializer).and_then(|value| {
-            deserializer.end()?;
-            Ok(value)
-        });
-        drop(deserializer);
-        reader.verify_terminal()?;
-        let Ok(parsed) = parsed else {
+        let parsed = match decode_json_argument::<Value>(self.replay, &reference, stats) {
+            Ok(parsed) => parsed,
             // Syntax-only validation must never turn a native raw argument
             // into a request failure if Value rejects its numeric shape.
-            return Ok(());
+            Err(ReplayError::InvalidJson) => return Ok(()),
+            Err(error) => return Err(error),
         };
         let canonical = self.pool()?.append_canonical_json(&parsed)?.wire_marker();
         self.generated_markers.remove(&(value.as_ptr() as usize));
@@ -925,122 +1008,6 @@ fn whole_json_field(protocol: IngressProtocol, field: &str, depth: usize, value:
 #[path = "ingress/tests.rs"]
 mod tests;
 
-#[derive(Default)]
-struct StructuralScanner {
-    structure_units: usize,
-    depth: usize,
-    max_depth: usize,
-    current_string_bytes: usize,
-    max_string_bytes: usize,
-    in_string: bool,
-    escaped: bool,
-    unicode_digits: u8,
-    unicode_value: u16,
-    pending_high_surrogate: bool,
-}
-
-impl StructuralScanner {
-    fn feed(&mut self, bytes: &[u8]) -> Result<(), ReplayError> {
-        for &byte in bytes {
-            if self.in_string {
-                if self.unicode_digits > 0 {
-                    self.unicode_value = self
-                        .unicode_value
-                        .wrapping_mul(16)
-                        .wrapping_add(u16::from((byte as char).to_digit(16).unwrap_or(0) as u8));
-                    self.unicode_digits -= 1;
-                    if self.unicode_digits == 0 {
-                        let code = self.unicode_value;
-                        let width = if (0xd800..=0xdbff).contains(&code) {
-                            self.pending_high_surrogate = true;
-                            4
-                        } else if (0xdc00..=0xdfff).contains(&code) && self.pending_high_surrogate {
-                            self.pending_high_surrogate = false;
-                            0
-                        } else if code <= 0x7f {
-                            1
-                        } else if code <= 0x7ff {
-                            2
-                        } else {
-                            3
-                        };
-                        self.add_string_bytes(width)?;
-                    }
-                    continue;
-                }
-                if self.escaped {
-                    self.escaped = false;
-                    if byte == b'u' {
-                        self.unicode_digits = 4;
-                        self.unicode_value = 0;
-                    } else {
-                        self.add_string_bytes(1)?;
-                    }
-                    continue;
-                } else if byte == b'\\' {
-                    self.escaped = true;
-                    continue;
-                } else if byte == b'"' {
-                    self.in_string = false;
-                    self.max_string_bytes = self.max_string_bytes.max(self.current_string_bytes);
-                    continue;
-                }
-                self.add_string_bytes(1)?;
-                continue;
-            }
-            match byte {
-                b'"' => {
-                    self.in_string = true;
-                    self.current_string_bytes = 0;
-                }
-                b'{' | b'[' => {
-                    self.depth = self
-                        .depth
-                        .checked_add(1)
-                        .ok_or(ReplayError::StructureLimit)?;
-                    self.max_depth = self.max_depth.max(self.depth);
-                    self.bump()?;
-                    if self.depth > MAX_JSON_DEPTH {
-                        return Err(ReplayError::StructureLimit);
-                    }
-                }
-                b'}' | b']' => {
-                    self.depth = self
-                        .depth
-                        .checked_sub(1)
-                        .ok_or(ReplayError::StructureLimit)?;
-                }
-                b':' | b',' => self.bump()?,
-                _ => {}
-            }
-        }
-        Ok(())
-    }
-
-    fn bump(&mut self) -> Result<(), ReplayError> {
-        self.structure_units = self
-            .structure_units
-            .checked_add(1)
-            .ok_or(ReplayError::StructureLimit)?;
-        Ok(())
-    }
-
-    fn add_string_bytes(&mut self, count: usize) -> Result<(), ReplayError> {
-        self.current_string_bytes = self
-            .current_string_bytes
-            .checked_add(count)
-            .ok_or(ReplayError::LengthOverflow)?;
-        Ok(())
-    }
-
-    fn finish(self) -> Result<IngressDocumentStats, ReplayError> {
-        if self.in_string || self.escaped || self.unicode_digits > 0 || self.depth != 0 {
-            return Err(ReplayError::Integrity);
-        }
-        Ok(IngressDocumentStats {
-            structure_units: self.structure_units,
-            max_depth: self.max_depth,
-            max_string_bytes: self.max_string_bytes,
-        })
-    }
-}
+#[cfg(test)]
+#[path = "ingress/parser_path_tests.rs"]
+mod parser_path_tests;

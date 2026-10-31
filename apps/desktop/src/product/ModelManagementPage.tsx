@@ -1,3 +1,4 @@
+import { checkSavedNativeConnection } from '../features/model-connections/backend';
 import { ModelFeedPanel } from '../features/model-feed/ModelFeedPanel';
 import { newModelConnectionDraft } from '../features/model-connections/new-draft';
 import { modelConnectionBackend } from '../features/model-connections/backend';
@@ -739,17 +740,16 @@ export function ModelManagementPage({
     const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
     const source = current.sources.find(item => item.source_id === renderedSource.source_id);
     if (!source || !source.actions.includes('recheck')) throw { code: 'RECHECK_CONTEXT_UNAVAILABLE' };
-    const checked = await invoke<ModelConnectionCheckView>('check_saved_model_connection', {
-      request: {
+    const checked = await checkSavedNativeConnection({
         source_id: source.source_id,
         expected_source_revision: source.revision,
         edit_revision: editRevision,
         check_id: checkId,
-      },
-    });
+      });
     if (!checkMatches(checked, { candidateRef: null, editRevision, checkId })) {
       throw { code: 'CHECK_CORRELATION_MISMATCH' };
     }
+    if (checked.failure && checked.failure.phase !== 'directory') throw { code: 'NATIVE_NETWORK_FAILED', networkFailure: checked.failure };
     if (checked.reachability === 'transport_failed') throw { code: 'MODEL_CONNECTION_TRANSPORT_FAILED' };
     if (checked.authentication === 'rejected') throw { code: 'MODEL_CONNECTION_AUTHENTICATION_REJECTED' };
     if (checked.directory === 'empty') throw { code: 'MODEL_DIRECTORY_EMPTY' };
@@ -867,9 +867,10 @@ export function ModelManagementPage({
     const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
     if (!current.sources.some(item => item.source_id === source.source_id && item.revision === source.revision)) throw { code: 'SOURCE_CHANGED' };
     const checkId = `append/${randomId()}`;
-    const checked = await invoke<ModelConnectionCheckView>('check_saved_model_connection', { request: {
+    const checked = await checkSavedNativeConnection({
       source_id: source.source_id, expected_source_revision: source.revision, edit_revision: 1, check_id: checkId,
-    } });
+    });
+    if (checked.failure && checked.failure.phase !== 'directory') throw { code: 'NATIVE_NETWORK_FAILED', networkFailure: checked.failure };
     if (!checkMatches(checked, { candidateRef: null, editRevision: 1, checkId }) || checked.reachability === 'transport_failed' || checked.authentication === 'rejected') throw { code: 'MODEL_CONNECTION_FAILED' };
     return { checked, revisions: current.revisions };
   }
@@ -1108,7 +1109,7 @@ export function ModelManagementPage({
     <Dialog open={adding && addStage === 'existing'} title={language === 'zh' ? '选择已有接入' : 'Choose a connection'} closeLabel={language === 'zh' ? '关闭' : 'Close'} onClose={() => setAdding(false)}>
       <div className="v3-add-choices">{management?.sources.map(source => <button className="add-choice" type="button" key={source.source_id} onClick={() => void appendModels(source)}><div><strong>{source.display_name}</strong><span>{source.connection_identity?.product_label ?? source.provenance} · {source.models.length} {language === 'zh' ? '个模型' : 'models'}</span></div><UiIcon name="chevronRight" /></button>)}</div>
     </Dialog>
-    {appendingSource && appendingSource.provenance !== 'connector_owned' && !appendManual && <AppendConnectionModels source={appendingSource} language={language} mutable={trustedAuthority} onLoad={loadAppendModels} onPreview={change => invoke<SavePreview>('preview_compute_save', { change })} onApply={applyExisting} onRefresh={refreshManagement} onClose={() => setAppendingSource(null)} onManual={appendingSource.provenance === 'user_configured' ? () => { reconnectSource(appendingSource); setAppendManual(true); } : undefined} />}
+    {appendingSource && appendingSource.provenance !== 'connector_owned' && !appendManual && <AppendConnectionModels source={appendingSource} language={language} mutable={trustedAuthority} onLoad={loadAppendModels} onPreview={change => invoke<SavePreview>('preview_compute_save', { change })} onApply={applyExisting} onRefresh={refreshManagement} onClose={() => setAppendingSource(null)} onManual={appendingSource.provenance === 'user_configured' ? currentSource => { setAppendingSource(currentSource); reconnectSource(currentSource); setAppendManual(true); } : undefined} />}
     <Dialog open={adding && addStage === 'subscription-login'} title={language === 'zh' ? '连接订阅' : 'Connect subscription'} closeLabel={language === 'zh' ? '关闭订阅登录' : 'Close subscription sign-in'} onClose={() => setAdding(false)}>
       {adding && addStage === 'subscription-login' && <SubscriptionSignIn language={language} trustedAuthority={trustedAuthority}
         onReuseNative={() => { setAddStage('scan'); returnToScanList(); void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]); }}

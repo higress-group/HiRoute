@@ -1,0 +1,14 @@
+.native-network { margin-block: 12px; min-width: 0; }
+.native-network > summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.native-network > summary > span:first-child { min-width: 0; }
+.native-network .field-help, .native-network-impact code { overflow-wrap: anywhere; }
+.native-network-fields { display: grid; gap: 12px; min-width: 0; margin: 0; padding: 16px 0 0; border: 0; }
+.native-network-fields .input { width: 100%; max-width: 100%; box-sizing: border-box; }
+.native-network-fields p { margin: 0; }
+.native-network-impact { min-width: 0; padding-block: 12px; }
+.native-network-impact dl { display: grid; gap: 12px; }
+.native-network-impact dl > div { display: grid; grid-template-columns: minmax(4rem, auto) minmax(0, 1fr); gap: 12px; }
+.native-network-impact dd { margin: 0; }
+.native-network-impact code { display: block; white-space: normal; }
+.native-network-impact ul { max-height: 160px; overflow: auto; }
+.native-network-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }

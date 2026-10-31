@@ -1,3 +1,7 @@
+#[path = "p0_gateway_runtime/local_work_benchmark.rs"]
+mod local_work_benchmark;
+#[path = "p0_gateway_runtime/request_timing.rs"]
+mod request_timing;
 mod runtime_support;
 
 #[path = "p0_gateway_runtime/auxiliary_failure_isolation.rs"]

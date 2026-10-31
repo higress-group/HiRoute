@@ -7,7 +7,7 @@ fn native_hold(
     turn: u8,
     checkpoint: Option<u8>,
     user_origin: NativeUserOrigin,
-) -> PreparedHold {
+) -> PreparedHold<'static> {
     let mut hold = fixture.prepare(request);
     hold.set_native(NativeCheckpoint {
         turn: Some([turn; 32]),

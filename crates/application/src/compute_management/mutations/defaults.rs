@@ -66,6 +66,37 @@ where
         value: serde_json::Value,
     ) -> Result<ComputeManagementPreparedPreviewV2, ComputeManagementPlanningErrorV2> {
         if value.get("schema").and_then(serde_json::Value::as_str)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+        {
+            let change = value
+                .get("change")
+                .cloned()
+                .ok_or(ComputeManagementPlanningErrorV2::InvalidChange)?;
+            let network: hiroute_domain::NativeNetworkMutationV1 = serde_json::from_value(
+                value
+                    .get("network")
+                    .cloned()
+                    .ok_or(ComputeManagementPlanningErrorV2::InvalidChange)?,
+            )
+            .map_err(|_| ComputeManagementPlanningErrorV2::InvalidChange)?;
+            let policy = network
+                .after
+                .as_ref()
+                .ok_or(ComputeManagementPlanningErrorV2::InvalidChange)?
+                .policy
+                .clone();
+            return self.preview_network(
+                change,
+                hiroute_application_api::NativeNetworkEditV1 {
+                    expected_network_revision: network
+                        .before
+                        .as_ref()
+                        .map_or(0, |r| r.network_revision),
+                    policy,
+                },
+            );
+        }
+        if value.get("schema").and_then(serde_json::Value::as_str)
             == Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3)
         {
             self.preview_v3(

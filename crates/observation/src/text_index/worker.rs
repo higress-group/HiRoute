@@ -33,8 +33,7 @@ pub struct TextIndexBuilder {
     _owner: crate::maintenance::LocalWorkerGuard,
     building: Option<Building>,
     scan_after: i64,
-    scan_checkpoint: Option<(u64, u64)>,
-    idle_checkpoint: Option<(u64, u64)>,
+    idle: bool,
     lookup_backfill: super::lookup::Backfill,
 }
 impl TextIndexBuilder {
@@ -55,8 +54,7 @@ impl TextIndexBuilder {
         Ok(Self {
             building: None,
             scan_after: 0,
-            scan_checkpoint: None,
-            idle_checkpoint: None,
+            idle: false,
             lookup_backfill: Default::default(),
             _owner: owner,
         })
@@ -67,12 +65,17 @@ impl TextIndexBuilder {
     pub fn cycle(&mut self, store: &LocalObservationStore) -> Result<usize, Error> {
         let started = Instant::now();
         let mut bytes = self.lookup_backfill.cycle(store, started)?;
-        let checkpoint = source_checkpoint(store)?;
-        if self.building.is_none() && self.idle_checkpoint == Some(checkpoint) {
+        if let Some(from) = super::sources::take_dirty(store)? {
+            self.scan_after = if self.idle {
+                from - 1
+            } else {
+                self.scan_after.min(from - 1)
+            };
+            self.idle = false;
+        }
+        if self.building.is_none() && self.idle {
             return Ok(0);
         }
-        self.idle_checkpoint = None;
-        self.scan_checkpoint.get_or_insert(checkpoint);
         let mut completed = 0;
         while bytes < 8 * 1024 * 1024 && started.elapsed() < Duration::from_millis(500) {
             if self.building.is_none() {
@@ -85,13 +88,10 @@ impl TextIndexBuilder {
                 self.building = building;
                 if self.building.is_none() {
                     if exhausted {
-                        // A liveness change behind this pass's cursor requires
-                        // another pass, even if the tail has already been read.
-                        let current = source_checkpoint(store)?;
-                        if self.scan_checkpoint == Some(current) {
-                            self.idle_checkpoint = Some(current);
-                        }
-                        self.scan_checkpoint = None;
+                        // Changes during this pass remain in the coalesced
+                        // source watermark and wake the next cycle, including
+                        // an old source behind this cursor.
+                        self.idle = true;
                         break;
                     }
                     continue;
@@ -159,18 +159,6 @@ impl TextIndexBuilder {
         }
         Ok(completed)
     }
-}
-
-fn source_checkpoint(store: &LocalObservationStore) -> Result<(u64, u64), Error> {
-    let connection = store.connection.lock();
-    // Accepted fact/content mutations and deletion advance the persisted core
-    // revision, including compatible writers on other connections. Local changes
-    // also catch cache repair and liveness transitions during maintenance. Read
-    // scopes written by separate query connections do not restart an idle scan.
-    Ok((
-        crate::store::store_revision(&connection).map_err(|_| Error::Unavailable)?,
-        connection.total_changes(),
-    ))
 }
 
 fn next(store: &LocalObservationStore, after: &mut i64) -> Result<(Option<Building>, bool), Error> {

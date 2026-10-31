@@ -540,7 +540,7 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertIn('actions/cache@', workflow)
         self.assertIn('cargo check --locked --target x86_64-pc-windows-msvc '
                       '-p hiroute-cli -p hiroute-daemon -p hiroute-platform '
-                      '-p hiroute-local-storage --all-targets', workflow)
+                      '-p hiroute-local-storage -p hiroute-integrations --all-targets', workflow)
         self.assertIn("if ($LASTEXITCODE -ne 0) { throw", workflow)
         component_tests = [line.strip() for line in workflow.splitlines()
                            if line.strip().startswith('cargo test ')]
@@ -552,6 +552,15 @@ class HostedReleasePolicyTests(unittest.TestCase):
             'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-platform --lib windows::shell_registration::tests::'
             'inherited_export_is_published_privately_and_changed_material_is_not_overwritten -- --exact',
+            'cargo test --locked --target x86_64-pc-windows-msvc '
+            '-p hiroute-platform --lib private_fs::tests::'
+            'storage_preparation_reopens_without_adopting_a_file -- --exact',
+            'cargo test --locked --target x86_64-pc-windows-msvc '
+            '-p hiroute-local-storage --lib migrations::startup_recovery::tests -- --test-threads=1',
+            'cargo test --locked --target x86_64-pc-windows-msvc '
+            '-p hiroute-local-storage --lib control::capability_registration::tests -- --test-threads=1',
+            'cargo test --locked --target x86_64-pc-windows-msvc '
+            '-p hiroute-cli --lib service::recovery_text_tests -- --test-threads=1',
             'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-shell --features shell-runtime --lib'])
         self.assertIn("throw 'Windows installation component regressions failed'", workflow)

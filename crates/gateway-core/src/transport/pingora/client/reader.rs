@@ -18,6 +18,7 @@ impl PingoraClientSession {
             session,
             sender,
             local_read_suppression.clone(),
+            connected.forward_proxy_authority.is_some(),
         ));
         connected.reader = Some(PingoraReaderOwner {
             events,

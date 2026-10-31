@@ -43,6 +43,8 @@ pub enum ControlReadError {
     Unavailable,
     Corrupt,
     Denied,
+    /// A retained service uses a representation that this legacy operation cannot return.
+    ClientVersionRequired,
     /// A model-only Codex profile cannot own the collaboration Skill in the original HOME.
     CollaborationRootRequired,
 }
@@ -54,6 +56,20 @@ pub enum ControlReadAttempt<T> {
 }
 
 pub trait ClassifierDiagnosticPort: Send + Sync {
+    fn test_decision_service_v3(
+        &self,
+        _service: &hiroute_domain::DecisionServiceRecord,
+        _configuration_digest: &CanonicalDigest,
+    ) -> Result<hiroute_application_api::DecisionServiceTestResultV3, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn test_decision_service_v2(
+        &self,
+        _service: &hiroute_domain::DecisionServiceRecord,
+        _configuration_digest: &CanonicalDigest,
+    ) -> Result<hiroute_application_api::DecisionServiceTestResultV2, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn test_classifier_c(
         &self,
         _request: &hiroute_application_api::HistoricalApplicabilityTestRequestV1,
@@ -444,6 +460,54 @@ pub enum ComputeManagementControlError {
 /// Production adapter boundary for the source-level model connection aggregate. Public payloads
 /// remain closed DTOs; candidate facts and protected input slots stay behind this port.
 pub trait ComputeManagementControlPort: Send + Sync {
+    fn get_native_source_network(
+        &self,
+        _request: hiroute_application_api::NativeSourceNetworkQueryV1,
+    ) -> Result<hiroute_application_api::NativeSourceNetworkViewV1, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn preview_native_source_network(
+        &self,
+        _request: hiroute_application_api::NativeSourceNetworkPreviewV1,
+    ) -> Result<hiroute_application_api::NativeNetworkSavePreviewV1, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn preview_native_network_route(
+        &self,
+        _request: hiroute_application_api::NativeNetworkRoutePreviewRequestV1,
+    ) -> Result<hiroute_application_api::NativeNetworkRouteViewV1, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn preview_compute_save_v4(
+        &self,
+        _request: hiroute_application_api::ComputeManagementChangeV4,
+    ) -> Result<hiroute_application_api::ComputeSavePreviewV2, ComputeManagementControlError> {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn check_native_model_connection_v2(
+        &self,
+        _request: hiroute_application_api::NativeModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn check_registered_model_connection_v2(
+        &self,
+        _request: hiroute_application_api::RegisteredModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn check_saved_model_connection_v2(
+        &self,
+        _request: hiroute_application_api::SavedModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
     fn compute_key_masks(
         &self,
         _query: &hiroute_application_api::ComputeKeyMasksQueryV1,
@@ -574,6 +638,32 @@ pub trait ComputeManagementControlPort: Send + Sync {
 }
 
 pub trait RoutingFactsPort: Send + Sync {
+    fn decision_source_summary(
+        &self,
+        _source_id: &str,
+    ) -> Result<hiroute_application_api::DecisionSourceSummaryV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn decision_connection_sources(
+        &self,
+        _workspace: &WorkspaceId,
+    ) -> Result<hiroute_application_api::DecisionConnectionSourcesV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn decision_services_v2(
+        &self,
+        _workspace: &WorkspaceId,
+    ) -> Result<hiroute_application_api::DecisionServicesV2, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn decision_service_record(
+        &self,
+        _workspace: &WorkspaceId,
+        _id: &str,
+        _revision: u64,
+    ) -> Result<Option<hiroute_domain::DecisionServiceRecord>, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn decision_service(
         &self,
         _workspace: &WorkspaceId,

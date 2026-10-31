@@ -20,6 +20,8 @@ pub use previous_routing::*;
 mod classifier_diagnostic;
 mod classifier_diagnostic_c;
 pub use classifier_diagnostic_c::*;
+mod decision_connections;
+pub use decision_connections::*;
 mod client_access;
 mod work_plans;
 pub use work_plans::*;
@@ -172,6 +174,27 @@ mod protocol_tests {
     }
 
     #[test]
+    fn development_builds_retain_exact_client_service_version_matching() {
+        let hello = ClientHelloV1 {
+            api_version: LOCAL_CONTROL_SCHEMA_V2,
+            machine_schema_version: MACHINE_ENVELOPE_SCHEMA_V2,
+            client_name: "version-test".into(),
+            client_version: LOCAL_CONTROL_RELEASE_VERSION.into(),
+        };
+        let server = negotiate_hello(&hello).unwrap();
+        assert_eq!(server.daemon_version, LOCAL_CONTROL_RELEASE_VERSION);
+        assert_eq!(server.release_version, LOCAL_CONTROL_RELEASE_VERSION);
+        let mismatched = ClientHelloV1 {
+            client_version: format!("{LOCAL_CONTROL_RELEASE_VERSION}-different"),
+            ..hello
+        };
+        assert_eq!(
+            negotiate_hello(&mismatched).unwrap_err().code,
+            ErrorCode::InvalidArguments
+        );
+    }
+
+    #[test]
     fn legacy_request_and_unknown_current_fields_are_rejected() {
         let old = serde_json::json!({
             "schema_version": {"major": 1, "minor": 0},
@@ -277,7 +300,21 @@ mod protocol_tests {
     #[test]
     fn p0_registry_and_staging_invariants_remain_closed() {
         let commands = planned_commands();
-        assert_eq!(commands.len(), 109);
+        assert_eq!(commands.len(), 120);
+        for operation in [
+            "GetNativeSourceNetworkV1",
+            "PreviewNativeSourceNetworkV1",
+            "ApplyNativeSourceNetworkV1",
+            "PreviewNativeNetworkRouteV1",
+            "PreviewComputeSaveV4",
+            "TestDecisionServiceV3",
+            "TestComputeConnectionV2",
+        ] {
+            assert_eq!(
+                command_by_operation(operation).unwrap().lifecycle,
+                CommandLifecycle::Released
+            );
+        }
         assert_eq!(
             commands
                 .iter()
@@ -325,7 +362,7 @@ mod protocol_tests {
             CommandLifecycle::Released
         );
         let release = release_manifest();
-        assert_eq!(release.commands.len(), 76);
+        assert_eq!(release.commands.len(), 87);
         assert!(release.commands.iter().all(|command| {
             command.lifecycle == CommandLifecycle::Released
                 && command.positive.state == CoverageState::Executable
@@ -366,3 +403,5 @@ pub use plan_authoring::*;
 
 mod console;
 pub use console::*;
+mod native_network;
+pub use native_network::*;

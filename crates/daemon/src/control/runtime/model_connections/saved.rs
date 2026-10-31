@@ -609,6 +609,7 @@ mod tests {
                 protocol_header_semantics: draft.protocol_header_semantics.clone(),
             }),
             additional_native_endpoints: Vec::new(),
+            decision_targets: Vec::new(),
             credentials: Vec::new(),
             validation: None,
             last_candidate_ref: "candidate/native/bailian-saved".into(),
@@ -733,6 +734,7 @@ mod tests {
                 },
             }),
             additional_native_endpoints: Vec::new(),
+            decision_targets: Vec::new(),
             credentials: Vec::new(),
             validation: None,
             last_candidate_ref: "candidate/native/custom-saved".into(),
@@ -1205,6 +1207,11 @@ mod tests {
                 ],
             )
             .unwrap();
+        let network = hiroute_domain::NativeSourceNetworkRecordV1::initial(&source).unwrap();
+        connection.execute(
+            "INSERT INTO native_source_network(workspace_id,source_id,record_json,owner_operation_id) VALUES (?1,?2,?3,?4)",
+            rusqlite::params![WorkspaceId::DEFAULT, source.source_id, serde_json::to_string(&network).unwrap(), owner],
+        ).unwrap();
 
         let request = SavedModelConnectionCheckRequestV1 {
             source_id: source.source_id.clone(),

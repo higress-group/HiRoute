@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-test-decision-service-v3"
+description = "Enables the test_decision_service_v3 command without any pre-configured scope."
+commands.allow = ["test_decision_service_v3"]
+
+[[permission]]
+identifier = "deny-test-decision-service-v3"
+description = "Denies the test_decision_service_v3 command without any pre-configured scope."
+commands.deny = ["test_decision_service_v3"]

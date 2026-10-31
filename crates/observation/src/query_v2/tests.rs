@@ -478,6 +478,36 @@ fn query_deadline_interrupts_long_sql_without_a_writer_dependency() {
 }
 
 #[test]
+fn composed_search_sql_can_finish_after_the_ordinary_one_second_budget() {
+    use std::time::{Duration, Instant};
+
+    let connection = rusqlite::Connection::open_in_memory().unwrap();
+    connection
+        .create_scalar_function(
+            "delayed_search_read",
+            0,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8,
+            |_| {
+                std::thread::sleep(Duration::from_millis(1100));
+                Ok(7_i64)
+            },
+        )
+        .unwrap();
+    let started = Instant::now();
+    let scope = reader(None)
+        .with_search_query_deadline(started + Duration::from_secs(5))
+        .with_query_deadline(started + Duration::from_secs(60));
+    let _deadline = super::QueryDeadline::start_for(&connection, &scope).unwrap();
+    let result = connection
+        .query_row("SELECT delayed_search_read()", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap();
+    assert_eq!(result, 7);
+    assert!(started.elapsed() >= Duration::from_millis(1100));
+}
+
+#[test]
 fn caller_deadline_stays_shorter_and_is_not_reset_for_the_next_statement() {
     use std::time::{Duration, Instant};
 

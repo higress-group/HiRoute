@@ -94,6 +94,26 @@ macro_rules! response { ($($ty:ty),+ $(,)?) => { alternatives(vec![$(schema::<Ma
 
 pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
     let (mut request, mut response) = match command_id {
+        "compute.network.show" => (
+            request!(NativeSourceNetworkQueryV1),
+            response!(NativeSourceNetworkViewV1),
+        ),
+        "compute.network.preview" => (
+            request!(NativeSourceNetworkPreviewV1),
+            response!(NativeNetworkSavePreviewV1),
+        ),
+        "compute.network.apply" => (
+            request!(ComputeConnectionApplyRequestV1),
+            response!(ApplyResultV1),
+        ),
+        "compute.network.resolve" => (
+            request!(NativeNetworkRoutePreviewRequestV1),
+            response!(NativeNetworkRouteViewV1),
+        ),
+        "compute.connection.preview-network" => (
+            request!(ComputeManagementChangeV4),
+            response!(ComputeSavePreviewV2),
+        ),
         "compute.defaults.get" => (
             request!(ComputeDefaultsQueryV1),
             response!(ComputeDefaultsResultV1),
@@ -209,6 +229,14 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             request!(ClientEmptyRequestV1),
             response!(DecisionServicesListV1),
         ),
+        "decision.sources.list" => (
+            request!(ClientEmptyRequestV1),
+            response!(DecisionConnectionSourcesV1),
+        ),
+        "decision.connections.list" => (
+            request!(ClientEmptyRequestV1),
+            response!(DecisionServicesV2),
+        ),
         "agents.scan" | "agents.list" => (
             request!(AgentScanRequestV1),
             response!(AgentDiscoveryListV1),
@@ -258,6 +286,10 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
         "compute.connection.login" => (
             request!(ComputeSubscriptionLoginRequestV1),
             response!(ComputeSubscriptionLoginResultV1),
+        ),
+        "compute.connection.test-network" => (
+            request!(ComputeConnectionTestRequestV2),
+            response!(ModelConnectionCheckViewV2),
         ),
         "compute.connection.test" => (
             request!(ComputeConnectionTestRequestV1),
@@ -335,7 +367,7 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             request!(OperationIdempotencyLookupV1),
             response!(OperationIdempotencyResultV1),
         ),
-        "decision.services.apply" => (
+        "decision.services.apply" | "decision.connections.apply" => (
             request!(PreviewRequestV1, ApplyRequestV1),
             response!(
                 PreviewResultV1,
@@ -347,6 +379,14 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             request!(ClassifierDecisionTestRequestV1),
             response!(ClassifierDecisionTestResultV1),
         ),
+        "decision.network.test" => (
+            request!(DecisionServiceTestRequestV2),
+            response!(DecisionServiceTestResultV3),
+        ),
+        "decision.connections.test" => (
+            request!(DecisionServiceTestRequestV2),
+            response!(DecisionServiceTestResultV2),
+        ),
         _ => return None,
     };
     if command_id == "decision.services.apply" {
@@ -357,6 +397,16 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
         specialize_change(
             &mut response,
             &schema::<hiroute_domain::DecisionServiceChangeV1>(true),
+        );
+        remove_property(&mut request, "apply_capability");
+    } else if command_id == "decision.connections.apply" {
+        specialize_change(
+            &mut request,
+            &schema::<hiroute_domain::DecisionServiceOperationInputV2>(false),
+        );
+        specialize_change(
+            &mut response,
+            &schema::<hiroute_domain::DecisionServiceOperationInputV2>(true),
         );
         remove_property(&mut request, "apply_capability");
     } else if command_id == "compute.connection.apply" {

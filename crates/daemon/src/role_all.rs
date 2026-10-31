@@ -41,6 +41,9 @@ use crate::gateway_ports::{
     GatewayRequestPriceSource, GatewayRunRelationSink, GatewayRuntimeStateStore,
 };
 
+#[path = "role_all/decision_network.rs"]
+mod decision_network;
+
 #[cfg(test)]
 #[path = "role_all/subscription_startup_tests.rs"]
 mod subscription_startup_tests;
@@ -130,6 +133,23 @@ struct GatewayClassifierDiagnostic {
 }
 
 impl ClassifierDiagnosticPort for GatewayClassifierDiagnostic {
+    fn test_decision_service_v2(
+        &self,
+        service: &hiroute_domain::DecisionServiceRecord,
+        configuration_digest: &hiroute_domain::CanonicalDigest,
+    ) -> Result<hiroute_application_api::DecisionServiceTestResultV2, ControlReadError> {
+        self.test_decision_service_v3(service, configuration_digest)
+            .map(|result| result.check)
+    }
+
+    fn test_decision_service_v3(
+        &self,
+        service: &hiroute_domain::DecisionServiceRecord,
+        configuration_digest: &hiroute_domain::CanonicalDigest,
+    ) -> Result<hiroute_application_api::DecisionServiceTestResultV3, ControlReadError> {
+        decision_network::test(&self.runtime, service, configuration_digest)
+    }
+
     fn test_classifier_c(
         &self,
         request: &hiroute_application_api::HistoricalApplicabilityTestRequestV1,
@@ -287,6 +307,14 @@ impl RoleAllHandle {
         registration: ApplyCapabilityRegistrationV1,
     ) -> Result<(), String> {
         self._runtime.register_apply_capability(registration)
+    }
+
+    /// An exact inherited grant may be refused before acquiring any writer.
+    pub fn try_register_apply_capability(
+        &self,
+        registration: ApplyCapabilityRegistrationV1,
+    ) -> Result<hiroute_local_storage::ApplyCapabilityRegistrationOutcome, String> {
+        self._runtime.try_register_apply_capability(registration)
     }
 
     pub fn register_manual_protected_input(
@@ -526,6 +554,7 @@ fn start_role_all_with_runtime(
             .map_err(|error| RoleAllError::Component("Runtime state", error.to_string()))?,
     );
     let ports = ProductionPorts {
+        native_network: Some(runtime.native_network_registry()),
         publications: Arc::clone(&publications) as _,
         credentials,
         runtime_state,

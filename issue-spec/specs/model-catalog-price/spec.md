@@ -369,7 +369,7 @@ The publication and data-revision acceptance floors SHALL survive cache removal 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/191#issuecomment-6295416952
 
-### Requirement: Feed publications are reviewed, validated and published by the website deployment
+### Requirement: Feed publications are reviewed, validated and published independently
 
 Official model snapshots SHALL be deterministic projections of the existing maintained metadata sources and independent reference-score inputs. The embedded fallback and website publication SHALL derive from the same reviewed data revision and semantic content, with explicitly versioned wire projections where supported clients require them. Maintainers SHALL not create a second hand-edited website catalog. A compatible client's ordinary model metadata, capabilities and default-price updates SHALL require a data publication rather than a new client release.
 
@@ -377,7 +377,7 @@ Sources SHALL change through reviewed repository pull requests. Validation SHALL
 
 Generation SHALL include all maintained descriptive records, including existing embedded models and records without a supported executable binding. Descriptive availability and executable qualification SHALL be evaluated separately. Unsupported execution SHALL not cause omission of a valid descriptive record or rejection of the complete publication. Any claimed executable compatibility/minimum client SHALL be checked against the exact recorded supported release registry and adapters; an unestablished version SHALL remain unclaimed. Incorrect executable claims or malformed references SHALL fail validation.
 
-Only the production website deployment SHALL publish the exact validated artifact. PR jobs SHALL publish nothing. The fixed HTTPS origin and production pipeline establish trust; the direct JSON needs no independent signature or signing-key lifecycle. Deployment SHALL retrieve and validate the currently served publication before replacement. A genuine HTTP 404 permits first publication; redirects, unsuccessful retrieval or invalid served content stop publication and preserve the served copy. Identical content may be a no-op; changed publication bytes require a strictly greater sequence, and changed semantic model data require a strictly greater data revision. Deployment SHALL record publication sequence, data revision, digests and source revision.
+Only the production model-feed deployment SHALL publish the exact validated artifact. It SHALL run independently of the static website build after reviewed metadata, publication or recorded release changes reach main, using the same production environment and serialized deployment boundary as the website. It SHALL upload only the versioned feed object; ordinary website uploads SHALL refuse a model-feed prefix. PR jobs SHALL validate without publishing or requiring production credentials. The fixed HTTPS origin and production pipeline establish trust; the direct JSON needs no independent signature or signing-key lifecycle. Deployment SHALL retrieve and validate the currently served publication before replacement. A genuine HTTP 404 permits first publication; redirects, unsuccessful retrieval or invalid served content stop publication and preserve the served copy. Identical content may be a no-op; changed publication bytes require a strictly greater sequence, and changed semantic model data require a strictly greater data revision. Deployment SHALL record publication sequence, data revision, digests and source revision.
 
 Before a compatible supported client release is recorded, production publication for that contract SHALL be skipped while ordinary website delivery remains possible. The compatible release's embedded metadata and parser limits SHALL be validated before publication activation. An incompatible wire change used by an already supported release SHALL use a versioned endpoint and intentional legacy support recorded in the existing compatibility register. Older supported readers retain their supported contract and rollback protections; unreleased experimental formats create no compatibility promise. Persisted user choices and supported cache/configuration inputs SHALL retain their meaning through upgrade or receive explicit versioned recovery, never a silent reset.
 
@@ -441,7 +441,7 @@ Reference scores SHALL be delivered with their independent immutable snapshot id
 
 Executable interpretation SHALL remain bounded by installed registry/adapters and exact source qualification. Public endpoint/authentication descriptions may support editable prefill, but the snapshot SHALL NOT install connectors or executable code, change registered destinations/headers/authentication/credential authority, or grant free/subscription entitlement. A well-formed descriptive record with unsupported execution requirements remains queryable with an accurate limitation. Malformed records, duplicate scoped identities or broken references within the snapshot invalidate the complete publication.
 
-Featured entries SHALL remain optional plain localized new-model or model-update announcements referencing a resolvable model, with stable first-inclusion dates and optional links restricted to https://hiroute.ai/. Unresolved entries SHALL be hidden without creating placeholder models. If publication announcements are absent, maintained bundled announcements may be used only when their model references resolve in the effective catalog, retaining their actual origin. Announcement membership and directory order SHALL NOT grant availability or affect routing. An announced update and a metadata revision SHALL NOT establish the provider's actually executed model version or reattribute earlier observations.
+Featured entries SHALL remain optional plain localized new-model or model-update announcements referencing a resolvable model, with stable first-inclusion dates and optional links restricted to https://hiroute.ai/. Unresolved entries SHALL be hidden without creating placeholder models. Recommendations SHALL come only from the selected validated official feed, including its retained cache. If no feed is selected or its featured list is empty, recommendations SHALL remain empty; clients SHALL NOT substitute bundled announcements or catalog entries. The embedded metadata fallback remains available independently. Announcement membership and directory order SHALL NOT grant availability or affect routing. An announced update and a metadata revision SHALL NOT establish the provider's actually executed model version or reattribute earlier observations.
 
 #### Scenario: Publish facts for existing and descriptive-only models
 
@@ -478,10 +478,10 @@ Featured entries SHALL remain optional plain localized new-model or model-update
 - **WHEN** an announcement refers to a model in the effective catalog and names a provider release behind a rolling alias
 - **THEN** it shows the announcement date and actual fact origin without creating another model identity or claiming the earlier session evidence validates that provider release.
 
-#### Scenario: Fallback announcements require effective membership
+#### Scenario: An absent or cleared announcement list stays empty
 
-- **WHEN** the publication contains no announcements but bundled announcements include one resolved model and one absent model
-- **THEN** only the resolved announcement is shown, without a false claim that the bundled text was retrieved from the website.
+- **WHEN** no validated feed is selected or a newer publication clears its featured list, while the effective catalog still contains previously recommended models
+- **THEN** Home and trial recommendations remain empty, and users may still choose models from the complete effective catalog without any bundled recommendation being restored.
 
 #### Scenario: Reject an incomplete or inconsistent publication
 

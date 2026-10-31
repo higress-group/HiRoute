@@ -14,11 +14,7 @@ use hiroute_application_api::{
     ModelConnectionProtocolStatusV1, ModelConnectionReachabilityV1,
 };
 use hiroute_domain::{GatewayAuthenticationSemanticsV1, ProtectedSecret};
-use reqwest::{
-    blocking::Client,
-    header::{HOST, HeaderName, HeaderValue},
-    redirect::Policy,
-};
+use reqwest::header::{HOST, HeaderName, HeaderValue};
 use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
@@ -98,9 +94,39 @@ pub enum ModelDirectoryTransportErrorV1 {
     ResponseTooLarge,
     #[error("model directory authentication value is invalid")]
     InvalidAuthorization,
+    #[error("native network transport failed")]
+    Network(hiroute_application_api::NativeNetworkFailurePhaseV1),
 }
 
 pub trait ModelDirectoryTransportV1: Send + Sync {
+    fn get_with_route(
+        &self,
+        target: &NormalizedModelConnectionTargetV1,
+        query: Option<&str>,
+        credential: Option<ModelConnectionProbeCredentialV1<'_>>,
+        timeout: Duration,
+        response_limit: usize,
+        route: &hiroute_domain::ResolvedNativeNetworkRouteV1,
+    ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
+        if route.proxy.is_some() {
+            return Err(ModelDirectoryTransportErrorV1::Unavailable);
+        }
+        self.get(target, query, credential, timeout, response_limit)
+    }
+    fn infer_with_route(
+        &self,
+        target: &NormalizedModelConnectionTargetV1,
+        model: &str,
+        credential: Option<ModelConnectionProbeCredentialV1<'_>>,
+        limits: ModelConnectionProbeLimitsV1,
+        route: &hiroute_domain::ResolvedNativeNetworkRouteV1,
+    ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
+        if route.proxy.is_some() {
+            return Err(ModelDirectoryTransportErrorV1::Unavailable);
+        }
+        self.infer(target, model, credential, limits)
+    }
+
     fn infer(
         &self,
         _target: &NormalizedModelConnectionTargetV1,
@@ -125,6 +151,27 @@ impl<T> ModelDirectoryTransportV1 for Arc<T>
 where
     T: ModelDirectoryTransportV1 + ?Sized,
 {
+    fn get_with_route(
+        &self,
+        target: &NormalizedModelConnectionTargetV1,
+        query: Option<&str>,
+        credential: Option<ModelConnectionProbeCredentialV1<'_>>,
+        timeout: Duration,
+        response_limit: usize,
+        route: &hiroute_domain::ResolvedNativeNetworkRouteV1,
+    ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
+        (**self).get_with_route(target, query, credential, timeout, response_limit, route)
+    }
+    fn infer_with_route(
+        &self,
+        target: &NormalizedModelConnectionTargetV1,
+        model: &str,
+        credential: Option<ModelConnectionProbeCredentialV1<'_>>,
+        limits: ModelConnectionProbeLimitsV1,
+        route: &hiroute_domain::ResolvedNativeNetworkRouteV1,
+    ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
+        (**self).infer_with_route(target, model, credential, limits, route)
+    }
     fn infer(
         &self,
         target: &NormalizedModelConnectionTargetV1,
@@ -158,9 +205,18 @@ impl ModelDirectoryTransportV1 for ReqwestModelDirectoryTransportV1 {
         credential: Option<ModelConnectionProbeCredentialV1<'_>>,
         limits: ModelConnectionProbeLimitsV1,
     ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
-        super::inference::send(target, model, credential, limits)
+        super::inference::send(target, model, credential, limits, None)
     }
-
+    fn infer_with_route(
+        &self,
+        target: &NormalizedModelConnectionTargetV1,
+        model: &str,
+        credential: Option<ModelConnectionProbeCredentialV1<'_>>,
+        limits: ModelConnectionProbeLimitsV1,
+        route: &hiroute_domain::ResolvedNativeNetworkRouteV1,
+    ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
+        super::inference::send(target, model, credential, limits, Some(route))
+    }
     fn get(
         &self,
         target: &NormalizedModelConnectionTargetV1,
@@ -169,58 +225,76 @@ impl ModelDirectoryTransportV1 for ReqwestModelDirectoryTransportV1 {
         timeout: Duration,
         response_limit: usize,
     ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
-        let client = Client::builder()
-            .redirect(Policy::none())
-            .no_proxy()
-            .connect_timeout(timeout)
-            .timeout(timeout)
-            .build()
-            .map_err(|_| ModelDirectoryTransportErrorV1::Unavailable)?;
-        let mut request = client.get(target.inventory_url(query)).header(
-            HOST,
-            HeaderValue::from_str(target.host_header())
-                .map_err(|_| ModelDirectoryTransportErrorV1::Unavailable)?,
-        );
-        for (name, value) in target.directory_headers() {
-            request = request.header(name.clone(), value.clone());
-        }
-        if let Some(credential) = credential {
-            request = apply_authorization(request, credential)?;
-        }
-        let response = request.send().map_err(|error| {
-            if error.is_timeout() {
-                ModelDirectoryTransportErrorV1::Timeout
-            } else {
-                ModelDirectoryTransportErrorV1::Unavailable
-            }
-        })?;
-        let status = response.status().as_u16();
-        if !(200..=299).contains(&status) {
-            return Ok(ModelDirectoryHttpResponseV1 {
-                status,
-                body: Vec::new(),
-                truncated: false,
-            });
-        }
-        let mut body = Vec::new();
-        response
-            .take((response_limit as u64).saturating_add(1))
-            .read_to_end(&mut body)
-            .map_err(|_| ModelDirectoryTransportErrorV1::Unavailable)?;
-        if body.len() > response_limit {
-            body.clear();
-            return Ok(ModelDirectoryHttpResponseV1 {
-                status,
-                body,
-                truncated: true,
-            });
-        }
-        Ok(ModelDirectoryHttpResponseV1 {
+        directory_get(target, query, credential, timeout, response_limit, None)
+    }
+    fn get_with_route(
+        &self,
+        target: &NormalizedModelConnectionTargetV1,
+        query: Option<&str>,
+        credential: Option<ModelConnectionProbeCredentialV1<'_>>,
+        timeout: Duration,
+        response_limit: usize,
+        route: &hiroute_domain::ResolvedNativeNetworkRouteV1,
+    ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
+        directory_get(
+            target,
+            query,
+            credential,
+            timeout,
+            response_limit,
+            Some(route),
+        )
+    }
+}
+fn directory_get(
+    target: &NormalizedModelConnectionTargetV1,
+    query: Option<&str>,
+    credential: Option<ModelConnectionProbeCredentialV1<'_>>,
+    timeout: Duration,
+    response_limit: usize,
+    route: Option<&hiroute_domain::ResolvedNativeNetworkRouteV1>,
+) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
+    let client = super::network::client(timeout, route)?;
+    let mut request = client.get(target.inventory_url(query)).header(
+        HOST,
+        HeaderValue::from_str(target.host_header())
+            .map_err(|_| ModelDirectoryTransportErrorV1::Unavailable)?,
+    );
+    for (name, value) in target.directory_headers() {
+        request = request.header(name.clone(), value.clone());
+    }
+    if let Some(credential) = credential {
+        request = apply_authorization(request, credential)?;
+    }
+    let response = request.send().map_err(|error| {
+        super::network::request_error(error, route, &target.candidate_target.scheme)
+    })?;
+    let status = response.status().as_u16();
+    if !(200..=299).contains(&status) {
+        return Ok(ModelDirectoryHttpResponseV1 {
+            status,
+            body: Vec::new(),
+            truncated: false,
+        });
+    }
+    let mut body = Vec::new();
+    response
+        .take((response_limit as u64).saturating_add(1))
+        .read_to_end(&mut body)
+        .map_err(|_| ModelDirectoryTransportErrorV1::Unavailable)?;
+    if body.len() > response_limit {
+        body.clear();
+        return Ok(ModelDirectoryHttpResponseV1 {
             status,
             body,
-            truncated: false,
-        })
+            truncated: true,
+        });
     }
+    Ok(ModelDirectoryHttpResponseV1 {
+        status,
+        body,
+        truncated: false,
+    })
 }
 
 pub(super) fn apply_authorization(
@@ -684,7 +758,8 @@ fn transport_failure(
             "model_connections.auth_input_invalid",
             true,
         ),
-        ModelDirectoryTransportErrorV1::Unavailable => (
+        ModelDirectoryTransportErrorV1::Network(_)
+        | ModelDirectoryTransportErrorV1::Unavailable => (
             "TRANSPORT_FAILED",
             "model_connections.transport_failed",
             true,

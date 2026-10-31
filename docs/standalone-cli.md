@@ -1150,9 +1150,57 @@ Before restoring or reconnecting the managing caller's own model route, establis
 access or an external operator handoff. A successful restore can revoke the grant still held by a
 running process. Restored files do not prove reload; arrange continuation before that effect.
 
-Desktop manages these connections under **Models → Decision models**; the Released CLI keeps
-`decision services list/apply/test`. Decision models and custom extensions are independent of
-general model sources that execute tasks. Discover the installed contract first:
+Desktop manages these connections under **Models → Decision models**. A native decision model
+can reuse the Keys of an existing Native API connection or keep an independent Key. OpenAI
+Decisions and System One use explicit wire protocols; they share the same routing questions,
+continuous scoring and selection rules. Custom extensions remain a separate connection type.
+
+### Reuse an API connection
+
+Discover the installed presets and locally available sources, then create a decision connection:
+
+```sh
+hiroute decision sources list --output json
+hiroute decision connections options --provider openai --output json
+hiroute decision connections apply --id routing-decision --name "Routing decision" \
+  --provider openai --source SOURCE_ID --apply-file decision-connection-apply.json
+hiroute decision connections apply --request-file decision-connection-apply.json
+hiroute decision connections list --output json
+hiroute decision connections test --service routing-decision@SAVED_REVISION --output json
+```
+
+The first `apply` previews and writes a private exact Apply request; inspect it before submitting
+that same file. A shared connection uses the selected source's current eligible Keys without
+copying them. `ready` means locally enabled with a configured Key, not provider entitlement.
+Key changes affect later calls without republishing. Changing the decision model, complete URL,
+protocol or source creates a new immutable revision; select that revision in the route and publish
+it. Previously published routes keep their selected revision and source.
+
+Use `--endpoint`, `--model` and `--wire-protocol system_one|openai_decisions` to set the exact
+provider request. For an arbitrary `compatible` connection, select the protocol explicitly.
+Choose the appropriate Bailian Token Plan or workspace endpoint; a preset does not establish
+access. Use `--candidate` with protected input for an independent Key instead of `--source`.
+Typesafe can continue to use independent configuration. The source API never returns Key values.
+
+After saving and testing, attach the returned revision through the existing route authoring flow:
+
+```sh
+hiroute routing preview --plan PLAN_ID --decision-service routing-decision@SAVED_REVISION \
+  --apply-file decision-route-apply.json
+hiroute routing apply --request-file decision-route-apply.json
+```
+
+Saving a connection does not call a provider or publish a route. Testing sends a fixed synthetic
+request and may use quota; it does not evaluate real conversations or prove all Keys are usable.
+Refresh after a source or service revision conflict and preserve non-secret edits; do not silently
+replay a stale change. Discover full current request schemas with `schema show`.
+
+### Existing V1 decision service commands
+
+The released `decision services list/apply/test` commands retain their strict V1 contract. Use
+`decision connections list/apply/test` for tagged V2 connections, including shared credentials.
+Existing V1 content and published route snapshots remain readable without rewriting their hashes.
+The following example shows the legacy V1 request shape:
 
 ```sh
 hiroute decision services list --output json

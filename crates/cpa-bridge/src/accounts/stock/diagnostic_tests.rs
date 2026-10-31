@@ -47,18 +47,33 @@ fn each_unmet_pin_condition_is_reported_without_per_poll_logging() {
             generation: 1,
             client_version: None,
         };
-        let result = StockCpaControlPlane.discover_and_pin(
-            fixture.address,
-            fixture.root.path(),
-            &[identity],
-            &InstanceSecrets::generate().unwrap(),
-            "8.0.4-hiroute.4",
-            Duration::from_millis(150),
-            false,
-            &runtime.port().handle().context(),
-        );
-        // The shared deadline may expire between polls or during the last local
-        // read. The observed unmet condition must survive either terminal error.
+        let budget = Duration::from_secs(2);
+        let account_reads = fixture.account_reads.clone();
+        let catalog_reads = fixture.catalog_reads.clone();
+        // Cancel in the second target poll, after the first has recorded the
+        // unmet condition. Inventory/account preparation must not consume an
+        // artificial 150 ms deadline before this scenario has even started.
+        let request = crate::CpaRequestContext::new(Instant::now() + budget)
+            .with_cancellation_check(Arc::new(move || {
+                if fault == 3 {
+                    catalog_reads.load(Ordering::SeqCst) >= 2
+                } else {
+                    account_reads.load(Ordering::SeqCst) >= 3
+                }
+            }));
+        let result = request.run(|| {
+            StockCpaControlPlane.discover_and_pin(
+                fixture.address,
+                fixture.root.path(),
+                &[identity],
+                &InstanceSecrets::generate().unwrap(),
+                "8.0.4-hiroute.4",
+                budget,
+                false,
+                &runtime.port().handle().context(),
+            )
+        });
+        // The observed unmet condition must survive the terminal transport error.
         assert!(result.is_err(), "fault {fault}: {result:?}");
         runtime.shutdown();
         let text = fs::read_to_string(logs.path().join("daemon/current.jsonl")).unwrap();
@@ -123,8 +138,11 @@ fn each_unmet_pin_condition_is_reported_without_per_poll_logging() {
 }
 
 #[test]
-fn slow_patch_is_distinct_from_unmet_pin_checks() {
+fn cancelled_patch_reports_control_timeout_without_pin_checks() {
     let fixture = Fixture::new();
+    // A shared 100 ms budget cannot establish that the delayed PATCH was
+    // reached when ordinary account preparation itself takes longer.
+    fixture.account_read_delay_ms.store(150, Ordering::SeqCst);
     fixture.patch_delay_ms.store(300, Ordering::SeqCst);
     let logs = crate::private_test_support::tempdir().unwrap();
     let runtime = diagnostics(logs.path());
@@ -135,17 +153,26 @@ fn slow_patch_is_distinct_from_unmet_pin_checks() {
         generation: 1,
         client_version: None,
     };
-    let result = StockCpaControlPlane.discover_and_pin(
-        fixture.address,
-        fixture.root.path(),
-        &[identity],
-        &InstanceSecrets::generate().unwrap(),
-        "8.0.4-hiroute.4",
-        Duration::from_millis(100),
-        true,
-        &runtime.port().handle().context(),
-    );
+    let budget = Duration::from_secs(2);
+    let patches = fixture.patches.clone();
+    // The real HTTP PATCH must be in flight before its caller is cancelled.
+    // The separate production_control_budget test owns elapsed-deadline coverage.
+    let request = crate::CpaRequestContext::new(Instant::now() + budget)
+        .with_cancellation_check(Arc::new(move || patches.load(Ordering::SeqCst) > 0));
+    let result = request.run(|| {
+        StockCpaControlPlane.discover_and_pin(
+            fixture.address,
+            fixture.root.path(),
+            &[identity],
+            &InstanceSecrets::generate().unwrap(),
+            "8.0.4-hiroute.4",
+            budget,
+            true,
+            &runtime.port().handle().context(),
+        )
+    });
     assert!(result.is_err());
+    assert_eq!(fixture.patches.load(Ordering::SeqCst), 1);
     runtime.shutdown();
     let log = fs::read_to_string(logs.path().join("daemon/current.jsonl")).unwrap();
     let failed: Value = log

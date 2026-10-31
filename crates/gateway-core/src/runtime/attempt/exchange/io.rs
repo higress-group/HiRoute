@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::timing::{WaitKind, wait};
 
 impl<T: AttemptTransport> AttemptExchange<T> {
     /// Address fallback is only a connection sub-attempt. Once the semantic
@@ -10,8 +11,19 @@ impl<T: AttemptTransport> AttemptExchange<T> {
         if self.connected {
             return Ok(());
         }
+        self.transport
+            .as_mut()
+            .expect("active exchange owns transport")
+            .configure_network_route(self.request.network_route.as_ref())?;
         let mut last_error = None;
-        for address in self.target.target().addresses.iter().copied() {
+        let addresses = self
+            .request
+            .network_route
+            .as_ref()
+            .and_then(|r| r.proxy.as_ref())
+            .map(|p| Arc::clone(&p.addresses))
+            .unwrap_or_else(|| Arc::clone(&self.target.target().addresses));
+        for address in addresses.iter().copied() {
             if self.cancellation.is_cancelled() {
                 return Err(AttemptError::Cancelled);
             }
@@ -40,10 +52,10 @@ impl<T: AttemptTransport> AttemptExchange<T> {
                 _ = cancellation.cancelled() => return Err(AttemptError::Cancelled),
                 result = tokio::time::timeout_at(
                     tokio::time::Instant::from_std(connect_deadline),
-                    self.transport
+                    wait(WaitKind::Connect, self.transport
                         .as_mut()
                         .expect("active exchange owns transport")
-                        .connect(self.target.target(), address),
+                        .connect(self.target.target(), address)),
                 ) => result,
             } {
                 Ok(result) => result,
@@ -156,10 +168,10 @@ impl<T: AttemptTransport> AttemptExchange<T> {
                     _ = cancellation.cancelled() => return Err(AttemptError::Cancelled),
                     result = tokio::time::timeout_at(
                         tokio::time::Instant::from_std(request_write_deadline),
-                        self.transport
+                        wait(WaitKind::UpstreamWrite, self.transport
                             .as_mut()
                             .expect("active exchange owns transport")
-                            .write_request_head(&self.request.head),
+                            .write_request_head(&self.request.head)),
                     ) => result,
                 };
                 let result = match result {
@@ -197,7 +209,7 @@ impl<T: AttemptTransport> AttemptExchange<T> {
                             _ = cancellation.cancelled() => return Err(AttemptError::Cancelled),
                             result = tokio::time::timeout_at(
                                 tokio::time::Instant::from_std(request_write_deadline),
-                                std::future::poll_fn(|context| self.poll_duplex_body_write(context)),
+                                wait(WaitKind::UpstreamWrite, std::future::poll_fn(|context| self.poll_duplex_body_write(context))),
                             ) => result,
                         };
                         let result = match result {
@@ -216,10 +228,10 @@ impl<T: AttemptTransport> AttemptExchange<T> {
                             _ = cancellation.cancelled() => return Err(AttemptError::Cancelled),
                             result = tokio::time::timeout_at(
                                 tokio::time::Instant::from_std(request_write_deadline),
-                                self.transport
+                                wait(WaitKind::UpstreamWrite, self.transport
                                     .as_mut()
                                     .expect("active exchange owns transport")
-                                    .write_request_body(write, false),
+                                    .write_request_body(write, false)),
                             ) => result,
                         };
                         let result = match result {
@@ -269,7 +281,7 @@ impl<T: AttemptTransport> AttemptExchange<T> {
                 _ = cancellation.cancelled() => return Err(AttemptError::Cancelled),
                 result = tokio::time::timeout_at(
                     tokio::time::Instant::from_std(request_write_deadline),
-                    std::future::poll_fn(|context| self.poll_duplex_body_finish(context)),
+                    wait(WaitKind::UpstreamWrite, std::future::poll_fn(|context| self.poll_duplex_body_finish(context))),
                 ) => result,
             };
             let result = match result {
@@ -284,10 +296,10 @@ impl<T: AttemptTransport> AttemptExchange<T> {
                 _ = cancellation.cancelled() => return Err(AttemptError::Cancelled),
                 result = tokio::time::timeout_at(
                     tokio::time::Instant::from_std(request_write_deadline),
-                    self.transport
+                    wait(WaitKind::UpstreamWrite, self.transport
                         .as_mut()
                         .expect("active exchange owns transport")
-                        .finish_request_body(),
+                        .finish_request_body()),
                 ) => result,
             };
             let result = match result {
@@ -355,12 +367,12 @@ impl<T: AttemptTransport> AttemptExchange<T> {
             _ = cancellation.cancelled() => return Err(AttemptError::Cancelled),
             result = tokio::time::timeout_at(
                 tokio::time::Instant::from_std(wait_deadline),
-                std::future::poll_fn(|context| {
+                wait(WaitKind::UpstreamRead, std::future::poll_fn(|context| {
                     self.transport
                         .as_mut()
                         .expect("active exchange owns transport")
                         .poll_precommit_receipt(context)
-                }),
+                })),
             ) => result,
         } {
             Ok(result) => result?,

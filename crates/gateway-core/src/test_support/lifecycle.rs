@@ -357,6 +357,7 @@ impl ProviderRuntimePort for PassthroughBootstrapProvider {
         let lease = context.leases.acquire().map_err(string_error)?;
         Ok((
             PreparedAttemptHttpRequest {
+                network_route: None,
                 head: PreparedRequestHead {
                     method: logical.head.method.clone(),
                     path_and_query: Arc::clone(&logical.head.path_and_query),

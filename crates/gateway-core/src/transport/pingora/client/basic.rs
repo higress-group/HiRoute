@@ -8,6 +8,7 @@ impl PingoraClientSession {
         Self {
             registry,
             connection_config_fingerprint,
+            network_route: None,
             connected: None,
             request_head_written: false,
             response_eos_emitted: false,
@@ -30,21 +31,62 @@ impl PingoraClientSession {
         &mut self,
         head: &PreparedRequestHead,
     ) -> Result<(), AttemptError> {
+        let mut routed = head.clone();
+        if let Some(proxy) = self.network_route.as_ref().and_then(|r| r.proxy.as_ref()) {
+            routed.headers.remove(http::header::PROXY_AUTHORIZATION);
+            if self
+                .connected
+                .as_ref()
+                .and_then(|c| c.forward_proxy_authority.as_ref())
+                .is_some()
+            {
+                if !routed.path_and_query.starts_with('/') {
+                    return Err(AttemptError::InvalidTarget(
+                        "proxy request path is invalid".into(),
+                    ));
+                }
+                if let Some(auth) = proxy.authorization() {
+                    routed
+                        .headers
+                        .insert(http::header::PROXY_AUTHORIZATION, auth.clone());
+                }
+            }
+        }
+        let head = &routed;
+        let forward_authority = self
+            .connected
+            .as_ref()
+            .and_then(|c| c.forward_proxy_authority.clone());
         let connected = self.connected_mut()?;
         let session = connected.reader_session.take().ok_or_else(|| {
             AttemptError::Transport("Pingora request head already written".into())
         })?;
         match session {
             ClientSession::H1(mut session) => {
-                session
-                    .write_request_header(Box::new(build_request_header(head)?))
-                    .await
-                    .map_err(|error| AttemptError::Transport(error.to_string().into()))?;
+                if forward_authority.is_none() {
+                    session
+                        .write_request_header(Box::new(build_request_header(head)?))
+                        .await
+                        .map_err(|error| AttemptError::Transport(error.to_string().into()))?;
+                }
 
                 let digest = session.digest().clone();
                 let id = session.stream().id();
                 let alpn = session.stream().selected_alpn_proto();
-                let stream = flatten_reused_h1_stream(session.into_inner());
+                let mut stream = flatten_reused_h1_stream(session.into_inner());
+                if let Some(authority) = forward_authority {
+                    // Pingora's H1 encoder accepts origin-form targets only. Emit the bounded
+                    // absolute-form head once, then initialize both body codecs through their
+                    // existing setup sinks below. All later body/response receipts stay owned
+                    // by those codecs, including reused connections.
+                    let wire = build_forward_proxy_header(head, &authority)?;
+                    tokio::io::AsyncWriteExt::write_all(&mut stream, &wire)
+                        .await
+                        .map_err(|_| AttemptError::Proxy(ProxyFailurePhase::Negotiation))?;
+                    tokio::io::AsyncWriteExt::flush(&mut stream)
+                        .await
+                        .map_err(|_| AttemptError::Proxy(ProxyFailurePhase::Negotiation))?;
+                }
                 let (read_half, write_half) = tokio::io::split(stream);
                 let shared = Arc::new(SharedH1Stream {
                     read_half: Mutex::new(Some(read_half)),

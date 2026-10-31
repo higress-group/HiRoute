@@ -97,6 +97,80 @@ fn materialization_failure(
 }
 
 #[test]
+fn unavailable_native_network_advances_candidate_without_rotating_provider_keys() {
+    for error in ["network_policy_unavailable", "proxy_dns_failed"] {
+        let now = Instant::now();
+        let mut session = session(
+            now,
+            vec![candidate(1, &["key-a", "key-b"]), candidate(2, &["key-c"])],
+        );
+        let facts = RealtimeRoutingFacts::default();
+        let selected = session
+            .select_next(selection_request(now, 1, 2, &facts))
+            .unwrap()
+            .unwrap();
+        let classified =
+            super::super::materialization::classify_materialization_failure(&Arc::from(error));
+        let mut failure = materialization_failure(now, "materialization", None);
+        failure.class = classified.class.into();
+        failure.provider = Some(classified.provider);
+        assert_eq!(
+            session.decide_failure(&selected, &failure).unwrap(),
+            Disposition::Continue
+        );
+        let fallback = session
+            .select_next(selection_request(now, 2, 2, &facts))
+            .unwrap()
+            .unwrap();
+        assert_eq!(fallback.binding, candidate(2, &["key-c"]).binding);
+        assert_eq!(fallback.credential_ref.as_str(), "key-c");
+        assert_eq!(fallback.attempt_id, AttemptId(0));
+        assert!(!session.upstream_attempted);
+    }
+}
+
+#[test]
+fn regression_unavailable_subscription_runtime_advances_to_the_next_saved_candidate() {
+    let now = Instant::now();
+    let mut session = session(
+        now,
+        vec![
+            candidate(1, &["subscription-key"]),
+            candidate(2, &["api-key"]),
+        ],
+    );
+    let facts = RealtimeRoutingFacts::default();
+    let selected = session
+        .select_next(selection_request(now, 1, 2, &facts))
+        .unwrap()
+        .unwrap();
+    let error = super::super::materialization::credential_materialization_error(
+        crate::server::composition::PortError::Unavailable("CpaDownstreamCredentialPort"),
+        hiroute_domain::ConnectorRuntimeKind::CpaBridge,
+    );
+    let classified = super::super::materialization::classify_materialization_failure(&error);
+    let mut failure = materialization_failure(now, "materialization", None);
+    failure.class = classified.class.into();
+    failure.provider = Some(classified.provider);
+    assert_eq!(
+        session.decide_failure(&selected, &failure).unwrap(),
+        Disposition::Continue,
+        "an unavailable subscription runtime must not terminate its API fallback"
+    );
+    let fallback = session
+        .select_next(selection_request(now, 2, 2, &facts))
+        .unwrap()
+        .unwrap();
+    assert_eq!(fallback.binding, candidate(2, &["api-key"]).binding);
+    assert_eq!(fallback.credential_ref.as_str(), "api-key");
+    assert_eq!(
+        fallback.attempt_id.0, 0,
+        "preparation is not an upstream attempt"
+    );
+    assert!(!session.upstream_attempted);
+}
+
+#[test]
 fn admitted_pool_denial_combines_with_later_preparation_but_preserves_real_attempts() {
     for (class, expected_code) in [
         ("source_disabled", "SOURCE_DISABLED"),

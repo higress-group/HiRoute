@@ -83,6 +83,20 @@ happy-path UI journey.
 
 ## What each layer proves
 
+For local request cost, start with the [timing guide](../diagnostic-troubleshooting.md#model-request-timing-at-info)
+and bounded CPU profiling. The [hash backend benchmark](../../crates/gateway/benches/gateway_hash_paths.rs)
+checks byte equivalence and throughput on the affected CPU; it does not replace
+whole-request measurement or change the production cryptographic backend.
+The opt-in [whole-listener experiment](../../tools/e2e-harness/tests/p0_gateway_runtime/local_work_benchmark.rs)
+keeps multi-turn decisions, history and capture enabled with Info timing. It
+includes local readiness waits and rejects capture loss. Run release binaries on
+the target CPU; component timings and fixture success are not native acceptance.
+Its ordinary four-request regression verifies the same listener path, and the
+[membership oracle](../../tools/e2e-harness/tests/p0_gateway_runtime/local_work_membership.rs)
+requires each follow-up assessment to name its own actual predecessor, with no
+partial capture. Negative controls reject cross-session, self, duplicate and
+missing identities even when the number of assessment members is correct.
+
 | Layer | Appropriate assertion | Evidence limit |
 | --- | --- | --- |
 | Pure state / policy | Intent, thresholds, branch isolation and request construction | No service dispatch or production wiring |
@@ -108,6 +122,13 @@ model-group switching and assessment membership through the real Gateway;
 reject ambiguous siblings, changed input/setup, capture gaps and accepted output. The
 [request JSON observation cases](../../crates/gateway/src/observation/content/request_json_replay_tests.rs)
 verify Replay expansion, integrity and bounded storage without leaking locators.
+They also pause deferred encoding through foreground teardown, check root/byte
+parity with the independent synchronous oracle, and inject bounded queue failure.
+The [late-content SQLite case](../../crates/observation/src/store/tests/late_content.rs)
+checks content arriving after RequestFinished, exact reopen and duplicate ACKs.
+The [request measurement cases](../../crates/gateway/src/context_hold/store_request_measurement_tests.rs)
+compare reused checkpoints with the uncached continuity oracle, count complete
+scans and require rescanning for changed source, semantic view, key or position.
 The observation [timeline cases](../../crates/observation/src/store/tests/plan_quality/routing_timeline.rs)
 verify that explicit maintenance-purpose evidence excludes a user turn without
 removing the request, while unmarked retained records remain visible. These

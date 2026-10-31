@@ -6,7 +6,13 @@ use hiroute_application_api::{generated_contract_files, planned_commands, releas
 #[test]
 fn checked_in_contracts_are_exact_generator_output() {
     let output = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/cli");
-    for file in generated_contract_files() {
+    let generated = generated_contract_files();
+    assert_eq!(
+        generated,
+        generated_contract_files(),
+        "generator is not deterministic"
+    );
+    for file in generated {
         let actual = std::fs::read_to_string(output.join(file.relative_path))
             .unwrap_or_else(|error| panic!("missing generated {}: {error}", file.relative_path));
         assert_eq!(actual, file.contents, "{} is stale", file.relative_path);
@@ -16,7 +22,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 109); // Includes complete metadata and saved-default intent queries.
+    assert_eq!(commands.len(), 120); // Includes versioned decisions, source policy operations and explicit network probes.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));
@@ -63,6 +69,7 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "compute.connection.authorize",
             "compute.connection.login",
             "compute.connection.test",
+            "compute.connection.test-network",
             "routing.options",
             "worker.executors",
             "worker.dependencies.discover",
@@ -83,6 +90,11 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "routing.apply",
             "decision.services.list",
             "decision.services.apply",
+            "decision.sources.list",
+            "decision.connections.list",
+            "decision.connections.apply",
+            "decision.connections.test",
+            "decision.network.test",
             "decision.services.test",
             "models.feed.status",
             "models.feed.refresh",
@@ -90,6 +102,11 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "models.feed.remove.preview",
             "models.feed.remove.apply",
             "models.availability",
+            "compute.network.show",
+            "compute.network.preview",
+            "compute.network.apply",
+            "compute.network.resolve",
+            "compute.connection.preview-network",
             "compute.defaults.get",
             "compute.defaults.preview",
             "models.metadata.list",

@@ -10,6 +10,7 @@ import type { ComputeCandidateView } from '../../../src/features/model-connectio
 import type { SubscriptionCandidate, SubscriptionCheckResult } from '../../../src/features/subscriptions/types';
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
 import type { AuthoringOptions, Draft, Editor, Plan } from '../../../src/plan-editor';
+import type { DecisionServiceRecord, DecisionServiceView, DecisionSourceSummary } from '../../../src/features/decision-services/contracts';
 import type { DesktopSnapshot } from '../../../src/product/home-projections';
 import { fixture as legacyHomeFixture } from '../../mvp16/browser/fixtures';
 import connectionRegistry from '../../../../../assets/release-facts/current/bundle/connector-registry.json';
@@ -294,14 +295,14 @@ export function fixturePlanAuthoring(plan?: Plan): AuthoringOptions {
     if (desired.mode === 'smart_saving') {
       const { native_protocol: _protocol, ...editable } = strategy;
       Object.assign(editor.smart, editable);
-      editor.smart.judgment = resolveAssessment(editor.smart.judgment, editor.smart.classifier.kind === 'decision_service' && editor.smart.classifier.service.connection.kind === 'system_one');
+      editor.smart.judgment = resolveAssessment(editor.smart.judgment, editor.smart.classifier.kind !== 'local_rules' && editor.smart.classifier.service.connection.kind !== 'custom');
       // The current options response is authoritative, including an omitted optional field.
       if (!Object.hasOwn(strategy, 'reselect_on_user_message')) delete editor.smart.reselect_on_user_message;
     }
     else if (desired.mode === 'free_first') Object.assign(editor.free, strategy);
     else if (desired.mode === 'custom_branches' && strategy.routing) {
       const { native_protocol: _protocol, ...routing } = strategy.routing;
-      const native = routing.classifier.kind === 'decision_service' && routing.classifier.service.connection.kind === 'system_one';
+      const native = routing.classifier.kind !== 'local_rules' && routing.classifier.service.connection.kind !== 'custom';
       routing.judgment = resolveAssessment(routing.judgment, native);
       routing.branches = routing.branches.map(b => b.judgment ? { ...b, judgment: resolveAssessment(b.judgment, native) } : b);
       editor.branch_routing = routing;
@@ -507,10 +508,38 @@ function agentSnapshotFor(scenario: ProductScenario): AgentSnapshot {
   };
 }
 
+// Synthetic digests only distinguish fixture states; canonical digests are backend-owned.
+export function fixtureDigest(value: unknown) {
+  let hash = 0x811c9dc5;
+  for (const ch of JSON.stringify(value)) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return 'sha256:' + hash.toString(16).padStart(8, '0').repeat(8);
+}
+export function fixtureDecisionSource(sourceId: string, overrides: Partial<DecisionSourceSummary> = {}): DecisionSourceSummary {
+  return {
+    source_id: sourceId, lineage_digest: fixtureDigest(['lineage', sourceId]), revision: 1, display_name: 'Decision API', provider_label: 'OpenAI',
+    endpoint_host: 'api.openai.test', auth_kind: 'native_api_key', state: 'ready', credential_state_revision: fixtureDigest(['credentials', sourceId, 1]),
+    suggestion: { model: 'gpt-6-luna', endpoint: 'https://api.openai.test/v1/decisions', wire_protocol: 'openai_decisions' }, ...overrides,
+  };
+}
+/** Projects a stored record the way the daemon read does: shared state is resolved from current sources. */
+export function fixtureDecisionView(service: DecisionServiceRecord, sources: DecisionSourceSummary[] = []): DecisionServiceView {
+  const connection = service.connection;
+  const sourceId = connection.kind === 'native' && connection.authentication.kind === 'shared_source' ? connection.authentication.source_id : null;
+  const source = sourceId ? sources.find(item => item.source_id === sourceId) ?? { ...fixtureDecisionSource(sourceId), lineage_digest: null, revision: null, display_name: null, provider_label: null, endpoint_host: null, auth_kind: null, credential_state_revision: null, suggestion: null, state: 'missing' as const } : null;
+  const independent = connection.kind === 'native' ? connection.authentication.kind === 'independent' ? connection.authentication.auth_header : null : connection.auth_header ?? null;
+  return {
+    service: structuredClone(service), configuration_digest: fixtureDigest(service),
+    credential_state_revision: source ? source.credential_state_revision : independent ? fixtureDigest(independent) : null,
+    source, related_sources: source ? [source] : [],
+  };
+}
+
 export function mockProductInvoke(command: string, payload: Record<string, any> | undefined, scenario: ProductScenario) {
   fixtureTrace.commands.push(command);
   fixtureTrace.requests.push({ command, payload: structuredClone(payload) });
   const fresh = scenario === 'fresh';
+  if (command === 'decision_services_v2') return { services: [] };
+  if (command === 'decision_connection_sources') return { sources: [] };
   if (command === 'compute_management_snapshot') return fresh ? { ...readyManagement, sources: [] } : readyManagement;
   if (command === 'compute_key_masks') {
     const query = payload?.query as { source_id: string; expected_source_revision: number };

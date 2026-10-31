@@ -111,7 +111,9 @@ mod recovery_text_tests {
             text.contains(
                 &directory
                     .path()
-                    .join("custom-storage.upgrade-backups/observation-format-5/source")
+                    .join("custom-storage.upgrade-backups")
+                    .join("observation-format-5")
+                    .join("source")
                     .display()
                     .to_string()
             )

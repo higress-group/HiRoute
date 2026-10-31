@@ -80,7 +80,9 @@ impl CallDiagnostic {
     pub(super) fn failure(&mut self, failure: CallFailure) {
         self.final_event.provider_error = Some(match failure {
             CallFailure::Timeout => WireProviderError::Timeout,
-            CallFailure::Unavailable => WireProviderError::UpstreamUnavailable,
+            CallFailure::Unavailable
+            | CallFailure::SourceDisabled
+            | CallFailure::NoUsableCredentials => WireProviderError::UpstreamUnavailable,
             CallFailure::RejectedInput => WireProviderError::InputRejected,
             CallFailure::AuthenticationRejected => WireProviderError::AuthenticationRejected,
             CallFailure::RateLimited => WireProviderError::RateLimited,
@@ -185,6 +187,8 @@ impl CallFailure {
         match self {
             Self::Timeout => ClassifierDiagnosticError::Timeout,
             Self::Unavailable => ClassifierDiagnosticError::Unavailable,
+            Self::SourceDisabled => ClassifierDiagnosticError::SourceDisabled,
+            Self::NoUsableCredentials => ClassifierDiagnosticError::NoUsableCredentials,
             Self::RejectedInput => ClassifierDiagnosticError::RejectedInput,
             Self::InvalidOutput => ClassifierDiagnosticError::InvalidOutput,
             Self::AuthenticationRejected => ClassifierDiagnosticError::AuthenticationRejected,

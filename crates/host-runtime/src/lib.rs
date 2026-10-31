@@ -6,6 +6,9 @@
 //! owns only the one listener record and one standalone installation/layout contract that are
 //! consumed by all current native entrypoints.
 
+#[cfg(test)]
+mod development_versions_tests;
+
 mod desktop_package;
 mod gateway_listener;
 mod releases;

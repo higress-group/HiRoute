@@ -1,6 +1,43 @@
 use super::*;
 
 #[test]
+fn bulk_skipping_matches_scalar_transitions_at_controls_escapes_limits_and_chunk_edges() {
+    let mut bodies = vec![
+        format!(
+            r#"{{"input":{},"model":"route"}}"#,
+            serde_json::to_string(&"plain 路由🦀 \\\"\n".repeat(256)).unwrap()
+        )
+        .into_bytes(),
+        br#"{"metadata":[{"text":"nested \uD83D\uDE80 escaped\\\" text"}],"model":"route"}"#
+            .to_vec(),
+        br#"{"input":"unfinished escape\"#.to_vec(),
+    ];
+    for byte in 0..=31 {
+        let mut body = br#"{"input":"prefix "#.to_vec();
+        body.push(byte);
+        body.extend_from_slice(br#" suffix","model":"route"}"#);
+        bodies.push(body);
+    }
+    for body in bodies {
+        for limit in [0, 1, 8, body.len() - 1, body.len(), usize::MAX] {
+            for size in [1, 2, 7, 1024, body.len()] {
+                let mut bulk = ModelSelector::new(limit);
+                let mut scalar = ModelSelector::new(limit);
+                for chunk in body.chunks(size) {
+                    let expected = scalar.feed_scalar(chunk);
+                    assert_eq!(bulk.feed(chunk), expected, "limit={limit}, chunk={size}");
+                    assert_eq!(bulk.observed, scalar.observed);
+                    if expected.is_err() {
+                        break;
+                    }
+                }
+                assert_eq!(bulk.finish(), scalar.finish());
+            }
+        }
+    }
+}
+
+#[test]
 fn selector_stops_before_later_secret_and_ignores_nested_model() {
     let mut selector = ModelSelector::new(64);
     let body = br#"{"metadata":{"model":"wrong"},"model":"plan-fast","secret":"later"}"#;

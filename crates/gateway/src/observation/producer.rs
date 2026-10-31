@@ -20,6 +20,7 @@ mod bounded;
 mod feedback;
 
 pub(super) use bounded::ObservationProducerIdentity;
+pub(super) use bounded::ObservationWorkReservation;
 use bounded::{
     ByteBoundedObservationProducer, ObservationLossReason, ObservationLossWatermark,
     ObservationSequenceStamp, RECORD_ACCOUNTING_BYTES,
@@ -39,6 +40,31 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
+    #[cfg(any(test, feature = "e2e-test-control"))]
+    pub(super) fn work_state(&self) -> Option<(usize, usize, usize)> {
+        self.inner.as_ref().map(|producer| producer.work_state())
+    }
+
+    #[cfg(test)]
+    pub(super) fn wait_until_credit_blocked(&self) {
+        self.inner.as_ref().unwrap().wait_until_credit_blocked();
+    }
+    pub(super) fn work_can_fit(&self, bytes: usize) -> bool {
+        self.inner
+            .as_ref()
+            .is_some_and(|producer| producer.work_can_fit(bytes))
+    }
+
+    pub(super) fn reserve_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
+        self.inner.as_ref()?.reserve_work(bytes)
+    }
+
+    pub(super) fn declare_work_loss(&self) {
+        if let Some(inner) = &self.inner {
+            inner.declare_work_loss();
+        }
+    }
+
     pub(super) fn disabled(component: &'static str, revision: &'static str) -> Self {
         Self {
             component: Arc::from(component),
@@ -81,18 +107,46 @@ impl ChannelProducer {
         T: Serialize,
         F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
     {
+        self.publish_timed(super::latency::RequestLatency::current(), build);
+    }
+
+    pub(super) fn publish_timed<T, F>(
+        &self,
+        timing: Option<super::latency::RequestLatency>,
+        build: F,
+    ) where
+        T: Serialize,
+        F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
+    {
+        self.publish_with_credit(timing, None, 0, build);
+    }
+
+    pub(super) fn publish_with_credit<T, F>(
+        &self,
+        timing: Option<super::latency::RequestLatency>,
+        deadline: Option<std::time::Instant>,
+        credit_bytes: usize,
+        build: F,
+    ) -> bool
+    where
+        T: Serialize,
+        F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
+    {
         let component = Arc::clone(&self.component);
         let revision = Arc::clone(&self.revision);
         let Some(inner) = &self.inner else {
-            return;
+            return true;
         };
-        inner.try_publish(move |stamp| {
-            let producer = descriptor(&stamp, &component, &revision);
-            let loss = stamp.loss_watermark.map(loss_watermark);
-            serde_json::to_vec(&build(producer, stamp.sequence, loss)).unwrap_or_else(|_| {
-                br#"{"schema_version":"hiroute.observation.serialization-failure/v1"}"#.to_vec()
-            })
-        });
+        matches!(
+            inner.publish_timed(timing, deadline, credit_bytes, move |stamp| {
+                let producer = descriptor(&stamp, &component, &revision);
+                let loss = stamp.loss_watermark.map(loss_watermark);
+                serde_json::to_vec(&build(producer, stamp.sequence, loss)).unwrap_or_else(|_| {
+                    br#"{"schema_version":"hiroute.observation.serialization-failure/v1"}"#.to_vec()
+                })
+            }),
+            bounded::ObservationPublishOutcome::Enqueued { .. }
+        )
     }
 }
 

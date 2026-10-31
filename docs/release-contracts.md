@@ -60,6 +60,14 @@ package, following the generated recovery guide. Never mix old business stores
 with newer Observation data or restore only `activity.db`. An independent copy
 and full-content check can be made offline, outside service startup.
 
+Before starting the old program, also move the adjacent
+`<storage-directory-name>.upgrade-backups` directory to a distinct unused
+name on the same filesystem and preserve it completely. Older programs inspect its active migration
+metadata independently of the restored databases and can reject a newer batch.
+The selected source and its guide may move with this directory; continue using
+that guide's new containing directory. Do not delete or rewrite the preserved
+batches. This step also applies to retained guides that do not yet mention it.
+
 Branch-route publications may contain `source_binding_id` in the persisted active,
 prepared or last-known-good Gateway aggregate. Version 0.3.1 and earlier strict readers
 reject this field, even though the enclosing contract remains
@@ -114,7 +122,16 @@ artifact rows; this workflow consumes the reviewed catalog and published bytes.
 package identities, then publishes the installers/site. Only after those jobs succeed does
 `record-contracts` call [the PR publisher](../.github/scripts/release-contract-pr.sh).
 It reads the verified manifest revision and exact released source, cross-checks published asset
-sizes/digests, and proposes only `contracts/releases/` changes on `chore/release-contracts-<tag>`.
+sizes/digests, and proposes `contracts/releases/` plus the product version fields and
+lockfile entries, including the generated handshake schema/digest, on
+`chore/release-contracts-<tag>`. The shared
+[version tool](../scripts/product-version.py) opens the next patch development
+cycle after a stable release when main has not already moved ahead. It preserves
+a newer planned version. Retries accept only those version fields and contract
+records; unrelated edits inside a version manifest remain ownership conflicts.
+If main advances while that PR is open, retry first removes only the automation's
+version projection against its common ancestor, merges main's version and
+dependency changes, then prepares the development version against the merged ledger.
 
 Normal review/checks and merge into `main` advance the repository's baseline. The workflow never
 approves or merges its own PR. Existing snapshots are immutable; older reruns and previews retain
