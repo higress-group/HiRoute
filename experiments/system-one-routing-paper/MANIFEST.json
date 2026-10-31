@@ -1,6 +1,6 @@
 {
   "schema": "hiroute.system-one-research/v1",
-  "version": "2026-10-28",
+  "version": "2026-10-29",
   "files": [
     {
       "path": ".gitignore",
@@ -9,18 +9,18 @@
     },
     {
       "path": "DATA-CARD.md",
-      "sha256": "2709dccf130495685c4c3346e629f78ecbae2c3f09c13286f023bb5b154fda9d",
-      "bytes": 10678
+      "sha256": "910212455d7efd74f9183dcb23c6d64276f71b49808b02dcb4c13dc28d1053dd",
+      "bytes": 11577
     },
     {
       "path": "README.md",
-      "sha256": "f8411791c9a710152dcae4a1f0a2c9e0f5e01974486f4f1cec5080e271dbb70e",
-      "bytes": 10312
+      "sha256": "30a4a2f74f1376d46ea2ae4ae58729e38e1cfb253cf9afeadf8463787da619e9",
+      "bytes": 11554
     },
     {
       "path": "REPRODUCE.md",
-      "sha256": "860dc401f7b24cb5ccdef57591209988b6a9794aa7bd219da8cadbf8a0922524",
-      "bytes": 6941
+      "sha256": "66e0701d60fb4ee1d1d65893a93d4340795cde546c594ba4cad9a759021a982a",
+      "bytes": 7728
     },
     {
       "path": "analysis/context_eval.py",
@@ -249,8 +249,8 @@
     },
     {
       "path": "main.md",
-      "sha256": "a218811f6bb87ead2d5fdd474b542417991dcfbc648b0b27c2e72874d57a7805",
-      "bytes": 78310
+      "sha256": "a3a74c073e7475cd2ace0ff8f55dea63957a03bad816d0f145c98f8786b2a165",
+      "bytes": 84068
     },
     {
       "path": "policies/engineering-direct-explicit.json",
@@ -481,6 +481,71 @@
       "path": "sensitivities/mr010.json",
       "sha256": "d8b592c68136a9d2509fc65a31fc9f540b415c3e3810ff4aba04992ac9c607c9",
       "bytes": 796
+    },
+    {
+      "path": "supplements/decision-interface-transfer/MANIFEST.json",
+      "sha256": "ebfbda5522385a222fd3ac27b0603bc8e81620f42452ce8a830648990a9fca63",
+      "bytes": 2510
+    },
+    {
+      "path": "supplements/decision-interface-transfer/README.md",
+      "sha256": "4d54e2de84f36e8f509e4f77f167a77596058e279f8e2c70284bd674e5133238",
+      "bytes": 6667
+    },
+    {
+      "path": "supplements/decision-interface-transfer/RESULTS.md",
+      "sha256": "1590204557200ce35e53e34b9cde1d21b766f2539ccf44e76cf9241afceb1109",
+      "bytes": 1997
+    },
+    {
+      "path": "supplements/decision-interface-transfer/adapter.py",
+      "sha256": "3e29771cf74b7f0ffc0be9d2729eae6d223362a14d0404904d4e28982826716a",
+      "bytes": 2059
+    },
+    {
+      "path": "supplements/decision-interface-transfer/inputs.jsonl",
+      "sha256": "f9e4ba87c0dbaf96a12ed536f99d1656f35539828deb3ec6628af43d7a0ac5a4",
+      "bytes": 122977
+    },
+    {
+      "path": "supplements/decision-interface-transfer/labels.jsonl",
+      "sha256": "70b90078fb67c5402a1b7c80f55c2516abdf35628f2c479c7fcf3d4262c1a77f",
+      "bytes": 427088
+    },
+    {
+      "path": "supplements/decision-interface-transfer/provenance.json",
+      "sha256": "921f5a6630d65ac56010ba7a1adfb5effdab48d06cd11b10156a7f1358820907",
+      "bytes": 1733
+    },
+    {
+      "path": "supplements/decision-interface-transfer/questions.json",
+      "sha256": "c20dbeed8d4fb618440f13bf317d5a2288c468da17227c5f6a5d8786fea6a2ca",
+      "bytes": 40671
+    },
+    {
+      "path": "supplements/decision-interface-transfer/reference-results.json",
+      "sha256": "c5cefeaf1fbc4035b9498e0e342c603ed3edfa286d767248d8666008129f3ad9",
+      "bytes": 329339
+    },
+    {
+      "path": "supplements/decision-interface-transfer/replay.py",
+      "sha256": "d5d9fda12f2f23cdedb46dd42dabcaf8f4f1fae3711caaf53cccc1986503139b",
+      "bytes": 8588
+    },
+    {
+      "path": "supplements/decision-interface-transfer/requests.jsonl.gz",
+      "sha256": "e7bb959aaaaa6fc2d04d1f66a6b1020f584cbd7f8b67c928d3df5b46277b8815",
+      "bytes": 538011
+    },
+    {
+      "path": "supplements/decision-interface-transfer/responses.jsonl.gz",
+      "sha256": "44e65173796bbeb130f831056a1b2c919b1e13c071b5d1d2ce0def7cc9c46ce7",
+      "bytes": 43707
+    },
+    {
+      "path": "supplements/decision-interface-transfer/selection.json",
+      "sha256": "2d1664312cf1dccc3a555d3831505341405239eac536095ed0b8401b2fd5987b",
+      "bytes": 6822
     },
     {
       "path": "supplements/mathematics-history/.gitignore",
