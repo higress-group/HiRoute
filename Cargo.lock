@@ -2415,8 +2415,8 @@ name = "hiroute-domain"
 version = "0.1.0"
 dependencies = [
  "http",
- "jiff",
  "ipnet",
+ "jiff",
  "percent-encoding",
  "pinyin",
  "schemars 1.2.2",
@@ -2582,8 +2582,8 @@ dependencies = [
  "hiroute-integrations",
  "hiroute-platform",
  "hiroute-platform-test-support",
- "jiff",
  "hmac",
+ "jiff",
  "rusqlite",
  "rustix",
  "serde",
