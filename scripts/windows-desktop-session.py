@@ -62,6 +62,7 @@ public class DesktopWindow {
  [StructLayout(LayoutKind.Sequential)] public struct Point {public int X,Y;public Point(int x,int y){X=x;Y=y;}}
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window,int command);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x,int y);
  [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
@@ -244,6 +245,7 @@ $all=@(Observe $root)
 if($all.Count -gt 1600){throw 'UI Automation tree exceeds observation bound'}
 if($q.action -in @('invoke','text','close','click','scroll')) {
  if($q.action -eq 'close') {
+  $closeHandle=$p.MainWindowHandle
   $root.GetCurrentPattern([Windows.Automation.WindowPattern]::Pattern).Close()
  } elseif($q.action -in @('click','scroll')) {
   $r=$root.Current.BoundingRectangle
@@ -278,7 +280,10 @@ if($q.action -in @('invoke','text','close','click','scroll')) {
  }
  Start-Sleep -Milliseconds 750
  $p.Refresh()
- if($p.MainWindowHandle -eq 0){@{closed=$true;pid=$p.Id}|ConvertTo-Json -Compress;exit 0}
+ # Close-to-tray can retain a nonzero HWND even after the window is hidden.
+ if($p.MainWindowHandle -eq 0 -or ($q.action -eq 'close' -and -not [DesktopWindow]::IsWindowVisible($closeHandle))){
+  @{closed=$true;pid=$p.Id;process_alive=(-not $p.HasExited)}|ConvertTo-Json -Compress;exit 0
+ }
  $root=[Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
  $all=@(Observe $root)
 }
