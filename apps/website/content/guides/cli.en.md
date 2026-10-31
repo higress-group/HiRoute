@@ -1,11 +1,12 @@
 # HiRoute CLI
 
-HiRoute CLI is the official terminal entry to the HiRoute local service. It can connect to Desktop or serve as the complete management interface for Linux headless. Model sources, smart routes, Agent connections, session observation, and Worker tasks reuse the same production paths as Desktop; there is no second headless control plane.
+HiRoute CLI is the official terminal entry to the HiRoute local service. It works alongside macOS / Windows Desktop and the Linux Web UI, or as the complete management interface for terminal and automation workflows. Model sources, smart routes, Agent connections, session observation and Worker tasks reuse the same production paths.
 
 ## Install and inspect the CLI
 
 - macOS Desktop: open Settings → CLI → Terminal entry and select Install.
-- Linux headless: follow [Run HiRoute headless on Linux](/en/docs/install-linux/) to use the website's one-line installer, then start the service explicitly.
+- Windows Desktop (0.5.0+): the current-user installer includes the CLI and offers to add its entry to PATH. See [Windows installation](/en/docs/install-windows/), then open a new terminal.
+- Linux: follow [Linux Web UI and CLI installation](/en/docs/install-linux/) to use the website's one-line installer, then start the service explicitly.
 
 If the entry directory is not on PATH, add this line to your shell configuration and open a new terminal:
 

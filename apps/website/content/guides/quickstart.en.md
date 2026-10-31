@@ -1,13 +1,16 @@
 # Quickstart
 
-Choose macOS Desktop or Linux headless, connect model access and create the route you need: fixed model or difficulty routing directly. Difficulty routing can use explicitly selected local rules without an external decision service. Task delegation is independent.
+Choose Desktop on macOS or Windows, or the Web UI or CLI on Linux. Connect model access and create the route you need: fixed model or difficulty routing directly. Difficulty routing can use explicitly selected local rules without an external decision service. Task delegation is independent.
 
 ## 1. Choose how to run HiRoute
 
 - **macOS Desktop:** requires macOS 15.0 or later. Public installers are self-signed builds. Verify the SHA256 after downloading, then follow [Install and open HiRoute on macOS](/en/docs/install-macos/).
-- **Linux headless:** designed for servers, remote workstations, and automation. It installs for the current user and needs no `sudo`. Follow [Run HiRoute headless on Linux](/en/docs/install-linux/) to start the service and continue through the CLI.
+- **Windows Desktop (0.5.0+):** use the native x64 installer. It installs for the current user and includes the service and CLI without requiring Python or administrator privileges. Follow [Install HiRoute Desktop on Windows](/en/docs/install-windows/).
+- **Linux Web UI and CLI:** designed for servers, remote workstations, and automation. It installs for the current user on x86_64 or ARM64 and needs no `sudo`. With 0.5.0 or later, enable the Web UI and open its login URL in a browser; the server needs no desktop. Follow [Install HiRoute on Linux](/en/docs/install-linux/).
 
-Steps 2–5 below show the visual Desktop path. Linux users complete the corresponding flow through the same production capabilities in the headless guide. In either case, confirm that the local service is ready first; model routing, session records, and delegated execution all depend on it.
+The [download page](/en/download/) lists available published packages. Windows Desktop and the Linux Web UI require 0.5.0 or later; earlier Linux packages provide the CLI.
+
+Steps 2–5 below apply to Desktop and the Linux Web UI. The browser manages the models, routes, Agents and files on the service host. You can also complete setup through the CLI. Confirm that the local service is ready first; model routing, session records, and delegated execution all depend on it.
 
 ## Use the CLI or an Agent
 
@@ -52,5 +55,5 @@ Follow the native loading and model-selection guidance, then submit an authorize
 
 - [Use smart model routing](/en/docs/model-routing/) to configure the four routing types, decision models, and custom branches, then inspect turn selection, actual execution, and later stage assessment.
 - [Use smart task routing](/en/docs/task-routing/) to delegate independently executable work.
-- [Run HiRoute headless on Linux](/en/docs/install-linux/) to install from an empty environment and configure models, routes, and Agents from the CLI.
+- [Install HiRoute on Linux](/en/docs/install-linux/) to configure models, routes and Agents through the Web UI or CLI, locally or from another computer.
 - [HiRoute CLI](/en/docs/cli/) to manage HiRoute, inspect runtime facts, start tasks, and recover uncertain submissions from Terminal.

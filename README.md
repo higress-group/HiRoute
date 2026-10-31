@@ -23,7 +23,7 @@
 <p align="center">
   <a href="https://github.com/higress-group/HiRoute/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/higress-group/HiRoute?display_name=tag&amp;sort=semver&amp;style=flat-square"></a>
   <a href="LICENSE"><img alt="Apache-2.0 license" src="https://img.shields.io/badge/license-Apache--2.0-5A6FE8?style=flat-square"></a>
-  <a href="https://hiroute.ai/en/download/"><img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
+  <a href="https://hiroute.ai/en/download/"><img alt="macOS, Windows and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
 ## Real-world cost savings
@@ -146,6 +146,10 @@ to evaluate decision prompts against your own tasks.
 [Installation guides](https://hiroute.ai/en/docs/) ·
 [Latest release](https://github.com/higress-group/HiRoute/releases/latest)
 
+HiRoute **0.5.0 adds Windows x64 Desktop and a Linux Web UI** alongside macOS Desktop
+and the CLI. The [download page](https://hiroute.ai/en/download/) lists published packages;
+these new interfaces require 0.5.0 or later.
+
 1. **Connect your models.** Add a supported subscription or API connection and choose an
    economical model plus a primary model.
 2. **Set the division of work.** Connect a decision model in **Models → Decision models**,
@@ -155,11 +159,17 @@ to evaluate decision prompts against your own tasks.
    reports in HiRoute.
 
 <details>
-<summary>macOS Desktop and Linux headless installation</summary>
+<summary>Install on macOS, Windows or Linux</summary>
 
 **macOS:** download the DMG, drag HiRoute into Applications, and follow the
 [self-signed package instructions](docs/macos-installation.md) if macOS asks for approval.
 Supports macOS 15+ on Apple silicon and Intel.
+
+**Windows:** use the x64 Desktop installer from 0.5.0 or later. It installs for the
+current user and includes the background service, WebView2 bootstrapper and CLI;
+no Python or administrator privileges are required. See the
+[Windows installation guide](https://hiroute.ai/en/docs/install-windows/) for
+checksum verification, first launch and recovery.
 
 **Linux:** install the current-user CLI and daemon on x86_64 or ARM64 without `sudo`:
 
@@ -169,8 +179,20 @@ hiroute service start --output json
 hiroute system status --output json
 ```
 
+On **0.5.0 or later**, open the Web UI to connect models, configure routes and Agents,
+and inspect sessions in your browser:
+
+```sh
+hiroute console init --mode loopback --port 5838
+hiroute service restart --output json
+hiroute console open
+```
+
+Open the printed single-use login URL. For a remote host, use the
+[remote-access or SSH-tunnel instructions](docs/web-console.md#access-from-another-device).
+The CLI remains available for terminal and automation workflows.
 The installer verifies the published manifest and checksums; service startup is explicit.
-See the [Linux installation guide](https://hiroute.ai/en/docs/install-linux/) and
+See the [Linux Web UI and CLI guide](https://hiroute.ai/en/docs/install-linux/) and
 [CLI reference](docs/standalone-cli.md).
 
 </details>

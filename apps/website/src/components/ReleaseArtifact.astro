@@ -6,7 +6,7 @@ const t = (zh, english) => en ? english : zh;
 const windows = artifact.platform === 'Windows';
 const desktop = artifact.kind === 'desktop';
 const name = desktop ? windows ? t('Windows 桌面应用', 'Windows Desktop') : t('macOS 桌面应用', 'macOS Desktop')
-  : windows ? t('Windows 无界面版', 'Windows headless') : t('Linux 无界面版', 'Linux headless');
+  : windows ? t('Windows 无界面版', 'Windows headless') : t('Linux 服务与 CLI', 'Linux service and CLI');
 ---
 <div class="artifact-row"><div><strong>{name} · {artifact.architecture}</strong>
   {desktop && !windows ? <span>{t(`最低 macOS ${artifact.minimum_os}`, `macOS ${artifact.minimum_os}+`)}</span> : <span>{desktop ? 'NSIS · x64 · current user' : artifact.target} · {formatBytes(artifact.size, language)}</span>}

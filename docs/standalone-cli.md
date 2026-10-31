@@ -1,7 +1,9 @@
-# HiRoute Linux headless CLI
+# HiRoute Linux CLI and service
 
 [简体中文](standalone-cli.zh-CN.md)
 
+Linux offers a browser-based Web UI from 0.5.0 alongside the complete CLI. See the
+[Linux installation guide](https://hiroute.ai/en/docs/install-linux/) for both paths.
 Standalone is the single-user mode that does not install Desktop. The production `hiroute`
 CLI, role-all `hirouted` daemon, Local Control, Gateway, business storage, and observation
 form one control and execution loop. It uses the local control socket's OS access permissions, needs no
@@ -16,7 +18,7 @@ page and the Quickstart are validated for Linux.
 
 ## Installation
 
-The installed daemon also provides the [Web console](web-console.md). It defaults
+From 0.5.0, the installed daemon also provides the [Web UI / console](web-console.md). It defaults
 to off on Linux. Configure its scope and port with installer options or
 `hiroute console init`, then start/restart the service. `hiroute console open`
 returns a one-use URL for the actual local or remote listener without starting

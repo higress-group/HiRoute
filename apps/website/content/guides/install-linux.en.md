@@ -1,8 +1,10 @@
-# Run HiRoute headless on Linux
+# Install HiRoute on Linux
 
-HiRoute headless installs the local service, Gateway, CLI, and Agent management Skill for the current user. It is designed for servers, remote workstations, and automation environments without a desktop UI. It is not a reduced read-only client: model sources, smart routes, Agent connections, session observation, and task delegation are all available through the CLI.
+HiRoute on Linux provides a **Web UI and CLI** for servers, remote workstations and automation. Use your browser to connect models, configure routes and Agents, inspect sessions and manage delegated tasks. The service host needs no desktop environment; the CLI also supports the full management workflow.
 
-Linux packages support `x86_64` and ARM64 (`aarch64`). Installation needs no `sudo`; it requires `curl`, Python 3, and a glibc Linux environment capable of running the HiRoute binaries.
+The Web UI requires **0.5.0 or later**. Check the [download page](/en/download/) for published packages; earlier Linux releases provide the CLI. A complete package includes the local service, Gateway, CLI, console assets and Agent management Skill.
+
+Linux packages support `x86_64` and ARM64 (`aarch64`), with glibc 2.31 or later. Installation needs no `sudo`; it requires `curl` and Python 3.
 
 ## 1. Install
 
@@ -28,9 +30,9 @@ export PATH="$HOME/.local/bin:$PATH"
 
 The installer downloads the latest stable Linux release and checks its architecture and file integrity before installation. Desktop and standalone must not manage the service in the same `HOME`.
 
-## Configure the optional Web console
+## Open the Web UI (0.5.0+)
 
-Linux keeps the console off unless configured. To choose scope and port during installation:
+The Web UI uses HiRoute's authenticated Web console. Linux keeps it off unless configured. With a 0.5.0 or later package, choose local access and a port during installation:
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh -s -- --console-mode loopback --console-port 5838
@@ -103,9 +105,11 @@ These commands show discoverable sources, existing routes, connectable Agents, a
 
 Writes follow one safety pattern: read schema and options, perform a bounded test, then submit the same change to `preview`. Inspect its digest, revisions, and effects before sending it to `apply`. Pass passwords and API keys through `protected-input`, never through ordinary JSON, arguments, or logs.
 
-## 4. Complete headless setup
+## 4. Configure models, routes and Agents
 
-Build the first route in this order:
+With the Web UI open, follow the visual [Quickstart](/en/docs/) from **Connect a model**. All paths, Agent installations and native files belong to the service host, including when your browser runs on another computer. Desktop-only controls such as application updates and login-start settings are absent.
+
+For terminal or automation use, build the first route through the CLI in this order:
 
 1. Inspect available sources with `compute scan/list/show`. For a custom API, use `compute connection options/test/preview/apply`; use `authorize` for a source that requires browser authorization.
 2. Check candidate model capabilities with `models show`.
@@ -113,7 +117,7 @@ Build the first route in this order:
 4. Discover local Agents with `agents scan/list/check`, then connect one through `agents connect preview/apply/status`. Recovery uses `agents restore preview/apply` and removes only fields still owned by HiRoute.
 5. After sending a real Agent request, inspect routing facts and usage with `sessions list/show/receipt/status`, and inspect value records backed by available pricing evidence with `value show`.
 
-This is not a second headless control plane. CLI and Desktop reuse the same Application, Local Control, storage, publication, and recovery paths.
+Web UI, CLI and Desktop reuse the same service-owned configuration, storage, publication and recovery paths.
 
 ## 5. Delegate a task
 

@@ -6,6 +6,12 @@ Desktop provides model management, routing configuration, Agent integration, tas
 and session history. It reaches the real local service through the shared Client Core. See
 the [website documentation](https://hiroute.ai/en/docs/) for the public user entry point.
 
+This directory owns the shared product UI and the macOS native host. Windows x64
+Desktop uses the [Windows shell](../shell/README.md) around the daemon-served console;
+Linux serves the same UI in a browser without a desktop environment. These Windows
+and Linux interfaces are available from 0.5.0. The host-specific controls and
+installation paths remain separate; see the [Web console guide](../../docs/web-console.md).
+
 ## Development entry point
 
 Build the UI from this checkout, then build the matching native application and daemon:

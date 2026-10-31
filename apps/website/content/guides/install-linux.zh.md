@@ -1,8 +1,10 @@
-# 在 Linux 上以无界面模式运行 HiRoute
+# 在 Linux 上安装 HiRoute
 
-Linux 无界面版将 HiRoute 安装到当前用户目录，适合服务器、远程工作站和无图形界面的自动化环境。安装内容包括本机服务、负责转发模型请求的 Gateway、CLI，以及供 Agent 使用的管理 Skill。你可以在终端连接模型、配置路由、接入 Agent、查看会话和委派任务。
+Linux 版提供 **Web UI 与 CLI**，适合服务器、远程工作站和自动化环境。你可以在浏览器中接入模型、配置路由与 Agent、查看会话和管理委派任务；服务主机无需安装桌面环境，CLI 也支持完整管理流程。
 
-Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`）。不需要 `sudo`；需要 `curl`、Python 3，以及能够运行 HiRoute 二进制的 glibc Linux 环境。
+Web UI 需要 **0.5.0 或更高版本**。[下载页](/download/)列出已发布的安装包；较早的 Linux 版本提供 CLI。完整安装包包括本机服务、Gateway、CLI、控制台文件，以及供 Agent 使用的管理 Skill。
+
+Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或更高版本。无需 `sudo`；安装需要 `curl` 与 Python 3。
 
 ## 1. 安装
 
@@ -28,9 +30,9 @@ export PATH="$HOME/.local/bin:$PATH"
 
 安装脚本会下载最新稳定的 Linux 版本，并在安装前检查架构与文件完整性。桌面应用与独立服务版（standalone）不应在同一个 `HOME` 中同时管理服务。
 
-## 配置可选的 Web 控制台
+## 打开 Web UI（0.5.0+）
 
-Linux 默认关闭控制台。安装时可选择监听范围和端口：
+Web UI 通过 HiRoute 的认证 Web 控制台提供，Linux 默认关闭。使用 0.5.0 或更高版本安装包时，可以在安装时选择本机访问和端口：
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh -s -- --console-mode loopback --console-port 5838
@@ -103,9 +105,11 @@ hiroute sessions status --output json
 
 保存配置通常分两步：先用 `preview` 查看将发生的变更，再用 `apply` 提交同一份变更，并带上预览返回的摘要和版本号。连接提供 `test` 时，可先检查连接。决策连接的预览与保存都使用 `decision services apply`，具体格式见 [CLI 指南](/docs/cli/)。密码或 API Key 通过 `protected-input` 传入，不放进普通 JSON、命令参数或日志。
 
-## 4. 完成无界面配置
+## 4. 配置模型、路由与 Agent
 
-按下面顺序建立第一条路由：
+打开 Web UI 后，按[快速开始](/docs/)从“连接一个模型”继续。即使浏览器在另一台电脑上，页面中的路径、Agent 安装和原生文件也都属于服务所在主机。应用更新、登录自启等桌面宿主功能不会显示在浏览器中。
+
+使用终端或自动化时，可以按下面顺序通过 CLI 建立第一条路由：
 
 1. 用 `compute scan/list/show` 查看可用来源；自定义 API 使用 `compute connection options/test/preview/apply`，需要浏览器授权的来源再使用 `authorize`。
 2. 用 `models show` 核对候选模型能力。
@@ -113,7 +117,7 @@ hiroute sessions status --output json
 4. 用 `agents scan/list/check` 发现本机 Agent，再用 `agents connect preview/apply/status` 接入。恢复时使用 `agents restore preview/apply`，HiRoute 只撤销仍由自己拥有的配置字段。
 5. 从 Agent 发起真实请求后，用 `sessions list/show/receipt/status` 查看实际路由、模型和用量，用 `value show` 查看已有价格证据下的价值记录。
 
-CLI 与桌面应用使用同一份配置和执行记录。两者都需要发布路由后才生效，也遵循相同的配置恢复规则。
+Web UI、CLI 与桌面应用使用同一份服务端配置和执行记录，都需要发布路由后才生效，也遵循相同的配置恢复规则。
 
 ## 5. 任务委派
 

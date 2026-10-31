@@ -103,13 +103,26 @@ derives the immutable URL rather than storing another configurable URL:
 https://hiroute.ai/releases/<version>/<packager-filename>
 ```
 
-The manifest uses schema `hiroute.website.releases/v2` and intentionally has no
+The canonical manifest uses schema `hiroute.website.releases/v3`. Preparation emits
+`releases-v3.json` for Windows Desktop and a `releases.json` V2 projection without
+Windows artifacts for supported older macOS readers. Linux archives include the
+Web UI assets as well as the CLI and service; this does not change their
+`standalone` package kind. Public copy must distinguish these capabilities from
+the packages actually present in the selected published release. Windows Desktop
+and the Linux Web UI start at 0.5.0; older Linux releases provide the CLI.
+
+The manifest intentionally has no
 release-level Git revision. A release record cannot contain the SHA of the commit
 that contains that same record without becoming self-referential. The packager
 filename still includes the first 12 characters of its source revision.
 
 Create tag `v<version>` on the exact source candidate, create a draft GitHub
-Release, and attach every DMG, standalone archive, and companion manifest. After
+Release, and attach every DMG, Linux archive and companion manifest, and the x64
+Windows NSIS installer with its `.identity.json` sidecar when Windows is in scope.
+Windows headless archives are internal payloads and must not be published. The
+installer identity must bind the exact source/hash and every required native case
+from `scripts/windows-desktop-cases.json`; compilation or a Server-only run does
+not satisfy the Windows 11 ordinary-user gate. After
 reviewing those assets, add their exact filenames, sizes, and digests to the
 manifest on `main`. Publish the GitHub Release only after that record lands.
 The workflow freezes that `main` revision for the website, resolves the tag's
