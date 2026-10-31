@@ -40,7 +40,8 @@ def route_only_scenario(repository):
                       {'change': change}, 'create-route-only')
         product.plan_id = preview['plan_head']['reference']['plan_id']
         product.model_alias = 'gpt-6.1-sol'
-        configure_model_settings_v2(product, [product.plan_id], 'route-only-agent')
+        configure_model_settings_v2(product, [product.plan_id], 'route-only-agent',
+                                    agent_id='agent_claude_default')
         head, versions = read_content(product)
         assert head['head_revision'] == 1 and len(versions) == 1
         assert versions[0]['configuration']['purpose'] == ''
