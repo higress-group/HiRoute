@@ -1,5 +1,5 @@
 import { type PropsWithChildren, useEffect, useRef, useState } from 'react';
-import { PresentationRoot, UiIcon, usePresentationPreferences } from '../ui';
+import { HiRouteMark, PresentationRoot, UiIcon, usePresentationPreferences } from '../ui';
 import { safeDiagnosticCode } from '../error-code';
 import { hostKind, initializeShellHost, invoke } from './index.ts';
 import { clearConsoleSession, CONSOLE_EXPIRED_EVENT, CONSOLE_UNAVAILABLE_EVENT, exchangeConsoleCredential, readConsoleSession, sessionBearer } from './console.ts';
@@ -68,7 +68,7 @@ function ConsoleSessionRoot({ children }: PropsWithChildren) {
     {hadSession && <div className="console-product" hidden={phase !== 'ready'} inert={phase !== 'ready'}>{children}</div>}
     {phase !== 'ready' && <PresentationRoot language={preferences.language} theme={preferences.resolvedTheme} textScale={1}>
       <main className="console-entry"><section className="console-entry-card">
-        <div className="console-entry-brand"><span className="brand-mark">H</span><strong>HiRoute</strong></div>
+        <div className="console-entry-brand"><HiRouteMark /><strong>HiRoute</strong></div>
         <h1>{phase === 'loading' ? text('正在连接控制台', 'Connecting to your console')
           : phase === 'expired' ? text('控制台会话已结束', 'Your console session has ended')
             : phase === 'assets' ? text('控制台文件不可用', 'Console files are unavailable')

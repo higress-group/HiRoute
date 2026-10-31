@@ -42,6 +42,15 @@ export async function runConsoleScenarios(client, baseUrl, output) {
   });
   await check('console.session.token', async () => {
     await open('login');
+    await waitFor(client, 'document.querySelector(".console-entry-brand img")?.complete ?? true');
+    const brand = await evaluate(client, `(() => {
+      const mark = document.querySelector('.console-entry-brand .brand-mark');
+      const image = mark?.querySelector('img');
+      const box = image?.getBoundingClientRect();
+      return { naturalWidth: image?.naturalWidth ?? 0, width: box?.width ?? 0, height: box?.height ?? 0, text: mark?.textContent.trim() };
+    })()`);
+    assert(brand.naturalWidth > 0 && Math.abs(brand.width - 34) < 1 && Math.abs(brand.height - 34) < 1 && !brand.text,
+      'Console entry does not render the HiRoute mark: ' + JSON.stringify(brand));
     assert(await evaluate(client, 'document.querySelector("[role=note]")?.textContent.includes("明文")'), 'Plaintext token warning is missing');
     await evaluate(client, 'Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(document.querySelector("input"), "c".repeat(64)); document.querySelector("input").dispatchEvent(new Event("input",{bubbles:true}))');
     await evaluate(client, 'document.querySelector("form").requestSubmit()');

@@ -1,6 +1,7 @@
 export * from './BrandIcon';
 export * from './Dialog';
 export * from './Disclosure';
+export * from './HiRouteMark';
 export * from './money';
 export * from './native-window-theme';
 export * from './preferences';

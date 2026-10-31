@@ -1,10 +1,5 @@
-import { UiIcon, type Language } from '../../ui';
+import { HiRouteMark, UiIcon, type Language } from '../../ui';
 import type { HomeNavigationItem } from './types';
-import hiRouteIcon from '../../../src-tauri/icons/icon.svg';
-
-export function HiRouteMark() {
-  return <span className="brand-mark" aria-hidden="true"><img src={hiRouteIcon} alt="" /></span>;
-}
 
 export function HomeNavigation({
   language,
