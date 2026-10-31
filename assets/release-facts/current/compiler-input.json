@@ -103838,7 +103838,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 2,
+    "data_revision": 4,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-haiku-5-5/claude-haiku-5-5",
