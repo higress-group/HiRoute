@@ -36,8 +36,9 @@ def run(repository):
                       {'change': change}, 'save-follow-reasoning')
         product.plan_id = preview['plan_head']['reference']['plan_id']
         product.model_alias = preview['plan_head']['model_alias']
+        del product.agent_context_id
         configure_model_settings_v2(product, [product.plan_id], 'follow-reasoning-agent',
-                                    agent_id='agent_claude_default')
+                                    agent_id='agent_codex_default')
         frozen = read_content(product)
         assert frozen[1][-1]['configuration']['follow_request_reasoning'] is True
         assert frozen[1][-1]['configuration']['strategy']['candidates'] == bindings
@@ -54,7 +55,7 @@ def run(repository):
                 body['reasoning'] = {'effort': effort}
             connection = http.client.HTTPConnection('127.0.0.1', product.port, timeout=15)
             connection.request('POST', '/v1/responses', encoded(body), {
-                'Authorization': 'Bearer ' + product.bearer(), 'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + product.bearer(product.agent_connection), 'Content-Type': 'application/json',
                 'session-id': 'follow-reasoning-product'})
             response = connection.getresponse()
             payload = response.read()
