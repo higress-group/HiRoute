@@ -27,11 +27,13 @@ for (const relative of required) {
 for (const [page, language] of [['index.html', 'zh-CN'], ['en/index.html', 'en']]) {
   const html = fs.readFileSync(path.join(dist, page), 'utf8');
   const performance = html.match(/<section\b[^>]*id="performance"[^>]*>[\s\S]*?<\/section>/)?.[0];
-  if (!performance?.includes(`src="/decision-assets/quality-native-${language}.png"`)) {
-    throw new Error(`missing localized native session capture: ${page}`);
+  for (const capture of ['readme-session', 'readme-report']) {
+    if (!performance?.includes(`src="/decision-assets/${capture}-${language}.png"`)) {
+      throw new Error(`missing localized ${capture} capture: ${page}`);
+    }
   }
-  const caption = language === 'en' ? 'Each score is linked to an execution stage' : '每个分数都对应具体执行阶段';
-  if (!performance.includes(caption)) throw new Error(`missing stage context: ${page}`);
+  const caption = language === 'en' ? 'A real session: primary steps in after a low score' : '真实会话：低分后主力接手';
+  if (!performance.includes(caption)) throw new Error(`missing session context: ${page}`);
 }
 const htmlFiles = [];
 for (const entry of fs.readdirSync(dist, { recursive: true, withFileTypes: true })) {
