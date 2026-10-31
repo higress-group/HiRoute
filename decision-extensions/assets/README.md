@@ -49,24 +49,23 @@ is 1900×2072 from a 2× recording, with the pointer resting on the selected tur
 
 ## README trial and report captures
 
-The README's [trial setup](readme-trial-en.png) ([中文](readme-trial-zh-CN.png)) and
+The README's [trust level](readme-trial-en.png) ([中文](readme-trial-zh-CN.png)) and
 [model performance report](readme-report-en.png) ([中文](readme-report-zh-CN.png)) images
-render the production `TrialQuickStart` and Plan editor model-performance components in
-headless Chrome at device scale 2, dark theme (matching the session recordings), 1200-pixel viewport width. They are cropped
-to the form cards and the report section without repainting.
+render the production trust-level control and model-performance report from the Plan editor in
+headless Chrome at device scale 2, dark theme (matching the session recordings), 1200-pixel viewport
+width. The trust image is cropped
+to the slider and presets with Trusted selected; the report image to the report section.
+Neither is repainted.
 
 The data is synthetic: the browser fixtures under `apps/desktop/tests/v3/browser`, served
 through the development-only [readme-docs.html](../../apps/desktop/readme-docs.html). That
-entry gives sources and the plan English names for English captures, names the saved decision
-model System One, and replaces the report's cost comparison with an illustrative
+entry gives the plan an English name for English captures and replaces the report's cost comparison with an illustrative
 $3.42 routed versus $11.86 primary-reference estimate. Counts, suggestions and scores are
 fixture values, not measured results.
 
 To reproduce, run `node_modules/.bin/vite` from `apps/desktop` and open
-`/readme-docs.html?view=quickstart&native=1&theme=dark&lang=en` (choose the first new model, dismiss the
-directory notice, pick GPT-6-Astra with high reasoning) and
-`/readme-docs.html?polish=1&native=1&view=editor&theme=dark&lang=en` (open Model performance). Use
-`lang=zh` for Chinese.
+`/readme-docs.html?polish=1&native=1&view=editor&theme=dark&lang=en`: click Trusted in the trust
+control, then open Model performance. Use `lang=zh` for Chinese.
 
 ## Current product component captures
 

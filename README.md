@@ -84,20 +84,18 @@ reuse the stage's decision. See [routing behavior and supported-client limits](a
 
 ## Try new models with a primary model ready to help
 
-Start from **New models** on Home. The new model goes first and your primary model
-catches what it misses.
+Start from **New models** on Home. Instead of switching everything at once, HiRoute rolls a
+new model out by task difficulty.
 
-1. **Pair and set trust.** Pick the model to try and a familiar primary model, then click
-   Trial, Familiar, Trusted or Hands-off, or drag the slider between Cautious and Entrusted.
-   Every change is listed before you publish and map the plan to your Agent.
-2. **Work as usual.** Each turn stays on one model to preserve the cache; a new message or
-   rebuilt context triggers a fresh decision.
-3. **Primary steps in when needed.** If the new model's stage scores below the competence
-   floor and the problem still matters, low-score protection moves the next stage to your
-   primary model.
+- **Trust sets a difficulty bar.** System One estimates how simple each turn is. Turns that
+  clear the bar go to the new model; harder work stays with your primary model.
+- **Open up gradually.** Move from Trial to Familiar, Trusted or Hands-off as the new model
+  proves itself, and it takes on more of your work.
+- **Primary still backs it up.** If a new-model stage scores below the competence floor and
+  the problem still matters, low-score protection hands the next turn to your primary model.
 
-<p align="center"><img src="decision-extensions/assets/readme-trial-en.png" alt="Try a new model: Qwen3-Coder-Plus from a Bailian Coding Plan as the model to try, GPT-6-Astra from a Codex subscription as primary with high reasoning, the System One decision model, and the trust slider between Cautious and Entrusted with Trial, Familiar, Trusted, Hands-off and Entrusted presets" width="560"></p>
-<p align="center"><sub>Pick the model to try and a primary model, then set a starting trust level.</sub></p>
+<p align="center"><img src="decision-extensions/assets/readme-trial-en.png" alt="Trust slider from Cautious to Entrusted with Trial, Familiar, Trusted, Hands-off and Entrusted presets; Trusted is selected at a simple-probability threshold of 0.65, and simpler tasks go to the regular model first" width="760"></p>
+<p align="center"><sub>Further right, more of the simpler work goes to the new model.</sub></p>
 
 ### Adjust with evidence from your own tasks
 
