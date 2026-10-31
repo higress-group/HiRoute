@@ -46,6 +46,8 @@ Switching models does not eat the savings. HiRoute keeps one model through each 
 calls, so a switch loses the cache only once. Even with no cache hits on Qwen, the saving
 stayed above 90%.
 
+[![The same mixed run with and without a perfect cache: all Astra $2.067, HiRoute mixed $0.178 (91% saved), mixed with every input cached $0.124 (94% saved)](news/assets/cache-impact-en.svg)](news/2026-10-14-routing-cache-cost.en.md)
+
 <sub>Costs are API-equivalent estimates and include every attempt and routing decision. The
 [experiment record](experiments/cases/research-cost-quality/README.md) keeps the third pair's results and
 the acceptance criteria.</sub>

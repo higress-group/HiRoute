@@ -41,6 +41,8 @@ HiRoute 为每个阶段选择合适的模型，常规部分不再按主力的价
 切换模型不会吃掉省下的钱。HiRoute 在同一轮的工具调用中保持同一个模型，切换只损失一次缓存。
 即使 Qwen 一次缓存都没命中，节省比例仍在 90% 以上。
 
+[![同一次混合运行有无完美缓存的对比：全 Astra $2.067，HiRoute 混合 $0.178（省 91%），输入全部命中缓存时 $0.124（省 94%）](news/assets/cache-impact-zh.svg)](news/2026-10-14-routing-cache-cost.zh-CN.md)
+
 <sub>费用为 API 等价估算，包含全部尝试和路由判断。[实验记录](experiments/cases/research-cost-quality/README.md)
 保留了第三组结果和验收标准。</sub>
 
