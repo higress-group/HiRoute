@@ -12,6 +12,12 @@
 
 Observation gaps must remain visible without changing the model request's execution result. Historical identity and price facts must not be inferred from current configuration. Deleted content remains unavailable through search, old references, and replay.
 
+The ingestion protocol reuses SQLite's existing bounded, connection-local
+statement cache for checkpoint, event, feedback and stream-identity SQL. Bindings
+are supplied on every execution; validation, transaction commits, durable ACKs
+and recovery remain unchanged. This avoids recompiling the same protocol SQL
+for every small content record without introducing a queue or a storage format.
+
 `store/gap` resolves an arriving sequence within its exact channel, producer,
 epoch and stream. The stream/end-sequence index skips unrelated streams and
 already-ended gaps; every overlapping gap still retains its scope, loss status
