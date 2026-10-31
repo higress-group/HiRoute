@@ -151,6 +151,14 @@ the existing subscription guidance.
 - **THEN** reset or capped accumulation is applied exactly once before admission
 - **AND** in-flight/uncertain reservations remain accounted for after restart.
 
+#### Scenario: Recover a failed policy edit across a renewal boundary
+
+- **WHEN** a saved allowance edit rolls back after a renewal boundary
+- **THEN** compensation restores the original calendar and its due grants, retains
+  real charges and eligible pending holds, and does not retain temporary grants
+- **AND** a missing current binding or required recovery witness fails closed;
+  it never means that the Key is unlimited.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/279
 - https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488572844

@@ -34,6 +34,7 @@ use crate::{LocalSecretStore, LocalStorageSet, RuntimeStore};
 mod compensation_guards;
 mod decision;
 mod defaults;
+mod key_budget_replay;
 mod key_budgets;
 mod lifecycle;
 mod network;

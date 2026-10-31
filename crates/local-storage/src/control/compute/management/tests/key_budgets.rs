@@ -83,7 +83,7 @@ pub(super) fn new_budget(amount: u64) -> KeyBudgetAssignmentV1 {
         initial_remaining_micros: None,
     }
 }
-fn estimate(source: &str) -> KeySpendEstimateV1 {
+pub(super) fn estimate(source: &str) -> KeySpendEstimateV1 {
     let digest = CanonicalDigest::of_bytes(b"key-budget-test");
     let mut quote = FrozenPriceQuoteV1 {
         generation_ref: None,
@@ -137,7 +137,7 @@ fn estimate(source: &str) -> KeySpendEstimateV1 {
         output_bound: 100,
     }
 }
-fn view(stores: &LocalStorageSet, key: &str) -> KeyBudgetViewV1 {
+pub(super) fn view(stores: &LocalStorageSet, key: &str) -> KeyBudgetViewV1 {
     let source = saved(stores);
     let id = stores
         .control()
