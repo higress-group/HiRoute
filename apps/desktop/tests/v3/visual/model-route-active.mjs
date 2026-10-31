@@ -55,7 +55,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
     };
     c.handlers.preview_plan_editor=payload=>{
       const i=payload.input;
-      const p=structuredClone(c.routeTemplate);Object.assign(p,{agent_plan_id:i.plan_id??'plan/new-sol',model_alias:i.editor.custom_alias,agent_plan_revision:1});
+      const p=structuredClone(c.routeTemplate);Object.assign(p,{agent_plan_id:i.plan_id??'plan/new-sol',model_alias:i.editor.custom_alias??'hiroute-daily-coding',agent_plan_revision:1});
       p.head={...p.head,head_revision:(i.expected_head_revision??0)+1,status:'enabled'};
       p.desired={display_name:i.editor.display_name,purpose:i.editor.purpose,follow_request_reasoning:i.editor.follow_request_reasoning,mode:i.editor.mode,strategy:{mode:'custom',candidates:structuredClone(i.editor.candidates)},delegation_enabled:i.editor.delegation_enabled,requirements:i.editor.requirements,limits:i.editor.limits};
       c.desktop.catalog={plans:[p],drafts:[]};
@@ -108,7 +108,7 @@ try {
       await shot(`model-route-choice-${id}`);
       await click('.modal-foot .btn-primary',language==='zh'?'一起加入候选':'Add together as candidates');
       await editorReady();
-      assert.deepEqual(await current(),{name:'gpt-6.1-sol',alias:'gpt-6.1-sol',purpose:'',required:false,bindings:['binding/codex/gpt-6-astra','binding/api/sol'],writes:0});
+      assert.deepEqual(await current(),{name:'gpt-6.1-sol',alias:'hiroute-daily-coding',purpose:'',required:false,bindings:['binding/codex/gpt-6-astra','binding/api/sol'],writes:0});
       await waitFor(client, '![...document.querySelectorAll(".routing-page .toolbar-actions .btn-primary")].find(e=>e.getClientRects().length&&/保存并创建|Save and create/.test(e.textContent)).disabled');
       const policyBounds=await evaluate(client,`(()=>{const e=document.querySelector('.route-reasoning-policy');const label=e.querySelector('label');return {overflow:e.scrollWidth-e.clientWidth,labelHeight:label.getBoundingClientRect().height};})()`);
       assert.ok(policyBounds.overflow<=1&&policyBounds.labelHeight<90,JSON.stringify(policyBounds));
@@ -118,7 +118,7 @@ try {
       await click('.toolbar-actions button',language==='zh'?'保存并创建':'Save and create');
       await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
       const saved=await evaluate(client,'productShell.commands.filter(c=>c.command==="preview_plan_editor").map(c=>c.payload.input)');
-      assert.equal(saved.length,1);assert.equal(saved[0].editor.follow_request_reasoning,true);assert.equal(saved[0].action,'publish');assert.equal(saved[0].editor.mode,'fixed_model');assert.equal(saved[0].editor.purpose,'');assert.equal(saved[0].editor.delegation_enabled,false);assert.equal(saved[0].editor.custom_alias,'gpt-6.1-sol');
+      assert.equal(saved.length,1);assert.equal(saved[0].editor.follow_request_reasoning,true);assert.equal(saved[0].action,'publish');assert.equal(saved[0].editor.mode,'fixed_model');assert.equal(saved[0].editor.purpose,'');assert.equal(saved[0].editor.delegation_enabled,false);assert.equal(saved[0].editor.custom_alias,undefined);
     });
   }
   await run('model-route.reasoning-mode-defaults-and-explicit-choice',async()=>{
@@ -151,7 +151,7 @@ try {
   });
   await run('model-route.single-source-goes-directly-to-prefilled-editor',async()=>{
     await setup({others:false});await click('.model-route-action button','创建智能路由');await editorReady();
-    assert.equal(await evaluate(client,'document.querySelectorAll("[role=dialog]").length'),0);assert.equal((await current()).alias,'gpt-6.1-sol');
+    assert.equal(await evaluate(client,'document.querySelectorAll("[role=dialog]").length'),0);assert.equal((await current()).alias,'hiroute-daily-coding');
   });
   await run('model-route.save-waits-for-current-model-options',async()=>{
     await setup({others:false,delayed:true});await click('.model-route-action button','创建智能路由');await editorReady();

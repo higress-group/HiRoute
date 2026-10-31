@@ -26,8 +26,8 @@ Released `hiroute/<16hex>` names remain readable/callable without bulk renaming.
 The model-detail page MUST put its primary create-routing action before model
 configuration and source details, without a model-trial action. Starting here
 opens the configuration editor with fixed-model mode, the exact upstream model ID
-as display name and invocation name, delegation off, the selected Binding first,
-and shared authoring defaults. Dot/underscore invocation names accepted by the
+as display name, the standard automatically generated invocation name, delegation off,
+the selected Binding first, and shared authoring defaults. Dot/underscore invocation names accepted by the
 Domain MUST also be accepted by Desktop. Unsupported IDs or alias collisions stay
 explicit and editable rather than being silently renamed.
 

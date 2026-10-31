@@ -11,8 +11,8 @@ and stable Binding IDs. Merely opening the dialog or editor never saves a route.
 `model-route.ts` builds a shared-authoring request, retaining selected candidate
 order and an existing fixed route's settings/reasoning. `PlanEditor` gets current
 authoring defaults and guards the exact existing head before adding candidates.
-New routes prefill the upstream ID as display name and invocation name, fixed mode,
-and delegation off. Native budget-only models receive an editable minimum budget
+New routes prefill the upstream ID as display name, retain the standard automatic
+invocation name, and start in fixed mode with delegation off. Native budget-only models receive an editable minimum budget
 in this explicit creation flow. Save uses the ordinary protected publication path.
 Unsupported aliases and concurrent changes remain explicit; existing routes are
 never silently converted to another strategy.

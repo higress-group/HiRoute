@@ -40,7 +40,6 @@ export function modelRouteEditor(options: Options, request: ModelRouteRequest): 
   }
   const editor = structuredClone(options.authoring.editor);
   if (!request.plan) {
-    editor.custom_alias = request.modelId;
     editor.follow_request_reasoning = true;
   }
   // Budget-only models have no shared automatic reasoning choice. Seed a visible,

@@ -13,12 +13,12 @@ test('candidate suggestions use exact model IDs and distinct ready bindings, not
   assert.deepEqual(matchingModelRoutes('gpt-6.1-sol', [plan, { ...plan, head: { status: 'deleted' } }, { ...plan, model_alias: 'other', desired: { display_name: 'Same label' } }]), [plan]);
 });
 
-test('new model routes prefill exact ID, fixed mode and explicitly ordered candidates', () => {
+test('new model routes prefill the display ID and retain automatic invocation naming', () => {
   const request = { modelId: 'gpt-6.1-sol', bindingIds: [current.binding_id, 'binding/api', 'binding/api'] };
   assert.deepEqual(modelRouteAuthoring(request), { mode: 'fixed_model', display_name: request.modelId, candidates: [{ binding_id: current.binding_id }, { binding_id: 'binding/api' }] });
   const editor = { display_name: request.modelId, purpose: '', candidates: [{ binding_id: current.binding_id, reasoning: { kind: 'profile', profile: 'high' } }, { binding_id: 'binding/api' }], delegation_enabled: false };
   const value = modelRouteEditor({ authoring: { editor }, candidates: [{ binding_id: 'binding/api', reasoning: { kind: 'budget', minimum_tokens: 1024 } }] }, request);
-  assert.equal(value.custom_alias, request.modelId);
+  assert.equal(value.custom_alias, undefined);
   assert.equal(value.purpose, '');
   assert.equal(value.follow_request_reasoning, true);
   assert.deepEqual(value.candidates.map(item => item.reasoning), [{ kind: 'profile', profile: 'high' }, { kind: 'budget', tokens: 1024 }]);
