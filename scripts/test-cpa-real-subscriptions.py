@@ -74,9 +74,13 @@ def digest(path):
 
 
 def remote_source(host, kind, mode):
-    command = 'python3 -c ' + shlex.quote(REMOTE_READ) + ' ' + shlex.quote(kind) + ' ' + shlex.quote(mode)
+    if host == 'local':
+        command = [sys.executable, '-c', REMOTE_READ, kind, mode]
+    else:
+        remote = 'python3 -c ' + shlex.quote(REMOTE_READ) + ' ' + shlex.quote(kind) + ' ' + shlex.quote(mode)
+        command = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, remote]
     result = subprocess.run(
-        ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, command],
+        command,
         capture_output=True, timeout=30)
     require(result.returncode == 0, f'{kind}:native_source_read_failed:{result.returncode}')
     return json.loads(result.stdout)
