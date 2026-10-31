@@ -26,11 +26,6 @@
 .subscription-api-credits {
   margin-block-start: 12px;
 }
-.subscription-api-credits .disclosure-body {
-  font-size: calc(12px * var(--hr-text-scale));
-  line-height: 1.7;
-  color: var(--text-muted);
-}
 .subscription-api-setup .native-network .disclosure-label > span {
   display: flex;
   flex-wrap: wrap;

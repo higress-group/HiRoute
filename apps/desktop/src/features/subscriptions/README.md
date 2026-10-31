@@ -58,8 +58,9 @@ ownership even when replay itself is refused. After confirmed association, a
 failed completion read retries only canonical readback; the association's own
 model-sync revision is not an external-edit conflict. API transport policy is
 independent of subscription proxy settings.
-`SubscriptionApiCredits.tsx` links provider claim instructions and Key setup,
-identifies eligible plans and directs scope/balance questions to official guidance.
+`SubscriptionApiCredits.tsx` shows eligible plans and the official claim/scope link
+above Key entry. Detailed instructions remain on the provider website rather than
+in a separate credits disclosure.
 The inline setup explains the additional API-origin model set and configuring a
 candidate group to use the API after subscription quota exhaustion. Association
 alone still leaves groups and priority user-authored. Official billing owns credit

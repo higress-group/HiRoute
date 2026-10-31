@@ -167,19 +167,16 @@ try {
   });
   for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const [width, height] of [[755, 600], [1200, 813]]) await run(`layout-${language}-${theme}-${width}`, async () => {
     await open({ provider: language === 'en' ? 'claude' : 'codex', language, theme, width, height }); await selectNew();
-    await click('.subscription-api-credits summary');
-    const geometry = await evaluate(client, `(()=>{const d=document.querySelector('[role=dialog]'), f=d.querySelector('.modal-foot'), b=f.querySelector('.btn-primary'), form=d.querySelector('[data-subscription-api-setup]');const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}};return {dialog:rect(d),footer:rect(f),button:rect(b),key:rect(form.querySelector("[data-subscription-api-key]")),creditGuide:rect(form.querySelector(".subscription-api-credits a").closest("p")),bodyScroll:d.scrollWidth,bodyClient:d.clientWidth,fields:[...form.querySelectorAll('.field-label,input,select')].map(rect),text:form.innerText}})()`);
+    const geometry = await evaluate(client, `(()=>{const d=document.querySelector('[role=dialog]'), f=d.querySelector('.modal-foot'), b=f.querySelector('.btn-primary'), form=d.querySelector('[data-subscription-api-setup]');const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}};return {dialog:rect(d),footer:rect(f),button:rect(b),key:rect(form.querySelector("[data-subscription-api-key]")),creditGuide:rect(form.querySelector(".subscription-api-credits a").closest("p")),creditGuideHref:form.querySelector(".subscription-api-credits a").href,bodyScroll:d.scrollWidth,bodyClient:d.clientWidth,fields:[...form.querySelectorAll('.field-label,input,select')].map(rect),text:form.innerText}})()`);
     assert.ok(geometry.button.top >= 0 && geometry.button.bottom <= height + 1, 'main action stays visible');
     assert.ok(geometry.bodyScroll <= geometry.bodyClient + 1, 'no horizontal overflow');
     assert.ok(geometry.creditGuide.bottom <= geometry.key.top, 'credit claim guidance appears above the API key field');
     for (const field of geometry.fields) assert.ok(field.width > 100 && field.left >= geometry.dialog.left - 1 && field.right <= geometry.dialog.right + 1, 'labels/controls stay readable within dialog');
     assert.match(geometry.text, language === 'zh' ? /赠金/ : /credits/);
-    assert.match(geometry.text, language === 'zh' ? /官方/ : /official/);
+    assert.equal(geometry.creditGuideHref, language === 'zh' ? 'https://developers.openai.com/api/docs/guides/chatgpt-api-credits' : 'https://support.claude.com/en/articles/17154008-monthly-api-credits-for-max-ultra-and-team-plans');
     await screenshot(`single-save-${language}-${theme}-${width}-selection`);
     await scrollTo('[data-subscription-api-setup]');
     await screenshot(`single-save-${language}-${theme}-${width}`);
-    await scrollTo('.subscription-api-credits details', true);
-    await screenshot(`single-save-${language}-${theme}-${width}-credits`);
   });
 } finally {
   await writeFile(path.join(output, 'subscription-api-setup-report.json'), JSON.stringify({ tests: results.length, failed: results.filter(x => x.state === 'failed').length, results }, null, 2));

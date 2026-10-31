@@ -97,7 +97,7 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
     <p className="field-help">{zh
       ? `${usingExisting ? '保存关联后，同步导入相同模型。' : '保存 Key 后，增加一组 API 来源的相同模型。'}配置候选组后，订阅额度用尽时可自动备用。`
       : `${usingExisting ? 'Save the link to sync matching models.' : 'Save a key to add matching API models.'} Configure a candidate group for fallback when subscription quota runs out.`}</p>
-    <SubscriptionApiCredits provider={props.provider} language={props.language} part="intro" />
+    <SubscriptionApiCredits provider={props.provider} language={props.language} />
     {result && result.state !== 'saved' && <p ref={feedback} tabIndex={-1} className="callout warn subscription-api-feedback" role="status">{result.failure ? networkFailureText(result.failure, zh) : inlineApiResultText(result, zh)}</p>}
     {setup.hasSavedApi && result?.state !== 'saved' && <p className="field-help">{zh ? '这份 API 接入已独立保存，重试关联不会重复创建。' : 'This API connection is saved independently. Retrying the association will not create another.'}</p>}
     {!usingExisting && <div className="subscription-api-key">
@@ -124,7 +124,6 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
       </label>
       {usingExisting && <button className="btn btn-quiet" type="button" disabled={locked} onClick={subscriptionOnly}>{zh ? `改填 ${providerName} API Key` : `Enter a ${providerName} API key instead`}</button>}
     </Disclosure>}
-    <SubscriptionApiCredits provider={props.provider} language={props.language} />
   </section>;
 });
 

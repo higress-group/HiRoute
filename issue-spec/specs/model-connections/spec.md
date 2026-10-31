@@ -726,8 +726,9 @@ advanced by that synchronization, while verifying the current provider and link.
 Association and import SHALL NOT create, reorder or change candidate groups or routing
 plans. The user chooses how to combine the sources. Association does not promise
 eligibility for API credits or change upstream billing classification. Provider-specific
-guidance SHALL link the official credit claim and scope instructions, explain how to
-link the receiving API organization, and identify eligible plans. The flow SHALL
+guidance SHALL identify eligible plans and link the official credit claim and scope
+instructions beside Key entry. Detailed claiming instructions SHALL remain on the
+linked provider website rather than in a separate credits disclosure. The flow SHALL
 explain that saving a Key adds matching API-origin models alongside subscription
 models, limited to API-supported counterparts. It SHALL explain user-configured
 candidate groups and priority, including API fallback after subscription quota
