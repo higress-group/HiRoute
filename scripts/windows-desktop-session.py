@@ -934,7 +934,9 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
         args = request['cli_args']
         if (not isinstance(args, list) or not args or len(args) > 40
                 or any(not isinstance(a, str) or len(a) > 64 * 1024 or '\x00' in a for a in args)
-                or args[0] not in ('system', 'service', 'agents', 'agent', 'plans', 'routing', 'gateway', 'compute', 'operations', 'console', 'sessions')):
+                or (args[0] not in ('system', 'service', 'agents', 'agent', 'plans', 'routing', 'gateway', 'compute', 'operations', 'console', 'sessions')
+                    and args[:3] not in (['models', 'feed', 'status'],
+                                        ['models', 'metadata', 'list'], ['models', 'metadata', 'get']))):
             raise ValueError('Only bounded public product CLI families are accepted')
         environment = os.environ.copy()
         environment.update(request['config']['environment'])
