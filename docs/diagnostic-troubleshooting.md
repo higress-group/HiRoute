@@ -196,6 +196,13 @@ budget levels at that refusal, before cleanup changes live counts. Compare this
 evidence with the terminal reason: an earlier optional reservation can be refused
 without failing the request. The record never includes the raw exception or headers.
 
+`attempt_preparation_failure` records a provider materialization failure before
+the core turns it into a local HTTP response or advances to another candidate.
+It uses the same closed classification, request shape and budget evidence.
+A handled local 502 can therefore carry this event without a terminal Core error.
+The event does not claim an upstream attempt started or that the whole request
+failed; follow the final request outcome and later attempt events.
+
 `request_timing_summary` reuses the request token in `request_begin`,
 `request_end` and attempt events. It covers lifecycle entry through completion or
 cancellation, including early rejections (which may have a span but no request

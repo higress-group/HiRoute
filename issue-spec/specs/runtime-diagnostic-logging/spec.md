@@ -225,3 +225,11 @@ A blocked sink allows the model request to finish. Later queue/sink work changes
 only the separate asynchronous counters. Queue overflow, invalid ACK, NACK and
 panic retain explicit loss accounting, while cancellation freezes the request
 clock once and still releases its summary through the existing logger.
+
+#### Scenario: Handled candidate preparation failure retains its cause
+
+Provider materialization failure MUST emit `attempt_preparation_failure` at Warn
+with the same request correlation, closed failure classification, numeric request
+shape and pre-cleanup memory refusal evidence. This event is emitted before the
+Core handles the failure with a local HTTP reply or advances selection. It MUST
+NOT claim an upstream attempt began or decide the final request outcome.

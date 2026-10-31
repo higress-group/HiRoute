@@ -75,6 +75,7 @@ pub enum DiagnosticEvent {
     RequestBegin(RequestBegin),
     RequestEnd(RequestEnd),
     RequestExecutionFailure(RequestExecutionFailure),
+    AttemptPreparationFailure(RequestExecutionFailure),
     RequestTimingSummary(RequestTimingSummary),
     RouteSelected(RouteSelected),
     AttemptBegin(AttemptBegin),
@@ -185,7 +186,8 @@ impl DiagnosticEvent {
                 RequestOutcome::Completed => Info,
                 _ => Warn,
             },
-            DiagnosticEvent::RequestExecutionFailure(_) => Warn,
+            DiagnosticEvent::RequestExecutionFailure(_)
+            | DiagnosticEvent::AttemptPreparationFailure(_) => Warn,
             DiagnosticEvent::AttemptEnd(end) => match end.outcome {
                 AttemptOutcome::Completed
                     if end.provider_result == Some(WireModelResult::Unknown) =>
@@ -293,6 +295,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::RequestBegin(_) => "request_begin",
             DiagnosticEvent::RequestEnd(_) => "request_end",
             DiagnosticEvent::RequestExecutionFailure(_) => "request_execution_failure",
+            DiagnosticEvent::AttemptPreparationFailure(_) => "attempt_preparation_failure",
             DiagnosticEvent::RequestTimingSummary(_) => "request_timing_summary",
             DiagnosticEvent::RouteSelected(_) => "route_selected",
             DiagnosticEvent::AttemptBegin(_) => "attempt_begin",
