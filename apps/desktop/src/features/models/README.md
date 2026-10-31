@@ -26,5 +26,7 @@ Missing reasoning on saved registered OpenAI/Anthropic API models is resolved by
 the shared scoped metadata default in `hiroute-integrations`. The daemon uses the
 same default for model/default reads and candidate materialization. It matches the
 registered target, protocol, authentication, product and exact upstream ID, and
-preserves explicit source values, saved-default intent and frozen publications.
+preserves explicit source values, exact FollowOfficial intent and frozen
+publications. PreserveSaved protects meaningful saved facts; an absent or generic
+runtime-fallback reasoning fact can still receive this missing-value default.
 The read projection does not rewrite stored sources or qualify entitlement.
