@@ -637,3 +637,7 @@ button.option-row[aria-pressed='true'] { border-color: var(--accent); background
   .setup-workspace { grid-template-columns: 1fr; }
   .setup-sidebar { display: none; }
 }
+
+.route-reasoning-policy { margin-top: 18px; }
+.route-reasoning-check { display: flex; align-items: center; gap: 9px; color: var(--text); }
+.route-reasoning-check input { width: 17px; height: 17px; flex: 0 0 auto; accent-color: var(--accent); }

@@ -323,7 +323,6 @@ impl ClientProtocolProfile {
     pub fn exact_portable(protocol: IngressProtocol) -> Self {
         let exact = Fidelity::Exact;
         Self {
-            follow_request_reasoning: false,
             schema_version: "hiroute.client-protocol-profile/v1".into(),
             protocol,
             source_protocol: protocol,

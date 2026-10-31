@@ -25,8 +25,16 @@ impl RequestedNativeReasoning {
         ingress: IngressProtocol,
     ) -> Result<Self, CapabilityError> {
         let invalid = || CapabilityError::ReasoningProfileMismatch;
-        let object =
-            |value: Option<&Value>| value.map(|v| v.as_object().ok_or_else(invalid)).transpose();
+        fn object(
+            value: Option<&Value>,
+        ) -> Result<Option<&serde_json::Map<String, Value>>, CapabilityError> {
+            value
+                .map(|v| {
+                    v.as_object()
+                        .ok_or(CapabilityError::ReasoningProfileMismatch)
+                })
+                .transpose()
+        }
         let (effort, thinking) = match ingress {
             IngressProtocol::Responses => {
                 let reasoning = object(document.get("reasoning"))?;

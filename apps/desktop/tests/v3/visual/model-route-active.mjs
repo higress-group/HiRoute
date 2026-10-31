@@ -89,13 +89,29 @@ try {
       await editorReady();
       assert.deepEqual(await current(),{name:'gpt-6.1-sol',alias:'gpt-6.1-sol',purpose:'',required:false,bindings:['binding/codex/gpt-6-astra','binding/api/sol'],writes:0});
       await waitFor(client, '![...document.querySelectorAll(".routing-page .toolbar-actions .btn-primary")].find(e=>e.getClientRects().length&&/保存并创建|Save and create/.test(e.textContent)).disabled');
+      const policyBounds=await evaluate(client,`(()=>{const e=document.querySelector('.route-reasoning-policy');const label=e.querySelector('label');return {overflow:e.scrollWidth-e.clientWidth,labelHeight:label.getBoundingClientRect().height};})()`);
+      assert.ok(policyBounds.overflow<=1&&policyBounds.labelHeight<90,JSON.stringify(policyBounds));
       await shot(`model-route-editor-${id}`);
       await click('.toolbar-actions button',language==='zh'?'保存并创建':'Save and create');
       await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
       const saved=await evaluate(client,'productShell.commands.filter(c=>c.command==="preview_plan_editor").map(c=>c.payload.input)');
-      assert.equal(saved.length,1);assert.equal(saved[0].action,'publish');assert.equal(saved[0].editor.mode,'fixed_model');assert.equal(saved[0].editor.purpose,'');assert.equal(saved[0].editor.delegation_enabled,false);assert.equal(saved[0].editor.custom_alias,'gpt-6.1-sol');
+      assert.equal(saved.length,1);assert.equal(saved[0].editor.follow_request_reasoning,true);assert.equal(saved[0].action,'publish');assert.equal(saved[0].editor.mode,'fixed_model');assert.equal(saved[0].editor.purpose,'');assert.equal(saved[0].editor.delegation_enabled,false);assert.equal(saved[0].editor.custom_alias,'gpt-6.1-sol');
     });
   }
+  await run('model-route.reasoning-mode-defaults-and-explicit-choice',async()=>{
+    await setup({others:false});await click('.model-route-action button','创建智能路由');await editorReady();
+    const checked=()=>evaluate(client,'document.querySelector(".route-reasoning-policy input").checked');
+    assert.equal(await checked(),true);
+    assert.match(await evaluate(client,'document.querySelector(".effort-select").textContent'),/默认档位/);
+    await click('.mode-card','按难度分流');assert.equal(await checked(),false);
+    assert.match(await evaluate(client,'document.querySelector(".route-reasoning-policy").textContent'),/能力与成本/);
+    await click('.mode-card','固定模型');assert.equal(await checked(),true);
+    await evaluate(client,'document.querySelector(".route-reasoning-policy input").click();true');
+    assert.equal(await checked(),false);
+    await click('.mode-card','按难度分流');await click('.mode-card','固定模型');assert.equal(await checked(),false);
+    assert.match(await evaluate(client,'document.querySelector(".effort-select").textContent'),/固定档位/);
+    await shot('model-route-reasoning-fixed-choice');
+  });
   await run('model-route.current-only-and-cancel',async()=>{
     await setup();await click('.model-route-action button','创建智能路由');await click('.modal-foot button','取消');
     assert.equal(await evaluate(client,'productShell.commands.filter(c=>c.command==="preview_plan_editor").length'),0);
@@ -125,7 +141,7 @@ try {
     await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
     const saved=await evaluate(client,'productShell.commands.filter(c=>c.command==="preview_plan_editor").map(c=>c.payload.input)');
     assert.equal(saved.length,1);assert.equal(saved[0].expected_head_revision,7);assert.equal(saved[0].editor.limits.maximum_attempts,2);
-    assert.equal(saved[0].editor.purpose,'Existing purpose');assert.deepEqual(saved[0].editor.candidates[0].reasoning,{kind:'profile',profile:'low'});
+    assert.equal(saved[0].editor.purpose,'Existing purpose');assert.equal(!!saved[0].editor.follow_request_reasoning,false);assert.deepEqual(saved[0].editor.candidates[0].reasoning,{kind:'profile',profile:'low'});
     assert.equal(await evaluate(client,'productShell.desktop.catalog.plans[0].head.head_revision'),8);
   });
   await run('model-route.existing-candidate-is-not-an-unsaved-change',async()=>{

@@ -96,8 +96,23 @@ map between native scales. Suggested discrete settings may choose the actual
 highest setting for primary work and lowest for economy/free work. A budget must
 be supplied when the selected native capability requires it.
 
-At execution, a plan overrides caller effort with that candidate's exact native
-choice. Responses toggles render `reasoning.effort=low/none`; Messages manual toggles
+Plans expose one route-level “Follow the request’s reasoning level” control above
+candidate groups. New fixed-model routes, including model-list quick creation,
+default it on; new difficulty routes default it off. A user-selected policy, saved
+draft or existing route retains its choice across mode changes. Retained routes
+without a policy remain off. The control never overwrites candidate selections.
+With following on, each candidate shows its editable default level; with it off,
+it shows its fixed level. Missing/unsupported request levels use the saved default.
+New defaults prefer a supported declared native default when present; otherwise
+an explicit valid authoring default is shown without claiming a provider default.
+Difficulty routing explains the possible capability/cost change on enabling it.
+The ordinary Save/Publish action persists the policy with frozen supported controls.
+Codex catalogs offer the union of supported frozen native effort values only for
+following routes, explaining per-candidate fallback; fixed routes retain no caller
+override options. Existing client configuration and saved model choices are preserved.
+
+At execution, a plan with following disabled overrides caller effort with that
+candidate's exact native choice. Responses toggles render `reasoning.effort=low/none`; Messages manual toggles
 render enabled with 1024 tokens or disabled without a budget. Explicit budget and
 adaptive settings retain their own rules in [request routing](../request-routing/spec.md).
 For explicit model-detail creation, a budget-only candidate MAY be prefilled with
