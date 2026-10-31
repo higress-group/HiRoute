@@ -407,11 +407,11 @@ pub(super) fn finalize_attempt_facts(
                 .as_ref()
                 .map(|usage| Settlement::Usage {
                     usage: KeySpendUsageV1 {
-                        input_tokens: usage.input,
-                        output_tokens: usage.output,
-                        cache_read_tokens: usage.cache_read,
-                        cache_write_tokens: usage.cache_write,
-                        reasoning_tokens: usage.reasoning,
+                        input_tokens: usage.input.units,
+                        output_tokens: usage.output.units,
+                        cache_read_tokens: usage.cache_read.units,
+                        cache_write_tokens: usage.cache_write.units,
+                        reasoning_tokens: usage.reasoning.units,
                     },
                 })
                 .unwrap_or(Settlement::Unknown)

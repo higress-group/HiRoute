@@ -1,3 +1,5 @@
+import { KeyBudgetEditor } from '../key-budgets/KeyBudgetEditor';
+import { budgetAssignment, budgetDraft } from '../key-budgets/types';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Disclosure } from '../../ui';
 import { invoke } from '../../host/index.ts';
@@ -45,6 +47,8 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
   const alive = useRef(true), key = useRef<HTMLInputElement>(null);
   const feedback = useRef<HTMLParagraphElement>(null);
   const [network, setNetwork] = useState(networkDraft);
+  const [allowance, setAllowance] = useState(budgetDraft);
+  const [allowanceError, setAllowanceError] = useState(false);
   const [reveal, setReveal] = useState(0);
   const [result, setResult] = useState<InlineApiResult | null>(null);
   const [keyRequired, setKeyRequired] = useState(false);
@@ -70,13 +74,14 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
   useImperativeHandle(ref, () => ({
     validate() {
       if (props.value !== NEW_SUBSCRIPTION_API) return true;
+      try { budgetAssignment(allowance); setAllowanceError(false); } catch { setAllowanceError(true); return false; }
       if (manualProxyError(network)) { setReveal(value => value + 1); return false; }
       if (setup.awaitingSave || setup.hasSavedApi || setup.hasCredential || key.current?.value.trim()) return true;
       setKeyRequired(true); key.current?.focus(); return false;
     },
     async connect(source) {
       const secret = key.current?.value ?? '';
-      const answer = await setup.connect(source, secret, network, () => { if (key.current?.value === secret) key.current.value = ''; });
+      const answer = await setup.connect(source, secret, network, () => { if (key.current?.value === secret) key.current.value = ''; }, budgetAssignment(allowance));
       if (alive.current) { setResult(answer); if (networkRepairable(answer.failure)) setReveal(value => value + 1); }
       return answer;
     },
@@ -110,6 +115,8 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
         <span className="field-help">{zh ? '赠金请使用对应组织的 Key。' : 'For credits, use the receiving organization’s key.'}</span>
       </label>
       {setup.hasCredential && !setup.hasSavedApi && <button type="button" className="btn btn-quiet" disabled={locked} onClick={subscriptionOnly}>{zh ? '清除 Key，仅使用订阅' : 'Clear key; use subscription only'}</button>}
+      <KeyBudgetEditor language={props.language} value={allowance} onChange={value => { setAllowance(value); setAllowanceError(false); }} disabled={locked || setup.hasSavedApi} />
+      {allowanceError && <p className="oc-inline-error" role="alert">{zh ? '请填写有效金额，并检查补充日期、时区和余额上限。' : 'Enter a valid amount and check the renewal date, time zone and balance cap.'}</p>}
       <NativeNetworkSettings language={props.language} value={network} onChange={setNetwork} disabled={locked || setup.hasSavedApi} reveal={reveal} failure={result?.failure}
         target={{ kind: 'registered', connection_option_id: associatedApiOption(props.provider), protocol: props.provider === 'codex' ? 'responses' : 'messages' }} />
     </div>}

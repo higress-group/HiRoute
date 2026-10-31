@@ -1,3 +1,4 @@
+import type { BudgetAssignment } from '../key-budgets/types';
 import { buildSaveChange, checkMatches, clientIdempotencyKey, clientOperationId, explicitApiModelSelection, saveEligibility } from '../model-connections/state.ts';
 import { networkEdit, type NativeNetworkDraft, type NativeNetworkFailure } from '../model-connections/native-network.ts';
 import type { ComputeCandidateRef, ModelConnectionBackend, OperationReference } from '../model-connections/types';
@@ -56,9 +57,9 @@ export class NewSubscriptionApiSetup {
     ]);
   }
 
-  connect(source: Pick<ManagedSource, 'source_id' | 'revision'>, secret: string, network: NativeNetworkDraft, clearSecret: () => void): Promise<InlineApiResult> {
+  connect(source: Pick<ManagedSource, 'source_id' | 'revision'>, secret: string, network: NativeNetworkDraft, clearSecret: () => void, allowance?: BudgetAssignment): Promise<InlineApiResult> {
     if (this.running) return this.running;
-    this.running = this.run(source, secret, network, clearSecret).finally(() => { this.running = null; });
+    this.running = this.run(source, secret, network, clearSecret, allowance).finally(() => { this.running = null; });
     return this.running;
   }
 
@@ -73,7 +74,7 @@ export class NewSubscriptionApiSetup {
     return { state: 'saved', api_source_id: api.source_id, missing_model_ids: source.models.map(model => model.upstream_model_id).filter(id => !imported.has(id)) };
   }
 
-  private async run(source: Pick<ManagedSource, 'source_id' | 'revision'>, secret: string, network: NativeNetworkDraft, clearSecret: () => void): Promise<InlineApiResult> {
+  private async run(source: Pick<ManagedSource, 'source_id' | 'revision'>, secret: string, network: NativeNetworkDraft, clearSecret: () => void, allowance?: BudgetAssignment): Promise<InlineApiResult> {
     const generation = this.generation;
     const current = () => this.ports.current() && generation === this.generation;
     const failed = (reason: InlineApiResult['reason'], extra: Partial<InlineApiResult> = {}): InlineApiResult => ({ state: 'failed', reason, ...extra });
@@ -134,7 +135,7 @@ export class NewSubscriptionApiSetup {
         if (fresh.sources.find(item => item.source_id === saved.source_id)?.revision !== this.owner.revision) return failed('source_changed');
         if (!current()) return { state: 'pending' };
         const change = buildSaveChange({ result: checked, expectedRevisions: fresh.revisions, selectedModelRefs: refs, enable: true, protectedInput: this.input });
-        const preview = await this.ports.backend.previewComputeSave(change, networkEdit(network));
+        const preview = await this.ports.backend.previewComputeSave(change, networkEdit(network), allowance && allowance.intent !== 'unlimited' ? [{ key: { kind: 'input', candidate_ref: this.input.candidate_ref }, assignment: allowance }] : undefined);
         if (!current()) return { state: 'pending' };
         this.attempt = {
           request: { spec: preview.spec, accept_digest: preview.accept_digest, expected_revisions: preview.expected_revisions, idempotency_key: clientIdempotencyKey('subscription-api-create') },

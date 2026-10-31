@@ -1,3 +1,5 @@
+import { KeyBudgetEditor } from '../key-budgets/KeyBudgetEditor';
+import { budgetDraft, type KeyBudgetEdit, type KeyBudgetResult, type BudgetView } from '../key-budgets/types';
 import { CreateModelRoute } from './CreateModelRoute';
 import type { ModelRouteRequest } from './model-route';
 import { NativeSourceNetworkEditor } from '../model-connections/NativeSourceNetworkEditor';
@@ -16,7 +18,7 @@ import { Dialog, Disclosure, UiIcon } from '../../ui';
 import { confirmDiscard, useDiscardGuard } from '../../ui/discard-guard';
 import type { PriceDisplay } from '../model-reference/types';
 import { clientOperationId } from '../model-connections/state';
-import { addDraftKey, buildCredentialEdits, clearSecrets, createDraft, maskEnteredKey, moveDraftKey, type ModelDraft } from './model-draft';
+import { addDraftKey, buildCredentialEdits, buildKeyBudgetEdits, validateDraftBudgets, clearSecrets, createDraft, maskEnteredKey, moveDraftKey, type ModelDraft } from './model-draft';
 import { subscriptionAttentionCopy } from './subscription-copy';
 import { ConnectionLifecycleDialog } from './ConnectionLifecycleDialog';
 import type {
@@ -39,7 +41,7 @@ type Props = {
   onRefresh(): Promise<void>;
   onPrepareKeyInput(sourceId: string, input: ProtectedKeyInput): Promise<PreparedKeyInput>;
   onReadKeyMasks?(source: ManagedSource): Promise<KeyMasks>;
-  onPreview(change: ManagementChange): Promise<SavePreview>;
+  onPreview(change: ManagementChange, budgetEdits?: KeyBudgetEdit[]): Promise<SavePreview>;
   onApply(preview: SavePreview): Promise<'saved' | 'uncertain'>;
   onDiscardProtectedInputs(): void;
   onCredentialsSaved?(): void;
@@ -97,6 +99,7 @@ function safeErrorCode(error: unknown): string {
     if (typeof value.code === 'string' && /^[A-Za-z0-9_.\/-]{1,80}$/.test(value.code)) return value.code;
     pending.push(value.error, value.envelope, value.failure);
   }
+  if (error instanceof Error && error.message === 'KEY_BUDGET_INVALID') return error.message;
   return 'COMPUTE_MANAGEMENT_SAVE_FAILED';
 }
 
@@ -234,6 +237,7 @@ export function Models(props: Props) {
     setSubmitting(true);
     setErrorCode('');
     try {
+      validateDraftBudgets(draft);
       const edits = await buildCredentialEdits(source, draft, props.onPrepareKeyInput);
       const change: ManagementChange = {
         schema: 'hiroute.compute-management-change/v2',
@@ -243,7 +247,7 @@ export function Models(props: Props) {
         intent: draft.enabled ? 'save_ready' : 'save_disabled',
         key_edits: edits,
       };
-      const preview = await props.onPreview(change);
+      const preview = await props.onPreview(change, buildKeyBudgetEdits(draft, edits));
       const outcome = await props.onApply(preview);
       setDraft(clearSecrets(draft));
       setDraft(null);
@@ -597,6 +601,30 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
     return () => { active = false; };
   }, [source.source_id, source.revision, readKeyMasks]);
   useEffect(() => { setShowSecret(false); }, [editing]);
+
+  const [allowances, setAllowances] = useState<KeyBudgetResult | null>(null);
+  const [shared, setShared] = useState<BudgetView[]>([]);
+  const [budgetLoading, setBudgetLoading] = useState(true);
+  const [budgetError, setBudgetError] = useState(false);
+  const [budgetReload, setBudgetReload] = useState(0);
+  const [budgetCursor, setBudgetCursor] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true; setBudgetLoading(true); setAllowances(null); setBudgetError(false);
+    void Promise.all([
+      invoke<KeyBudgetResult>('compute_key_budgets', { input: { source_id: source.source_id, cursor: null } }),
+      invoke<KeyBudgetResult>('compute_key_budgets', { input: { source_id: null, cursor: null } }),
+    ]).then(([owned, available]) => {
+      if (!active) return;
+      if (!owned || !available) throw new Error('BUDGET_UNAVAILABLE');
+      setAllowances(owned); setShared(available.budgets); setBudgetCursor(available.next_cursor);
+    }).catch(() => { if (active) setBudgetError(true); }).finally(() => { if (active) setBudgetLoading(false); });
+    return () => { active = false; };
+  }, [source.source_id, source.revision, budgetReload]);
+  async function loadMoreBudgets() {
+    try { const page = await invoke<KeyBudgetResult>('compute_key_budgets', { input: { source_id: null, cursor: budgetCursor } });
+      setShared(items => [...items, ...page.budgets]); setBudgetCursor(page.next_cursor);
+    } catch { setBudgetError(true); }
+  }
   const visibleKeys = draft.keys.filter(key => !key.removed);
   function keyLabel(key: ModelDraft['keys'][number]) {
     return key.replacement ? maskEnteredKey(key.replacement)
@@ -649,7 +677,8 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
     <p className="oc-meta">{text('影响模型：', 'Models: ')}{affected || text('暂无模型', 'None')}</p>
     {visibleKeys.map((key, index) => {
       const availability = summarizeAvailability(source.keys.find(item => item.key_id === key.keyId)?.model_statuses.filter(item => !model || item.binding_id === model.binding_id).map(item => item.availability) ?? [], language);
-      return <div className="oc-key-row" key={key.draftId} onKeyDown={event => {
+      const current = allowances?.budgets.find(item => item.definition.budget_id === allowances.bindings[key.keyId ?? '']);
+      return <div className="oc-key-budget" key={key.draftId}><div className="oc-key-row" onKeyDown={event => {
         if (event.altKey && event.key === 'ArrowUp') { event.preventDefault(); onChange(moveDraftKey(draft, key.draftId, -1)); }
         if (event.altKey && event.key === 'ArrowDown') { event.preventDefault(); onChange(moveDraftKey(draft, key.draftId, 1)); }
       }}>
@@ -661,8 +690,13 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
           <button className="icon-btn" type="button" aria-label={text('替换 Key', 'Replace key')} onClick={() => { setEditing({ kind: 'replace', draftId: key.draftId }); setSecretError(''); onEditingChange(true); updateKey(key.draftId, item => ({ ...item, replacement: '' })); }}><UiIcon name="refresh" /></button>
           <button className="icon-btn" type="button" aria-label={text('移除', 'Remove')} onClick={() => removeKey(key.draftId)}><UiIcon name="trash" /></button>
         </div>
+      </div>
+      {!budgetLoading && !budgetError && <KeyBudgetEditor language={language} value={key.budget ?? budgetDraft(current)} current={current} shared={shared} onChange={budget => updateKey(key.draftId, item => ({ ...item, budget }))} />}
       </div>;
     })}
+    {budgetLoading && <p className="field-help" role="status">{text('读取额度…', 'Loading allowances…')}</p>}
+    {budgetError && <p className="field-help" role="status">{text('额度暂不可用，已有额度继续生效。', 'Allowances unavailable; existing limits remain active.')} <button type="button" className="btn btn-quiet" onClick={() => setBudgetReload(value => value + 1)}>{text('重试', 'Retry')}</button></p>}
+    {budgetCursor && !budgetError && <button type="button" className="btn btn-quiet" onClick={() => void loadMoreBudgets()}>{text('加载更多共用额度', 'Load more shared allowances')}</button>}
     {!visibleKeys.length && <p className="oc-meta">{text('还没有凭据，添加后可用于这个接入。', 'No credentials yet. Add one for this connection.')}</p>}
     {draft.keys.some(key => key.removed && key.keyId) && <div className="callout warn">
       <strong>{text('保存后移除', 'Removed on save')}</strong>
@@ -677,6 +711,7 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
     </div> : source.actions.includes('add_key') && <button className="btn" type="button" onClick={() => { setEditing({ kind: 'add' }); setSecretError(''); onEditingChange(true); }}><UiIcon name="plus" />{text('添加 API Key', 'Add API key')}</button>}
     {errorCode && <div className="callout bad" role="alert" data-error-code={errorCode}><UiIcon name="warning" /><span>{errorCode === 'CREDENTIAL_INPUT_PENDING'
       ? text('请先加入或取消正在输入的凭据。', 'Add or cancel the credential currently being entered first.')
+      : errorCode === 'KEY_BUDGET_INVALID' ? text('请检查额度金额、补充日期、时区和余额上限。', 'Check the allowance amount, renewal date, time zone and balance cap.')
       : text('凭据未保存，修改已保留。请读取当前状态后重试。', 'Credentials were not saved. Your changes are retained; refresh the current state and try again.')}</span></div>}
   </div>;
 }

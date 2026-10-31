@@ -1293,7 +1293,7 @@ export function ModelManagementPage({
       onRefresh={refreshManagement}
       onPrepareKeyInput={prepareKeyInput}
       onReadKeyMasks={readKeyMasks}
-      onPreview={(change: ManagementChange) => invoke<SavePreview>('preview_compute_save', { change })}
+      onPreview={(change: ManagementChange, keyBudgetEdits) => keyBudgetEdits?.length ? invoke<SavePreview>('preview_compute_key_budgets', { change, defaultPreferences: {}, networkEdit: null, keyBudgetEdits }) : invoke<SavePreview>('preview_compute_save', { change })}
       onApply={applyExisting}
       onDiscardProtectedInputs={discardProtectedInputs}
       onCredentialsSaved={() => setModelNotice(language === 'zh' ? '接入凭据已保存。' : 'Connection credentials saved.')}
