@@ -46,3 +46,13 @@ test('subscription repair follows saved mode and separates local and service fai
   assert.doesNotMatch(runtime, /重新登录|原生客户端/);
   assert.equal(subscriptionFailureCopy('UNRELATED_ERROR', 'en'), null);
 });
+
+test('a subscription login held by another instance gives ownership recovery guidance', () => {
+  const zh = subscriptionFailureCopy('SUBSCRIPTION_LOGIN_IN_USE', 'zh');
+  const en = subscriptionFailureCopy('SUBSCRIPTION_LOGIN_IN_USE', 'en');
+  assert.match(zh, /其他 HiRoute.*使用/);
+  assert.match(zh, /独立登录/);
+  assert.match(en, /another HiRoute instance/);
+  assert.match(en, /independent sign-in/);
+  assert.doesNotMatch(`${zh} ${en}`, /服务和网络|service and network|expired|过期/);
+});

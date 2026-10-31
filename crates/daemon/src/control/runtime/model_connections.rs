@@ -37,6 +37,7 @@ mod discovered;
 mod error;
 mod feed_admission;
 mod hermes_points;
+mod key_budgets;
 mod key_inputs;
 mod key_masks;
 mod network_checks;
@@ -48,6 +49,9 @@ mod presentation;
 mod registered;
 mod saved;
 mod saved_prefill;
+
+#[cfg(test)]
+mod api_reasoning_tests;
 
 use error::{map_check_error, map_target_error};
 
@@ -207,7 +211,24 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             });
         };
         Ok(ComputeSubscriptionCandidatesV2 {
-            candidates: self.refresh_subscription_candidates()?,
+            candidates: self.refresh_subscription_candidates(false)?,
+            discovery_state: ComputeSubscriptionDiscoveryStateV2::Complete,
+            reason_code: None,
+        })
+    }
+
+    fn native_subscription_candidates(
+        &self,
+    ) -> Result<ComputeSubscriptionCandidatesV2, ComputeManagementControlError> {
+        let Some(_) = self.cpa_runtime.as_ref() else {
+            return Ok(ComputeSubscriptionCandidatesV2 {
+                candidates: Vec::new(),
+                discovery_state: ComputeSubscriptionDiscoveryStateV2::RuntimeUnavailable,
+                reason_code: Some("subscription_runtime_unavailable".into()),
+            });
+        };
+        Ok(ComputeSubscriptionCandidatesV2 {
+            candidates: self.refresh_subscription_candidates(true)?,
             discovery_state: ComputeSubscriptionDiscoveryStateV2::Complete,
             reason_code: None,
         })
@@ -497,6 +518,19 @@ impl ComputeManagementControlPort for LocalControlAdapter {
     {
         LocalControlAdapter::compute_defaults(self, query)
     }
+    fn compute_key_budgets(
+        &self,
+        query: hiroute_application_api::ComputeKeyBudgetsQueryV1,
+    ) -> Result<hiroute_application_api::ComputeKeyBudgetsResultV1, ComputeManagementControlError>
+    {
+        self.read_key_budgets(query)
+    }
+    fn preview_compute_key_budgets(
+        &self,
+        request: hiroute_application_api::ComputeKeyBudgetSaveRequestV1,
+    ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError> {
+        self.preview_key_budgets(request)
+    }
     fn preview_compute_save_v3(
         &self,
         mut change: hiroute_application_api::ComputeManagementChangeV3,
@@ -504,10 +538,18 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         let catalog = self
             .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
-        self.validate_subscription_save_change(&change.change)?;
-        self.validate_native_network_save(&change.change, None)?;
-        self.bind_saved_key_inputs(&change.change)?;
-        self.establish_save_defaults(&mut change, &catalog)?;
+        let metadata_only = change.api_link.is_some()
+            && matches!(
+                change.change.subject,
+                ComputeManagementSubjectV2::SavedSource { .. }
+            );
+        if !metadata_only {
+            self.validate_subscription_save_change(&change.change)?;
+            self.validate_native_network_save(&change.change, None)?;
+            self.bind_saved_key_inputs(&change.change)?;
+            self.establish_save_defaults(&mut change, &catalog)?;
+        }
+        // The V5 planner restricts metadata-only edits to an exact source clone plus revision.
         let stores = self
             .stores_lock()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;
@@ -540,8 +582,20 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         let catalog = self
             .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
-        self.validate_subscription_save_change(&change)?;
-        self.bind_saved_key_inputs(&change)?;
+        let metadata_only = request
+            .spec
+            .desired_state
+            .get("schema")
+            .and_then(serde_json::Value::as_str)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
+            && matches!(
+                change.subject,
+                ComputeManagementSubjectV2::SavedSource { .. }
+            );
+        if !metadata_only {
+            self.validate_subscription_save_change(&change)?;
+            self.bind_saved_key_inputs(&change)?;
+        }
         let stores = self
             .stores_lock()
             .map_err(|_| ComputeManagementControlError::Unavailable)?;

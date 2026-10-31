@@ -34,12 +34,18 @@ pub fn compile_agent_plan_v2(
                     .ok_or_else(|| {
                         AgentPlanCompilerError::UnknownBinding(selection.binding_id.clone())
                     })?;
-                let candidate = resolve_attempt(
+                let mut candidate = resolve_attempt(
                     fact,
                     selection.reasoning.as_ref(),
                     &desired.requirements,
                     DiscreteReasoningDefault::RequireExplicit,
                 )?;
+                for profile in &mut candidate.protocol_profiles {
+                    profile.follow_request_reasoning = desired.follow_request_reasoning;
+                }
+                candidate.protocol_profile_digest =
+                    CanonicalDigest::of(&candidate.protocol_profiles)
+                        .map_err(|_| AgentPlanCompilerError::Encoding)?;
                 if desired.delegation_enabled
                     && let Some(work) = &desired.work
                 {

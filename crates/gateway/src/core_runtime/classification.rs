@@ -869,6 +869,33 @@ impl ProductionGatewayRuntime {
                     Ok(Some(_)) => unreachable!(),
                 }
             };
+            let mut spending = match lease.reserve_spending(None) {
+                Ok(value) => value,
+                Err(hiroute_domain::KeyBudgetGateErrorV1::Authority(_)) => {
+                    return active_failure_or_abort(
+                        CallFailure::Unavailable,
+                        call_deadline,
+                        overall_deadline,
+                        fixed_timeout_wins,
+                        &cancellation,
+                    );
+                }
+                Err(_) => {
+                    excluded.push(key.key_id.clone());
+                    continue;
+                }
+            };
+            if let Some(spending) = spending.as_mut()
+                && spending.mark_sent().is_err()
+            {
+                return active_failure_or_abort(
+                    CallFailure::Unavailable,
+                    call_deadline,
+                    overall_deadline,
+                    fixed_timeout_wins,
+                    &cancellation,
+                );
+            }
             let result = self
                 .call_classifier_attempt(
                     classifier,

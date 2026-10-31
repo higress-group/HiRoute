@@ -344,6 +344,10 @@ pub(crate) fn observed_history_with_replay<'a>(
         }
     }
     instructions.bool(request.parallel_tool_calls);
+    if let Some(control) = &request.requested_reasoning.followed_control {
+        instructions.tag(b"follow-request-reasoning");
+        instructions.json(&serde_json::to_value(control).ok()?)?;
+    }
     // The sealed Agent Plan owns reasoning effort/budget. The typed Responses
     // options below retain and hash the supported summary sibling.
     match &request.responses_options {
@@ -1407,6 +1411,33 @@ mod tests {
         let high = visible_history(&high, &key).unwrap();
         assert_eq!(low.instruction_digest, high.instruction_digest);
         assert_eq!(low.complete_digest(), high.complete_digest());
+    }
+
+    #[test]
+    fn follow_reasoning_controls_separate_history_while_legacy_ignores_effort() {
+        use crate::server::core_runtime::profiles::RequestedNativeReasoning;
+        use crate::server::request_plan::IngressProtocol;
+        let mut low = request(vec![text(MessageRole::User, "same")]);
+        low.requested_reasoning.followed_control = Some(
+            RequestedNativeReasoning::from_document(
+                &serde_json::json!({"reasoning":{"effort":"low"}}),
+                IngressProtocol::Responses,
+            )
+            .unwrap(),
+        );
+        let mut high = low.clone();
+        high.requested_reasoning.followed_control = Some(
+            RequestedNativeReasoning::from_document(
+                &serde_json::json!({"reasoning":{"effort":"high"}}),
+                IngressProtocol::Responses,
+            )
+            .unwrap(),
+        );
+        let key = [11; 32];
+        assert_ne!(
+            visible_history(&low, &key).unwrap().instruction_digest,
+            visible_history(&high, &key).unwrap().instruction_digest
+        );
     }
 
     #[test]

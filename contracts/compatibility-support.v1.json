@@ -109,14 +109,20 @@
     "hiroute.compute-management-change/v2",
     "hiroute.compute-management-change/v3",
     "hiroute.compute-management-change/v4",
+    "hiroute.compute-management-change/v5",
+    "hiroute.compute-management-change/v6",
     "hiroute.compute-management-key/v2",
     "hiroute.compute-management-lineage/v3",
     "hiroute.compute-management-mutation/v2",
     "hiroute.compute-management-mutation/v3",
     "hiroute.compute-management-mutation/v4",
+    "hiroute.compute-management-mutation/v5",
+    "hiroute.compute-management-mutation/v6",
     "hiroute.compute-management-preview/v2",
     "hiroute.compute-management-preview/v3",
     "hiroute.compute-management-preview/v4",
+    "hiroute.compute-management-preview/v5",
+    "hiroute.compute-management-preview/v6",
     "hiroute.compute-management-query/v2",
     "hiroute.compute-management-snapshot/v2",
     "hiroute.compute-management-snapshot/v3",
@@ -262,6 +268,7 @@
     "hiroute.hermes-plugin-restore/v1",
     "hiroute.historical-applicability-test-result/v1",
     "hiroute.historical-applicability-test/v1",
+    "hiroute.key-budget/v1",
     "hiroute.launcher-upgrade-status/v1",
     "hiroute.launcher-upgrade/v1",
     "hiroute.local-pipe/v1",
@@ -779,7 +786,6 @@
       "current_contracts": [
         "agent-plan-compiler/v3",
         "hiroute.compiled-agent-plan/v3",
-        "hiroute.stable-route/v1",
         "hiroute.plan-content-change/v2",
         "hiroute.publication-checkpoint-change/v1",
         "hiroute.publication-checkpoint-control/v1",
@@ -787,6 +793,7 @@
         "hiroute.publication-checkpoint-preview/v1",
         "hiroute.routing-control/v2",
         "hiroute.routing-publication-effect/v2",
+        "hiroute.stable-route/v1",
         "hiroute.stored-plan/v1"
       ],
       "legacy_support": [
@@ -1100,8 +1107,8 @@
         "hiroute.launcher-upgrade-status"
       ],
       "current_contracts": [
-        "hiroute.launcher-upgrade/v1",
-        "hiroute.launcher-upgrade-status/v1"
+        "hiroute.launcher-upgrade-status/v1",
+        "hiroute.launcher-upgrade/v1"
       ],
       "legacy_support": []
     },
@@ -1119,13 +1126,13 @@
         "hiroute.upgrade-installer-decision"
       ],
       "current_contracts": [
-        "hiroute.windows-desktop-package/v1",
-        "hiroute.windows-desktop-restore/v1",
-        "hiroute.website.releases/v3",
-        "hiroute.desktop-upgrade-handoff/v1",
-        "hiroute.upgrade-installer-started/v1",
         "hiroute.daemon-upgrade-progress/v1",
-        "hiroute.upgrade-installer-decision/v1"
+        "hiroute.desktop-upgrade-handoff/v1",
+        "hiroute.upgrade-installer-decision/v1",
+        "hiroute.upgrade-installer-started/v1",
+        "hiroute.website.releases/v3",
+        "hiroute.windows-desktop-package/v1",
+        "hiroute.windows-desktop-restore/v1"
       ],
       "legacy_support": [
         {
@@ -1251,12 +1258,18 @@
         "hiroute.compute-management-change/v2",
         "hiroute.compute-management-change/v3",
         "hiroute.compute-management-change/v4",
+        "hiroute.compute-management-change/v5",
+        "hiroute.compute-management-change/v6",
         "hiroute.compute-management-mutation/v2",
         "hiroute.compute-management-mutation/v3",
         "hiroute.compute-management-mutation/v4",
+        "hiroute.compute-management-mutation/v5",
+        "hiroute.compute-management-mutation/v6",
         "hiroute.compute-management-preview/v2",
         "hiroute.compute-management-preview/v3",
         "hiroute.compute-management-preview/v4",
+        "hiroute.compute-management-preview/v5",
+        "hiroute.compute-management-preview/v6",
         "hiroute.compute-management-source/v3",
         "hiroute.compute-management-source/v4"
       ],
@@ -1284,6 +1297,50 @@
             "crates/domain/src/compute/management/mod.rs",
             "crates/daemon/tests/support/released_grant_upgrade.py"
           ]
+        },
+        {
+          "contract": "hiroute.compute-management-change/v4",
+          "field": "retained association envelope and association-only schema35 layout, distinguished from current Native network V4/35",
+          "mode": "legacy_adapter",
+          "owner": "compute-management",
+          "allowed_paths": [
+            "crates/application/src/compute_management/mutations/defaults.rs",
+            "crates/daemon/src/control/runtime/model_connections/network_settings.rs",
+            "crates/daemon/tests/support/model_connections_product.py",
+            "crates/domain/src/compute/management/api_link.rs",
+            "crates/domain/src/compute/network/transaction.rs",
+            "crates/domain/src/operation/compute_management.rs",
+            "crates/local-storage/src/control/compute/management/tests/subscription_api.rs",
+            "crates/local-storage/src/control/compute/subscriptions.rs",
+            "crates/local-storage/src/migrations/legacy_subscription_api_v35.rs",
+            "crates/local-storage/src/migrations/mod.rs",
+            "crates/local-storage/src/migrations/source_network_v35.rs",
+            "crates/product-session/src/commands/model_connection_web.rs"
+          ],
+          "reason": "Retained pre-integration association stores already contain signed V4 association operations. Exact envelope/layout recognition preserves their original bytes, source/key identities and association witnesses while the backed-up schema36 conversion adds the absent Native policy companion. Main's network V4 remains current; new association producers use V5. Missing or conflicting layout evidence is refused.",
+          "removal_condition": "Retire only after every retained pre-integration association profile, unfinished V4 association Operation and recoverable backup is explicitly migrated or retired under the storage support policy. Never remove support merely because current producers use V5."
+        },
+        {
+          "contract": "hiroute.compute-management-mutation/v4",
+          "field": "retained association envelope and association-only schema35 layout, distinguished from current Native network V4/35",
+          "mode": "legacy_adapter",
+          "owner": "compute-management",
+          "allowed_paths": [
+            "crates/application/src/compute_management/mutations/defaults.rs",
+            "crates/daemon/src/control/runtime/model_connections/network_settings.rs",
+            "crates/daemon/tests/support/model_connections_product.py",
+            "crates/domain/src/compute/management/api_link.rs",
+            "crates/domain/src/compute/network/transaction.rs",
+            "crates/domain/src/operation/compute_management.rs",
+            "crates/local-storage/src/control/compute/management/tests/subscription_api.rs",
+            "crates/local-storage/src/control/compute/subscriptions.rs",
+            "crates/local-storage/src/migrations/legacy_subscription_api_v35.rs",
+            "crates/local-storage/src/migrations/mod.rs",
+            "crates/local-storage/src/migrations/source_network_v35.rs",
+            "crates/product-session/src/commands/model_connection_web.rs"
+          ],
+          "reason": "Retained pre-integration association stores already contain signed V4 association operations. Exact envelope/layout recognition preserves their original bytes, source/key identities and association witnesses while the backed-up schema36 conversion adds the absent Native policy companion. Main's network V4 remains current; new association producers use V5. Missing or conflicting layout evidence is refused.",
+          "removal_condition": "Retire only after every retained pre-integration association profile, unfinished V4 association Operation and recoverable backup is explicitly migrated or retired under the storage support policy. Never remove support merely because current producers use V5."
         }
       ]
     },
@@ -1325,8 +1382,8 @@
         "hiroute.classifier-decision-test-result"
       ],
       "current_contracts": [
-        "hiroute.classifier-decision-test/v1",
-        "hiroute.classifier-decision-test-result/v1"
+        "hiroute.classifier-decision-test-result/v1",
+        "hiroute.classifier-decision-test/v1"
       ],
       "legacy_support": []
     },
@@ -1337,8 +1394,8 @@
         "hiroute.historical-applicability-test-result"
       ],
       "current_contracts": [
-        "hiroute.historical-applicability-test/v1",
-        "hiroute.historical-applicability-test-result/v1"
+        "hiroute.historical-applicability-test-result/v1",
+        "hiroute.historical-applicability-test/v1"
       ],
       "legacy_support": []
     },
@@ -1384,8 +1441,8 @@
         "hiroute.model-feed.acceptance"
       ],
       "current_contracts": [
-        "hiroute.model-feed.state/v2",
-        "hiroute.model-feed.acceptance/v2"
+        "hiroute.model-feed.acceptance/v2",
+        "hiroute.model-feed.state/v2"
       ],
       "legacy_support": [
         {
@@ -1527,7 +1584,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2304,6 +2361,33 @@
       ]
     },
     {
+      "contract": "hiroute.compute-management-mutation/v2",
+      "field": "pre-schema37 source effects have no Key budget witness or binding",
+      "mode": "recovery_read_only",
+      "owner": "compute-management",
+      "allowed_paths": [
+        "crates/local-storage/src/control/key_budgets/current.rs",
+        "crates/local-storage/src/control/compute/management/key_budgets.rs",
+        "crates/local-storage/src/control/compute/management/tests/key_budgets.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs",
+        "crates/local-storage/src/migrations/mod.rs"
+      ],
+      "reason": "Supported source operations predate local Key budgets. An absent primary witness is admitted only when both companion effects and current bindings are absent. Released source saves retain current limits without changing their sealed bytes. Schema37 is an additive three-store upgrade; retained earlier target36 batches finish before advancing. A missing witness or binding belonging to an activated budget operation fails closed.",
+      "removal_condition": "Retire only after supported released source operations, retained unfinished writes and earlier migration batches are explicitly retired under the release support policy. Current budget producers use V6 and always authenticate their companion effects."
+    },
+    {
+      "contract": "hiroute.compute-management-mutation/v2",
+      "field": "pre-schema36 compute_management_effects has SQL NULL api_link_before and api_link_after",
+      "mode": "recovery_read_only",
+      "owner": "compute-management",
+      "allowed_paths": [
+        "crates/local-storage/src/control/compute/management/api_link.rs",
+        "crates/local-storage/src/control/compute/management/tests/released_lifecycle.rs"
+      ],
+      "reason": "Supported released V2 and retained pre-schema36 V3 source effects did not own association metadata. SQL NULL in both new columns means no association witness; witnessed absence is the JSON string null. Never infer a V5 association change from a historical effect or rewrite its canonical source proof.",
+      "removal_condition": "Remove only after all supported sources and retained unfinished pre-schema36 operations are explicitly retired under the release support policy. Current writes always record both witnesses and V5 requires exact sealed witnesses."
+    },
+    {
       "contract": "hiroute.compute-management-change/v2",
       "mode": "legacy_adapter",
       "owner": "compute-management-network",
@@ -2385,6 +2469,33 @@
         "crates/gateway/src/core_runtime/classification/system_one_tests.rs",
         "crates/daemon/tests/support/c_protocol_product.py"
       ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "pre-request-reasoning contract digest sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained observations without inferring a request reasoning policy or candidate resolution; live ingestion uses the single current descriptor.",
+      "removal_condition": "Retire only after all active and supported recovery stores containing this exact digest are explicitly retired.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.model-default-preference/v1",
+      "field": "retained preserve_saved and follow_official variants",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-defaults",
+      "allowed_paths": [
+        "crates/domain/src/compute/management/defaults.rs",
+        "crates/integrations/src/compute/defaults.rs",
+        "crates/integrations/src/compute/defaults/native_reasoning.rs",
+        "crates/daemon/src/control/runtime/model_connections/defaults.rs",
+        "apps/desktop/src/features/model-feed/ModelDefaultsEditor.tsx"
+      ],
+      "reason": "Retained source choices and sealed Operations keep their original canonical bytes and exact saved/official-locator meaning. Current explicit edits use custom values or follow_metadata; the Desktop maps retained choices to the same two visible modes without rewriting them. Custom unknown is an explicit value and cannot be filled automatically.",
+      "removal_condition": "Retire only after the release support policy explicitly retires all supported retained source/default choices and unfinished Operations, or an authenticated migration preserves their original meaning."
     }
   ]
 }

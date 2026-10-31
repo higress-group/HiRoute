@@ -1,5 +1,28 @@
 use super::*;
 
+#[test]
+fn follow_reasoning_retains_legacy_configuration_and_round_trips_opt_in() {
+    let released: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/released-plan-editor.v2.json")).unwrap();
+    let old = released["editor"].clone();
+    let mut draft: PlanEditorStateV2 = serde_json::from_value(old.clone()).unwrap();
+    assert!(!draft.follow_request_reasoning);
+    let normalized = serde_json::to_value(&draft).unwrap();
+    assert!(normalized.get("follow_request_reasoning").is_none());
+    assert_eq!(normalized["candidates"], old["candidates"]);
+    assert_eq!(normalized["smart"], old["smart"]);
+    let round_trip: PlanEditorStateV2 = serde_json::from_value(normalized.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&round_trip).unwrap(), normalized);
+    assert!(!draft.effective().unwrap().follow_request_reasoning);
+    let original = draft.candidates.clone();
+    draft.follow_request_reasoning = true;
+    let effective = draft.effective().unwrap();
+    assert!(effective.follow_request_reasoning);
+    let reopened = effective.editor(None).unwrap();
+    assert!(reopened.follow_request_reasoning);
+    assert_eq!(reopened.candidates, original);
+}
+
 fn editor() -> PlanEditorStateV2 {
     serde_json::from_value(serde_json::json!({
         "schema": PLAN_EDITOR_SCHEMA_V2, "display_name": "代码整理", "purpose": "整理代码",
@@ -71,6 +94,36 @@ fn fixed_model_keeps_an_explicit_order_and_delegation_requires_a_worker() {
         protocol: crate::AgentIngressProtocolV1::Responses,
     });
     assert!(draft.effective().is_ok());
+}
+
+#[test]
+fn purpose_is_optional_for_routing_and_required_for_delegation() {
+    let mut draft = editor();
+    draft.purpose = "  ".into();
+    let routing = draft.effective().unwrap();
+    assert_eq!(routing.purpose.as_str(), "");
+    let reopened: AgentPlanAuthoringV2 =
+        serde_json::from_value(serde_json::to_value(&routing).unwrap()).unwrap();
+    reopened.validate().unwrap();
+    assert_eq!(reopened.editor(None).unwrap().purpose, "");
+    draft.work = Some(WorkerPlanV1 {
+        harness: WorkerHarnessV1::CodexCli,
+        protocol: crate::AgentIngressProtocolV1::Responses,
+    });
+    draft.delegation_enabled = true;
+    assert!(matches!(
+        draft.effective(),
+        Err(PlanAuthoringError::InvalidMetadata)
+    ));
+    let mut invalid = reopened;
+    invalid.delegation_enabled = true;
+    invalid.work = draft.work.clone();
+    assert_eq!(invalid.validate(), Err(PlanAuthoringError::InvalidMetadata));
+    draft.purpose = "Implement a requested change".into();
+    draft.effective().unwrap();
+    draft.delegation_enabled = false;
+    draft.purpose.clear();
+    draft.effective().unwrap();
 }
 
 #[test]

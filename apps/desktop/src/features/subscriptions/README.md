@@ -28,6 +28,45 @@ independent sign-in interaction. Opening that entry releases the prior scan chec
 it neither starts authorization nor saves a connection. Product copy calls this
 automatic sign-in credential refresh, never renewal of the paid subscription.
 
+Device scans explicitly request native-only candidates. Independent HiRoute sign-ins
+stay in login management, while login continuation retains the complete candidate
+query and saved-source append uses exact source/revision lookup. The scan list keeps
+its native results separate from a selected independent-login candidate.
+
+`SubscriptionApiConnection.tsx` owns optional existing-API selection and inline Key
+entry for the registered OpenAI API (Codex) or Anthropic API (Claude). The subscription
+flow keeps one primary save action and no nested API dialog or model picker.
+After subscription checking, the optional Key field is shown directly: blank means
+subscription only, typing opts into API creation, and clearing an unsubmitted Key
+opts out. Existing API selection is a secondary disclosure. A protected Key retained
+after failure is explicitly marked and can be cleared before admission. Editing an
+existing API's Key/network still belongs to that API's normal connection editor;
+subscription association edits do not silently overwrite a shared API configuration.
+`ModelManagementPage.tsx` validates input, confirms the subscription save, and only
+then calls `new-api.ts` to check/save exact API-observed selectable counterparts of
+the saved subscription membership. The mounted inline credential owner survives
+loading and completion states. API failure retains the subscription and offers
+API-only retry or finish-later; it never reuses a consumed subscription approval.
+Saved-source association edits reuse the same inline setup.
+
+`new-api.ts` owns the protected input and new API creation before association.
+`save-attempt.ts` observes the original sealed request/key after uncertain writes.
+A created API is retained and reused if association fails; pending association
+metadata alone cannot prove its original Operation completed. Closing before
+admission releases owned input, while a dispatched save retains native recovery
+ownership even when replay itself is refused. After confirmed association, a
+failed completion read retries only canonical readback; the association's own
+model-sync revision is not an external-edit conflict. API transport policy is
+independent of subscription proxy settings.
+`SubscriptionApiCredits.tsx` shows eligible plans and the official claim/scope link
+above Key entry. Detailed instructions remain on the provider website rather than
+in a separate credits disclosure.
+The inline setup explains the additional API-origin model set and configuring a
+candidate group to use the API after subscription quota exhaustion. Association
+alone still leaves groups and priority user-authored. Official billing owns credit
+eligibility and balance; Key verification does not activate the benefit.
+Ordinary API connection forms retain their separate service and model selection.
+
 Tests belong to the Desktop subscription suites and the production Pilot path; shared
 contract and protected callback admission regressions belong to Application API, CLI and
 the daemon. Generated CLI schemas and Tauri permissions are finalized by the convergence
@@ -43,3 +82,10 @@ Codex borrowing uses file credentials only. A selected non-file credential store
 stale auth.json and directs the user to independent sign-in; Claude keeps its existing
 file and explicit Keychain check. Error copy separates missing login, unsupported mode or
 store, unreadable credentials, missing account identity and runtime/network unavailability.
+
+Current association saves use V5, independently of Native network V4. Retained
+association V4 receipts keep their original wire bytes and protected source proofs.
+The exact association-only schema35 layout is upgraded through the normal backed-up
+three-store pipeline to schema36, adding main's Native policy companion without
+recreating association rows or rewriting journals. Ambiguous/corrupt layouts fail
+closed. The compatibility register owns retirement of this retained input support.

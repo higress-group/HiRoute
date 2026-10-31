@@ -378,7 +378,7 @@ export type ModelConnectionBackend = {
   checkModelConnection(request: ModelConnectionCheckRequest, networkEdit?: NativeNetworkEdit): Promise<ModelConnectionCheckView>;
   checkRegisteredModelConnection(request: RegisteredModelConnectionCheckRequest, networkEdit?: NativeNetworkEdit): Promise<ModelConnectionCheckView>;
   cancelModelConnectionCheck(checkId: string): Promise<void>;
-  previewComputeSave(change: ComputeManagementChange, networkEdit?: NativeNetworkEdit): Promise<ComputeSavePreview>;
+  previewComputeSave(change: ComputeManagementChange, networkEdit?: NativeNetworkEdit, keyBudgetEdits?: import('../key-budgets/types').KeyBudgetEdit[]): Promise<ComputeSavePreview>;
   applyComputeSave(request: ComputeConnectionApplyRequest): Promise<{
     result: { operation_id: string; accepted_digest: CanonicalDigest; state: string };
     operation: OperationReference;
@@ -387,6 +387,8 @@ export type ModelConnectionBackend = {
 };
 
 export type ModelConnectionFormProps = {
+  /** Prefer this registered product once on entry; the user can still change it. */
+  initialConnectionOptionId?: string;
   /** A caller-owned connection-source choice; the ordinary form still owns inputs/save. */
   connectionChoice?: import('react').ReactNode;
   allowCustom?: boolean;

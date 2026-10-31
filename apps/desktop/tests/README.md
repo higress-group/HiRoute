@@ -1,5 +1,19 @@
 # Desktop behavior tests
 
+The focused saved-model route flow runs with
+`node tests/v3/visual/new-model-trial.mjs /path/to/evidence --model-route`.
+It exercises production DesktopApp navigation, same-ID source choices, exact-ID
+fixed-route defaults, one explicit save, existing-route append/CAS and conditional
+purpose requirements, with supported-window geometry and screenshots in both
+languages/themes. IPC is synthetic; actual CLI/daemon save, Agent catalog and
+restart are covered by `real_process_route_only_model_id_and_empty_purpose_survive_restart`.
+Add `--reasoning-controls` to select the candidate reasoning checks alone. They
+cover the compact labeled selector, route-policy segments, real keyboard choices,
+native discrete/toggle values, budget validation and cancellation, model-fixed
+plain text, retained unsupported settings and one final Save. Production styles
+are checked in both languages/themes at 1200×813 and 755×600. These browser cases
+use controlled IPC; they do not establish provider behavior or native persistence.
+
 Native startup presentation is owned by `src-tauri/src/bridge/launch_presentation.rs`
 and the macOS launch observer in `hiroute-desktop-host-effects`. Their Rust cases
 cover early/late reasons, foreground fallback, background/duplicate suppression,
@@ -55,6 +69,7 @@ proves native authorization, persistence, process cleanup or real model calls.
 | Map a trial route to an Agent with additional models | `quickstart.<dsh/pi/qoder/opencode>.<en/zh>.no-claude-presets` in [Trial scenarios](v3/visual/new-model-trial-active.mjs) | Clearing Claude presets before selecting another Agent does not block review. The completed mapping names the selected Agent without inventing Claude preset changes; the request retains the corresponding additional-model mode. |
 | Load trial choices and current selected settings | `quickstart.agent-reads.*` in [trial read scenarios](v3/visual/trial-agent-read-checks.mjs), also selected with `new-model-trial.mjs OUTPUT --trial-agent-reads` | Opening reads discovery once and one model detail. Selection/retry avoid rediscovery; A→B→A and close/reopen reject late details. Mapping refresh blocks a changed native selection before Preview/Apply. Browser IPC is synthetic; actual Release time to usable configuration remains native acceptance. |
 | Connect an API through the service directory | [Connection flow scenarios](v3/visual/connection-flow-active.mjs), [directory and draft rules](connection-directory.test.mjs) | Full branded directory, separate product drafts and keys, checked source name, cancellation, explicit model selection and inherited append behavior. Uses production styles; native save and live calls need separate acceptance. |
+| Connect a subscription and optional provider API in one flow | [API setup rules](subscription-api-setup.test.mjs), [production interaction and layout](v3/visual/subscription-api-setup-active.mjs), selected with `new-model-trial.mjs OUTPUT --subscription-api` | Codex/OpenAI and Claude/Anthropic sign-in, scan, append and saved-source setup reuse one model selection and primary save. Subscription confirmation precedes API checking; failures retry only the API, reuse created sources and observe original pending writes. Provider credit guidance and zh/en light/dark at both supported sizes use production styles. IPC is synthetic; native installation, persistence and live provider requests remain separate acceptance. |
 | Enable or edit Codex routing | `codex.enable.draft-cancel`, `codex.routing.fixed-binding`, `codex.routing.mixed-native-default` in [Agent scenarios](v3/browser/agent-trust-scenarios.mjs) | Cancelling never applies; configured fixed overrides, native reasoning and the chosen default survive save; service responsibility is explained. |
 | Configure Claude routing and collaboration | `claude.enable.shared-presets`, `agent.configuration.independent-facets`, `claude.collaboration.check-before-save`, `claude.collaboration.retry-preserves-edit` | Ordinary Claude entry and account Default limitations remain clear; prerequisite checks precede mutation; retry preserves edits. |
 | Enable, recover or disable Qoder task collaboration | `qoder.collaboration.enable-without-model`, `qoder.collaboration.retry-and-restore` | No model connection or published Plan is required; required capability checks happen during save. Login and changed-Skill failures retain edits and enabled collaboration with the shared retry action; restore keeps model configuration unchanged. |
@@ -298,3 +313,10 @@ exact API/subscription source, candidate, append-only and no-key-edit assertions
 choice, localization and unchanged submitted profiles in both themes and sizes.
 All of these browser paths use controlled IPC; native business effects remain
 separate acceptance.
+
+`--metadata` also exercises the two model-capability modes, editable native
+profiles/limits, explicit custom unknown, draft retention across mode changes and
+failed saves, validation before submission and exactly one Save. These are
+production-style browser checks with controlled IPC; the daemon
+`api_reasoning_survives_normal_v3_save_reopen_and_preserves_manual_values` case
+owns actual source-default save/reopen and publication-option effects.

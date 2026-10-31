@@ -45,6 +45,18 @@ A save MUST report actual per-source success. A source's common save unit is ato
 failed replacement preserves the previous effective source. Retry of an admitted
 Apply follows the original Operation and its idempotency/versions.
 
+An explicitly checked subscription login already leased by another HiRoute
+instance MUST report an ownership conflict with guidance to release that instance
+or use independent sign-in. It MUST NOT be presented as an expired login or a
+network outage. Checking MUST preserve the existing lease, native credentials,
+saved models and routes rather than taking over another instance's authorization.
+
+#### Scenario: Another HiRoute instance is using the selected local login
+
+- **WHEN** an explicit subscription check cannot acquire the selected login's lease
+- **THEN** the check remains unavailable with a distinct login-in-use reason and
+  actionable guidance; the other instance and its credentials remain unchanged.
+
 #### Scenario: Native token rotates after approval
 
 - **WHEN** the approved native account refreshes an access token without changing

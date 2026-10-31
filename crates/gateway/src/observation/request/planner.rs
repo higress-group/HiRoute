@@ -54,7 +54,11 @@ impl RequestObservation {
                 requested_reasoning_disposition: schema_name(
                     &input.request.requested_reasoning.disposition,
                 ),
-                requested_reasoning_value: input.request.requested_reasoning.native_value.clone(),
+                requested_reasoning_value: match &input.request.requested_reasoning.followed_control
+                {
+                    Some(control) => control.native_value(input.request.ingress_protocol),
+                    None => input.request.requested_reasoning.native_value.clone(),
+                },
                 requested_max_output_tokens: input.request.requested_max_output_tokens,
                 stream: input.request.stream,
                 outcome,
@@ -86,6 +90,7 @@ impl RequestObservation {
                 });
             self.emit_execution(
                 ExecutionFactV1::CandidateDecision(Box::new(CandidateDecisionFactV1 {
+                    reasoning_resolution: candidate.and_then(|c| c.reasoning_resolution),
                     candidate_id: evaluation.candidate_id.clone(),
                     stable_binding_id: evaluation.stable_binding_id.clone(),
                     group_id: evaluation.group_id.clone(),

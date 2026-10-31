@@ -504,6 +504,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                 "subscription-saved-snapshot",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id.clone()),
+                    ..Default::default()
                 },
             )
             .await
@@ -641,6 +642,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                 "subscription-restarted-snapshot",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id.clone()),
+                    ..Default::default()
                 },
             )
             .await
@@ -688,6 +690,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                 "subscription-token-rotated",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id.clone()),
+                    ..Default::default()
                 },
             )
             .await
@@ -744,6 +747,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                     "subscription-rights-restricted",
                     ComputeManagementQueryV2 {
                         source_id: Some(source_id.clone()),
+                        ..Default::default()
                     },
                 )
                 .await
@@ -791,6 +795,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                     "subscription-rights-restored",
                     ComputeManagementQueryV2 {
                         source_id: Some(source_id.clone()),
+                        ..Default::default()
                     },
                 )
                 .await
@@ -829,6 +834,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                     "subscription-live-auth-missing",
                     ComputeManagementQueryV2 {
                         source_id: Some(source_id.clone()),
+                        ..Default::default()
                     },
                 )
                 .await
@@ -856,6 +862,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                     "subscription-live-auth-restored",
                     ComputeManagementQueryV2 {
                         source_id: Some(source_id.clone()),
+                        ..Default::default()
                     },
                 )
                 .await
@@ -886,6 +893,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                 "subscription-runtime-unavailable",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id.clone()),
+                    ..Default::default()
                 },
             )
             .await
@@ -918,6 +926,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                 "subscription-invalid-auth",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id.clone()),
+                    ..Default::default()
                 },
             )
             .await
@@ -943,6 +952,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                 "subscription-needs-auth",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id.clone()),
+                    ..Default::default()
                 },
             )
             .await
@@ -966,6 +976,7 @@ async fn hirouted_client_core_subscription_save_snapshot_and_restart_are_closed(
                 "subscription-retained-source-mismatch",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id),
+                    ..Default::default()
                 },
             )
             .await

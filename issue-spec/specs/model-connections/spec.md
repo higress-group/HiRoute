@@ -156,6 +156,68 @@ A registered check SHALL submit option identity, expected provenance, edit corre
 
 Saved source/binding identity, selected membership, credentials, target and historical admission provenance SHALL survive compatible metadata updates. A catalog-derived capability SHALL resolve from the current selected snapshot for new authoring/publication. A catalog digest change or a compatible change of context limit, tool/vision/streaming support or supported reasoning values alone SHALL NOT invalidate an otherwise legal saved connection. Existing user-declared values SHALL retain their source-local meaning and editable authority. Refresh SHALL neither fabricate a successful connection check nor overwrite historical save evidence.
 
+Desktop model capability settings SHALL expose exactly two choices per field:
+Custom and Follow HiRoute model metadata. Custom supports editing and saving
+booleans, positive token limits and native reasoning capabilities, including an
+explicit unknown value. Saved custom choices SHALL take precedence over later
+metadata updates, and changes SHALL use the normal source/default preview and
+protected save transaction without another provider request. Following metadata
+SHALL use the exact current source/product/protocol/model scope; missing or
+conflicting facts SHALL remain unknown rather than retaining a stale custom value.
+The page SHALL identify current effective values and distinguish saved custom,
+metadata-derived/inferred and unavailable facts. “Official default” SHALL NOT
+label bundled client assertions or inference. Legacy preserved and exact official
+locator choices SHALL retain their original serialized meaning and map to these
+two visible choices without rewriting retained data. Existing published routes
+and sessions SHALL retain their frozen capabilities until explicitly republished.
+
+New and already saved observed models on the registered OpenAI and Anthropic APIs
+SHALL resolve absent or derived-fallback tool/vision/streaming, exact token-limit
+and reasoning facts from one current
+metadata snapshot when the exact registered destination, protocol, authentication,
+product and upstream model ID match a supported native reasoning convention.
+The projection SHALL be shared by model/default reads, recheck prefill, routing
+options and new publication inputs. OpenAI effort and Anthropic adaptive effort
+SHALL retain their distinct native fields and required companion controls.
+Labels, another product's subscription membership, an unknown ID or an ambiguous
+mapping SHALL NOT establish these defaults. Where an API product has no exact
+binding for that ID, complete API-scoped provider/model prefill records MAY supply
+known capability/limit facts and OpenAI efforts only after their sole exact API root, supported protocol, API-key
+kind and model ID match the already qualified official connector. The installed
+connector owns the native parameter path. Model hints SHALL NOT supply new wire
+conventions, provider defaults, membership or billing. Conflicting or unsupported
+efforts, ambiguous URLs and explicit withdrawn/rejected API bindings SHALL keep
+missing controls unresolved; subscription records SHALL NOT supply API defaults.
+
+Custom choices and explicit non-fallback source capability values SHALL take
+precedence unless the user explicitly selects Follow HiRoute model metadata.
+Legacy exact FollowOfficial intent SHALL retain its scoped meaning. Legacy PreserveSaved on an absent or derived-fallback capability
+fact SHALL allow this missing-value projection, including preferences established
+automatically by earlier imports. Explicit fixed non-thinking settings, manual
+profile subsets and defaults SHALL retain their saved meaning.
+Changing a custom reasoning kind and returning to a known native kind SHALL
+preserve that kind's draft and parameter template. An explicitly requested native
+reference MAY be returned from the same qualified metadata snapshot, independently
+of a saved Custom unknown value; omitted requests and responses SHALL retain the
+legacy wire shape. This reference SHALL NOT itself change effective source values.
+Qualified native and connector-owned materialization SHALL retain native companion
+controls for compatible custom discrete subsets and clear incompatible companions
+for fixed or other controls. Unsupported native names and protocols remain invalid.
+Resolving a missing value SHALL NOT rewrite stored sources, keys, membership,
+admission evidence or already published reasoning selections. The effective value
+and its metadata origin SHALL be visible separately from a missing saved value.
+This control default SHALL NOT grant entitlement, prices, free qualification or
+otherwise bypass ordinary account/endpoint/model admission.
+
+#### Scenario: An existing API import has no reasoning fact
+
+- **WHEN** a previously imported OpenAI API model has an absent reasoning fact and
+  its exact model/product/wire metadata provides supported effort profiles
+- **THEN** model details and new route editing SHALL expose those profiles without
+  reimporting the model or changing its source/Binding identities
+- **AND** publication SHALL freeze the chosen profile with the native API parameter,
+  while explicit manual source settings and existing publications retain meaning.
+
 New selection, check, recheck and publication SHALL qualify against one current snapshot. A withdrawn model, unsupported adapter, invalid source/account, or previously selected reasoning setting that is no longer supported SHALL produce a specific unavailable/conflict reason. The user SHALL be able to review a valid replacement; the service SHALL NOT silently change reasoning choice, drop selected members or publish a replacement Plan. Renaming a source, removing another member or changing Keys SHALL preserve unchanged saved model values and identity; newly added/rechecked members receive current admission. Withdrawal SHALL not prevent an otherwise legal removal/disable action.
 
 Already published revisions SHALL keep their compiled model facts, candidate order and reasoning configuration. Their existing runs, new sessions, newly delegated Workers and Continue SHALL not depend on the mutable catalog or held copy, including after restart. Current authorization, cancellation and credential revocation still apply. Applying new capability defaults to execution SHALL use normal preview/publication. New logical requests through old publications still obtain current source-scoped valuation independently of frozen execution; settled history remains unchanged.
@@ -320,6 +382,15 @@ provider-specific readers. Each provider has at most one enabled account/mode.
 Independent CPA sign-in is the default recommendation; NativeBorrowed is an explicit
 option and saved choices do not migrate automatically. Login completion alone does
 not enable routes or import all models.
+
+Device scanning SHALL list only native-client subscription logins available for
+reuse. HiRoute-owned independent sign-ins remain in subscription login management
+and SHALL NOT appear as additional device discoveries. Returning from an independent
+sign-in to the device list restores this native-only scope. Independent login
+continuation still resolves its exact candidate, and appending models to a saved
+subscription resolves the saved credential owner at its current source revision.
+Empty legacy candidate queries retain their complete result; native-only discovery
+is explicit, metadata-only, and does not enumerate managed sign-ins or start CPA.
 
 Desktop subscription checks and model selection SHALL use subscription-specific
 titles. Native discovery controls, including Hermes profile scanning, SHALL remain
@@ -662,6 +733,117 @@ Removing or recreating the exact untouched automatically generated empty-model p
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/246#issuecomment-6462728885
+
+### Requirement: Subscription imports may synchronize into an explicitly associated API connection
+
+Independent Codex and Claude login and local-login discovery SHALL offer an optional
+saved or new native API connection in the same subscription flow. New API credentials
+use an inline protected Key field and remain separate from subscription OAuth. New
+associated API setup SHALL directly show the optional Key field after subscription
+checking, without a separate API opt-in selector. An untouched blank Key SHALL save
+only the subscription; typing a Key opts into API creation. Clearing an unsubmitted
+Key restores subscription-only behavior. A retained protected Key SHALL be identified
+as retained and offer explicit clearing before admission. Existing API selection
+SHALL remain available through a secondary entry.
+New associated API setup SHALL use the registered OpenAI API for Codex or Anthropic API
+for Claude, with its endpoint and authentication defaults and optional independent
+network settings. It SHALL NOT open a second connection dialog. A
+missing preferred product SHALL NOT silently select another provider; ordinary API
+entry defaults remain unchanged.
+Retained earlier association stores and operation envelopes SHALL remain recoverable
+when their version markers overlap a native-network format. Admission MUST distinguish
+complete known layouts and sealed witnesses, preserve original journal bytes, source
+identities, credentials and memberships, and use the ordinary complete-source backup
+and recovery path. Unknown or corrupt shapes MUST remain preserved and refused, not
+reconstructed as an empty store or an implicit network-policy repair. Current
+association producers use V5 independently of native-network V4.
+
+The association is durable metadata and may
+be adjusted or removed on the saved subscription. Removing it retains both sources,
+API credentials and already imported models. Removing the API leaves a visible
+unavailable association; removing the subscription clears its association.
+
+After a successful explicit subscription import or append, the client SHALL attempt
+an API check and append only exact upstream IDs from the user's subscription selection
+that the API actually observes and qualifies. Existing API models, Binding identities,
+endpoint, credentials and routes remain unchanged. Subscription names or capabilities
+cannot prove API entitlement. The subscription selection SHALL be the only model
+selection in the association flow. The inline new-API setup SHALL check and save
+its exact observed, selectable API counterparts directly, without a second model
+picker or an opportunity to expand membership. A single primary save action SHALL
+first confirm the subscription save and then attempt the optional API Check,
+Save and association. Key and network validation SHALL happen before subscription
+submission; the credential owner SHALL remain mounted across saving states.
+API authentication/directory checks SHALL NOT send an implicit inference request.
+No matches SHALL leave API setup recoverable with explicit guidance while retaining
+the saved subscription. Ordinary API forms retain their
+independent model selection.
+
+Subscription success SHALL survive API authentication, directory or save failures.
+The same flow SHALL clearly distinguish a saved subscription from an incomplete API
+setup and offer API-only retry or finish-later without resubmitting the subscription
+approval. A created API SHALL be reused after association failure. The saved
+subscription SHALL show imported, pending or unsupported API models and
+permit explicit retry. Only a complete API directory can prove absence; a partial
+or unavailable read remains pending. A restart reconstructs pending imports from the
+association and both saved memberships. No background catalog refresh enlarges them.
+Uncertain writes SHALL resolve the original idempotent Operation before resubmission;
+a pending Operation cannot be replaced. Retry rechecks source revisions and the
+association. Changing or cancelling the action invalidates stale async results.
+Refusal of a replay SHALL NOT establish that an earlier uncertain submission was
+never admitted or release its credential ownership. After confirmed association
+and synchronization, completion-read retry SHALL be read-only and accept revisions
+advanced by that synchronization, while verifying the current provider and link.
+
+Association and import SHALL NOT create, reorder or change candidate groups or routing
+plans. The user chooses how to combine the sources. Association does not promise
+eligibility for API credits or change upstream billing classification. Provider-specific
+guidance SHALL identify eligible plans and link the official credit claim and scope
+instructions beside Key entry. Detailed claiming instructions SHALL remain on the
+linked provider website rather than in a separate credits disclosure. The flow SHALL
+explain that saving a Key adds matching API-origin models alongside subscription
+models, limited to API-supported counterparts. It SHALL explain user-configured
+candidate groups and priority, including API fallback after subscription quota
+exhaustion; association alone does not configure that fallback. API verification
+SHALL NOT be presented as claiming or activating credits.
+Detailed provider usage-policy caveats belong to the linked official scope guidance
+and SHALL NOT be repeated as warning copy in this setup flow.
+Eligibility, balance, expiry and deductions remain governed by official billing.
+
+#### Scenario: Configure a provider API without selecting models again
+
+- **WHEN** a user selects subscription models and creates the associated OpenAI or Anthropic API connection
+- **THEN** the corresponding provider Key field is inline and one primary save action confirms the subscription before saving only exact API-checked counterparts; it does not ask for another model selection
+
+#### Scenario: Continue after optional API setup fails
+
+- **WHEN** the subscription is confirmed saved and its new API check, save or association fails
+- **THEN** the same flow says the subscription is saved, retains recoverable API context and offers API-only retry; an already created API and any pending original Operation are reused rather than recreated
+
+#### Scenario: Explain credit eligibility before connecting
+
+- **WHEN** a user opens optional API setup for a Codex or Claude subscription
+- **THEN** the flow identifies eligible plans, links official claim/scope instructions and explains using a Key from the receiving organization; it also explains the two model sources and user-configured candidate-group fallback without claiming that HiRoute activates the credit benefit
+
+#### Scenario: Subscription succeeds while the API is unavailable
+
+- **WHEN** an explicit Codex or Claude import succeeds and its associated API check fails
+- **THEN** the subscription remains saved, the missing API imports remain pending,
+  and explicit retry can append supported IDs without duplicating existing models
+
+#### Scenario: Only some selected IDs are supported
+
+- **WHEN** a complete API directory supports one of two imported subscription IDs
+- **THEN** only that exact API ID is appended and the other remains visible as
+  unsupported while both subscription models remain saved
+
+#### Scenario: Interrupted API save
+
+- **WHEN** the API Apply response is lost or the app restarts during a pending save
+- **THEN** retry resolves the original Operation and verifies saved membership;
+  it does not submit a second pending write
+
+Source Issue: https://github.com/higress-group/HiRoute/issues/279
 
 ### Requirement: Native API checks and execution share explicit network route semantics
 

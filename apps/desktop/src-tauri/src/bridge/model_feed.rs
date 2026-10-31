@@ -323,6 +323,7 @@ pub(super) async fn preview_compute_save_v3(
     state: State<'_, DesktopState>,
     change: hiroute_product_session::commands::WebComputeManagementChangeV2,
     default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+    api_link: Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>,
 ) -> Result<hiroute_product_session::commands::WebComputeSavePreviewV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -355,6 +356,87 @@ pub(super) async fn preview_compute_save_v3(
         &product_state,
         change,
         default_preferences,
+        api_link,
+    )
+    .await
+}
+
+#[tauri::command]
+pub(super) async fn compute_key_budgets(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    input: hiroute_application_api::ComputeKeyBudgetsQueryV1,
+) -> Result<hiroute_application_api::ComputeKeyBudgetsResultV1, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        visible: &visible,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::compute_key_budgets(&context, &product_state, input).await
+}
+#[tauri::command]
+pub(super) async fn preview_compute_key_budgets(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    change: hiroute_product_session::commands::WebComputeManagementChangeV2,
+    default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+    network_edit: Option<hiroute_application_api::NativeNetworkEditV1>,
+    key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
+) -> Result<hiroute_product_session::commands::WebComputeSavePreviewV2, DesktopFailure> {
+    main_window(&window)?;
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
+    let notify = |request: &WebConfirmationRequest| {
+        window
+            .emit_to(
+                tauri::EventTarget::webview(window.label()),
+                "hiroute-web-confirmation",
+                request,
+            )
+            .map_err(|_| "CONFIRMATION_UNAVAILABLE".to_owned())
+    };
+    let context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        visible: &visible,
+        notify: Some(&notify),
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::preview_compute_key_budgets(
+        &context,
+        &product_state,
+        change,
+        default_preferences,
+        network_edit,
+        key_budget_edits,
     )
     .await
 }

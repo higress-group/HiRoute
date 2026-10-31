@@ -1,3 +1,8 @@
+import { SubscriptionApiPicker, SavedSubscriptionApi, inlineApiResultText, type SubscriptionApiPickerHandle } from '../features/subscriptions/SubscriptionApiConnection';
+import { NEW_SUBSCRIPTION_API, type InlineApiResult } from '../features/subscriptions/new-api';
+import { useSubscriptionApi } from '../features/subscriptions/useSubscriptionApi';
+import { isLinkedSubscription, candidateSubscriptionProvider } from '../features/subscriptions/api-sync';
+
 import { checkSavedNativeConnection } from '../features/model-connections/backend';
 import { ModelFeedPanel } from '../features/model-feed/ModelFeedPanel';
 import { newModelConnectionDraft } from '../features/model-connections/new-draft';
@@ -46,11 +51,12 @@ import type {
   SavePreview,
 } from '../features/models/types';
 import type { Plan } from '../plan-editor';
+import type { ModelRouteRequest } from '../features/models/model-route';
 import type {
   SubscriptionCandidate,
   SubscriptionCheckResult,
 } from '../features/subscriptions/types';
-import { canSave as canSaveSubscription, canSaveRepair, repairSourceAfterLogin, saveFailureDefinitelyPreAdmission, saveIntent, selectionRows, validatedSubscriptionCandidate } from '../features/subscriptions/model';
+import { canSave as canSaveSubscription, canSaveRepair, repairSourceAfterLogin, saveFailureDefinitelyPreAdmission, saveIntent, selectionRows, subscriptionSelectionAfterRefresh, validatedSubscriptionCandidate } from '../features/subscriptions/model';
 import { safeDiagnosticCode } from '../error-code';
 
 type SubscriptionSaveSelection = {
@@ -137,7 +143,6 @@ export function ModelManagementPage({
   agents,
   onOpenPlan,
   onCreatePlan,
-  onTryModel,
   tabs,
 }: {
   language: 'zh' | 'en';
@@ -156,17 +161,16 @@ export function ModelManagementPage({
   plans?: Plan[];
   agents?: DeviceScanAgent[];
   onOpenPlan?(planId: string): void;
-  onTryModel?(modelId: string | undefined, bindingId: string): void;
-  onCreatePlan?(bindingId: string): void;
+  onCreatePlan?(request: ModelRouteRequest): void;
   tabs?: import('react').ReactNode;
 }) {
   const [management, setManagement] = useState<ManagementSnapshot | null>(null);
   const [focusedSource, setFocusedSource] = useState<string | null>(initialSourceId);
-  const [subscriptions, setSubscriptions] = useState<SubscriptionCandidate[]>([]);
+  const [nativeSubscriptions, setNativeSubscriptions] = useState<SubscriptionCandidate[]>([]);
   const [subscriptionChecks, setSubscriptionChecks] = useState<Record<string, SubscriptionCheckResult | undefined>>({});
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [subscriptionAction, setSubscriptionAction] = useState<'checking' | 'saving' | null>(null);
-  const [selectedSubscriptionRef, setSelectedSubscriptionRef] = useState<string | null>(null);
+  const [selectedSubscription, setSelectedSubscription] = useState<SubscriptionCandidate | null>(null);
   const [subscriptionSelections, setSubscriptionSelections] = useState<Record<string, string[]>>({});
   const [repairingSubscriptionSource, setRepairingSubscriptionSource] = useState<string | null>(null);
   const [subscriptionNotice, setSubscriptionNotice] = useState('');
@@ -192,6 +196,9 @@ export function ModelManagementPage({
   const [addStage, setAddStage] = useState<'choose' | 'api' | 'scan' | 'subscription-login' | 'existing'>('choose');
   const [appendingSource, setAppendingSource] = useState<ManagedSource | null>(null);
   const [appendManual, setAppendManual] = useState(false);
+  const [subscriptionApiChoices, setSubscriptionApiChoices] = useState<Record<string, string>>({});
+  const subscriptionApiPicker = useRef<SubscriptionApiPickerHandle>(null);
+  const [subscriptionCompletion, setSubscriptionCompletion] = useState<{ source: { source_id: string; revision: number }; result?: InlineApiResult } | null>(null);
   const [addNotice, setAddNotice] = useState('');
   const [modelNotice, setModelNotice] = useState('');
   const [priceTarget, setPriceTarget] = useState<{
@@ -252,12 +259,13 @@ export function ModelManagementPage({
     setSubscriptionError(current => current?.phase === 'scan' ? null : current);
     setComputeScanError('');
     const [subscriptionResult, computeResult] = await Promise.allSettled([
-      invoke<SubscriptionScanResult>('compute_subscriptions'),
+      invoke<SubscriptionScanResult>('compute_subscriptions', { nativeOnly: true }),
       invoke<ComputeScanResult>('compute_scan', { nativeTarget: hermesScanTarget.current }),
     ]);
     if (!alive.current || subscriptionScan.current !== scan) return;
     if (subscriptionResult.status === 'fulfilled') {
-      setSubscriptions(subscriptionResult.value.candidates);
+      setSelectedSubscription(current => subscriptionSelectionAfterRefresh(current, subscriptionResult.value.candidates));
+      setNativeSubscriptions(subscriptionResult.value.candidates);
       setSubscriptionDiscoveryState(subscriptionResult.value.discovery_state);
     } else {
       setSubscriptionDiscoveryState('complete');
@@ -281,8 +289,10 @@ export function ModelManagementPage({
     setSubscriptionChecks({});
     setSubscriptionBusy(false);
     setSubscriptionAction(null);
-    setSelectedSubscriptionRef(null);
+    setSelectedSubscription(null);
     setSubscriptionSelections({});
+    setSubscriptionApiChoices({});
+    setSubscriptionCompletion(null);
     setRepairingSubscriptionSource(null);
     setSubscriptionNotice('');
     setSubscriptionError(null);
@@ -394,6 +404,7 @@ export function ModelManagementPage({
       return;
     }
     if (!selection.validation) return;
+    if (subscriptionApiChoices[selection.candidate.candidate_ref] === NEW_SUBSCRIPTION_API && !subscriptionApiPicker.current?.validate()) return;
     const view = subscriptionView.current;
     const repairing = repairingSubscriptionSource !== null;
     subscriptionAttempt.current += 1;
@@ -425,7 +436,15 @@ export function ModelManagementPage({
         change.selected_model_refs = change.selected_model_refs.filter(ref => !appendingSource.models.some(model => model.model_ref === ref));
         if (!change.selected_model_refs.length) throw { code: 'MODEL_SELECTION_REQUIRED' };
       }
-      const preview = await invoke<SavePreview>('preview_compute_save', { change });
+      const choice = subscriptionApiChoices[selection.candidate.candidate_ref];
+      const previousLink = currentManagement.subscription_api_links?.find(link => link.source_id === selectedSubscription?.existing_source_id);
+      const supported = candidateSubscriptionProvider(selection.candidate.candidate_ref) !== null;
+      const apiLink = supported && choice !== NEW_SUBSCRIPTION_API && choice !== undefined && choice !== (previousLink?.api_source_id ?? '')
+        ? choice ? { intent: 'associate', api_source_id: choice } : { intent: 'remove' }
+        : undefined;
+      const preview = apiLink
+        ? await invoke<SavePreview>('preview_compute_save_v3', { change, defaultPreferences: {}, apiLink })
+        : await invoke<SavePreview>('preview_compute_save', { change });
       if (!alive.current || subscriptionView.current !== view) return;
       handedOffValidations.current.add(validationKey);
       let accepted: { operation: OperationReference };
@@ -469,21 +488,38 @@ export function ModelManagementPage({
       }
       onChanged();
       if (!alive.current || subscriptionView.current !== view) return;
-      const current = checksRef.current[selection.candidate.candidate_ref];
-      if (current && alive.current && subscriptionView.current === view) {
-        const result = await invoke<SubscriptionCheckResult>('get_subscription_check_result', {
-          operation: current.approval_operation,
-        });
-        if (alive.current && subscriptionView.current === view) rememberCheck(selection.candidate.candidate_ref, result);
+      // The subscription is durable before the optional API work starts.
+      if (choice === NEW_SUBSCRIPTION_API) {
+        if (!saved.source_id || saved.saved_revision === undefined) {
+          onRecoveryRefresh(); closeScan(); return;
+        }
+        const source = { source_id: saved.source_id, revision: saved.saved_revision };
+        setSubscriptionCompletion({ source });
+        const answer = await subscriptionApiPicker.current?.connect(source) ?? { state: 'needs_input' as const, reason: 'key_required' as const };
+        if (!alive.current || subscriptionView.current !== view) return;
+        setSubscriptionCompletion({ source, result: answer });
+        await refreshManagement();
+        onChanged();
+        if (answer.state !== 'saved') return;
+        closeScan(); setFocusedSource(source.source_id);
+        setModelNotice(answer.missing_model_ids?.length
+          ? (language === 'zh' ? '订阅与 API 已接入；部分 API 模型待同步或不支持，可在详情中查看。' : 'Subscription and API connected. Some API models are pending or unsupported; see connection details.')
+          : (language === 'zh' ? '订阅与 API 已接入。可在路由中选择候选组和使用顺序。' : 'Subscription and API connected. Choose candidate groups and their order in routing.'));
+        return;
       }
+      const apiResult = saved.source_id ? await subscriptionApi.synchronize(saved.source_id) : undefined;
       if (!alive.current || subscriptionView.current !== view) return;
-      await Promise.all([refreshManagement(), refreshSubscriptions()]);
+      // No device scan or Check-result reread is needed to finish a confirmed save.
+      await refreshManagement();
       if (!alive.current || subscriptionView.current !== view) return;
-      onChanged();
-      closeScan();
-      setModelNotice(repairing
-        ? (language === 'zh' ? '订阅授权已更新。' : 'Subscription access updated.')
-        : (language === 'zh' ? '订阅已接入。' : 'Subscription connected.'));
+      onChanged(); closeScan();
+      if (saved.source_id) setFocusedSource(saved.source_id);
+      setModelNotice(apiResult?.items.some(item => item.state !== 'imported')
+        ? (language === 'zh' ? '订阅已接入，关联 API 部分模型待同步或不支持。可在订阅详情中重试。' : 'Subscription connected. Some associated API models are pending or unsupported. Retry in subscription details.')
+        : repairing
+          ? (language === 'zh' ? '订阅授权已更新。' : 'Subscription access updated.')
+          : (language === 'zh' ? '订阅已接入。' : 'Subscription connected.'));
+
     } catch (cause) {
       if (alive.current && subscriptionView.current === view) setSubscriptionError({ code: failureCode(cause), phase: 'save' });
       onRecoveryRefresh();
@@ -493,6 +529,35 @@ export function ModelManagementPage({
         setSubscriptionBusy(false);
         setSubscriptionAction(null);
       }
+    }
+  }
+
+  async function finishSubscriptionApi() {
+    if (!subscriptionCompletion || subscriptionInFlight.current || !trustedAuthority) return;
+    const completion = subscriptionCompletion;
+    const view = subscriptionView.current;
+    const choice = selectedSubscription ? subscriptionApiChoices[selectedSubscription.candidate.candidate_ref] ?? '' : '';
+    if (choice === NEW_SUBSCRIPTION_API && !subscriptionApiPicker.current?.validate()) return;
+    subscriptionInFlight.current = true;
+    setSubscriptionBusy(true); setSubscriptionAction('saving');
+    try {
+      let answer: InlineApiResult;
+      if (choice === NEW_SUBSCRIPTION_API) {
+        answer = await subscriptionApiPicker.current?.connect(completion.source) ?? { state: 'needs_input', reason: 'key_required' };
+      } else {
+        const result = await subscriptionApi.associate(completion.source.source_id, choice, completion.source.revision, () => alive.current && subscriptionView.current === view);
+        answer = { state: result === 'saved' ? 'saved' : 'pending' };
+      }
+      if (!alive.current || subscriptionView.current !== view) return;
+      setSubscriptionCompletion({ ...completion, result: answer });
+      await refreshManagement(); onChanged();
+      if (!alive.current || subscriptionView.current !== view || answer.state !== 'saved') return;
+      closeScan(); setFocusedSource(completion.source.source_id);
+      setModelNotice(language === 'zh' ? '接入设置已完成。请在路由候选组中选择使用顺序。' : 'Connection setup complete. Choose the source order in routing candidate groups.');
+    } catch {
+      if (alive.current && subscriptionView.current === view) setSubscriptionCompletion({ ...completion, result: { state: 'failed', reason: 'link_failed' } });
+    } finally {
+      if (alive.current && subscriptionView.current === view) { subscriptionInFlight.current = false; setSubscriptionBusy(false); setSubscriptionAction(null); }
     }
   }
 
@@ -506,7 +571,7 @@ export function ModelManagementPage({
     const generation = ++discoveryGeneration.current;
     subscriptionAttempt.current += 1;
     discoveryInFlight.current = true;
-    setSelectedSubscriptionRef(null);
+    setSelectedSubscription(null);
     setSelectedDiscovery(item);
     setPreparedDiscovery(null);
     setDiscoverySelections([]);
@@ -544,7 +609,7 @@ export function ModelManagementPage({
 
   function rescanDevice() {
     returnToScanList();
-    setSelectedSubscriptionRef(null);
+    setSelectedSubscription(null);
     setSubscriptionError(null);
     void refreshSubscriptions();
   }
@@ -673,6 +738,8 @@ export function ModelManagementPage({
   }, [startScanning, trustedAuthority, active]);
 
   const backend = useMemo(() => modelConnectionBackend(language), [language]);
+  const subscriptionApi = useSubscriptionApi({ language, mutable: trustedAuthority,
+    onOperation, onRefresh: refreshManagement, onUncertain: onRecoveryRefresh });
 
   function discardProtectedInputs() {
     const inputs = protectedInputs.current.splice(0);
@@ -843,12 +910,13 @@ export function ModelManagementPage({
     setAppendingSource(source); setAppendManual(false); setAdding(false);
     if (source.provenance === 'connector_owned') {
       subscriptionTouched.current = true;
-      setRepairingSubscriptionSource(null); setSelectedSubscriptionRef(null);
+      setRepairingSubscriptionSource(null); setSelectedSubscription(null);
       setAddStage('scan'); setAdding(true); setSubscriptionLoading(true);
       try {
-        const result = await invoke<SubscriptionScanResult>('compute_subscriptions');
+        const result = await invoke<SubscriptionScanResult>('compute_subscriptions', {
+          sourceId: source.source_id, expectedSourceRevision: source.revision,
+        });
         if (!alive.current) return;
-        setSubscriptions(result.candidates);
         const candidate = result.candidates.find(item => item.existing_source_id === source.source_id);
         if (!candidate) throw { code: 'SUBSCRIPTION_NOT_FOUND' };
         openSubscription(candidate);
@@ -915,7 +983,6 @@ export function ModelManagementPage({
   }
 
   const hasSources = Boolean(management?.sources.length);
-  const selectedSubscription = subscriptions.find(item => item.candidate.candidate_ref === selectedSubscriptionRef) ?? null;
   const repairingSource = repairingSubscriptionSource
     ? management?.sources.find(source => source.source_id === repairingSubscriptionSource) ?? null
     : null;
@@ -963,7 +1030,7 @@ export function ModelManagementPage({
 
   function openSubscription(candidate: SubscriptionCandidate) {
     returnToScanList();
-    setSelectedSubscriptionRef(candidate.candidate.candidate_ref);
+    setSelectedSubscription(candidate);
     const savedSource = management?.sources.find(source => source.source_id === candidate.existing_source_id);
     if (savedSource) {
       setSubscriptionSelections(current => ({
@@ -977,7 +1044,7 @@ export function ModelManagementPage({
 
   function repairSubscription(sourceId: string) {
     if (!trustedAuthority) return;
-    setSelectedSubscriptionRef(null);
+    setSelectedSubscription(null);
     setRepairingSubscriptionSource(sourceId);
     setSubscriptionError(null);
     setSubscriptionNotice('');
@@ -1022,7 +1089,9 @@ export function ModelManagementPage({
       : subscriptionChecking
         ? (language === 'zh' ? '取消检查' : 'Cancel check')
         : (language === 'zh' ? '关闭' : 'Close')}</button>
-    : selectedDiscovery
+    : subscriptionCompletion
+      ? <><button type="button" className="btn" onClick={closeScan}>{language === 'zh' ? '稍后完成 API' : 'Finish API later'}</button><button type="button" className="btn btn-primary" disabled={!trustedAuthority} onClick={() => void finishSubscriptionApi()}>{subscriptionCompletion.result?.state === 'pending' ? (language === 'zh' ? '刷新 API 结果' : 'Refresh API result') : (language === 'zh' ? '完成 API 设置' : 'Complete API setup')}</button></>
+      : selectedDiscovery
       ? <>
           <button type="button" className="btn" onClick={returnToScanList}>{language === 'zh' ? '返回' : 'Back'}</button>
           {discoveryFailureNeedsRescan
@@ -1037,9 +1106,9 @@ export function ModelManagementPage({
           {(subscriptionError?.phase === 'scan' || computeScanError || subscriptionDiscoveryState === 'runtime_unavailable') && <button type="button" className="btn btn-primary" onClick={rescanDevice}>{language === 'zh' ? '重新扫描' : 'Scan again'}</button>}
         </>
       : <>
-          <button type="button" className="btn" onClick={() => { setSelectedSubscriptionRef(null); setSubscriptionError(null); }}>{language === 'zh' ? '返回' : 'Back'}</button>
+          <button type="button" className="btn" onClick={rescanDevice}>{language === 'zh' ? '返回' : 'Back'}</button>
           {subscriptionReady
-            ? <button type="button" className="btn btn-primary" disabled={!trustedAuthority || subscriptionBusy || !effectiveSubscription || (repairingSelectedSubscription ? !repairSelectionValid : !canSaveSubscription(effectiveSubscription, true, selectedSubscriptionModels))} onClick={() => effectiveSubscription && void saveSubscription({ candidate: effectiveSubscription.candidate, validation: effectiveSubscription.validation, selected_model_refs: [...selectedSubscriptionModels], intent: saveIntent(true) })}>{repairingSelectedSubscription ? (language === 'zh' ? '更新订阅' : 'Update subscription') : (language === 'zh' ? '保存接入' : 'Save connection')}</button>
+            ? <button type="button" className="btn btn-primary" disabled={!trustedAuthority || subscriptionBusy || !effectiveSubscription || (repairingSelectedSubscription ? !repairSelectionValid : !canSaveSubscription(effectiveSubscription, true, selectedSubscriptionModels))} onClick={() => effectiveSubscription && void saveSubscription({ candidate: effectiveSubscription.candidate, validation: effectiveSubscription.validation, selected_model_refs: [...selectedSubscriptionModels], intent: saveIntent(true) })}>{repairingSelectedSubscription ? (language === 'zh' ? '更新订阅' : 'Update subscription') : (language === 'zh' ? '保存并接入' : 'Save and connect')}</button>
             : selectedSubscriptionCheck?.status === 'checking'
               ? <button type="button" className="btn btn-primary" disabled={subscriptionBusy} onClick={() => void recoverSubscriptionCheck()}>{language === 'zh' ? '重新查询检查结果' : 'Retry check status'}</button>
               : <button type="button" className="btn btn-primary" disabled={!trustedAuthority || subscriptionBusy || !selectedSubscription} onClick={() => selectedSubscription && void checkSubscription(selectedSubscription.candidate)}>{language === 'zh' ? '检查订阅' : 'Check subscription'}</button>}
@@ -1094,7 +1163,7 @@ export function ModelManagementPage({
           <div><strong>{language === 'zh' ? '连接订阅' : 'Connect subscription'}</strong><span>{language === 'zh' ? '独立登录 Codex / Claude Code，自动刷新登录凭据' : 'Sign in independently to Codex / Claude Code with automatic credential refresh'}</span></div>
           <UiIcon name="chevronRight" />
         </button>
-        <button className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => { returnToScanList(); setSelectedSubscriptionRef(null); setRepairingSubscriptionSource(null); setSubscriptionNotice(''); setAddStage('scan'); void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]); }}>
+        <button className="add-choice" type="button" disabled={!trustedAuthority} onClick={() => { returnToScanList(); setSelectedSubscription(null); setRepairingSubscriptionSource(null); setSubscriptionNotice(''); setAddStage('scan'); void Promise.all([refreshSubscriptions(), recoverSubscriptionCheck()]); }}>
           <span className="choice-icon"><UiIcon name="scan" /></span>
           <div><strong>{language === 'zh' ? '扫描本机' : 'Scan this device'}</strong><span>{language === 'zh' ? '发现已有的 Agent、Codex / Claude Code 订阅和模型配置' : 'Find local agents, Codex / Claude Code subscriptions, and model configurations'}</span></div>
           <UiIcon name="chevronRight" />
@@ -1117,7 +1186,6 @@ export function ModelManagementPage({
           const result = await invoke<SubscriptionScanResult>('compute_subscriptions');
           const candidate = result.candidates.find(item => item.candidate.candidate_ref === candidateRef.candidate_ref && item.candidate.candidate_revision === candidateRef.candidate_revision);
           if (!candidate) throw new Error('SUBSCRIPTION_LOGIN_STALE');
-          setSubscriptions(result.candidates);
           setSubscriptionDiscoveryState(result.discovery_state);
           setSubscriptionLoading(false);
           setRepairingSubscriptionSource(current => repairSourceAfterLogin(current, candidate));
@@ -1149,9 +1217,10 @@ export function ModelManagementPage({
           {hermesScanDiagnostic && <p className="field-help" role="status">{language === 'zh' ? '部分 Hermes 配置无法读取或导入；可用接入点仍会显示。请检查所选目录和原生凭据配置。' : 'Some Hermes configuration could not be read or imported. Available connection points remain visible; check the selected directory and native credential configuration.'}</p>}
         </form>
       </Disclosure>}
-      {scanWorking ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{discoveryAction === 'preparing'
+      {/* Keep the inline credential owner mounted while saving the subscription and API. */}
+      {scanWorking && !subscriptionSaving ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{discoveryAction === 'preparing'
         ? (language === 'zh' ? '正在读取配置' : 'Reading configuration')
-        : discoveryAction === 'saving' || subscriptionAction === 'saving'
+        : discoveryAction === 'saving'
           ? (language === 'zh' ? '正在保存接入' : 'Saving connection')
           : subscriptionLoading
             ? (language === 'zh' ? '正在扫描本机' : 'Scanning this device')
@@ -1165,20 +1234,29 @@ export function ModelManagementPage({
             ? <><p className="oc-meta">{language === 'zh' ? '选择要加入 HiRoute 的模型。' : 'Choose the models to add to HiRoute.'}</p><div className="v3-catalog">{selectableDiscoveryModels.map(model => <label className="check-row" key={model.model_ref}><input type="checkbox" disabled={!trustedAuthority} checked={selectedDiscoveryModels.has(model.model_ref)} onChange={() => toggleDiscoveryModel(model.model_ref)} /><div><strong>{model.display_name}</strong></div></label>)}</div></>
             : <p className="oc-meta">{language === 'zh' ? '这项配置中没有可接入的模型。' : 'No connectable model was found in this configuration.'}</p>)}
       </div> : selectedSubscription && effectiveSubscription ? <div className="oc-scan-detail">
-        <div className="oc-status-row"><BrandIcon kind={agentBrandFromId(effectiveSubscription.display_name)} label={effectiveSubscription.display_name} /><div className="row-main"><strong>{effectiveSubscription.display_name}</strong><p>{language === 'zh' ? '检查订阅授权并选择模型，保存后才会接入。' : 'Check subscription access and choose models, then save to connect.'}</p></div>{subscriptionReady && <span className="badge good">{language === 'zh' ? '可用' : 'Ready'}</span>}</div>
-        {subscriptionReady && repairingSelectedSubscription
+        <div className="oc-status-row"><BrandIcon kind={agentBrandFromId(effectiveSubscription.display_name)} label={effectiveSubscription.display_name} /><div className="row-main"><strong>{effectiveSubscription.display_name}</strong><p>{subscriptionCompletion ? (language === 'zh' ? '订阅已保存，可独立使用。继续完成下方 API 设置。' : 'The subscription is saved and usable independently. Complete the API setup below.') : (language === 'zh' ? '检查订阅授权并选择模型，保存后才会接入。' : 'Check subscription access and choose models, then save to connect.')}</p></div>{subscriptionReady && <span className="badge good">{language === 'zh' ? '可用' : 'Ready'}</span>}</div>
+        {subscriptionCompletion
+          ? <p className="callout good" role="status" data-subscription-saved>{language === 'zh' ? '订阅已接入。API 尚未完成时，关闭此窗口也会保留订阅。' : 'Subscription connected. Closing this window keeps the subscription while API setup is incomplete.'}</p>
+          : subscriptionReady && repairingSelectedSubscription
           ? <p className="oc-meta">{language === 'zh' ? '将保留原有模型、绑定和路由，仅更新当前订阅授权与可执行资格。' : 'Existing models, bindings, and routes will be retained; only current subscription access and execution eligibility will be updated.'}</p>
           : subscriptionReady ? subscriptionModels.length
-            ? <><p className="oc-meta">{language === 'zh' ? '已读取此账号可见的模型。选择资料完整、可接入路由的模型。' : 'Models visible to this account were loaded. Select models with complete routing data.'}</p><div className="v3-catalog">{subscriptionModels.map(model => <label className="check-row" key={model.model_ref}><input type="checkbox" disabled={!trustedAuthority || Boolean(appendingSource?.models.some(saved => saved.model_ref === model.model_ref)) || (!model.selectable && !selectedSubscriptionModels.has(model.model_ref))} checked={selectedSubscriptionModels.has(model.model_ref)} onChange={() => toggleSubscriptionModel(model.model_ref)} /><div><strong>{model.display_name}</strong>{!model.selectable && <span>{model.missing
+            ? <><p className="oc-meta">{language === 'zh' ? '已读取此账号可见的模型。选择资料完整、可接入路由的模型。' : 'Models visible to this account were loaded. Select models with complete routing data.'}</p><div className="v3-catalog">{subscriptionModels.map(model => <label className="check-row" key={model.model_ref}><input type="checkbox" disabled={!trustedAuthority || scanWorking || Boolean(appendingSource?.models.some(saved => saved.model_ref === model.model_ref)) || (!model.selectable && !selectedSubscriptionModels.has(model.model_ref))} checked={selectedSubscriptionModels.has(model.model_ref)} onChange={() => toggleSubscriptionModel(model.model_ref)} /><div><strong>{model.display_name}</strong>{!model.selectable && <span>{model.missing
               ? (language === 'zh' ? '已不在当前订阅目录，可取消选择' : 'No longer in the subscription directory; uncheck to remove')
               : selectedSubscriptionModels.has(model.model_ref)
                 ? (language === 'zh' ? '当前不可用，可取消选择' : 'Currently unavailable; uncheck to remove')
                 : (language === 'zh' ? '账号可见 · 能力资料待补充，暂不能用于路由' : 'Visible to this account · capability data pending; not yet routable')}</span>}</div></label>)}</div></>
             : <p className="oc-meta">{language === 'zh' ? '检查已完成，但没有可接入的模型。' : 'The check completed, but no connectable model was found.'}</p>
           : <p className="oc-meta">{language === 'zh' ? '检查会使用这项订阅验证连接；保存后才加入模型列表。' : 'The check uses this subscription to verify the connection. Save it to add the model.'}</p>}
+        {subscriptionReady && management && candidateSubscriptionProvider(selectedSubscription.candidate.candidate_ref) && <SubscriptionApiPicker ref={subscriptionApiPicker} key={selectedSubscription.candidate.candidate_ref}
+          provider={candidateSubscriptionProvider(selectedSubscription.candidate.candidate_ref)!}
+          language={language} snapshot={management} mutable={trustedAuthority} busy={subscriptionWorking}
+          value={subscriptionApiChoices[selectedSubscription.candidate.candidate_ref] ?? management.subscription_api_links?.find(link => link.source_id === selectedSubscription.existing_source_id)?.api_source_id ?? ''}
+          onChange={value => { setSubscriptionApiChoices(previous => ({ ...previous, [selectedSubscription.candidate.candidate_ref]: value })); setSubscriptionCompletion(current => current ? { source: current.source } : null); }}
+          onAssociate={subscriptionApi.associate} onRefresh={refreshManagement} onOperation={onOperation} onUncertain={onRecoveryRefresh} />}
+        {subscriptionCompletion?.result && subscriptionApiChoices[selectedSubscription.candidate.candidate_ref] !== NEW_SUBSCRIPTION_API && subscriptionCompletion.result.state !== 'saved' && <p className="field-help" role="status">{inlineApiResultText(subscriptionCompletion.result, language === 'zh')}</p>}
       </div> : <DeviceScanList
         language={language}
-        subscriptions={subscriptions}
+        subscriptions={nativeSubscriptions}
         computeItems={computeScanItems}
         agents={agents}
         subscriptionScanFailed={subscriptionError?.phase === 'scan'}
@@ -1215,18 +1293,23 @@ export function ModelManagementPage({
       onRefresh={refreshManagement}
       onPrepareKeyInput={prepareKeyInput}
       onReadKeyMasks={readKeyMasks}
-      onPreview={(change: ManagementChange) => invoke<SavePreview>('preview_compute_save', { change })}
+      onPreview={(change: ManagementChange, keyBudgetEdits) => keyBudgetEdits?.length ? invoke<SavePreview>('preview_compute_key_budgets', { change, defaultPreferences: {}, networkEdit: null, keyBudgetEdits }) : invoke<SavePreview>('preview_compute_save', { change })}
       onApply={applyExisting}
       onDiscardProtectedInputs={discardProtectedInputs}
       onCredentialsSaved={() => setModelNotice(language === 'zh' ? '接入凭据已保存。' : 'Connection credentials saved.')}
       plans={plans}
       onOpenPlan={onOpenPlan}
-      onTryModel={onTryModel}
       onCreatePlan={onCreatePlan}
       onEditPrice={openPrice}
       priceRefresh={priceRefresh}
       onReauthorize={repairSubscription}
       onManageSubscriptionLogin={() => { setAdding(true); setAddStage('subscription-login'); }}
+      renderSubscriptionApi={source => isLinkedSubscription(source) ? <SavedSubscriptionApi key={source.source_id}
+        language={language} snapshot={management} source={source} mutable={trustedAuthority}
+        busy={subscriptionApi.busy.has(source.source_id)} result={subscriptionApi.results[source.source_id]}
+        onAssociate={subscriptionApi.associate}
+        onRetry={() => { void subscriptionApi.synchronize(source.source_id); }}
+        onRefresh={refreshManagement} onOperation={onOperation} onUncertain={onRecoveryRefresh} /> : null}
       onRecheck={recheckSavedSource}
       onCancelRecheck={checkId => invoke<void>('cancel_model_connection_check', { checkId })}
       onReconnect={reconnectSource}

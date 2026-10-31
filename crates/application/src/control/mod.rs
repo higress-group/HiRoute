@@ -529,6 +529,12 @@ pub trait ComputeManagementControlPort: Send + Sync {
         &self,
     ) -> Result<ComputeSubscriptionCandidatesV2, ComputeManagementControlError>;
 
+    fn native_subscription_candidates(
+        &self,
+    ) -> Result<ComputeSubscriptionCandidatesV2, ComputeManagementControlError> {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+
     fn saved_subscription_candidate(
         &self,
         _source: hiroute_application_api::ComputeSavedSubscriptionSourceV1,
@@ -622,6 +628,20 @@ pub trait ComputeManagementControlPort: Send + Sync {
     fn preview_compute_save_v3(
         &self,
         _change: hiroute_application_api::ComputeManagementChangeV3,
+    ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError> {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+
+    fn compute_key_budgets(
+        &self,
+        _query: hiroute_application_api::ComputeKeyBudgetsQueryV1,
+    ) -> Result<hiroute_application_api::ComputeKeyBudgetsResultV1, ComputeManagementControlError>
+    {
+        Err(ComputeManagementControlError::Unavailable)
+    }
+    fn preview_compute_key_budgets(
+        &self,
+        _request: hiroute_application_api::ComputeKeyBudgetSaveRequestV1,
     ) -> Result<ComputeSavePreviewV2, ComputeManagementControlError> {
         Err(ComputeManagementControlError::Unavailable)
     }

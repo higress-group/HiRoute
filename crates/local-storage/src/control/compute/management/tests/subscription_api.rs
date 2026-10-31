@@ -1,0 +1,993 @@
+use super::*;
+use hiroute_application::compute_management::query_compute_management_v3;
+use hiroute_application_api::{ComputeManagementChangeV3, ComputeManagementEditV1};
+use hiroute_domain::{
+    ComputeManagementMutation, ComputeManagementProvenanceV2, ComputeManagementRepositoryPort,
+    ComputeManagementSourceV2, ComputeSubscriptionApiLinkIntentV1, ComputeSubscriptionApiLinkV1,
+};
+
+fn sources(stores: &LocalStorageSet) -> Vec<ComputeManagementSourceV2> {
+    stores
+        .control()
+        .compute_management_snapshot(&WorkspaceId::default())
+        .unwrap()
+        .sources
+}
+fn links(stores: &LocalStorageSet) -> Vec<ComputeSubscriptionApiLinkV1> {
+    stores
+        .control()
+        .compute_subscription_api_links(&WorkspaceId::default(), None)
+        .unwrap()
+}
+fn apply(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    change: ComputeManagementChangeV2,
+    intent: ComputeSubscriptionApiLinkIntentV1,
+    key: &str,
+) -> (
+    hiroute_application_api::ComputeSavePreviewV2,
+    serde_json::Value,
+) {
+    apply_with_format(stores, registry, change, intent, key, false)
+}
+fn apply_with_format(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    change: ComputeManagementChangeV2,
+    intent: ComputeSubscriptionApiLinkIntentV1,
+    key: &str,
+    legacy: bool,
+) -> (
+    hiroute_application_api::ComputeSavePreviewV2,
+    serde_json::Value,
+) {
+    let input = ProtectedInput;
+    let planner =
+        ComputeManagementPlanner::new(registry, stores.control(), stores.secrets(), &input);
+    let preview = planner
+        .preview_v3(ComputeManagementChangeV3 {
+            schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+            change,
+            default_preferences: Default::default(),
+            api_link: Some(intent),
+        })
+        .unwrap();
+    let preview = if legacy {
+        let mut input = preview.result.spec.desired_state.clone();
+        input["schema"] = serde_json::json!(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4);
+        planner.preview_saved_state(input).unwrap()
+    } else {
+        preview
+    };
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    coordinator.reconcile_startup_and_open().unwrap();
+    let saved_preview = (preview.result.clone(), preview.plan().control().clone());
+    assert!(preview.plan().secrets().is_empty());
+    apply_preview(
+        stores,
+        &planner,
+        &coordinator,
+        &WorkspaceId::default(),
+        preview,
+        key,
+    );
+    saved_preview
+}
+fn connect(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    api: &ComputeManagementSourceV2,
+) -> (
+    ComputeManagementSourceV2,
+    (
+        hiroute_application_api::ComputeSavePreviewV2,
+        serde_json::Value,
+    ),
+) {
+    connect_provider(stores, registry, api, "codex")
+}
+fn connect_provider(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    api: &ComputeManagementSourceV2,
+    provider: &str,
+) -> (
+    ComputeManagementSourceV2,
+    (
+        hiroute_application_api::ComputeSavePreviewV2,
+        serde_json::Value,
+    ),
+) {
+    connect_with_format(stores, registry, api, provider, false)
+}
+fn connect_with_format(
+    stores: &LocalStorageSet,
+    registry: &TrustedComputeCandidateRegistry,
+    api: &ComputeManagementSourceV2,
+    provider: &str,
+    legacy: bool,
+) -> (
+    ComputeManagementSourceV2,
+    (
+        hiroute_application_api::ComputeSavePreviewV2,
+        serde_json::Value,
+    ),
+) {
+    let mut facts = subscription_selection::subscription(&format!(
+        "candidate/cpa/{provider}/managed/test-account"
+    ));
+    facts.display_name = "Codex subscription".into();
+    facts.provenance = ComputeCandidateProvenanceV2::ConnectorOwned {
+        connector_id: format!("connector.cpa.{provider}"),
+        account_ref: "account/subscription".into(),
+    };
+    subscription_selection::register_verified_subscription(
+        stores,
+        registry,
+        &facts,
+        "approval-api-link",
+    );
+    let preview = apply_with_format(
+        stores,
+        registry,
+        subscription_selection::change(stores, &facts, &["model/one"]),
+        ComputeSubscriptionApiLinkIntentV1::Associate {
+            api_source_id: api.source_id.clone(),
+        },
+        "link-initial",
+        legacy,
+    );
+    let subscription = sources(stores)
+        .into_iter()
+        .find(|s| !s.provenance.is_native())
+        .unwrap();
+    let receipt = stores
+        .control()
+        .compute_subscription_validation(
+            &hiroute_domain::OperationId::parse(
+                &facts
+                    .validation
+                    .as_ref()
+                    .unwrap()
+                    .approval_operation
+                    .operation_id,
+            )
+            .unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        receipt.state,
+        crate::ComputeSubscriptionValidationStateV1::Retained
+    );
+    assert!(receipt.save_operation_id.is_some());
+    (subscription, preview)
+}
+fn metadata(
+    stores: &LocalStorageSet,
+    source: &ComputeManagementSourceV2,
+) -> ComputeManagementChangeV2 {
+    ComputeManagementChangeV2 {
+        schema: "hiroute.compute-management-change/v2".into(),
+        subject: ComputeManagementSubjectV2::SavedSource {
+            source_id: source.source_id.clone(),
+        },
+        expected_revisions: stores
+            .control()
+            .compute_management_snapshot(&WorkspaceId::default())
+            .unwrap()
+            .revisions,
+        selected_model_refs: source.models.iter().map(|m| m.model_ref.clone()).collect(),
+        intent: ComputeManagementIntentV2::SaveReady,
+        key_edits: vec![],
+        validation: None,
+        edit: None,
+    }
+}
+
+#[test]
+fn subscription_api_v5_import_detach_reassociate_reopen_and_backup_preserve_both_sources() {
+    association_lifecycle("codex");
+}
+#[test]
+fn claude_api_import_detach_reassociate_reopen_and_backup_preserve_both_sources() {
+    association_lifecycle("claude");
+}
+fn association_lifecycle(provider: &str) {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let (sub, preview) = connect_provider(&stores, &registry, &api, provider);
+    assert_eq!(
+        links(&stores),
+        vec![ComputeSubscriptionApiLinkV1 {
+            source_id: sub.source_id.clone(),
+            api_source_id: api.source_id.clone()
+        }]
+    );
+    assert_eq!(
+        sources(&stores)
+            .into_iter()
+            .find(|s| s.source_id == api.source_id)
+            .unwrap(),
+        api
+    );
+    assert_eq!(sub.models.len(), 1); // Association alone cannot enlarge either membership.
+    let mutation: ComputeManagementMutation =
+        serde_json::from_value(preview.1["compute_management_mutation"].clone()).unwrap();
+    mutation.validate_for_spec(&preview.0.spec).unwrap();
+    assert!(matches!(mutation, ComputeManagementMutation::V5(_)));
+    let mut tampered = serde_json::to_value(&mutation).unwrap();
+    tampered["api_link_after"]["api_source_id"] = serde_json::json!("source/unapproved");
+    let tampered: ComputeManagementMutation = serde_json::from_value(tampered).unwrap();
+    assert!(tampered.validate_for_spec(&preview.0.spec).is_err());
+
+    apply(
+        &stores,
+        &registry,
+        metadata(&stores, &sub),
+        ComputeSubscriptionApiLinkIntentV1::Remove,
+        "link-remove",
+    );
+    assert!(links(&stores).is_empty());
+    let after = sources(&stores)
+        .into_iter()
+        .find(|s| s.source_id == sub.source_id)
+        .unwrap();
+    assert_eq!(after.validation, sub.validation);
+    assert_eq!(after.models, sub.models);
+    assert_eq!(after.credentials, sub.credentials);
+    apply(
+        &stores,
+        &registry,
+        metadata(&stores, &after),
+        ComputeSubscriptionApiLinkIntentV1::Associate {
+            api_source_id: api.source_id.clone(),
+        },
+        "link-again",
+    );
+    let before = sources(&stores);
+    let association = links(&stores);
+    let backup_path = root.path().join("backup/control.db");
+    let restored_path = root.path().join("restored/control.db");
+    let backup = stores.control().with_connection(|c| {
+        crate::backup::SqliteBackup::create(&crate::test_storage_authority(), c, &backup_path)
+            .unwrap()
+    });
+    backup.restore_to(&restored_path).unwrap();
+    let restored = rusqlite::Connection::open(restored_path).unwrap();
+    assert_eq!(
+        restored
+            .query_row(
+                "SELECT api_source_id FROM compute_subscription_api_links",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+        api.source_id
+    );
+    assert!(
+        restored
+            .query_row(
+                "SELECT count(*) FROM compute_management_effects WHERE api_link_after IS NOT NULL",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap()
+            >= 3
+    );
+    drop(stores);
+    let reopened = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    assert_eq!(sources(&reopened), before);
+    assert_eq!(links(&reopened), association);
+}
+
+#[test]
+fn subscription_api_legacy_query_shape_is_unchanged_and_opt_in_is_source_scoped() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let (sub, _) = connect(&stores, &registry, &api);
+    let query = ComputeManagementQueryV2::default();
+    assert!(
+        serde_json::to_value(&query)
+            .unwrap()
+            .get("include_subscription_api_links")
+            .is_none()
+    );
+    let old = query_compute_management_v3(
+        stores.control(),
+        stores.runtime(),
+        &WorkspaceId::default(),
+        &query,
+        None,
+    )
+    .unwrap();
+    assert!(
+        serde_json::to_value(&old)
+            .unwrap()
+            .get("subscription_api_links")
+            .is_none()
+    );
+    for id in [&sub.source_id, &api.source_id] {
+        let view = query_compute_management_v3(
+            stores.control(),
+            stores.runtime(),
+            &WorkspaceId::default(),
+            &ComputeManagementQueryV2 {
+                source_id: Some(id.clone()),
+                include_subscription_api_links: true,
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            view.subscription_api_links.as_ref().unwrap().len(),
+            usize::from(id == &sub.source_id)
+        );
+        assert!(
+            serde_json::to_value(view.into_v2())
+                .unwrap()
+                .get("subscription_api_links")
+                .is_none()
+        );
+    }
+}
+
+#[test]
+fn subscription_api_ordinary_lifecycle_keeps_link_missing_api_remains_visible_parent_delete_clears_it()
+ {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let (sub, _) = connect(&stores, &registry, &api);
+    lifecycle::execute(
+        &stores,
+        &registry,
+        lifecycle::edit(
+            &stores,
+            &sub,
+            ComputeManagementEditV1::Rename {
+                display_name: "Renamed subscription".into(),
+            },
+            &[],
+        ),
+        "sub-rename",
+    );
+    assert_eq!(links(&stores).len(), 1);
+    lifecycle::execute(
+        &stores,
+        &registry,
+        lifecycle::edit(&stores, &api, ComputeManagementEditV1::Delete, &[]),
+        "api-delete",
+    );
+    assert_eq!(links(&stores)[0].api_source_id, api.source_id);
+    drop(stores);
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    assert_eq!(links(&stores).len(), 1);
+    let sub = sources(&stores).remove(0);
+    lifecycle::execute(
+        &stores,
+        &registry,
+        lifecycle::edit(&stores, &sub, ComputeManagementEditV1::Delete, &[]),
+        "sub-delete",
+    );
+    assert!(links(&stores).is_empty());
+    assert!(sources(&stores).is_empty());
+}
+
+#[test]
+fn subscription_api_link_cannot_change_models_keys_defaults_or_authorization() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let (sub, _) = connect(&stores, &registry, &api);
+    let input = ProtectedInput;
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    for kind in [
+        "models",
+        "intent",
+        "validation",
+        "native",
+        "missing",
+        "self",
+    ] {
+        let mut change = metadata(&stores, &sub);
+        let mut target = api.source_id.clone();
+        match kind {
+            "models" => change.selected_model_refs.clear(),
+            "intent" => change.intent = ComputeManagementIntentV2::SaveDisabled,
+            "validation" => {
+                change.validation = Some(hiroute_application_api::ComputeValidationRefV2 {
+                    approval_operation: hiroute_application_api::OperationReferenceV1 {
+                        operation_id: sub
+                            .validation
+                            .as_ref()
+                            .unwrap()
+                            .approval_operation_id
+                            .clone(),
+                        state: "succeeded".into(),
+                        sequence: 1,
+                        cancellable: false,
+                    },
+                    validation_ref: sub.validation.as_ref().unwrap().validation_ref.clone(),
+                    validation_revision: sub.validation.as_ref().unwrap().validation_revision,
+                })
+            }
+            "native" => change = metadata(&stores, &api),
+            "missing" => target = "source/missing".into(),
+            "self" => target = sub.source_id.clone(),
+            _ => unreachable!(),
+        }
+        assert!(
+            planner
+                .preview_v3(ComputeManagementChangeV3 {
+                    schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                    change,
+                    default_preferences: Default::default(),
+                    api_link: Some(ComputeSubscriptionApiLinkIntentV1::Associate {
+                        api_source_id: target
+                    })
+                })
+                .is_err(),
+            "{kind}"
+        );
+    }
+    assert!(matches!(
+        sub.provenance,
+        ComputeManagementProvenanceV2::ConnectorOwned { .. }
+    ));
+}
+
+#[test]
+fn subscription_api_current_schema_missing_table_fails_closed() {
+    let root = tempdir().unwrap();
+    drop(LocalStorageSet::open_for_daemon_startup(root.path()).unwrap());
+    let path = root.path().join("live/control.db");
+    let c = rusqlite::Connection::open(&path).unwrap();
+    c.execute_batch("DROP TABLE compute_subscription_api_links")
+        .unwrap();
+    drop(c);
+    assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
+    let c = rusqlite::Connection::open(path).unwrap();
+    assert_eq!(
+        c.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name='compute_subscription_api_links'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn subscription_api_effect_witness_tamper_is_rejected_without_changing_business_state() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let (_sub, preview) = connect(&stores, &registry, &api);
+    let mutation: ComputeManagementMutation =
+        serde_json::from_value(preview.1["compute_management_mutation"].clone()).unwrap();
+    let before = sources(&stores);
+    let association = links(&stores);
+    stores.control().with_connection(|db| {
+        let operation: String = db.query_row("SELECT operation_id FROM operations WHERE idempotency_key='link-initial'", [], |r| r.get(0)).unwrap();
+        let healthy: (Option<String>, Option<String>) = db.query_row("SELECT api_link_before,api_link_after FROM compute_management_effects WHERE operation_id=?1", [&operation], |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+        for corrupt in [None, Some("null"), Some("{\"source_id\":\"source/other\",\"api_source_id\":\"source/api\"}")] {
+            db.execute("UPDATE compute_management_effects SET api_link_after=?2 WHERE operation_id=?1", rusqlite::params![operation,corrupt]).unwrap();
+            assert!(super::super::api_link::current_matches(db, &WorkspaceId::default(), &mutation, &operation).is_err());
+        }
+        db.execute("UPDATE compute_management_effects SET api_link_before=?2,api_link_after=?3 WHERE operation_id=?1", rusqlite::params![operation,healthy.0,healthy.1]).unwrap();
+        assert!(super::super::api_link::current_matches(db, &WorkspaceId::default(), &mutation, &operation).unwrap());
+    });
+    assert_eq!(sources(&stores), before);
+    assert_eq!(links(&stores), association);
+}
+
+#[test]
+fn subscription_api_metadata_reproduces_full_saved_defaults_without_changing_them() {
+    use hiroute_domain::{ModelDefaultFieldV1, ModelDefaultPreferenceV1};
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let (sub, _) = connect(&stores, &registry, &api);
+    let preferences = std::collections::BTreeMap::from([(
+        sub.models[0].binding_id.clone(),
+        std::collections::BTreeMap::from([(
+            ModelDefaultFieldV1::Vision,
+            ModelDefaultPreferenceV1::PreserveSaved,
+        )]),
+    )]);
+    let input = ProtectedInput;
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    let preview = planner
+        .preview_v3(ComputeManagementChangeV3 {
+            schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+            change: lifecycle::edit(
+                &stores,
+                &sub,
+                ComputeManagementEditV1::Rename {
+                    display_name: sub.display_name.clone(),
+                },
+                &[],
+            ),
+            default_preferences: preferences.clone(),
+            api_link: None,
+        })
+        .unwrap();
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    coordinator.reconcile_startup_and_open().unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &WorkspaceId::default(),
+        preview,
+        "sub-defaults",
+    );
+    let sub = sources(&stores)
+        .into_iter()
+        .find(|s| s.source_id == sub.source_id)
+        .unwrap();
+    let preview = apply(
+        &stores,
+        &registry,
+        metadata(&stores, &sub),
+        ComputeSubscriptionApiLinkIntentV1::Remove,
+        "sub-defaults-detach",
+    );
+    assert_eq!(
+        preview.0.spec.desired_state["change"]["default_preferences"],
+        serde_json::to_value(&preferences).unwrap()
+    );
+    assert_eq!(
+        stores
+            .control()
+            .source_default_preferences(&sub.source_id)
+            .unwrap(),
+        preferences
+    );
+    assert_eq!(
+        sources(&stores)
+            .into_iter()
+            .find(|s| s.source_id == sub.source_id)
+            .unwrap()
+            .models,
+        sub.models
+    );
+}
+
+fn frozen_payloads(stores: &LocalStorageSet) -> Vec<(String, String, String)> {
+    stores.control().with_connection(|db| {
+        let mut query = db.prepare("SELECT operation_id,digest,payload_json FROM operation_payloads ORDER BY operation_id,digest").unwrap();
+        let rows = query.query_map([], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap();
+        rows.map(Result::unwrap).collect()
+    })
+}
+fn retained_association_schema35(root: &std::path::Path, leave_network_witness: bool) {
+    for database in ["control", "runtime", "secrets"] {
+        let mut db = rusqlite::Connection::open(root.join(format!("live/{database}.db"))).unwrap();
+        let tx = db.transaction().unwrap();
+        if database == "control" {
+            crate::migrations::key_budgets_v37::remove_test_shape(&tx);
+            // The component handoff fixture inserts an opaque historical Check row.
+            // Construct its admitted locator projection before freezing the old source;
+            // production migration must neither clear dirty evidence nor rebuild it.
+            crate::migrations::agent_locator_v33::remove_test_shape(&tx);
+            tx.execute_batch(crate::migrations::agent_locator_v33::CONTROL)
+                .unwrap();
+            crate::control::agent_locator::initialize(&tx).unwrap();
+            tx.execute_batch("DROP TABLE native_source_network;")
+                .unwrap();
+            if !leave_network_witness {
+                tx.execute_batch("ALTER TABLE compute_management_effects DROP COLUMN network_before; ALTER TABLE compute_management_effects DROP COLUMN network_after;").unwrap();
+            }
+            let cookie: i64 = tx
+                .pragma_query_value(None, "schema_version", |row| row.get(0))
+                .unwrap();
+            tx.execute("UPDATE agent_locator_coverage SET schema_version=?1 WHERE singleton=1 AND tampered=0",[cookie]).unwrap();
+        }
+        tx.execute("DELETE FROM schema_migrations WHERE version>35", [])
+            .unwrap();
+        tx.pragma_update(None, "user_version", 35).unwrap();
+        tx.commit().unwrap();
+    }
+}
+
+#[test]
+fn retained_association_schema35_preserves_v4_journals_and_sources_during_upgrade() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    // Reproduce the retained pre-integration wire format, never a current producer.
+    let (sub, preview) = connect_with_format(&stores, &registry, &api, "codex", true);
+    assert_eq!(
+        preview.0.spec.desired_state["schema"],
+        hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+    );
+    assert!(hiroute_domain::is_legacy_subscription_api_change(
+        &preview.0.spec.desired_state
+    ));
+    let before_sources = sources(&stores);
+    let before_links = links(&stores);
+    let before_payloads = frozen_payloads(&stores);
+    assert!(before_payloads.iter().any(|row| {
+        row.2
+            .contains(hiroute_domain::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4)
+    }));
+    drop(stores);
+    retained_association_schema35(root.path(), false);
+    let upgraded = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    assert_eq!(sources(&upgraded), before_sources);
+    assert_eq!(links(&upgraded), before_links);
+    assert_eq!(frozen_payloads(&upgraded), before_payloads);
+    let policy = upgraded
+        .control()
+        .native_source_network(&api.source_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(policy.policy, hiroute_domain::NativeNetworkPolicyV1::Direct);
+    let current = apply(
+        &upgraded,
+        &registry,
+        metadata(&upgraded, &sub),
+        ComputeSubscriptionApiLinkIntentV1::Remove,
+        "current-detach-after-legacy",
+    );
+    assert_eq!(
+        current.0.spec.desired_state["schema"],
+        hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
+    );
+    assert!(links(&upgraded).is_empty());
+}
+
+#[test]
+fn retained_association_schema35_resumes_each_committed_store_without_changing_the_backup() {
+    use crate::backup::{BackupSetPhase, test_writer_barrier};
+    use crate::migrations::{DatabaseKind, LATEST_SCHEMA_VERSION, open_database_from_set};
+    for committed in 1..=3 {
+        for phase_recorded in [false, true] {
+            let root = tempdir().unwrap();
+            populate_saved_source(root.path(), &WorkspaceId::default());
+            let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            let api = lifecycle::saved(&stores);
+            let registry = TrustedComputeCandidateRegistry::new();
+            connect_with_format(&stores, &registry, &api, "codex", true);
+            let before = (sources(&stores), links(&stores), frozen_payloads(&stores));
+            drop(stores);
+            retained_association_schema35(root.path(), false);
+            let key = std::fs::read(root.path().join("master-key")).unwrap();
+            let paths = ["control", "runtime", "secrets"]
+                .map(|name| root.path().join(format!("live/{name}.db")));
+            let binding = crate::LocalSecretStore::migration_binding(
+                &paths[2],
+                &root.path().join("master-key"),
+            )
+            .unwrap()
+            .unwrap();
+            let dbs = paths
+                .each_ref()
+                .map(|path| rusqlite::Connection::open(path).unwrap());
+            let backup = crate::upgrade_backup_root(root.path()).unwrap();
+            let mut set = crate::BackupSet::create_migration(
+                &test_writer_barrier(),
+                &backup,
+                &dbs[0],
+                &dbs[1],
+                &dbs[2],
+                &binding.key_id,
+                LATEST_SCHEMA_VERSION,
+            )
+            .unwrap();
+            let original = paths
+                .each_ref()
+                .map(|path| std::fs::read(backup.join(path.file_name().unwrap())).unwrap());
+            let id = set.set_id().to_owned();
+            drop(dbs);
+            for (index, kind) in [
+                DatabaseKind::Control,
+                DatabaseKind::Runtime,
+                DatabaseKind::Secrets,
+            ]
+            .into_iter()
+            .enumerate()
+            .take(committed)
+            {
+                drop(
+                    open_database_from_set(
+                        &crate::test_storage_authority(),
+                        &paths[index],
+                        kind,
+                        &backup,
+                        None,
+                        Some(&binding),
+                        LATEST_SCHEMA_VERSION,
+                    )
+                    .unwrap(),
+                );
+                if index + 1 < committed || phase_recorded {
+                    set.persist_phase(
+                        &test_writer_barrier(),
+                        [
+                            BackupSetPhase::ControlMigrated,
+                            BackupSetPhase::RuntimeMigrated,
+                            BackupSetPhase::SecretsMigrated,
+                        ][index],
+                    )
+                    .unwrap();
+                }
+            }
+            drop(set);
+            let upgraded = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            assert_eq!(
+                (
+                    sources(&upgraded),
+                    links(&upgraded),
+                    frozen_payloads(&upgraded)
+                ),
+                before
+            );
+            assert_eq!(std::fs::read(root.path().join("master-key")).unwrap(), key);
+            let set = crate::BackupSet::open(&crate::test_storage_authority(), &backup).unwrap();
+            assert_eq!(set.set_id(), id);
+            assert_eq!(set.phase(), BackupSetPhase::Completed);
+            assert_eq!(
+                paths
+                    .each_ref()
+                    .map(|path| { std::fs::read(backup.join(path.file_name().unwrap())).unwrap() }),
+                original
+            );
+            drop(upgraded);
+            let reopened = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            assert_eq!(
+                (
+                    sources(&reopened),
+                    links(&reopened),
+                    frozen_payloads(&reopened)
+                ),
+                before
+            );
+        }
+    }
+}
+
+#[test]
+fn retained_association_schema35_recovers_pending_handoff_on_success_and_rollback() {
+    for rollback in [false, true] {
+        let root = tempdir().unwrap();
+        populate_saved_source(root.path(), &WorkspaceId::default());
+        let id;
+        let approval;
+        let original_payloads;
+        {
+            let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            let api = lifecycle::saved(&stores);
+            let registry = TrustedComputeCandidateRegistry::new();
+            let mut facts =
+                subscription_selection::subscription("candidate/cpa/codex/managed/pending");
+            facts.provenance = ComputeCandidateProvenanceV2::ConnectorOwned {
+                connector_id: "connector.cpa.codex".into(),
+                account_ref: "account/subscription".into(),
+            };
+            subscription_selection::register_verified_subscription(
+                &stores,
+                &registry,
+                &facts,
+                "legacy-check",
+            );
+            approval = hiroute_domain::OperationId::parse(
+                &facts
+                    .validation
+                    .as_ref()
+                    .unwrap()
+                    .approval_operation
+                    .operation_id,
+            )
+            .unwrap();
+            let input = ProtectedInput;
+            let planner = ComputeManagementPlanner::new(
+                &registry,
+                stores.control(),
+                stores.secrets(),
+                &input,
+            );
+            let preview = planner
+                .preview_v3(ComputeManagementChangeV3 {
+                    schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                    change: subscription_selection::change(&stores, &facts, &["model/one"]),
+                    default_preferences: Default::default(),
+                    api_link: Some(ComputeSubscriptionApiLinkIntentV1::Associate {
+                        api_source_id: api.source_id.clone(),
+                    }),
+                })
+                .unwrap();
+            let mut desired = preview.result.spec.desired_state;
+            desired["schema"] =
+                serde_json::json!(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4);
+            let preview = planner.preview_saved_state(desired).unwrap();
+            let prepared = planner
+                .prepare_apply(ComputeConnectionApplyRequestV1 {
+                    spec: preview.result.spec,
+                    accept_digest: preview.result.accept_digest,
+                    expected_revisions: preview.result.expected_revisions,
+                    idempotency_key: "legacy-pending-save".into(),
+                })
+                .unwrap();
+            let runtime = TransactionRuntime::default();
+            let external = NoExternal;
+            let coordinator = TransactionCoordinator::new(
+                stores.control(),
+                stores.secrets(),
+                stores.runtime(),
+                &external,
+                &input,
+                &runtime,
+            );
+            coordinator.reconcile_startup_and_open().unwrap();
+            let accepted = coordinator
+                .accept_prepared(
+                    &WorkspaceId::default(),
+                    &VerifiedPrincipal::for_local_control(),
+                    prepared,
+                )
+                .unwrap();
+            id = accepted.operation().operation_id.clone();
+            // The original V4 producer committed this handoff at admission, before
+            // the interrupted save. Freeze that retained source fact explicitly.
+            stores.control().with_connection(|db| db.execute(
+                "UPDATE compute_subscription_validations SET save_operation_id=?2 WHERE operation_id=?1 AND state='verified'",
+                rusqlite::params![approval.as_str(), id.as_str()],
+            ).unwrap());
+            original_payloads = frozen_payloads(&stores);
+        }
+        retained_association_schema35(root.path(), false);
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let pending = stores
+            .control()
+            .compute_subscription_validation(&approval)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            pending.state,
+            crate::ComputeSubscriptionValidationStateV1::Verified
+        );
+        assert_eq!(pending.save_operation_id.as_deref(), Some(id.as_str()));
+        if rollback {
+            stores.control().with_connection(|db| db.execute_batch(
+                "CREATE TEMP TRIGGER fail_legacy_save BEFORE INSERT ON main.compute_management_sources BEGIN SELECT RAISE(ABORT, 'fixture_legacy_save_failure'); END;",
+            ).unwrap());
+        }
+        {
+            let input = ProtectedInput;
+            let runtime = TransactionRuntime::default();
+            let external = NoExternal;
+            let coordinator = TransactionCoordinator::new(
+                stores.control(),
+                stores.secrets(),
+                stores.runtime(),
+                &external,
+                &input,
+                &runtime,
+            );
+            let recovered = coordinator.reconcile_startup_and_open().unwrap();
+            assert!(recovered.iter().any(|op| op.operation_id == id
+                && op.state
+                    == if rollback {
+                        OperationState::RolledBack
+                    } else {
+                        OperationState::Succeeded
+                    }));
+        }
+        let receipt = stores
+            .control()
+            .compute_subscription_validation(&approval)
+            .unwrap()
+            .unwrap();
+        if rollback {
+            assert_eq!(
+                receipt.state,
+                crate::ComputeSubscriptionValidationStateV1::Verified
+            );
+            assert!(receipt.save_operation_id.is_none());
+            assert_eq!(sources(&stores).len(), 1);
+            assert!(links(&stores).is_empty());
+        } else {
+            assert_eq!(
+                receipt.state,
+                crate::ComputeSubscriptionValidationStateV1::Retained
+            );
+            assert_eq!(receipt.save_operation_id.as_deref(), Some(id.as_str()));
+            assert_eq!(sources(&stores).len(), 2);
+            assert_eq!(links(&stores).len(), 1);
+        }
+        let after = frozen_payloads(&stores);
+        assert!(original_payloads.iter().all(|row| after.contains(row)));
+        drop(stores);
+        let reopened = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        assert_eq!(
+            reopened
+                .control()
+                .compute_subscription_validation(&approval)
+                .unwrap()
+                .unwrap(),
+            receipt
+        );
+    }
+}
+
+#[test]
+fn incomplete_legacy_layout_is_preserved_and_never_reconstructed_as_direct() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let api = lifecycle::saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    connect(&stores, &registry, &api);
+    let before = sources(&stores);
+    drop(stores);
+    retained_association_schema35(root.path(), true);
+    assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
+    let db = rusqlite::Connection::open(root.path().join("live/control.db")).unwrap();
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM compute_subscription_api_links",
+            [],
+            |row| row.get::<_, u32>(0)
+        )
+        .unwrap(),
+        1
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM compute_management_sources",
+            [],
+            |row| row.get::<_, u32>(0)
+        )
+        .unwrap(),
+        before.len() as u32
+    );
+    assert!(
+        !db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='native_source_network')",
+            [],
+            |row| row.get::<_, bool>(0)
+        )
+        .unwrap()
+    );
+}

@@ -244,6 +244,10 @@ impl NativeCredentialLeaseV1 {
 /// Replaceable Product authority. Local storage, a Vault client, or a remote authority can
 /// implement this same port; Gateway adapters never depend on SQLite types.
 pub trait NativeCredentialAuthorityV1: Send + Sync {
+    fn key_spend_authority(&self) -> Option<std::sync::Arc<dyn crate::KeySpendAuthorityV1>> {
+        None
+    }
+
     /// Decision membership is separate from generative model authority.
     fn admit_decision_credentials(
         &self,

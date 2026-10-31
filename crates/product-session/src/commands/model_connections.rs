@@ -52,6 +52,7 @@ pub async fn compute_subscriptions(
     state: &CommandState<'_>,
     source_id: Option<String>,
     expected_source_revision: Option<u64>,
+    native_only: Option<bool>,
 ) -> Result<WebComputeSubscriptionCandidatesV2, DesktopFailure> {
     main_window(window)?;
     let client = state
@@ -62,11 +63,21 @@ pub async fn compute_subscriptions(
         .ok_or("RESIDENT_UNAVAILABLE")?
         .client
         .clone();
-    match (source_id, expected_source_revision) {
-        (None, None) => {
+    match (
+        source_id,
+        expected_source_revision,
+        native_only.unwrap_or(false),
+    ) {
+        (None, None, true) => envelope_data(
+            client
+                .native_subscription_candidates(&crate::random_id()?)
+                .await?,
+        )
+        .map(Into::into),
+        (None, None, false) => {
             envelope_data(client.compute_subscriptions(&crate::random_id()?).await?).map(Into::into)
         }
-        (Some(source_id), Some(expected_source_revision)) => {
+        (Some(source_id), Some(expected_source_revision), false) => {
             let value: hiroute_application_api::ComputeSubscriptionCandidatesV2 =
                 crate::session::query(
                     &client,
@@ -76,6 +87,7 @@ pub async fn compute_subscriptions(
                             source_id,
                             expected_source_revision,
                         }),
+                        native_only: false,
                     },
                 )
                 .await?;
@@ -232,7 +244,10 @@ pub async fn compute_management_snapshot(
         client
             .compute_management_snapshot_v3(
                 &crate::random_id()?,
-                ComputeManagementQueryV2::default(),
+                ComputeManagementQueryV2 {
+                    include_subscription_api_links: true,
+                    ..Default::default()
+                },
             )
             .await?,
     )
@@ -596,7 +611,8 @@ pub async fn apply_compute_save(
 pub async fn get_compute_save_result(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,
-    operation: OperationReferenceV1,
+    operation: Option<OperationReferenceV1>,
+    idempotency_key: Option<String>,
 ) -> Result<WebComputeSaveResultV2, DesktopFailure> {
     main_window(window)?;
     let client = state
@@ -607,6 +623,45 @@ pub async fn get_compute_save_result(
         .ok_or("RESIDENT_UNAVAILABLE")?
         .client
         .clone();
+    let operation = match (operation, idempotency_key) {
+        (Some(operation), None) => operation,
+        (None, Some(key)) => {
+            let found: OperationIdempotencyResultV1 = crate::session::query(
+                &client,
+                "FindOperationByIdempotency",
+                &OperationIdempotencyLookupV1 {
+                    principal_kind: PrincipalKind::InteractiveUser,
+                    operation_kind: APPLY_COMPUTE_SAVE_OPERATION_V2.into(),
+                    idempotency_key: key,
+                    // This is a read by identity. A different digest never authorizes an Apply.
+                    accepted_digest: CanonicalDigest::of_bytes(b"subscription-api-sync-lookup/v1"),
+                    include_model_budget_conflict: false,
+                },
+            )
+            .await?;
+            let Some(operation) = found.operation else {
+                return Ok(ComputeSaveResultV2 {
+                    candidate: None,
+                    validation: None,
+                    disposition: ComputeSaveDispositionV2::NeedsInput,
+                    source_id: None,
+                    bindings: Vec::new(),
+                    saved_revision: None,
+                    management_state: None,
+                    operation: None,
+                    reason: Some("OPERATION_NOT_FOUND".into()),
+                }
+                .into());
+            };
+            OperationReferenceV1 {
+                operation_id: operation.operation_id,
+                state: operation.state,
+                sequence: operation.sequence,
+                cancellable: operation.cancellable,
+            }
+        }
+        _ => return Err("REQUEST_INVALID".into()),
+    };
     envelope_data(
         client
             .get_compute_save_result(&crate::random_id()?, operation)
@@ -627,8 +682,10 @@ pub async fn preview_compute_save_v3(
     state: &CommandState<'_>,
     change: WebComputeManagementChangeV2,
     default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+    api_link: Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>,
 ) -> Result<WebComputeSavePreviewV2, DesktopFailure> {
     let change = hiroute_application_api::ComputeManagementChangeV3 {
+        api_link,
         schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
         change: change.try_into().map_err(DesktopFailure::from)?,
         default_preferences,
@@ -640,5 +697,35 @@ pub async fn preview_compute_save_v3(
         &hiroute_application_api::ComputeSavePreviewRequestV3 { change },
     )
     .await?;
+    result.try_into().map_err(DesktopFailure::from)
+}
+
+pub async fn compute_key_budgets(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: ComputeKeyBudgetsQueryV1,
+) -> Result<ComputeKeyBudgetsResultV1, DesktopFailure> {
+    super::model_feed::query(window, state, "GetComputeKeyBudgets", &input).await
+}
+pub async fn preview_compute_key_budgets(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    change: WebComputeManagementChangeV2,
+    default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+    network_edit: Option<hiroute_application_api::NativeNetworkEditV1>,
+    key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
+) -> Result<WebComputeSavePreviewV2, DesktopFailure> {
+    let input = ComputeKeyBudgetSaveRequestV1 {
+        change: ComputeManagementChangeV3 {
+            schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+            change: change.try_into().map_err(DesktopFailure::from)?,
+            default_preferences,
+            api_link: None,
+        },
+        network_edit,
+        key_budget_edits,
+    };
+    let result: ComputeSavePreviewV2 =
+        super::model_feed::query(window, state, "PreviewComputeKeyBudgets", &input).await?;
     result.try_into().map_err(DesktopFailure::from)
 }

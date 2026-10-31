@@ -36,6 +36,8 @@ impl crate::LocalStorageSet {
         if owners.next().is_some() || !source.provenance.is_native() {
             return Err(rejected().into());
         }
+        self.control()
+            .validate_current_key_budgets(&source.source_id)?;
         let model = source
             .models
             .iter()

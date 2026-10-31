@@ -12,10 +12,24 @@ import {
   savedSourceConnectionFields,
   selectedModelRefsForSave,
   selectedModelRefsAfterRecheck,
+  explicitApiModelSelection,
   blankModel,
   withCapabilityFallback,
   withRegisteredModels,
 } from '../src/features/model-connections/state.ts';
+
+test('associated API automatic save uses only observed selectable IDs selected in the subscription', () => {
+  const checked = { candidate: { producer: 'native', models: [
+    { upstream_model_id: 'gpt-sol', model_ref: 'fresh-sol', selectable: true, membership: 'observed' },
+    { upstream_model_id: 'GPT-SOL', model_ref: 'different-case', selectable: true },
+    { upstream_model_id: 'gpt-luna', model_ref: 'blocked', selectable: false },
+    { upstream_model_id: 'unselected', model_ref: 'unrelated', selectable: true, membership: 'observed' },
+    { upstream_model_id: 'catalog-only', model_ref: 'catalog', selectable: true, membership: 'catalog' },
+  ] } };
+  assert.deepEqual([...explicitApiModelSelection(checked, ['gpt-sol', 'gpt-luna', 'missing', 'catalog-only'])], ['fresh-sol']);
+  assert.deepEqual([...explicitApiModelSelection(checked, [])], []);
+  assert.deepEqual([...selectedModelRefsAfterRecheck(null, new Set(), checked)], []);
+});
 
 test('tool recheck keeps explicit model identities with fresh refs and drops unavailable choices', () => {
   const checked = (ref, revision, models) => ({ candidate: {

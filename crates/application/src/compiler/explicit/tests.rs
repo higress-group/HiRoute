@@ -8,6 +8,7 @@ fn desired() -> AgentPlanAuthoringV2 {
         unreachable!()
     };
     AgentPlanAuthoringV2 {
+        follow_request_reasoning: false,
         schema: PLAN_AUTHORING_SCHEMA_V2.into(),
         display_name: legacy.display_name,
         purpose: legacy.purpose,
@@ -42,6 +43,54 @@ fn selection(id: &str) -> CandidateSelectionV1 {
             profile: "low".into(),
         }),
     }
+}
+
+#[test]
+fn follow_reasoning_is_frozen_reopened_and_bound_to_authoring_without_changing_defaults() {
+    let mut desired = desired();
+    let original = compile(&desired, &compilation_facts()).unwrap();
+    desired.follow_request_reasoning = true;
+    let followed = compile(&desired, &compilation_facts()).unwrap();
+    assert_ne!(original.digest, followed.digest);
+    for (before, after) in original
+        .body
+        .materialized
+        .attempt_owned
+        .groups
+        .iter()
+        .flat_map(|g| &g.candidates)
+        .zip(
+            followed
+                .body
+                .materialized
+                .attempt_owned
+                .groups
+                .iter()
+                .flat_map(|g| &g.candidates),
+        )
+    {
+        assert_eq!(before.exact_reasoning, after.exact_reasoning);
+        assert!(
+            after
+                .protocol_profiles
+                .iter()
+                .all(|p| p.follow_request_reasoning)
+        );
+    }
+    let version = PlanVersionV1::new(WorkspaceId::default(), desired.clone(), followed).unwrap();
+    let bytes = serde_json::to_vec(&version).unwrap();
+    let reopened: PlanVersionV1 = serde_json::from_slice(&bytes).unwrap();
+    reopened.validate().unwrap();
+    assert_eq!(serde_json::to_vec(&reopened).unwrap(), bytes);
+    assert!(
+        reopened
+            .configuration
+            .editor(None)
+            .unwrap()
+            .follow_request_reasoning
+    );
+    desired.follow_request_reasoning = false;
+    assert!(PlanVersionV1::new(WorkspaceId::default(), desired, reopened.compiled).is_err());
 }
 
 #[test]

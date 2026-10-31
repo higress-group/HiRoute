@@ -30,8 +30,19 @@ pub struct OfficialModelLocatorV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "intent", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModelDefaultPreferenceV1 {
+    Custom { value: ModelDefaultValueV1 },
+    FollowMetadata,
+    // Retained source choices and sealed Operations keep their original bytes.
     PreserveSaved,
     FollowOfficial { locator: OfficialModelLocatorV1 },
+}
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ModelDefaultValueV1 {
+    Boolean(bool),
+    Tokens(u64),
+    Reasoning(NativeReasoningCapabilityV1),
+    Unknown(()),
 }
 pub type SourceDefaultPreferencesV1 =
     BTreeMap<String, BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>>;
@@ -51,6 +62,29 @@ pub fn validate_source_default_preferences(
             return Err(ComputeManagementErrorV2::InvalidMutation);
         }
         for (field, policy) in fields {
+            if let ModelDefaultPreferenceV1::Custom { value } = policy {
+                let valid = match (field, value) {
+                    (_, ModelDefaultValueV1::Unknown(())) => true,
+                    (
+                        ModelDefaultFieldV1::Tool
+                        | ModelDefaultFieldV1::Vision
+                        | ModelDefaultFieldV1::Streaming,
+                        ModelDefaultValueV1::Boolean(_),
+                    ) => true,
+                    (
+                        ModelDefaultFieldV1::ContextTokens | ModelDefaultFieldV1::MaxOutputTokens,
+                        ModelDefaultValueV1::Tokens(value),
+                    ) => *value > 0,
+                    (
+                        ModelDefaultFieldV1::NativeReasoning,
+                        ModelDefaultValueV1::Reasoning(value),
+                    ) => value.validate().is_ok(),
+                    _ => false,
+                };
+                if !valid {
+                    return Err(ComputeManagementErrorV2::InvalidCapability);
+                }
+            }
             if let ModelDefaultPreferenceV1::FollowOfficial { locator } = policy {
                 let basis = match field {
                     ModelDefaultFieldV1::Tool => model.capabilities.tool.basis,
@@ -134,6 +168,8 @@ impl ComputeManagementMutationV3 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ComputeManagementMutation {
+    V6(ComputeManagementMutationV6),
+    V5(ComputeManagementMutationV5),
     V4(crate::ComputeManagementMutationV4),
     V3(ComputeManagementMutationV3),
     V2(ComputeManagementMutationV2),
@@ -142,6 +178,8 @@ impl Deref for ComputeManagementMutation {
     type Target = ComputeManagementMutationV2;
     fn deref(&self) -> &Self::Target {
         match self {
+            Self::V6(value) => &value.source_mutation,
+            Self::V5(value) => &value.source_mutation,
             Self::V4(value) => &value.source_mutation,
             Self::V2(value) => value,
             Self::V3(value) => &value.source_mutation,
@@ -149,20 +187,53 @@ impl Deref for ComputeManagementMutation {
     }
 }
 impl ComputeManagementMutation {
+    pub fn validate_for_spec(&self, spec: &ChangeSpecV1) -> Result<(), ComputeManagementErrorV2> {
+        match self {
+            Self::V6(value) => value.validate(spec),
+            Self::V2(value) => value.validate_shape(spec),
+            Self::V3(value) => value.validate(spec),
+            Self::V5(value) => value.validate(spec),
+            Self::V4(value) => value.validate(spec),
+        }
+    }
+
+    pub fn api_link_change(
+        &self,
+    ) -> Option<(
+        &Option<ComputeSubscriptionApiLinkV1>,
+        &Option<ComputeSubscriptionApiLinkV1>,
+    )> {
+        match self {
+            Self::V6(value) => value.source_mutation.api_link_change(),
+            Self::V5(value) => Some((&value.api_link_before, &value.api_link_after)),
+            _ => None,
+        }
+    }
+
     pub fn preferences(
         &self,
     ) -> Option<(&SourceDefaultPreferencesV1, &SourceDefaultPreferencesV1)> {
         match self {
+            Self::V6(value) => value.source_mutation.preferences(),
+            Self::V5(value) => value.source_mutation.preferences(),
             Self::V4(v) => v.source_mutation.preferences(),
             Self::V2(_) => None,
             Self::V3(v) => Some((&v.preferences_before, &v.preferences_after)),
         }
     }
 
+    pub fn key_budgets(&self) -> Option<&KeyBudgetMutationV1> {
+        match self {
+            Self::V6(value) => Some(&value.budgets),
+            _ => None,
+        }
+    }
+
     pub fn network(&self) -> Option<&crate::NativeNetworkMutationV1> {
         match self {
+            Self::V6(v) => v.source_mutation.network(),
             Self::V4(v) => Some(&v.network),
-            Self::V2(_) | Self::V3(_) => None,
+            Self::V2(_) | Self::V3(_) | Self::V5(_) => None,
         }
     }
 }

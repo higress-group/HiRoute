@@ -6,6 +6,8 @@ mod prepared;
 pub use prepared::PreparedPlannerInput;
 pub(crate) use prepared::RequestTemplates;
 
+pub(crate) use ports::BoundRequestReasoning;
+
 pub use ports::{
     ConversationContentSink, CredentialLease, CredentialResolver, ExecutionFactSink,
     FileCredentialResolver, FilePlannerInputAuthority, LifecycleTelemetrySink,

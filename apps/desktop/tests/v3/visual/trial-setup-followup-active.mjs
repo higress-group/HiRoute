@@ -27,7 +27,7 @@ async function click(selector, text = '') {
 }
 async function field(selector, value) {
   await waitFor(client, `!!document.querySelector(${JSON.stringify(selector)})`);
-  await evaluate(client, `(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+  await evaluate(client, `(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(e instanceof HTMLSelectElement?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event(e instanceof HTMLSelectElement?'change':'input',{bubbles:true}));return true;})()`);
 }
 // The combined trial skips the chooser when exactly one service is executable.
 // Preserve the saved-binding assertions while following that production journey.
@@ -644,8 +644,7 @@ try {
       assert.equal(await evaluate(client, `document.querySelector('.trial-review [data-decision-field$="-simple-threshold"]').value`),'0.723');
       await field('.trial-review .trust-slider','500');
       await field('.trial-review .plan-identity-fields input','Edited trial route');
-      await click('[data-route-group=primary] button.effort-select','high');
-      await click('[role=dialog] [data-reasoning-profile=low]'); await click('[role=dialog] button',language==='zh'?'应用':'Apply');
+      await field('[data-route-group=primary] select.effort-select','low');
       await click('.trial-review summary',language==='zh'?'判断设置':'Judgment settings');
       await click('.trial-review summary',language==='zh'?'如何判断胜任':'How competence is assessed');
       await evaluate(client, `(()=>{const e=document.querySelector('.trial-review [data-decision-field$="-criterion-0"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Edited trial criterion');e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);

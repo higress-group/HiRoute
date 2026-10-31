@@ -173,13 +173,14 @@ impl LocalControlAdapter {
 
     pub(super) fn refresh_subscription_candidates(
         &self,
+        native_only: bool,
     ) -> Result<
         Vec<ComputeCandidateViewV2>,
         hiroute_application::control::ComputeManagementControlError,
     > {
         let mut views = Vec::new();
         for kind in [CpaAccountKind::Codex, CpaAccountKind::Claude] {
-            for source in self.subscription_discovery_sources(kind)? {
+            for source in self.subscription_discovery_sources(kind, native_only)? {
                 views.extend(self.refresh_subscription_candidate(source)?);
             }
         }
@@ -408,7 +409,7 @@ impl LocalControlAdapter {
         }
         for kind in [CpaAccountKind::Codex, CpaAccountKind::Claude] {
             for source in self
-                .subscription_discovery_sources(kind)
+                .subscription_discovery_sources(kind, false)
                 .map_err(control_error_to_port)?
             {
                 let candidate =
@@ -1022,9 +1023,11 @@ fn subscription_error_status(code: Option<&str>) -> ComputeSubscriptionCheckStat
             | "SUBSCRIPTION_NATIVE_LOGIN_UNSUPPORTED"
             | "SUBSCRIPTION_MANAGED_LOGIN_REQUIRED",
         ) => ComputeSubscriptionCheckStatusV2::NeedsAuth,
-        Some("SUBSCRIPTION_NATIVE_READ_FAILED" | "SUBSCRIPTION_NATIVE_CLIENT_UNAVAILABLE") => {
-            ComputeSubscriptionCheckStatusV2::Unavailable
-        }
+        Some(
+            "SUBSCRIPTION_NATIVE_READ_FAILED"
+            | "SUBSCRIPTION_NATIVE_CLIENT_UNAVAILABLE"
+            | "SUBSCRIPTION_LOGIN_IN_USE",
+        ) => ComputeSubscriptionCheckStatusV2::Unavailable,
         Some("SUBSCRIPTION_RUNTIME_UNAVAILABLE") => ComputeSubscriptionCheckStatusV2::Unavailable,
         _ => ComputeSubscriptionCheckStatusV2::Failed,
     }

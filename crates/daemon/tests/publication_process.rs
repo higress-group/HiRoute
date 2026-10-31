@@ -91,6 +91,16 @@ fn real_process_v2_plan_content_and_alias_recover_exactly() {
 }
 
 #[test]
+fn real_process_follow_request_reasoning_preserves_fallback_and_saved_configuration() {
+    run_script("follow_reasoning_product.py");
+}
+
+#[test]
+fn real_process_route_only_model_id_and_empty_purpose_survive_restart() {
+    run_script_case("plan_content_process.py", Some("route-only"));
+}
+
+#[test]
 fn real_process_plan_lifecycle_preserves_content_and_checks_references() {
     run_script("plan_lifecycle_process.py");
 }
@@ -127,6 +137,11 @@ fn real_process_custom_http_save_recheck_and_validation_errors() {
 #[test]
 fn real_process_native_branch_credentials_preserve_source_and_key_permissions() {
     run_script("native_branch_credentials_product.py");
+}
+
+#[test]
+fn real_process_key_budgets_reserve_settle_and_fallback_without_republishing() {
+    run_script("key_budget_product.py");
 }
 
 #[test]

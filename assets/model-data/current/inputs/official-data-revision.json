@@ -1,1 +1,4 @@
-{"schema":"hiroute.official-model-data-revision/v1","data_revision":3}
+{
+  "schema": "hiroute.official-model-data-revision/v1",
+  "data_revision": 4
+}

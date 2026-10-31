@@ -265,6 +265,31 @@ admission, session expiry and revocation remain independent enforced checks.
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/132#issuecomment-6219729524
 
+### Requirement: Subscription API associations retain source transaction proofs
+
+An association update SHALL commit with its subscription source through the ordinary
+management Operation. The versioned association envelope SHALL preserve inner source
+and default-preference proofs without rewriting released canonical bytes. A metadata
+edit preserves saved authorization and selected members; it cannot fabricate a check,
+replace credentials or change executable state. The API append is a separate normal
+Operation so API failure cannot roll back a successful subscription import.
+
+Activation and compensation SHALL bind the before/after association to the exact
+owned source effect. A foreign association change prevents compensation. Missing
+association tables or invalid identities in current storage fail closed. Upgrade
+uses the existing complete three-store backup and recovery coordinator, including
+retained completed or interrupted previous-version batches. Old management requests
+and strict query shapes keep their meaning; association projections are opt-in.
+
+#### Scenario: Reopen after an association edit
+
+- **WHEN** a committed subscription association is reopened or restored with its
+  complete storage backup
+- **THEN** its identities and effect witnesses survive, and no API import or routing
+  publication is inferred from the association alone
+
+Source Issue: https://github.com/higress-group/HiRoute/issues/279
+
 ## Implementation references
 
 - [Application operation workflows](../../../crates/application/src/operations) and

@@ -245,10 +245,24 @@ fn compute_delete_failure_after_secret_activation_rolls_back_all_stores_and_surv
 
 #[test]
 fn compute_key_edit_rollback_preserves_authority_and_restores_forward_references() {
+    key_edit_rollback(false);
+}
+#[test]
+fn key_budget_key_edit_rollback_preserves_limits_and_forward_secret_references() {
+    key_edit_rollback(true);
+}
+fn key_edit_rollback(with_budget: bool) {
     for action in ["replace", "remove", "rebind"] {
         let root = tempdir().unwrap();
         populate_saved_source(root.path(), &WorkspaceId::default());
         let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        if with_budget {
+            super::key_budgets::configure(
+                &stores,
+                super::key_budgets::new_budget(1_000_000),
+                "key-budget-secret-rollback",
+            );
+        }
         let before = saved(&stores);
         let registry = TrustedComputeCandidateRegistry::new();
         let mut change = edit(&stores, &before, ComputeManagementEditV1::Delete, &[]);
@@ -532,6 +546,7 @@ fn model_defaults_activated_before_terminal_failure_complete_once_on_startup() {
         )]);
         let preview = planner
             .preview_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                api_link: None,
                 schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
                 change: edit(
                     &stores,

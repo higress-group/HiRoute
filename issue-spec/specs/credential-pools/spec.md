@@ -98,7 +98,73 @@ binding-local and cannot silently cool unrelated inference models. See
   header or ordinary provider credential
 - **THEN** the operation MUST be rejected without exposing the credential.
 
+### Requirement: Keys may share a persistent local spending budget
+
+An API Key MAY have no local limit, an independent budget, or an explicit link to
+a shared budget. All admitted models, routes and source-reusing decision requests
+using that Key MUST consume the same budget. Different sources or equal secret
+strings MUST NOT be joined implicitly. Existing Keys remain unlimited by default.
+The subscription/API Key form MUST offer optional budget configuration, use the
+same saved policy as Key management, and retain one primary save. The policy MUST
+be committed before the newly enabled Key can serve a request.
+
+Budgets MUST support one-time amounts and calendar renewal (daily, weekly,
+monthly and yearly). Renewal defaults to resetting to the configured amount;
+advanced accumulation retains the balance and requires a finite balance ceiling.
+The original local calendar anchor and explicit IANA timezone determine renewals,
+including month ends and daylight-saving transitions. Offline reset skips expired
+allowances; offline accumulation counts due grants up to the ceiling. Restoration
+is derived on access and MUST NOT require a live Desktop timer. Initial remaining
+allowance MAY differ from the recurring amount. Editing or rotating a Key does
+not reset consumed funds or erase accounting history. Policy changes apply to
+current source authority without republishing routes.
+
+Before an upstream request, the authority MUST atomically reserve a conservatively
+priced amount against the exact admitted Key and shared budget. Concurrent callers
+and repeated model fallbacks cannot each admit the same remaining funds. Known
+usage settles once against the captured price; a proven unsent attempt releases
+its reservation. Interrupted or unknown usage remains reserved across restart and
+is visible as pending; unknown prices/currencies/usage never become zero cost.
+Budget counters, reservations and idempotent settlement MUST be durable and use
+indexed bounded reads, independent of unrelated history size. Currency conversion
+is not implicit. All amounts are exact integer currency micros.
+
+Saved-Key inference probes and source-reusing decision requests without a complete
+price/usage contract MUST refuse limited Keys before resolving the Secret or
+forwarding. Directory/authentication-only checks remain available.
+
+An exhausted or unpriceable Key MUST be skipped through the existing admitted
+Key order and candidate fallback contracts, without altering user-disabled state,
+reordering candidates or cancelling already committed responses. A due renewal
+restores budget eligibility. Management MUST show configured allowance, actual
+local expenditure, pending reservation, available funds and next renewal. The UI
+MUST identify these as HiRoute local estimates for traffic it controls, rather
+than a fetched provider credit balance. Provider credit eligibility remains in
+the existing subscription guidance.
+
+#### Scenario: A fixed allowance is shared by several models
+
+- **WHEN** two requests on different models use the same budget concurrently
+- **THEN** only reservations covered by the shared available balance are admitted
+- **AND** exhaustion proceeds through saved Key/candidate order, with no new call
+  on the exhausted Key and no new model binding per Key.
+
+#### Scenario: Calendar renewal while the application was closed
+
+- **WHEN** the next read or request observes elapsed renewal boundaries
+- **THEN** reset or capped accumulation is applied exactly once before admission
+- **AND** in-flight/uncertain reservations remain accounted for after restart.
+
+#### Scenario: Recover a failed policy edit across a renewal boundary
+
+- **WHEN** a saved allowance edit rolls back after a renewal boundary
+- **THEN** compensation restores the original calendar and its due grants, retains
+  real charges and eligible pending holds, and does not retain temporary grants
+- **AND** a missing current binding or required recovery witness fails closed;
+  it never means that the Key is unlimited.
+
 Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/279
 - https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488572844
 
 ## Implementation references
@@ -106,3 +172,6 @@ Source SPEC comments:
 - [Current Native credential pool](../../../crates/local-storage/src/control/compute/management/runtime_pool.rs).
 - [Protected recognition masks](../../../crates/daemon/src/control/runtime/model_connections/key_masks.rs).
 - [Single-save model editing](../../../apps/desktop/src/features/models/model-draft.ts).
+
+- [Local spending ledger](../../../crates/local-storage/src/control/key_budgets.rs).
+- [Shared Key and subscription budget form](../../../apps/desktop/src/features/key-budgets/KeyBudgetEditor.tsx).

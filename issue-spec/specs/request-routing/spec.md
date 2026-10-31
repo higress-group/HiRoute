@@ -148,8 +148,19 @@ Neither means no added cap for Responses/Chat; Messages needs an explicit max_to
 
 ### Requirement: Native reasoning distinguishes plan and Fixed ownership
 
-Plan candidates MUST override caller effort/type/budget with exact saved native
-settings. Fixed same-protocol execution preserves caller-native controls for the
+Plan candidates MUST use their exact saved native settings unless the Plan explicitly
+enables following request reasoning. In that mode, each candidate independently
+matches the original caller effort/type/budget against its frozen native controls.
+Absent, unsupported or unrepresentable controls use that candidate's saved default;
+malformed types and conflicting controls fail request validation. Native budgets
+must satisfy the frozen range and step. No nearest-level or toggle/budget/effort
+conversion is inferred. Resolve before context, cost and eligibility evaluation;
+materialization, continuity identities and observations use the effective profile.
+Observations retain requested controls, actual profile and request/default-missing/
+default-unsupported resolution. Fallback order is unchanged, and a later candidate
+reevaluates the original request rather than inheriting a prior fallback level.
+Omitted policy in retained Plans continues exact fixed execution without rewriting
+their bytes or proofs. Fixed same-protocol execution preserves caller-native controls for the
 provider, including unknown settings, or uses its sealed default when absent.
 Cross-protocol Fixed controls require an explicit equivalent mapping. Unknown
 controls cannot create exact cost evidence or change the bound account/model.

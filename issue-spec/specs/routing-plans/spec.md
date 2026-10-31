@@ -9,7 +9,11 @@ configuration. It has a durable identity independent of any main Agent.
 
 ### Requirement: Plan identity is stable across presentation changes
 
-A plan MUST have a display name, required purpose, and unique model invocation name.
+A plan MUST have a display name and unique model invocation name. Purpose is
+optional for model routing and required when task delegation is enabled. An empty
+purpose remains empty in saved configuration; Agent and Gateway catalogs use the
+display name as their nonempty description when no purpose was supplied. Their
+released nonempty-description contracts remain unchanged.
 The same published name serves model catalogs, Agent configuration, Gateway dispatch,
 and Worker discovery. Display-name edits do not change an established invocation
 name. New names are readable editable ASCII slugs derived locally from usable text
@@ -18,6 +22,24 @@ without usable fragments falls back to readable numbering. Default collisions ad
 a numeric suffix, manual collisions fail explicitly, and manual edits cannot be
 overwritten by later display-name changes. A name race requires fresh confirmation.
 Released `hiroute/<16hex>` names remain readable/callable without bulk renaming.
+
+The model-detail page MUST put its primary create-routing action before model
+configuration and source details, without a model-trial action. Starting here
+opens the configuration editor with fixed-model mode, the exact upstream model ID
+as display name, the standard automatically generated invocation name, delegation off,
+the selected Binding first, and shared authoring defaults. Dot/underscore invocation names accepted by the
+Domain MUST also be accepted by Desktop. Unsupported IDs or alias collisions stay
+explicit and editable rather than being silently renamed.
+
+Other ready saved Bindings with the same exact upstream model ID MAY be offered as
+additional ordered candidates; adding them requires the user's choice. Similar
+labels alone do not establish a match. An existing route with that invocation name
+or exact ID display name MUST be offered for editing instead of creating a duplicate.
+For an existing fixed-model route, additions preserve its settings, reasoning and
+candidate order, skip existing Bindings and use its exact head revision. Other
+modes are opened for ordinary editing without silently replacing their strategy.
+Opening or cancelling this flow performs no write; one explicit save creates or
+updates the route through ordinary publication.
 
 Agent model grants/defaults belong to [Agent connections](../agent-connections/spec.md).
 Worker delegation has no caller-Agent allowlist. Enabling delegation requires one
@@ -74,10 +96,45 @@ map between native scales. Suggested discrete settings may choose the actual
 highest setting for primary work and lowest for economy/free work. A budget must
 be supplied when the selected native capability requires it.
 
-At execution, a plan overrides caller effort with that candidate's exact native
-choice. Responses toggles render `reasoning.effort=low/none`; Messages manual toggles
+Plans expose one route-level reasoning policy above candidate groups, presented as
+two mutually exclusive segments: Follow request and Fixed levels. Its label and
+choices use the existing editor's form typography. A short helper explains that
+the model values below are defaults for omitted/unsupported requests or fixed
+settings, respectively. New fixed-model routes, including model-list quick creation,
+default to following requests; new difficulty routes default to fixed levels. A user-selected policy, saved
+draft or existing route retains its choice across mode changes. Retained routes
+without a policy remain off. The control never overwrites candidate selections.
+Each editable candidate SHALL have a persistent, explicit reasoning label and
+a compact, integrated selector with a visible arrow. Candidate rows SHALL NOT
+repeat default/fixed qualifiers already explained by the route policy; accessible
+control names SHALL retain both the model identity and the default/fixed meaning.
+Discrete profiles SHALL be selected directly from native values in the candidate
+row, without a separate Apply dialog. Toggles SHALL expose on/off choices; token
+budgets SHALL retain range/step validation in their budget editor. Model-fixed
+reasoning SHALL be readable plain text without an editable control. Missing,
+loading or unsupported saved settings SHALL remain explicit and SHALL NOT
+silently substitute another profile. Changes only update the route draft until
+its normal Save/Publish action. Labels, selected values, focus and actions SHALL
+remain readable at both supported window sizes and in both themes/languages.
+With following on, each candidate shows its editable default level; with it off,
+it shows its fixed level. Missing/unsupported request levels use the saved default.
+New defaults prefer a supported declared native default when present; otherwise
+an explicit valid authoring default is shown without claiming a provider default.
+Difficulty routing explains the possible capability/cost change on enabling it.
+The ordinary Save/Publish action persists the policy with frozen supported controls.
+Codex catalogs offer the union of supported frozen native effort values only for
+following routes, explaining per-candidate fallback; fixed routes retain no caller
+override options. Existing client configuration and saved model choices are preserved.
+
+At execution, a plan with following disabled overrides caller effort with that
+candidate's exact native choice. Responses toggles render `reasoning.effort=low/none`; Messages manual toggles
 render enabled with 1024 tokens or disabled without a budget. Explicit budget and
 adaptive settings retain their own rules in [request routing](../request-routing/spec.md).
+For explicit model-detail creation, a budget-only candidate MAY be prefilled with
+its actual native minimum, visibly editable and confirmed by the user's Save.
+This does not change shared authoring's unresolved-budget choice or affect an
+existing candidate's custom reasoning.
+
 The registered Haiku 4.5 subscription toggle subset does not promise arbitrary
 manual budgets: enabled is exactly 1024 and `max_tokens <= 1024` must fail rather
 than grow the output budget. Released toggle records retain meaning through the

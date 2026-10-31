@@ -3919,7 +3919,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-10-14",
+      "as_of": "2026-10-31",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -5303,6 +5303,59 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "gpt-6.1-sol"
+          ]
+        },
+        {
+          "canonical_identity": "gpt-6.1-terra",
+          "capabilities": {
+            "computer": "unknown",
+            "file": "unknown",
+            "streaming": "unknown",
+            "tool": "unknown",
+            "web": "unknown"
+          },
+          "context_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "context_variants": [],
+          "data_note": "Reviewed family inference (2026-10-31): GPT-6.1 Terra uses the same five effort levels as GPT-6.1 Sol, following explicit user confirmation. source-175 documents Sol only, not Terra directly. No Terra provider default is asserted. Model identity is independent of Sol. Limits, modalities, other capabilities, pricing, account availability and protocol qualification are not inherited.",
+          "display_name": "GPT-6.1 Terra",
+          "evidence_refs": [
+            "source-175"
+          ],
+          "identity_stability": "unknown",
+          "lifecycle": "unknown",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "modalities": {
+            "image_input": "unknown",
+            "text_input": "unknown",
+            "text_output": "unknown"
+          },
+          "model_key": "gpt-6.1-terra",
+          "publisher": "OpenAI",
+          "reasoning": {
+            "default": null,
+            "kind": "discrete",
+            "note": "Reviewed family inference (2026-10-31): GPT-6.1 Terra uses the same five effort levels as GPT-6.1 Sol, following explicit user confirmation. source-175 documents Sol only, not Terra directly. No Terra provider default is asserted.",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "Reasoning-only reviewed family inference; lifetime and other model properties remain unknown.",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "gpt-6.1-terra"
           ]
         },
         {
@@ -8827,6 +8880,28 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
           "upstream_model_id": "gpt-6.1-sol"
+        },
+        {
+          "availability": {
+            "condition": "Reasoning-only reviewed family inference from GPT-6.1 Sol. Terra account availability and each protocol require their own runtime qualification; tool, streaming, error and usage behavior are not inherited.",
+            "state": "conditional"
+          },
+          "binding_key": "openai-platform-global/gpt-6.1-terra/gpt-6.1-terra",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-175"
+          ],
+          "interface_candidates": [
+            "openai-platform-global/openai-chat",
+            "openai-platform-global/openai-responses"
+          ],
+          "lifecycle": "unknown",
+          "model_key": "gpt-6.1-terra",
+          "product_key": "openai-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "gpt-6.1-terra"
         },
         {
           "availability": {
@@ -101654,7 +101729,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:369479a2ccfa7828a846288db3ed85ccd6e83217bd6615758418560e8dcc9ee6"
+      "source_catalog_digest": "sha256:0ece6759c48e65dbd34ac308f027c5409e2235a10699084de765d0af5a61a99b"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -103763,7 +103838,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 3,
+    "data_revision": 4,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-haiku-5-5/claude-haiku-5-5",

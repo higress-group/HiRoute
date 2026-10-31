@@ -1,6 +1,11 @@
 //! Resolve current defaults only after the caller has established exact source/endpoint authority.
 use super::TrustedReleaseCatalog;
 use hiroute_domain::*;
+mod api_capabilities;
+mod api_scope;
+pub use api_capabilities::{ApiCapabilityCompletion, complete_missing_api_capabilities};
+mod native_reasoning;
+pub use native_reasoning::{ApiReasoningDefault, missing_api_reasoning_default};
 mod scoped;
 pub use scoped::*;
 use std::collections::BTreeMap;
@@ -23,7 +28,11 @@ pub fn resolve_managed_defaults(
     macro_rules! resolve {
         ($field:ident, $key:ident, $value:expr) => {
             let follow = match preferences.get(&ModelDefaultFieldV1::$key) {
-                Some(ModelDefaultPreferenceV1::PreserveSaved) => false,
+                Some(
+                    ModelDefaultPreferenceV1::PreserveSaved
+                    | ModelDefaultPreferenceV1::Custom { .. },
+                ) => false,
+                Some(ModelDefaultPreferenceV1::FollowMetadata) => true,
                 Some(ModelDefaultPreferenceV1::FollowOfficial { locator }) => {
                     if saved.$field.basis == ComputeManagementFactBasisV2::ConnectorVerified {
                         return Err(ComputeContractError::InvalidModelData);
@@ -66,6 +75,7 @@ pub fn resolve_managed_defaults(
         NativeReasoning,
         official.native_reasoning.value.clone()
     );
+    result = apply_custom_capability_defaults(&result, preferences);
     result
         .validate()
         .map_err(|_| ComputeContractError::InvalidModelData)?;
@@ -79,12 +89,13 @@ pub fn without_current_defaults(
     preferences: &BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
     clear_implicit: bool,
 ) -> ComputeManagedCapabilitiesV2 {
-    let mut result = saved.clone();
+    let mut result = apply_custom_capability_defaults(saved, preferences);
     macro_rules! clear {
         ($name:ident,$field:ident) => {
             if matches!(
                 preferences.get(&ModelDefaultFieldV1::$field),
                 Some(ModelDefaultPreferenceV1::FollowOfficial { .. })
+                    | Some(ModelDefaultPreferenceV1::FollowMetadata)
             ) || clear_implicit
                 && !preferences.contains_key(&ModelDefaultFieldV1::$field)
                 && saved.$name.basis == ComputeManagementFactBasisV2::RegisteredCatalog
@@ -102,6 +113,39 @@ pub fn without_current_defaults(
     clear!(context_tokens, ContextTokens);
     clear!(max_output_tokens, MaxOutputTokens);
     clear!(native_reasoning, NativeReasoning);
+    result
+}
+
+/// Custom choices live in the authenticated source-default operation, not raw source facts.
+pub fn apply_custom_capability_defaults(
+    saved: &ComputeManagedCapabilitiesV2,
+    preferences: &BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
+) -> ComputeManagedCapabilitiesV2 {
+    let mut result = saved.clone();
+    macro_rules! custom {
+        ($name:ident, $field:ident, $variant:ident) => {
+            if let Some(ModelDefaultPreferenceV1::Custom { value }) =
+                preferences.get(&ModelDefaultFieldV1::$field)
+            {
+                let value = match value.clone() {
+                    ModelDefaultValueV1::$variant(value) => Some(value),
+                    _ => None,
+                };
+                let basis = if value.is_some() {
+                    ComputeManagementFactBasisV2::UserDeclared
+                } else {
+                    ComputeManagementFactBasisV2::Unknown
+                };
+                result.$name = ComputeManagementFactValueV2 { value, basis };
+            }
+        };
+    }
+    custom!(tool, Tool, Boolean);
+    custom!(vision, Vision, Boolean);
+    custom!(streaming, Streaming, Boolean);
+    custom!(context_tokens, ContextTokens, Tokens);
+    custom!(max_output_tokens, MaxOutputTokens, Tokens);
+    custom!(native_reasoning, NativeReasoning, Reasoning);
     result
 }
 

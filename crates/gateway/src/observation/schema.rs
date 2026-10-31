@@ -324,6 +324,8 @@ pub struct AttemptCommitFactV1 {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateDecisionFactV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_resolution: Option<hiroute_domain::ReasoningResolutionV1>,
     pub candidate_id: String,
     pub stable_binding_id: String,
     pub group_id: String,

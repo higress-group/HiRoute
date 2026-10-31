@@ -4,7 +4,7 @@ import json
 import sqlite3
 import sys
 from publication_product import Product, V1
-from publication_process import bootstrap
+from publication_process import bootstrap, configure_model_settings_v2, plan_change
 
 
 def read_content(product):
@@ -20,6 +20,52 @@ def read_content(product):
 def operation_count(product):
     with sqlite3.connect(f'file:{product.storage}/live/control.db?mode=ro', uri=True) as db:
         return db.execute('SELECT COUNT(*) FROM operations').fetchone()[0]
+
+
+def route_only_scenario(repository):
+    product = Product(repository)
+    try:
+        bootstrap(product)
+        original_id = product.plan_id
+        original = read_content(product)
+        editor = dict(product.editor, display_name='gpt-6.1-sol', custom_alias='gpt-6.1-sol',
+                      purpose='', delegation_enabled=False)
+        change = {'schema': 'hiroute.plan-content-change/v2',
+                  'target': {'intent': 'create', 'creation_key': 'route-only-model-id'},
+                  'editor': editor, 'consumed_draft': None}
+        preview = product.preview('routing preview', {'change': change})
+        assert preview['plan_head']['model_alias'] == 'gpt-6.1-sol'
+        assert preview['plan_version']['configuration']['purpose'] == ''
+        product.apply('routing apply', 'ApplyAgentPlanChange', preview,
+                      {'change': change}, 'create-route-only')
+        product.plan_id = preview['plan_head']['reference']['plan_id']
+        product.model_alias = 'gpt-6.1-sol'
+        configure_model_settings_v2(product, [product.plan_id], 'route-only-agent',
+                                    agent_id='agent_claude_default')
+        head, versions = read_content(product)
+        assert head['head_revision'] == 1 and len(versions) == 1
+        assert versions[0]['configuration']['purpose'] == ''
+        assert [row['id'] for row in product.catalog()[0]['data']] == ['gpt-6.1-sol']
+        product.stop()
+        product.start()
+        assert read_content(product) == (head, versions)
+        status = product.cli('routing show ' + product.plan_id)[1]['data']
+        assert status['desired']['purpose'] == ''
+        assert status['desired']['display_name'] == 'gpt-6.1-sol'
+        assert [row['id'] for row in product.catalog()[0]['data']] == ['gpt-6.1-sol']
+        before = operation_count(product)
+        invalid = plan_change(product, 'update', purpose='', delegation_enabled=True,
+                              work={'harness': 'codex_cli', 'protocol': 'responses'})
+        code, rejected = product.cli('routing preview', {'change': invalid}, success=False)
+        assert code != 0, rejected
+        assert operation_count(product) == before
+        assert read_content(product) == (head, versions)
+        product.plan_id = original_id
+        assert read_content(product) == original
+        print(json.dumps({'scenario': 'route-only-model-id-save-restart', 'state': 'green',
+                          'empty_purpose_preserved': True, 'delegation_without_purpose_rejected': True}), flush=True)
+    finally:
+        product.close()
 
 
 def scenario(repository, boundary):
@@ -279,6 +325,9 @@ def invalid_confirmation_does_not_create_operation(repository):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) > 2 and sys.argv[2] == 'route-only':
+        route_only_scenario(sys.argv[1])
+        sys.exit(0)
     invalid_confirmation_does_not_create_operation(sys.argv[1])
     for boundary in (None, 'before_install', 'after_target', 'after_gateway_durable', 'before_local_finish', 'after_local_finish', 'after_terminal'):
         scenario(sys.argv[1], boundary)

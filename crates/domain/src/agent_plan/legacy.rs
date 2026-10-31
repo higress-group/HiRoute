@@ -112,6 +112,7 @@ impl PlanVersionV1 {
             }
         };
         let configuration = AgentPlanAuthoringV2 {
+            follow_request_reasoning: false,
             schema: PLAN_AUTHORING_SCHEMA_V2.into(),
             mode,
             display_name: compiled.body.identity.display_name.clone(),

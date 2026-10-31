@@ -23,6 +23,7 @@ thiserror.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+jiff.workspace = true
 base64.workspace = true
 hiroute-application = { path = "../application" }
 hiroute-application-api = { path = "../application-api" }

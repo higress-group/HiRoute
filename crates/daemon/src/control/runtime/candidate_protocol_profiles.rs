@@ -20,6 +20,34 @@ pub(super) fn qualified_native_render_convention(
     catalog: Option<&hiroute_integrations::TrustedReleaseCatalog>,
 ) -> Option<NativeReasoningRenderConventionV1> {
     let catalog = catalog?;
+    let declared = match fact
+        .default_preferences
+        .get(&hiroute_domain::ModelDefaultFieldV1::NativeReasoning)
+    {
+        Some(hiroute_domain::ModelDefaultPreferenceV1::Custom {
+            value: hiroute_domain::ModelDefaultValueV1::Reasoning(value),
+        }) => Some(value),
+        Some(hiroute_domain::ModelDefaultPreferenceV1::Custom { .. }) => None,
+        _ => fact.capabilities.native_reasoning.value.as_ref(),
+    };
+    if let Some(NativeReasoningCapabilityV1::Discrete { parameter, .. }) = declared {
+        let unknown = hiroute_domain::ComputeManagementFactValueV2 {
+            value: None,
+            basis: hiroute_domain::ComputeManagementFactBasisV2::Unknown,
+        };
+        if let Some(default) = hiroute_integrations::compute::missing_api_reasoning_default(
+            catalog,
+            &fact.provenance,
+            &fact.target,
+            &fact.authentication,
+            &fact.upstream_model_id,
+            &unknown,
+            None,
+        ) && matches!(&default.capability, NativeReasoningCapabilityV1::Discrete {parameter: expected,..} if expected == parameter)
+        {
+            return default.render_convention;
+        }
+    }
     let id = fact.catalog_configuration_id.as_deref()?;
     let native = catalog
         .native_reasoning()
@@ -129,6 +157,7 @@ pub(super) fn protocol_profiles(
             continue;
         };
         profiles.push(GatewayCandidateProtocolProfileV1 {
+            follow_request_reasoning: false,
             schema_version: "hiroute.candidate-protocol-profile/v1".into(),
             native_target: face.native_target.clone(),
             path_id: format!(

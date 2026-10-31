@@ -176,6 +176,7 @@ impl crate::LocalStorageSet {
             .map_err(|_| denied("decision.runtime.binding"))?;
         let workspace = WorkspaceId::default();
         let control = self.control();
+        control.validate_current_key_budgets(&binding.source_id)?;
         let connection = control.connection.borrow();
         let row: Option<(String, String, String)> = connection.query_row(
             "SELECT r.lineage_digest,r.state,r.credentials_json FROM decision_source_runtime r JOIN compute_management_sources s USING(workspace_id,source_id) WHERE r.workspace_id=?1 AND r.source_id=?2 AND r.source_revision=s.revision AND r.source_owner_operation_id=s.owner_operation_id AND r.lineage_digest=s.lineage_digest",

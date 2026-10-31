@@ -572,7 +572,15 @@ impl ProductionGatewayRuntime {
                 Err(error) => {
                     let (status, code) = match error {
                         crate::server::composition::PortError::InvalidReasoningControl => {
-                            (StatusCode::BAD_REQUEST, "FIXED_REASONING_UNSUPPORTED")
+                            let code = if matches!(
+                                authorized.planner_policy().identity,
+                                profiles::PlannerRouteIdentityV2::Plan { .. }
+                            ) {
+                                "REQUEST_REASONING_INVALID"
+                            } else {
+                                "FIXED_REASONING_UNSUPPORTED"
+                            };
+                            (StatusCode::BAD_REQUEST, code)
                         }
                         _ => (
                             StatusCode::INTERNAL_SERVER_ERROR,
@@ -639,7 +647,16 @@ impl ProductionGatewayRuntime {
                 )
                 .await;
             }
-            if let Some(profile) = fixed_reasoning {
+            if let crate::server::composition::BoundRequestReasoning::Following(control) =
+                &fixed_reasoning
+            {
+                canonical_request.requested_reasoning.followed_control = Some(control.clone());
+                canonical_request.requested_reasoning.disposition =
+                    model_ir::RequestedReasoningDisposition::FollowRequestWithDefault;
+            }
+            if let crate::server::composition::BoundRequestReasoning::Fixed(profile) =
+                fixed_reasoning
+            {
                 let digest = hiroute_domain::CanonicalDigest::of(&profile)
                     .expect("resolved reasoning profile is serializable");
                 canonical_request.requested_reasoning.fixed_profile_digest = Some(digest);

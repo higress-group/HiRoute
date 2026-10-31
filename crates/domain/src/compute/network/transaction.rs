@@ -35,7 +35,11 @@ impl ComputeManagementMutationV4 {
         match self.source_mutation.as_ref() {
             ComputeManagementMutation::V2(v) => v.validate_shape(&original)?,
             ComputeManagementMutation::V3(v) => v.validate(&original)?,
-            ComputeManagementMutation::V4(_) => return Err(invalid),
+            ComputeManagementMutation::V4(_)
+            | ComputeManagementMutation::V5(_)
+            | ComputeManagementMutation::V6(_) => {
+                return Err(invalid);
+            }
         }
         self.network
             .validate(
@@ -58,6 +62,7 @@ pub fn native_network_feature_gate_state(
             .get("schema")
             .and_then(serde_json::Value::as_str)
             != Some(COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+        || crate::is_legacy_subscription_api_change(&spec.desired_state)
     {
         return Ok(std::borrow::Cow::Borrowed(&spec.desired_state));
     }

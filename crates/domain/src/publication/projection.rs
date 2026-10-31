@@ -213,7 +213,14 @@ pub(super) fn materialize_aliases(
                     .collect::<Result<Vec<_>, PublicationError>>()?;
                 Ok(GatewayExecutableAliasV2 {
                     served_model_id: plan.model_alias().clone(),
-                    purpose: plan.body.identity.purpose.as_str().to_owned(),
+                    // Gateway's released alias metadata requires a description;
+                    // an optional routing purpose stays empty in immutable content.
+                    purpose: if plan.body.identity.purpose.as_str().is_empty() {
+                        plan.body.identity.display_name.as_str()
+                    } else {
+                        plan.body.identity.purpose.as_str()
+                    }
+                    .to_owned(),
                     agent_plan_revision: plan.body.agent_plan_revision,
                     protocols,
                     overall_timeout_ms: limits.request_timeout_ms,

@@ -475,3 +475,51 @@ fn native_recheck_context_is_optional_safe_and_backward_compatible() {
         Err(ComputeManagementErrorV2::InvalidTarget)
     );
 }
+
+#[test]
+fn model_default_custom_choices_validate_and_retained_policies_round_trip() {
+    use std::collections::BTreeMap;
+    let source = source(GatewayAuthenticationSemanticsV1::Bearer);
+    let binding = source.models[0].binding_id.clone();
+    for (field, value) in [
+        (
+            ModelDefaultFieldV1::Tool,
+            ModelDefaultValueV1::Boolean(false),
+        ),
+        (
+            ModelDefaultFieldV1::Vision,
+            ModelDefaultValueV1::Unknown(()),
+        ),
+        (
+            ModelDefaultFieldV1::ContextTokens,
+            ModelDefaultValueV1::Tokens(64_000),
+        ),
+    ] {
+        let prefs = BTreeMap::from([(
+            binding.clone(),
+            BTreeMap::from([(field, ModelDefaultPreferenceV1::Custom { value })]),
+        )]);
+        validate_source_default_preferences(Some(&source), &prefs).unwrap();
+        let bytes = serde_json::to_vec(&prefs).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<SourceDefaultPreferencesV1>(&bytes).unwrap(),
+            prefs
+        );
+    }
+    for (field, value) in [
+        (ModelDefaultFieldV1::Tool, ModelDefaultValueV1::Tokens(10)),
+        (
+            ModelDefaultFieldV1::ContextTokens,
+            ModelDefaultValueV1::Tokens(0),
+        ),
+    ] {
+        let prefs = BTreeMap::from([(
+            binding.clone(),
+            BTreeMap::from([(field, ModelDefaultPreferenceV1::Custom { value })]),
+        )]);
+        assert!(validate_source_default_preferences(Some(&source), &prefs).is_err());
+    }
+    let old = serde_json::json!({"intent":"preserve_saved"});
+    let p: ModelDefaultPreferenceV1 = serde_json::from_value(old.clone()).unwrap();
+    assert_eq!(serde_json::to_value(p).unwrap(), old);
+}

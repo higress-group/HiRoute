@@ -55,6 +55,8 @@ export function subscriptionFailureCopy(code: string, language: 'zh' | 'en'): st
       return zh ? '无法读取所选 Codex 客户端信息。请确认客户端可运行后重试，或使用独立登录。' : 'The selected Codex client information is unavailable. Check that the client runs and retry, or use independent sign-in.';
     case 'SUBSCRIPTION_MANAGED_LOGIN_REQUIRED':
       return zh ? '独立登录已失效或凭据不可用。请在 HiRoute 中重新独立登录，再检查并保存。' : 'The independent sign-in has expired or its credentials are unavailable. Sign in again in HiRoute, then check and save.';
+    case 'SUBSCRIPTION_LOGIN_IN_USE':
+      return zh ? '这项订阅登录正在被其他 HiRoute 实例使用。请退出占用它的 HiRoute 后重试，或通过“添加模型 → 连接订阅”使用独立登录。' : 'This subscription sign-in is in use by another HiRoute instance. Quit that instance and retry, or use independent sign-in through Add models → Connect subscription.';
     case 'SUBSCRIPTION_RUNTIME_UNAVAILABLE':
       return zh ? '订阅服务暂不可用。请检查本机服务和网络后重试；现有模型和路由已保留。' : 'The subscription service is unavailable. Check the local service and network, then retry. Existing models and routes are retained.';
     default: return null;

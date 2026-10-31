@@ -42,6 +42,7 @@ mod discovery_tests;
 #[path = "reuse_tests.rs"]
 mod reuse_tests;
 
+mod model_defaults_tests;
 mod routing_lock_tests;
 mod trial_snapshot_tests;
 
@@ -53,6 +54,10 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_native_codex(false)
+    }
+
+    fn with_native_codex(native_codex: bool) -> Self {
         let root = crate::test_support::private_tempdir();
         let source = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -89,9 +94,22 @@ impl Fixture {
                             instance_id: format!("template-{provider}"),
                             state_root: root.path().join("cpa/state"),
                             auth_dir: root.path().join(format!("cpa/template-{provider}-auth")),
-                            borrowed_codex_auth: None,
+                            borrowed_codex_auth: (native_codex && kind == CpaAccountKind::Codex)
+                                .then(|| {
+                                    hiroute_cpa_bridge::BorrowedCodexAuthSpec::new(
+                                        std::path::PathBuf::from(
+                                            std::env::var_os("CODEX_HOME").unwrap(),
+                                        )
+                                        .join("auth.json"),
+                                    )
+                                    .with_executable(root.path().join("missing-codex"))
+                                }),
                             borrowed_claude_auth: None,
-                            managed_oauth: Some(kind),
+                            managed_oauth: if native_codex && kind == CpaAccountKind::Codex {
+                                None
+                            } else {
+                                Some(kind)
+                            },
                             bindings: vec![CpaProfileBinding {
                                 account_kind: kind,
                                 connector_id: format!("connector.cpa.{provider}"),
@@ -386,12 +404,22 @@ impl Fixture {
         checked: &ComputeSubscriptionCheckResultV2,
         key: &str,
     ) -> ComputeConnectionApplyRequestV1 {
+        self.current_candidate_link_request(checked, key, None)
+    }
+
+    fn current_candidate_link_request(
+        &self,
+        checked: &ComputeSubscriptionCheckResultV2,
+        key: &str,
+        api_link: Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>,
+    ) -> ComputeConnectionApplyRequestV1 {
         let old_request = self.candidate_request(checked, "current-save-template");
         let change =
             hiroute_application_api::saved_compute_change(old_request.spec.desired_state).unwrap();
         let preview = self
             .adapter()
             .preview_compute_save_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                api_link,
                 schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
                 change,
                 default_preferences: Default::default(),
@@ -867,4 +895,70 @@ fn current_default_save_rechecks_withdrawn_subscription_before_admission() {
         hiroute_application_api::ErrorCode::ChangePreviewStale
     );
     assert!(fixture.snapshot().sources.is_empty());
+}
+
+#[test]
+fn subscription_association_v5_retains_handoff_and_metadata_edits_after_restart() {
+    if isolated("subscription_association_v5_retains_handoff_and_metadata_edits_after_restart") {
+        return;
+    }
+    for provider in [
+        SubscriptionLoginProviderV1::Codex,
+        SubscriptionLoginProviderV1::Claude,
+    ] {
+        let mut fixture = Fixture::new();
+        let session = fixture.authorize(provider);
+        let checked = fixture.check(&session);
+        let request = fixture.current_candidate_link_request(
+            &checked,
+            "v5-subscription-save",
+            Some(hiroute_domain::ComputeSubscriptionApiLinkIntentV1::Remove),
+        );
+        assert_eq!(
+            request.spec.desired_state["schema"],
+            hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
+        );
+        fixture.save(request);
+        let before = fixture.snapshot().sources.remove(0);
+        fixture.reopen(true);
+        let change = ComputeManagementChangeV2 {
+            schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2.into(),
+            subject: ComputeManagementSubjectV2::SavedSource {
+                source_id: before.source_id.clone(),
+            },
+            expected_revisions: fixture.snapshot().revisions,
+            selected_model_refs: before.models.iter().map(|m| m.model_ref.clone()).collect(),
+            intent: ComputeManagementIntentV2::SaveReady,
+            key_edits: vec![],
+            validation: None,
+            edit: None,
+        };
+        let preview = fixture
+            .adapter()
+            .preview_compute_save_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                change,
+                default_preferences: Default::default(),
+                api_link: Some(hiroute_domain::ComputeSubscriptionApiLinkIntentV1::Remove),
+            })
+            .unwrap();
+        fixture.save(ComputeConnectionApplyRequestV1 {
+            spec: preview.spec,
+            accept_digest: preview.accept_digest,
+            expected_revisions: preview.expected_revisions,
+            idempotency_key: "v5-metadata-reopen".into(),
+        });
+        let after = fixture.snapshot().sources.remove(0);
+        assert_eq!(after.models, before.models);
+        assert_eq!(after.validation, before.validation);
+        assert_eq!(after.credentials, before.credentials);
+        assert_eq!(after.revision, before.revision + 1);
+        assert!(
+            fixture
+                .adapter()
+                .retained_subscription_candidate_for_source(&after)
+                .unwrap()
+                .is_some()
+        );
+    }
 }

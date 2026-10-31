@@ -455,7 +455,7 @@ impl LocalControlAdapter {
         process_run: &CanonicalDigest,
     ) -> Result<(), MaintenanceFailure> {
         let candidate = self
-            .refresh_subscription_candidates()
+            .refresh_subscription_candidates(false)
             .map_err(|_| MaintenanceFailure::RuntimeUnavailable)?
             .into_iter()
             .find(|candidate| candidate.existing_source_id.as_deref() == Some(&source.source_id))

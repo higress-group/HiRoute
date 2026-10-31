@@ -22,7 +22,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 120); // Includes versioned decisions, source policy operations and explicit network probes.
+    assert_eq!(commands.len(), 122); // Includes versioned decisions, source policy operations and explicit network probes.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));

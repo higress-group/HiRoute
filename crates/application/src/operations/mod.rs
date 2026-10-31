@@ -1122,6 +1122,9 @@ impl TransactionError {
             Self::Port(error) if error.context == "subscription.managed.login-required" => {
                 "SUBSCRIPTION_MANAGED_LOGIN_REQUIRED"
             }
+            Self::Port(error) if error.context == "subscription.login.in-use" => {
+                "SUBSCRIPTION_LOGIN_IN_USE"
+            }
             Self::Port(error) if error.context == "subscription.authentication" => {
                 "SUBSCRIPTION_NEEDS_AUTH"
             }

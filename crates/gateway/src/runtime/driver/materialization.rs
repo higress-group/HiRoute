@@ -379,6 +379,13 @@ pub(super) async fn materialize_attempt(
                 .ok_or_else(|| Arc::from(MATERIALIZATION_CREDENTIAL_EXHAUSTED))?,
         )
     };
+    let mut spending = super::key_spending::reserve(
+        credential.as_ref(),
+        ir,
+        profile,
+        stable_target,
+        expected_profile_digest,
+    )?;
     let permits = if let Some(credential) = credential.as_ref() {
         if credential.credential_ref() != context.credential_ref().as_str() {
             return Err(Arc::from(MATERIALIZATION_AUTHORITY_FAILED));
@@ -582,6 +589,11 @@ pub(super) async fn materialize_attempt(
             cleaned_prefix_len: cleanup_prefix,
         }
     });
+    if let Some(spending) = spending.as_mut() {
+        spending
+            .mark_sent()
+            .map_err(|_| Arc::from(MATERIALIZATION_AUTHORITY_FAILED))?;
+    }
     Ok((
         PreparedAttemptHttpRequest {
             network_route,
@@ -593,6 +605,7 @@ pub(super) async fn materialize_attempt(
             body,
         },
         ProductionAttemptState {
+            spending,
             request_reasoning_projection,
             request_projection_loss: prepared.request_projection_loss,
             managed_cpa: execution.connector_runtime

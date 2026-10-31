@@ -393,6 +393,7 @@ pub(super) fn finalize_attempt_facts(
     if let Some(usage) = usage.filter(|usage| !usage.is_empty()) {
         facts.usage = Some(model_usage_fact(usage));
     }
+    super::key_spending::settle(state.spending.as_ref(), &facts, completion);
     facts.ended_at = Some(completion.ended_at);
     facts
 }

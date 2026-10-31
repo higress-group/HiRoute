@@ -22,6 +22,9 @@ ALTER TABLE compute_management_effects ADD COLUMN network_after TEXT;
 pub(super) fn validate(connection: &rusqlite::Connection) -> Result<(), crate::LocalStorageError> {
     use crate::LocalStorageError;
     use hiroute_domain::{ComputeManagementSourceV2, NativeSourceNetworkRecordV1};
+    if super::legacy_subscription_api_v35::recognized_layout(connection)? {
+        return Ok(());
+    }
     let mut statement = connection.prepare("SELECT s.source_json,n.record_json FROM compute_management_sources s LEFT JOIN native_source_network n USING(workspace_id,source_id)")?;
     for row in statement.query_map([], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))

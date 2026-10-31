@@ -118,7 +118,7 @@ pub(in crate::control::runtime) fn materialize_registered_management_candidate(
     model.capabilities.streaming = effective.streaming.value?;
     model.capabilities.context_tokens = effective.context_tokens.value?;
     model.capabilities.max_output_tokens = effective.max_output_tokens.value?;
-    reasoning.capability = effective.native_reasoning.value?;
+    reasoning = reasoning.with_source_capability(effective.native_reasoning.value?);
     let mut offers = data.offers.iter().filter(|offer| {
         offer.endpoint_profile_id == resolved.endpoint_profile.endpoint_profile_id
             && offer.endpoint_profile_revision == resolved.endpoint_profile.revision

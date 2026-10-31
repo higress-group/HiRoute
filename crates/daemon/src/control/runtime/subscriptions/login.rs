@@ -63,6 +63,8 @@ impl LocalControlAdapter {
             Some(
                 COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
                     | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
                     | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
             )
         );
@@ -99,21 +101,38 @@ impl LocalControlAdapter {
                     "subscription.admission.invalid_plan",
                 )
             })?;
-        match &envelope.compute_management_mutation {
-            ComputeManagementMutation::V2(value) => value.validate_shape(operation.plan.spec()),
-            ComputeManagementMutation::V3(value) => value.validate(operation.plan.spec()),
-            ComputeManagementMutation::V4(value) => value.validate(operation.plan.spec()),
-        }
-        .map_err(|_| {
-            PortError::new(
-                PortErrorCode::InvalidData,
-                "subscription.admission.invalid_plan",
-            )
-        })?;
+        envelope
+            .compute_management_mutation
+            .validate_for_spec(operation.plan.spec())
+            .map_err(|_| {
+                PortError::new(
+                    PortErrorCode::InvalidData,
+                    "subscription.admission.invalid_plan",
+                )
+            })?;
         let Some(source) = envelope.compute_management_mutation.desired() else {
             // Forgetting a saved connection does not require or revoke a connector login.
             return Ok(());
         };
+        if envelope
+            .compute_management_mutation
+            .api_link_change()
+            .is_some()
+            && envelope
+                .compute_management_mutation
+                .expected()
+                .is_some_and(|before| {
+                    let mut unchanged = before.clone();
+                    let Some(revision) = before.revision.checked_add(1) else {
+                        return false;
+                    };
+                    unchanged.revision = revision;
+                    &unchanged == source
+                })
+        {
+            // Association metadata neither grants new subscription authority nor changes models.
+            return Ok(());
+        }
         let change = hiroute_application_api::saved_compute_change(
             operation.plan.spec().desired_state.clone(),
         )
@@ -277,7 +296,7 @@ impl LocalControlAdapter {
             .iter()
             .any(|session| session.state == CpaLoginState::Authorized)
         {
-            self.refresh_subscription_candidates()?
+            self.refresh_subscription_candidates(false)?
         } else {
             Vec::new()
         };

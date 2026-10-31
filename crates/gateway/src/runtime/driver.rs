@@ -39,6 +39,7 @@ use super::state::{
 };
 
 mod context_overflow;
+mod key_spending;
 mod materialization;
 pub(crate) mod network;
 mod response;
@@ -175,6 +176,7 @@ impl ProductionReplaySeedEnvelope {
 }
 
 pub struct ProductionAttemptState {
+    spending: Option<crate::ports::KeySpendGuard>,
     managed_cpa: bool,
     request_reasoning_projection: Option<RequestReasoningProjection>,
     request_projection_loss: adapters::RequestProjectionLoss,
