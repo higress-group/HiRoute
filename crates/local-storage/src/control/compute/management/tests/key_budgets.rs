@@ -655,6 +655,24 @@ fn key_budget_ceiling_edits_preserve_granted_money_through_policy_compensation()
         450,
         "only a future grant applies the new ceiling; rollback cannot erase existing funds"
     );
+    stores.control().with_connection(|db| {
+        let mut once = old.clone();
+        once.revision += 1;
+        once.policy.renewal = None;
+        crate::control::key_budgets::apply_definition(
+            db,
+            &WorkspaceId::default(),
+            &once,
+            None,
+            1000,
+        )
+        .unwrap();
+    });
+    assert_eq!(
+        view(&stores, &key).available_micros,
+        100,
+        "conversion to a one-time allowance cannot exceed its new amount"
+    );
 }
 
 #[test]

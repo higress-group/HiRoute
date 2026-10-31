@@ -125,11 +125,27 @@ pub(crate) fn apply_definition(
             return Err(invalid("compute.key_budget.currency_immutable"));
         }
         renew(&mut wallet, at)?;
-        // A cap edit changes remaining allowance by the cap delta, never by resetting usage.
-        let delta = i128::from(value.policy.amount_micros)
-            - i128::from(wallet.definition.policy.amount_micros);
-        wallet.balance =
-            i64::try_from(i128::from(wallet.balance) + delta).map_err(|_| failure())?;
+        let accumulates = |policy: &hiroute_domain::KeyBudgetPolicyV1| {
+            policy
+                .renewal
+                .as_ref()
+                .is_some_and(|r| r.mode == KeyBudgetRenewalModeV1::Accumulate)
+        };
+        if accumulates(&value.policy) {
+            // Recurring grants and ceilings take effect on the next renewal;
+            // editing them never mints an immediate extra grant.
+        } else if accumulates(&wallet.definition.policy) {
+            wallet.balance = wallet.balance.min(amount(value.policy.amount_micros)?);
+        } else {
+            // A fixed/reset cap edit retains consumed funds and cannot leave
+            // more available than the newly configured cap.
+            let delta = i128::from(value.policy.amount_micros)
+                - i128::from(wallet.definition.policy.amount_micros);
+            wallet.balance = i64::try_from(
+                (i128::from(wallet.balance) + delta).min(i128::from(value.policy.amount_micros)),
+            )
+            .map_err(|_| failure())?;
+        }
         if wallet.definition.policy.renewal != value.policy.renewal {
             wallet.index = value
                 .policy
