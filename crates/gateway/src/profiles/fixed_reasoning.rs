@@ -21,7 +21,7 @@ impl CandidateProtocolProfile {
                 .followed_control
                 .as_ref()
                 .ok_or(CapabilityError::ReasoningProfileMismatch)?;
-            return self.follow_reasoning(control);
+            return self.follow_reasoning(control, request.requested_max_output_tokens);
         }
         if request.requested_reasoning.disposition
             != RequestedReasoningDisposition::AppliedToFixedBinding

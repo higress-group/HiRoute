@@ -87,14 +87,16 @@ impl CandidateProtocolProfile {
     pub(crate) fn follow_reasoning(
         &self,
         requested: &RequestedNativeReasoning,
+        requested_output: Option<u64>,
     ) -> Result<Self, CapabilityError> {
-        self.follow_reasoning_with_resolution(requested)
+        self.follow_reasoning_with_resolution(requested, requested_output)
             .map(|(profile, _)| profile)
     }
 
     pub(crate) fn follow_reasoning_with_resolution(
         &self,
         requested: &RequestedNativeReasoning,
+        requested_output: Option<u64>,
     ) -> Result<(Self, hiroute_domain::ReasoningResolutionV1), CapabilityError> {
         use hiroute_domain::ReasoningResolutionV1::*;
         if requested.is_absent() {
@@ -104,7 +106,7 @@ impl CandidateProtocolProfile {
             .capability
             .reasoning_profiles
             .iter()
-            .filter_map(|profile| self.match_reasoning(profile, requested));
+            .filter_map(|profile| self.match_reasoning(profile, requested, requested_output));
         let Some(selected) = matches.next() else {
             return Ok((self.clone(), DefaultUnsupported));
         };
@@ -122,6 +124,7 @@ impl CandidateProtocolProfile {
         &self,
         profile: &ReasoningProfileCapability,
         request: &RequestedNativeReasoning,
+        requested_output: Option<u64>,
     ) -> Option<ReasoningProfileCapability> {
         let mut selected = profile.clone();
         let protocol = self.capability.upstream_protocol;
@@ -160,7 +163,14 @@ impl CandidateProtocolProfile {
             else {
                 return None;
             };
-            if *step_tokens == 0
+            let model_limit = self.capability.context.max_output_tokens.exact().copied();
+            let output_limit = match (requested_output, model_limit) {
+                (Some(client), Some(model)) => Some(client.min(model)),
+                (client, model) => client.or(model),
+            };
+            if output_limit.is_some_and(|limit| tokens >= limit)
+                || tokens < 1024
+                || *step_tokens == 0
                 || tokens < *min_tokens
                 || tokens > *max_tokens
                 || (tokens - *min_tokens) % *step_tokens != 0

@@ -109,7 +109,9 @@ fn follow_reasoning_each_fallback_candidate_reuses_the_original_request() {
         (b, "medium", DefaultUnsupported),
         (c, "xhigh", Request),
     ] {
-        let (selected, actual) = profile.follow_reasoning_with_resolution(&request).unwrap();
+        let (selected, actual) = profile
+            .follow_reasoning_with_resolution(&request, None)
+            .unwrap();
         assert_eq!(selected.selected_reasoning().unwrap().profile_id, effort);
         assert_eq!(actual, reason);
     }
@@ -129,7 +131,9 @@ fn follow_reasoning_absent_unsupported_and_legacy_fixed_keep_saved_default() {
     ] {
         let control =
             RequestedNativeReasoning::from_document(&document, IngressProtocol::Responses).unwrap();
-        let (actual, resolution) = profile.follow_reasoning_with_resolution(&control).unwrap();
+        let (actual, resolution) = profile
+            .follow_reasoning_with_resolution(&control, None)
+            .unwrap();
         assert_eq!(actual, profile);
         assert_eq!(resolution, reason);
     }
@@ -217,7 +221,9 @@ fn follow_reasoning_budget_range_step_and_accounting_are_request_local() {
             IngressProtocol::Messages,
         )
         .unwrap();
-        let (selected, actual) = profile.follow_reasoning_with_resolution(&control).unwrap();
+        let (selected, actual) = profile
+            .follow_reasoning_with_resolution(&control, None)
+            .unwrap();
         assert_eq!(actual, reason);
         assert_eq!(
             selected
@@ -233,6 +239,22 @@ fn follow_reasoning_budget_range_step_and_accounting_are_request_local() {
                 .validate_for(IngressProtocol::Messages)
         );
     }
+    let control = RequestedNativeReasoning::from_document(
+        &json!({"thinking":{"type":"enabled","budget_tokens":3072}}),
+        IngressProtocol::Messages,
+    )
+    .unwrap();
+    let (selected, reason) = profile
+        .follow_reasoning_with_resolution(&control, Some(2048))
+        .unwrap();
+    assert_eq!(reason, DefaultUnsupported);
+    assert_eq!(
+        selected
+            .selected_reasoning()
+            .unwrap()
+            .additional_reservation_tokens,
+        1024
+    );
     assert_eq!(
         profile
             .selected_reasoning()

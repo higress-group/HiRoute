@@ -40,6 +40,19 @@ fn follow_reasoning_catalog_offers_only_frozen_native_efforts_and_keeps_saved_de
         .flat_map(|c| &mut c.protocol_profiles)
     {
         profile.follow_request_reasoning = true;
+        // The frozen legacy fixture uses a historical flat effort spelling.
+        // New publication exposes actual native Responses paths.
+        for reasoning in &mut profile.capability.reasoning_profiles {
+            if let hiroute_domain::GatewayNativeReasoningRenderV1::ExactFields { fields, .. } =
+                &mut reasoning.render
+            {
+                for field in fields {
+                    if field.path == ["reasoning_effort"] {
+                        field.path = vec!["reasoning".into(), "effort".into()];
+                    }
+                }
+            }
+        }
     }
     let value = reseal(value);
     let before = serde_json::to_value(&value).unwrap();

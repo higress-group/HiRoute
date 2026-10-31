@@ -236,9 +236,9 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     if (!first) return;
     update({ candidates: [{ binding_id: first.binding_id, reasoning: defaultReasoning(first.binding_id) }] });
   }, [creating, options, editor.mode, editor.candidates.length, initialBindingId]);
-  function defaultReasoning(bindingId: string, preferred: 'low' | 'high' = 'high'): Selection['reasoning'] {
+  function defaultReasoning(bindingId: string, preferred: 'low' | 'high' = 'high', following = editor.follow_request_reasoning): Selection['reasoning'] {
     const native = options?.candidates.find(value => value.binding_id === bindingId)?.reasoning;
-    if (editor.follow_request_reasoning && native?.kind === 'discrete' && native.default_profile && native.profiles.includes(native.default_profile)) return { kind: 'profile', profile: native.default_profile };
+    if (following && native?.kind === 'discrete' && native.default_profile && native.profiles.includes(native.default_profile)) return { kind: 'profile', profile: native.default_profile };
     if (trialOnly) {
       const candidate = options?.candidates.find(value => value.binding_id === bindingId);
       return candidate ? trialSelection(candidate).selection.reasoning : undefined;
@@ -406,6 +406,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     if (mode === editor.mode) return;
     if (editor.branch_routing && editor.mode === 'custom_branches') memory.branchRouting = structuredClone(editor.branch_routing);
     const policy = memory.reasoningPolicyChosen ? {} : { follow_request_reasoning: mode === 'fixed_model' };
+    const following = policy.follow_request_reasoning ?? editor.follow_request_reasoning;
     const ready = options?.candidates.filter(candidate => candidate.routable) ?? [];
     if (mode === 'fixed_model') {
       const current = editor.candidates[0] ?? editor.smart.primary[0] ?? editor.smart.economy[0] ?? editor.free.primary[0] ?? editor.free.candidates[0];
@@ -413,7 +414,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
       update({ ...policy, mode, candidates: editor.candidates.length ? editor.candidates : candidate
         ? [current?.binding_id === candidate.binding_id
           ? current
-          : { binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.binding_id) }]
+          : { binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.binding_id, 'high', following) }]
         : [] });
       return;
     }
@@ -422,15 +423,15 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     }
     if (mode === 'smart_saving') {
       const smart = { ...editor.smart };
-      if (!smart.economy.length) smart.economy = ready.slice(0, 1).map(c => ({ binding_id: c.binding_id, reasoning: defaultReasoning(c.binding_id, 'low') }));
-      if (!smart.primary.length) smart.primary = ready.slice(-1).map(c => ({ binding_id: c.binding_id, reasoning: defaultReasoning(c.binding_id, 'high') }));
+      if (!smart.economy.length) smart.economy = ready.slice(0, 1).map(c => ({ binding_id: c.binding_id, reasoning: defaultReasoning(c.binding_id, 'low', following) }));
+      if (!smart.primary.length) smart.primary = ready.slice(-1).map(c => ({ binding_id: c.binding_id, reasoning: defaultReasoning(c.binding_id, 'high', following) }));
       if (smart.classifier.kind !== 'local_rules' && !smart.classifier.service.name) {
         const service = services.find(view => isNativeRecord(view.service))?.service;
         if (service) smart.classifier = classifierFor(structuredClone(service));
       }
       update({ ...policy, mode, smart }); return;
     }
-    const candidates = editor.free.candidates.length ? editor.free.candidates : ready.filter(candidate => candidate.billing_class === 'free').map(candidate => ({ binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.binding_id, 'low') }));
+    const candidates = editor.free.candidates.length ? editor.free.candidates : ready.filter(candidate => candidate.billing_class === 'free').map(candidate => ({ binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.binding_id, 'low', following) }));
     update({ ...policy, mode, free: { ...editor.free, candidates } });
   }
   function group(title: string, subtitle: string, values: Selection[], replace: (s: Selection[]) => void, { free = false, preferred, primary = false, groupId = '' }: { free?: boolean; preferred?: 'low' | 'high'; primary?: boolean; groupId?: string } = {}) {

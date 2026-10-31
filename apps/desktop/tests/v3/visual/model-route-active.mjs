@@ -92,6 +92,8 @@ try {
       const policyBounds=await evaluate(client,`(()=>{const e=document.querySelector('.route-reasoning-policy');const label=e.querySelector('label');return {overflow:e.scrollWidth-e.clientWidth,labelHeight:label.getBoundingClientRect().height};})()`);
       assert.ok(policyBounds.overflow<=1&&policyBounds.labelHeight<90,JSON.stringify(policyBounds));
       await shot(`model-route-editor-${id}`);
+      await evaluate(client,'document.querySelector(".route-reasoning-policy").scrollIntoView({block:"start"});true');
+      await shot(`model-route-reasoning-${id}`);
       await click('.toolbar-actions button',language==='zh'?'保存并创建':'Save and create');
       await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
       const saved=await evaluate(client,'productShell.commands.filter(c=>c.command==="preview_plan_editor").map(c=>c.payload.input)');

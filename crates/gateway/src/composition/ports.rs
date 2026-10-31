@@ -70,6 +70,13 @@ impl PublicationPlannerInputAuthority {
             .core_binding()
             .candidate_bindings()
             .map_err(|_| PortError::Rejected)?;
+        if matches!(
+            authorized.planner_policy().identity,
+            PlannerRouteIdentityV2::Fixed { .. }
+        ) && bindings.len() != 1
+        {
+            return Err(PortError::Rejected);
+        }
         let binding = bindings.first().ok_or(PortError::Rejected)?;
         let attempt = authorized
             .core_binding()
@@ -229,25 +236,25 @@ fn build_planner_input(
             .profiles
             .get(&request.ingress_protocol)
             .ok_or(PortError::Rejected)?;
-        let profile = published
-            .protocol_profile
-            .for_request_reasoning(&request)
-            .map_err(|_| PortError::InvalidReasoningControl)?;
-        let resolution = if published.protocol_profile.follow_request_reasoning {
+        let (profile, resolution) = if published.protocol_profile.follow_request_reasoning {
             let control = request
                 .requested_reasoning
                 .followed_control
                 .as_ref()
                 .ok_or(PortError::InvalidReasoningControl)?;
-            Some(
+            let (profile, resolution) = published
+                .protocol_profile
+                .follow_reasoning_with_resolution(control, request.requested_max_output_tokens)
+                .map_err(|_| PortError::InvalidReasoningControl)?;
+            (profile, Some(resolution))
+        } else {
+            (
                 published
                     .protocol_profile
-                    .follow_reasoning_with_resolution(control)
-                    .map_err(|_| PortError::InvalidReasoningControl)?
-                    .1,
+                    .for_request_reasoning(&request)
+                    .map_err(|_| PortError::InvalidReasoningControl)?,
+                None,
             )
-        } else {
-            None
         };
         let projection = project_candidate_facts(&request, &profile)?;
         if let Some((reason, message_index)) = projection.rejection
