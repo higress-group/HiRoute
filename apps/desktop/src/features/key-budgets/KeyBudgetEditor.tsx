@@ -40,7 +40,8 @@ export function KeyBudgetEditor({ language, value, onChange, disabled, current, 
         </>}
         {!value.existing && <label className="field"><span className="field-label">{t('首次可用金额（选填）', 'Initial available amount (optional)')}</span><input className="input" inputMode="decimal" placeholder={value.amount || '100.00'} value={value.initial} disabled={disabled} onChange={event => update({ initial: event.target.value })} /><span className="field-help">{t('留空使用完整金额；已用过赠金时可填写剩余金额。', 'Blank starts with the full amount. Enter the remainder if credits were already spent.')}</span></label>}
       </Disclosure>}
-      <p className="field-help">{t('仅统计经过 HiRoute 的预估花费，并非服务商余额。额度不足或价格未知时尝试其他 Key 或候选；在途花费先占用额度。', 'Tracks estimated spending through HiRoute, not provider balance. Insufficient allowance or unknown prices try the next key or candidate; in-flight costs are reserved.')}</p>
+      <p className="field-help">{t('需在模型信息的「调整价格」补齐同币种的四项单价。缺价或额度不足时使用其他 Key 或候选。', 'Complete all four rates in the same currency under model details → Edit pricing. Missing prices or insufficient allowance use the next key or candidate.')}</p>
+      <p className="field-help">{t('仅估算 HiRoute 内的花费，并非服务商余额；在途请求先占用额度。', 'Estimates HiRoute traffic, not provider balance; in-flight requests reserve funds.')}</p>
       {value.existing && <p className="field-help">{t('修改金额保留已用花费；共用此额度的 Key 同时生效。', 'Amount edits retain spending and apply to all keys sharing this allowance.')}</p>}
     </div>}
   </div>;

@@ -65,6 +65,12 @@ Official price updates SHALL apply to already embedded and already saved models 
 
 Ordinary input, output, cache-read and cache-write prices SHALL remain distinct. Time windows, prompt thresholds, service tiers, unit and schedule application SHALL be preserved. A missing component, ambiguous scope or unsupported calculation rule SHALL remain unknown; it SHALL NOT be replaced by zero, the ordinary input rate, another provider's price or an invented blended rate. Explicit valid zero is a value. A display-only cost hint SHALL not become a default valuation rule. Subscription/CPA targets retain no ordinary editable-price context; an explicitly selected source-scoped API-equivalent estimate uses its existing separate price path and is never labeled subscription payment.
 
+Desktop manual pricing SHALL expose all four rates, preserve explicitly unknown
+cache prices until supplied, validate every entered decimal and retain edits on
+failure. Key allowance setup SHALL point to this editor when a complete
+same-currency usage-estimate quote is required; enabling an allowance MUST NOT
+invent a price for an unsupported billing condition.
+
 Price edit/default-reset context SHALL capture source, Binding, override and selected-catalog revisions. A stale submission SHALL fail without overwriting current values. A default-price generation SHALL be derived from one validated catalog and the corresponding user configuration; concurrent refresh SHALL not install an older or mixed generation.
 
 Every new logical request, including a Worker continuation and a request through an older published Plan, SHALL capture the current effective price generation. Attempts SHALL retain that generation while resolving its applicable time conditions at their own execution time. Subsequent metadata changes SHALL not reprice settled receipts or ordinary historical amounts. A newly requested current-price comparison may use the newer price basis only with that basis disclosed; an existing retained comparison scope keeps its captured basis. Missing price coverage remains unknown and valuation failure SHALL not block the model response.
