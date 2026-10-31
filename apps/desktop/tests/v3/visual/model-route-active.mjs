@@ -108,8 +108,8 @@ try {
       await shot(`model-route-choice-${id}`);
       await click('.modal-foot .btn-primary',language==='zh'?'一起加入候选':'Add together as candidates');
       await editorReady();
-      assert.deepEqual(await current(),{name:'gpt-6.1-sol',alias:'hiroute-daily-coding',purpose:'',required:false,bindings:['binding/codex/gpt-6-astra','binding/api/sol'],writes:0});
       await waitFor(client, '![...document.querySelectorAll(".routing-page .toolbar-actions .btn-primary")].find(e=>e.getClientRects().length&&/保存并创建|Save and create/.test(e.textContent)).disabled');
+      assert.deepEqual(await current(),{name:'gpt-6.1-sol',alias:'hiroute-daily-coding',purpose:'',required:false,bindings:['binding/codex/gpt-6-astra','binding/api/sol'],writes:0});
       const policyBounds=await evaluate(client,`(()=>{const e=document.querySelector('.route-reasoning-policy');const label=e.querySelector('label');return {overflow:e.scrollWidth-e.clientWidth,labelHeight:label.getBoundingClientRect().height};})()`);
       assert.ok(policyBounds.overflow<=1&&policyBounds.labelHeight<90,JSON.stringify(policyBounds));
       await shot(`model-route-editor-${id}`);
@@ -151,6 +151,7 @@ try {
   });
   await run('model-route.single-source-goes-directly-to-prefilled-editor',async()=>{
     await setup({others:false});await click('.model-route-action button','创建智能路由');await editorReady();
+    await waitFor(client,"document.querySelector('.plan-alias-field')?.value==='hiroute-daily-coding'");
     assert.equal(await evaluate(client,'document.querySelectorAll("[role=dialog]").length'),0);assert.equal((await current()).alias,'hiroute-daily-coding');
   });
   await run('model-route.save-waits-for-current-model-options',async()=>{
