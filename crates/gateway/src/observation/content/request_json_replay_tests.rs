@@ -517,8 +517,16 @@ fn queued_capture_keeps_large_attempt_preparation_within_the_existing_memory_bud
         drop(body);
         gate.release();
         observation.inner.channels.content_work.flush(&observation);
-        let records: Vec<_> = receiver.try_iter().collect();
-        assert!(records.iter().any(|r| r["phase"] == "finish"));
+        let mut records = Vec::new();
+        loop {
+            let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+            assert_ne!(record["phase"], "abort", "{record}");
+            let finished = record["phase"] == "finish";
+            records.push(record);
+            if finished {
+                break;
+            }
+        }
         assert!(records.iter().all(|r| r["loss_watermark"].is_null()));
         assert_capture_ids(&observation, &records);
         let captured: Vec<u8> = records
@@ -569,8 +577,16 @@ fn optional_capture_allocations_do_not_use_the_forwarding_stream_budget() {
     drop(body);
     gate.release();
     observation.inner.channels.content_work.flush(&observation);
-    let records: Vec<_> = receiver.try_iter().collect();
-    assert!(records.iter().any(|r| r["phase"] == "finish"));
+    let mut records = Vec::new();
+    loop {
+        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_ne!(record["phase"], "abort", "{record}");
+        let finished = record["phase"] == "finish";
+        records.push(record);
+        if finished {
+            break;
+        }
+    }
     assert!(records.iter().all(|r| r["loss_watermark"].is_null()));
     drop((required, input, fixture.store));
     assert_eq!(budget.snapshot().unwrap().live, 0);
@@ -798,7 +814,7 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
 }
 
 #[test]
-fn optional_retention_pressure_preserves_the_original_synchronous_capture() {
+fn forwarding_budget_pressure_does_not_prevent_optional_async_capture() {
     use crate::server::core_runtime::adapters::decode_ingress_request;
     use hiroute_gateway_core::runtime::body::MemoryRole;
     let fixture = ReplayFixture::new(1024 * 1024);
@@ -815,12 +831,14 @@ fn optional_retention_pressure_preserves_the_original_synchronous_capture() {
             budget.available_bytes().unwrap() - 64,
         )
         .unwrap();
-    let (observation, receiver, _gate) = asynchronous_observation();
+    let before = budget.snapshot().unwrap().live;
+    let (observation, receiver, gate) = asynchronous_observation();
     observation.capture_request_async(&input, &fixture.store);
-    assert!(
-        observation.inner.async_content.get().is_none(),
-        "no async ownership was admitted"
-    );
+    assert!(observation.inner.async_content.get().is_some());
+    assert_eq!(budget.snapshot().unwrap().live, before);
+    assert!(receiver.try_recv().is_err(), "capture must remain deferred");
+    gate.release();
+    observation.inner.channels.content_work.flush(&observation);
     loop {
         let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(record["loss_watermark"].is_null(), "{record}");
@@ -1005,7 +1023,7 @@ fn active_snapshot_does_not_reduce_encoded_capacity_while_the_sink_is_blocked() 
     assert!(observation.inner.async_content.get().is_some());
     observation.inner.channels.content_work.flush(&observation);
     // All encoding completes while the existing sink is still blocked. The
-    // snapshot remains charged by the request budget until its job is done.
+    // snapshot remains admitted by Content ownership until its job is done.
     assert!(receiver.try_recv().is_err());
     drop(gate);
     let mut captured = Vec::new();
@@ -1049,7 +1067,9 @@ fn dense_async_history_waits_for_record_credit_and_keeps_every_original_byte() {
             Ok(accounted_acknowledgement(record))
         }
     }
-    let fixture = ReplayFixture::new(1024 * 1024);
+    // Use the production record quantum: tiny synthetic records retain more
+    // source index metadata than this deliberately small Content allowance.
+    let fixture = ReplayFixture::with_record_bytes(1024 * 1024, 16 * 1024);
     let messages: Vec<_> = (0..256)
         .map(|index| {
             json!({
