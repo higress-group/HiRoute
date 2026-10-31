@@ -42,9 +42,9 @@ mod discovery_tests;
 #[path = "reuse_tests.rs"]
 mod reuse_tests;
 
+mod model_defaults_tests;
 mod routing_lock_tests;
 mod trial_snapshot_tests;
-mod model_defaults_tests;
 
 struct Fixture {
     runtime: Option<ProductionControlRuntime>,
