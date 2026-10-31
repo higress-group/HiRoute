@@ -300,7 +300,7 @@ and [CLI entry tests](../../crates/cli/src/lib.rs) must remain aligned.
 | Website decision pages and downloads | [Renderer](../../apps/website/src/lib/decision-docs.mjs), [content preparation](../../apps/website/scripts/prepare-content.mjs), [website checks](../../apps/website/tests/decision-docs.test.mjs) |
 | UI/CLI instructions | [Website guides](../../apps/website/content/guides), [standalone CLI](../standalone-cli.md) |
 | Routing cost explanations and FAQ | [Bilingual articles](../../news/README.md), [homepage](../../apps/website/src/components/HomePage.astro), [frozen-evidence cache calculation](../../experiments/cache_cost_analysis.py) |
-| Illustrations and native screenshots | [Component capture](../../apps/desktop/decision-docs.tsx), [fixture checks](../../apps/desktop/tests/decision-docs-data.test.mjs), [asset provenance](../../decision-extensions/assets/README.md) |
+| Illustrations and native screenshots | [Component capture](../../apps/desktop/decision-docs.tsx), [README trial/report capture](../../apps/desktop/readme-docs.tsx), [fixture checks](../../apps/desktop/tests/decision-docs-data.test.mjs), [asset provenance](../../decision-extensions/assets/README.md) |
 
 Documentation fixtures and native windows with constructed observation records
 illustrate the product. Neither capture method proves live-provider behavior or

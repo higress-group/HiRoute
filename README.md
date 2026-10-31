@@ -1,90 +1,167 @@
 <p align="right"><a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center">
-  <a href="https://hiroute.ai/">
-    <img src="apps/website/public/brand/github-social-preview.png" alt="HiRoute — intelligent routing for long-horizon agents" width="100%">
-  </a>
+  <a href="https://hiroute.ai/en/#tour"><img src="apps/website/public/media/hiroute-promo-en-readme.jpg" alt="Watch the 3-minute HiRoute tour: a real session where a new model handles routine turns and the primary model steps in after a low score" width="760"></a>
 </p>
 
 <p align="center">
-  <strong>Make Codex and Claude Code subscriptions go further.</strong><br>
-  A local model router that gives routine agent work to economical models and keeps your strongest model for the hard parts.
+  <strong>Pay for your strongest model only where the work needs it.</strong><br>
+  Economical models handle routine turns; your primary model takes the complex work<br>
+  and steps in when an economical model falls short.<br>
+  Keep using Codex, Claude Code and other Agents with your subscriptions, APIs and local models.
 </p>
 
 <p align="center">
-  <a href="https://hiroute.ai/">Website</a> ·
-  <a href="https://hiroute.ai/download/">Download</a> ·
+  <a href="https://hiroute.ai/en/download/">Download</a> ·
+  <a href="#get-started">Quickstart</a> ·
+  <a href="#real-world-cost-savings">Cost results</a> ·
+  <a href="#how-well-does-the-routing-policy-work">Experiments</a> ·
   <a href="https://hiroute.ai/en/docs/">Documentation</a> ·
-  <a href="https://hiroute.ai/en/docs/decision-extensions/">Decision models</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/higress-group/HiRoute/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/higress-group/HiRoute?display_name=tag&amp;sort=semver&amp;style=flat-square"></a>
   <a href="LICENSE"><img alt="Apache-2.0 license" src="https://img.shields.io/badge/license-Apache--2.0-5A6FE8?style=flat-square"></a>
-  <a href="https://hiroute.ai/download/"><img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
+  <a href="https://hiroute.ai/en/download/"><img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
+
+## Real-world cost savings
+
+In a real research and architecture-review task, Qwen 3.8 Flash did the research and GPT-6 Astra
+made the critical decision. At the same acceptance standard, the task cost **about 90% less**
+than running everything on Astra.
+
+[![Cost of the same task at the same acceptance standard: HiRoute mixed costs about one twelfth of all Astra](news/assets/research-cost-en.svg)](news/2026-10-04-astra-qwen.en.md)
+
+<sub>API-equivalent estimates. [Full case study](news/2026-10-04-astra-qwen.en.md)</sub>
+
+### Switching models keeps the savings
+
+HiRoute changes models only at clear boundaries: a new user message, or context compaction and
+rebuild. Tool calls within a turn stay on the same model. A switch misses the cache once, then
+later calls hit it again, so cache loss does not eat into the savings.
+[Switching Models Loses Cache, Not the Savings](https://hiroute.ai/en/news/routing-cache-cost/)
+
+## Familiar Agents, more model choices
+
+Keep working in **Codex, Claude Code, Qoder, Pi, OpenCode, Hermes or DeepSeek Harness**.
+HiRoute runs locally and brings supported subscriptions, API connections and local models
+into one place. For example, combine an economical API model with your Codex subscription,
+or use a smaller and a stronger model from the same supported source.
+
+| What you want | What HiRoute provides |
+| --- | --- |
+| **Spend less on your strongest model** | Route routine work to economical models and keep the primary model for complex stages and low-score protection. |
+| **Keep your workflow** | Continue in your familiar Agent while models share the work within a session. |
+| **Try a new model gradually** | Start at a trust level you choose, keep a familiar primary model as backup and adjust with evidence from your own tasks. |
+| **Understand each decision** | Inspect the actual models, routing reasons, stage performance, usage and cost estimates. |
+
+## One task, the right model for each stage
+
+A difficulty-routing plan follows both the work ahead and what happened before:
+
+- **Routine work:** use the economical group when the task meets your criteria.
+- **Relevant failure:** when a stage scores below the competence floor and its problem still affects
+  the work, low-score protection moves the next stage to your primary model.
+- **Problem resolved or task changed:** reassess the current work and whether the old problem still matters.
+
+**System One answers three questions: How demanding is the current work? How well did the
+previous stage go? Does its problem still affect the current task?** HiRoute combines these
+judgments with your plan to choose the executing model.
 
 <p align="center">
-  <a href="https://hiroute.ai/en/#tour">
-    <img src="apps/website/public/media/hiroute-promo-en-readme.jpg" alt="Watch the 1-minute HiRoute product tour" width="720">
-  </a>
+  <img src="decision-extensions/assets/readme-session-en.png" alt="HiRoute session timeline: a DeepSeek V4.1 Flash stage scores 0.24 and protects the next turn; the selected turn runs on the primary model GPT-6 Astra under low-score protection and scores 0.73; the following turns return to Flash, and the next one scores 0.94" width="760">
 </p>
+<p align="center"><sub>A real session: after a Flash stage scores 0.24, the primary model takes the next turn under
+low-score protection; once that turn scores 0.73, the work returns to Flash.</sub></p>
 
-Keep using Codex, Claude Code, Qoder, Pi, OpenCode, Hermes or DeepSeek Harness. With a difficulty-routing plan, HiRoute
-judges verified native user input: routine work such as reading code or gathering facts can go to an
-economical model, while design decisions and difficult fixes stay with your subscription or
-primary model. Subscriptions, API keys and local models are managed in one place, and each
-session shows which model actually ran, its usage and its cost. Independent tasks can also be
-delegated to other agents.
+Keep asking follow-up questions or let your Agent advance a long task. HiRoute can reassess
+at supported new-input and context-reconstruction boundaries; tool continuations normally
+reuse the stage's decision. See [routing behavior and supported-client limits](apps/website/content/guides/model-routing.en.md).
 
-Tool calls within a turn usually keep that turn's decision, so the growing context prefix stays
-cacheable when continuity and the captured decision remain valid. HiRoute decides again when a
-usable new task input arrives, and may keep the same model; cache reuse depends on the provider.
-HiRoute runs locally as a Desktop application or a headless CLI and daemon.
+[Explore routing modes](decision-extensions/README.md)
 
-Classification, history capture and cross-turn evaluation remain available when a native client
-cannot prove input origin. Such input carries explicit uncertainty; missing captured execution
-stays partial. Codex compressed sessions can recover on new questions after a Gateway restart
-without creating a new conversation. Claude, Hermes and Qoder retain smart routing while task
-association and scoring may be inaccurate. Qoder's shared main/child identity is an accepted
-limitation. Known auxiliary summaries stay outside main history. Successful output alone does
-not establish routing or scoring accuracy. See the [routing and recovery limits](apps/website/content/guides/model-routing.en.md).
+## Try new models with a primary model ready to help
 
-## News
+Start from **New models** on Home. Instead of switching everything at once, HiRoute rolls a
+new model out by task difficulty.
 
-- **Latest stable release** — macOS Desktop and Linux headless packages for x86_64 and ARM64. [Release notes](https://github.com/higress-group/HiRoute/releases/latest) · [Download](https://hiroute.ai/en/download/)
-- **2026-10-14** — [Switching Models Loses Cache, Not the Savings](news/2026-10-14-routing-cache-cost.en.md). [Website article](https://hiroute.ai/en/news/routing-cache-cost/)
-- **2026-10-04** — [GPT-6 Astra × Qwen-3.8 Flash: same quality at 90% lower cost](news/2026-10-04-astra-qwen.en.md). [Website article](https://hiroute.ai/en/news/astra-qwen-smart-routing/) · [Experiments](experiments/README.md)
-- [HiRoute Is Open Source: Help Your Agents Do More and Your Subscriptions Go Further](news/hiroute-open-source.en.md). [Website article](https://hiroute.ai/en/news/hiroute-open-source/)
-- [All news](news/README.md)
+- **Trust sets a difficulty bar.** System One estimates how simple each turn is. Turns that
+  clear the bar go to the new model; harder work stays with your primary model.
+- **Open up gradually.** Move from Trial to Familiar, Trusted or Hands-off as the new model
+  proves itself, and it takes on more of your work.
+- **Primary still backs it up.** If a new-model stage scores below the competence floor and
+  the problem still matters, low-score protection hands the next turn to your primary model.
 
-## Why HiRoute
+<p align="center"><img src="decision-extensions/assets/readme-trial-en.png" alt="Trust slider from Cautious to Entrusted with Trial, Familiar, Trusted, Hands-off and Entrusted presets; Trusted is selected at a simple-probability threshold of 0.65, and simpler tasks go to the regular model first" width="760"></p>
+<p align="center"><sub>Further right, more of the simpler work goes to the new model.</sub></p>
 
-| | |
-| --- | --- |
-| **Route long tasks by stage** | Use the model that fits the work ahead instead of committing an entire task to one model. |
-| **Protect quality while saving** | Use observed competence to block risky downgrades, while task complexity creates opportunities to use economical models. |
-| **Keep handoffs bounded** | Enforce capability requirements, ordered candidates, and explicit exhaustion instead of silently changing behavior. |
-| **Learn from execution** | Retain the task category, actual model group and candidate, tool outcomes, accepted output, and optional stage competence for later decisions. |
+### Adjust with evidence from your own tasks
 
-HiRoute currently provides four routing modes: fixed model, difficulty routing, custom branches, and free first.
-Each mode uses the plan's ordered candidates for bounded failover. It also provides agent work plans
-and Worker delegation; local session, usage, cost, and competence views; and a custom extension API
-for connecting your own decision service.
+The session timeline shows which model actually ran and why. Model performance reports
+bring together stage scores, the share handled by the regular group and available cost
+estimates. When there is enough evidence, a report suggests a step up or step down; replay
+the setting on your own records, inspect the changes and choose whether to publish.
+
+<p align="center"><img src="decision-extensions/assets/readme-report-en.png" alt="Model performance report: 77 stages from 9 sessions, a step-up suggestion to Trusted, 75% of stages on Regular at 90% competence, 3 low-score protections, an estimated Regular cost of $3.42 against a $11.86 primary reference, and per-model competence for Qwen3-Coder-Plus and GPT-5.6-Sol" width="760"></p>
+<p align="center"><sub>A model performance report suggests a step up once the regular model clears the bar. Costs are API-equivalent estimates.</sub></p>
+
+You can also tailor the judgment criteria to your own tasks and compare prompt changes
+using the [published evaluation method](experiments/system-one-routing-paper/README.md).
+
+## How well does the routing policy work?
+
+Both approaches receive the same task context and complete routing policy. One selects
+a model group directly; the other answers three questions and lets HiRoute combine the
+answers. The comparison uses engineering workflows and mathematical dependency states.
+
+![Final group-selection accuracy on the reviewed subset: Jev 1.14 engineering 67.31% to 96.15% and mathematics 54.86% to 100.00%; OpenAI Decisions engineering 50.00% to 91.35% and mathematics 65.97% to 88.89%](decision-extensions/assets/readme-routing-comparison-en.svg)
+
+| Scenario | Decision model | Full-policy direct selection | Three-question routing |
+| --- | --- | ---: | ---: |
+| Engineering | Jev 1.14 | 67.31% | **96.15%** |
+| Engineering | OpenAI Decisions / gpt-6-luna | 50.00% | **91.35%** |
+| Mathematical dependency states | Jev 1.14 | 54.86% | **100.00%** |
+| Mathematical dependency states | OpenAI Decisions / gpt-6-luna | 65.97% | **88.89%** |
+
+**Metric:** final group-selection accuracy, averaged equally across workflow families.
+Engineering has 80 determinate cases across 26 workflows; mathematics has 40 across six.
+This is a **post-hoc reviewed subset**, with the same exclusions applied to every model
+and both formats after inspecting outputs. Original labels and full-population results
+remain available. Jev calls ran on 28 October 2026 and OpenAI calls on 29 October; inputs
+and policy match, but the calls were not contemporaneous.
+
+The results measure conformance to the stated routing policy, not task completion or
+realized savings. The OpenAI results come from the study's research adapter, not from
+HiRoute's built-in OpenAI connection. Use the [study and cases](experiments/system-one-routing-paper/README.md)
+to evaluate decision prompts against your own tasks.
+
+[Comparison, exclusions and saved responses](experiments/system-one-routing-paper/supplements/decision-interface-transfer/README.md) ·
+[Dataset construction and review](experiments/system-one-routing-paper/DATA-CARD.md)
 
 ## Get started
 
-### macOS Desktop
+[**Download HiRoute**](https://hiroute.ai/en/download/) ·
+[Installation guides](https://hiroute.ai/en/docs/) ·
+[Latest release](https://github.com/higress-group/HiRoute/releases/latest)
 
-Download the current DMG from [hiroute.ai](https://hiroute.ai/download/), drag HiRoute into
-Applications, and follow the [self-signed package instructions](docs/macos-installation.md) if
-macOS asks for manual approval. HiRoute supports macOS 15 or later on Apple silicon
-(`arm64`) and Intel (`x86_64`).
+1. **Connect your models.** Add a supported subscription or API connection and choose an
+   economical model plus a primary model.
+2. **Set the division of work.** Connect a decision model in **Models → Decision models**,
+   choose a trust level, then publish and map the plan to your Agent. Built-in connections
+   support Bailian, OpenAI, OpenRouter Jev, TypeSafe and compatible endpoints without self-hosting Jev.
+3. **Work as usual.** Continue in your Agent, then inspect model switches and execution
+   reports in HiRoute.
 
-### Linux headless
+<details>
+<summary>macOS Desktop and Linux headless installation</summary>
 
-Install the current-user CLI and daemon on Linux `x86_64` or ARM64 (`aarch64`) without `sudo`:
+**macOS:** download the DMG, drag HiRoute into Applications, and follow the
+[self-signed package instructions](docs/macos-installation.md) if macOS asks for approval.
+Supports macOS 15+ on Apple silicon and Intel.
+
+**Linux:** install the current-user CLI and daemon on x86_64 or ARM64 without `sudo`:
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh
@@ -92,124 +169,34 @@ hiroute service start --output json
 hiroute system status --output json
 ```
 
-The installer verifies the published package manifest and checksums and does not start a
-service automatically. See the [Linux installation guide](https://hiroute.ai/en/docs/install-linux/)
-and [CLI reference](docs/standalone-cli.md) for service lifecycle and machine-readable commands.
+The installer verifies the published manifest and checksums; service startup is explicit.
+See the [Linux installation guide](https://hiroute.ai/en/docs/install-linux/) and
+[CLI reference](docs/standalone-cli.md).
 
-### Configure your first route
+</details>
 
-1. Connect a supported subscription, registered API, or compatible custom API.
-2. For model-based judgment, open **Models → Decision models** and connect Bailian,
-   OpenRouter Jev, TypeSafe, or a compatible endpoint. Built-in connections need no self-hosted
-   Jev service.
-3. Create and publish a routing plan, using difficulty routing or custom task branches when needed.
-4. Connect an Agent client, or expose a Worker plan for delegated tasks.
-5. Inspect sessions and model performance to understand the task category, actual model group,
-   and execution result.
+## Go further
 
-Continue with [model routing](https://hiroute.ai/en/docs/model-routing/),
-[task routing](https://hiroute.ai/en/docs/task-routing/), or the
-[headless CLI guide](https://hiroute.ai/en/docs/cli/).
+- **Other routing modes:** fixed model, custom branches and free first, alongside difficulty
+  routing. [Model routing](https://hiroute.ai/en/docs/model-routing/)
+- **Agent collaboration:** expose Worker plans for delegated tasks. [Task routing](https://hiroute.ai/en/docs/task-routing/)
+- **Your own decision service:** configure criteria or implement the optional
+  [decision extension API](decision-extensions/api/README.md).
+- **Detailed behavior:** candidate fallback, scoring eligibility, recovery and client
+  limits are documented in the [routing guide](apps/website/content/guides/model-routing.en.md).
 
-## See routing performance
+## News
 
-<p align="center">
-  <img src="decision-extensions/assets/quality-native-en.png" alt="HiRoute desktop session: stage competence and model routing" width="100%">
-</p>
+- [Latest stable release and release notes](https://github.com/higress-group/HiRoute/releases/latest)
+- **2026-10-14** — [Switching Models Loses Cache, Not the Savings](news/2026-10-14-routing-cache-cost.en.md)
+- [All news and case studies](news/README.md) · [Experiments](experiments/README.md)
 
-Review model performance within a task, alongside execution records and user feedback, to inform
-the next model choice and task delegation. Each score stays linked to its execution stage.
+## Contribute
 
-## How routing works
+Start with the [contributing guide](CONTRIBUTING.md) for setup and validation, and the
+[code map](docs/code-map/README.md) to find each capability's implementation.
+HiRoute uses [Apache License 2.0](LICENSE). Report bugs and feature requests through
+[GitHub Issues](https://github.com/higress-group/HiRoute/issues); follow [SECURITY.md](SECURITY.md)
+for security reports and crash-report handling.
 
-![Decision flow: judge the current task, assess the prior stage, then let HiRoute choose and execute a model group](decision-extensions/assets/jev-decision-en.svg)
-
-Built-in decision models judge the task category when needed and return simple/complex
-probabilities for routes with two model groups. They can also assess the previous execution stage.
-HiRoute supplies the published conditions and scoring criteria, applies your thresholds,
-and chooses the model group and ordered candidates.
-Configure these connections in **Models → Decision models**; you do not need to deploy an extension.
-
-**Difficulty routing** has one task scope with regular and primary model groups. Regular is selected
-when this turn's simple-task probability meets your threshold and no applicable, complete
-assessment falls below the competence floor. Otherwise HiRoute selects primary. Missing or
-partial scores stay unrated. An old low score does not lock future turns to primary, and a new
-turn does not automatically return to regular: HiRoute judges the current work again.
-
-**Custom branches** separate task categories such as drafting and review. HiRoute first uses
-the category choice, then the simple/complex degree within that category to choose its regular
-or optional primary group. A category with only a regular group needs no degree judgment.
-An assessment belongs to the stage that actually ran; a low drafting score does not upgrade
-the review category. Only a complete, applicable assessment for the same category, published
-revision, and frozen criteria can affect this turn's group choice.
-
-Tool continuations keep the decision when HiRoute can recognize the same turn and reuse its
-frozen decision. Candidate failures use bounded failover: regular candidates may relay to the
-same category's primary group, while a primary selection stays within primary. Exhaustion fails
-explicitly. Failover does not create a competence score or change the task category.
-
-The principle is:
-
-> **Competence blocks risky cost-cutting; complexity creates opportunities to save.**
-
-Difficulty routing also supports heuristic rules. A custom extension is optional: use it when you
-want to own the model integration, judgment, scoring, and context trimming. The official
-[Jev extension](decision-extensions/extensions/jev-decider/README.md) is one implementation
-of that boundary. Start with [decision models and the routing mechanism](decision-extensions/README.md),
-the [custom extension API guide](decision-extensions/api/README.md), or the canonical
-[OpenAPI document](decision-extensions/api/decision.openapi.json).
-
-## For technical contributors
-
-HiRoute is a Rust workspace with a Tauri Desktop client and an Astro website. The Rust toolchain
-is pinned in `rust-toolchain.toml`; Desktop uses Node.js 24 and the website uses Node.js 22.
-
-```sh
-git clone https://github.com/higress-group/HiRoute.git
-cd HiRoute
-
-cargo fmt --check
-cargo test --locked --workspace --exclude hiroute-desktop --all-features
-```
-
-For frontend work, run the checks in the affected application:
-
-```sh
-cd apps/desktop   # or apps/website
-npm ci --ignore-scripts
-npm test
-npm run build
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for native dependencies, Clippy, validation scope, and
-language conventions. Native Desktop behavior and real-provider integration require their
-respective environments; a source build alone is not product acceptance.
-
-### Repository map
-
-The [code map](docs/code-map/README.md) connects user capabilities to architecture,
-production owners and representative tests.
-
-| Path | Responsibility |
-| --- | --- |
-| `apps/desktop` | Desktop UI and Tauri host |
-| `crates/cli`, `crates/daemon` | Headless client and local role-all service |
-| `crates/application`, `crates/client-core` | Application workflows and shared client behavior |
-| `crates/gateway`, `crates/gateway-core` | Agent-facing protocols, routing, execution, and fallback |
-| `crates/observation`, `crates/local-storage` | Local execution evidence, queries, and persistence |
-| `decision-extensions` | Decision model guides, routing mechanism, extension API, screenshots, and optional Jev extension |
-| `contracts`, `assets` | Current runtime contracts, model metadata, and product resources |
-| `apps/website` | Bilingual `hiroute.ai` site, downloads, and release publication |
-| `e2e`, `tools`, `scripts` | Product scenarios, validation tools, packaging, and automation |
-
-## Project status
-
-The latest stable release provides macOS Desktop and Linux headless packages for both
-x86_64 and ARM64. Download the latest version and read the release notes on the
-[website](https://hiroute.ai/en/download/).
-
-HiRoute is licensed under the [Apache License 2.0](LICENSE). Use
-[GitHub Issues](https://github.com/higress-group/HiRoute/issues) for bugs and feature requests.
-Report security issues and crash reports through the process in [SECURITY.md](SECURITY.md).
-
-Links: [LINUX DO](https://linux.do/) — a Chinese-language tech community.
+Community link: [LINUX DO](https://linux.do/) (technical discussion community).

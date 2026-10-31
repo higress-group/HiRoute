@@ -41,6 +41,21 @@ aggregation. It contains no network execution. Qwen's 20 measured calls and two
 warmups complete the same-context comparison. The original 256-call end-to-end
 latency cells remain reproducible through `report`; they are a separate metric.
 
+## Native-interface transfer and reviewed subset
+
+Section 5.10 uses a separate [Jev/OpenAI supplement](supplements/decision-interface-transfer/README.md).
+It preserves all 152 source records and 912 native responses, and scores both the
+complete population and the 138-record post-hoc reviewed subset. Labels, prompts,
+continuous scores and thresholds are unchanged.
+
+```sh
+python3 experiments/system-one-routing-paper/supplements/decision-interface-transfer/replay.py verify
+python3 experiments/system-one-routing-paper/supplements/decision-interface-transfer/replay.py report --output /tmp/hiroute-decision-transfer-replay
+```
+
+The latter output directory must be new. Follow the supplement for exclusions,
+denominators and the distinction between component and final-action metrics.
+
 ## What is reproduced
 
 Sections 5.8–5.9 have a separate [mathematical supplement](supplements/mathematics-history/README.md)
