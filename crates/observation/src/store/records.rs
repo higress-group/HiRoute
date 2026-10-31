@@ -81,13 +81,15 @@ pub(crate) fn intern_stream(
     let args = params![channel, producer, epoch, stream];
     let query = "SELECT stream_ref FROM observation_streams_v5 WHERE channel=?1 AND producer_id=?2 AND producer_epoch=?3 AND stream_id=?4";
     if let Some(id) = db
-        .query_row(query, args, |r| r.get(0))
+        .prepare_cached(query)
+        .map_err(|_| Error::ActivityUnavailable)?
+        .query_row(args, |r| r.get(0))
         .optional()
         .map_err(|_| Error::ActivityUnavailable)?
     {
         return Ok(id);
     }
-    db.execute("INSERT INTO observation_streams_v5(channel,producer_id,producer_epoch,stream_id) VALUES(?1,?2,?3,?4)", args).map_err(|_| Error::ActivityUnavailable)?;
+    db.prepare_cached("INSERT INTO observation_streams_v5(channel,producer_id,producer_epoch,stream_id) VALUES(?1,?2,?3,?4)").map_err(|_| Error::ActivityUnavailable)?.execute( args).map_err(|_| Error::ActivityUnavailable)?;
     Ok(db.last_insert_rowid())
 }
 
