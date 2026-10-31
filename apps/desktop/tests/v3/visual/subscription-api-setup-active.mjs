@@ -173,6 +173,7 @@ try {
     const initialSelector='[data-key-budget] details .field:last-of-type input';
     await change(initialSelector,'25');
     assert.equal(await evaluate(client,'document.querySelectorAll(".modal-foot .btn-primary").length'),1);
+    await scrollTo("[data-key-budget] .key-budget-amount", true);
     await screenshot(`inline-budget-${provider}`);
     await save();await linked();
     const actual=await evaluate(client,'inlineSetup.trace.filter(x=>x.command==="preview_compute_key_budgets")');
@@ -192,6 +193,13 @@ try {
     assert.equal(geometry.creditGuideHref, language === 'zh' ? 'https://developers.openai.com/api/docs/guides/chatgpt-api-credits' : 'https://support.claude.com/en/articles/17154008-monthly-api-credits-for-max-ultra-and-team-plans');
     await screenshot(`single-save-${language}-${theme}-${width}-selection`);
     await scrollTo('[data-subscription-api-setup]');
+    await click('[data-key-budget] input[type=checkbox]');
+    await change('[data-key-budget] .key-budget-amount input','100');
+    await scrollTo('[data-key-budget] .key-budget-grid',true);
+    const allowanceGeometry=await evaluate(client,`(()=>{const d=document.querySelector('.modal'),b=d.querySelector('.modal-body'),f=d.querySelector('.modal-foot'),form=d.querySelector('[data-key-budget]');return {overflow:b.scrollWidth-b.clientWidth,footer:f.getBoundingClientRect().bottom,fields:[...form.querySelectorAll('input:not([type=checkbox]),select')].filter(e=>e.getClientRects().length).map(e=>{const r=e.getBoundingClientRect(),p=b.getBoundingClientRect();return {width:r.width,left:r.left-p.left,right:r.right-p.right}})};})()`);
+    assert.ok(allowanceGeometry.overflow<=1 && allowanceGeometry.footer<=height+1,JSON.stringify(allowanceGeometry));
+    assert.ok(allowanceGeometry.fields.every(f=>f.width>=70 && f.left>=-1 && f.right<=1),JSON.stringify(allowanceGeometry));
+    await screenshot(`inline-allowance-${language}-${theme}-${width}`);
     await screenshot(`single-save-${language}-${theme}-${width}`);
   });
 } finally {

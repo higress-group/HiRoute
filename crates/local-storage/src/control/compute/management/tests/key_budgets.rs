@@ -220,9 +220,36 @@ fn key_budget_atomic_save_accounting_reopen_rotation_and_legacy_edits_preserve_s
         ),
         "key-budget-legacy-rename",
     );
+    let replacement = candidate("candidate/budget-rotate", "slot/replacement");
+    registry
+        .register_compute_candidate(replacement.clone())
+        .unwrap();
+    let source = saved(&stores);
+    let mut rotation = edit(
+        &stores,
+        &source,
+        hiroute_application_api::ComputeManagementEditV1::Rename {
+            display_name: source.display_name.clone(),
+        },
+        &[],
+    );
+    rotation.key_edits = vec![ComputeKeyEditV2::Replace {
+        key_id: key.clone(),
+        expected_generation: source.credentials[0].generation,
+        input_candidate: replacement.candidate,
+    }];
+    lifecycle::execute(&stores, &registry, rotation, "key-budget-rotate");
+    assert_eq!(saved(&stores).credentials[0].key_id, key);
+    assert_eq!(
+        (
+            view(&stores, &key).available_micros,
+            view(&stores, &key).lifetime_spent_micros
+        ),
+        (1_950, 50)
+    );
     let pending = stores
         .control()
-        .reserve_key_spend(&key, 1, Some(&quote))
+        .reserve_key_spend(&key, 2, Some(&quote))
         .unwrap()
         .unwrap();
     stores
@@ -341,4 +368,138 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
         .settle_key_spend(&first.reservation_id, &KeySpendSettlementV1::Unsent)
         .unwrap();
     assert_eq!(view(&stores, &key).available_micros, 500);
+}
+
+#[test]
+fn key_budget_new_key_is_limited_in_the_same_secret_activation_operation() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let source = saved(&stores);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let facts = candidate("candidate/budget-atomic-add", "slot/primary");
+    registry.register_compute_candidate(facts.clone()).unwrap();
+    let input = ProtectedInput;
+    let planner =
+        ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+    let mut change = edit(
+        &stores,
+        &source,
+        hiroute_application_api::ComputeManagementEditV1::Rename {
+            display_name: source.display_name.clone(),
+        },
+        &[],
+    );
+    change.key_edits = vec![ComputeKeyEditV2::Add {
+        input_candidate: facts.candidate.clone(),
+    }];
+    let preview = planner
+        .preview_key_budgets(ComputeKeyBudgetSaveRequestV1 {
+            change: ComputeManagementChangeV3 {
+                schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                change,
+                api_link: None,
+                default_preferences: Default::default(),
+            },
+            network_edit: None,
+            key_budget_edits: vec![KeyBudgetEditV1 {
+                key: KeyBudgetSelectorV1::Input {
+                    candidate_ref: facts.candidate.candidate_ref.clone(),
+                },
+                assignment: KeyBudgetAssignmentV1::Configure {
+                    budget_id: None,
+                    expected_revision: 0,
+                    display_name: "Prorated credits".into(),
+                    policy: policy(100),
+                    initial_remaining_micros: Some(0),
+                },
+            }],
+        })
+        .unwrap();
+    let mutation: ComputeManagementMutationV6 =
+        serde_json::from_value(preview.plan().control()["compute_management_mutation"].clone())
+            .unwrap();
+    let mut corrupt = mutation.clone();
+    corrupt.budgets.definitions_after[0].policy.amount_micros = 1_000_000;
+    assert!(
+        corrupt.validate(&preview.result.spec).is_err(),
+        "a sealed grant cannot be increased outside the user's edit"
+    );
+    let runtime = TransactionRuntime::default();
+    let external = NoExternal;
+    let coordinator = TransactionCoordinator::new(
+        stores.control(),
+        stores.secrets(),
+        stores.runtime(),
+        &external,
+        &input,
+        &runtime,
+    );
+    coordinator.reconcile_startup_and_open().unwrap();
+    apply_preview(
+        &stores,
+        &planner,
+        &coordinator,
+        &WorkspaceId::default(),
+        preview,
+        "key-budget-atomic-add",
+    );
+    let after = saved(&stores);
+    let key = after
+        .credentials
+        .iter()
+        .find(|c| !source.credentials.iter().any(|old| old.key_id == c.key_id))
+        .unwrap();
+    assert!(key.enabled);
+    assert_eq!(stores.secrets().generation(&key.credential).unwrap(), 1);
+    assert!(matches!(
+        stores
+            .control()
+            .reserve_key_spend(&key.key_id, 1, Some(&estimate(&source.source_id))),
+        Err(KeyBudgetGateErrorV1::Exhausted)
+    ));
+    // The other, previously imported Key remains unlimited, including unknown prices.
+    assert!(
+        stores
+            .control()
+            .reserve_key_spend(&source.credentials[0].key_id, 1, None)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn key_budget_costs_keep_cache_reasoning_unknowns_and_overflow_explicit() {
+    let mut q = estimate("source/cost");
+    let usage = KeySpendUsageV1 {
+        input_tokens: Some(10),
+        output_tokens: Some(20),
+        cache_read_tokens: Some(3),
+        cache_write_tokens: Some(2),
+        reasoning_tokens: Some(5),
+    };
+    assert_eq!(q.usage_micros(&usage), Some(48)); // 5 + .3 + 2.5 + 40, round total once.
+    q.pricing.usage_semantics.output = OutputUsageMeaningV1::ReasoningSeparatelyAtOutputRate;
+    assert_eq!(q.usage_micros(&usage), Some(58));
+    assert_eq!(
+        q.usage_micros(&KeySpendUsageV1 {
+            reasoning_tokens: None,
+            ..usage.clone()
+        }),
+        None
+    );
+    q.pricing.usage_semantics.input = InputUsageMeaningV1::Unknown;
+    assert_eq!(q.usage_micros(&usage), None);
+    q.input_bound = u64::MAX;
+    q.output_bound = u64::MAX;
+    assert_eq!(q.upper_bound_micros(), None);
+    let mut q = estimate("source/cost");
+    let quote = q.pricing.quote.as_mut().unwrap();
+    quote.valuation_kind = PriceValuationKindV1::ApiEquivalent;
+    quote.quote_digest = quote.computed_digest().unwrap();
+    assert_eq!(
+        q.upper_bound_micros(),
+        None,
+        "comparison/reference prices cannot authorize real spending"
+    );
 }
