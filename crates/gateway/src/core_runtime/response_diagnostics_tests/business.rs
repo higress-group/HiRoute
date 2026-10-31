@@ -103,7 +103,7 @@ pub(super) fn assert_business_with_usage(
     }
 }
 
-pub(super) fn assert_success_usage(facts: &[Value], ordinal: u64) {
+pub(in crate::server::core_runtime) fn assert_success_usage(facts: &[Value], ordinal: u64) {
     assert_usage_sources(facts, ordinal, true);
 }
 
