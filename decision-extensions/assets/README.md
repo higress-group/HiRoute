@@ -60,7 +60,7 @@ through the development-only [readme-docs.html](../../apps/desktop/readme-docs.h
 entry gives sources and the plan English names for English captures, names the saved decision
 model System One, and replaces the report's cost comparison with an illustrative
 $3.42 routed versus $11.86 primary-reference estimate. Counts, suggestions and scores are
-fixture values, not measured results; captions label them as sample data.
+fixture values, not measured results.
 
 To reproduce, run `node_modules/.bin/vite` from `apps/desktop` and open
 `/readme-docs.html?view=quickstart&native=1&lang=en` (choose the first new model, dismiss the

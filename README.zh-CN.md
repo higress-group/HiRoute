@@ -84,7 +84,7 @@ HiRoute 结合这些判断与你的路由计划，选择实际执行的模型。
 3. **需要时主力接手**：新模型的阶段评分低于胜任下限、且问题仍然相关时，低分保护让主力接手下一阶段。
 
 <p align="center"><img src="decision-extensions/assets/readme-trial-zh-CN.png" alt="试用新模型：要试用的模型为百炼 Coding Plan 的 Qwen3-Coder-Plus，主力为 Codex 订阅的 GPT-6-Astra（high），决策模型为 System One；信任度滑块位于谨慎与托付之间，可点击试用、熟悉、信任、放手、托付档位" width="560"></p>
-<p align="center"><sub>选好要试用的模型和主力，再设定起始信任度。示例接入。</sub></p>
+<p align="center"><sub>选好要试用的模型和主力，再设定起始信任度。</sub></p>
 
 ### 用自己任务的证据调整
 
@@ -93,7 +93,7 @@ HiRoute 结合这些判断与你的路由计划，选择实际执行的模型。
 检查改动，再决定是否发布。
 
 <p align="center"><img src="decision-extensions/assets/readme-report-zh-CN.png" alt="模型表现报告：9 个会话共 77 个阶段，建议上调到「信任」；75% 的阶段交给常规模型，胜任率 90%，低分保护 3 次；常规模型估算费用 $3.42，同样用量的主力参考 $11.86；并列出 Qwen3-Coder-Plus 与 GPT-5.6-Sol 的胜任度" width="760"></p>
-<p align="center"><sub>常规模型稳定达标后，模型表现报告会建议上调信任度。示例数据，费用为 API 等价估算。</sub></p>
+<p align="center"><sub>常规模型稳定达标后，模型表现报告会建议上调信任度。费用为 API 等价估算。</sub></p>
 
 也可以按自己的任务调整判断标准，使用[公开评测方法](experiments/system-one-routing-paper/README.md)
 对照检查提示词改动的效果。
