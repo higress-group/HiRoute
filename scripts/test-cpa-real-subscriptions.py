@@ -323,6 +323,10 @@ def gateway(product, kind, source, stream, label, allowed=True):
                 tools=[tool], max_tokens=16)
         else:
             body.update(messages=[{'role': 'user', 'content': 'Reply with OK only.'}], max_tokens=8)
+        if source.get('model') == 'claude-haiku-5-5':
+            # Adaptive thinking shares the output budget. The older 16-token
+            # tool-result probe can truncate before a complete answer.
+            body['max_tokens'] = 2048
     else:
         endpoint = '/v1/responses'
         body.update(input='Reply with OK only.', reasoning={'effort': 'low'}, max_output_tokens=64)
@@ -405,6 +409,7 @@ def gateway(product, kind, source, stream, label, allowed=True):
     return {'scenario': label, 'provider': kind, 'state': 'green', 'http_status': status,
             'stream': stream, 'usage': usage_numbers(usage), 'answer_verified': True,
             'tool_round': tool_round, 'multi_turn_verified': tool_round == 'tool_result',
+            'max_output_tokens': body.get('max_tokens', body.get('max_output_tokens')),
             'duration_seconds': round(time.monotonic() - started, 3)}
 
 
