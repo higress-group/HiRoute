@@ -22,7 +22,7 @@ fn registered_model_defaults_keep_glm_custom_subsets_and_native_companions() {
     let candidate = materialize_registered_management_candidate(&fact, &catalog)
         .expect("a custom subset must remain routable");
     assert_eq!(candidate.reasoning, custom);
-    let profiles = &candidate.protocol_profiles[0].reasoning_profiles;
+    let profiles = &candidate.protocol_profiles[0].capability.reasoning_profiles;
     assert_eq!(
         profiles
             .iter()
