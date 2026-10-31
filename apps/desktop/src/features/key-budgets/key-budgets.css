@@ -14,3 +14,5 @@
 .oc-key-budget > .oc-key-row { border: 0; border-radius: 0; padding-inline: 0; margin-bottom: 0; }
 .oc-key-budget > .key-budget-editor { border-top: 1px solid var(--border); }
 @media (max-width: 800px) { .key-budget-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.oc-credential-fields { border: 0; margin: 0; padding: 0; min-width: 0; }

@@ -345,6 +345,28 @@ struct WebSavedNetworkChangeV4 {
 
 fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
     if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6)
+    {
+        let mut outer: hiroute_application_api::ComputeManagementChangeV6 =
+            serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
+        if !matches!(
+            outer
+                .change
+                .get("schema")
+                .and_then(serde_json::Value::as_str),
+            Some(
+                hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+            )
+        ) {
+            return Err("RESPONSE_DATA_INVALID");
+        }
+        outer.change = change_for_web(outer.change)?;
+        return serde_json::to_value(outer).map_err(|_| "RESPONSE_DATA_INVALID");
+    }
+
+    if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
         || hiroute_domain::is_legacy_subscription_api_change(&value)
     {
@@ -403,6 +425,28 @@ fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'stati
     }
 }
 fn change_for_native(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6)
+    {
+        let mut outer: hiroute_application_api::ComputeManagementChangeV6 =
+            serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
+        if !matches!(
+            outer
+                .change
+                .get("schema")
+                .and_then(serde_json::Value::as_str),
+            Some(
+                hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+            )
+        ) {
+            return Err("REQUEST_INVALID");
+        }
+        outer.change = change_for_native(outer.change)?;
+        return serde_json::to_value(outer).map_err(|_| "REQUEST_INVALID");
+    }
+
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
         || hiroute_domain::is_legacy_subscription_api_change(&value)
@@ -827,5 +871,34 @@ mod tests {
         let restored =
             hiroute_application_api::saved_compute_change(native.spec.desired_state).unwrap();
         assert_eq!(restored, change);
+    }
+    #[test]
+    fn key_budget_v6_web_round_trip_keeps_policy_and_exact_validation_with_network() {
+        for network in [false, true] {
+            let base = serde_json::json!({"schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3,"default_preferences":{},"change": {
+                "schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2,"subject":{"kind":"saved_source","source_id":"source/budget"},
+                "expected_revisions":{"target":1,"dependencies":{}},"selected_model_refs":["model/one"],"intent":"save_ready","key_edits":[],"validation":validation()
+            }});
+            let child = if network {
+                serde_json::json!({"schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4,"change":base,"network":{"schema":hiroute_domain::NATIVE_NETWORK_MUTATION_SCHEMA_V1,"before":null,"after":null}})
+            } else {
+                base
+            };
+            let native = serde_json::json!({"schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6,"change":child,"key_budget_edits":[{"key":{"kind":"saved","key_id":"credential/one"},"assignment":{"intent":"configure","budget_id":null,"expected_revision":0,"display_name":"API credits","policy":{"currency":"USD","amount_micros":100000000,"renewal":null},"initial_remaining_micros":25000000}}]});
+            let web = change_for_web(native.clone()).unwrap();
+            assert_eq!(web["key_budget_edits"], native["key_budget_edits"]);
+            assert!(
+                serde_json::to_string(&web)
+                    .unwrap()
+                    .contains(&format!("\"validation_revision\":\"{LARGE_REVISION}\""))
+            );
+            assert_eq!(change_for_native(web).unwrap(), native);
+            let mut unknown = native.clone();
+            unknown["unexpected"] = serde_json::json!(true);
+            assert!(change_for_web(unknown).is_err());
+            let mut nested = native.clone();
+            nested["change"] = native;
+            assert!(change_for_web(nested).is_err());
+        }
     }
 }

@@ -136,14 +136,6 @@ pub(crate) fn apply_definition(
                 .transpose()?
                 .unwrap_or(0);
         }
-        if let Some(cap) = value
-            .policy
-            .renewal
-            .as_ref()
-            .and_then(|r| r.balance_cap_micros)
-        {
-            wallet.balance = wallet.balance.min(amount(cap)?);
-        }
         wallet.definition = value.clone();
         save(db, workspace, &wallet)
     } else {
@@ -164,6 +156,13 @@ pub(crate) fn apply_definition(
 }
 
 impl ControlStore {
+    pub fn key_spend_currency(&self, key_id: &str) -> PortResult<Option<String>> {
+        let db = self.connection.borrow();
+        let json:Option<String>=db.query_row("SELECT b.definition_json FROM compute_key_budget_bindings k JOIN compute_key_budgets b ON b.workspace_id=k.workspace_id AND b.budget_id=k.budget_id WHERE k.workspace_id=?1 AND k.key_id=?2",params![WorkspaceId::default().as_str(),key_id],|r|r.get(0)).optional().map_err(|_|failure())?;
+        json.map(|v| decode::<KeyBudgetDefinitionV1>(&v).map(|d| d.policy.currency))
+            .transpose()
+    }
+
     pub fn key_budget_bindings(&self, source_id: &str) -> PortResult<BTreeMap<String, String>> {
         bindings(
             &self.connection.borrow(),

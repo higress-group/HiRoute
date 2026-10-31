@@ -503,3 +503,128 @@ fn key_budget_costs_keep_cache_reasoning_unknowns_and_overflow_explicit() {
         "comparison/reference prices cannot authorize real spending"
     );
 }
+
+#[test]
+fn key_budget_missing_or_substituted_companion_blocks_real_control_activation() {
+    for missing in [false, true] {
+        let root = tempdir().unwrap();
+        populate_saved_source(root.path(), &WorkspaceId::default());
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let source = saved(&stores);
+        let registry = TrustedComputeCandidateRegistry::new();
+        let input = ProtectedInput;
+        let planner =
+            ComputeManagementPlanner::new(&registry, stores.control(), stores.secrets(), &input);
+        let preview = planner
+            .preview_key_budgets(ComputeKeyBudgetSaveRequestV1 {
+                change: ComputeManagementChangeV3 {
+                    schema: COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
+                    change: edit(
+                        &stores,
+                        &source,
+                        hiroute_application_api::ComputeManagementEditV1::Rename {
+                            display_name: source.display_name.clone(),
+                        },
+                        &[],
+                    ),
+                    api_link: None,
+                    default_preferences: Default::default(),
+                },
+                network_edit: None,
+                key_budget_edits: vec![KeyBudgetEditV1 {
+                    key: KeyBudgetSelectorV1::Saved {
+                        key_id: source.credentials[0].key_id.clone(),
+                    },
+                    assignment: new_budget(1000),
+                }],
+            })
+            .unwrap();
+        let op = OperationId::parse(format!(
+            "op_{}",
+            if missing {
+                "a".repeat(32)
+            } else {
+                "b".repeat(32)
+            }
+        ))
+        .unwrap();
+        let effect = stores
+            .control()
+            .apply_control(
+                &op,
+                &WorkspaceId::default(),
+                preview.result.expected_revisions.target,
+                preview.plan().control(),
+            )
+            .unwrap();
+        stores.control().with_connection(|db| {
+            if missing {db.execute("DELETE FROM compute_key_budget_effects WHERE operation_id=?1",[op.as_str()]).unwrap();}
+            else {db.execute("UPDATE compute_key_budget_effects SET witness_json=json_set(witness_json,'$.bindings_after',json('{}'),'$.definitions_after',json('[]'),'$.initial_remaining',json('{}')) WHERE operation_id=?1",[op.as_str()]).unwrap();}
+        });
+        assert!(
+            stores.control().activate_control(&effect).is_err(),
+            "missing/parse-valid substituted policy must never activate an unlimited source"
+        );
+        assert_eq!(saved(&stores), source);
+        assert!(
+            stores
+                .control()
+                .key_budget_bindings(&source.source_id)
+                .unwrap()
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn key_budget_ceiling_edits_preserve_granted_money_through_policy_compensation() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let key = configure(&stores, new_budget(100), "key-budget-cap-fixture");
+    let mut old = view(&stores, &key).definition;
+    old.policy.renewal = Some(KeyBudgetRenewalV1 {
+        period: KeyBudgetPeriodV1::Monthly,
+        mode: KeyBudgetRenewalModeV1::Accumulate,
+        anchor_local: "2099-01-31T00:00:00".into(),
+        timezone: "UTC".into(),
+        balance_cap_micros: Some(500),
+    });
+    stores.control().with_connection(|db| {
+        crate::control::key_budgets::apply_definition(
+            db,
+            &WorkspaceId::default(),
+            &old,
+            None,
+            1000,
+        )
+        .unwrap();
+        db.execute("UPDATE compute_key_budgets SET balance_micros=450", [])
+            .unwrap();
+        let mut lower = old.clone();
+        lower.revision += 1;
+        lower.policy.renewal.as_mut().unwrap().balance_cap_micros = Some(200);
+        crate::control::key_budgets::apply_definition(
+            db,
+            &WorkspaceId::default(),
+            &lower,
+            None,
+            1000,
+        )
+        .unwrap();
+        old.revision = lower.revision + 1;
+        crate::control::key_budgets::apply_definition(
+            db,
+            &WorkspaceId::default(),
+            &old,
+            None,
+            1000,
+        )
+        .unwrap();
+    });
+    assert_eq!(
+        view(&stores, &key).available_micros,
+        450,
+        "only a future grant applies the new ceiling; rollback cannot erase existing funds"
+    );
+}

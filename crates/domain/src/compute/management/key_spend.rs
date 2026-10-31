@@ -131,6 +131,7 @@ fn micros(parts: &[(u64, u64)]) -> Option<u64> {
 
 /// Synchronous durable accounting, independent of optional request telemetry.
 pub trait KeySpendAuthorityV1: Send + Sync {
+    fn currency(&self, key_id: &str) -> crate::PortResult<Option<String>>;
     fn reserve(
         &self,
         key_id: &str,

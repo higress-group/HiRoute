@@ -70,26 +70,71 @@ pub(super) fn stage(
         }
     };
     db.execute("INSERT INTO compute_key_budget_effects(operation_id,workspace_id,source_id,witness_json) VALUES (?1,?2,?3,?4)",params![operation,workspace.as_str(),mutation.source_id(),encode(&witness)?]).map_err(|_|bad())?;
+    let digest = CanonicalDigest::of(&witness).map_err(|_| bad())?;
+    if db.execute("UPDATE compute_management_effects SET key_budget_witness_digest=?4 WHERE operation_id=?1 AND workspace_id=?2 AND source_id=?3",params![operation,workspace.as_str(),mutation.source_id(),digest.as_str()]).map_err(|_|bad())?!=1 {return Err(bad());}
     Ok(())
 }
 fn effect(
     db: &Connection,
+    workspace: &WorkspaceId,
+    mutation: &ComputeManagementMutation,
     operation: &str,
 ) -> PortResult<Option<(KeyBudgetMutationV1, bool, bool)>> {
-    let row:Option<(String,bool,bool)>=db.query_row("SELECT witness_json,applied,compensated FROM compute_key_budget_effects WHERE operation_id=?1",[operation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(|_|bad())?;
-    row.map(|(json, applied, compensated)| Ok((decode(&json)?, applied, compensated)))
-        .transpose()
+    let marker:Option<Option<String>>=db.query_row("SELECT key_budget_witness_digest FROM compute_management_effects WHERE operation_id=?1 AND workspace_id=?2 AND source_id=?3",params![operation,workspace.as_str(),mutation.source_id()],|r|r.get(0)).optional().map_err(|_|bad())?;
+    let marker = marker.ok_or_else(bad)?;
+    let row:Option<(String,bool,bool)>=db.query_row("SELECT witness_json,applied,compensated FROM compute_key_budget_effects WHERE operation_id=?1 AND workspace_id=?2 AND source_id=?3",params![operation,workspace.as_str(),mutation.source_id()],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional().map_err(|_|bad())?;
+    let Some((json, applied, compensated)) = row else {
+        return if marker.is_some() || mutation.key_budgets().is_some() {
+            Err(bad())
+        } else {
+            Ok(None)
+        };
+    };
+    let witness: KeyBudgetMutationV1 = decode(&json)?;
+    let digest = CanonicalDigest::of(&witness).map_err(|_| bad())?;
+    if marker.as_deref() != Some(digest.as_str()) {
+        return Err(bad());
+    }
+    if let Some(sealed) = mutation.key_budgets() {
+        if sealed != &witness {
+            return Err(bad());
+        }
+    } else {
+        let mut expected = witness.bindings_before.clone();
+        if expected.keys().any(|key| {
+            !mutation
+                .expected()
+                .is_some_and(|source| source.credentials.iter().any(|c| &c.key_id == key))
+        }) {
+            return Err(bad());
+        }
+        expected.retain(|key, _| {
+            mutation
+                .desired()
+                .is_some_and(|source| source.credentials.iter().any(|c| &c.key_id == key))
+        });
+        if expected != witness.bindings_after
+            || !witness.definitions_before.is_empty()
+            || !witness.definitions_after.is_empty()
+            || !witness.initial_remaining.is_empty()
+        {
+            return Err(bad());
+        }
+    }
+    Ok(Some((witness, applied, compensated)))
 }
 pub(super) fn current_matches(
     db: &Connection,
     workspace: &WorkspaceId,
-    source: &str,
+    mutation: &ComputeManagementMutation,
     operation: &str,
 ) -> PortResult<bool> {
-    let Some((witness, applied, compensated)) = effect(db, operation)? else {
+    let Some((witness, applied, compensated)) = effect(db, workspace, mutation, operation)? else {
         return Ok(true);
     };
-    if !applied || compensated || ledger::bindings(db, workspace, source)? != witness.bindings_after
+    if !applied
+        || compensated
+        || ledger::bindings(db, workspace, mutation.source_id())? != witness.bindings_after
     {
         return Ok(false);
     }
@@ -100,16 +145,17 @@ pub(super) fn current_matches(
 pub(super) fn apply(
     db: &Connection,
     workspace: &WorkspaceId,
-    source: &str,
+    mutation: &ComputeManagementMutation,
     operation: &str,
     restore: bool,
 ) -> PortResult<()> {
-    let Some((witness, applied, compensated)) = effect(db, operation)? else {
+    let Some((witness, applied, compensated)) = effect(db, workspace, mutation, operation)? else {
         return Ok(());
     };
     if (restore && (!applied || compensated)) || (!restore && applied) {
         return Ok(());
     }
+    let source = mutation.source_id();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| bad())?

@@ -485,7 +485,7 @@ export function Models(props: Props) {
       onClose={() => { if (!submitting) cancelCredentials(); }}
       footer={<><button className="btn" type="button" disabled={submitting} onClick={cancelCredentials}>{text('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-primary" type="button" disabled={submitting || networkDirty || !props.mutable || !draft?.selectedModels.length} onClick={() => void saveCredentials()}>{submitting ? text('正在保存…', 'Saving…') : text('保存设置', 'Save settings')}</button></>}
     >
-      {source && draft && <CredentialEditor language={props.language} source={source} model={model} draft={draft} errorCode={errorCode} onChange={setDraft} onEditingChange={setCredentialEditing} readKeyMasks={props.onReadKeyMasks} />}
+      {source && draft && <CredentialEditor language={props.language} source={source} model={model} draft={draft} errorCode={errorCode} onChange={setDraft} onEditingChange={setCredentialEditing} readKeyMasks={props.onReadKeyMasks} disabled={submitting} />}
     </Dialog>
   </section>;
 }
@@ -576,7 +576,7 @@ function ModelPriceSummary({ language, model, billing, contexts, refreshVersion 
   return <div className="v3-price"><strong>{currency}{trim(rates[0])} / {currency}{trim(rates[1])}</strong><span>{zh ? '输入 / 输出 · 每 100 万 tokens' : 'Input / output · per million tokens'} · {context.currency} · {origin === 'manual' ? (zh ? '人工费率' : 'Manual rates') : (zh ? '目录或参考费率' : 'Catalog or reference rates')}</span></div>;
 }
 
-function CredentialEditor({ language, source, model, draft, errorCode, onChange, onEditingChange, readKeyMasks }: {
+function CredentialEditor({ language, source, model, draft, errorCode, onChange, onEditingChange, readKeyMasks, disabled }: {
   language: 'zh' | 'en';
   source: ManagedSource;
   model: ManagedModel | undefined;
@@ -585,6 +585,7 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
   onChange(value: ModelDraft): void;
   onEditingChange(value: boolean): void;
   readKeyMasks?: Props['onReadKeyMasks'];
+  disabled?: boolean;
 }) {
   const zh = language === 'zh';
   const text = (cn: string, en: string) => zh ? cn : en;
@@ -672,7 +673,7 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
     }
   }
 
-  return <div>
+  return <fieldset disabled={disabled} className="oc-credential-fields">
     <p className="v3-select-intro">{text('同一接入的模型共用这组凭据，按下列顺序尝试。', 'Models on this connection share these credentials, tried in order.')}</p>
     <p className="oc-meta">{text('影响模型：', 'Models: ')}{affected || text('暂无模型', 'None')}</p>
     {visibleKeys.map((key, index) => {
@@ -691,7 +692,7 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
           <button className="icon-btn" type="button" aria-label={text('移除', 'Remove')} onClick={() => removeKey(key.draftId)}><UiIcon name="trash" /></button>
         </div>
       </div>
-      {!budgetLoading && !budgetError && <KeyBudgetEditor language={language} value={key.budget ?? budgetDraft(current)} current={current} shared={shared} onChange={budget => updateKey(key.draftId, item => ({ ...item, budget }))} />}
+      {!budgetLoading && !budgetError && <KeyBudgetEditor language={language} value={key.budget ?? budgetDraft(current)} current={current} shared={shared} disabled={disabled} onChange={budget => updateKey(key.draftId, item => ({ ...item, budget }))} />}
       </div>;
     })}
     {budgetLoading && <p className="field-help" role="status">{text('读取额度…', 'Loading allowances…')}</p>}
@@ -713,7 +714,7 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
       ? text('请先加入或取消正在输入的凭据。', 'Add or cancel the credential currently being entered first.')
       : errorCode === 'KEY_BUDGET_INVALID' ? text('请检查额度金额、补充日期、时区和余额上限。', 'Check the allowance amount, renewal date, time zone and balance cap.')
       : text('凭据未保存，修改已保留。请读取当前状态后重试。', 'Credentials were not saved. Your changes are retained; refresh the current state and try again.')}</span></div>}
-  </div>;
+  </fieldset>;
 }
 
 function summarizeAvailability(values: string[], language: 'zh' | 'en') {

@@ -202,6 +202,13 @@ impl CredentialLease {
         self.spend = authority;
         self
     }
+    pub fn spending_currency(&self) -> hiroute_domain::PortResult<Option<String>> {
+        self.spend
+            .as_ref()
+            .map(|port| port.currency(self.key_id()))
+            .transpose()
+            .map(Option::flatten)
+    }
     pub fn reserve_spending(
         &self,
         estimate: Option<&hiroute_domain::KeySpendEstimateV1>,

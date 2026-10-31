@@ -9,13 +9,19 @@ pub(super) fn reserve(
     stable_target: &str,
     expected_profile_digest: &str,
 ) -> Result<Option<KeySpendGuard>, Arc<str>> {
-    let spend_estimate = if !ir.native_only {
+    let currency = credential
+        .map(CredentialLease::spending_currency)
+        .transpose()
+        .map_err(|_| Arc::from(MATERIALIZATION_AUTHORITY_FAILED))?
+        .flatten();
+    let spend_estimate = if !ir.native_only && ir.web_search.is_none() {
         crate::server::core_runtime::observation::active_request()
             .and_then(|observation| {
                 observation.spending_price(
                     stable_target,
                     &profile.capability.model_configuration_id,
                     expected_profile_digest,
+                    currency.as_deref()?,
                 )
             })
             .and_then(|pricing| {

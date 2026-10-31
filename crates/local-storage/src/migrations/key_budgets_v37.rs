@@ -1,5 +1,6 @@
 //! Additive local spending authority; source/Key and older operation bytes stay unchanged.
 pub(super) const CONTROL: &str = r#"
+ALTER TABLE compute_management_effects ADD COLUMN key_budget_witness_digest TEXT;
 CREATE TABLE compute_key_budgets (
  workspace_id TEXT NOT NULL, budget_id TEXT NOT NULL, revision INTEGER NOT NULL,
  definition_json TEXT NOT NULL, balance_micros INTEGER NOT NULL, budget_epoch INTEGER NOT NULL DEFAULT 0,

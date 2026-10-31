@@ -4,6 +4,15 @@ pub(super) struct ControlKeySpendAuthority {
     pub(super) adapter: Arc<LocalControlAdapter>,
 }
 impl hiroute_domain::KeySpendAuthorityV1 for ControlKeySpendAuthority {
+    fn currency(&self, key_id: &str) -> PortResult<Option<String>> {
+        self.adapter
+            .stores
+            .lock()
+            .map_err(|_| PortError::new(PortErrorCode::Unavailable, "key_budget.lock"))?
+            .control()
+            .key_spend_currency(key_id)
+    }
+
     fn reserve(
         &self,
         key: &str,
