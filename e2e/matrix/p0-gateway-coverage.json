@@ -304,7 +304,7 @@
       "test_target": "p0_gateway_privacy"
     }
   ],
-  "registry_digest": "sha256:740c86272080c8c807a88cc6322056a3eb579138645d17ef07596d4f5f9cc0e0",
+  "registry_digest": "sha256:5fca7e5202b0b5d5d66f9e8ec3156b1f616548bf4a3826e4855b1d4a6dd192c6",
   "rows": [
     {
       "id": "publication.incompatible_or_gap",
