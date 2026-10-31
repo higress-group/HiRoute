@@ -254,6 +254,83 @@ mod tests {
     }
 
     #[test]
+    fn terra_uses_confirmed_sol_efforts_without_inheriting_default_or_other_facts() {
+        let catalog = catalog();
+        let metadata = catalog.model_metadata();
+        let terra = metadata
+            .canonical_models
+            .iter()
+            .find(|m| m.model_key == "gpt-6.1-terra")
+            .unwrap();
+        let sol = metadata
+            .canonical_models
+            .iter()
+            .find(|m| m.model_key == "gpt-6.1-sol")
+            .unwrap();
+        assert_eq!(terra.reasoning.profiles, sol.reasoning.profiles);
+        assert_eq!(terra.reasoning.default, None);
+        assert!(
+            terra
+                .reasoning
+                .note
+                .as_ref()
+                .unwrap()
+                .contains("Sol only, not Terra directly")
+        );
+        assert_eq!(terra.context_tokens.value, None);
+        assert_eq!(terra.max_output_tokens.value, None);
+        assert!(
+            terra
+                .capabilities
+                .values()
+                .all(|v| *v == MetadataCapabilityStateV1::Unknown)
+        );
+        assert!(
+            terra
+                .modalities
+                .values()
+                .all(|v| *v == MetadataCapabilityStateV1::Unknown)
+        );
+        assert_eq!(terra.lifecycle, "unknown");
+        assert!(
+            catalog
+                .model_data()
+                .price_rates
+                .iter()
+                .all(|p| !p.model_configuration_id.contains("gpt-6.1-terra"))
+        );
+        assert!(metadata.access_products.iter().all(|p| {
+            !p.documented_upstream_model_ids
+                .contains(&"gpt-6.1-terra".into())
+        }));
+        for protocol in [
+            UpstreamProtocol::Responses,
+            UpstreamProtocol::ChatCompletions,
+        ] {
+            let (provenance, target, authentication) =
+                scope(&catalog, "openai.platform.global.v1", protocol);
+            let value = missing_api_reasoning_default(
+                &catalog,
+                &provenance,
+                &target,
+                &authentication,
+                "gpt-6.1-terra",
+                &unknown(),
+                Some(&ModelDefaultPreferenceV1::PreserveSaved),
+            )
+            .unwrap();
+            assert_eq!(
+                value.capability,
+                NativeReasoningCapabilityV1::Discrete {
+                    parameter: "reasoning_effort".into(),
+                    profiles: sol.reasoning.profiles.clone(),
+                    default_profile: None,
+                }
+            );
+        }
+    }
+
+    #[test]
     fn anthropic_api_uses_the_messages_adaptive_render_convention() {
         let catalog = catalog();
         let (provenance, target, authentication) = scope(
@@ -359,7 +436,7 @@ mod tests {
             "openai.platform.global.v1",
             UpstreamProtocol::Responses,
         );
-        for id in ["GPT-6.1 Sol", "gpt-6.1-sol-unknown", "gpt-6.1-terra"] {
+        for id in ["GPT-6.1 Sol", "gpt-6.1-sol-unknown", "gpt-6.1-unknown"] {
             assert!(
                 missing_api_reasoning_default(
                     &catalog,
