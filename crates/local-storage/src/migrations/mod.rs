@@ -596,11 +596,7 @@ impl MigrationSetCoordinator {
             let source = set.control.manifest().schema_version;
             matches!(
                 (source, set.target_schema_version()),
-                (32, 33..=37)
-                    | (33, 34..=37)
-                    | (34, 35..=37)
-                    | (35, 36..=37)
-                    | (36, 37)
+                (32, 33..=37) | (33, 34..=37) | (34, 35..=37) | (35, 36..=37) | (36, 37)
             ) && [
                 set.control.manifest(),
                 set.runtime.manifest(),
