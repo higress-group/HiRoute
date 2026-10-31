@@ -352,8 +352,13 @@ def access_only_cpa_audit(product, provider):
     value = private_read(files[0])
     require(not native.forbidden_refresh(value), provider + ':refresh_authority_in_cpa')
     require(not any('expir' in key.lower() for key in value), provider + ':expiry_in_cpa')
+    cloak_line = next((line for line in configurations[0].read_text().splitlines()
+                       if line.startswith('disable-claude-cloak-mode:')), None)
+    require(cloak_line in ('disable-claude-cloak-mode: true', 'disable-claude-cloak-mode: false'),
+            provider + ':cloak_policy_absent')
     return {'auth_file_count': 1, 'sha256': sha256(files[0]), 'mode': '0o600',
-            'refresh_authority': False, 'expiry_in_cpa': False}
+            'refresh_authority': False, 'expiry_in_cpa': False,
+            'claude_cloaking_enabled': cloak_line.endswith('false')}
 
 
 def native_borrowed_selected(arguments, configuration):

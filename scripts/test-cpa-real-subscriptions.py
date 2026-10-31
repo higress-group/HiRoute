@@ -214,6 +214,14 @@ def publish_plan(product, kind, source, judgment_fixture, configure_model_settin
     selection = {'binding_id': source['binding_id']}
     if kind == 'codex':
         selection['reasoning'] = {'kind': 'profile', 'profile': 'low'}
+    else:
+        from claude_subscription_catalog_product import baseline_reasoning
+        snapshot = product.control('ListCompute', {'source_id': source['source_id']})['data']
+        model = next(item for saved in snapshot['sources'] for item in saved['models']
+                     if item['binding_id'] == source['binding_id'])
+        reasoning = baseline_reasoning(model)
+        if reasoning is not None:
+            selection['reasoning'] = reasoning
     editor = {
         'schema': 'hiroute.plan-editor/v2', 'display_name': kind + ' real subscription acceptance',
         'purpose': 'Bounded real upstream acceptance', 'mode': 'fixed_model', 'candidates': [selection],

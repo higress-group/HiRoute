@@ -204,7 +204,7 @@ class IsolationAndEvidence(unittest.TestCase):
             root.mkdir(mode=0o700)
             auth = root / 'auth'
             auth.mkdir(mode=0o700)
-            (root / 'config.yaml').write_text('auth-dir: "' + str(auth) + '"\n')
+            (root / 'config.yaml').write_text('auth-dir: "' + str(auth) + '"\ndisable-claude-cloak-mode: true\n')
             credential = auth / 'hiroute-managed-fixture.json'
             native = SimpleNamespace(forbidden_refresh=lambda value: 'refresh_token' in value)
             product = SimpleNamespace(storage=storage, repo=Path('/repository'))
@@ -216,6 +216,7 @@ class IsolationAndEvidence(unittest.TestCase):
                     before = credential.read_bytes()
                     if len(value) == 1:
                         result = live.access_only_cpa_audit(product, 'codex')
+                        self.assertFalse(result['claude_cloaking_enabled'])
                         self.assertFalse(result['refresh_authority'])
                         self.assertNotIn('fixture-access', json.dumps(result))
                     else:
