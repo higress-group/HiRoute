@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { matchingModelRoutes, matchingModelSources, modelRouteAuthoring, modelRouteEditor } from '../src/features/models/model-route.ts';
+import { matchingModelRoutes, matchingModelSources, modelRouteAuthoring, modelRouteEditor, modelRouteHasAdditions } from '../src/features/models/model-route.ts';
 
 const model = (binding_id, upstream_model_id = 'gpt-6.1-sol', availability = 'available') => ({ binding_id, upstream_model_id, display_name: 'Same label', presentation: { availability } });
 const current = model('binding/subscription');
@@ -26,6 +26,8 @@ test('new model routes prefill exact ID, fixed mode and explicitly ordered candi
 
 test('existing fixed route appends without changing original order, reasoning, alias or settings', () => {
   const request = { modelId: 'gpt-6.1-sol', bindingIds: ['binding/api', current.binding_id], plan };
+  assert.equal(modelRouteHasAdditions(request), true);
+  assert.equal(modelRouteHasAdditions({ ...request, bindingIds: [current.binding_id] }), false);
   assert.deepEqual(modelRouteAuthoring(request), { plan_id: plan.agent_plan_id, candidates: [...plan.desired.strategy.candidates, { binding_id: 'binding/api' }] });
   const editor = { purpose: 'Original purpose', custom_alias: 'gpt-6.1-sol', limits: { maximum_attempts: 2 }, candidates: [...plan.desired.strategy.candidates, { binding_id: 'binding/api' }] };
   assert.deepEqual(modelRouteEditor({ authoring: { editor, expected_head_revision: 7 }, candidates: [] }, request), editor);

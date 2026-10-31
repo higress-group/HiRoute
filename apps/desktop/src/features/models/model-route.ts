@@ -3,6 +3,11 @@ import type { ManagedModel, ManagementSnapshot } from './types';
 
 export type ModelRouteRequest = { modelId: string; bindingIds: string[]; plan?: Plan };
 
+export function modelRouteHasAdditions(request?: ModelRouteRequest) {
+  return !!request?.plan && request.bindingIds.some(id =>
+    !request.plan!.desired.strategy.candidates?.some(item => item.binding_id === id));
+}
+
 export function matchingModelRoutes(modelId: string, plans: Plan[]) {
   return plans.filter(plan => plan.head.status !== 'deleted'
     && (plan.model_alias === modelId || plan.desired.display_name === modelId));

@@ -1,4 +1,4 @@
-import { modelRouteAuthoring, modelRouteEditor, type ModelRouteRequest } from './features/models/model-route';
+import { modelRouteAuthoring, modelRouteEditor, modelRouteHasAdditions, type ModelRouteRequest } from './features/models/model-route';
 import { DivisionDraftDialog } from './features/trust/DivisionDraftDialog';
 import { divisionSource } from './features/trust/division-draft';
 import { ProtectionSummary } from './features/trust/ProtectionSummary';
@@ -138,7 +138,7 @@ export const PlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps>(function
   </section>;
 });
 
-const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initialEditor: Editor; initialHead: number | null }>(function LoadedPlanEditor({ initialEditor, initialHead, plan, draft, creating = false, trialOnly = false, trialBusy = false, previewAgentId, initialBindingId, initialContent, onCreateDraft, initialView = 'configuration', initialDivisionBranch, editingMemory, language, active = true, refreshVersion = 0, usedBy = [], usedByState = 'complete', onOpenAgent, onOpenSession, onOpenServices, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted, onPersistenceStarted, onPersistenceCancelled, onPublicationReady }, ref) {
+const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initialEditor: Editor; initialHead: number | null }>(function LoadedPlanEditor({ initialEditor, initialHead, plan, draft, creating = false, trialOnly = false, trialBusy = false, previewAgentId, initialBindingId, initialModelRoute, initialContent, onCreateDraft, initialView = 'configuration', initialDivisionBranch, editingMemory, language, active = true, refreshVersion = 0, usedBy = [], usedByState = 'complete', onOpenAgent, onOpenSession, onOpenServices, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted, onPersistenceStarted, onPersistenceCancelled, onPublicationReady }, ref) {
   const en = language === 'en', text = (zh: string, eng: string) => en ? eng : zh;
   const [editor, setEditor] = useState<Editor>(() => structuredClone(initialEditor));
   const nameError = planDisplayNameError(editor.display_name, language);
@@ -147,7 +147,8 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const [options, setOptions] = useState<Options | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [optionsKey, setOptionsKey] = useState('');
   const target = previewAgentId ? agentEcosystem(previewAgentId) : null;
-  const [baseline, setBaseline] = useState(() => initialContent ? '' : JSON.stringify(editor));
+  const requestedModels = modelRouteHasAdditions(initialModelRoute);
+  const [baseline, setBaseline] = useState(() => initialContent || requestedModels ? '' : JSON.stringify(editor));
   const [notice, setNotice] = useState('');
   const [divisionBranch, setDivisionBranch] = useState<string | null>(initialDivisionBranch ?? null);
   const divisionBranches = draft ? [] : (initialEditor.mode === 'smart_saving' ? ['smart_saving'] : initialEditor.mode === 'custom_branches' ? initialEditor.branch_routing?.branches.map(branch => branch.id) ?? [] : []).filter(id => divisionSource(initialEditor, id));

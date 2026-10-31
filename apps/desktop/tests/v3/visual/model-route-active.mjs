@@ -88,7 +88,7 @@ try {
       await click('.modal-foot .btn-primary',language==='zh'?'一起加入候选':'Add together as candidates');
       await editorReady();
       assert.deepEqual(await current(),{name:'gpt-6.1-sol',alias:'gpt-6.1-sol',purpose:'',required:false,bindings:['binding/codex/gpt-6-astra','binding/api/sol'],writes:0});
-      await waitFor(client, '!document.querySelector(".toolbar-actions .btn-primary").disabled');
+      await waitFor(client, '!document.querySelector(".routing-page .toolbar-actions .btn-primary").disabled');
       await shot(`model-route-editor-${id}`);
       await click('.toolbar-actions button',language==='zh'?'保存并创建':'Save and create');
       await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
@@ -109,7 +109,7 @@ try {
   await run('model-route.save-waits-for-current-model-options',async()=>{
     await setup({others:false,delayed:true});await click('.model-route-action button','创建智能路由');await editorReady();
     await waitFor(client,'typeof productShell.releaseModelRouteOptions==="function"');
-    assert.equal(await evaluate(client,'document.querySelector(".toolbar-actions .btn-primary").disabled'),true);
+    assert.equal(await evaluate(client,'document.querySelector(".routing-page .toolbar-actions .btn-primary").disabled'),true);
     assert.equal((await current()).writes,0);
     await evaluate(client,'productShell.releaseModelRouteOptions();true');
     await click('.toolbar-actions button','保存并创建');
@@ -121,6 +121,17 @@ try {
     const request=await evaluate(client,'productShell.commands.find(c=>c.command==="plan_editor_options"&&c.payload.input.authoring.plan_id)?.payload.input.authoring');
     assert.equal(request.plan_id,'plan/existing-sol');assert.deepEqual(request.candidates[0].reasoning,{kind:'profile',profile:'low'});assert.equal((await current()).purpose,'Existing purpose');
     assert.equal(await evaluate(client,'document.querySelector(".plan-alias-field").readOnly'),true);
+    await click('.editor-actions button','发布更改');
+    await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
+    const saved=await evaluate(client,'productShell.commands.filter(c=>c.command==="preview_plan_editor").map(c=>c.payload.input)');
+    assert.equal(saved.length,1);assert.equal(saved[0].expected_head_revision,7);assert.equal(saved[0].editor.limits.maximum_attempts,2);
+    assert.equal(saved[0].editor.purpose,'Existing purpose');assert.deepEqual(saved[0].editor.candidates[0].reasoning,{kind:'profile',profile:'low'});
+    assert.equal(await evaluate(client,'productShell.desktop.catalog.plans[0].head.head_revision'),8);
+  });
+  await run('model-route.existing-candidate-is-not-an-unsaved-change',async()=>{
+    await setup({others:false,existing:true});await click('.model-route-action button','创建智能路由');await click('.modal-foot .btn-primary','编辑已有路由');await editorReady();
+    assert.equal(await evaluate(client,'[...document.querySelectorAll(".editor-actions .btn-primary")].find(e=>e.getClientRects().length).disabled'),true);
+    assert.equal((await current()).writes,0);
   });
   await run('model-route.concurrent-head-change-refuses-stale-additions',async()=>{
     await setup({existing:true,stale:true});await click('.model-route-action button','创建智能路由');await click('.modal-foot .btn-primary','一起加入候选');
