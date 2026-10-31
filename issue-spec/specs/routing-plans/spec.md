@@ -96,11 +96,26 @@ map between native scales. Suggested discrete settings may choose the actual
 highest setting for primary work and lowest for economy/free work. A budget must
 be supplied when the selected native capability requires it.
 
-Plans expose one route-level “Follow the request’s reasoning level” control above
-candidate groups. New fixed-model routes, including model-list quick creation,
-default it on; new difficulty routes default it off. A user-selected policy, saved
+Plans expose one route-level reasoning policy above candidate groups, presented as
+two mutually exclusive segments: Follow request and Fixed levels. Its label and
+choices use the existing editor's form typography. A short helper explains that
+the model values below are defaults for omitted/unsupported requests or fixed
+settings, respectively. New fixed-model routes, including model-list quick creation,
+default to following requests; new difficulty routes default to fixed levels. A user-selected policy, saved
 draft or existing route retains its choice across mode changes. Retained routes
 without a policy remain off. The control never overwrites candidate selections.
+Each editable candidate SHALL have a persistent, explicit reasoning label and
+a compact, integrated selector with a visible arrow. Candidate rows SHALL NOT
+repeat default/fixed qualifiers already explained by the route policy; accessible
+control names SHALL retain both the model identity and the default/fixed meaning.
+Discrete profiles SHALL be selected directly from native values in the candidate
+row, without a separate Apply dialog. Toggles SHALL expose on/off choices; token
+budgets SHALL retain range/step validation in their budget editor. Model-fixed
+reasoning SHALL be readable plain text without an editable control. Missing,
+loading or unsupported saved settings SHALL remain explicit and SHALL NOT
+silently substitute another profile. Changes only update the route draft until
+its normal Save/Publish action. Labels, selected values, focus and actions SHALL
+remain readable at both supported window sizes and in both themes/languages.
 With following on, each candidate shows its editable default level; with it off,
 it shows its fixed level. Missing/unsupported request levels use the saved default.
 New defaults prefer a supported declared native default when present; otherwise

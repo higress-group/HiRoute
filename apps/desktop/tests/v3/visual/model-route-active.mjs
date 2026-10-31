@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { connectPage, evaluate, navigate, waitFor } from './cdp-client.mjs';
+import { reasoningControlScenarios } from './route-reasoning-controls.mjs';
 
 const [port, base, output] = process.argv.slice(2);
 const client = await connectPage(Number(port));
@@ -15,15 +16,16 @@ async function shot(name) {
   const capture = await client.send('Page.captureScreenshot', { format: 'png' });
   await writeFile(path.join(output, `${name}.png`), Buffer.from(capture.data, 'base64'));
 }
-async function setup({ language = 'zh', theme = 'light', width = 1200, height = 813, others = true, existing = false, stale = false, delayed = false, mode = 'fixed_model' } = {}) {
+async function setup({ language = 'zh', theme = 'light', width = 1200, height = 813, others = true, existing = false, stale = false, delayed = false, mode = 'fixed_model', reasoning, savedReasoning } = {}) {
   await navigate(client, `${base}product-shell.html`, { width, height });
+  await client.send('Page.bringToFront');
   await waitFor(client, 'Boolean(window.productShell) && !!document.querySelector(".sidebar")');
   await evaluate(client, `(()=>{
     const c=productShell;
     c.routeTemplate=structuredClone(c.desktop.catalog.plans[0]);
     const source=structuredClone(c.management.sources.find(s=>s.models.some(m=>m.binding_id==='binding/codex/gpt-6-astra')));
     const model=source.models.find(m=>m.binding_id==='binding/codex/gpt-6-astra');
-    Object.assign(model,{upstream_model_id:'gpt-6.1-sol',display_name:'GPT-6.1 Sol',catalog_configuration_id:undefined,native_reasoning:{kind:'discrete',parameter:'reasoning_effort',profiles:['low','high']}});
+    Object.assign(model,{upstream_model_id:'gpt-6.1-sol',display_name:'GPT-6.1 Sol',catalog_configuration_id:undefined,native_reasoning:${JSON.stringify(reasoning ?? {kind:'discrete',parameter:'reasoning_effort',profiles:['low','high']})}});
     source.models=[model]; source.state='ready'; source.display_name='Codex subscription';
     const api=structuredClone(source);api.source_id='source/api/sol';api.display_name='OpenAI API';api.display_template_id='openai.platform.global.v1';
     Object.assign(api.models[0],{binding_id:'binding/api/sol',model_ref:'model-ref/api/sol'});
@@ -32,6 +34,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
     if(${existing}){
       const p=structuredClone(c.routeTemplate);Object.assign(p,{agent_plan_id:'plan/existing-sol',model_alias:'gpt-6.1-sol'});p.head={...p.head,head_revision:7,status:'enabled'};
       p.desired={...p.desired,mode:${JSON.stringify(mode)},display_name:'gpt-6.1-sol',purpose:'Existing purpose',delegation_enabled:false,limits:{...p.desired.limits,maximum_attempts:2},strategy:{mode:'custom',candidates:[{binding_id:model.binding_id,reasoning:{kind:'profile',profile:'low'}}]}};
+      if(${JSON.stringify(savedReasoning)} && p.desired.strategy.candidates) p.desired.strategy.candidates[0].reasoning=${JSON.stringify(savedReasoning)};
       if(${JSON.stringify(mode)}!=='fixed_model'){p.desired.strategy=structuredClone(c.routeTemplate.desired.strategy);}
       c.desktop.catalog.plans=[p];
     }
@@ -42,6 +45,11 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
       if(v.authoring){
         v.authoring.editor.candidates=v.authoring.editor.candidates.map(s=>({...s,reasoning:s.reasoning??{kind:'profile',profile:'high'}}));
         if(${stale}&&payload.input.authoring.plan_id)v.authoring.expected_head_revision=8;
+      }
+      if(v.authoring && !payload.input.editor && ${!!reasoning} && !${existing}) {
+        const native=${JSON.stringify(reasoning ?? null)};
+        const selected=${JSON.stringify(savedReasoning ?? null)} ?? (native?.kind==='discrete'?{kind:'profile',profile:native.profiles.at(-1)}:native?.kind==='toggle'?{kind:'toggle',enabled:true}:native?.kind==='budget'?{kind:'budget',tokens:native.minimum_tokens}:undefined);
+        v.authoring.editor.candidates=v.authoring.editor.candidates.map(s=>({...s,reasoning:selected}));
       }
       return ${delayed}&&payload.input.editor?new Promise(resolve=>{c.releaseModelRouteOptions=()=>resolve(v);}):v;
     };
@@ -64,14 +72,27 @@ async function editorReady() {
   await waitFor(client, '!!document.querySelector(".plan-alias-field") && !!document.querySelector(".route-candidate")');
   await waitFor(client, '!document.querySelector(".plan-editor [aria-busy=true]")');
 }
+async function choose(selector, value) {
+  await waitFor(client,`!!document.querySelector(${JSON.stringify(selector)})`);
+  await evaluate(client,`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
+}
 async function current() {
   return evaluate(client, `({name:document.querySelector('.plan-identity-fields input')?.value,alias:document.querySelector('.plan-alias-field')?.value,purpose:document.querySelectorAll('.plan-identity-fields input')[1]?.value,required:document.querySelectorAll('.plan-identity-fields input')[1]?.required,bindings:[...document.querySelectorAll('.route-candidate')].map(e=>e.dataset.bindingId),writes:productShell.commands.filter(c=>c.command==='preview_plan_editor').length})`);
 }
 async function run(name, fn) {
+  if (process.argv.includes('--reasoning-controls') && !name.startsWith('model-route.reasoning-control.')) return;
   try { await fn(); results.push({ name, state: 'green' }); console.log(`green: ${name}`); }
   catch (error) { results.push({ name, state: 'red', error: error.message }); console.log(`red: ${name}: ${error.message}`); await shot(`failure-${results.length}`).catch(() => {}); }
 }
 try {
+  await reasoningControlScenarios({ client, run, setup, click, shot, choose, current, editorReady });
+  await run('model-route.reasoning-control.discoverability',async()=>{
+    await setup({others:false,width:755,height:600});await click('.model-route-action button','创建智能路由');await editorReady();
+    await waitFor(client,'![...document.querySelectorAll(".toolbar-actions .btn-primary")].find(e=>e.getClientRects().length).disabled');
+    const field=await evaluate(client,`(()=>{const row=document.querySelector('.route-candidate');const label=row.querySelector('.route-reasoning-label');const select=row.querySelector('select.effort-select');return {label:label?.textContent,select:select?.tagName,font:select?Number.parseFloat(getComputedStyle(select).fontSize):0,height:select?.getBoundingClientRect().height,associated:!!label&&!!select&&label.htmlFor===select.id};})()`);
+    assert.equal(field.label,'思考档位');assert.equal(field.select,'SELECT');assert.ok(field.associated);assert.ok(field.font>=12&&field.height>=32,JSON.stringify(field));
+    await evaluate(client,'document.querySelector(".route-reasoning-field").scrollIntoView({block:"center"});true');await shot('reasoning-control-visible-label');
+  });
   for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const [width, height] of [[1200,813],[755,600]]) {
     const id=`${language}-${theme}-${width}`;
     await run(`model-route.layout-and-one-save.${id}`, async () => {
@@ -104,14 +125,14 @@ try {
     await setup({others:false});await click('.model-route-action button','创建智能路由');await editorReady();
     const checked=()=>evaluate(client,'document.querySelector(".route-reasoning-policy input").checked');
     assert.equal(await checked(),true);
-    await waitFor(client,'document.querySelector(".effort-select")?.textContent.includes("默认档位")');
+    await waitFor(client,'document.querySelector(".effort-select")?.getAttribute("aria-label").includes("默认")');
     await click('.mode-card','按难度分流');assert.equal(await checked(),false);
     assert.match(await evaluate(client,'document.querySelector(".route-reasoning-policy").textContent'),/能力与成本/);
     await click('.mode-card','固定模型');assert.equal(await checked(),true);
-    await evaluate(client,'document.querySelector(".route-reasoning-policy input").click();true');
+    await evaluate(client,'document.querySelector(".route-reasoning-policy input[value=fixed]").click();true');
     assert.equal(await checked(),false);
     await click('.mode-card','按难度分流');await click('.mode-card','固定模型');assert.equal(await checked(),false);
-    assert.match(await evaluate(client,'document.querySelector(".effort-select").textContent'),/固定档位/);
+    assert.match(await evaluate(client,'document.querySelector(".effort-select").getAttribute("aria-label")'),/固定/);
     await shot('model-route-reasoning-fixed-choice');
   });
   await run('model-route.published-policy-survives-remount-and-mode-switch',async()=>{
@@ -135,6 +156,8 @@ try {
   await run('model-route.save-waits-for-current-model-options',async()=>{
     await setup({others:false,delayed:true});await click('.model-route-action button','创建智能路由');await editorReady();
     await waitFor(client,'typeof productShell.releaseModelRouteOptions==="function"');
+    assert.match(await evaluate(client,'document.querySelector(".route-reasoning-readonly").textContent'),/正在读取/);
+    assert.equal(await evaluate(client,'document.querySelector(".route-reasoning-field").querySelectorAll("button,select,input").length'),0);
     assert.equal(await evaluate(client,'[...document.querySelectorAll(".routing-page .toolbar-actions .btn-primary")].find(e=>e.getClientRects().length&&/保存并创建|Save and create/.test(e.textContent)).disabled'),true);
     assert.equal((await current()).writes,0);
     await evaluate(client,'productShell.releaseModelRouteOptions();true');

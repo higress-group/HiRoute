@@ -7,6 +7,12 @@ fixed-route defaults, one explicit save, existing-route append/CAS and condition
 purpose requirements, with supported-window geometry and screenshots in both
 languages/themes. IPC is synthetic; actual CLI/daemon save, Agent catalog and
 restart are covered by `real_process_route_only_model_id_and_empty_purpose_survive_restart`.
+Add `--reasoning-controls` to select the candidate reasoning checks alone. They
+cover the compact labeled selector, route-policy segments, real keyboard choices,
+native discrete/toggle values, budget validation and cancellation, model-fixed
+plain text, retained unsupported settings and one final Save. Production styles
+are checked in both languages/themes at 1200×813 and 755×600. These browser cases
+use controlled IPC; they do not establish provider behavior or native persistence.
 
 Native startup presentation is owned by `src-tauri/src/bridge/launch_presentation.rs`
 and the macOS launch observer in `hiroute-desktop-host-effects`. Their Rust cases

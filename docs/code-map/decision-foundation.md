@@ -39,8 +39,11 @@ The [publication projection](../../crates/domain/src/publication/projection.rs)
 keeps branch/reasoning execution keys distinct from source binding identities.
 [Request reasoning resolution](../../crates/gateway/src/profiles/follow_reasoning.rs)
 selects a frozen candidate's exact request level or saved default before eligibility;
-[the editor](../../apps/desktop/src/plan-editor.tsx) owns the route policy and visible
-fixed/default choices.
+[the editor](../../apps/desktop/src/plan-editor.tsx) owns the route draft,
+[the reasoning policy](../../apps/desktop/src/ui/RouteReasoningPolicy.tsx) presents
+following requests or using fixed settings, and
+[the candidate reasoning control](../../apps/desktop/src/ui/RouteReasoningControl.tsx)
+labels and edits native fixed/default choices in the route draft.
 [Credential admission](../../crates/gateway/src/core_runtime/credentials.rs) and
 attempt leases use the frozen source binding to check current Native membership.
 
