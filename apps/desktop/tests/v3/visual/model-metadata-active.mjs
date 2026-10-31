@@ -168,6 +168,8 @@ try {
     await click('.model-defaults-editor .btn-primary',lang==='zh'?'保存修改':'Save changes');
     await waitFor(client,`trialTrace.some(x=>x.command==='preview_compute_save_v3')`);
     assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='preview_compute_save_v3').payload.defaultPreferences['binding/bailian/qwen-coder'].native_reasoning.value.parameter`),'output_config.effort');
+    await evaluate(client,`document.querySelector('.model-default-reasoning > select').scrollIntoView({block:'center'});true`);
+    assert.equal(await evaluate(client,`(()=>{const r=document.querySelector('.model-default-reasoning > select').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})()`),true);
     await geometry(width);await shot(`defaults-reopened-unknown-${lang}-${theme}-${width}`);
     results.push({id:`metadata.reopened-unknown.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked persisted response; exact native template restored'});
   }
