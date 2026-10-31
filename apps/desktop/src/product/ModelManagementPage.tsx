@@ -51,6 +51,7 @@ import type {
   SavePreview,
 } from '../features/models/types';
 import type { Plan } from '../plan-editor';
+import type { ModelRouteRequest } from '../features/models/model-route';
 import type {
   SubscriptionCandidate,
   SubscriptionCheckResult,
@@ -142,7 +143,6 @@ export function ModelManagementPage({
   agents,
   onOpenPlan,
   onCreatePlan,
-  onTryModel,
   tabs,
 }: {
   language: 'zh' | 'en';
@@ -161,8 +161,7 @@ export function ModelManagementPage({
   plans?: Plan[];
   agents?: DeviceScanAgent[];
   onOpenPlan?(planId: string): void;
-  onTryModel?(modelId: string | undefined, bindingId: string): void;
-  onCreatePlan?(bindingId: string): void;
+  onCreatePlan?(request: ModelRouteRequest): void;
   tabs?: import('react').ReactNode;
 }) {
   const [management, setManagement] = useState<ManagementSnapshot | null>(null);
@@ -1300,7 +1299,6 @@ export function ModelManagementPage({
       onCredentialsSaved={() => setModelNotice(language === 'zh' ? '接入凭据已保存。' : 'Connection credentials saved.')}
       plans={plans}
       onOpenPlan={onOpenPlan}
-      onTryModel={onTryModel}
       onCreatePlan={onCreatePlan}
       onEditPrice={openPrice}
       priceRefresh={priceRefresh}

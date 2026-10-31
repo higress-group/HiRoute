@@ -25,6 +25,36 @@ fn named() -> PlanAuthoringRequestV1 {
         ..Default::default()
     }
 }
+
+#[test]
+fn route_authoring_without_purpose_can_publish_and_reopen() {
+    let candidates = [candidate(
+        "binding/a",
+        NativeReasoningCapabilityV1::Fixed {
+            profile: "provider-default".into(),
+        },
+    )];
+    let input = PlanAuthoringRequestV1 {
+        display_name: Some("gpt-6.1-sol".into()),
+        candidates: Some(vec![selection("binding/a")]),
+        ..Default::default()
+    };
+    let prepared = prepare_authoring(&input, None, &candidates).unwrap();
+    assert!(prepared.required_choices.is_empty());
+    assert_eq!(prepared.editor.effective().unwrap().purpose.as_str(), "");
+    let saved = saved(prepared.editor);
+    let reopened = prepare_authoring(
+        &PlanAuthoringRequestV1 {
+            plan_id: Some(saved.agent_plan_id.clone()),
+            ..Default::default()
+        },
+        Some(&saved),
+        &candidates,
+    )
+    .unwrap();
+    assert!(reopened.required_choices.is_empty());
+    assert_eq!(reopened.editor.purpose, "");
+}
 fn saved(editor: PlanEditorStateV2) -> AgentPlanStatusV2 {
     let plan_id = AgentPlanId::parse("plan/saved").unwrap();
     let alias = ModelAlias::parse("daily-work").unwrap();

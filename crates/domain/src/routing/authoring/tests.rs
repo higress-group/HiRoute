@@ -74,6 +74,36 @@ fn fixed_model_keeps_an_explicit_order_and_delegation_requires_a_worker() {
 }
 
 #[test]
+fn purpose_is_optional_for_routing_and_required_for_delegation() {
+    let mut draft = editor();
+    draft.purpose = "  ".into();
+    let routing = draft.effective().unwrap();
+    assert_eq!(routing.purpose.as_str(), "");
+    let reopened: AgentPlanAuthoringV2 =
+        serde_json::from_value(serde_json::to_value(&routing).unwrap()).unwrap();
+    reopened.validate().unwrap();
+    assert_eq!(reopened.editor(None).unwrap().purpose, "");
+    draft.work = Some(WorkerPlanV1 {
+        harness: WorkerHarnessV1::CodexCli,
+        protocol: crate::AgentIngressProtocolV1::Responses,
+    });
+    draft.delegation_enabled = true;
+    assert!(matches!(
+        draft.effective(),
+        Err(PlanAuthoringError::InvalidMetadata)
+    ));
+    let mut invalid = reopened;
+    invalid.delegation_enabled = true;
+    invalid.work = draft.work.clone();
+    assert_eq!(invalid.validate(), Err(PlanAuthoringError::InvalidMetadata));
+    draft.purpose = "Implement a requested change".into();
+    draft.effective().unwrap();
+    draft.delegation_enabled = false;
+    draft.purpose.clear();
+    draft.effective().unwrap();
+}
+
+#[test]
 fn smart_and_free_fallback_are_explicit_and_disabled_groups_are_parked() {
     let mut draft = editor();
     draft.mode = PlanEditorMode::FreeFirst;

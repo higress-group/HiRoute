@@ -804,8 +804,7 @@ export function DesktopApp() {
               const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId);
               if (plan) void showRouting({ key: plan.agent_plan_id, plan });
             }}
-            onTryModel={(modelId, bindingId) => void openTrial({ modelId, bindingId })}
-            onCreatePlan={bindingId => void showRouting({ key: `routing/${randomId()}`, initialBindingId: bindingId })}
+            onCreatePlan={request => void showRouting({ key: `routing/${randomId()}`, plan: request.plan, initialModelRoute: request, initialView: 'configuration' })}
           /></div>}
         {visited.has('models') && <div hidden={trialOpen || page !== 'models' || modelTab !== 'decisions'}><DecisionServicesPage
           language={language} active={!trialOpen && page === 'models' && modelTab === 'decisions'}

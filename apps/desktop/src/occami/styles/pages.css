@@ -241,6 +241,8 @@ button.list-row { width: 100%; border-top: 0; border-right: 0; border-left: 0; c
 .detail-pane { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; container-name: detail-pane; container-type: inline-size; }
 .detail-inner { width: min(820px, 100%); padding: 28px 30px 60px; }
 .detail-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-bottom: 22px; border-bottom: 1px solid var(--divider); }
+.model-route-action { margin: 18px 0 24px; }
+.model-route-matches { padding-inline-start: 22px; overflow-wrap: anywhere; }
 .detail-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .detail-identity h2 { margin: 0; font-size:calc(23px * var(--hr-text-scale)); letter-spacing: -.025em; }
 .detail-identity p { margin: 5px 0 0; color: var(--text-muted); font-size:calc(13px * var(--hr-text-scale)); }

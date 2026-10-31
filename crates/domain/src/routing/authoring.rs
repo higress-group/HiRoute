@@ -249,8 +249,12 @@ impl PlanEditorStateV2 {
             mode: self.mode,
             display_name: AgentPlanDisplayName::parse(&self.display_name)
                 .map_err(|_| PlanAuthoringError::InvalidMetadata)?,
-            purpose: AgentPlanPurpose::parse(&self.purpose)
-                .map_err(|_| PlanAuthoringError::InvalidMetadata)?,
+            purpose: AgentPlanPurpose::parse(if self.purpose.trim().is_empty() {
+                ""
+            } else {
+                &self.purpose
+            })
+            .map_err(|_| PlanAuthoringError::InvalidMetadata)?,
             requirements: self.requirements.clone(),
             limits: self.limits.clone(),
             strategy,
@@ -341,6 +345,9 @@ impl AgentPlanAuthoringV2 {
         self.purpose
             .validate()
             .map_err(|_| PlanAuthoringError::InvalidMetadata)?;
+        if self.delegation_enabled && self.purpose.as_str().is_empty() {
+            return Err(PlanAuthoringError::InvalidMetadata);
+        }
         self.requirements
             .validate()
             .map_err(|_| PlanAuthoringError::InvalidStrategy)?;

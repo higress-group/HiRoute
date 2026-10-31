@@ -9,7 +9,10 @@ configuration. It has a durable identity independent of any main Agent.
 
 ### Requirement: Plan identity is stable across presentation changes
 
-A plan MUST have a display name, required purpose, and unique model invocation name.
+A plan MUST have a display name and unique model invocation name. Purpose is
+optional for model routing and required when task delegation is enabled. An empty
+purpose remains empty in saved configuration; the Agent catalog uses the display
+name as its nonempty description when no purpose was supplied.
 The same published name serves model catalogs, Agent configuration, Gateway dispatch,
 and Worker discovery. Display-name edits do not change an established invocation
 name. New names are readable editable ASCII slugs derived locally from usable text
@@ -18,6 +21,24 @@ without usable fragments falls back to readable numbering. Default collisions ad
 a numeric suffix, manual collisions fail explicitly, and manual edits cannot be
 overwritten by later display-name changes. A name race requires fresh confirmation.
 Released `hiroute/<16hex>` names remain readable/callable without bulk renaming.
+
+The model-detail page MUST put its primary create-routing action before model
+configuration and source details, without a model-trial action. Starting here
+opens the configuration editor with fixed-model mode, the exact upstream model ID
+as display name and invocation name, delegation off, the selected Binding first,
+and shared authoring defaults. Dot/underscore invocation names accepted by the
+Domain MUST also be accepted by Desktop. Unsupported IDs or alias collisions stay
+explicit and editable rather than being silently renamed.
+
+Other ready saved Bindings with the same exact upstream model ID MAY be offered as
+additional ordered candidates; adding them requires the user's choice. Similar
+labels alone do not establish a match. An existing route with that invocation name
+or exact ID display name MUST be offered for editing instead of creating a duplicate.
+For an existing fixed-model route, additions preserve its settings, reasoning and
+candidate order, skip existing Bindings and use its exact head revision. Other
+modes are opened for ordinary editing without silently replacing their strategy.
+Opening or cancelling this flow performs no write; one explicit save creates or
+updates the route through ordinary publication.
 
 Agent model grants/defaults belong to [Agent connections](../agent-connections/spec.md).
 Worker delegation has no caller-Agent allowlist. Enabling delegation requires one
@@ -78,6 +99,11 @@ At execution, a plan overrides caller effort with that candidate's exact native
 choice. Responses toggles render `reasoning.effort=low/none`; Messages manual toggles
 render enabled with 1024 tokens or disabled without a budget. Explicit budget and
 adaptive settings retain their own rules in [request routing](../request-routing/spec.md).
+For explicit model-detail creation, a budget-only candidate MAY be prefilled with
+its actual native minimum, visibly editable and confirmed by the user's Save.
+This does not change shared authoring's unresolved-budget choice or affect an
+existing candidate's custom reasoning.
+
 The registered Haiku 4.5 subscription toggle subset does not promise arbitrary
 manual budgets: enabled is exactly 1024 and `max_tokens <= 1024` must fail rather
 than grow the output budget. Released toggle records retain meaning through the

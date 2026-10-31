@@ -1,3 +1,5 @@
+import { CreateModelRoute } from './CreateModelRoute';
+import type { ModelRouteRequest } from './model-route';
 import { NativeSourceNetworkEditor } from '../model-connections/NativeSourceNetworkEditor';
 import { networkFailureText, networkRepairable, type NativeNetworkFailure } from '../model-connections/native-network';
 import { ModelDefaultsEditor } from '../model-feed/ModelDefaultsEditor';
@@ -43,8 +45,7 @@ type Props = {
   onCredentialsSaved?(): void;
   plans?: Plan[];
   onOpenPlan?(planId: string): void;
-  onTryModel?(modelId: string | undefined, bindingId: string): void;
-  onCreatePlan?(bindingId: string): void;
+  onCreatePlan?(request: ModelRouteRequest): void;
   onEditPrice?(source: ManagedSource, model: ManagedModel): void;
   priceRefresh?: ReadonlyMap<string, number>;
   onReauthorize?(sourceId: string): void;
@@ -403,6 +404,8 @@ export function Models(props: Props) {
             <StatusBadge value={status} reason={reason} subscription={access === 'subscription'} language={props.language} />
           </div>
 
+          {model && props.onCreatePlan && <CreateModelRoute key={model.binding_id} model={model} snapshot={props.snapshot} plans={props.plans ?? []} language={props.language} disabled={!props.mutable || submitting || networkDirty || status !== 'available'} onCreate={props.onCreatePlan} onOpenPlan={props.onOpenPlan} />}
+
           {props.renderSubscriptionApi?.(source)}
 
           {model?.catalog_configuration_id && <ModelOriginDetails modelId={model.catalog_configuration_id} language={props.language} />}
@@ -459,8 +462,7 @@ export function Models(props: Props) {
 
           {model && <section className="detail-section">
             <div className="detail-section-head"><h3>{text('用于这些路由', 'Used in these routes')}</h3></div>
-            {props.onTryModel && <button className="btn" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => props.onTryModel?.(model.catalog_configuration_id, model.binding_id)}>{text('试用这个模型', 'Try this model')}</button>}
-            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan || networkDirty}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}{plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && model && <button className="btn" type="button" disabled={networkDirty} onClick={() => props.onCreatePlan?.(model.binding_id)}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
+            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan || networkDirty}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}{plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p></>}
           </section>}
 
           {model && <section className="detail-section"><div className="detail-section-head"><h3>{text('移除模型', 'Remove model')}</h3><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => setLifecycle({ source, model, action: 'remove' })}>{text('移除模型', 'Remove model')}</button></div><p className="muted">{text('仅从所属接入移除这个模型。', 'Remove this model from its connection.')}</p></section>}

@@ -91,6 +91,11 @@ fn real_process_v2_plan_content_and_alias_recover_exactly() {
 }
 
 #[test]
+fn real_process_route_only_model_id_and_empty_purpose_survive_restart() {
+    run_script_case("plan_content_process.py", Some("route-only"));
+}
+
+#[test]
 fn real_process_plan_lifecycle_preserves_content_and_checks_references() {
     run_script("plan_lifecycle_process.py");
 }
