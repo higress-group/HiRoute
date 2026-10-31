@@ -3,6 +3,22 @@ use serde_json::Value;
 use super::*;
 
 #[test]
+fn routing_without_purpose_projects_a_nonempty_gateway_description() {
+    let publication: GatewayPublicationV1 = serde_json::from_slice(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap();
+    let plan = publication.plans[0].clone().into_current().unwrap();
+    let mut body = plan.body.as_ref().clone();
+    body.identity.purpose = AgentPlanPurpose::parse("").unwrap();
+    let current = CompiledAgentPlanV1::seal_current(body).unwrap();
+    let expected = current.body.identity.display_name.as_str().to_owned();
+    let aliases = materialize_aliases(std::slice::from_ref(&current), &publication.grants).unwrap();
+    assert_eq!(aliases[0].purpose, expected);
+    assert_eq!(current.body.identity.purpose.as_str(), "");
+}
+
+#[test]
 fn routing_publication_unknown_schema_and_revision_fail_closed() {
     let publication = GatewayPublicationV1::new(
         WorkspaceId::default(),

@@ -18,5 +18,6 @@ Unsupported aliases and concurrent changes remain explicit; existing routes are
 never silently converted to another strategy.
 
 Purpose is optional for routing, and required when enabling delegation. The Domain
-enforces this condition on publication and reopen; the Agent catalog uses the route
-display name when its saved purpose is empty, preserving its nonempty description.
+enforces this condition on publication and reopen; Agent and Gateway catalogs use
+the route display name when its saved purpose is empty, preserving their nonempty
+description contracts.

@@ -11,8 +11,9 @@ configuration. It has a durable identity independent of any main Agent.
 
 A plan MUST have a display name and unique model invocation name. Purpose is
 optional for model routing and required when task delegation is enabled. An empty
-purpose remains empty in saved configuration; the Agent catalog uses the display
-name as its nonempty description when no purpose was supplied.
+purpose remains empty in saved configuration; Agent and Gateway catalogs use the
+display name as their nonempty description when no purpose was supplied. Their
+released nonempty-description contracts remain unchanged.
 The same published name serves model catalogs, Agent configuration, Gateway dispatch,
 and Worker discovery. Display-name edits do not change an established invocation
 name. New names are readable editable ASCII slugs derived locally from usable text
