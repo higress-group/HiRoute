@@ -355,7 +355,7 @@ fn recorded_opportunities_include_complex_actions_but_not_old_or_inherited_decis
 }
 
 #[test]
-fn supported_v1_and_v2_observations_remain_readable_in_distinct_cohorts() {
+fn supported_c_observations_remain_readable_in_distinct_cohorts() {
     let baseline: serde_json::Value = serde_json::from_str(include_str!(
         "../../../../../domain/src/routing/fixtures/baseline-c-default-publication.json"
     ))
@@ -367,10 +367,22 @@ fn supported_v1_and_v2_observations_remain_readable_in_distinct_cohorts() {
     old.protocol = legacy.protocol.schema.clone();
     old.content_digest = legacy.digest.clone();
     old.bundle_digest = CanonicalDigest::of(&legacy.protocol.fixed).unwrap();
-    let new = observation(3);
+    let baseline_v2: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../domain/src/routing/fixtures/baseline-c-v2-default-publication.json"
+    ))
+    .unwrap();
+    let v2_frozen: FrozenNativeProtocolV1 =
+        serde_json::from_value(baseline_v2["frozen"].clone()).unwrap();
+    v2_frozen.validate().unwrap();
+    let mut v2 = observation(3);
+    v2.protocol = v2_frozen.protocol.schema.clone();
+    v2.content_digest = v2_frozen.digest.clone();
+    v2.bundle_digest = CanonicalDigest::of(&v2_frozen.protocol.fixed).unwrap();
+    let new = observation(4);
     assert_eq!(old.protocol, SYSTEM_ONE_C_V1);
-    assert_eq!(new.protocol, SYSTEM_ONE_C_V2);
-    assert!(old.validate() && new.validate());
+    assert_eq!(v2.protocol, SYSTEM_ONE_C_V2);
+    assert_eq!(new.protocol, SYSTEM_ONE_C_V3);
+    assert!(old.validate() && v2.validate() && new.validate());
     let old_bytes = serde_json::to_vec(&old).unwrap();
 
     let directory = tempfile::tempdir().unwrap();
@@ -378,7 +390,10 @@ fn supported_v1_and_v2_observations_remain_readable_in_distinct_cohorts() {
     let fixture = Fixture::new("versioned-c-observation");
     let channel = fact_channel(&fixture, 1024 * 1024);
     let writer = writer(&store);
-    for (index, observation) in [old.clone(), new.clone()].into_iter().enumerate() {
+    for (index, observation) in [old.clone(), v2.clone(), new.clone()]
+        .into_iter()
+        .enumerate()
+    {
         let mut fact = route_decision(PLAN);
         let ExecutionFactV1::RouteDecision(decision) = &mut fact else {
             unreachable!()
@@ -409,7 +424,7 @@ fn supported_v1_and_v2_observations_remain_readable_in_distinct_cohorts() {
         .routing_observations
         .unwrap();
     assert_eq!(summary.coverage, "complete");
-    assert_eq!(summary.cohorts.len(), 2);
+    assert_eq!(summary.cohorts.len(), 3);
     assert!(
         summary
             .cohorts
@@ -422,6 +437,13 @@ fn supported_v1_and_v2_observations_remain_readable_in_distinct_cohorts() {
             .cohorts
             .iter()
             .any(|c| c.cohort.protocol == SYSTEM_ONE_C_V2
+                && c.cohort.content_digest == v2.content_digest)
+    );
+    assert!(
+        summary
+            .cohorts
+            .iter()
+            .any(|c| c.cohort.protocol == SYSTEM_ONE_C_V3
                 && c.cohort.content_digest == new.content_digest)
     );
     let facts = store

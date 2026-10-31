@@ -40,7 +40,11 @@ fn stock_questions_and_composition_are_the_public_frozen_c_full() {
 #[test]
 fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
     let old_questions = stock_c_questions();
-    let new_questions = stock_c_v2_questions();
+    let v2_questions = stock_c_v2_questions();
+    let new_questions = stock_c_v3_questions();
+    assert_eq!(v2_questions["q0"], new_questions["q0"]);
+    assert_eq!(v2_questions["q1"], new_questions["q1"]);
+    assert_ne!(v2_questions["q2"], new_questions["q2"]);
     assert_eq!(old_questions["q0"], new_questions["q0"]);
     assert_eq!(old_questions["q1"], new_questions["q1"]);
     assert_ne!(old_questions["q2"], new_questions["q2"]);
@@ -49,13 +53,18 @@ fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
         format!("sha256:{C_FULL_CHECKSUM}")
     );
     assert_eq!(
-        CanonicalDigest::of(&new_questions).unwrap().as_str(),
+        CanonicalDigest::of(&v2_questions).unwrap().as_str(),
         format!("sha256:{C_V2_FULL_CHECKSUM}")
     );
+    assert_eq!(
+        CanonicalDigest::of(&new_questions).unwrap().as_str(),
+        format!("sha256:{C_V3_FULL_CHECKSUM}")
+    );
     let old = NativeProtocolV1::c_v1();
+    let v2 = NativeProtocolV1::c_v2();
     let new = NativeProtocolV1::default();
-    assert_eq!(new.schema, SYSTEM_ONE_C_V2);
-    for protocol in [&old, &new] {
+    assert_eq!(new.schema, SYSTEM_ONE_C_V3);
+    for protocol in [&old, &v2, &new] {
         protocol.validate().unwrap();
         let selection = super::super::NativeProtocolSelectionV1 {
             schema: protocol.schema.clone(),
@@ -66,6 +75,8 @@ fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
     for (schema, fixed) in [
         (SYSTEM_ONE_C_V1, new.fixed.clone()),
         (SYSTEM_ONE_C_V2, old.fixed.clone()),
+        (SYSTEM_ONE_C_V2, new.fixed.clone()),
+        (SYSTEM_ONE_C_V3, v2.fixed.clone()),
     ] {
         let mismatched = NativeProtocolV1 {
             schema: schema.into(),
@@ -96,7 +107,23 @@ fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
         .unwrap()
     };
     let old_frozen = freeze(&old);
+    let v2_frozen = freeze(&v2);
     let new_frozen = freeze(&new);
+    let v2_bytes = serde_json::to_vec(&v2_frozen).unwrap();
+    let restored_v2: FrozenNativeProtocolV1 = serde_json::from_slice(&v2_bytes).unwrap();
+    let v2_authoring = judgment
+        .resolve_assessment(Some(&super::super::NativeProtocolSelectionV1 {
+            schema: SYSTEM_ONE_C_V2.into(),
+            prior_context_max_turns: 8,
+        }))
+        .unwrap();
+    restored_v2.validate_smart(&v2_authoring).unwrap();
+    assert_eq!(serde_json::to_vec(&restored_v2).unwrap(), v2_bytes);
+    assert_ne!(v2_frozen.digest, new_frozen.digest);
+    assert_ne!(
+        v2_frozen.execution_policy(super::super::SMART_SAVING_SCOPE_ID, &judgment, "same"),
+        new_frozen.execution_policy(super::super::SMART_SAVING_SCOPE_ID, &judgment, "same")
+    );
     assert_ne!(old_frozen.digest, new_frozen.digest);
     assert_ne!(
         old_frozen.execution_policy(super::super::SMART_SAVING_SCOPE_ID, &judgment, "same"),

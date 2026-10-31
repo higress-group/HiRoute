@@ -759,7 +759,7 @@ fn ordinary_preview_resolves_defaults_and_seals_concrete_contents_without_review
         frozen.scopes[SMART_SAVING_SCOPE_ID].assessment,
         composed_assessment(Some(&protocol), &current)
     );
-    assert_eq!(frozen.protocol.fixed, NativeFixedContentV1::c_v2());
+    assert_eq!(frozen.protocol.fixed, NativeFixedContentV1::c_v3());
     let reopened = enabled.plan_version.configuration.editor(None).unwrap();
     change.editor = reopened;
     let off = preview_plan_content(&change, &state).unwrap();

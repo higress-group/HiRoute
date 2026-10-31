@@ -209,7 +209,7 @@ valid selected-path answers. Invalid applicability retains only an otherwise
 eligible historical protection opportunity. Duplicate/unknown question identities
 and malformed framing must not be repaired by positional guesses.
 
-Codec choice MUST leave logical C v1/v2 content, history partition, thresholds,
+Codec choice MUST leave logical C v1/v2/v3 content, history partition, thresholds,
 score inheritance, selected-path reduction and fallback unchanged. Prepare from
 the common bounded representation and account for actual encoded wire bytes;
 conversion must not materialize the same large Replay history twice. Runtime
@@ -277,9 +277,9 @@ fixture. Pure composition logic may be shared. Disposable unreleased C encodings
 need no support adapter; supported released data and retained authenticated
 historical evidence preserve their existing compatibility treatment.
 
-New native authoring seals hiroute.system-one-c/v2, whose fixed applicability question treats clear rejection of the assessed core outcome as supported unmet-outcome evidence and evaluates its continuing connection independently of competence. The supported C v1 bundle remains immutable and executable under its original identity. C v2 keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
+New native authoring seals hiroute.system-one-c/v3. Its fixed applicability question separately establishes the original obligation, supported unmet outcome, present correction or acceptance status, and connection to the pending work. Partial correctness or praise for one component does not establish acceptance of the overall requested result. Subjective rejection of an originally requested quality, including independent usability or clarity, is outcome evidence without proving a hidden technical defect; an accepted result followed by a new preference is distinct. The supported C v1 and C v2 bundles remain immutable and executable under their original identities. C v3 changes only applicability wording and keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
 
-Current readers accept authenticated v1 and v2 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier may also accept the explicitly supplied supported v2 protocol. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
+Current readers accept authenticated v1, v2 and v3 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier also accepts explicitly supplied supported v2 and v3 protocols with their own exact bundles. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
 
 #### Scenario: Frozen C questions
 
@@ -309,7 +309,7 @@ Current readers accept authenticated v1 and v2 publications, retained Operations
 #### Scenario: Current feedback protocol on new publication
 
 - **WHEN** a new native route is explicitly saved and published with otherwise eligible same-core rejection feedback
-- **THEN** the sealed protocol is C v2 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
+- **THEN** the sealed protocol is C v3 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
 
 #### Scenario: Supported v1 execution and recovery
 
@@ -577,7 +577,7 @@ Applicability independently evaluates whether the reported unmet outcome still m
 
 All shipped default model-facing instructions and criteria SHALL be English independently of UI locale, including category, degree, competence, applicability, wrappers and trial presets. Localized UI explanations may be translated; user-authored prompts retain their chosen language. New defaults are sealed through normal publication; existing saved custom prompts and frozen published question content retain their exact original meaning and bytes. A fixed supported protocol bundle must not be edited in place to change its meaning.
 
-Newly authored native publications use the versioned C v2 applicability bundle. Clear rejection of the assessed core result followed by work on that same unmet outcome is supported applicability evidence without a technical diagnosis, while the existing correction, acceptance, unrelated-task and authority distinctions remain effective. Existing C v1 publications and retained Operations retain their exact frozen questions, protocol identity and digests. Editing prepares current defaults only for the next explicit save/publication and cannot mutate active or historical content.
+Newly authored native publications use the versioned C v3 applicability bundle. Clear rejection of the assessed core result followed by work on that same unmet outcome is supported applicability evidence without a technical diagnosis, while the existing correction, acceptance, unrelated-task and authority distinctions remain effective. Existing C v1/v2 publications and retained Operations retain their exact frozen questions, protocol identity and digests. Editing prepares current defaults only for the next explicit save/publication and cannot mutate active or historical content.
 
 #### Scenario: Brief rejection of the preceding core result
 
@@ -588,6 +588,11 @@ Newly authored native publications use the versioned C v2 applicability bundle. 
 
 - **WHEN** the same stage instead receives clear acceptance, neutral continuation, a new unrelated requirement, or a bounded local refinement with explicit acceptance of the core result
 - **THEN** those inputs do not inherit the broad-rejection result; acceptance supports competence, and local refinement is weighed proportionately rather than forcing low competence.
+
+#### Scenario: Partial approval does not accept a rejected original outcome
+
+- **WHEN** a stage was asked to deliver an independently usable result; the user confirms one component is correct but says the result still needs assistance and requests improvement to that same original outcome
+- **THEN** applicability treats the still-unmet usability outcome as connected to the current work, without requiring a diagnosed technical defect or treating the praise as acceptance of the whole result. The same rule applies to other originally requested qualities and does not infer a newly introduced requirement retrospectively.
 
 #### Scenario: Feedback cannot replace missing evidence or scoring authority
 
@@ -601,7 +606,7 @@ Newly authored native publications use the versioned C v2 applicability bundle. 
 
 #### Scenario: Versioned defaults preserve sealed history
 
-- **WHEN** a supported C v1 publication or unfinished Operation is reopened after C v2 becomes the authoring default
+- **WHEN** a supported C v1/v2 publication or unfinished Operation is reopened after C v3 becomes the authoring default
 - **THEN** the original v1 bundle, custom/default contents and authenticated identities remain unchanged; a later explicit edit/publication seals the current supported bundle without rewriting earlier records.
 
 Source SPEC comments:
