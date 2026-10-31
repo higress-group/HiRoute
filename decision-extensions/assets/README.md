@@ -2,7 +2,7 @@
 
 ## Native session captures
 
-The homepage and model-routing guide use
+The model-routing guide uses
 [English](quality-native-en.png) and [Chinese](quality-native-zh-CN.png) captures
 of the real macOS Desktop Sessions page. Both are 2400×2100 pixels, captured at
 1200×1050 logical points, with the navigation, session list and two complete
@@ -29,7 +29,7 @@ not replace routing or provider acceptance.
 
 ## README session recordings
 
-The root README uses [English](readme-session-en.png) and [Chinese](readme-session-zh-CN.png)
+The root README and website homepage use [English](readme-session-en.png) and [Chinese](readme-session-zh-CN.png)
 frames from macOS screen recordings of real DeepSeek Harness Desktop sessions routed
 through HiRoute Desktop release builds, not browser mocks. Both sessions work on the same
 fictional Account Export project with live provider calls: DeepSeek V4.1 Flash in the
@@ -49,7 +49,7 @@ is 1900×2072 from a 2× recording, with the pointer resting on the selected tur
 
 ## README trial and report captures
 
-The README's [trust level](readme-trial-en.png) ([中文](readme-trial-zh-CN.png)) and
+The README and homepage [trust level](readme-trial-en.png) ([中文](readme-trial-zh-CN.png)) and
 [model performance report](readme-report-en.png) ([中文](readme-report-zh-CN.png)) images
 render the production trust-level control and model-performance report from the Plan editor in
 headless Chrome at device scale 2, dark theme (matching the session recordings), 1200-pixel viewport

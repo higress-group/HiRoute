@@ -610,8 +610,9 @@ Complete-model-data regressions cover [canonical wire identity](../../crates/int
 [defaults, metadata pagination and removal dialogs](../../apps/desktop/tests/v3/visual/model-metadata-active.mjs),
 [price activation races](../../crates/daemon/src/control/runtime/prices/tests.rs), and
 [slow shared-session reads](../../crates/product-session/src/commands/model_feed/tests.rs).
-The [producer regressions](../../tools/release-facts/src/feed/tests.rs) reject
-uncommitted and committed same-revision corrections and rollback during bootstrap;
+The [producer regressions](../../tools/release-facts/src/feed/tests.rs) publish from
+development source without release records or package verification, retain recorded-reader
+checks, and reject uncommitted and committed same-revision corrections and rollback;
 the [service reopen scenario](../../crates/daemon/src/model_feed/tests.rs) preserves
 settings, acceptance and a captured old snapshot across an embedded v2 data upgrade.
 Directory scenarios use real generated inferred and observed records, including

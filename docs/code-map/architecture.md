@@ -159,6 +159,11 @@ The name must fit any runtime root that supports `hiroute/control.sock`, includi
 | Project native reasoning settings | [Scoped API defaults](../../crates/integrations/src/compute/defaults/native_reasoning.rs), [saved-model projection](../../crates/daemon/src/control/runtime/model_connections/defaults.rs), [wire types](../../crates/domain/src/routing/gateway_execution.rs), [daemon renderer](../../crates/daemon/src/control/runtime/candidate_protocol_profiles.rs), [Gateway reader](../../crates/gateway/src/profiles/reasoning.rs) and [wire normalization](../../crates/gateway/src/adapters/request/reasoning.rs) | Missing API controls use exact model/product/wire metadata while manual values remain authoritative; [normal save/reopen/read/options](../../crates/daemon/src/control/runtime/model_connections/api_reasoning_tests.rs) and [materializer → compiler → Gateway tests](../../crates/daemon/src/control/runtime/candidate_execution_tests.rs) cover accepted aliases |
 | Negotiate standard Responses JSON tools with Codex V2 | [Bidirectional dialect owner](../../crates/gateway/src/adapters/responses_dialect.rs), [schema/Replay structure](../../crates/gateway/src/adapters/schema_encoding.rs), [encoding lifecycle](../../crates/gateway/src/adapters/response/function_encoding.rs), [stored semantic choice](../../crates/domain/src/routing/stored.rs) | An exact registered adapter selects request schema/peer projection and response encoding together; native subscription semantics and old saved sources stay distinct. [Roundtrip tests](../../crates/gateway/src/adapters/responses_dialect_tests.rs) cover JSON/SSE/Replay and negative encoding cases |
 
+[Subscription process recovery](../../crates/cpa-bridge/src/runtime.rs) authenticates
+an orphan before checking its generated proxy and Claude cloaking policy.
+[Recovery regressions](../../crates/cpa-bridge/src/runtime/tests/proxy_recovery.rs)
+cover replacement of a stale policy; stop-only cleanup retains its separate owner.
+
 Native configuration precedence belongs to each reader. For example, Pi provider
 `baseUrl` overrides inherited catalog addresses, while provider `api` defaults apply
 only to explicit models; [filesystem tests](../../crates/integrations/src/agents/filesystem_tests/pi.rs)

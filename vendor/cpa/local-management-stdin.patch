@@ -54,26 +54,26 @@ index 0000000..abb036f
 +	}
 +}
 diff --git a/cmd/server/main.go b/cmd/server/main.go
-index 2b99077..a661fbb 100644
+index 960d5e5..53b4567 100644
 --- a/cmd/server/main.go
 +++ b/cmd/server/main.go
-@@ -125,6 +125,7 @@ func main() {
- 	var vertexImportPrefix string
+@@ -127,6 +127,7 @@ func main() {
+ 	var siwcBind string
  	var configPath string
  	var password string
 +	var localPasswordStdin bool
  	var homeJWT string
  	var homeDisableClusterDiscovery bool
  	var tuiMode bool
-@@ -154,6 +155,7 @@ func main() {
- 	flag.StringVar(&vertexImport, "vertex-import", "", "Import Vertex service account key JSON file")
+@@ -157,6 +158,7 @@ func main() {
  	flag.StringVar(&vertexImportPrefix, "vertex-import-prefix", "", "Prefix for Vertex model namespacing (use with -vertex-import)")
+ 	flag.StringVar(&siwcBind, "siwc-bind", "", "Bind Sign in with ChatGPT (SIWC) credentials to a Codex credential file")
  	flag.StringVar(&password, "password", "", "")
 +	flag.BoolVar(&localPasswordStdin, "local-password-stdin", false, "Read the local management credential from the parent pipe")
  	flag.StringVar(&homeJWT, "home-jwt", "", "Home control plane JWT for mTLS certificate bootstrap and connection")
  	flag.BoolVar(&homeDisableClusterDiscovery, "home-disable-cluster-discovery", false, "Disable Home CLUSTER NODES discovery and keep using the configured -home-jwt address")
  	flag.BoolVar(&tuiMode, "tui", false, "Start with terminal management UI")
-@@ -198,6 +200,18 @@ func main() {
+@@ -201,6 +203,18 @@ func main() {
  
  	// Parse the command-line flags.
  	flag.Parse()
@@ -92,10 +92,10 @@ index 2b99077..a661fbb 100644
  
  	if discoverGateways || discoverJSON {
  		cfgInclude, cfgExclude := cmd.LoadDiscoveryScanFilters(configPath)
-@@ -825,6 +839,11 @@ func main() {
+@@ -832,6 +846,11 @@ func main() {
  			managementasset.StartAutoUpdater(context.Background(), configFilePath)
  			misc.StartAntigravityVersionUpdater(context.Background())
- 			startModelCatalogUpdaters(localModel, cfg.Home.Enabled)
+ 			registry.SetLocalModelCatalogs(localModel)
 +			if localPasswordStdin {
 +				// The managed parent owns process lifetime, not the interactive keep-alive endpoint.
 +				serverOptions = append(serverOptions, api.WithLocalManagementPassword(password))
@@ -105,10 +105,10 @@ index 2b99077..a661fbb 100644
  		}
  	}
 diff --git a/internal/api/handlers/management/auth_files.go b/internal/api/handlers/management/auth_files.go
-index 0a4ed74..5678a80 100644
+index f59aaf0..c089ba2 100644
 --- a/internal/api/handlers/management/auth_files.go
 +++ b/internal/api/handlers/management/auth_files.go
-@@ -16,6 +16,7 @@ import (
+@@ -17,6 +17,7 @@ import (
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/credentialweight"
@@ -116,7 +116,7 @@ index 0a4ed74..5678a80 100644
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
  	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
  	log "github.com/sirupsen/logrus"
-@@ -355,7 +356,10 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
+@@ -358,7 +359,10 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
  
  	// Get models from registry
  	reg := registry.GetGlobalRegistry()
@@ -128,7 +128,7 @@ index 0a4ed74..5678a80 100644
  
  	result := make([]gin.H, 0, len(models))
  	for _, m := range models {
-@@ -374,7 +378,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
+@@ -377,7 +381,7 @@ func (h *Handler) GetAuthFileModels(c *gin.Context) {
  		result = append(result, entry)
  	}
  
@@ -191,7 +191,7 @@ index 0000000..b4b2fb3
 +	}
 +}
 diff --git a/internal/api/handlers/management/auth_files_oauth_callback.go b/internal/api/handlers/management/auth_files_oauth_callback.go
-index f33f82e..3d87ba9 100644
+index 0efdb35..d4a261d 100644
 --- a/internal/api/handlers/management/auth_files_oauth_callback.go
 +++ b/internal/api/handlers/management/auth_files_oauth_callback.go
 @@ -8,6 +8,7 @@ import (
@@ -202,7 +202,7 @@ index f33f82e..3d87ba9 100644
  	"time"
  
  	"github.com/gin-gonic/gin"
-@@ -39,23 +40,6 @@ func isWebUIRequest(c *gin.Context) bool {
+@@ -47,23 +48,6 @@ func isWebUIRequest(c *gin.Context) bool {
  }
  
  func startCallbackForwarder(port int, provider, targetBase string) (*callbackForwarder, error) {
@@ -226,7 +226,7 @@ index f33f82e..3d87ba9 100644
  	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
  		target := targetBase
  		if raw := r.URL.RawQuery; raw != "" {
-@@ -69,6 +53,24 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
+@@ -77,6 +61,24 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
  		http.Redirect(w, r, target, http.StatusFound)
  	})
  
@@ -251,7 +251,7 @@ index f33f82e..3d87ba9 100644
  	srv := &http.Server{
  		Handler:           handler,
  		ReadHeaderTimeout: 5 * time.Second,
-@@ -76,10 +78,18 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
+@@ -84,10 +86,18 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
  	}
  	done := make(chan struct{})
  
@@ -273,7 +273,7 @@ index f33f82e..3d87ba9 100644
  		close(done)
  	}()
  
-@@ -93,7 +103,7 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
+@@ -101,7 +111,7 @@ func startCallbackForwarder(port int, provider, targetBase string) (*callbackFor
  	callbackForwarders[port] = forwarder
  	callbackForwardersMu.Unlock()
  
@@ -283,11 +283,11 @@ index f33f82e..3d87ba9 100644
  	return forwarder, nil
  }
 diff --git a/internal/api/handlers/management/auth_files_provider_oauth.go b/internal/api/handlers/management/auth_files_provider_oauth.go
-index 48fc4ef..ebacfa4 100644
+index 52a7042..7d2206f 100644
 --- a/internal/api/handlers/management/auth_files_provider_oauth.go
 +++ b/internal/api/handlers/management/auth_files_provider_oauth.go
-@@ -70,19 +70,17 @@ func (h *Handler) RequestAnthropicToken(c *gin.Context) {
- 	RegisterOAuthSession(state, "anthropic")
+@@ -79,19 +79,16 @@ func (h *Handler) RequestAnthropicToken(c *gin.Context) {
+ 	RegisterOAuthSessionWithProxy(state, "anthropic", sessionProxyURL)
  
  	isWebUI := isWebUIRequest(c)
 +	callbackMode := "manual"
@@ -304,17 +304,16 @@ index 48fc4ef..ebacfa4 100644
 -			log.WithError(errStart).Error("failed to start anthropic callback forwarder")
 -			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start callback server"})
 -			return
-+		forwarder, errStart = startHiRouteCallbackReceiver(anthropicCallbackPort, "anthropic", state, h.cfg.AuthDir)
++		forwarder, errStart = startHiRouteCallbackReceiver(anthropicCallbackPort, "anthropic", state, cfg.AuthDir)
 +		if errStart == nil {
 +			callbackMode = "automatic"
 +		} else {
-+			// Keep this exact session for protected manual input. Do not disclose
-+			// host errors or replace an unrelated process owning the callback port.
++			// Retain this session for protected manual input without exposing host errors.
 +			log.Warn("local OAuth callback listener unavailable; manual completion required")
  		}
  	}
  
-@@ -142,6 +140,8 @@ func (h *Handler) RequestAnthropicToken(c *gin.Context) {
+@@ -151,6 +148,8 @@ func (h *Handler) RequestAnthropicToken(c *gin.Context) {
  		rawCode := resultMap["code"]
  		code := strings.Split(rawCode, "#")[0]
  
@@ -323,7 +322,7 @@ index 48fc4ef..ebacfa4 100644
  		// Exchange code for tokens using internal auth service
  		bundle, errExchange := anthropicAuth.ExchangeCodeForTokens(ctx, code, state, pkceCodes)
  		if errExchange != nil {
-@@ -192,7 +192,7 @@ func (h *Handler) RequestAnthropicToken(c *gin.Context) {
+@@ -202,7 +201,7 @@ func (h *Handler) RequestAnthropicToken(c *gin.Context) {
  		CompleteOAuthSession(state)
  	}()
  
@@ -332,8 +331,8 @@ index 48fc4ef..ebacfa4 100644
  }
  
  func (h *Handler) RequestCodexToken(c *gin.Context) {
-@@ -231,19 +231,17 @@ func (h *Handler) RequestCodexToken(c *gin.Context) {
- 	RegisterOAuthSession(state, "codex")
+@@ -247,19 +246,15 @@ func (h *Handler) RequestCodexToken(c *gin.Context) {
+ 	}
  
  	isWebUI := isWebUIRequest(c)
 +	callbackMode := "manual"
@@ -350,17 +349,15 @@ index 48fc4ef..ebacfa4 100644
 -			log.WithError(errStart).Error("failed to start codex callback forwarder")
 -			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start callback server"})
 -			return
-+		forwarder, errStart = startHiRouteCallbackReceiver(codexCallbackPort, "codex", state, h.cfg.AuthDir)
++		forwarder, errStart = startHiRouteCallbackReceiver(codexCallbackPort, "codex", state, cfg.AuthDir)
 +		if errStart == nil {
 +			callbackMode = "automatic"
 +		} else {
-+			// Keep this exact session for protected manual input. Do not disclose
-+			// host errors or replace an unrelated process owning the callback port.
 +			log.Warn("local OAuth callback listener unavailable; manual completion required")
  		}
  	}
  
-@@ -288,6 +286,7 @@ func (h *Handler) RequestCodexToken(c *gin.Context) {
+@@ -304,6 +299,7 @@ func (h *Handler) RequestCodexToken(c *gin.Context) {
  			time.Sleep(500 * time.Millisecond)
  		}
  
@@ -368,15 +365,15 @@ index 48fc4ef..ebacfa4 100644
  		log.Debug("Authorization code received, exchanging for tokens...")
  		// Exchange code for tokens using internal auth service
  		bundle, errExchange := openaiAuth.ExchangeCodeForTokens(ctx, code, pkceCodes)
-@@ -353,7 +352,7 @@ func (h *Handler) RequestCodexToken(c *gin.Context) {
- 		CompleteOAuthSession(state)
+@@ -421,7 +417,7 @@ func (h *Handler) RequestCodexToken(c *gin.Context) {
+ 		CompleteOAuthSessionWithOutcome(state, record.ID, savedGrantHash, strings.TrimSpace(savedPath) != "", adopted, hadPrevAuth, prevVersion, prevEpoch, adoptedVersion, adoptedEpoch, adoptErr, verifyErr)
  	}()
  
--	c.JSON(200, gin.H{"status": "ok", "url": authURL, "state": state})
-+	c.JSON(200, gin.H{"status": "ok", "url": authURL, "state": state, "hiroute_callback_mode": callbackMode})
- }
- 
- func (h *Handler) RequestAntigravityToken(c *gin.Context) {
+-	respPayload := gin.H{"status": "ok", "url": authURL, "state": state}
++	respPayload := gin.H{"status": "ok", "url": authURL, "state": state, "hiroute_callback_mode": callbackMode}
+ 	if hasSessionTarget {
+ 		respPayload["target_auth_id"] = sessionTarget.AuthID
+ 	}
 diff --git a/internal/api/handlers/management/hiroute_oauth_callback.go b/internal/api/handlers/management/hiroute_oauth_callback.go
 new file mode 100644
 index 0000000..7aac5b4
@@ -811,24 +808,56 @@ index 0000000..74d027d
 +	}
 +}
 diff --git a/internal/api/handlers/management/oauth_sessions.go b/internal/api/handlers/management/oauth_sessions.go
-index 336f9bb..9359040 100644
+index 62559a1..9c9ea6b 100644
 --- a/internal/api/handlers/management/oauth_sessions.go
 +++ b/internal/api/handlers/management/oauth_sessions.go
-@@ -33,13 +33,14 @@ var (
- )
+@@ -48,29 +48,30 @@ type oauthRecoveryTarget struct {
+ }
  
  type oauthSession struct {
--	Provider  string
--	Status    string
--	Source    string
--	Metadata  map[string]any
--	Completed bool
--	CreatedAt time.Time
--	ExpiresAt time.Time
+-	Provider        string
+-	Status          string
+-	Source          string
+-	ProxyURL        string
+-	Metadata        map[string]any
+-	SIWC            *siwcBindSession
+-	Target          *oauthRecoveryTarget
+-	AuthID          string
+-	SavedGrantHash  string
+-	Saved           bool
+-	Adopted         bool
+-	BaselineExisted bool
+-	BaselineVersion uint64
+-	BaselineEpoch   uint64
+-	AdoptedVersion  uint64
+-	AdoptedEpoch    uint64
+-	AdoptError      string
+-	VerifyError     string
+-	Committing      bool
+-	SIWCCommitting  bool
+-	Completed       bool
+-	CreatedAt       time.Time
+-	ExpiresAt       time.Time
 +	Provider          string
 +	Status            string
 +	Source            string
++	ProxyURL          string
 +	Metadata          map[string]any
++	SIWC              *siwcBindSession
++	Target            *oauthRecoveryTarget
++	AuthID            string
++	SavedGrantHash    string
++	Saved             bool
++	Adopted           bool
++	BaselineExisted   bool
++	BaselineVersion   uint64
++	BaselineEpoch     uint64
++	AdoptedVersion    uint64
++	AdoptedEpoch      uint64
++	AdoptError        string
++	VerifyError       string
++	Committing        bool
++	SIWCCommitting    bool
 +	Completed         bool
 +	CallbackSubmitted bool
 +	CreatedAt         time.Time
@@ -836,19 +865,21 @@ index 336f9bb..9359040 100644
  }
  
  type oauthSessionStore struct {
-@@ -481,8 +482,24 @@ func WriteOAuthCallbackFileForPendingSession(authDir, provider, state, code, err
+@@ -761,11 +762,25 @@ func WriteOAuthCallbackFileForPendingSession(authDir, provider, state, code, err
  	if err != nil {
  		return "", err
  	}
--	if !IsOAuthSessionPending(state, canonicalProvider) {
-+	// Automatic browser callbacks and protected manual input share one admission.
-+	// Hold it through atomic file publication; the consumer can remove that file,
-+	// so its presence alone cannot prevent a second submission.
+-	if session, ok := oauthSessions.Get(state); ok && session.SIWC != nil {
++	// Browser and protected manual callbacks share one atomic admission.
 +	oauthSessions.mu.Lock()
 +	defer oauthSessions.mu.Unlock()
 +	oauthSessions.purgeExpiredLocked(time.Now())
 +	session, ok := oauthSessions.sessions[state]
-+	if !ok || session.Provider != canonicalProvider || session.Completed || session.Status != "" || session.CallbackSubmitted {
++	if ok && session.SIWC != nil {
+ 		return "", ErrSIWCCallbackRequiresV8
+ 	}
+-	if !IsOAuthSessionPending(state, canonicalProvider) {
++	if !ok || session.Provider != canonicalProvider || session.Completed || session.Committing || session.Status != "" || session.CallbackSubmitted {
  		return "", errOAuthSessionNotPending
  	}
 -	return writeOAuthCallbackFile(authDir, canonicalProvider, state, code, errorMessage)
@@ -864,14 +895,13 @@ index 336f9bb..9359040 100644
 +	return path, nil
  }
 diff --git a/internal/api/server_routes.go b/internal/api/server_routes.go
-index 546ca73..a878459 100644
+index e2b039a..4ab1c5a 100644
 --- a/internal/api/server_routes.go
 +++ b/internal/api/server_routes.go
-@@ -143,33 +143,9 @@ func (s *Server) setupRoutes() {
- 	// OAuth callback endpoints (reuse main server port)
+@@ -153,38 +153,15 @@ func (s *Server) setupRoutes() {
  	// These endpoints receive provider redirects and persist
  	// the short-lived code/state for the waiting goroutine.
--	s.engine.GET("/anthropic/callback", func(c *gin.Context) {
+ 	s.engine.GET("/anthropic/callback", func(c *gin.Context) {
 -		code := c.Query("code")
 -		state := c.Query("state")
 -		errStr := c.Query("error")
@@ -879,30 +909,38 @@ index 546ca73..a878459 100644
 -			errStr = c.Query("error_description")
 -		}
 -		if state != "" {
--			_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(s.cfg.AuthDir, "anthropic", state, code, errStr)
--		}
+-			if cfg := s.getConfig(); cfg != nil {
+-				_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(cfg.AuthDir, "anthropic", state, code, errStr)
+-			}
++		if cfg := s.getConfig(); cfg != nil {
++			managementHandlers.HiRouteBrowserOAuthCallback(cfg.AuthDir, "anthropic")(c)
+ 		}
 -		c.Header("Content-Type", "text/html; charset=utf-8")
 -		c.String(http.StatusOK, oauthCallbackSuccessHTML)
--	})
-+	s.engine.GET("/anthropic/callback", managementHandlers.HiRouteBrowserOAuthCallback(s.cfg.AuthDir, "anthropic"))
+ 	})
  
--	s.engine.GET("/codex/callback", func(c *gin.Context) {
+ 	s.engine.GET("/codex/callback", func(c *gin.Context) {
 -		code := c.Query("code")
 -		state := c.Query("state")
 -		errStr := c.Query("error")
 -		if errStr == "" {
 -			errStr = c.Query("error_description")
--		}
++		if cfg := s.getConfig(); cfg != nil {
++			managementHandlers.HiRouteBrowserOAuthCallback(cfg.AuthDir, "codex")(c)
+ 		}
 -		if state != "" {
--			_, _ = managementHandlers.WriteOAuthCallbackFileForPendingSession(s.cfg.AuthDir, "codex", state, code, errStr)
+-			if cfg := s.getConfig(); cfg != nil {
+-				if _, errWrite := managementHandlers.WriteOAuthCallbackFileForPendingSession(cfg.AuthDir, "codex", state, code, errStr); errors.Is(errWrite, managementHandlers.ErrSIWCCallbackRequiresV8) {
+-					c.JSON(http.StatusConflict, gin.H{"error": "SIWC callbacks require /v8/management/oauth/callback"})
+-					return
+-				}
+-			}
 -		}
 -		c.Header("Content-Type", "text/html; charset=utf-8")
 -		c.String(http.StatusOK, oauthCallbackSuccessHTML)
--	})
-+	s.engine.GET("/codex/callback", managementHandlers.HiRouteBrowserOAuthCallback(s.cfg.AuthDir, "codex"))
+ 	})
  
  	s.engine.GET("/antigravity/callback", func(c *gin.Context) {
- 		code := c.Query("code")
 diff --git a/internal/auth/claude/hiroute_environment_proxy_test.go b/internal/auth/claude/hiroute_environment_proxy_test.go
 new file mode 100644
 index 0000000..3869b7e
@@ -2435,11 +2473,34 @@ index 0000000..149402c
 +		})
 +	}
 +}
+diff --git a/internal/runtime/executor/helps/transport_decorator_test.go b/internal/runtime/executor/helps/transport_decorator_test.go
+index c767f78..ca5419b 100644
+--- a/internal/runtime/executor/helps/transport_decorator_test.go
++++ b/internal/runtime/executor/helps/transport_decorator_test.go
+@@ -46,7 +46,17 @@ func TestClientDecoratorsPreserveProtectedAndProxyTransports(t *testing.T) {
+ 						t.Fatalf("lost TLS profiles: %#v", selected)
+ 					}
+ 					plainRT, ok := plain.Transport.(*fallbackRoundTripper)
+-					if !ok || plainRT.anthropic != rt.anthropic {
++					if !ok {
++						t.Fatal("plain client lost TLS profiles")
++					}
++					plainAnthropic, decoratedAnthropic := plainRT.anthropic, rt.anthropic
++					if environment, ok := plainAnthropic.(*environmentProxyTransport); ok {
++						plainAnthropic = environment.direct
++					}
++					if environment, ok := decoratedAnthropic.(*environmentProxyTransport); ok {
++						decoratedAnthropic = environment.direct
++					}
++					if plainAnthropic != decoratedAnthropic {
+ 						t.Fatal("Anthropic cached transport identity changed under decoration")
+ 					}
+ 				case "devin":
 diff --git a/internal/runtime/executor/helps/usage_helpers.go b/internal/runtime/executor/helps/usage_helpers.go
-index 266012a..21f3122 100644
+index a037cba..e8c31e7 100644
 --- a/internal/runtime/executor/helps/usage_helpers.go
 +++ b/internal/runtime/executor/helps/usage_helpers.go
-@@ -738,10 +738,22 @@ type usageTTFTRoundTripper struct {
+@@ -790,10 +790,22 @@ type usageTTFTRoundTripper struct {
  }
  
  func (t usageTTFTRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -2463,10 +2524,10 @@ index 266012a..21f3122 100644
  	}
  	if t.packetOnly {
 diff --git a/internal/runtime/executor/helps/utls_client.go b/internal/runtime/executor/helps/utls_client.go
-index 4857bac..7247b85 100644
+index 1b49786..8a4d829 100644
 --- a/internal/runtime/executor/helps/utls_client.go
 +++ b/internal/runtime/executor/helps/utls_client.go
-@@ -385,6 +385,10 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
+@@ -455,6 +455,10 @@ func NewUtlsHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxyau
  		chromeRT = ctxRoundTripper
  		anthropicRT = ctxRoundTripper
  		standardTransport = ctxRoundTripper
@@ -2478,12 +2539,12 @@ index 4857bac..7247b85 100644
  
  	client := &http.Client{
 diff --git a/sdk/api/handlers/handlers.go b/sdk/api/handlers/handlers.go
-index b4fc423..6b88bf3 100644
+index 5e7d438..79be026 100644
 --- a/sdk/api/handlers/handlers.go
 +++ b/sdk/api/handlers/handlers.go
-@@ -539,6 +539,7 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
- 	}
- 	newCtx = context.WithValue(newCtx, "gin", c)
+@@ -655,6 +655,7 @@ func (h *BaseAPIHandler) GetContextWithCancel(handler interfaces.APIHandler, c *
+ 	newCtx = coreusage.CaptureIdentity(newCtx)
+ 	newCtx = coreauth.WithCodexClientRequest(newCtx, coreauth.IsCodexClientRequest(newCtx))
  	newCtx = context.WithValue(newCtx, "handler", handler)
 +	newCtx = withHiRouteExecution(newCtx, c)
  	return newCtx, func(params ...interface{}) {
@@ -2635,36 +2696,36 @@ index 0000000..46abb9e
 +	}
 +}
 diff --git a/sdk/cliproxy/auth/conductor_refresh.go b/sdk/cliproxy/auth/conductor_refresh.go
-index 4bf7fd1..18e48c6 100644
+index b2421f7..39d37e3 100644
 --- a/sdk/cliproxy/auth/conductor_refresh.go
 +++ b/sdk/cliproxy/auth/conductor_refresh.go
-@@ -485,12 +485,14 @@ func (m *Manager) tryRefreshAfterUnauthorized(ctx context.Context, auth *Auth, e
- 	if !isUnauthorizedError(execErr) || !authHasRefreshCredential(auth) {
+@@ -1117,6 +1117,7 @@ func (m *Manager) tryRefreshAfterUnauthorized(ctx context.Context, auth *Auth, e
+ 	if alreadyTried || !authHasRefreshCredential(auth) || hasUnauthorizedAuthFailure(auth) {
  		return auth, false
  	}
 +	cliproxyexecutor.HiRouteAuthRecovery(ctx, false)
  	log.Debugf("unauthorized response for %s (%s), refreshing credentials before fallback", auth.Provider, auth.ID)
- 	refreshed, errRefresh := m.refreshAuthForRequest(ctx, auth.ID, authAccessToken(auth))
+ 	refreshed, errRefresh := m.refreshAuthForRequest(ctx, auth.ID, failedToken)
  	if errRefresh != nil || refreshed == nil {
- 		log.Debugf("credential refresh before fallback failed for %s (%s): %v", auth.Provider, auth.ID, errRefresh)
+@@ -1126,6 +1127,7 @@ func (m *Manager) tryRefreshAfterUnauthorized(ctx context.Context, auth *Auth, e
+ 	if failedToken != "" && authAccessTokenForRequest(ctx, refreshed, clientHeaders...) == failedToken && (refreshed.RejectedAccessToken == failedToken || refreshed.RejectedSIWCAccessToken == failedToken) {
  		return auth, false
  	}
 +	cliproxyexecutor.HiRouteAuthRecovery(ctx, true)
  	return refreshed, true
  }
  
-@@ -537,6 +539,11 @@ func (m *Manager) refreshAuthForRequest(ctx context.Context, id, failedAccessTok
+@@ -1228,6 +1230,10 @@ func (m *Manager) refreshAuthForRequestAtEpoch(ctx context.Context, id, failedAc
  	}
  	lock.mu.Lock()
  	defer lock.mu.Unlock()
-+	// A canceled waiter must not refresh or persist credentials after another
-+	// request releases the per-account refresh lock.
++	// A canceled waiter must not refresh or persist after the preceding request.
 +	if errCtx := ctx.Err(); errCtx != nil {
 +		return nil, errCtx
 +	}
  
  	m.mu.RLock()
- 	auth := m.auths[id]
+ 	auth := m.auths[id].Clone()
 diff --git a/sdk/cliproxy/auth/hiroute_execution_test.go b/sdk/cliproxy/auth/hiroute_execution_test.go
 new file mode 100644
 index 0000000..e3be1ab
@@ -3115,10 +3176,10 @@ index 0000000..023c699
 +	}
 +}
 diff --git a/sdk/cliproxy/service_auth.go b/sdk/cliproxy/service_auth.go
-index c2b4f73..035cda4 100644
+index acc0d28..5e16838 100644
 --- a/sdk/cliproxy/service_auth.go
 +++ b/sdk/cliproxy/service_auth.go
-@@ -5,6 +5,7 @@ import (
+@@ -7,6 +7,7 @@ import (
  	"strings"
  	"time"
  
@@ -3126,7 +3187,7 @@ index c2b4f73..035cda4 100644
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/watcher"
-@@ -100,6 +101,11 @@ func (s *Service) handleAuthUpdates(ctx context.Context, updates []watcher.AuthU
+@@ -102,6 +103,11 @@ func (s *Service) handleAuthUpdates(ctx context.Context, updates []watcher.AuthU
  	if s == nil {
  		return
  	}
@@ -3138,6 +3199,17 @@ index c2b4f73..035cda4 100644
  	// Keep this path limited to the targeted auths. Global plugin rebuilds and
  	// in-flight Antigravity probes can hold authUpdateMu for minutes and stall
  	// Management API PATCH responses.
+@@ -602,7 +608,9 @@ func (s *Service) completeModelRegistrationForAuthWithCache(ctx context.Context,
+ 	if ctx != nil && ctx.Err() != nil {
+ 		return 0
+ 	}
+-	if !published {
++	if !published && !codexDiscoveryAccount(auth) {
++		// Access-token Codex discovery already owns its bounded generation handoff.
++		// Do not add another discovery budget or follow a replaced/revoked grant.
+ 		// The registration was fenced out because its registration inputs
+ 		// or the registry epoch changed mid-computation (e.g. a plugin
+ 		// persisting its model snapshot through host.auth.save during
 diff --git a/sdk/cliproxy/service_codex_discovery_test.go b/sdk/cliproxy/service_codex_discovery_test.go
 new file mode 100644
 index 0000000..8909d5d
@@ -3260,10 +3332,10 @@ index 0000000..8909d5d
 +}
 diff --git a/sdk/cliproxy/service_codex_registration.go b/sdk/cliproxy/service_codex_registration.go
 new file mode 100644
-index 0000000..518a73f
+index 0000000..e002957
 --- /dev/null
 +++ b/sdk/cliproxy/service_codex_registration.go
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,69 @@
 +package cliproxy
 +
 +import (
@@ -3273,16 +3345,16 @@ index 0000000..518a73f
 +
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
 +	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 +)
 +
-+func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreauth.Auth, cache *openAICompatibilityRegistrationCache) {
++func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, cfg *config.Config, a *coreauth.Auth, cache *openAICompatibilityRegistrationCache) bool {
 +	if a != nil {
 +		done := modeldiscovery.Registering(a.ID)
 +		defer done()
 +	}
 +	if !codexDiscoveryAccount(a) {
-+		s.registerModelsForAuthAttempt(ctx, a, cache)
-+		return
++		return s.registerModelsForAuthAttempt(ctx, cfg, a, cache, nil)
 +	}
 +	if ctx == nil {
 +		ctx = context.Background()
@@ -3298,11 +3370,14 @@ index 0000000..518a73f
 +		}
 +	}
 +	for attempt := 0; attempt < 2 && ctx.Err() == nil; attempt++ {
-+		a = s.registerModelsForAuthAttempt(ctx, a, cache)
-+		if a == nil {
-+			return
++		var next *coreauth.Auth
++		published := s.registerModelsForAuthAttempt(ctx, cfg, a, cache, &next)
++		if next == nil {
++			return published
 +		}
++		a = next
 +	}
++	return false
 +}
 +
 +func codexDiscoveryAccount(a *coreauth.Auth) bool {
@@ -3312,12 +3387,30 @@ index 0000000..518a73f
 +	token, _ := a.Metadata["access_token"].(string)
 +	return strings.TrimSpace(token) != ""
 +}
++
++// Report only the result admitted by upstream's auth/config publication fence.
++func finishHiRouteModelDiscovery(trace *modeldiscovery.Trace, id string, published bool) {
++	if trace == nil {
++		return
++	}
++	if !published {
++		trace.End(modeldiscovery.Discarded, modeldiscovery.AccountChanged)
++		return
++	}
++	models := GlobalModelRegistry().GetModelsForClient(id)
++	trace.Models(len(models))
++	reason := modeldiscovery.NoReason
++	if len(models) == 0 {
++		reason = modeldiscovery.EmptyAfterFiltering
++	}
++	trace.End(modeldiscovery.Completed, reason)
++}
 diff --git a/sdk/cliproxy/service_codex_registration_test.go b/sdk/cliproxy/service_codex_registration_test.go
 new file mode 100644
-index 0000000..63e93fc
+index 0000000..3eab9ef
 --- /dev/null
 +++ b/sdk/cliproxy/service_codex_registration_test.go
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,239 @@
 +package cliproxy
 +
 +import (
@@ -3478,6 +3571,37 @@ index 0000000..63e93fc
 +	}
 +}
 +
++func TestHiRouteCodexDiscoveryRetainsConfigPublicationFence(t *testing.T) {
++	manager := coreauth.NewManager(nil, nil, nil)
++	auth, err := manager.Register(context.Background(), &coreauth.Auth{
++		ID: t.Name(), Provider: "codex", Metadata: map[string]any{
++			"access_token": "synthetic-access", "hiroute_client_version": "0.999.0",
++		},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	service := &Service{cfg: &config.Config{}, coreManager: manager}
++	defer GlobalModelRegistry().UnregisterClient(auth.ID)
++	calls := 0
++	ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryTransport(func(r *http.Request) (*http.Response, error) {
++		calls++
++		service.commitConfigUpdate(&config.Config{OAuthExcludedModels: map[string][]string{"codex": {"stale"}}})
++		return &http.Response{StatusCode: 200, Header: make(http.Header),
++			Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"stale"}]}`)), Request: r}, nil
++	}))
++	if service.registerModelsForAuth(ctx, auth) {
++		t.Fatal("obsolete config was reported as an admitted publication")
++	}
++	if calls != 1 || len(GlobalModelRegistry().GetModelsForClient(auth.ID)) != 0 {
++		t.Fatal("obsolete discovery bypassed the config publication fence")
++	}
++	observation := modeldiscovery.Read(auth.ID)
++	if observation.RegistrationPending || observation.Latest == nil || observation.Latest.Outcome != modeldiscovery.Discarded {
++		t.Fatal("discarded publication was reported as successful or still pending")
++	}
++}
++
 +func TestHiRouteCodexRegistrationPendingIncludesQueuedWork(t *testing.T) {
 +	manager := coreauth.NewManager(nil, nil, nil)
 +	original, err := manager.Register(context.Background(), &coreauth.Auth{ID: "queued-registration", Provider: "codex", Prefix: "subscription", Metadata: map[string]any{"access_token": "synthetic-access", "hiroute_client_version": "0.999.0"}})
@@ -3527,49 +3651,50 @@ index 0000000..63e93fc
 +	}
 +}
 diff --git a/sdk/cliproxy/service_models.go b/sdk/cliproxy/service_models.go
-index 1bb4b62..107749c 100644
+index 7daa6ed..fcbde58 100644
 --- a/sdk/cliproxy/service_models.go
 +++ b/sdk/cliproxy/service_models.go
-@@ -8,9 +8,12 @@ import (
+@@ -8,10 +8,13 @@ import (
  
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/constant"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/modelconfig"
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/modeldiscovery"
  	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
  	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
  	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 +	log "github.com/sirupsen/logrus"
  )
  
  // registerModelsForAuth (re)binds provider models in the global registry using the core auth ID as client identifier.
-@@ -18,7 +21,7 @@ func (s *Service) registerModelsForAuth(ctx context.Context, a *coreauth.Auth) {
- 	s.registerModelsForAuthWithCache(ctx, a, nil)
+@@ -29,7 +32,7 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+ 	return s.registerModelsForAuthWithConfigAndCache(ctx, s.currentConfig(), a, compatCache)
  }
  
--func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreauth.Auth, compatCache *openAICompatibilityRegistrationCache) {
-+func (s *Service) registerModelsForAuthAttempt(ctx context.Context, a *coreauth.Auth, compatCache *openAICompatibilityRegistrationCache) (rebind *coreauth.Auth) {
+-func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, cfg *config.Config, a *coreauth.Auth, compatCache *openAICompatibilityRegistrationCache) bool {
++func (s *Service) registerModelsForAuthAttempt(ctx context.Context, cfg *config.Config, a *coreauth.Auth, compatCache *openAICompatibilityRegistrationCache, rebind **coreauth.Auth) bool {
  	if a == nil || a.ID == "" {
- 		return
+ 		return true
  	}
-@@ -71,6 +74,7 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
- 		return
+@@ -88,6 +91,7 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
  	}
+ 	published := true
  	var models []*ModelInfo
 +	var discoveryTrace *modeldiscovery.Trace
  	switch provider {
  	case constant.Gemini:
  		models = registry.GetGeminiModels()
-@@ -149,6 +153,37 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -182,6 +186,38 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
  		default:
  			models = registry.GetCodexProModels()
  		}
 +		if token, _ := a.Metadata["access_token"].(string); strings.TrimSpace(token) != "" {
 +			discoveryTrace = modeldiscovery.Begin(a.ID)
-+			discovered, err := executor.NewCodexExecutor(s.cfg).DiscoverModels(modeldiscovery.WithTrace(ctx, discoveryTrace), a, models)
++			discovered, err := executor.NewCodexExecutor(cfg).DiscoverModels(modeldiscovery.WithTrace(ctx, discoveryTrace), a, models)
 +			if err != nil {
 +				log.Warnf("Codex model discovery failed; retaining registered catalog: %v", err)
-+				return
++				return true
 +			}
 +			discoveryTrace.Enter(modeldiscovery.Registration)
 +			// An auth removed or replaced during the bounded request must not reappear.
@@ -3587,9 +3712,10 @@ index 1bb4b62..107749c 100644
 +					}
 +					discoveryTrace.End(modeldiscovery.Discarded, reason)
 +					if ok && !current.Disabled && current.RegistrationEpoch == a.RegistrationEpoch && current.Generation != a.Generation && codexDiscoveryAccount(current) && ctx.Err() == nil {
-+						return current
++						*rebind = current
++						return false
 +					}
-+					return
++					return false
 +				}
 +			}
 +			models = discovered
@@ -3598,52 +3724,40 @@ index 1bb4b62..107749c 100644
  		models = applyExcludedModels(models, excluded)
  	case "kimi", "kimi-ai", "kimi.ai", "kimi.com":
  		models = registry.GetKimiModels()
-@@ -283,10 +318,16 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -318,10 +354,16 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
  		}
  	}
  	if ctx.Err() != nil {
 +		if discoveryTrace != nil {
 +			discoveryTrace.End(modeldiscovery.Discarded, modeldiscovery.Cancelled)
 +		}
- 		return
+ 		return true
  	}
- 	models = applyOAuthModelAliasForAuth(s.cfg, provider, authKind, a.Attributes, models)
+ 	models = applyOAuthModelAliasForAuth(cfg, provider, authKind, a.Attributes, models)
  	if ctx.Err() != nil {
 +		if discoveryTrace != nil {
 +			discoveryTrace.End(modeldiscovery.Discarded, modeldiscovery.Cancelled)
 +		}
- 		return
+ 		return true
  	}
  	key := provider
-@@ -297,6 +338,15 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -332,6 +374,7 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
  	if len(models) > 0 {
- 		models = applyOAuthSettingsForAuth(s.cfg, provider, authKind, models)
- 		s.registerResolvedModelsForAuth(a, key, applyModelPrefixes(models, a.Prefix, s.cfg != nil && s.cfg.ForceModelPrefix))
-+		if discoveryTrace != nil {
-+			registered := GlobalModelRegistry().GetModelsForClient(a.ID)
-+			discoveryTrace.Models(len(registered))
-+			reason := modeldiscovery.NoReason
-+			if len(registered) == 0 {
-+				reason = modeldiscovery.EmptyAfterFiltering
-+			}
-+			discoveryTrace.End(modeldiscovery.Completed, reason)
-+		}
+ 		models = applyOAuthSettingsForAuth(cfg, provider, authKind, models)
+ 		published = s.registerResolvedModelsForAuthFenced(a, fence, key, applyModelPrefixes(models, a.Prefix, cfg != nil && cfg.ForceModelPrefix))
++		finishHiRouteModelDiscovery(discoveryTrace, a.ID, published)
  		if strings.EqualFold(strings.TrimSpace(a.Provider), "antigravity") {
  			s.asyncProbeAntigravityCapabilities(ctx, a, key)
  		}
-@@ -304,6 +354,11 @@ func (s *Service) registerModelsForAuthWithCache(ctx context.Context, a *coreaut
+@@ -339,6 +382,7 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
  	}
  
- 	GlobalModelRegistry().UnregisterClient(a.ID)
-+	if discoveryTrace != nil {
-+		discoveryTrace.Models(0)
-+		discoveryTrace.End(modeldiscovery.Completed, modeldiscovery.EmptyAfterFiltering)
-+	}
-+	return
- }
- 
- // refreshModelRegistrationForAuth re-applies the latest model registration for
-@@ -325,6 +380,8 @@ func (s *Service) refreshModelRegistrationForAuthWithContext(ctx context.Context
+ 	published = s.unregisterModelsForAuthFenced(a, fence)
++	finishHiRouteModelDiscovery(discoveryTrace, a.ID, published)
+ 	if provider == "antigravity" {
+ 		s.asyncProbeAntigravityCapabilities(ctx, a, key)
+ 	}
+@@ -364,6 +408,8 @@ func (s *Service) refreshModelRegistrationForAuthWithContext(ctx context.Context
  	if s == nil || s.coreManager == nil || current == nil || current.ID == "" {
  		return false
  	}
@@ -3654,16 +3768,17 @@ index 1bb4b62..107749c 100644
  	}
 diff --git a/sdk/proxyutil/environment.go b/sdk/proxyutil/environment.go
 new file mode 100644
-index 0000000..46f700b
+index 0000000..107677c
 --- /dev/null
 +++ b/sdk/proxyutil/environment.go
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,66 @@
 +package proxyutil
 +
 +import (
 +	"errors"
 +	"net/http"
 +	"net/url"
++	"os"
 +
 +	"golang.org/x/net/http/httpproxy"
 +)
@@ -3674,7 +3789,20 @@ index 0000000..46f700b
 +// the request's scheme is validated. Invalid configuration fails even when a
 +// NO_PROXY rule would otherwise bypass it; explicit direct mode does not call us.
 +func EnvironmentProxyFunc() func(*http.Request) (*url.URL, error) {
-+	cfg := httpproxy.FromEnvironment()
++	// Keep the managed parent's uppercase-first contract across x/net upgrades.
++	// x/net v0.60 changed FromEnvironment to prefer lowercase values.
++	first := func(upper, lower string) string {
++		if value := os.Getenv(upper); value != "" {
++			return value
++		}
++		return os.Getenv(lower)
++	}
++	cfg := &httpproxy.Config{
++		HTTPProxy:  first("HTTP_PROXY", "http_proxy"),
++		HTTPSProxy: first("HTTPS_PROXY", "https_proxy"),
++		NoProxy:    first("NO_PROXY", "no_proxy"),
++		CGI:        os.Getenv("REQUEST_METHOD") != "",
++	}
 +	httpError := validateEnvironmentProxy(cfg.HTTPProxy)
 +	httpsError := validateEnvironmentProxy(cfg.HTTPSProxy)
 +	selectProxy := cfg.ProxyFunc()

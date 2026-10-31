@@ -769,10 +769,19 @@ impl ManagedCpaRuntime {
                 return Err(CpaLifecycleError::UntrustedOrphan);
             }
             let accounts = load_account_state(&layout.accounts_path)?;
-            Ok((transferred, secrets, process, accounts, auth_lease))
+            let current_cloaking =
+                crate::config::has_current_claude_cloaking_policy(&layout.config_path)?;
+            Ok((
+                transferred,
+                secrets,
+                process,
+                accounts,
+                auth_lease,
+                current_cloaking,
+            ))
         })();
         match attempt {
-            Ok((mut transferred, secrets, mut process, accounts, auth_lease)) => {
+            Ok((mut transferred, secrets, mut process, accounts, auth_lease, current_cloaking)) => {
                 self.emit_stage(
                     CpaStageKind::ReadyWait,
                     CpaStageOutcome::Completed,
@@ -780,9 +789,11 @@ impl ManagedCpaRuntime {
                     generation,
                 );
                 let digest = self.proxy_environment.digest();
-                if transferred.proxy_environment_sha256.as_deref() != Some(digest.as_str()) {
+                if transferred.proxy_environment_sha256.as_deref() != Some(digest.as_str())
+                    || !current_cloaking
+                {
                     // The management capability has authenticated this exact orphan twice.
-                    // Never serve through an old/unknown proxy policy after owner recovery.
+                    // Never serve through an old/unknown proxy or cloaking policy after recovery.
                     if let Err(error) =
                         crate::request_context::cleanup(self.spec.shutdown_timeout, || {
                             process.shutdown(self.spec.shutdown_timeout)

@@ -493,3 +493,25 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .news-prose table{display:block;overflow-x:auto;border-collapse:collapse;width:100%;font-size:14px;line-height:1.6;margin:28px 0}.news-prose th,.news-prose td{border:1px solid #dce1eb;padding:12px;min-width:100px;text-align:left}.news-prose th{background:#eef1f8}
 .news-prose pre{overflow-x:auto;background:#172034;color:#e6edf8;padding:20px;border-radius:12px;font-size:14px;line-height:1.65}.news-prose code{font-size:.9em}.news-list{display:grid;gap:24px;margin:36px 0}.news-card{border:1px solid #dce1eb;border-radius:18px;padding:28px;background:white}.news-card h2{font-size:25px;line-height:1.4}.news-card p{line-height:1.75;color:#535d72}
 @media(max-width:700px){.news-shell{padding-top:32px}.news-prose{font-size:16px}.news-card{padding:20px}.news-prose h2{font-size:23px}.news-prose th,.news-prose td{padding:8px}}
+
+/* Homepage: product promise, evidence and real product views */
+.hero h1 .hero-accent{background:linear-gradient(90deg,#475dd8,#8b73e4);-webkit-background-clip:text;background-clip:text;color:transparent}
+.stat-line a{display:flex;flex-direction:column;gap:2px;flex:1 1 0;min-width:220px}
+.stat-line a b{font-size:26px;letter-spacing:-.5px;color:#3d52c9}
+.stat-line a span{font-size:14px;color:#596174}
+.stat-line a:hover b{color:#6b5cbb}
+.chart-shot{background:#fff;padding:24px}
+.chart-shot img{max-width:880px;margin:auto}
+.dark-shot{background:#0d1018;border-color:#232838;padding:10px}
+.dark-shot figcaption{color:#9aa3bd;font-size:13px;padding:12px 6px 4px}
+.savings-section .proof-bottom .text-link,.ecosystem-planned .text-link{display:inline-block;margin-top:12px;margin-right:14px}
+.trial-section .features{margin-top:34px}
+.evidence-grid{display:grid;grid-template-columns:.85fr 1.15fr;gap:22px;align-items:start;margin-top:38px}
+.evidence-grid .product-shot{margin:0}
+.question-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:46px}
+.question-grid article{border:1px solid #2a3044;border-radius:14px;padding:26px 24px;background:#121622}
+.question-grid span{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--highlight)}
+.question-grid h3{font-size:20px;margin:14px 0 10px;color:var(--paper)}
+.question-grid p{font-size:14px;color:#aab3cc}
+@media(max-width:1000px){.evidence-grid{grid-template-columns:1fr}.question-grid{grid-template-columns:1fr}}
+@media(max-width:760px){.stat-line a{min-width:0}.chart-shot{padding:12px}}

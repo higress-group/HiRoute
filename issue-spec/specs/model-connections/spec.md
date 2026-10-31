@@ -523,6 +523,16 @@ CPA-managed authentication may refresh and retry once for the same account/model
 on 401 before response commitment. NativeBorrowed supplies no refresh token.
 HiRoute does not implement or stack another OAuth refresh chain.
 
+Managed CPA enables the pinned upstream Claude OAuth request cloaking policy.
+This generated setting does not change model/account pinning, retry limits,
+provider isolation or native credential ownership. Native API connections do not
+use this policy. Recovery authenticates an orphaned CPA process before checking
+its generated cloaking configuration; a stale, missing or malformed policy
+requires an owned shutdown and fresh configuration before serving requests.
+An unauthenticated process remains untouched. Stop-only recovery never starts
+a replacement. This policy is not evidence of upstream quota treatment or
+long-term account acceptance.
+
 #### Scenario: Saved subscription runtime is unavailable after startup
 
 - **WHEN** an authorized saved subscription candidate cannot prepare its CPA runtime and a later candidate in the same published plan remains usable

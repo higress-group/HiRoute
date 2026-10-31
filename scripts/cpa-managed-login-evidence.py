@@ -248,14 +248,31 @@ def read_observation(product, timeout=30):
         time.sleep(.1)
 
 
+def expected_usage(results):
+    """Match the shared input dimension while retaining the raw provider usage."""
+    rows = [item for item in results if isinstance(item.get('usage'), dict)]
+    require(rows, 'observation_selected_usage_missing')
+    fields = ('input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens')
+    require(all(type(item['usage'].get(field, 0)) is int and item['usage'].get(field, 0) >= 0
+                for item in rows for field in fields), 'observation_expected_usage_invalid')
+    totals = dict.fromkeys(METRICS, 0)
+    for item in rows:
+        usage = item['usage']
+        totals['input'] += usage.get('input_tokens', 0)
+        if item.get('provider') == 'claude':
+            # Messages reports uncached input separately; Responses already
+            # includes its cached input in input_tokens.
+            totals['input'] += usage.get('cache_read_input_tokens', 0) + usage.get('cache_creation_input_tokens', 0)
+        totals['output'] += usage.get('output_tokens', 0)
+        totals['cache_read'] += usage.get('cache_read_input_tokens', 0)
+    require(totals['input'] > 0 and totals['output'] > 0, 'observation_selected_usage_invalid')
+    return totals
+
+
 def observation_delta(baseline, current, results):
     rows = [item['usage'] for item in results if isinstance(item.get('usage'), dict)]
     require(rows, 'observation_selected_usage_missing')
-    fields = {'input': 'input_tokens', 'output': 'output_tokens', 'cache_read': 'cache_read_input_tokens'}
-    require(all(type(row.get(field, 0)) is int and row.get(field, 0) >= 0
-                for row in rows for field in fields.values()), 'observation_expected_usage_invalid')
-    expected = {metric: sum(row.get(field, 0) for row in rows) for metric, field in fields.items()}
-    require(expected['input'] > 0 and expected['output'] > 0, 'observation_selected_usage_invalid')
+    expected = expected_usage(results)
     require(baseline.get('pending_requests') == 0 and current.get('pending_requests') == 0,
             'observation_pending_requests')
     delta = {key: current['totals'][key] - baseline['totals'][key] for key in METRICS}
