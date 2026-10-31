@@ -26,7 +26,7 @@ families in tests remain governed by the subject path rules.
 inventory entry, a multi-version production family not classified by one subject, or a registered
 legacy token outside its allowed paths. This catches both producer and consumer drift without
 treating arbitrary prose or third-party fixtures as production contracts. It also pins database
-schema V32 from the single production declaration
+schema V37 from the single production declaration
 `LATEST_SCHEMA_VERSION` in `crates/local-storage/src/migrations/mod.rs`, and retains the
 unversioned `control.sock` endpoint. The schema gate accepts exactly one plain, unattributed
 top-level constant declaration in that source. Conditional declarations (including nested
@@ -85,3 +85,12 @@ versions, active Secret dependencies and unresolved work. Full-store audit and t
 initial conversion are separate work and do not imply unchecked history is healthy.
 Runtime and Secret stores join the same schema32 coordination with no independent
 migration path. Observation's format is unchanged.
+
+Key spending policies use an additive schema37 Control ledger and a V6 source-operation
+wrapper. V2–V5 source/Secret proofs remain byte-identical inside it; older saves
+retain existing Key budget links. Wallet usage is independent of management CAS,
+so an in-flight settlement cannot invalidate a saved policy preview. Compensation
+restores owned links/policy while retaining expenditure and later shared-policy
+edits. Full three-store backups and the existing startup coordinator cover the
+upgrade; existing Keys are unlimited until explicitly configured. See
+[the credential contract](../issue-spec/specs/credential-pools/spec.md).
