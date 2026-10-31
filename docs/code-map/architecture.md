@@ -368,7 +368,9 @@ shares source revisions, effect activation and compensation. The [metadata query
 and [removal preview](../../crates/daemon/src/control/runtime/model_feed/removal.rs) provide bounded
 complete reads. The [Desktop directory](../../apps/desktop/src/features/model-feed/ModelMetadataDirectory.tsx)
 keeps field inference visible and loads source/rule details against that same captured
-snapshot. The [feed producer](../../tools/release-facts/src/feed.rs) checks embedded
+snapshot. The [capability editor](../../apps/desktop/src/features/model-feed/ModelDefaultsEditor.tsx)
+presents Custom/Follow choices, with [native fields](../../apps/desktop/src/features/model-feed/ModelCapabilityInput.tsx)
+editing the custom draft before the ordinary source-default save. The [feed producer](../../tools/release-facts/src/feed.rs) checks embedded
 semantic identity against HEAD and the supplied baseline before release gating.
 Hosts use product-session; published execution remains in its existing owner.
 

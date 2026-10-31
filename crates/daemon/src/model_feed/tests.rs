@@ -12,6 +12,17 @@ fn payload(sequence: u64) -> Vec<u8> {
         vec![],
     ))
 }
+// Preparation tests need a semantic revision newer than the installed data,
+// independently of the publication sequence and future embedded refreshes.
+fn newer_semantic_payload(sequence: u64) -> Vec<u8> {
+    let mut value: FeedPayload = serde_json::from_slice(&payload(sequence)).unwrap();
+    value.data_revision = crate::release_catalog::current_fixture_catalog()
+        .official_snapshot()
+        .data_revision
+        .checked_add(sequence.max(1))
+        .unwrap();
+    publication_bytes(&value)
+}
 fn publication_bytes(payload: &FeedPayload) -> Vec<u8> {
     serde_json::to_vec(payload).unwrap()
 }
@@ -238,7 +249,7 @@ fn model_feed_generation_is_captured_with_catalog_before_dependency_activation()
         .refresh_using(
             |_| {
                 Ok(FeedDownload::Content {
-                    bytes: payload(2),
+                    bytes: newer_semantic_payload(2),
                     etag: None,
                 })
             },
@@ -613,7 +624,7 @@ fn model_feed_failed_preparation_keeps_previous_catalog_and_durable_selection() 
         service
             .refresh_using_prepared(
                 |_| Ok(FeedDownload::Content {
-                    bytes: payload(2),
+                    bytes: newer_semantic_payload(2),
                     etag: None
                 }),
                 |_| Err::<(), _>("prices.candidate.unavailable".into()),
@@ -638,7 +649,7 @@ fn model_feed_slow_preparation_does_not_hold_feed_lock_and_superseded_candidate_
         worker.refresh_using_prepared(
             |_| {
                 Ok(FeedDownload::Content {
-                    bytes: payload(2),
+                    bytes: newer_semantic_payload(2),
                     etag: None,
                 })
             },

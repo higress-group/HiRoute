@@ -313,3 +313,10 @@ exact API/subscription source, candidate, append-only and no-key-edit assertions
 choice, localization and unchanged submitted profiles in both themes and sizes.
 All of these browser paths use controlled IPC; native business effects remain
 separate acceptance.
+
+`--metadata` also exercises the two model-capability modes, editable native
+profiles/limits, explicit custom unknown, draft retention across mode changes and
+failed saves, validation before submission and exactly one Save. These are
+production-style browser checks with controlled IPC; the daemon
+`api_reasoning_survives_normal_v3_save_reopen_and_preserves_manual_values` case
+owns actual source-default save/reopen and publication-option effects.

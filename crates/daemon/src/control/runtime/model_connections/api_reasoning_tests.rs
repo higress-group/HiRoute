@@ -350,7 +350,7 @@ fn api_reasoning_survives_normal_v3_save_reopen_and_preserves_manual_values() {
             let options = dispatch(
                 &service,
                 "GetPlanEditorOptions",
-                serde_json::json!({"authoring":{},"include_unavailable":true}),
+                serde_json::json!({"authoring":{"mode":"fixed_model","candidates":[{"binding_id":binding,"reasoning":{"kind":"profile","profile":"high"}}]},"include_unavailable":true}),
             );
             assert_eq!(options["context_window"]["maximum_tokens"], 64000);
             let candidate = options["candidates"]

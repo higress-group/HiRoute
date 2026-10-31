@@ -96,26 +96,33 @@ fn project_source_with_origins(
                     .is_some_and(|id| catalog.model_data().model(id).is_none()),
             )
         });
-        if scope.is_none() {
-            let completion = hiroute_integrations::compute::complete_missing_api_capabilities(
-                catalog,
-                &source.provenance,
-                &source.target,
-                &source.authentication,
-                &model.upstream_model_id,
-                &model.capabilities,
-                &fields,
-            );
-            model.capabilities = completion.capabilities;
-            origins.insert(
-                model.binding_id.clone(),
-                completion
-                    .filled_fields
-                    .into_iter()
-                    .map(|field| (field, completion.inferred_fields.contains(&field)))
-                    .collect(),
-            );
-        }
+        // Qualified defaults have already resolved FollowMetadata. Do not clear them
+        // through the API-only missing-value resolver for another installed product.
+        let api_fields = fields
+            .iter()
+            .filter(|(_, policy)| {
+                scope.is_none() || !matches!(policy, ModelDefaultPreferenceV1::FollowMetadata)
+            })
+            .map(|(field, policy)| (*field, policy.clone()))
+            .collect();
+        let completion = hiroute_integrations::compute::complete_missing_api_capabilities(
+            catalog,
+            &source.provenance,
+            &source.target,
+            &source.authentication,
+            &model.upstream_model_id,
+            &model.capabilities,
+            &api_fields,
+        );
+        model.capabilities = completion.capabilities;
+        origins.insert(
+            model.binding_id.clone(),
+            completion
+                .filled_fields
+                .into_iter()
+                .map(|field| (field, completion.inferred_fields.contains(&field)))
+                .collect(),
+        );
     }
     (effective, origins)
 }
