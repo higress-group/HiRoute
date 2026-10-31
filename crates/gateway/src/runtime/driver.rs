@@ -84,6 +84,19 @@ pub struct ProductionLogicalRequest {
     route_context: Option<ProductionRouteContext>,
 }
 
+impl ProductionLogicalRequest {
+    pub(crate) fn diagnostic_request_shape(
+        &self,
+    ) -> hiroute_diagnostics::event::ExecutionRequestShape {
+        hiroute_diagnostics::event::ExecutionRequestShape {
+            raw_body_bytes: self.raw_body.byte_len(),
+            canonical_messages: self.ir.as_ref().map_or(0, |ir| ir.messages.len()) as u64,
+            tools: self.ir.as_ref().map_or(0, |ir| ir.tools.len()) as u64,
+            replay_disk_backed: self.replay.snapshot().disk_backed,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ProductionRouteContext {
     pub(crate) ingress: IngressProtocol,

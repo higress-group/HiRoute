@@ -19,6 +19,32 @@ impl RequestObservation {
         request: ExecutionRequestShape,
         response_started: bool,
     ) {
+        self.emit_execution_failure(error, budget, request, response_started, true);
+    }
+
+    pub(crate) fn attempt_preparation_failure(
+        &self,
+        error: &std::sync::Arc<str>,
+        budget: &StreamBudget,
+        request: ExecutionRequestShape,
+    ) {
+        self.emit_execution_failure(
+            &GatewayExecutionError::Provider(std::sync::Arc::clone(error)),
+            budget,
+            request,
+            false,
+            false,
+        );
+    }
+
+    fn emit_execution_failure(
+        &self,
+        error: &GatewayExecutionError,
+        budget: &StreamBudget,
+        request: ExecutionRequestShape,
+        response_started: bool,
+        terminal: bool,
+    ) {
         let (source, reason) = classification(error);
         let last_budget_rejection = budget.last_rejection().map(|r| ExecutionBudgetRejection {
             role: match r.role {
@@ -41,17 +67,20 @@ impl RequestObservation {
             process_limit_bytes: r.process_limit_bytes as u64,
         });
         let attempt_started = self.lock_state().next_attempt_ordinal > 1;
-        self.emit_diagnostic(DiagnosticEvent::RequestExecutionFailure(
-            RequestExecutionFailure {
-                request_token: self.inner.request_token,
-                source,
-                reason,
-                request,
-                attempt_started,
-                response_started,
-                last_budget_rejection,
-            },
-        ));
+        let failure = RequestExecutionFailure {
+            request_token: self.inner.request_token,
+            source,
+            reason,
+            request,
+            attempt_started,
+            response_started,
+            last_budget_rejection,
+        };
+        self.emit_diagnostic(if terminal {
+            DiagnosticEvent::RequestExecutionFailure(failure)
+        } else {
+            DiagnosticEvent::AttemptPreparationFailure(failure)
+        });
     }
 }
 

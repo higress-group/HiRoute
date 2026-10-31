@@ -100,6 +100,9 @@ attempt/response admission and the last refused memory reservation's role, reque
 bytes and stream/worker/process limits. This snapshot survives owner cleanup;
 an optional-work refusal alone is not proof of the terminal failure's cause.
 These records contain no raw errors, conversation content or credentials.
+`attempt_preparation_failure` retains the same evidence when provider request
+materialization fails and the Core handles it with a local reply or candidate
+advance. Its presence alone does not establish the final request outcome.
 
 For operational lifecycle telemetry, [accepted response capture](src/observation/content.rs)
 reports transport writes only after they succeed, including an empty end-stream write.
