@@ -80,6 +80,16 @@ only the CI/checks selected for the authorized handoff; do not add continuous
 monitoring or unrelated investigations. Keep raw logs and publication bookkeeping
 local. Update the selected issue-spec task with the real PR and state.
 
+Follow the project's [Issue-closing policy](../../../issue-spec/project/workflow.md#pr-links-and-completed-issues):
+put a separate `Closes #NUMBER` in the PR body for every fully delivered existing
+Issue, including the completed Proposal/Design/Implement chain. A simple Issue
+needs only its own reference; partial work and wider programs keep `Refs` links.
+For phase chains, `issue-spec pr link-issues` can add the closing block with only
+the delivered stages. Preserve the block through later PR-body edits. Before
+handoff, read `baseRefName` and `closingIssuesReferences` with `gh pr view` and
+confirm the default-branch target and exact intended Issue set. Repair omissions
+or unintended closing links before human merge; ordinary links are insufficient.
+
 Attach the created PR to the current Codex task when that capability is available.
 PR review and merge belong to the human unless explicitly authorized. A passing
 check or completed task does not grant merge or release authority.

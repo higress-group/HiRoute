@@ -20,6 +20,7 @@ permissions:
 concurrency:
   group: hiroute-ai-production
   cancel-in-progress: false
+  queue: max
 
 env:
   RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
@@ -139,7 +140,7 @@ jobs:
           ref: ${{ needs.verify-release.outputs.website_revision }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Propose the published contract snapshot
+      - name: Propose the published contracts and next development version
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

@@ -22,6 +22,8 @@ use serde_json::Value;
 use std::sync::atomic::Ordering;
 mod model_connection_web;
 pub use model_connection_web::*;
+mod native_network;
+pub use native_network::*;
 mod model_connections;
 pub use model_connections::*;
 mod model_feed;

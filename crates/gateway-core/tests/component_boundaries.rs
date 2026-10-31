@@ -200,6 +200,7 @@ fn new_exchange(
         plain_target("127.0.0.1:18080".parse().unwrap(), 1),
         transport,
         PreparedAttemptHttpRequest {
+            network_route: None,
             head: PreparedRequestHead {
                 method: Method::POST,
                 path_and_query: Arc::from("/v1/test"),

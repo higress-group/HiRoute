@@ -11,12 +11,15 @@ use crate::{CanonicalDigest, DecisionDefinitionV1};
 
 pub const SYSTEM_ONE_C_V1: &str = "hiroute.system-one-c/v1";
 pub const SYSTEM_ONE_C_V2: &str = "hiroute.system-one-c/v2";
+pub const SYSTEM_ONE_C_V3: &str = "hiroute.system-one-c/v3";
 pub const SYSTEM_ONE_LEGACY: &str = "hiroute.system-one-legacy/v1";
 pub const C_CONTEXT_LAYOUT: &str = "hiroute.partitioned-history/v1";
 pub const C_FULL_CHECKSUM: &str =
     "4dbab2f53954eb2176b6aa8d31b97808c4fee15ebb2fae337012eba348aef3c7";
 pub const C_V2_FULL_CHECKSUM: &str =
     "a545e497ae5478150790c29f17c041c02a77a29cd825ce2c5fd849b6e4b68efc";
+pub const C_V3_FULL_CHECKSUM: &str =
+    "8c0a15a8883f32733c3f9f7840dffa7f16c525ec833dfa8e82f99e81fb3ff2e0";
 pub const LEGACY_ASSESSMENT_WRAPPER: &str = "Evaluate only the completed stage from state.visible_conversation[state.assessment_from] through the end. state.latest_user may supply explicit feedback, but is not yet executed.";
 
 pub fn stock_c_questions() -> Value {
@@ -29,8 +32,14 @@ pub fn stock_c_v2_questions() -> Value {
         .expect("frozen C v2 fixture")
 }
 
+pub fn stock_c_v3_questions() -> Value {
+    serde_json::from_str(include_str!("fixtures/system_one_c_v3.json"))
+        .expect("frozen C v3 fixture")
+}
+
 pub fn native_mode(mode: &super::ComplexityClassifierModeV1) -> bool {
     matches!(mode, super::ComplexityClassifierModeV1::DecisionService { service } if matches!(service.connection, super::DecisionConnectionV1::SystemOne { .. }))
+        || matches!(mode, super::ComplexityClassifierModeV1::DecisionServiceV2 { service } if matches!(service.connection, super::DecisionConnectionV2::Native { .. }))
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -80,6 +89,12 @@ impl NativeFixedContentV1 {
         fixed.applicability = crate::canonicalize_json(stock_c_v2_questions()["q2"].clone());
         fixed
     }
+
+    pub fn c_v3() -> Self {
+        let mut fixed = Self::c_v2();
+        fixed.applicability = crate::canonicalize_json(stock_c_v3_questions()["q2"].clone());
+        fixed
+    }
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -92,7 +107,7 @@ pub struct NativeProtocolV1 {
 
 impl Default for NativeProtocolV1 {
     fn default() -> Self {
-        Self::c_v2()
+        Self::c_v3()
     }
 }
 
@@ -113,10 +128,19 @@ impl NativeProtocolV1 {
         }
     }
 
+    pub fn c_v3() -> Self {
+        Self {
+            schema: SYSTEM_ONE_C_V3.into(),
+            fixed: NativeFixedContentV1::c_v3(),
+            prior_context_max_turns: 8,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), NativeProtocolError> {
         let expected = match self.schema.as_str() {
             SYSTEM_ONE_C_V1 => NativeFixedContentV1::c_v1(),
             SYSTEM_ONE_C_V2 => NativeFixedContentV1::c_v2(),
+            SYSTEM_ONE_C_V3 => NativeFixedContentV1::c_v3(),
             _ => return Err(NativeProtocolError::Unsupported),
         };
         if self.fixed != expected {
@@ -152,6 +176,10 @@ impl NativeProtocolV1 {
             .competence
             .instructions
             .push_str(guidance["feedback"].as_str().expect("feedback guidance"));
+        judgment.competence.criteria[2] = guidance["highest_criterion"]
+            .as_str()
+            .expect("highest competence criterion")
+            .into();
     }
 
     pub(crate) fn is_stock_assessment(&self, judgment: &JudgmentSettingsV1) -> bool {
@@ -240,25 +268,42 @@ impl FrozenNativeProtocolV1 {
         judgments: impl IntoIterator<Item = (String, JudgmentSettingsV1)>,
     ) -> Result<Self, NativeProtocolError> {
         protocol.validate()?;
-        let mut scopes = BTreeMap::new();
         let selection = super::NativeProtocolSelectionV1 {
             schema: protocol.schema.clone(),
             prior_context_max_turns: protocol.prior_context_max_turns,
         };
+        let judgments = judgments
+            .into_iter()
+            .map(|(id, judgment)| {
+                // Freezing is also used directly by compiler/diagnostic callers. Resolve
+                // default intent here rather than relying on an editor to replace text.
+                // Existing v1 publications carry the stock editable question as Default.
+                // Validate and rebuild those bytes as written, without replacing them with
+                // today's default. New editor publications resolve before reaching here.
+                let judgment = if protocol.schema == SYSTEM_ONE_C_V1
+                    && judgment.competence.standard == Some(super::AssessmentStandardV1::Default)
+                    && protocol.is_stock_assessment(&judgment)
+                {
+                    judgment
+                } else {
+                    judgment.resolve_assessment(Some(&selection))?
+                };
+                Ok((id, judgment))
+            })
+            .collect::<Result<Vec<_>, NativeProtocolError>>()?;
+        Self::freeze_resolved(protocol, decision, judgments)
+    }
+
+    // Effective configuration is already sealed. Rechecking it must not resolve
+    // Default against the current binary's editable wording.
+    fn freeze_resolved(
+        protocol: &NativeProtocolV1,
+        decision: DecisionDefinitionV1,
+        judgments: impl IntoIterator<Item = (String, JudgmentSettingsV1)>,
+    ) -> Result<Self, NativeProtocolError> {
+        protocol.validate()?;
+        let mut scopes = BTreeMap::new();
         for (id, judgment) in judgments {
-            // Freezing is also used directly by compiler/diagnostic callers. Resolve
-            // default intent here rather than relying on an editor to replace text.
-            // Existing v1 publications carry the stock editable question as Default.
-            // Validate and rebuild those bytes as written, without replacing them with
-            // today's default. New editor publications resolve before reaching here.
-            let judgment = if protocol.schema == SYSTEM_ONE_C_V1
-                && judgment.competence.standard == Some(super::AssessmentStandardV1::Default)
-                && protocol.is_stock_assessment(&judgment)
-            {
-                judgment
-            } else {
-                judgment.resolve_assessment(Some(&selection))?
-            };
             if !judgment.validate() {
                 return Err(NativeProtocolError::ContentMismatch);
             }
@@ -368,7 +413,7 @@ impl FrozenNativeProtocolV1 {
     }
     pub fn validate_smart(&self, judgment: &JudgmentSettingsV1) -> Result<(), NativeProtocolError> {
         self.validate()?;
-        let expected = Self::freeze(
+        let expected = Self::freeze_resolved(
             &self.protocol,
             judgment.degree.definition().into(),
             [(super::SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
@@ -387,7 +432,7 @@ impl FrozenNativeProtocolV1 {
         if branches.iter().any(|branch| branch.judgment.is_none()) {
             return Err(NativeProtocolError::ContentMismatch);
         }
-        let expected = Self::freeze(
+        let expected = Self::freeze_resolved(
             &self.protocol,
             c_v1_branch_decision_definition(branches, default_id),
             branches

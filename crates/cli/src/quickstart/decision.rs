@@ -55,6 +55,13 @@ pub(super) fn options(client: Option<&LocalControlClient>) -> Value {
     ))
     .expect("bundled decision provider catalog is valid");
     let mut providers = catalog["providers"].as_array().unwrap().clone();
+    // This legacy command creates V1 System One services only. V2 reads the same
+    // catalog with its explicit codec and must not be reinterpreted by V1.
+    providers.retain(|provider| {
+        provider
+            .get("wire_protocol")
+            .is_none_or(|value| value == "system_one")
+    });
     for provider in &mut providers {
         provider["kind"] = json!("system_one");
         provider["credential_format"] = json!("bearer");

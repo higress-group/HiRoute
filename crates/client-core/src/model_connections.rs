@@ -157,6 +157,51 @@ impl Client {
         .await
     }
 
+    pub async fn check_native_model_connection_v2(
+        &self,
+        request_id: &str,
+        request: hiroute_application_api::NativeModelConnectionCheckRequestV2,
+        grant: ProtectedClientGrantV2,
+    ) -> Result<MachineEnvelopeV2<hiroute_application_api::ModelConnectionCheckViewV2>, ClientFailure>
+    {
+        self.compute_management_call(
+            request_id,
+            hiroute_application_api::CHECK_NATIVE_MODEL_CONNECTION_V2,
+            request,
+            grant,
+        )
+        .await
+    }
+    pub async fn check_registered_model_connection_v2(
+        &self,
+        request_id: &str,
+        request: hiroute_application_api::RegisteredModelConnectionCheckRequestV2,
+        grant: ProtectedClientGrantV2,
+    ) -> Result<MachineEnvelopeV2<hiroute_application_api::ModelConnectionCheckViewV2>, ClientFailure>
+    {
+        self.compute_management_call(
+            request_id,
+            hiroute_application_api::CHECK_REGISTERED_MODEL_CONNECTION_V2,
+            request,
+            grant,
+        )
+        .await
+    }
+    pub async fn check_saved_model_connection_v2(
+        &self,
+        request_id: &str,
+        request: hiroute_application_api::SavedModelConnectionCheckRequestV2,
+        grant: ProtectedClientGrantV2,
+    ) -> Result<MachineEnvelopeV2<hiroute_application_api::ModelConnectionCheckViewV2>, ClientFailure>
+    {
+        self.compute_management_call(
+            request_id,
+            hiroute_application_api::CHECK_SAVED_MODEL_CONNECTION_V2,
+            request,
+            grant,
+        )
+        .await
+    }
     async fn compute_management_call<P, R>(
         &self,
         request_id: &str,

@@ -13,6 +13,7 @@ export function stockAssessment(judgment: Judgment, native = false): Judgment {
   result.competence.standard = 'default';
   result.competence.instructions = native ? `${stock.q1.instructions.slice(wrapper.length + 1)} ${guidance.feedback}` : defaultJudgment.competence.instructions;
   result.competence.criteria = structuredClone(native ? stock.q1.criteria : defaultJudgment.competence.criteria) as [string, string, string];
+  if (native) result.competence.criteria[2] = guidance.highest_criterion;
   return result;
 }
 export function resolveAssessment(judgment: Judgment, native = false): Judgment {

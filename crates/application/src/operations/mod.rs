@@ -1044,6 +1044,7 @@ impl TransactionError {
             }
             Self::CapabilityDenied => ErrorCode::CapabilityDenied,
             Self::RevisionConflict(_)
+            | Self::Preparation(ChangePreparationError::DecisionSourceRevisionConflict)
             | Self::Preparation(ChangePreparationError::RuntimeGenerationChanged)
             | Self::Preparation(ChangePreparationError::SecretGenerationChanged) => {
                 ErrorCode::RevisionConflict

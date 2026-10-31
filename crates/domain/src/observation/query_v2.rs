@@ -16,6 +16,7 @@ pub struct ObservationReaderContext {
     search_content: bool,
     authorization_generation: u64,
     expires_at_ms: i64,
+    query_budget: std::time::Duration,
     query_deadline: Option<std::time::Instant>,
 }
 
@@ -23,11 +24,23 @@ impl ObservationReaderContext {
     /// Query budget for a management observation read, shared by composed owners.
     /// Gateway execution and background maintenance use their own budgets.
     pub const QUERY_BUDGET: std::time::Duration = std::time::Duration::from_secs(1);
+    /// Text search may inspect retained index readiness before returning its first page.
+    pub const SEARCH_QUERY_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+
+    pub fn query_budget(&self) -> std::time::Duration {
+        self.query_budget
+    }
+
+    /// Trusted search admission only; does not change permissions or extend a caller's deadline.
+    pub fn with_search_query_deadline(mut self, deadline: std::time::Instant) -> Self {
+        self.query_budget = Self::SEARCH_QUERY_BUDGET;
+        self.with_query_deadline(deadline)
+    }
 
     /// A composed analysis shares one budget across its existing read owners.
     /// This trusted context is never deserialized from a client request.
     pub fn with_query_deadline(mut self, deadline: std::time::Instant) -> Self {
-        let deadline = deadline.min(std::time::Instant::now() + Self::QUERY_BUDGET);
+        let deadline = deadline.min(std::time::Instant::now() + self.query_budget);
         self.query_deadline = Some(
             self.query_deadline
                 .map_or(deadline, |current| current.min(deadline)),
@@ -76,6 +89,7 @@ impl ObservationReaderContext {
             search_content,
             authorization_generation,
             expires_at_ms,
+            query_budget: Self::QUERY_BUDGET,
             query_deadline: None,
         })
     }
@@ -398,6 +412,45 @@ mod tests {
         assert_eq!(
             expired.check(0, false, false),
             Err(ObservationQueryError::ReadTimeout)
+        );
+    }
+
+    #[test]
+    fn search_deadlines_survive_composition_without_extending_a_shorter_caller() {
+        use std::time::{Duration, Instant};
+
+        let reader = ObservationReaderContext::local_user(
+            WorkspaceId::default(),
+            "observer".into(),
+            1,
+            10_000,
+            true,
+            true,
+        )
+        .unwrap();
+        let before = Instant::now();
+        let search = reader
+            .clone()
+            .with_search_query_deadline(before + Duration::from_secs(60));
+        let after = Instant::now();
+        let deadline = search.query_deadline().unwrap();
+        assert!(deadline >= before + Duration::from_secs(5));
+        assert!(deadline <= after + Duration::from_secs(5));
+        assert_eq!(search.query_budget(), Duration::from_secs(5));
+        assert_eq!(reader.binding().unwrap(), search.binding().unwrap());
+        let nested = search.with_query_deadline(after + Duration::from_secs(60));
+        assert_eq!(nested.query_deadline(), Some(deadline));
+
+        let shorter = before + Duration::from_millis(200);
+        let limited = reader
+            .clone()
+            .with_query_deadline(shorter)
+            .with_search_query_deadline(deadline);
+        assert_eq!(limited.query_deadline(), Some(shorter));
+        reader.cancel();
+        assert_eq!(
+            nested.check(1, true, true),
+            Err(ObservationQueryError::Unavailable)
         );
     }
 

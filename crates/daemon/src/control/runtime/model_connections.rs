@@ -39,6 +39,8 @@ mod feed_admission;
 mod hermes_points;
 mod key_inputs;
 mod key_masks;
+mod network_checks;
+mod network_settings;
 mod pi_discovered;
 pub(in crate::control::runtime) mod point_catalog;
 mod points;
@@ -264,220 +266,68 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         self.release_subscription_validation(validation)
     }
 
+    fn get_native_source_network(
+        &self,
+        request: hiroute_application_api::NativeSourceNetworkQueryV1,
+    ) -> Result<hiroute_application_api::NativeSourceNetworkViewV1, ComputeManagementControlError>
+    {
+        self.read_native_source_network(request)
+    }
+    fn preview_native_source_network(
+        &self,
+        request: hiroute_application_api::NativeSourceNetworkPreviewV1,
+    ) -> Result<hiroute_application_api::NativeNetworkSavePreviewV1, ComputeManagementControlError>
+    {
+        self.preview_native_network_edit(request)
+    }
+    fn preview_native_network_route(
+        &self,
+        request: hiroute_application_api::NativeNetworkRoutePreviewRequestV1,
+    ) -> Result<hiroute_application_api::NativeNetworkRouteViewV1, ComputeManagementControlError>
+    {
+        self.resolve_native_network_preview(request)
+    }
+    fn preview_compute_save_v4(
+        &self,
+        request: hiroute_application_api::ComputeManagementChangeV4,
+    ) -> Result<hiroute_application_api::ComputeSavePreviewV2, ComputeManagementControlError> {
+        self.preview_network_compute_save(request)
+    }
+    fn check_native_model_connection_v2(
+        &self,
+        request: hiroute_application_api::NativeModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        self.check_native_model_connection_network(request.request, Some(request.network_edit))
+    }
+    fn check_registered_model_connection_v2(
+        &self,
+        request: hiroute_application_api::RegisteredModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        self.check_registered_model_connection_network(request.request, Some(request.network_edit))
+    }
+    fn check_saved_model_connection_v2(
+        &self,
+        request: hiroute_application_api::SavedModelConnectionCheckRequestV2,
+    ) -> Result<hiroute_application_api::ModelConnectionCheckViewV2, ComputeManagementControlError>
+    {
+        self.check_saved_model_connection_network(request.request, request.network_edit)
+    }
     fn check_native_model_connection(
         &self,
         request: NativeModelConnectionCheckRequestV1,
     ) -> Result<ModelConnectionCheckViewV1, ComputeManagementControlError> {
-        let check_id = request.draft.check_id.clone();
-        if check_id.trim().is_empty() {
-            return Err(ComputeManagementControlError::Invalid);
-        }
-        let cancellation = ModelConnectionProbeCancellationV1::default();
-        {
-            let mut cancellations = self
-                .model_connection_cancellations
-                .lock()
-                .map_err(|_| ComputeManagementControlError::Unavailable)?;
-            if cancellations.len() >= 256 || cancellations.contains_key(&check_id) {
-                return Err(ComputeManagementControlError::Conflict);
-            }
-            cancellations.insert(check_id.clone(), cancellation.clone());
-        }
-
-        let checked = (|| {
-            let expected_source_revision = request.draft.expected_source_revision;
-            let mut draft = trusted_draft(
-                request.draft,
-                self.current_catalog()
-                    .as_deref()
-                    .map(|snapshot| &snapshot.catalog),
-            )?;
-            let saved_key = if let Some(source_id) = draft.existing_source_id.as_deref() {
-                let expected_revision =
-                    expected_source_revision.ok_or(ComputeManagementControlError::Invalid)?;
-                let stores = self
-                    .stores_lock()
-                    .map_err(|_| ComputeManagementControlError::Unavailable)?;
-                let source = stores
-                    .control()
-                    .compute_management_source(source_id)
-                    .map_err(map_port)?
-                    .ok_or(ComputeManagementControlError::NotFound)?;
-                if source.revision != expected_revision
-                    || !matches!(
-                        source.provenance,
-                        hiroute_domain::ComputeManagementProvenanceV2::UserConfigured { .. }
-                    )
-                {
-                    return Err(ComputeManagementControlError::Conflict);
-                }
-                draft.trusted_lineage_digest = Some(source.lineage_digest.clone());
-                if request.input_candidate.is_some()
-                    || draft.authentication == GatewayAuthenticationSemanticsV1::None
-                {
-                    None
-                } else if let Some(key) = source.enabled_credentials().next() {
-                    let subject = VerifiedSecretSubjectV1::from_authenticated_transport(
-                        "hirouted",
-                        format!("source/{}", source.source_id),
-                    )
-                    .map_err(|_| ComputeManagementControlError::Corrupt)?;
-                    let destination = source
-                        .target
-                        .credential_destination()
-                        .map_err(|_| ComputeManagementControlError::Corrupt)?;
-                    let secret = stores
-                        .secrets()
-                        .resolve_secret(
-                            &subject,
-                            &key.credential,
-                            "provider-auth",
-                            &destination,
-                            key.credential.generation(),
-                        )
-                        .map_err(map_port)?;
-                    Some((key.key_id.clone(), key.credential.generation(), secret))
-                } else {
-                    None
-                }
-            } else {
-                if expected_source_revision.is_some() {
-                    return Err(ComputeManagementControlError::Invalid);
-                }
-                None
-            };
-            let secret = match (&draft.authentication, request.input_candidate) {
-                (GatewayAuthenticationSemanticsV1::None, None) => None,
-                (GatewayAuthenticationSemanticsV1::None, Some(_)) => {
-                    return Err(ComputeManagementControlError::Invalid);
-                }
-                (
-                    GatewayAuthenticationSemanticsV1::Bearer
-                    | GatewayAuthenticationSemanticsV1::ApiKeyHeader { .. },
-                    Some(candidate),
-                ) => {
-                    candidate
-                        .validate_shape()
-                        .map_err(|_| ComputeManagementControlError::Invalid)?;
-                    if draft
-                        .candidate_ref
-                        .as_ref()
-                        .is_some_and(|current| current != &candidate.candidate_ref)
-                    {
-                        return Err(ComputeManagementControlError::Conflict);
-                    }
-                    draft.candidate_ref = Some(candidate.candidate_ref.clone());
-                    let inputs = self
-                        .manual_protected_inputs
-                        .lock()
-                        .map_err(|_| ComputeManagementControlError::Unavailable)?;
-                    let source = inputs
-                        .get(&candidate.candidate_ref)
-                        .ok_or(ComputeManagementControlError::NotFound)?;
-                    Some(
-                        ProtectedSecret::new(source.expose().to_vec())
-                            .map_err(|_| ComputeManagementControlError::Corrupt)?,
-                    )
-                }
-                (
-                    GatewayAuthenticationSemanticsV1::Bearer
-                    | GatewayAuthenticationSemanticsV1::ApiKeyHeader { .. },
-                    None,
-                ) => None,
-            };
-            let credential = match (&draft.authentication, secret.as_ref()) {
-                (GatewayAuthenticationSemanticsV1::None, _) => {
-                    NativeModelConnectionCredentialV1::NotRequired
-                }
-                (_, Some(secret)) => NativeModelConnectionCredentialV1::Protected {
-                    descriptor: ProtectedInputSourceDescriptorV1::ManualInput,
-                    input_slot: draft
-                        .candidate_ref
-                        .clone()
-                        .ok_or(ComputeManagementControlError::Invalid)?,
-                    secret,
-                },
-                (_, None) => match saved_key.as_ref() {
-                    Some((credential_id, expected_generation, secret)) => {
-                        NativeModelConnectionCredentialV1::Saved {
-                            credential_id: credential_id.clone(),
-                            expected_generation: *expected_generation,
-                            secret,
-                        }
-                    }
-                    None => NativeModelConnectionCredentialV1::PendingInput,
-                },
-            };
-            self.model_connections
-                .check(draft, credential, &cancellation)
-                .map_err(map_check_error)
-        })();
-        self.model_connection_cancellations
-            .lock()
-            .map_err(|_| ComputeManagementControlError::Unavailable)?
-            .remove(&check_id);
-        checked
+        self.check_native_model_connection_network(request, None)
+            .map(|view| view.check)
     }
 
     fn check_registered_model_connection(
         &self,
         request: RegisteredModelConnectionCheckRequestV1,
     ) -> Result<ModelConnectionCheckViewV1, ComputeManagementControlError> {
-        if !request.valid() {
-            return Err(ComputeManagementControlError::Invalid);
-        }
-        let check_id = request.check_id.clone();
-        let cancellation = ModelConnectionProbeCancellationV1::default();
-        {
-            let mut cancellations = self
-                .model_connection_cancellations
-                .lock()
-                .map_err(|_| ComputeManagementControlError::Unavailable)?;
-            if cancellations.len() >= 256 || cancellations.contains_key(&check_id) {
-                return Err(ComputeManagementControlError::Conflict);
-            }
-            cancellations.insert(check_id.clone(), cancellation.clone());
-        }
-        let checked = (|| {
-            let mut draft = self.trusted_registered_draft(&request)?;
-            self.validate_registered_source_edit(&request, &draft)?;
-            let candidate = &request.input_candidate;
-            if draft
-                .candidate_ref
-                .as_ref()
-                .is_some_and(|current| current != &candidate.candidate_ref)
-            {
-                return Err(ComputeManagementControlError::Conflict);
-            }
-            draft.candidate_ref = Some(candidate.candidate_ref.clone());
-            let secret = {
-                let inputs = self
-                    .manual_protected_inputs
-                    .lock()
-                    .map_err(|_| ComputeManagementControlError::Unavailable)?;
-                let source = inputs
-                    .get(&candidate.candidate_ref)
-                    .ok_or(ComputeManagementControlError::NotFound)?;
-                ProtectedSecret::new(source.expose().to_vec())
-                    .map_err(|_| ComputeManagementControlError::Corrupt)?
-            };
-            self.model_connections
-                .check(
-                    draft,
-                    NativeModelConnectionCredentialV1::Protected {
-                        descriptor: ProtectedInputSourceDescriptorV1::ManualInput,
-                        input_slot: candidate.candidate_ref.clone(),
-                        secret: &secret,
-                    },
-                    &cancellation,
-                )
-                .map_err(map_check_error)
-        })();
-        self.model_connection_cancellations
-            .lock()
-            .map_err(|_| ComputeManagementControlError::Unavailable)?
-            .remove(&check_id);
-        checked
+        self.check_registered_model_connection_network(request, None)
+            .map(|view| view.check)
     }
 
     fn prepare_discovered_model_connection(
@@ -491,43 +341,8 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         &self,
         request: SavedModelConnectionCheckRequestV1,
     ) -> Result<ModelConnectionCheckViewV1, ComputeManagementControlError> {
-        if !request.valid() {
-            return Err(ComputeManagementControlError::Invalid);
-        }
-        let check_id = request.check_id.clone();
-        let cancellation = ModelConnectionProbeCancellationV1::default();
-        {
-            let mut cancellations = self
-                .model_connection_cancellations
-                .lock()
-                .map_err(|_| ComputeManagementControlError::Unavailable)?;
-            if cancellations.len() >= 256 || cancellations.contains_key(&check_id) {
-                return Err(ComputeManagementControlError::Conflict);
-            }
-            cancellations.insert(check_id.clone(), cancellation.clone());
-        }
-        let checked = (|| {
-            let prepared = self.prepare_saved_model_connection(&request)?;
-            self.model_connections
-                .restore_saved_candidate_ref(&prepared.candidate)
-                .map_err(|_| ComputeManagementControlError::Corrupt)?;
-            let credential = match prepared.credential.as_ref() {
-                Some(credential) => NativeModelConnectionCredentialV1::Saved {
-                    credential_id: credential.credential_id.clone(),
-                    expected_generation: credential.generation,
-                    secret: &credential.secret,
-                },
-                None => NativeModelConnectionCredentialV1::NotRequired,
-            };
-            self.model_connections
-                .check(prepared.draft, credential, &cancellation)
-                .map_err(map_check_error)
-        })();
-        self.model_connection_cancellations
-            .lock()
-            .map_err(|_| ComputeManagementControlError::Unavailable)?
-            .remove(&check_id);
-        checked
+        self.check_saved_model_connection_network(request, None)
+            .map(|view| view.check)
     }
 
     fn cancel_native_model_connection_check(
@@ -652,6 +467,7 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
         self.validate_subscription_save_change(&change)?;
+        self.validate_native_network_save(&change, None)?;
         self.bind_saved_key_inputs(&change)?;
         let stores = self
             .stores_lock()
@@ -689,6 +505,7 @@ impl ComputeManagementControlPort for LocalControlAdapter {
             .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;
         self.validate_subscription_save_change(&change.change)?;
+        self.validate_native_network_save(&change.change, None)?;
         self.bind_saved_key_inputs(&change.change)?;
         self.establish_save_defaults(&mut change, &catalog)?;
         let stores = self
@@ -719,6 +536,7 @@ impl ComputeManagementControlPort for LocalControlAdapter {
         let change =
             hiroute_application_api::saved_compute_change(request.spec.desired_state.clone())
                 .map_err(|_| ComputeManagementControlError::Invalid)?;
+        self.validate_saved_network_state(&request.spec.desired_state, &change)?;
         let catalog = self
             .current_catalog()
             .ok_or(ComputeManagementControlError::Unavailable)?;

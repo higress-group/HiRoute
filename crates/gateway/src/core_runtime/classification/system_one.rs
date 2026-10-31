@@ -10,7 +10,6 @@ use super::protocol::{
 };
 use super::{CallFailure, ClassifierAssessment, ClassifierResponse, PreparedDecisionRequest};
 use crate::agent_turn_history::AgentTurnHistorySnapshot;
-use crate::server::core_runtime::adapters::prepare_replay_json_template;
 use crate::server::request_plan::RestBranchClassifierAuthorityV1;
 
 // A bounded wire allocation, not a tokenizer or a business-model context limit.
@@ -19,8 +18,8 @@ const MAX_REQUEST_BYTES: usize = 256 * 1024;
 
 pub(super) struct Bindings {
     pub(super) definition: DecisionDefinitionV1,
-    choice: Option<String>,
-    degrees: BTreeMap<String, String>,
+    pub(super) choice: Option<String>,
+    pub(super) degrees: BTreeMap<String, String>,
     pub(super) assessment: Option<String>,
     pub(super) applicability: Option<String>,
 }
@@ -58,8 +57,8 @@ pub(super) fn request_template<'a>(
     let mut body = json!({"model": authority.system_one_model, "questions":questions,
         "state":{"latest_user":latest,"visible_conversation":[],"history_partial":history.history_partial,"assessment_from":target.as_ref().map(|t| t.from)}});
     // Replay computes the full escaped current input length without truncating or materializing it.
-    let base = prepare_replay_json_template(&body, refs.clone())
-        .map_err(|_| CallFailure::RejectedInput)?;
+    let base =
+        super::openai_decisions::prepare_template(authority.wire_protocol, &body, refs.clone())?;
     if base.wire_len > MAX_REQUEST_BYTES {
         return Err(CallFailure::RejectedInput);
     }
@@ -85,8 +84,10 @@ pub(super) fn request_template<'a>(
     body["state"]["history_partial"] = json!(history.history_partial || removed > 0);
     body["state"]["assessment_from"] =
         json!(target.as_ref().map(|t| t.from.saturating_sub(removed)));
-    let template =
-        prepare_replay_json_template(&body, refs).map_err(|_| CallFailure::RejectedInput)?;
+    let template = super::openai_decisions::prepare_template(authority.wire_protocol, &body, refs)?;
+    if template.wire_len > MAX_REQUEST_BYTES {
+        return Err(CallFailure::RejectedInput);
+    }
     Ok(PreparedDecisionRequest {
         target_category: None,
         template,

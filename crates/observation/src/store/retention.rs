@@ -346,7 +346,7 @@ impl LocalObservationStore {
             .map_err(|_| ObservationQueryError::Corrupt)
     }
 
-    fn collect_unreferenced_candidates(
+    pub(super) fn collect_unreferenced_candidates(
         &self,
         candidates: &[(String, String)],
     ) -> Result<u64, ObservationQueryError> {

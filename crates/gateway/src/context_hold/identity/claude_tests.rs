@@ -17,6 +17,24 @@ fn accepted(field: Field<NativeIdentity>) -> NativeIdentity {
 }
 
 #[test]
+fn compact_context_document_preserves_claude_session_and_conflicting_header() {
+    let body = json!({"metadata":{"user_id":"{\"session_id\":\"claude-session\"}"},
+        "messages":[{"role":"user","content":"large-history".repeat(4096)}]});
+    let compact = crate::context_hold::context_document(&body);
+    assert!(compact.get("messages").is_none());
+    assert_eq!(
+        accepted(native(&[], compact.clone())),
+        accepted(native(&[], body.clone()))
+    );
+    for document in [body, compact] {
+        assert!(matches!(
+            native(&[("x-claude-code-session-id", "different")], document),
+            Field::Invalid
+        ));
+    }
+}
+
+#[test]
 fn metadata_accepts_only_a_bounded_json_session_and_ignores_device_dimensions() {
     assert!(matches!(
         metadata_identity(&json!({

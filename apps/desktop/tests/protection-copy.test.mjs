@@ -24,3 +24,10 @@ for (const language of ['en', 'zh']) {
     assert.doesNotMatch(copy, /next (?:agent )?turn goes to|下一轮交给|competence floor|胜任下限/);
   });
 }
+
+test('V2 native and custom classifiers keep the same protection explanations as V1', () => {
+  const v2 = connection => ({ kind: 'decision_service_v2', service: { schema: 'hiroute.decision-service/v2', id: 'decision/v2', revision: 1, name: 'V2', connection } });
+  const native = v2({ kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model: 'fixture', endpoint: 'https://decision.example.test', timeout_ms: 1000, authentication: { kind: 'shared_source', source_id: 'source/a', source_lineage_digest: 'sha256:a' } });
+  assert.equal(protectionExplanation(native, 'en'), protectionExplanation(builtin, 'en'));
+  assert.equal(protectionExplanation(v2({ kind: 'custom', endpoint: 'https://decision.example.test', timeout_ms: 1000, auth_header: null }), 'en'), protectionExplanation(extension, 'en'));
+});

@@ -56,6 +56,93 @@ impl CpaControlPlane for EmptyCatalogControl {
 }
 
 #[test]
+fn regression_cold_catalog_outage_is_unavailable_without_reopening_revoked_admission() {
+    for managed in [false, true] {
+        let root = crate::private_test_support::tempdir().unwrap();
+        let backend = Arc::new(FakeBackend::default());
+        let control = Arc::new(FakeControl::default());
+        control.set_accounts(vec![snapshot(CpaAccountKind::Codex, 'a', "gpt-5.5")]);
+        let make_runtime = || {
+            if managed {
+                runtime(&root, backend.clone(), control.clone())
+            } else {
+                fixture_runtime(&root, backend.clone(), control.clone(), 2)
+            }
+        };
+        let first = make_runtime();
+        if managed {
+            write_managed_identity(&first, "saved-account");
+        }
+        first.start().unwrap();
+        let account = first
+            .materialize_account("connector.cpa.codex", "endpoint.cpa.codex")
+            .unwrap()
+            .account_subject;
+        first
+            .apply_account_management(&account, 7, CpaSourceManagementState::Enabled)
+            .unwrap();
+        let target = saved_managed_target(&first);
+        first.shutdown().unwrap();
+        drop(first);
+
+        let empty = Arc::new(EmptyCatalogControl {
+            inner: control.clone(),
+            empty: AtomicBool::new(true),
+            transient: true,
+            recoverable: false,
+            calls: Mutex::new(Vec::new()),
+        });
+        let mut restored = make_runtime();
+        restored.control = empty.clone();
+        restored
+            .apply_account_management(&account, 7, CpaSourceManagementState::Enabled)
+            .unwrap();
+        assert!(matches!(
+            restored.ensure_saved_runtime_ready(&account, 7),
+            Err(CpaLifecycleError::ControlUnavailable)
+        ));
+        let calls = empty.calls.lock().len();
+        assert!(matches!(
+            lease_saved_target(&restored, &target),
+            Err(CpaAttemptError::Unavailable)
+        ));
+        assert_eq!(empty.calls.lock().len(), calls);
+
+        // Reapplying saved Enabled authority admits maintenance, not execution
+        // from the invalidated catalog while recovery is still pending.
+        restored
+            .apply_account_management(&account, 7, CpaSourceManagementState::Enabled)
+            .unwrap();
+        assert!(matches!(
+            lease_saved_target(&restored, &target),
+            Err(CpaAttemptError::Unavailable)
+        ));
+        assert_eq!(empty.calls.lock().len(), calls);
+
+        restored
+            .apply_account_management(&account, 8, CpaSourceManagementState::Disabled)
+            .unwrap();
+        assert!(matches!(
+            lease_saved_target(&restored, &target),
+            Err(CpaAttemptError::RevokedCredential)
+        ));
+        assert_eq!(empty.calls.lock().len(), calls);
+
+        empty.empty.store(false, Ordering::SeqCst);
+        restored
+            .apply_account_management(&account, 9, CpaSourceManagementState::Enabled)
+            .unwrap();
+        restored.ensure_saved_runtime_ready(&account, 9).unwrap();
+        assert!(lease_saved_target(&restored, &target).unwrap().is_some());
+        restored.shutdown().unwrap();
+        assert!(matches!(
+            lease_saved_target(&restored, &target),
+            Err(CpaAttemptError::RevokedCredential)
+        ));
+    }
+}
+
+#[test]
 fn saved_catalog_recovers_without_check_while_passive_reads_do_not_refresh() {
     if isolated_owner_recovery_case(
         "runtime::tests::managed_recovery::catalog_recovery_tests::saved_catalog_recovers_without_check_while_passive_reads_do_not_refresh",

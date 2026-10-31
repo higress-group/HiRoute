@@ -69,3 +69,34 @@ fn blob_made_live_after_gc_candidate_discovery_keeps_its_file_and_metadata() {
             .unwrap()
     );
 }
+
+#[test]
+fn capacity_protection_added_after_discovery_wins_the_deletion_recheck() {
+    let root = tempfile::tempdir().unwrap();
+    let store =
+        LocalObservationStore::open(root.path(), crate::DigestAuthority::new([2; 32])).unwrap();
+    let digest = crate::query_v2::search_tests::source(&store, b"protected content");
+    store
+        .connection
+        .lock()
+        .execute("UPDATE content_instances_v2 SET state='installing'", [])
+        .unwrap();
+    let candidates = store.garbage_candidates(32).unwrap();
+    assert_eq!(candidates.len(), 1);
+    store
+        .connection
+        .lock()
+        .execute(
+            "INSERT INTO observation_capacity_blobs_v5(workspace,digest) VALUES(?1,?2)",
+            params![candidates[0].0, candidates[0].1],
+        )
+        .unwrap();
+    assert_eq!(
+        store.collect_unreferenced_candidates(&candidates).unwrap(),
+        0
+    );
+    assert_eq!(
+        std::fs::read(store.blob_path(&digest)).unwrap(),
+        b"protected content"
+    );
+}

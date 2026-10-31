@@ -190,6 +190,23 @@ function Invoke-LibraryTests {
     if ($LASTEXITCODE -ne 0) { throw "$Package native library inventory failed" }
     $inventory = Get-Content "$evidence/$name-discovery.log" -Raw
     $optIn = @()
+    # These source-declared opt-ins need Release timing or a private stopped
+    # history. Ordinary core execution must not count them as ignored passes.
+    if ($Package -eq 'hiroute-application') {
+      $optIn = @('observation_query::control::trust_tests::trust_suggestions_cached_read_cost')
+    }
+    if ($Package -eq 'hiroute-observation') {
+      $optIn = @(
+        'query_v2::session_search_tests::live_search_250k_occurrences_and_60k_sources_under_real_deadline',
+        'query_v2::session_search_tests::live_search_450k_occurrences_and_100k_sources_under_real_deadline',
+        'store::field_replay_tests::captured_native_suffix_uses_the_real_writer',
+        'store::field_tests::current_history_and_real_maintenance',
+        'store::tests::plan_quality::routing_timeline::timeline_long_session_read_cost',
+        'store::tests::plan_quality::trust::trust_suggestion_population_read_cost')
+    }
+    if ($Package -eq 'hiroute-gateway') {
+      $optIn = @('server::core_runtime::adapters::tests::local_work::benchmark_local_text_processing')
+    }
     if ($Package -eq 'hiroute-integrations') {
       $optIn = @(
         'agents::native_ingress_probe::ephemeral::tests::real_codex_ephemeral_authentication_without_managed_configuration',

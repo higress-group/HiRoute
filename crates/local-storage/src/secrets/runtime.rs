@@ -83,6 +83,102 @@ impl LocalNativeCredentialAuthority {
 }
 
 impl LocalSecretStore {
+    /// Read the current protected-header generation without opening the Secret bytes.
+    pub fn decision_header_generation(&self, secret_id: &str) -> PortResult<Option<u64>> {
+        let connection = self.connection.borrow();
+        let Some(row) = read_entry(&connection, secret_id)? else {
+            return Ok(None);
+        };
+        let allowed: BTreeSet<String> = serde_json::from_str(&row.allowed_destinations_json)
+            .map_err(|_| {
+                port(
+                    PortErrorCode::Corrupt,
+                    "secret.decision_header.destinations",
+                )
+            })?;
+        let reference = CredentialRefV1::new(
+            row.credential_id.clone(),
+            row.owner_scope.clone(),
+            row.subject.clone(),
+            row.purpose.clone(),
+            allowed,
+            row.generation,
+        )
+        .map_err(|_| port(PortErrorCode::Corrupt, "secret.decision_header.reference"))?;
+        self.validate_reference(&reference, &row)?;
+        if row.kind != "provider-api-key"
+            || reference.owner_scope() != "personal/default"
+            || reference.subject() != "hirouted"
+            || reference.purpose() != "http-header"
+            || !reference.allowed_destinations().is_empty()
+            || read_head(&connection, secret_id)? != reference.generation()
+        {
+            return Err(port(
+                PortErrorCode::PermissionDenied,
+                "secret.decision_header.binding",
+            ));
+        }
+        Ok(Some(reference.generation()))
+    }
+
+    /// Resolve a previously admitted source Key for exactly one registered decision destination.
+    /// The composition-owned store guard remains held across the source recheck and this read.
+    pub(crate) fn lease_decision_credential_exact(
+        &self,
+        source_id: &str,
+        destination: &str,
+        key_id: &str,
+        expected_generation: u64,
+    ) -> Result<Option<NativeCredentialLeaseV1>, NativeCredentialLeaseErrorV1> {
+        let connection = self.connection.borrow();
+        let Some(row) = read_entry(&connection, key_id)? else {
+            return Ok(None);
+        };
+        let allowed: BTreeSet<String> = serde_json::from_str(&row.allowed_destinations_json)
+            .map_err(|_| port(PortErrorCode::Corrupt, "secret.decision.destination_decode"))?;
+        let reference = CredentialRefV1::new(
+            row.credential_id.clone(),
+            row.owner_scope.clone(),
+            row.subject.clone(),
+            row.purpose.clone(),
+            allowed,
+            row.generation,
+        )
+        .map_err(|_| port(PortErrorCode::Corrupt, "secret.decision.reference"))?;
+        self.validate_reference(&reference, &row)?;
+        if row.kind != "provider-api-key"
+            || reference.owner_scope() != format!("source/{source_id}")
+            || reference.subject() != "hirouted"
+            || reference.purpose() != "provider-auth"
+            || !reference.allowed_destinations().contains(destination)
+        {
+            return Err(port(
+                PortErrorCode::PermissionDenied,
+                "secret.decision.destination_binding",
+            )
+            .into());
+        }
+        if reference.generation() != expected_generation
+            || read_head(&connection, reference.credential_id())? != reference.generation()
+        {
+            return Ok(None);
+        }
+        let secret = self.authenticate_row(&row)?;
+        let credential_id = reference.credential_id().to_owned();
+        let capability = std::sync::Arc::new(LocalNativeCapability {
+            secret,
+            authentication: GatewayAuthenticationSemanticsV1::Bearer,
+        });
+        NativeCredentialLeaseV1::issue(
+            credential_id.clone(),
+            credential_id,
+            reference.generation(),
+            capability,
+        )
+        .map(Some)
+        .map_err(|_| port(PortErrorCode::Corrupt, "secret.decision.lease").into())
+    }
+
     /// Resolves one exact request against this already-open Secret store.
     ///
     /// The store itself is intentionally not `Sync`; production callers must hold their

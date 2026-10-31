@@ -676,6 +676,13 @@ across service scopes SHALL NOT attach metadata to unmanaged providers or remove
 the existing Agent/grant transport gate.
 DSH relay/settlement envelopes after the latest actual input SHALL
 NOT acquire that input's proof merely by arriving in its active native turn.
+DSH's native `repeat-tool-reminder` producer SHALL supplement the current task
+without becoming a new user input. Recognition SHALL use its native source kind,
+not reminder wording. The reminder SHALL retain its role and exact execution
+content, and its digest SHALL remain in the complete final User scope. A missing,
+changed or reordered envelope SHALL invalidate the optional proof. Unknown and
+peer sources SHALL retain observed-input semantics; an actual human message with
+identical text SHALL remain eligible as new input in its own native activation.
 OpenCode binds a bounded native message lookup to the current message ID, preserving
 native page order rather than deriving chronology from opaque IDs. A positively typed,
 synthetic-only compaction followup emits the `existing_turn` input guard with that

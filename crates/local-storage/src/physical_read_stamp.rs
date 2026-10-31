@@ -50,6 +50,18 @@ pub(crate) struct DatabaseBinding {
 }
 
 impl DatabaseBinding {
+    /// Reopen only the already admitted file. Never create or migrate a replacement.
+    pub(crate) fn open_peer(&self) -> Result<Connection, LocalStorageError> {
+        if identity(&self.path)? != self.file {
+            return Err(LocalStorageError::InvalidData);
+        }
+        let connection = crate::migrations::open_existing_for_snapshot(&self.path)?;
+        if identity(&self.path)? != self.file {
+            return Err(LocalStorageError::InvalidData);
+        }
+        Ok(connection)
+    }
+
     pub(crate) fn new(path: &Path) -> Result<Self, LocalStorageError> {
         let connection = NEXT_CONNECTION
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| v.checked_add(1))

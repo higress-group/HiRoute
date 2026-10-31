@@ -182,3 +182,56 @@ HMAC registration correlation, with the authority-loss transition on the host.
 A late successful daemon ACK can coexist with a host timeout; it does not authorize
 reuse. A successful later recovery is not proof of the earlier failure's cause.
 Keep raw diagnostics private and report only revision-bound observable outcomes.
+
+## Model request timing at Info
+
+`request_timing_summary` reuses the request token in `request_begin`,
+`request_end` and attempt events. It covers lifecycle entry through completion or
+cancellation, including early rejections (which may have a span but no request
+token). GET readiness/catalog calls are excluded. All timing fields use
+microseconds.
+
+The values in `local` and `wait` add up exactly to `elapsed_us`; do not also add
+legacy `model_stage`, attempt transport spans or reader-suppression durations.
+Local fields measure elapsed work while the request future is polled, including
+synchronous Replay I/O. They are not thread CPU counters. Pending gaps are labeled
+at the actual awaited boundary: client input, decision service, upstream
+connect/write/receipt, downstream write backpressure, or local background work.
+They include executor scheduling delay. Competing or unidentified pending work
+stays in `wait.other_us`; upstream receipt wait is not a provider-only inference
+measurement. Background reader/capture CPU requires a process profile.
+
+`asynchronous` is separate from HTTP latency. `queue_wait_max_us` is the maximum
+wait of a single observation record; `sink_work_us` sums delivery durations across
+channels, including projection, locking, commit and ACK validation. These channels
+can run concurrently. `after_response_us` measures the release delay after the frozen
+request ends, including retained capture ownership. None of these fields should
+be added to `elapsed_us`. Lost records contribute to `dropped`, not fabricated
+successful ingestion. No exporter/network latency is implied for the local OTEL
+mapper.
+
+`capture_jobs`, `capture_dropped_jobs`, `capture_queue_wait_max_us` and
+`capture_work_us` describe the optional ordered content encoder before those
+sinks. Capture work is elapsed encoding time, not CPU time. The same content
+record may appear in both capture and sink counts; these are different stages,
+not additive request latency. A failed capture job contributes explicit loss and
+stops that request's dependent capture. For full local critical-path cost, include
+`wait.local_work_us` with the local phase sum; do not exclude mandatory worker
+readiness merely because it runs outside the request future.
+
+One summary is enqueued after existing request/capture/queued-record owners are
+released, so a slow sink can delay its appearance without delaying the response.
+The existing `request_end` remains immediate. If a sink never returns or the
+process is killed, the summary may be absent under the existing best-effort
+logging contract; inspect sink failures and the immediate lifecycle events.
+
+Use bounded function timings and CPU samples to locate local hotspots before
+changing algorithms. Nested timings overlap, and sample proportions are estimates,
+not exact whole-request CPU percentages. To compare equivalent HMAC-SHA256
+implementations, run `cargo bench --locked -p hiroute-gateway --bench gateway_hash_paths`
+through the configured validation runner. The benchmark checks identical framed
+bytes across padding and update boundaries, then alternates backends on fixed
+inputs. It changes no production backend. Measure its release executable on the
+affected CPU: SHA instruction support can reverse a result from another machine.
+Hash-only throughput does not establish a whole-request latency target; rerun the
+actual request path before claiming an improvement.

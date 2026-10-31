@@ -63,6 +63,11 @@
     "allow-test-classifier-decision",
     "allow-decision-services",
     "allow-save-decision-service",
+    "allow-decision-connection-sources",
+    "allow-decision-services-v2",
+    "allow-save-decision-service-v2",
+    "allow-test-decision-service-v2",
+    "allow-test-decision-service-v3",
     "allow-save-classifier-header-secret",
     "allow-save-classifier-openapi",
     "allow-agent-snapshot",
@@ -112,6 +117,14 @@
     "allow-gateway-listener-apply",
     "allow-gateway-listener-recover",
     "allow-subscription-proxy-status",
-    "allow-subscription-proxy-apply"
+    "allow-subscription-proxy-apply",
+    "allow-native-source-network",
+    "allow-preview-native-network-route",
+    "allow-preview-native-source-network",
+    "allow-apply-native-source-network",
+    "allow-preview-compute-save-v4",
+    "allow-check-model-connection-v2",
+    "allow-check-registered-model-connection-v2",
+    "allow-check-saved-model-connection-v2"
   ]
 }

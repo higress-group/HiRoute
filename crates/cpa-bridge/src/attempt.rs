@@ -189,6 +189,12 @@ impl CpaDownstreamCredentialPort for ManagedCpaRuntime {
         request: ExactCpaCredentialRequest<'_>,
     ) -> Result<Option<CpaDownstreamCredentialCapability>, CpaAttemptError> {
         let _scope = self.operation_context().enter();
+        // Saved-source maintenance remains the only recovery authority. A cold
+        // catalog outage must deny this capability as unavailable, so an unrelated
+        // saved candidate can run, rather than asserting credential revocation.
+        if self.preparation_is_unavailable() {
+            return Err(CpaAttemptError::Unavailable);
+        }
         // Explicit shutdown revokes the old request before any restart logic.
         // A live managed runtime resolves the exact current target from the
         // credential/model identity instead of trusting durable address/epochs.

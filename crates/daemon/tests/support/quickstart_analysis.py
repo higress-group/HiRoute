@@ -6,7 +6,10 @@ from pathlib import Path
 
 
 def query(view, payload):
-    return {'schema': 'hiroute.observation.query/v2', 'intent': {'view': view, 'query': payload}}
+    # The reader may retry only an explicit typed reader_busy failure. Keep the
+    # released error format unchanged for callers that do not select this option.
+    return {'schema': 'hiroute.observation.query/v2', 'read_failure_details': True,
+            'intent': {'view': view, 'query': payload}}
 
 
 def run(product, plan):
@@ -79,11 +82,15 @@ def run(product, plan):
     prior = product.cli('prices', 'effective', '--request-stdin', payload=price_request)['data']
     edit = prior['items'][0]['edit_context']
     assert edit
-    missing = read('value', 'show', '--routing', plan, '--basis', 'api-equivalent',
-                          '--reference-binding', binding, '--currency', 'CNY')['data']
+    report = {'agent_plan_id': plan, 'from_ms': None, 'to_ms': None, 'period': None,
+              'group_by': 'none', 'currency': None, 'session_id': None}
+    historical_request = query('value_report', report)
+    equivalent_request = query('api_equivalent_value', {
+        'report': {**report, 'currency': 'CNY'}, 'reference_binding_id': binding})
+    missing = read('value', 'show', '--request-stdin', payload=equivalent_request)['data']
     assert missing['estimated_savings_micros'] is None and missing['actual_cash_micros'] is None
     assert missing['missing_request_count'] > 0
-    historical = read('value', 'show', '--routing', plan)['data']
+    historical = read('value', 'show', '--request-stdin', payload=historical_request)['data']
     operation_ids = []
     previous_setting = None
     frozen_summary = frozen_scope = None
@@ -105,8 +112,7 @@ def run(product, plan):
         assert applied['state'] == 'succeeded', applied
         operation_ids.append(applied['operation_id'])
         if setting['kind'] == 'set':
-            estimate = read('value', 'show', '--routing', plan, '--basis', 'api-equivalent',
-                '--reference-binding', binding, '--currency', 'CNY')['data']
+            estimate = read('value', 'show', '--request-stdin', payload=equivalent_request)['data']
             assert estimate['coverage'] == 'complete' and estimate['compared_request_count'] > 0, estimate
             assert estimate['routed_estimate_micros'] > 0 and estimate['estimated_savings_micros'] == 0, estimate
             assert estimate['actual_cash_micros'] is None
@@ -164,7 +170,7 @@ def run(product, plan):
     assert restored['items'][0]['quote']['origin'] == prior['items'][0]['quote']['origin'] == 'unknown'
     assert all(rate['state'] == 'unknown' for rate in restored['items'][0]['quote']['rates'].values())
     # Time bounds change, frozen monetary amounts and usage do not.
-    after = read('value', 'show', '--routing', plan)['data']
+    after = read('value', 'show', '--request-stdin', payload=historical_request)['data']
     assert after['summary']['amounts'] == historical['summary']['amounts']
     assert after['summary']['usage'] == historical['summary']['usage']
     print(json.dumps({'scenario': 'installed-management-analysis', 'state': 'green',

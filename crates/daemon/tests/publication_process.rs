@@ -9,6 +9,12 @@ fn real_process_decision_services_and_branch_publication() {
     run_script("decision_services_product.py");
 }
 
+/// A real daemon, protected source pool and synthetic OpenAI Decisions loopback.
+#[test]
+fn real_process_versioned_decision_connections_use_exact_source_keys() {
+    run_script("decision_connections_v2_product.py");
+}
+
 /// Route actual model requests and inspect C facts through the existing product query.
 #[test]
 fn real_process_c_routing_execution_and_retained_observations() {
@@ -92,6 +98,17 @@ fn real_process_plan_lifecycle_preserves_content_and_checks_references() {
 #[test]
 fn real_process_native_model_save_publishes_and_reaches_gateway() {
     run_script("model_connections_product.py");
+}
+
+/// Native source proxy configuration, checked routes and hot apply use real Control/CLI/Gateway.
+#[test]
+fn real_process_native_network_shared_decision_and_generation_retain_one_head_snapshot() {
+    run_script("native_network_decision_product.py");
+}
+
+#[test]
+fn real_process_native_network_proxy_applies_without_republishing_and_survives_restart() {
+    run_script("native_network_product.py");
 }
 
 /// Execute both published recipes against the current catalog without mistaking local

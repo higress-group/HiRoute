@@ -1,11 +1,20 @@
 use super::*;
 use hiroute_diagnostics::{correlation::CorrelationDomain, event::*};
 
+pub(super) const REGISTRATION_BUSY: &str = "TRUSTED_AUTHORITY_BUSY";
+
+#[derive(Debug, Eq, PartialEq)]
+enum AckOutcome {
+    Registered,
+    Busy,
+}
+
 /// One fully written request and its exact reply. Partial reply bytes survive a
 /// timeout; malformed replies and incomplete request writes are not recoverable.
 pub(super) struct PendingAck {
     id: String,
     bytes: Vec<u8>,
+    allow_busy: bool,
 }
 
 impl PendingAck {
@@ -13,10 +22,11 @@ impl PendingAck {
         Self {
             id: id.into(),
             bytes: Vec::new(),
+            allow_busy: false,
         }
     }
 
-    fn receive(&mut self, reader: &mut impl Read, timeout: Duration) -> Result<(), String> {
+    fn receive(&mut self, reader: &mut impl Read, timeout: Duration) -> Result<AckOutcome, String> {
         let deadline = Instant::now() + timeout;
         loop {
             if Instant::now() >= deadline {
@@ -30,11 +40,16 @@ impl PendingAck {
                         .map_err(|_| "REGISTRATION_ACK_INVALID")?;
                     if ack.schema != "hiroute.protected-apply-ack/v2"
                         || ack.registration_id != self.id
-                        || !ack.registered
                     {
                         return Err("REGISTRATION_ACK_MISMATCH".into());
                     }
-                    return Ok(());
+                    return if ack.registered {
+                        Ok(AckOutcome::Registered)
+                    } else if self.allow_busy {
+                        Ok(AckOutcome::Busy)
+                    } else {
+                        Err("REGISTRATION_ACK_MISMATCH".into())
+                    };
                 }
                 Ok(_) => {
                     if self.bytes.len() >= 1024 {
@@ -83,7 +98,7 @@ impl OwnedChild {
         result
     }
 
-    pub(super) fn finish_pending_ack(&mut self) -> Result<(), String> {
+    fn finish_pending_ack(&mut self) -> Result<AckOutcome, String> {
         let pending = self
             .pending_ack
             .as_mut()
@@ -107,7 +122,9 @@ impl OwnedChild {
             .id
             .clone();
         let started = Instant::now();
-        let result = self.finish_pending_ack();
+        // Either complete result restores the original frame boundary. A
+        // refusal restores no grant and never replays the original operation.
+        let result = self.finish_pending_ack().map(|_| ());
         emit_exchange(
             self.diagnostics.as_ref(),
             ProtectedExchangeKind::Recovery,
@@ -133,11 +150,20 @@ impl OwnedChild {
                 return Err("TRUSTED_AUTHORITY_UNAVAILABLE".into());
             }
             write_frame(&mut self.capability, bytes)?;
-            self.pending_ack = Some(PendingAck::new(id));
+            let mut pending = PendingAck::new(id);
+            pending.allow_busy = kind == ProtectedExchangeKind::Grant;
+            self.pending_ack = Some(pending);
             phase = ProtectedExchangePhase::AcknowledgementRead;
             self.finish_pending_ack()
-        })();
-        if result.is_err() {
+        })()
+        .and_then(|outcome| match outcome {
+            AckOutcome::Registered => Ok(()),
+            AckOutcome::Busy => Err(REGISTRATION_BUSY.into()),
+        });
+        let authority_lost = result
+            .as_ref()
+            .is_err_and(|error| error != REGISTRATION_BUSY);
+        if authority_lost {
             self.authority_healthy = false;
         }
         emit_exchange(
@@ -147,9 +173,15 @@ impl OwnedChild {
             id,
             started,
             result.as_ref().err(),
-            result.is_err(),
+            authority_lost,
         );
-        result.map_err(|_| "TRUSTED_AUTHORITY_UNAVAILABLE".into())
+        result.map_err(|error| {
+            if error == REGISTRATION_BUSY {
+                error
+            } else {
+                "TRUSTED_AUTHORITY_UNAVAILABLE".into()
+            }
+        })
     }
 }
 
@@ -171,6 +203,7 @@ pub(super) fn emit_exchange(
         "PROTECTED_CHANNEL_OVERSIZED" => ProtectedExchangeError::Oversized,
         "REGISTRATION_ACK_INVALID" | "UPGRADE_ACK_INVALID" => ProtectedExchangeError::Invalid,
         "REGISTRATION_ACK_MISMATCH" => ProtectedExchangeError::Mismatch,
+        REGISTRATION_BUSY => ProtectedExchangeError::Busy,
         _ => ProtectedExchangeError::Unavailable,
     });
     diagnostics

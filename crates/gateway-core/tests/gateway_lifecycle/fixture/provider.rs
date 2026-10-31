@@ -240,6 +240,7 @@ impl ProviderRuntimePort for PassthroughProvider {
         }
         Ok((
             PreparedAttemptHttpRequest {
+                network_route: None,
                 head: PreparedRequestHead {
                     method: logical.head.method.clone(),
                     path_and_query: Arc::clone(&logical.head.path_and_query),

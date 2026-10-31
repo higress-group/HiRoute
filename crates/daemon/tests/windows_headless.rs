@@ -960,8 +960,12 @@ fn public_headless_business(include_claude: bool) {
             .starts_with("sha256:")
     );
     let commands = manifest["commands"].as_array().unwrap();
-    assert_eq!(commands.len(), 76);
+    assert_eq!(commands.len(), 80);
     for command_id in [
+        "decision.sources.list",
+        "decision.connections.list",
+        "decision.connections.apply",
+        "decision.connections.test",
         "prices.effective",
         "prices.override.preview",
         "prices.override.apply",

@@ -8,6 +8,27 @@ use crate::server::core_runtime::profiles::fixed_reasoning;
 use super::*;
 
 #[test]
+fn credential_authority_failures_are_not_reclassified_as_runtime_unavailability() {
+    use hiroute_domain::ConnectorRuntimeKind::{BuiltinNative, CpaBridge};
+    for (runtime, error) in [
+        (
+            BuiltinNative,
+            PortError::Unavailable("NativeCredentialAuthorityV1"),
+        ),
+        (BuiltinNative, PortError::Rejected),
+        (CpaBridge, PortError::Rejected),
+    ] {
+        let error = credential_materialization_error(error, runtime);
+        let facts = classify_materialization_failure(&error);
+        assert_eq!(facts.provider.retryability, RetryabilityFact::NonRetryable);
+        assert_eq!(
+            facts.provider.error_class.as_ref().unwrap().as_str(),
+            "materialization_fail_closed"
+        );
+    }
+}
+
+#[test]
 fn dns_lookup_uses_scheme_default_and_preserves_explicit_port() {
     assert_eq!(
         dns_lookup_target("provider.example", TransportScheme::Https).unwrap(),

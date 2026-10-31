@@ -2,13 +2,36 @@
 
 use std::fs;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::path::Path;
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard};
 
-fn private_home() -> tempfile::TempDir {
-    tempfile::Builder::new()
+static FIXTURE_PROCESSES: Mutex<()> = Mutex::new(());
+
+struct FixtureHome {
+    directory: tempfile::TempDir,
+    _process_guard: MutexGuard<'static, ()>,
+}
+
+impl FixtureHome {
+    fn path(&self) -> &Path {
+        self.directory.path()
+    }
+}
+
+fn private_home() -> FixtureHome {
+    // Hold this fixture's write/spawn boundary through child completion and cleanup.
+    // A sibling fork can briefly inherit a writable script FD before CLOEXEC runs,
+    // making an otherwise complete fake systemctl fail to exec with ETXTBSY.
+    let guard = FIXTURE_PROCESSES.lock().unwrap();
+    let directory = tempfile::Builder::new()
         .permissions(fs::Permissions::from_mode(0o700))
         .tempdir()
-        .unwrap()
+        .unwrap();
+    FixtureHome {
+        directory,
+        _process_guard: guard,
+    }
 }
 
 fn private_directory(path: &std::path::Path) {

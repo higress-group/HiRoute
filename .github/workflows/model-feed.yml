@@ -1,0 +1,132 @@
+name: model-feed
+
+on:
+  pull_request:
+    paths:
+      - 'assets/model-feed/**'
+      - 'assets/model-data/**'
+      - 'assets/release-facts/**'
+      - 'contracts/model-feed/**'
+      - 'contracts/releases/**'
+      - 'crates/domain/**'
+      - 'crates/integrations/**'
+      - 'tools/model-metadata/**'
+      - 'tools/release-facts/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.github/actions/ci-setup/**'
+      - 'scripts/ci-prerequisites.py'
+      - 'apps/website/scripts/model-feed.mjs'
+      - 'apps/website/tests/model-feed*.test.mjs'
+      - '.github/workflows/model-feed.yml'
+      - '.github/workflows/website.yml'
+      - '.github/scripts/deploy-model-feed-oss.sh'
+      - '.github/scripts/install-aliyun-cli.sh'
+  push:
+    branches: [main]
+    paths:
+      - 'assets/model-feed/**'
+      - 'assets/model-data/**'
+      - 'assets/release-facts/**'
+      - 'contracts/model-feed/**'
+      - 'contracts/releases/**'
+      - 'crates/domain/**'
+      - 'crates/integrations/**'
+      - 'tools/model-metadata/**'
+      - 'tools/release-facts/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.github/actions/ci-setup/**'
+      - 'scripts/ci-prerequisites.py'
+      - 'apps/website/scripts/model-feed.mjs'
+      - 'apps/website/tests/model-feed*.test.mjs'
+      - '.github/workflows/model-feed.yml'
+      - '.github/workflows/website.yml'
+      - '.github/scripts/deploy-model-feed-oss.sh'
+      - '.github/scripts/install-aliyun-cli.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-feed-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: ./.github/actions/ci-setup
+      - name: Check current metadata and deterministic projections
+        run: |
+          python3 tools/model-metadata/close_model_metadata.py --check
+          python3 tools/model-metadata/validate_catalog.py
+          python3 assets/model-data/current/generate.py --check
+          python3 assets/release-facts/current/prepare-bundle.py --check
+      - name: Validate model feed with the client admission code
+        env:
+          MODEL_FEED_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          feed_args=()
+          if [[ -n "$MODEL_FEED_BASE" && "$MODEL_FEED_BASE" != "0000000000000000000000000000000000000000" ]]; then feed_args=(--base "$MODEL_FEED_BASE"); fi
+          cargo run --locked -p hiroute-release-facts -- feed build --check "${feed_args[@]}"
+      - name: Check feed structure and publication regressions
+        run: |
+          node apps/website/scripts/model-feed.mjs check
+          node --test apps/website/tests/model-feed*.test.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hiroute-model-feed-${{ github.sha }}
+          path: assets/model-feed/payload.json
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: website-production
+    concurrency:
+      group: hiroute-ai-production
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: hiroute-model-feed-${{ github.sha }}
+          path: ${{ runner.temp }}/validated-model-feed
+      - name: Prepare validated model feed after checking the served publication
+        id: feed
+        run: |
+          node apps/website/scripts/model-feed.mjs publish --payload "$RUNNER_TEMP/validated-model-feed/payload.json"
+          if [[ -f apps/website/dist/model-feed/v2.json ]]; then echo 'staged=true' >> "$GITHUB_OUTPUT"; fi
+      - name: Install Aliyun CLI
+        if: steps.feed.outputs.staged == 'true'
+        run: .github/scripts/install-aliyun-cli.sh "$RUNNER_TEMP/bin"
+      - name: Upload only the validated model feed to hiroute-ai
+        if: steps.feed.outputs.staged == 'true'
+        env:
+          ACCESS_KEYID: ${{ secrets.ACCESS_KEYID }}
+          ACCESS_KEYSECRET: ${{ secrets.ACCESS_KEYSECRET }}
+        run: |
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          bash .github/scripts/deploy-model-feed-oss.sh apps/website/dist/model-feed/v2.json

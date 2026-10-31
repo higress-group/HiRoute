@@ -37,6 +37,26 @@ pub trait ProtectedInputPort {
 /// owns a hard-coded provider list: an exact option must be present in the installed current
 /// registry before any ProtectedInput, Secret, external, or durable port is touched.
 pub trait ConnectionOptionAuthorizationPort {
+    /// Resolve only the exact source and retained service requested by a decision operation.
+    fn decision_source(
+        &self,
+        _source_id: &str,
+    ) -> PortResult<Option<hiroute_domain::ComputeManagementSourceV2>> {
+        Err(hiroute_domain::PortError::new(
+            hiroute_domain::PortErrorCode::Unavailable,
+            "decision.source.unsupported",
+        ))
+    }
+    fn decision_service_record(
+        &self,
+        _id: &str,
+        _revision: u64,
+    ) -> PortResult<Option<hiroute_domain::DecisionServiceRecord>> {
+        Err(hiroute_domain::PortError::new(
+            hiroute_domain::PortErrorCode::Unavailable,
+            "decision.service.unsupported",
+        ))
+    }
     fn connection_option_authorization(
         &self,
         connection_option_id: &str,
@@ -250,7 +270,10 @@ where
         .ok_or(ChangePreparationError::UnsupportedCommand)?;
 
     // This must precede planning, Secret reads, network probes, and every durable write.
-    if request.spec.command_id != "decision.services.apply" {
+    if !matches!(
+        request.spec.command_id.as_str(),
+        "decision.services.apply" | "decision.connections.apply"
+    ) {
         validate_feature_gate(&request.spec.desired_state)?;
     }
     let mut desired = registered_plan(
@@ -295,7 +318,12 @@ where
                 }
             }
             hiroute_domain::SecretMutationKind::Rebind => {
-                return Err(ChangePreparationError::UnexpectedSecretInput);
+                if request.spec.command_id != "decision.connections.apply"
+                    || mutation.input_slot().is_some()
+                    || mutation.fingerprint().is_none()
+                {
+                    return Err(ChangePreparationError::UnexpectedSecretInput);
+                }
             }
         }
     }
@@ -460,11 +488,188 @@ fn registered_plan<O: ConnectionOptionAuthorizationPort>(
                 external: Vec::new(),
             })
         }
+        "decision.connections.apply" => {
+            plan_decision_connection(connection_options, serde_json::from_value(desired_state)?)
+        }
         // Formal command-specific DTO/handler adapters are owned by later PROCESSes. Unknown
         // commands fail closed instead of falling through a generic Value effects DSL.
         _ => Err(ChangePreparationError::TypedPlannerUnavailable),
     }
 }
+
+fn plan_decision_connection<O: ConnectionOptionAuthorizationPort>(
+    options: &O,
+    input: hiroute_domain::DecisionServiceOperationInputV2,
+) -> Result<RegisteredEffectPlan, ChangePreparationError> {
+    use hiroute_domain::{
+        DECISION_SERVICE_OPERATION_SCHEMA_V2, DecisionServiceOperationV2, DecisionSourceMutationV1,
+        register_decision_consumer, remove_decision_consumers,
+    };
+    let change = &input.change;
+    if !change.validate() {
+        return Err(ChangePreparationError::TypedPlannerUnavailable);
+    }
+    let prior = if change.expected_revision == 0 {
+        None
+    } else {
+        Some(
+            options
+                .decision_service_record(&change.id, change.expected_revision)?
+                .ok_or(ChangePreparationError::SourceIdentityMismatch)?,
+        )
+    };
+    let mut secrets = Vec::new();
+    if let Some(service) = &change.service {
+        if let Some(slot) = &input.input_slot {
+            let header = service
+                .connection
+                .transport()
+                .2
+                .ok_or(ChangePreparationError::UnexpectedSecretInput)?;
+            secrets.extend(
+                plan_classifier_header_secret(ClassifierHeaderSecretInputV1 {
+                    secret_id: header.value_secret_ref.clone(),
+                    input_slot: slot.clone(),
+                    expected_generation: 0,
+                })?
+                .secrets,
+            );
+        } else if let Some(header) = service.connection.transport().2
+            && !prior
+                .as_ref()
+                .is_some_and(|old| decision_header_is_reusable(old, service, header))
+        {
+            return Err(ChangePreparationError::SecretInputRequired);
+        }
+    } else if input.input_slot.is_some() {
+        return Err(ChangePreparationError::UnexpectedSecretInput);
+    }
+    let mut sources = Vec::new();
+    for expected in &change.expected_source_revisions {
+        let source = options
+            .decision_source(&expected.source_id)?
+            .ok_or(ChangePreparationError::SourceIdentityMismatch)?;
+        if source.revision != expected.revision {
+            return Err(ChangePreparationError::DecisionSourceRevisionConflict);
+        }
+        let transition = match &change.service {
+            Some(service) => register_decision_consumer(&source, service).map(Some),
+            None => remove_decision_consumers(&source, &change.id),
+        }
+        .map_err(|_| ChangePreparationError::SourceIdentityMismatch)?
+        .ok_or(ChangePreparationError::SourceIdentityMismatch)?;
+        secrets.extend(transition.secrets);
+        sources.push(DecisionSourceMutationV1 {
+            before: transition.before,
+            after: transition.after,
+        });
+    }
+    let operation = DecisionServiceOperationV2 {
+        schema: DECISION_SERVICE_OPERATION_SCHEMA_V2.into(),
+        input,
+        sources,
+    };
+    Ok(RegisteredEffectPlan {
+        control: json!({"decision_service_operation_v2": operation}),
+        pending_compute_source: None,
+        credential_pool: None,
+        pending_pool: None,
+        secret_sources: Default::default(),
+        secrets,
+        runtime: Vec::new(),
+        external: Vec::new(),
+    })
+}
+
+fn decision_header_is_reusable(
+    old: &hiroute_domain::DecisionServiceRecord,
+    new: &hiroute_domain::DecisionServiceV2,
+    header: &hiroute_domain::ClassifierAuthHeaderV1,
+) -> bool {
+    use hiroute_domain::{
+        DecisionAuthenticationV2, DecisionConnectionV1, DecisionConnectionV2, DecisionServiceRecord,
+    };
+    let (old_endpoint, old_header, compatible) = match old {
+        DecisionServiceRecord::V1(service) => {
+            let (endpoint, _, header) = service.connection.transport();
+            let compatible = matches!(
+                (&service.connection, &new.connection),
+                (
+                    DecisionConnectionV1::SystemOne { .. },
+                    DecisionConnectionV2::Native {
+                        authentication: DecisionAuthenticationV2::Independent { .. },
+                        ..
+                    }
+                ) | (
+                    DecisionConnectionV1::Custom { .. },
+                    DecisionConnectionV2::Custom { .. }
+                )
+            );
+            (endpoint, header, compatible)
+        }
+        DecisionServiceRecord::V2(service) => {
+            let (endpoint, _, header) = service.connection.transport();
+            let compatible = matches!(
+                (&service.connection, &new.connection),
+                (
+                    DecisionConnectionV2::Native {
+                        authentication: DecisionAuthenticationV2::Independent { .. },
+                        ..
+                    },
+                    DecisionConnectionV2::Native {
+                        authentication: DecisionAuthenticationV2::Independent { .. },
+                        ..
+                    }
+                ) | (
+                    DecisionConnectionV2::Custom { .. },
+                    DecisionConnectionV2::Custom { .. }
+                )
+            );
+            (endpoint, header, compatible)
+        }
+    };
+    let origin = |endpoint: &str| -> Option<(String, String, u16)> {
+        let uri = endpoint.parse::<http::Uri>().ok()?;
+        let scheme = uri.scheme_str()?.to_ascii_lowercase();
+        let default_port = match scheme.as_str() {
+            "http" => 80,
+            "https" => 443,
+            _ => return None,
+        };
+        let authority = uri.authority()?;
+        if authority.as_str().contains('@') {
+            return None;
+        }
+        let raw_host = authority.host();
+        if raw_host.is_empty() {
+            return None;
+        }
+        let suffix = authority.as_str().strip_prefix(raw_host)?;
+        let port = if suffix.is_empty() {
+            default_port
+        } else {
+            authority.port_u16()?
+        };
+        if port == 0 {
+            return None;
+        }
+        let host = raw_host
+            .strip_prefix('[')
+            .and_then(|value| value.strip_suffix(']'))
+            .unwrap_or(raw_host);
+        let host = host
+            .parse::<std::net::IpAddr>()
+            .map_or_else(|_| host.to_ascii_lowercase(), |ip| ip.to_string());
+        Some((scheme, host, port))
+    };
+    compatible
+        && old_header == Some(header)
+        && origin(old_endpoint)
+            .is_some_and(|before| Some(before) == origin(new.connection.transport().0))
+}
+
+#[cfg(test)]
+mod decision_tests;
 
 fn plan_classifier_header_secret(
     input: ClassifierHeaderSecretInputV1,
@@ -709,6 +914,8 @@ pub enum ChangePreparationError {
     UnknownConnectionOption,
     #[error("the exact Source does not match the verified Connection Option")]
     SourceIdentityMismatch,
+    #[error("the decision source revision changed since it was read")]
+    DecisionSourceRevisionConflict,
     #[error("paid/subscription connection requires explicit materialization")]
     ExplicitMaterializationRequired,
     #[error("this Connection Option does not accept a native Secret")]

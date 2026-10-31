@@ -371,6 +371,7 @@ pub(crate) fn request_for_plan(
         .unwrap();
     }
     PreparedAttemptHttpRequest {
+        network_route: None,
         head: PreparedRequestHead {
             method: Method::POST,
             path_and_query: Arc::from("/v1/chat"),

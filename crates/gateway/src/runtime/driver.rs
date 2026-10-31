@@ -40,11 +40,12 @@ use super::state::{
 
 mod context_overflow;
 mod materialization;
+pub(crate) mod network;
 mod response;
 pub(crate) mod response_diagnostics;
 mod selection;
 
-pub(crate) use materialization::TargetResolver;
+pub(crate) use materialization::{ProductionStateAdapter, TargetResolver};
 pub(crate) use selection::PreparationFailure;
 pub use selection::{ProductionDecisionSession, ProductionSelection};
 
@@ -71,6 +72,7 @@ pub struct ProductionProvider {
 }
 
 pub struct ProductionLogicalRequest {
+    native_network: Option<Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
     reasoning_cleanup: Arc<ReasoningCleanup>,
     ingress: IngressProtocol,
     replay: ReplayStore,
@@ -78,6 +80,7 @@ pub struct ProductionLogicalRequest {
     observed_body_bytes: u64,
     body_eos: bool,
     ir: Option<ModelRequestIRV1>,
+    templates: crate::server::composition::RequestTemplates,
     frozen_candidates: Arc<[DecisionCandidateAuthority]>,
     runtime_state_authority: RuntimeStateAuthoritySignal,
     route_context: Option<ProductionRouteContext>,
@@ -127,10 +130,12 @@ impl ReasoningCleanup {
 }
 
 pub(crate) struct ProductionReplaySeed {
+    pub(crate) native_network: Option<Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
     pub(crate) ingress: IngressProtocol,
     pub(crate) replay: ReplayStore,
     pub(crate) raw_body: ContentRef,
     pub(crate) ir: ModelRequestIRV1,
+    pub(crate) templates: crate::server::composition::RequestTemplates,
     pub(crate) runtime_state_authority: RuntimeStateAuthoritySignal,
     pub(crate) route_context: ProductionRouteContext,
 }

@@ -857,8 +857,13 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         "routing.list" => "hiroute.agent-plan-catalog-query/v2",
         "routing.preview" => "hiroute.agent-plan-preview-request/union",
         "routing.apply" => "hiroute.agent-plan-apply-request/union",
-        "decision.services.apply" => "hiroute.change-preview-or-apply-request/v1",
+        "decision.services.apply" | "decision.connections.apply" => {
+            "hiroute.change-preview-or-apply-request/v1"
+        }
         "decision.services.test" => "hiroute.classifier-decision-test/v1",
+        "decision.connections.test" | "decision.network.test" => {
+            "hiroute.decision-service-test-request/v2"
+        }
         "work-plans.list" => "hiroute.work-plan-list-request/v1",
         "routing.show" => "hiroute.agent-plan-lookup/v1",
         "operations.find" => "hiroute.operation-idempotency-lookup/v1",
@@ -885,6 +890,7 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         "compute.connection.apply" => "hiroute.compute-connection-apply-request/v1",
         "compute.connection.authorize" => "hiroute.compute-connection-authorization-request/v1",
         "compute.connection.login" => "hiroute.subscription-login-request/v1",
+        "compute.connection.test-network" => "hiroute.compute-connection-test-request/v2",
         "compute.connection.test" => "hiroute.compute-connection-test-request/v1",
         "models.feed.settings.apply" => "hiroute.model-feed-settings/v1",
         "models.feed.remove.apply" => "hiroute.model-feed-remove/v1",
@@ -938,8 +944,14 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "routing.preview" => "hiroute.agent-plan-preview/union",
         "routing.apply" => "hiroute.operation-view/v1",
         "decision.services.list" => "hiroute.decision-services/v1",
-        "decision.services.apply" => "hiroute.change-preview-or-operation/v1",
+        "decision.sources.list" => "hiroute.decision-connection-sources/v1",
+        "decision.connections.list" => "hiroute.decision-services/v2",
+        "decision.services.apply" | "decision.connections.apply" => {
+            "hiroute.change-preview-or-operation/v1"
+        }
         "decision.services.test" => "hiroute.classifier-decision-test-result/v1",
+        "decision.connections.test" => "hiroute.decision-service-test-result/v2",
+        "decision.network.test" => "hiroute.decision-service-test-result/v3",
         "operations.find" => "hiroute.operation-idempotency-result/v1",
         "agent.launch" => "hiroute.managed-claude-launch-descriptor/v2",
         "system.status" => "hiroute.system-status/v1",
@@ -963,6 +975,7 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "compute.connection.apply" => "hiroute.operation-view/v1",
         "compute.connection.authorize" => "hiroute.compute-subscription-check-result/v2",
         "compute.connection.login" => "hiroute.subscription-login-result/v1",
+        "compute.connection.test-network" => "hiroute.model-connection-check/v2",
         "compute.connection.test" => "hiroute.model-connection-check/union",
         "models.feed.status"
         | "models.feed.refresh"
@@ -997,7 +1010,11 @@ pub(crate) fn command_model_call(command_id: &str) -> &'static str {
         "explicit_live_scope_only"
     } else if matches!(
         command_id,
-        "compute.connection.test" | "decision.services.test"
+        "compute.connection.test"
+            | "compute.connection.test-network"
+            | "decision.services.test"
+            | "decision.connections.test"
+            | "decision.network.test"
     ) {
         "explicit_probe_may_call_model"
     } else {
@@ -1032,11 +1049,15 @@ pub(crate) fn command_stdin_channels(command_id: &str) -> &'static [&'static str
         | "compute.connection.authorize"
         | "compute.connection.login"
         | "compute.connection.test"
+        | "compute.connection.test-network"
         | "decision.services.test"
+        | "decision.connections.test"
+        | "decision.network.test"
         | "routing.options"
         | "routing.preview"
         | "routing.apply"
         | "decision.services.apply"
+        | "decision.connections.apply"
         | "agents.connect.preview"
         | "agents.connect.apply"
         | "agents.restore.preview"
@@ -1081,6 +1102,7 @@ pub(crate) fn command_idempotency(command_id: &str) -> &'static str {
         | "compute.connection.apply"
         | "routing.apply"
         | "decision.services.apply"
+        | "decision.connections.apply"
         | "agents.connect.apply"
         | "agents.restore.apply"
         | "tasks.start"
@@ -1110,7 +1132,9 @@ pub(crate) fn staged_coverage(command_id: &str, positive: bool) -> Option<Covera
 pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
     match command_id {
         "decision.services.apply" => return "hiroute decision services apply (--id ID [--name NAME] [--provider bailian-token-plan|bailian-workspace|openrouter|typesafe|compatible|custom] [--endpoint URL] [--model MODEL] [--timeout-ms MS] [--candidate REF [--header NAME] | --no-auth] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        "decision.connections.apply" => return "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
         "decision.services.test" => return "hiroute decision services test (--service ID@REVISION | --request-file PATH | --request-stdin)".into(),
+        "decision.connections.test" => return "hiroute decision connections test (--service ID@REVISION | --request-file PATH | --request-stdin)".into(),
         "routing.preview" => return "hiroute routing preview (--name NAME --purpose PURPOSE --mode fixed_model --model BINDING | --name NAME --purpose PURPOSE --mode smart_saving --economy BINDING --primary BINDING --decision local_rules | --plan ID <changes> | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
         "compute.connection.preview" => return "hiroute compute connection preview (--candidate REF --candidate-revision REV (--all-selectable | --model-ref REF...) | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
         "agents.connect.preview" => return "hiroute agents connect preview (--context ID [--hermes-root PATH] [--plan ID <native choices>] [--management enable|keep] [--collaboration explicit|delegate_by_default|keep] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
@@ -1215,6 +1239,7 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "agents.check" => "Configuration, native-authentication and collaboration are bounded local checks admitted by the owner-only same-UID transport and make no upstream model call. Live requires --target JSON containing context_id, surface, expected_applied_revision and client_model_ids, --allow-model-call and a separately delivered one-shot capability bound to that target. Targets are forbidden on local checks; provider, credential, prompt and URL overrides are forbidden.".to_owned(),
         "compute.connection.preview" => "--request-stdin accepts exactly one registered v1 projection, compute-management v2 save/edit, or subscription-check v2 preview request. The optional edit action is rename (display_name), append_models (checked candidate; preserves existing models), remove_models (saved source; selected refs are removals), or delete (saved source; no selected refs). Omitting edit retains released save semantics. Referenced models, including disabled routes and retained versions, cannot be deleted. Preview has no durable side effect and returns the exact digest and revisions required by Apply.".to_owned(),
         "compute.connection.apply" => "--request-stdin accepts only the exact preview spec, digest, revisions, and a non-empty idempotency key. Same-UID Local Control reproduces the plan; replay uses the original key and changed payloads are rejected.".to_owned(),
+        "compute.connection.test-network" => "The strict wrapper is {kind, request} for native, registered or saved. request contains the corresponding V2 request: its inner request preserves the released V1 shape and network_edit supplies policy plus expected_network_revision; saved may use null to select current source policy. New drafts use revision 0. Inspect check, network and failure separately. No directory or inference model means no provider call and no connectivity claim. Use the generated schema for full fields; credentials remain protected candidates.".to_owned(),
         "compute.connection.test" => "The top-level JSON wrapper is {kind, request}. Choose registered for a catalog option such as OpenRouter, with expected_catalog copied from compute connection options; native contains request.draft for a custom API. discovered and saved retain their own strict nested requests. schema show --command-id compute.connection.test --include-schema provides complete native/registered templates and prerequisite guidance. Credentials are referenced only through a protected-input candidate; plaintext credential fields are rejected. The explicit probe may contact the configured provider and may consume quota when an inference model is selected.".to_owned(),
         "compute.connection.login" => "--request-stdin accepts list/start with provider codex or claude; status/cancel/forget with an exact login_ref; callback with login_ref and input_candidate. Register callback text first with protected-input register --candidate <callback_input_candidate.candidate_ref> --secret-fd <FD>. OAuth codes, tokens, callback URLs and credential paths are rejected in ordinary request JSON. Start returns a browser URL; successful login still requires subscription check, model selection and save.".to_owned(),
         "compute.connection.authorize" => "--request-stdin reads one exact subscription result operation or releases one exact validation. Starting authorization still uses connection Preview/Apply, including revision, digest, and idempotency checks.".to_owned(),

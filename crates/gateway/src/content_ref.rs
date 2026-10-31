@@ -19,7 +19,8 @@ mod schema;
 #[cfg(test)]
 pub(crate) use ingress::compact_ingress_document;
 pub(crate) use ingress::{
-    compact_ingress_document_with_markers, parse_ingress_document, scan_ingress_document,
+    compact_ingress_document_with_markers, inline_document_retention_bytes, parse_ingress_document,
+    scan_ingress_document,
 };
 
 /// Stable, path-free locator for one range in the request's replay owner. It
@@ -116,6 +117,40 @@ pub(crate) trait ContentValueExt {
 pub(crate) trait JsonValueExt {
     fn content_ref(&self) -> Option<ContentRef>;
     fn wire_value(&self) -> Value;
+}
+
+/// The same marker expansion as `wire_value`, serialized from borrowed JSON.
+/// Request templates need bytes, not another owned copy of the native tree.
+pub(crate) fn borrowed_wire_value(value: &Value) -> impl Serialize + '_ {
+    WireValue(value)
+}
+
+struct WireValue<'a>(&'a Value);
+
+impl Serialize for WireValue<'_> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::{SerializeMap, SerializeSeq};
+        if let Some(reference) = self.0.content_ref() {
+            return serializer.serialize_str(&reference.wire_marker());
+        }
+        match self.0 {
+            Value::Array(values) => {
+                let mut sequence = serializer.serialize_seq(Some(values.len()))?;
+                for value in values {
+                    sequence.serialize_element(&WireValue(value))?;
+                }
+                sequence.end()
+            }
+            Value::Object(values) => {
+                let mut object = serializer.serialize_map(Some(values.len()))?;
+                for (key, value) in values {
+                    object.serialize_entry(key, &WireValue(value))?;
+                }
+                object.end()
+            }
+            value => value.serialize(serializer),
+        }
+    }
 }
 
 impl ContentValueExt for str {

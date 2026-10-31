@@ -22,9 +22,10 @@ pub use backup::{BackupSet, SingleWriterBackupBarrier, SqliteBackup};
 pub use control::{
     ActivePublicationIdentity, AgentLocatorCapture, AgentLocatorResult, AgentLocatorScope,
     AgentLocatorSummary, AgentLocatorWitness, AgentNativeTargetWitness, ApplyCapabilityRegistrar,
-    ApplyCapabilityRegistrationV1, CapturedActivePublication, CapturedAgentLocator,
-    ComputeSubscriptionValidationRecordV1, ComputeSubscriptionValidationStateV1, ControlReadStamp,
-    ControlStore, ManagedArtifactStore, SucceededAgentOperationV1,
+    ApplyCapabilityRegistrationOutcome, ApplyCapabilityRegistrationV1, CapturedActivePublication,
+    CapturedAgentLocator, ComputeSubscriptionValidationRecordV1,
+    ComputeSubscriptionValidationStateV1, ControlReadStamp, ControlStore,
+    LauncherCapabilityRegistrar, ManagedArtifactStore, SucceededAgentOperationV1,
 };
 pub use physical_read_stamp::AgentReadStamp;
 pub use runtime::RuntimeStore;
@@ -343,10 +344,13 @@ impl LocalStorageSet {
             progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
         }
         let integrity = if migration.durable_set_prepared() {
-            if migration.is_admitted_locator_only_batch() {
-                // The complete original source was already admitted at exactly v32.
-                // This v33 derivation validates structure and current dependencies,
-                // without claiming a full semantic audit of unrelated history.
+            if migration.is_admitted_locator_only_batch()
+                || migration.is_admitted_decision_index_only_batch()
+                || migration.is_admitted_native_network_batch()
+            {
+                // These complete sources were already admitted. The index and source-policy
+                // derivations validate structure and current dependencies without a
+                // full semantic audit of unrelated history.
                 migrations::validate_sqlite_structure(&control, &runtime, &secrets).and_then(|_| {
                     migrations::validate_current_storage(&control, &runtime, &secrets)
                 })
@@ -360,7 +364,7 @@ impl LocalStorageSet {
             migrations::validate_current_storage(&control, &runtime, &secrets)
         }
         .and_then(|_| {
-            if target_schema_version == 33 {
+            if target_schema_version >= 33 {
                 control
                     .validate_agent_locator(migration.durable_set_prepared())
                     .map_err(|_| LocalStorageError::InvalidData)
@@ -437,6 +441,14 @@ impl LocalStorageSet {
     /// Narrow capability persistence seam for the daemon's protected launcher only.
     pub fn apply_capability_registrar(&self) -> ApplyCapabilityRegistrar<'_> {
         ApplyCapabilityRegistrar::new(&self.control)
+    }
+
+    /// Opens once after coordinated startup, retaining its owner lease and exact Control file.
+    /// This narrow launcher handle exposes neither SQL nor another storage admission path.
+    pub fn open_launcher_capability_registrar(
+        &self,
+    ) -> Result<LauncherCapabilityRegistrar, LocalStorageError> {
+        LauncherCapabilityRegistrar::open(&self.control)
     }
 
     /// Opens the operation journal's managed publication/Agent-artifact adapter after the

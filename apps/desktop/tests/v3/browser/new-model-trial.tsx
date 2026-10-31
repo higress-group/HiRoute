@@ -115,7 +115,15 @@ mockIPC(async (command, payload: any) => {
   if (command === 'model_feed_settings_apply') { if (payload.input.retrieval_enabled !== undefined) feed.retrieval_enabled=payload.input.retrieval_enabled; if (payload.input.acknowledge_disclosure) feed.disclosure_acknowledged=true; return structuredClone(feed); }
   const metadata = metadataFixtureInvoke(command,payload,params); if (metadata !== undefined) return metadata;
   if (command === 'model_feed_remove_apply') { if (params.has('stale')) throw {message_key:'application.error.change_preview_stale'}; feed.held=null; feed.verification={kind:'none'}; feed.recovery_available=false; if (payload.input.also_disable_retrieval) feed.retrieval_enabled=false; return structuredClone(feed); }
-  if (command === 'model_availability') return ['feed-home','home'].includes(params.get('view') ?? '') ? params.has('bundled') ? {featured:[],models:[{...featuredCatalog.models[2],model_configuration_id:'model.anthropic.old',display_name:'Older directory model'},{...featuredCatalog.models[0],origin:{kind:'embedded',client_version:'0.3.1'}}]} : featuredCatalog : {featured:[],models:[]};
+  if (command === 'model_availability') {
+    if (params.has('current-announcement')) return { ...featuredCatalog, featured: [{ ...featuredCatalog.featured[0],
+      kind: 'model_update', headline: { en: 'DeepSeek V4.1 Flash 1017', zh: 'DeepSeek V4.1 Flash 1017' }, included_on: '2026-10-19' }] };
+    if (params.has('no-recommendations')) return { featured: [], models: [
+      { ...featuredCatalog.models[2], model_configuration_id: 'model.anthropic.old', display_name: 'Older directory model' },
+      { ...featuredCatalog.models[0], origin: { kind: 'embedded', client_version: '0.3.1' } },
+    ] };
+    return ['feed-home', 'home'].includes(params.get('view') ?? '') ? featuredCatalog : { featured: [], models: [] };
+  }
   if (command === 'observation_read' && payload.request.intent.view === 'plan_trust_replay') {
     const thresholds: number[]=payload.request.intent.query.thresholds_millis;
     if(params.has('replay-error') && !failed) {failed=true;throw Error('OBSERVATION_SCOPE_TOO_LARGE');}

@@ -428,22 +428,6 @@ impl StoreInner {
         Ok(token)
     }
 
-    pub(super) fn purge_expired(&mut self, now: Instant, ttl: Duration) {
-        let expired = self
-            .entries
-            .iter()
-            .filter(|(_, entry)| {
-                entry.pending_request.is_none()
-                    && entry.snapshot_pins == 0
-                    && now.saturating_duration_since(entry.last_access) >= ttl
-            })
-            .map(|(key, _)| key.clone())
-            .collect::<Vec<_>>();
-        for key in expired {
-            self.remove(&key);
-        }
-    }
-
     pub(super) fn evict_to_budget(
         &mut self,
         budget: usize,

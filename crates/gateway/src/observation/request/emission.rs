@@ -42,10 +42,9 @@ impl RequestObservation {
         } else {
             None
         };
-        self.inner
-            .channels
-            .execution
-            .publish(move |producer, sequence, loss| {
+        self.inner.channels.execution.publish_timed(
+            self.inner.latency.clone(),
+            move |producer, sequence, loss| {
                 let sequence_bytes = sequence.to_be_bytes();
                 ExecutionFactEnvelopeV1 {
                     schema_version: EXECUTION_FACT_SCHEMA.into(),
@@ -83,7 +82,8 @@ impl RequestObservation {
                     completeness_delta: loss.as_ref().map(|_| "partial".into()),
                     loss_watermark: loss,
                 }
-            });
+            },
+        );
     }
 
     pub(in super::super) fn emit_lifecycle(&self, fact: LifecycleFactV1) {
@@ -94,10 +94,9 @@ impl RequestObservation {
         let correlation = self.correlation();
         let key = self.inner.key;
         let fact_kind = lifecycle_kind(&fact);
-        self.inner
-            .channels
-            .lifecycle
-            .publish(move |producer, sequence, loss| {
+        self.inner.channels.lifecycle.publish_timed(
+            self.inner.latency.clone(),
+            move |producer, sequence, loss| {
                 let sequence_bytes = sequence.to_be_bytes();
                 LifecycleFactEnvelopeV1 {
                     schema_version: LIFECYCLE_FACT_SCHEMA.into(),
@@ -121,7 +120,8 @@ impl RequestObservation {
                     completeness_delta: loss.as_ref().map(|_| "partial".into()),
                     loss_watermark: loss,
                 }
-            });
+            },
+        );
     }
 
     pub(in super::super) fn correlation(&self) -> CorrelationV1 {

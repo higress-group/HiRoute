@@ -32,6 +32,46 @@ impl CredentialResolver for ObservedCredentialResolver {
         self.inner.acquire(credential_ref)
     }
 
+    fn admit_decision_credentials(
+        &self,
+        binding: &hiroute_domain::DecisionCredentialBindingV1,
+    ) -> Result<hiroute_domain::DecisionCredentialAdmissionV1, PortError> {
+        self.inner.admit_decision_credentials(binding)
+    }
+
+    async fn lease_decision_credential(
+        &self,
+        request: &hiroute_domain::DecisionCredentialLeaseRequestV1,
+        scope: &ExecutionScope,
+    ) -> Result<Option<crate::ports::CredentialLease>, PortError> {
+        let result = self.inner.lease_decision_credential(request, scope).await;
+        if let Some(observation) = active_request() {
+            let outcome = match &result {
+                Ok(Some(_)) => "leased",
+                Ok(None) => "exhausted",
+                Err(PortError::CredentialDenied(
+                    hiroute_domain::NativeCredentialAccessDeniedV1::SourceDisabled,
+                )) => "source_disabled",
+                Err(PortError::CredentialDenied(
+                    hiroute_domain::NativeCredentialAccessDeniedV1::CredentialDisabled,
+                )) => "credential_disabled",
+                Err(_) => "authority_error",
+            };
+            observation.credential_lease(
+                &request.binding.consumer_binding_id,
+                &request.key_id,
+                request.excluded_key_ids.len(),
+                result
+                    .as_ref()
+                    .ok()
+                    .and_then(|lease| lease.as_ref())
+                    .map(|lease| (lease.key_id(), lease.generation())),
+                outcome,
+            );
+        }
+        result
+    }
+
     fn current_credential_refs(
         &self,
         request: CredentialLeaseRequest<'_>,

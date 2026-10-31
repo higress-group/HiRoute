@@ -62,6 +62,9 @@ mod capture_gap;
 #[path = "concurrent_requests_tests.rs"]
 mod concurrent_requests;
 
+#[path = "admission_contention_tests.rs"]
+mod admission_contention;
+
 #[path = "native_retry_tests.rs"]
 mod native_retry;
 #[path = "stage_closure_tests.rs"]
@@ -1090,19 +1093,12 @@ fn segment_extends_only_for_the_same_executed_identity() {
 }
 
 #[test]
-fn busy_history_admission_and_decision_write_return_without_waiting() {
+fn busy_decision_write_remains_nonblocking_after_history_admission() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(64 * 1024, Duration::from_secs(60));
     let key = store.scope_key("workspace", "busy").unwrap();
     let now = Instant::now();
     let request = request(vec![text(MessageRole::User, "hello")]);
-    {
-        let _lock = store.inner.lock();
-        assert!(matches!(
-            store.begin(key.clone(), plan(1), &request, &replay, now),
-            Err(AgentTurnHistoryError::Resource)
-        ));
-    }
     let (ticket, history) = new_turn(store.begin(key, plan(1), &request, &replay, now).unwrap());
     {
         let _lock = store.inner.lock();

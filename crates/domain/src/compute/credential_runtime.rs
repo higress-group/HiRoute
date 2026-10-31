@@ -244,6 +244,29 @@ impl NativeCredentialLeaseV1 {
 /// Replaceable Product authority. Local storage, a Vault client, or a remote authority can
 /// implement this same port; Gateway adapters never depend on SQLite types.
 pub trait NativeCredentialAuthorityV1: Send + Sync {
+    /// Decision membership is separate from generative model authority.
+    fn admit_decision_credentials(
+        &self,
+        _binding: &crate::DecisionCredentialBindingV1,
+    ) -> Result<crate::DecisionCredentialAdmissionV1, NativeCredentialLeaseErrorV1> {
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "decision.credential.unsupported",
+        )
+        .into())
+    }
+
+    fn lease_decision_credential(
+        &self,
+        _request: &crate::DecisionCredentialLeaseRequestV1,
+    ) -> Result<Option<NativeCredentialLeaseV1>, NativeCredentialLeaseErrorV1> {
+        Err(crate::PortError::new(
+            crate::PortErrorCode::Unavailable,
+            "decision.credential.unsupported",
+        )
+        .into())
+    }
+
     /// Non-secret current order for an already authorized Native candidate. `None` keeps
     /// legacy exact users unchanged; an empty list means the managed candidate is unavailable.
     /// This reads no secret and issues no lease. Current permission denials retain their

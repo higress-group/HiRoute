@@ -73,18 +73,33 @@ exact source/Key/current-generation identity. A hash suffix is not a Key suffix;
 short values never become fully visible. A user may show/hide a newly entered value,
 but saved Keys provide no plaintext view/copy and do not return plaintext to Desktop.
 
-Decision extensions use a narrow Header Secret lease containing only the Secret
+Independent decision connections and custom extensions use a narrow Header Secret lease containing only the Secret
 reference and the published legal header name. It MUST NOT acquire provider, model,
 protocol, endpoint, account-pool enumeration, or ordinary candidate retry authority.
 Gateway receives an opaque install capability for that exact header, not readable
 or serializable secret bytes. The published endpoint supplies the destination trust
 boundary; this does not add a separate destination-digest authorization system.
 
+Native decision models that explicitly reuse an API source instead use an exact
+decision credential lease. The source remains the sole Key owner; the saved service
+revision, source lineage, registered decision target, consumer binding and current
+Key generation constrain that lease. It MUST NOT use the independent Header Secret
+path or register a fake ordinary inference model. The source's allowed destinations
+include ordinary model endpoints and retained decision targets. Adding or removing
+targets uses the recoverable source/service Operation and protected Rebind, retaining
+the Key material and identity without plaintext re-entry. Ordinary source edits and
+new/replaced Keys preserve this destination union. Decision automatic health is
+binding-local and cannot silently cool unrelated inference models. See
+[decision connections](../decision-services/spec.md#requirement-native-decision-models-may-reuse-an-existing-api-connection).
+
 #### Scenario: A decision credential is used for another header
 
 - **WHEN** a consumer attempts to install its narrow capability as a different
   header or ordinary provider credential
 - **THEN** the operation MUST be rejected without exposing the credential.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488572844
 
 ## Implementation references
 

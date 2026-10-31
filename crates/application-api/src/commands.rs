@@ -562,6 +562,15 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Run one explicit bounded connection probe, with inference only when requested."
     ),
     command!(
+        "compute.connection.test-network",
+        ["compute", "connection", "test-network"],
+        "TestComputeConnectionV2",
+        ["CLI-080", "APP-080"],
+        Released,
+        ExternalProbe,
+        "Check an explicit Native draft or saved source with admitted route evidence."
+    ),
+    command!(
         "compute.credential.list",
         ["compute", "credential", "list"],
         "ListCredentials",
@@ -877,6 +886,51 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Save a decision service version or delete an unreferenced service with revision checking."
     ),
     command!(
+        "decision.sources.list",
+        ["decision", "sources", "list"],
+        "ListDecisionConnectionSourcesV1",
+        [],
+        Released,
+        Query,
+        "List safe source summaries available to decision connections."
+    ),
+    command!(
+        "decision.connections.list",
+        ["decision", "connections", "list"],
+        "ListDecisionServicesV2",
+        [],
+        Released,
+        Query,
+        "List versioned decision connections with current source state."
+    ),
+    command!(
+        "decision.connections.apply",
+        ["decision", "connections", "apply"],
+        "ApplyDecisionServiceV2",
+        [],
+        Released,
+        Apply,
+        "Save a versioned decision connection with exact source and credential revisions."
+    ),
+    command!(
+        "decision.connections.test",
+        ["decision", "connections", "test"],
+        "TestDecisionServiceV2",
+        [],
+        Released,
+        ExternalProbe,
+        "Test an exact saved decision connection revision with a synthetic request."
+    ),
+    command!(
+        "decision.network.test",
+        ["decision", "network", "test"],
+        "TestDecisionServiceV3",
+        ["CLI-079", "APP-079"],
+        Released,
+        ExternalProbe,
+        "Test an exact saved decision revision with admitted network evidence."
+    ),
+    command!(
         "decision.services.test",
         ["decision", "services", "test"],
         "TestClassifierDecision",
@@ -956,6 +1010,51 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         Released,
         Query,
         "Show model origins, announcements and current local availability."
+    ),
+    command!(
+        "compute.network.show",
+        ["compute", "network", "show"],
+        "GetNativeSourceNetworkV1",
+        ["CLI-074", "APP-074"],
+        Released,
+        Query,
+        "Read a Native source policy, application state and affected consumers."
+    ),
+    command!(
+        "compute.network.preview",
+        ["compute", "network", "preview"],
+        "PreviewNativeSourceNetworkV1",
+        ["CLI-075", "APP-075"],
+        Released,
+        Preview,
+        "Preview a revision-bound Native source network policy edit."
+    ),
+    command!(
+        "compute.network.apply",
+        ["compute", "network", "apply"],
+        "ApplyNativeSourceNetworkV1",
+        ["CLI-076", "APP-076"],
+        Released,
+        Apply,
+        "Apply an exact sealed Native source network preview through its existing Operation."
+    ),
+    command!(
+        "compute.network.resolve",
+        ["compute", "network", "resolve"],
+        "PreviewNativeNetworkRouteV1",
+        ["CLI-077", "APP-077"],
+        Released,
+        Query,
+        "Interpret a Native route without DNS or provider requests."
+    ),
+    command!(
+        "compute.connection.preview-network",
+        ["compute", "connection", "preview-network"],
+        "PreviewComputeSaveV4",
+        ["CLI-078", "APP-078"],
+        Released,
+        Preview,
+        "Preview a combined source and network policy save."
     ),
     command!(
         "compute.defaults.get",

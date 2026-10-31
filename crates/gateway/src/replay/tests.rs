@@ -70,6 +70,41 @@ fn production_default_spills_before_large_ingress_decode() {
     assert_eq!(config.record_bytes, 16 * 1024);
 }
 
+#[test]
+fn content_lease_releases_raw_and_keeps_charged_semantics_until_last_reader() {
+    for threshold in [31, 1024 * 1024] {
+        let root = TestRoot::new("capture-lease");
+        let manager = ReplayManager::open(config(&root.0, threshold, 31)).unwrap();
+        let budget = budget();
+        let store = manager.begin_request(budget.clone()).unwrap();
+        let mut writer = store.begin_raw().unwrap();
+        writer.append(&b"raw ingress".repeat(1024)).unwrap();
+        let raw = writer.seal().unwrap();
+        let content = store
+            .store_content(&b"exact canonical content".repeat(1024))
+            .unwrap();
+        store.prevalidate(&[raw.clone(), content.clone()]).unwrap();
+        let directory = fs::read_dir(&root.0)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .find(|path| path.is_dir())
+            .unwrap();
+        let lease = store.content_lease().unwrap();
+        assert!(lease.reader(&raw).is_err());
+        assert!(lease.begin_raw().is_err());
+        drop(store);
+        assert!(directory.exists());
+        assert!(budget.snapshot().unwrap().live > 0);
+        assert_eq!(
+            read_all(&lease, &content),
+            b"exact canonical content".repeat(1024)
+        );
+        drop(lease);
+        assert!(!directory.exists());
+        assert_eq!(budget.snapshot().unwrap().live, 0);
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn production_default_supports_symlinked_system_temp() {
@@ -215,6 +250,50 @@ fn large_stream_uses_one_plaintext_backing_for_multiple_readers() {
     );
     assert_eq!(read_all(&store, &reference), payload);
     assert_eq!(read_all(&store, &reference), payload);
+}
+
+#[test]
+fn sealed_disk_pool_keeps_exact_ranges_for_concurrent_readers_after_owner_release() {
+    let root = TestRoot::new("sealed-pool-readers");
+    let manager = ReplayManager::open(config(&root.0, 64, 31)).unwrap();
+    let budget = budget();
+    let store = manager.begin_request(budget.clone()).unwrap();
+    let directory = store.request_directory().to_path_buf();
+    let text = "路由🦀\n\\\"".repeat(4096).into_bytes();
+    let value = serde_json::json!({"z": ["tail", {"b": 2, "a": 1}], "a": "🦀".repeat(4096)});
+    let mut expected_json = Vec::new();
+    super::write_canonical_json(&mut expected_json, &value).unwrap();
+    let mut pool = store.begin_content_pool().unwrap();
+    let first = pool.append(&text).unwrap();
+    let second = pool.append_canonical_json(&value).unwrap();
+    pool.seal().unwrap();
+    store.prevalidate(&[first.clone(), second.clone()]).unwrap();
+    let readers = [
+        (store.reader(&first).unwrap(), text.clone()),
+        (store.reader(&second).unwrap(), expected_json),
+        (store.reader(&first).unwrap(), text),
+    ];
+    drop(store);
+    assert!(directory.exists());
+    std::thread::scope(|scope| {
+        for (mut reader, expected) in readers {
+            scope.spawn(move || {
+                let mut observed = Vec::new();
+                let mut bytes = [0; 17];
+                loop {
+                    let count = reader.read(&mut bytes).unwrap();
+                    if count == 0 {
+                        break;
+                    }
+                    observed.extend_from_slice(&bytes[..count]);
+                }
+                reader.verify_terminal().unwrap();
+                assert_eq!(observed, expected);
+            });
+        }
+    });
+    assert!(!directory.exists());
+    assert_eq!(budget.snapshot().unwrap().live, 0);
 }
 
 #[test]

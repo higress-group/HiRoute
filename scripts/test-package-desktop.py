@@ -15,6 +15,14 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("package_desktop", Path(__file__).with_name("package-desktop.py"))
 package = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(package)
+product = package.module("product_version", Path(__file__).resolve().with_name("product-version.py"))
+
+
+def version_fixture(root):
+    for relative in product.VERSION_PATHS:
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text((package.REPO / relative).read_text())
 
 
 class BundleIdentityTests(unittest.TestCase):
@@ -44,8 +52,8 @@ class BundleIdentityTests(unittest.TestCase):
         package.validate_release_versions(version)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            version_fixture(root)
             api = root / "crates/application-api/Cargo.toml"
-            api.parent.mkdir(parents=True)
             api.write_text('[package]\nversion = "0.1.0"\n')
             with patch.object(package, "REPO", root):
                 with self.assertRaisesRegex(ValueError, "release version mismatch: crates/application-api"):
@@ -56,6 +64,7 @@ class BundleIdentityTests(unittest.TestCase):
         version = json.loads((package.NATIVE / "tauri.conf.json").read_text())["version"]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            version_fixture(root)
             for relative in ("crates/application-api/Cargo.toml", "crates/cli/Cargo.toml",
                              "crates/daemon/Cargo.toml", "apps/desktop/src-tauri/Cargo.toml",
                              "crates/diagnostics/Cargo.toml"):

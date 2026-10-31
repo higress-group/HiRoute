@@ -2,12 +2,13 @@ import { randomId } from '../../random-id.ts';
 import type { Selection } from '../../plan-editor';
 import decisionPresets from '../../../../../assets/decision-services/providers.v1.json' with { type: 'json' };
 
-export type AuthHeader = { name: string; value_secret_ref: string };
-export type DecisionConnection = {
-  kind: 'system_one'; provider: string; model: string; endpoint: string; timeout_ms: number; auth_header: AuthHeader;
-} | { kind: 'custom'; endpoint: string; timeout_ms: number; auth_header?: AuthHeader | null };
-export type DecisionService = { id: string; revision: number; name: string; connection: DecisionConnection };
-export type Classifier = { kind: 'local_rules' } | { kind: 'decision_service'; service: DecisionService };
+import type { DecisionAuthHeader, DecisionClassifier, DecisionServiceRecord, DecisionServiceV1 } from './contracts.ts';
+
+export type AuthHeader = DecisionAuthHeader;
+/** Exact saved V1 or V2 content; a V1 selection stays V1 until it is explicitly saved again. */
+export type DecisionService = DecisionServiceRecord;
+export type DecisionConnection = DecisionService['connection'];
+export type Classifier = DecisionClassifier;
 export type Competence = { standard?: 'default' | 'custom'; floor_millis: number; instructions: string; criteria: [string, string, string] };
 export type Degree = { simple_threshold_millis: number; instructions: string; simple: string; complex: string };
 export type Judgment = { degree: Degree; competence: Competence };
@@ -36,13 +37,19 @@ export const defaultJudgment: Judgment = { competence: defaultCompetence, degree
 export function newBranch(name: string, condition = ''): RouteBranch {
   return { id: 'branch-' + randomId(), name, condition, candidates: [], primary_candidates: [] };
 }
+export function classifierFor(service: DecisionService): Classifier {
+  return 'schema' in service ? { kind: 'decision_service_v2', service } : { kind: 'decision_service', service };
+}
+export function classifierService(classifier: Classifier | null | undefined): DecisionService | null {
+  return classifier && classifier.kind !== 'local_rules' ? classifier.service : null;
+}
 export function branchRouting(service?: DecisionService): BranchRouting {
   const branches = [newBranch('分支 1'), newBranch('分支 2')];
-  return { classifier: { kind: 'decision_service', service: service ?? emptyService() }, branches,
+  return { classifier: classifierFor(service ?? emptyService()), branches,
     default_branch_id: branches[1].id, judgment: structuredClone(defaultJudgment) };
 }
 export const providers = decisionPresets.providers;
-export function emptyService(): DecisionService {
+export function emptyService(): DecisionServiceV1 {
   return { id: 'decision-' + randomId(), revision: 1, name: '', connection: {
     kind: 'system_one', provider: providers[0].id, endpoint: providers[0].endpoint, model: providers[0].model,
     timeout_ms: 10000, auth_header: { name: 'Authorization', value_secret_ref: '' },
@@ -53,7 +60,7 @@ export function branchSelections(routing: BranchRouting): Selection[] {
 }
 export type DecisionIssue = { group: string; message: string; selector?: string };
 export function classifierIssue(classifier: Classifier, language: 'zh' | 'en'): DecisionIssue | null {
-  return classifier.kind === 'decision_service' && !classifier.service.name.trim()
+  return classifier.kind !== 'local_rules' && !classifier.service.name.trim()
     ? { group: 'classifier', message: language === 'zh' ? '请选择已保存的决策模型或自定义扩展。' : 'Select a saved decision model or custom extension.' } : null;
 }
 export function judgmentIssue(value: Judgment, id: string, dual: boolean, language: 'zh' | 'en'): DecisionIssue | null {
@@ -67,7 +74,11 @@ export function judgmentIssue(value: Judgment, id: string, dual: boolean, langua
   const invalid = prompts.find(([, text]) => !text.trim());
   return invalid ? issue(invalid[0], t('请填写完整判断标准。', 'Complete the judgment standard.')) : null;
 }
-export function isCustomExtension(classifier: Classifier): boolean { return classifier.kind === 'decision_service' && classifier.service.connection.kind === 'custom'; }
+export function isCustomExtension(classifier: Classifier): boolean { return classifier.kind !== 'local_rules' && classifier.service.connection.kind === 'custom'; }
+/** Native decision models, either saved V1 System One or V2 native content. */
+export function isNativeDecision(classifier: Classifier): boolean {
+  return classifier.kind !== 'local_rules' && classifier.service.connection.kind !== 'custom';
+}
 export function routingIssue(routing: BranchRouting, language: 'zh' | 'en' = 'zh'): DecisionIssue | null {
   const selected = classifierIssue(routing.classifier, language); if (selected) return selected;
   const global = isCustomExtension(routing.classifier) ? null : judgmentIssue(routing.judgment, 'global', true, language); if (global) return global;

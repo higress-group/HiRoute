@@ -643,10 +643,18 @@ impl Hirouted {
             );
             // One actual readiness request. A preliminary TCP connection cannot prove
             // the following connection succeeds while the listener is starting.
-            if get_ready(self.address).is_ok_and(|response| response.status == 200) {
+            let probe = get_ready(self.address)
+                .map(|response| response.status)
+                .map_err(|error| error.kind());
+            if probe == Ok(200) {
                 return;
             }
-            assert!(Instant::now() < deadline, "hirouted readiness timed out");
+            assert!(
+                Instant::now() < deadline,
+                "hirouted readiness timed out at {} (pid {}, last probe {probe:?})",
+                self.address,
+                self.child.as_ref().unwrap().id(),
+            );
             std::thread::sleep(Duration::from_millis(10));
         }
     }
@@ -728,18 +736,46 @@ pub(super) fn reserve_address() -> SocketAddr {
     // kernel-assigned ephemeral port is therefore still racy across test
     // executables: another live `hirouted` can claim it after this listener is
     // dropped, make readiness look green, and leave the fixture talking to the
-    // wrong process. Allocate disjoint PID-scoped test ranges instead.
-    const FIRST_PORT: u16 = 20_000;
-    const PORTS_PER_PROCESS: usize = 100;
-    const PROCESS_BUCKETS: usize = 250;
-    let process_bucket = usize::try_from(std::process::id()).unwrap() % PROCESS_BUCKETS;
-    let start = usize::from(FIRST_PORT) + process_bucket * PORTS_PER_PROCESS;
-    for _ in 0..PORTS_PER_PROCESS {
-        let slot = NEXT_RESERVED_PORT.fetch_add(1, Ordering::Relaxed) % PORTS_PER_PROCESS;
-        let port = u16::try_from(start + slot).unwrap();
+    // wrong process. Spread fixtures across PID-scoped blocks below Linux's
+    // outbound ephemeral range: a client can otherwise take the probed port
+    // before hirouted binds, including a TCP connection to itself.
+    let ports = listener_ports(std::process::id());
+    let count = usize::from(ports.end - ports.start);
+    for _ in 0..count {
+        let slot = NEXT_RESERVED_PORT.fetch_add(1, Ordering::Relaxed) % count;
+        let port = ports.start + u16::try_from(slot).unwrap();
         if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)) {
             return listener.local_addr().unwrap();
         }
     }
     panic!("no free PID-scoped loopback port for protocol fixture");
+}
+
+fn listener_ports(process_id: u32) -> std::ops::Range<u16> {
+    const FIRST_PORT: u16 = 5_000;
+    const PORTS_PER_PROCESS: usize = 100;
+    const PROCESS_BUCKETS: usize = 250;
+    let process_bucket = usize::try_from(process_id).unwrap() % PROCESS_BUCKETS;
+    let start = usize::from(FIRST_PORT) + process_bucket * PORTS_PER_PROCESS;
+    u16::try_from(start).unwrap()..u16::try_from(start + PORTS_PER_PROCESS).unwrap()
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn listener_port_blocks_exclude_the_hosts_outbound_ephemeral_range() {
+    let bounds = std::fs::read_to_string("/proc/sys/net/ipv4/ip_local_port_range").unwrap();
+    let bounds: Vec<u16> = bounds
+        .split_whitespace()
+        .map(|value| value.parse().unwrap())
+        .collect();
+    assert_eq!(bounds.len(), 2);
+    let outbound = bounds[0]..=bounds[1];
+    for process_id in 0..250 {
+        for port in listener_ports(process_id) {
+            assert!(
+                !outbound.contains(&port),
+                "protocol listener port {port} overlaps outbound range {outbound:?}"
+            );
+        }
+    }
 }

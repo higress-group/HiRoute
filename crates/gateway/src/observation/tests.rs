@@ -246,7 +246,17 @@ fn request_with_sinks(
     enabled: bool,
     sinks: GatewayObservationSinks,
 ) -> RequestObservation {
-    let gateway = GatewayObservation::with_sinks_and_policy(true, 64 * 1024, sinks, policy);
+    request_with_sinks_capacity(policy, diagnostics, enabled, sinks, 64 * 1024)
+}
+
+fn request_with_sinks_capacity(
+    policy: OtelContentPolicy,
+    diagnostics: DiagnosticsPort,
+    enabled: bool,
+    sinks: GatewayObservationSinks,
+    capacity: usize,
+) -> RequestObservation {
+    let gateway = GatewayObservation::with_sinks_and_policy(true, capacity, sinks, policy);
     RequestObservation::new(
         super::request::RequestObservationCapture {
             enabled,

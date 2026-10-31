@@ -5,8 +5,8 @@ use serde_json::Value;
 use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt};
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
-    ContentPart, ImageSource, InstructionRole, MessageRole, ModelRequestIRV1, ToolOutput,
-    ToolResultStatusV1,
+    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource,
+    InstructionRole, MessageRole, ModelRequestIRV1, ToolOutput, ToolResultStatusV1,
 };
 
 use super::super::crypto::WorkspaceHmac;
@@ -75,6 +75,21 @@ impl RequestObservation {
         if !self.captures_content() {
             return;
         }
+        self.capture_request_payload(
+            &request.instructions,
+            &request.messages,
+            &request.tools,
+            replay,
+        );
+    }
+
+    pub(in crate::server::core_runtime::observation) fn capture_request_payload(
+        &self,
+        instructions: &[CanonicalInstruction],
+        messages: &[CanonicalMessage],
+        tools: &[CanonicalTool],
+        replay: &ReplayStore,
+    ) -> bool {
         let snapshot = replay.snapshot();
         self.emit_diagnostic(DiagnosticEvent::SpillBegin(SpillBegin {
             mode: if snapshot.disk_backed {
@@ -84,7 +99,7 @@ impl RequestObservation {
             },
         }));
         self.begin_content("request_input", None);
-        let result = self.capture_request_fields(request, replay);
+        let result = self.capture_request_fields(instructions, messages, tools, replay);
         match result {
             Ok(()) => self.terminal_content("request_input", "finish", None),
             Err(()) => self.terminal_content(
@@ -93,15 +108,18 @@ impl RequestObservation {
                 Some("canonical_content_unavailable"),
             ),
         }
+        result.is_ok()
     }
 
     fn capture_request_fields(
         &self,
-        request: &ModelRequestIRV1,
+        instructions: &[CanonicalInstruction],
+        messages: &[CanonicalMessage],
+        tools: &[CanonicalTool],
         replay: &ReplayStore,
     ) -> Result<(), ()> {
         let mut message_ordinal = 0_u32;
-        for instruction in &request.instructions {
+        for instruction in instructions {
             let role = match instruction.role {
                 InstructionRole::System => "system",
                 InstructionRole::Developer => "developer",
@@ -109,7 +127,7 @@ impl RequestObservation {
             self.capture_parts(replay, message_ordinal, role, &instruction.content)?;
             message_ordinal = message_ordinal.saturating_add(1);
         }
-        for message in &request.messages {
+        for message in messages {
             let role = match message.role {
                 MessageRole::User => "user",
                 MessageRole::Assistant => "assistant",
@@ -138,7 +156,7 @@ impl RequestObservation {
             )?;
             message_ordinal = message_ordinal.saturating_add(1);
         }
-        for tool in &request.tools {
+        for tool in tools {
             let mut part_ordinal = 0_u32;
             self.append_value(
                 replay,
@@ -439,8 +457,12 @@ impl RequestObservation {
         let whole_digest = format!("blob-{}", digest.finish().trim_start_matches("sha256:"));
         let message_instance_id = self.message_instance_id("request_input", message_ordinal, role);
         let content_id = self.content_id(&message_instance_id, part_ordinal, &whole_digest);
-        let public_ref =
-            self.public_content_ref(reference, media_type, content_id, whole_digest.clone());
+        let public_ref = self.public_content_ref(
+            reference,
+            media_type,
+            content_id.clone(),
+            whole_digest.clone(),
+        );
         emit_content_ref(self, "request_input", public_ref.clone());
         let mut reader = replay.reader(reference).map_err(|_| ())?;
         let mut emitted = false;
@@ -462,6 +484,8 @@ impl RequestObservation {
                 bytes: &bytes[..read.filled],
                 public_ref: Some(public_ref.clone()),
                 whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_id,
                 starts_content: !emitted,
                 transport_frame_id: None,
                 downstream_delivery: None,
@@ -479,8 +503,10 @@ impl RequestObservation {
                 kind,
                 media_type,
                 bytes: &[],
-                public_ref: Some(public_ref),
+                public_ref: Some(public_ref.clone()),
                 whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_id,
                 starts_content: true,
                 transport_frame_id: None,
                 downstream_delivery: None,
@@ -500,11 +526,12 @@ impl RequestObservation {
     ) {
         let whole_digest = self.content_blob_digest(media_type, bytes);
         let message_instance_id = self.message_instance_id("request_input", message_ordinal, role);
+        let content_id = self.content_id(&message_instance_id, part_ordinal, &whole_digest);
         emit_content_ref(
             self,
             "request_input",
             ContentRefV1 {
-                content_id: self.content_id(&message_instance_id, part_ordinal, &whole_digest),
+                content_id: content_id.clone(),
                 digest: whole_digest.clone(),
                 byte_count: bytes.len() as u64,
                 media_type: media_type.into(),
@@ -522,6 +549,8 @@ impl RequestObservation {
                 bytes,
                 public_ref: None,
                 whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_id,
                 starts_content: true,
                 transport_frame_id: None,
                 downstream_delivery: None,
@@ -540,6 +569,8 @@ impl RequestObservation {
                 bytes: chunk,
                 public_ref: None,
                 whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_id,
                 starts_content: index == 0,
                 transport_frame_id: None,
                 downstream_delivery: None,

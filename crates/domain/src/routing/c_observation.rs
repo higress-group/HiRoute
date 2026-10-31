@@ -125,7 +125,7 @@ impl RoutingObservationV1 {
             .is_some_and(|s| s < f64::from(self.competence_floor_millis) / 1000.0);
         matches!(
             self.protocol.as_str(),
-            super::SYSTEM_ONE_C_V1 | super::SYSTEM_ONE_C_V2
+            super::SYSTEM_ONE_C_V1 | super::SYSTEM_ONE_C_V2 | super::SYSTEM_ONE_C_V3
         ) && CanonicalDigest::parse(self.content_digest.as_str()).is_ok()
             && CanonicalDigest::parse(self.bundle_digest.as_str()).is_ok()
             && text(&self.provider, 128)

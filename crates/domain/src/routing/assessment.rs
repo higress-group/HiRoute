@@ -20,7 +20,7 @@ pub struct NativeProtocolSelectionV1 {
 impl Default for NativeProtocolSelectionV1 {
     fn default() -> Self {
         Self {
-            schema: SYSTEM_ONE_C_V2.into(),
+            schema: SYSTEM_ONE_C_V3.into(),
             prior_context_max_turns: 8,
         }
     }
@@ -30,6 +30,7 @@ impl NativeProtocolSelectionV1 {
         let fixed = match self.schema.as_str() {
             SYSTEM_ONE_C_V1 => NativeFixedContentV1::c_v1(),
             SYSTEM_ONE_C_V2 => NativeFixedContentV1::c_v2(),
+            SYSTEM_ONE_C_V3 => NativeFixedContentV1::c_v3(),
             _ => return Err(NativeProtocolError::Unsupported),
         };
         let value = NativeProtocolV1 {
@@ -89,11 +90,9 @@ impl JudgmentSettingsV1 {
         frozen: Option<&Self>,
     ) -> Result<Self, NativeProtocolError> {
         if let (Some(selection), Some(frozen)) = (protocol, frozen) {
-            let native = selection.resolve()?;
-            if selection.schema == SYSTEM_ONE_C_V1
-                && self.assessment_standard() == AssessmentStandardV1::Default
+            selection.validate()?;
+            if self.assessment_standard() == AssessmentStandardV1::Default
                 && frozen.competence.standard == Some(AssessmentStandardV1::Default)
-                && native.is_stock_assessment(frozen)
             {
                 let mut value = self.clone();
                 value.competence.instructions = frozen.competence.instructions.clone();
@@ -137,3 +136,7 @@ impl AgentPlanAuthoringV2 {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "assessment_feedback_tests.rs"]
+mod tests;

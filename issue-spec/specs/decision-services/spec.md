@@ -18,6 +18,14 @@ Provider names alone do not define another protocol. Token Plan cannot be split
 into individual/team eligibility paths. Known values are editable suggestions;
 required business-space/custom endpoint/model fields remain visible.
 
+Current native connections use `hiroute.decision-service/v2` with an explicit
+`system_one` or `openai_decisions` wire protocol. The latter adapts OpenAI
+Decisions; it does not select a different logical routing protocol. Supported
+untagged V1 revisions retain their exact content and digests. Preparing an old
+connection for editing does not write or republish it. Custom extensions retain
+their own protocol and optional independent header; they cannot reuse a model
+source's credentials.
+
 Auth supports none, Bearer, or a declared header as appropriate. Plaintext uses
 protected input/Secret transactions, never plan content, logs, argv, lists, or browser
 storage. Existing auth shows configured state without guessing its type from the
@@ -32,6 +40,14 @@ same-version copies. Connection/draft changes cannot reinterpret published plans
 Referenced versions/drafts prevent deletion. Inline legacy `rest` authoring is not
 a current public alternative.
 
+#### Scenario: Existing publication retains its service
+
+- **WHEN** a newer immutable service revision is saved
+- **THEN** the existing publication retains its exact selected revision and authentication until an explicit new selection and publication.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488573916
+
 ### Requirement: Testing is explicit, version-specific, and uses production transport
 
 Save-and-test MUST save first, then test the exact saved version with synthetic
@@ -44,6 +60,22 @@ HTTP/2 authority, total deadline, DNS/transport policy, authentication, and no-r
 rules are shared with execution. Closed error codes distinguish recognized auth,
 quota, and endpoint rejections without native text, credentials, account identifiers,
 or request body. A generic rejection cannot be declared a bad Key.
+
+The current Product Session test resolves a saved ID/revision and expected
+configuration digest server-side. Its V2 result identifies the tested configuration
+and credential-state revision. A successful save acknowledgement requires readback
+before testing or returning the selected version; a failed readback is not permission
+to repeat the save. Testing does not require publishing a route. A previous pass
+becomes stale when the tested configuration or credential state changes and cannot
+be displayed as current success.
+
+#### Scenario: Save succeeds but explicit test fails
+
+- **WHEN** the exact saved service rejects the synthetic connectivity call
+- **THEN** the saved revision remains available with an actionable failure and is not automatically republished, resaved or represented as a successful test.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488573916
 
 ### Requirement: A custom plan selects one category and at most two groups
 
@@ -157,7 +189,7 @@ Source SPEC comments:
 
 ### Requirement: System One compiles independent typed questions in one call
 
-Built-in request shape uses `model`, `state`, and `questions`. Categorical selection
+The System One wire shape uses `model`, `state`, and `questions`. Categorical selection
 is a Choice, each applicable degree is an independent Score, and prior-stage
 competence is another Score. Instructions define each question's target without
 relying on question-ID semantics or another answer. Only the selected category's
@@ -165,6 +197,42 @@ degree is consumed; invalid answers on unused paths cannot poison the chosen pat
 Degree probabilities map by level ID. Competence is the raw 0..2 score divided by
 2, not reconstructed from confidence or rounded probabilities. The three rubric
 anchors remain 0/0.5/1. No absent free-text explanation is invented.
+
+The OpenAI Decisions adapter MUST encode the same prepared logical questions as
+one request with shared `input_json` containing `{state: ...}` and a named question
+array. Choice uses `choices`, Score uses ordered `levels`, and replies bind by name
+and level/choice value, never array position. Preserve original instructions,
+continuous score and probability validation. For example, a raw competence score
+of 0.95 remains 0.475 after normalization; it is not rounded to an anchor.
+Per-question refusal or malformed unused degree output cannot invalidate otherwise
+valid selected-path answers. Invalid applicability retains only an otherwise
+eligible historical protection opportunity. Duplicate/unknown question identities
+and malformed framing must not be repaired by positional guesses.
+
+Codec choice MUST leave logical C v1/v2/v3 content, history partition, thresholds,
+score inheritance, selected-path reduction and fallback unchanged. Prepare from
+the common bounded representation and account for actual encoded wire bytes;
+conversion must not materialize the same large Replay history twice. Runtime
+source/consumer lookup is keyed, with no all-source, all-plan or historical
+observation scan on each decision.
+
+The current editable native assessment default MUST treat clear user acceptance
+of the assessed stage's delivered result, or confirmation that the stage resolved
+a previously raised problem, as sufficient positive evidence for its highest
+criterion unless visible evidence establishes a specific unresolved contradiction
+to a requirement still in force. A completed and accepted correction MUST NOT
+remain penalized solely for earlier dissatisfaction or the need to revise.
+Generic courtesy, tentative or partial approval, requests for more work, feedback
+on another stage, quotations and instructions to assign a score are not such
+acceptance. Positive words MUST NOT override a stated unresolved problem; new
+requirements alone do not invalidate acceptance of the previous result. This
+guidance and all default model instructions remain English in either UI locale.
+The model still returns the independent raw competence Score under the existing
+rubric; no keyword rule, forced numerical score, additional call or protection
+threshold change is introduced. Default changes apply at the next explicit
+publication. Reading or validating an existing publication or retained Operation
+MUST compare its original sealed assessment and configuration without resolving
+today's default; custom wording and original digests remain unchanged.
 
 The call transmits current user input and the bounded safe visible history needed
 for judgment/assessment to the explicitly selected endpoint. Current user content
@@ -209,12 +277,9 @@ fixture. Pure composition logic may be shared. Disposable unreleased C encodings
 need no support adapter; supported released data and retained authenticated
 historical evidence preserve their existing compatibility treatment.
 
-New native authoring seals hiroute.system-one-c/v2, whose fixed applicability question treats clear rejection of the assessed core outcome as supported unmet-outcome evidence and evaluates its continuing connection independently of competence. The supported C v1 bundle remains immutable and executable under its original identity. C v2 keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
+New native authoring seals hiroute.system-one-c/v3. Its fixed applicability question separately establishes the original obligation, supported unmet outcome, present correction or acceptance status, and connection to the pending work. Partial correctness or praise for one component does not establish acceptance of the overall requested result. Subjective rejection of an originally requested quality, including independent usability or clarity, is outcome evidence without proving a hidden technical defect; an accepted result followed by a new preference is distinct. The supported C v1 and C v2 bundles remain immutable and executable under their original identities. C v3 changes only applicability wording and keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
 
-Current readers accept authenticated v1 and v2 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier may also accept the explicitly supplied supported v2 protocol. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
-
-Related source specification:
-- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
+Current readers accept authenticated v1, v2 and v3 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier also accepts explicitly supplied supported v2 and v3 protocols with their own exact bundles. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
 
 #### Scenario: Frozen C questions
 
@@ -231,10 +296,20 @@ Related source specification:
 - **WHEN** current category or degree defaults change after a C publication is saved
 - **THEN** Reopen and execution MUST retain the frozen questions, role bindings and content identity, while corrupted or authoring-mismatched content remains rejected.
 
+#### Scenario: Explicit acceptance after correction
+
+- **WHEN** latest relevant feedback clearly accepts the assessed stage's result or confirms that it resolved the prior problem, with no specific unresolved contradiction to an existing requirement
+- **THEN** the current default provides sufficient evidence for the highest competence criterion; earlier corrected dissatisfaction alone is not an ongoing defect, and no numerical score is forced.
+
+#### Scenario: Praise with an unresolved problem
+
+- **WHEN** feedback includes courtesy, partial approval or positive words while identifying a still-unresolved requirement
+- **THEN** those words do not establish full acceptance or override the visible problem; a request for additional unrelated work does not retroactively fail the preceding stage.
+
 #### Scenario: Current feedback protocol on new publication
 
 - **WHEN** a new native route is explicitly saved and published with otherwise eligible same-core rejection feedback
-- **THEN** the sealed protocol is C v2 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
+- **THEN** the sealed protocol is C v3 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
 
 #### Scenario: Supported v1 execution and recovery
 
@@ -251,8 +326,28 @@ Related source specification:
 - **WHEN** retained v1 and new v2 observations share a service and plan scope, or an explicit diagnostic is run with either supported frozen protocol
 - **THEN** observations keep their original authenticated protocol/content identities and remain readable without a rewrite, cohorts do not imply equivalence across identities, and diagnostics use exactly the supplied supported bundle under the unchanged protected request/result carrier.
 
+#### Scenario: OpenAI difficulty decision with and without history
+
+- **WHEN** a published OpenAI decision service receives a new user turn with no target history or with a complete eligible historical target
+- **THEN** HiRoute sends the corresponding independent questions in one OpenAI Decisions request and reduces the mapped results using the published HiRoute policy
+
+#### Scenario: Maximum custom-branch shape
+
+- **WHEN** a custom plan has sixteen categories with degree questions and eligible historical competence/applicability
+- **THEN** one request carries the category question, sixteen degree questions and the two historical questions; only the selected category degree affects routing
+
+#### Scenario: Continuous score and reordered answers
+
+- **WHEN** the provider returns named answers in a different order and a valid raw competence score of 0.95
+- **THEN** question identities remain correct and competence is 0.475 after existing normalization, without rounding to the most likely grade
+
+#### Scenario: Applicability refusal and unused-path invalidity
+
+- **WHEN** applicability is refused or an unselected category degree is invalid while the selected degree and assessment are valid
+- **THEN** the valid selected results survive; applicability unavailability retains only eligible low-score protection and unused-path invalidity cannot fail the chosen path
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/226#issuecomment-6448880209
+- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488571917
 
 ### Requirement: Conservative fallback preserves a valid selected category
 
@@ -353,14 +448,21 @@ Source SPEC comments:
 
 ### Requirement: C capability evidence is explicit and session scoped
 
-The connection page MUST retain one hiroute.classifier-decision-test/v1 test with unchanged request/result contract and a fixed example using the current native request shape. There is no route-editor applicability test. Save, inspect and publication send no provider request.
+The connection page MUST retain one explicit connectivity test with a fixed
+example using the saved service's native request shape. Current V2 testing uses
+the saved-revision contract above; supported
+`hiroute.classifier-decision-test/v1` requests/results retain their exact meaning
+through the legacy entry. There is no route-editor applicability test. Save,
+inspect and publication send no provider request.
 
 The separately named hiroute.historical-applicability-test/v1 and its result remain CLI/acceptance diagnostics under the existing protected operation, not connectivity v2 or a new permission. Bind the exact saved service revision, endpoint/model, frozen content digest and requested standard/maximum shape. Use the production transport/parser and synthetic complete history. Maximum shape is one category, sixteen degree, one historical score and one applicability question in one call. Validate all bound answer types and probability vectors without prescribing semantic answers. Missing saved revisions cannot dispatch. Report verified/unsupported/not_tested/test_failed and bounded duration/reason; machine output retains identities and digests. Do not infer quality or universal provider certification from shape success. No automatic retries or implicit calls are introduced.
 
 #### Scenario: One current connection test
 
 - **WHEN** a user explicitly tests a saved native connection from Desktop
-- **THEN** The existing v1 contract MUST exercise the current default request shape through one call, without a route test or new permission.
+- **THEN** the version-specific saved connection test MUST exercise the current
+  default request shape through production transport, without a route test or new
+  permission; legacy v1 callers remain compatible.
 
 #### Scenario: Maximum native diagnostic
 
@@ -368,7 +470,7 @@ The separately named hiroute.historical-applicability-test/v1 and its result rem
 - **THEN** One production request MUST contain all nineteen questions and validate their complete results against the saved identity and frozen contents.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
+- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488571917
 
 ### Requirement: Division drafts disclose the change in protection
 
@@ -475,7 +577,7 @@ Applicability independently evaluates whether the reported unmet outcome still m
 
 All shipped default model-facing instructions and criteria SHALL be English independently of UI locale, including category, degree, competence, applicability, wrappers and trial presets. Localized UI explanations may be translated; user-authored prompts retain their chosen language. New defaults are sealed through normal publication; existing saved custom prompts and frozen published question content retain their exact original meaning and bytes. A fixed supported protocol bundle must not be edited in place to change its meaning.
 
-Newly authored native publications use the versioned C v2 applicability bundle. Clear rejection of the assessed core result followed by work on that same unmet outcome is supported applicability evidence without a technical diagnosis, while the existing correction, acceptance, unrelated-task and authority distinctions remain effective. Existing C v1 publications and retained Operations retain their exact frozen questions, protocol identity and digests. Editing prepares current defaults only for the next explicit save/publication and cannot mutate active or historical content.
+Newly authored native publications use the versioned C v3 applicability bundle. Clear rejection of the assessed core result followed by work on that same unmet outcome is supported applicability evidence without a technical diagnosis, while the existing correction, acceptance, unrelated-task and authority distinctions remain effective. Existing C v1/v2 publications and retained Operations retain their exact frozen questions, protocol identity and digests. Editing prepares current defaults only for the next explicit save/publication and cannot mutate active or historical content.
 
 #### Scenario: Brief rejection of the preceding core result
 
@@ -486,6 +588,11 @@ Newly authored native publications use the versioned C v2 applicability bundle. 
 
 - **WHEN** the same stage instead receives clear acceptance, neutral continuation, a new unrelated requirement, or a bounded local refinement with explicit acceptance of the core result
 - **THEN** those inputs do not inherit the broad-rejection result; acceptance supports competence, and local refinement is weighed proportionately rather than forcing low competence.
+
+#### Scenario: Partial approval does not accept a rejected original outcome
+
+- **WHEN** a stage was asked to deliver an independently usable result; the user confirms one component is correct but says the result still needs assistance and requests improvement to that same original outcome
+- **THEN** applicability treats the still-unmet usability outcome as connected to the current work, without requiring a diagnosed technical defect or treating the praise as acceptance of the whole result. The same rule applies to other originally requested qualities and does not infer a newly introduced requirement retrospectively.
 
 #### Scenario: Feedback cannot replace missing evidence or scoring authority
 
@@ -499,11 +606,174 @@ Newly authored native publications use the versioned C v2 applicability bundle. 
 
 #### Scenario: Versioned defaults preserve sealed history
 
-- **WHEN** a supported C v1 publication or unfinished Operation is reopened after C v2 becomes the authoring default
+- **WHEN** a supported C v1/v2 publication or unfinished Operation is reopened after C v3 becomes the authoring default
 - **THEN** the original v1 bundle, custom/default contents and authenticated identities remain unchanged; a later explicit edit/publication seals the current supported bundle without rewriting earlier records.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/226#issuecomment-6445981518
+
+### Requirement: Native decision models may reuse an existing API connection
+
+A V2 native service MUST choose either independent protected authentication or a
+shared Native API source by stable source ID and lineage digest. Shared mode MUST
+not copy Key material into a Header Secret or accept independent secret input.
+Model, full decision endpoint, wire protocol and timeout belong to the immutable
+decision-service revision; the source continues to own current ordered Keys and
+enabled state. Source names, provider labels and equal Key values do not establish
+identity. Subscription/OAuth sources are not offered as reusable API Keys.
+
+Source listing MUST distinguish locally ready, disabled, missing credentials,
+missing and unavailable. Local readiness only means an enabled source with an
+enabled configured Native API Key. It does not prove decision-model entitlement.
+Both Bailian Token Plan and business-space connections may be selected; suggestions
+are editable and cannot infer a workspace, entitlement or codec from a changed URL.
+An unavailable read must not be rendered as a successfully empty or deleted source.
+
+Saving a shared service MUST atomically install the immutable revision, exact
+decision-target membership and required Key destination Rebind through the existing
+recoverable Operation. Source/service expected revisions are checked under the
+writer. Destination authorization is the union of ordinary model destinations and
+retained decision targets. Rebind retains Key identity and material while advancing
+the appropriate generation; it cannot require plaintext re-entry. Source changes
+or deletion MUST preserve references from retained service revisions, publications,
+drafts and unfinished recovery. Failed or unknown reference reads block destructive
+changes. Partial preparation must compensate or resume without overwriting later
+source/Key generations.
+
+Execution freezes service and source lineage, but checks current source/Key
+eligibility for every exact lease. It uses a decision-specific consumer and target,
+not a fabricated inference model or the independent Header Secret path. Key rotation
+and disablement affect subsequent calls without republishing. Retry visits each
+admitted eligible Key at most once within the one total decision deadline, and only
+for recognized credential failure classes. It never switches sources or treats all
+malformed provider responses as reasons to try every Key. Automatic credential
+health stays local to the decision binding; it does not infer shared inference quota.
+
+#### Scenario: Shared Key changes after publication
+
+- **WHEN** a published decision service's selected source rotates or disables a Key
+- **THEN** subsequent leases use current eligibility and generation without changing
+  the frozen endpoint/model/protocol or copying credentials into the publication.
+
+#### Scenario: A newer service selects another source
+
+- **WHEN** service revision 2 selects source B while revision 1 remains referenced
+- **THEN** revision 1 retains its authorized target on A, revision 2 uses B, and
+  deletion or narrowing cannot orphan the retained revision.
+
+#### Scenario: Save races with source deletion or Key replacement
+
+- **WHEN** either source or Key state changes after the form's read
+- **THEN** writer-side revision and authority checks reject stale intent or recover
+  its exact Operation; no partial service grants access to an unrelated destination.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488572844
+
+### Requirement: Setup and repair preserve user intent across management navigation
+
+The decision-model form MUST offer reuse of an existing API connection and
+independent configuration. Initial loading provides an explicit independent escape;
+late reads cannot override a user's mode, source or edits. Reuse may be the initial
+mode when a locally ready source exists, but no account is silently selected.
+TypeSafe and other independent compatible endpoints remain available.
+
+Model, endpoint and codec form one non-secret draft bundle per mode/source.
+First selection of source B uses B's suggestions; returning to A restores A's edits.
+Refreshing source state does not mix bundles. Reset to suggestions is explicit.
+An unknown codec requires a choice; changing origin alone does not clear a chosen
+codec. Independent authentication retains its existing origin-change protection.
+A saved independent reference survives a harmless mode roundtrip, while pending
+unsaved secrets are cleared at context switches and never stored in resumable state.
+Preparing V2 from an untouched V1 service is the form's unmodified baseline.
+
+Managing the selected API connection is a nested detour: route/trial, decision
+model, source management, decision model, then the parent. It MUST preserve the
+decision and parent drafts, target the selected source and provide an explicit
+return. Existing model-page drafts still receive normal replacement protection.
+Unrelated navigation retains its discard guards. Return refreshes source state
+without changing the selected bundle or automatically testing or publishing.
+
+UI recovery MUST distinguish saving, saved-but-readback-required, test failure,
+stale test and publication. Source disable/no-Key errors lead to source management;
+a missing source permits reselection; independent credential/model/endpoint/codec
+errors lead to editing; transient failures permit retry. Ambiguous provider rejection
+retains alternate repair actions. A revision conflict preserves non-secret edits
+and requires an intentional save after refreshed state is available. Diagnostics may
+show digests, but they are not the primary user explanation. Same-name selections
+include model and source identity. V1 System One and V2 native configurations appear
+as decision models; custom extensions remain separately typed.
+
+#### Scenario: Nested management changes credentials
+
+- **WHEN** a user edits a route, adds a decision model, manages its shared API source
+  and changes its Keys
+- **THEN** both drafts survive the return, source state refreshes, a previous pass
+  is stale, and neither testing nor route publication occurs automatically.
+
+#### Scenario: Changing sources and returning
+
+- **WHEN** an edited source A is replaced by B and then selected again
+- **THEN** B initially has its own complete suggested bundle and A recovers its own
+  complete edited bundle; no Key or field is silently copied between sources.
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488573916
+
+### Requirement: Shared-source decision models inherit the API connection network policy
+
+A decision model that explicitly references a saved Native API source SHALL use that source's effective network policy for both saved-configuration tests and production decision calls. Resolve bypass and the proxy next hop against the decision model's own exact authorized URL, even when its host/path differs from ordinary inference. Preserve the decision service's frozen endpoint, model, wire codec, prompts and timeout, the exact source/lineage/consumer authorization and current Key permission. Shared network policy SHALL NOT replace the decision URL with an ordinary inference URL, broaden credential destination authority or introduce another credential owner.
+
+An applied source policy change SHALL affect subsequent shared decision requests without republishing the decision configuration. Already admitted calls retain their network snapshot. Safe decision views SHALL show inherited network policy and a manage-connection action. Returning from connection management preserves decision and surrounding route/trial drafts while refreshing current source state. A changed effective policy/environment invalidates a previous current-success test indication and does not trigger automatic retesting. Save-only remains non-probing; explicit tests use the saved exact decision configuration and production transport.
+
+Independent decision services and custom extensions retain their own existing network behavior. Proxy failures remain within existing decision deadlines, cancellation and failure/fallback semantics, without automatic cross-source/independent-secret substitution, direct internet retry or a false competence judgment about the executing model. Decision-specific failure attribution SHALL remain isolated from unrelated ordinary model bindings.
+
+The outer HTTP request SHALL admit one network snapshot for shared decision calls and subsequent model candidates/fallback. An explicit diagnostic records its own admitted snapshot. Versioned safe test evidence SHALL identify network state separately from configuration and credential state; it SHALL NOT reread after the call and label the new state as tested. A current read-only route preview uses the exact saved decision identity without DNS, provider I/O or destination authority. An unreadable current state cannot confirm an earlier pass. Returning a policy to an earlier value cannot revive evidence from an older policy revision.
+
+Shared decision repair SHALL use the collapsed source-owned editor in place, retain model/URL/codec and surrounding drafts, and refresh metadata without automatically testing. A proxy 407 SHALL retain typed proxy-authentication attribution and existing Key eligibility rather than becoming provider authentication failure. Independent/custom tests SHALL NOT acquire Native source policy evidence.
+
+#### Scenario: Test and run a reused API source
+
+- **WHEN** a decision service explicitly uses source A with manual proxy
+- **THEN** its explicit saved test and production decision calls use A's policy and authorized decision URL without a second Key entry
+
+#### Scenario: Different ordinary and decision destinations
+
+- **WHEN** a source's ordinary API destination matches a bypass rule but its separately authorized decision URL does not
+- **THEN** ordinary requests are direct for that rule and decision requests use the proxy; neither path substitutes the other's endpoint
+
+#### Scenario: Change policy after a successful decision test
+
+- **WHEN** the selected source network policy changes after a decision test succeeded
+- **THEN** subsequent decision calls use the new applied snapshot without republishing; the previous test is marked stale until an explicit retest
+
+#### Scenario: Return from source management
+
+- **WHEN** the user edits the shared source policy through a decision editor's manage-connection action and returns
+- **THEN** decision/parent drafts are retained and safe source state refreshes without silently changing the saved decision endpoint, source choice or issuing a provider call
+
+#### Scenario: Independent consumers remain independent
+
+- **WHEN** a Native source policy changes while an independently configured decision service or custom extension also exists
+- **THEN** the independent consumer retains its existing network route and configuration
+
+#### Scenario: Shared decision proxy fails
+
+- **WHEN** the selected source's proxy fails during a shared decision call
+- **THEN** the call follows existing bounded decision failure behavior without direct/cross-account fallback or attributing that network failure as competence evidence about an ordinary executing model
+
+#### Scenario: Policy changes while classification is running
+
+- **WHEN** a source policy changes while a request's shared decision call is in progress
+- **THEN** that request's later model execution retains its original network snapshot while a new HTTP request uses the replacement for both decision and inference, without republishing
+
+#### Scenario: Proxy authentication rejects a shared decision
+
+- **WHEN** the selected proxy returns 407 to a saved decision test or production decision call
+- **THEN** the result identifies proxy authentication, the provider Key remains enabled, and neither direct retry nor independent-secret substitution occurs
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/274#issuecomment-6499636922
 
 ## Implementation references
 

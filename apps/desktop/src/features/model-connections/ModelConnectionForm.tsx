@@ -1,3 +1,5 @@
+import { NativeNetworkSettings, NativeNetworkImpact } from './NativeNetworkSettings';
+import { manualProxyError, networkDraft, networkEdit, networkFailureText, networkPolicyEqual, networkRepairable, networkTarget, type NativeSourceNetwork } from './native-network';
 import { SecretTransportWarning } from '../../host/ConsoleUi';
 import { connectionName, connectionTemplate } from '../../ui/provider-identity';
 import { ProviderIcon } from '../../ui/ProviderIcon';
@@ -54,7 +56,7 @@ import {
 } from './form-support';
 
 type Phase = 'editing' | 'checking' | 'saving';
-type Screen = 'catalog' | 'connection' | 'manual' | 'models';
+type Screen = 'catalog' | 'connection' | 'manual' | 'models' | 'network_review';
 type OptionsRecoveryOwner = { checkId: string; productKey: string | null; editRevision: number };
 
 function emptyAdditionalEndpoint(protocol: UpstreamProtocol, authentication: ModelConnectionDraft['authentication']): ModelConnectionEndpointDraft {
@@ -69,6 +71,12 @@ function emptyAdditionalEndpoint(protocol: UpstreamProtocol, authentication: Mod
 export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const { backend, language } = props;
   const zh = language === 'zh';
+  const [networkSource, setNetworkSource] = useState<NativeSourceNetwork | null>(null);
+  const [networkReady, setNetworkReady] = useState(!props.initialDraft.existing_source_id);
+  const [networkLoadError, setNetworkLoadError] = useState(false);
+  const [networkLoadAttempt, setNetworkLoadAttempt] = useState(0);
+  const [networkReveal, setNetworkReveal] = useState(0);
+  const [networkReview, setNetworkReview] = useState<{ preview: ComputeSavePreview; checked: ModelConnectionCheckView; returnScreen: 'models' | 'manual' } | null>(null);
   const [custom, setCustom] = useState(props.initialDraft.entry_kind === 'custom_api');
   const free = props.initialDraft.entry_kind === 'free_api_key';
   const catalogEnabled = props.initialDraft.entry_kind !== 'custom_api' && !props.initialDraft.existing_source_id;
@@ -355,6 +363,21 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     };
   }, [releaseProtectedInput, releaseSession]);
   useEffect(() => { void loadConnectionOptions(); }, [loadConnectionOptions]);
+  useEffect(() => {
+    const sourceId = props.initialDraft.existing_source_id;
+    if (!sourceId) return;
+    let current = true; setNetworkReady(false); setNetworkLoadError(false);
+    void invoke<NativeSourceNetwork>('native_source_network', { input: { source_id: sourceId } }).then(view => {
+      if (!current) return;
+      if (view.source_revision !== props.initialDraft.expected_source_revision) throw Error('SOURCE_CHANGED');
+      const network = networkDraft(view.policy, view.network_revision);
+      setNetworkSource(view);
+      editingSession.current.applyNetworkBaseline(editingKey.current, network);
+      const next = { ...draftRef.current, network }; draftRef.current = next; setDraft(next); setNetworkReady(true);
+    }).catch(() => { if (current) setNetworkLoadError(true); });
+    return () => { current = false; };
+  }, [props.initialDraft.existing_source_id, props.initialDraft.expected_source_revision, networkLoadAttempt]);
+
 
   const invalidate = useCallback((
     update: (current: ModelConnectionDraft) => ModelConnectionDraft,
@@ -414,6 +437,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
 
   function chooseConnection(option: ComputeConnectionOptions['options'][number] | null) {
     if (activeCheckRef.current || optionsRecovery.current) cancelActiveCheck();
+    setNetworkReveal(0);
     shortcutDecided.current = true;
     const key = option?.connection_option_id ?? 'custom';
     retainEditingDraft();
@@ -464,7 +488,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     invalidate(current => ({ ...current, models: current.models.map(value => value.client_id === model.client_id ? model : value) }), false, 'manual');
   }
 
-  async function saveChecked(checked: ModelConnectionCheckView, selectedRefs: string[]) {
+  async function saveChecked(checked: ModelConnectionCheckView, selectedRefs: string[], returnScreen: 'models' | 'manual' = 'models') {
     if (!props.mutable) {
       setError('TRUSTED_AUTHORITY_UNAVAILABLE');
       return;
@@ -494,10 +518,13 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       });
       if (props.appendTo) { change.edit = { action: 'append_models' }; change.key_edits = []; }
       else if (draftRef.current.display_name.trim()) change.edit = { action: 'rename', display_name: draftRef.current.display_name.trim() };
-      const preview = await backend.previewComputeSave(change);
+      const preview = await backend.previewComputeSave(change, networkEdit(draftRef.current.network));
       if (!aliveRef.current) {
         releaseProtectedInput();
         return;
+      }
+      if (networkSource && !networkPolicyEqual(networkSource.policy, networkEdit(draftRef.current.network).policy)) {
+        setNetworkReview({ preview, checked, returnScreen }); setPhase('editing'); setScreen('network_review'); return;
       }
       await applyPreview(preview, checked);
     } catch (caught) {
@@ -591,6 +618,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       .map(model => manualModelIdError(model.upstream_model_id, allowedIds)).find(Boolean);
     if (idError) { setError(idError); return; }
     const passwordElement = password.current;
+    if (!networkReady || manualProxyError(current.network ?? networkDraft())) { setScreen('connection'); setNetworkReveal(v => v + 1); return; }
     const enteredSecret = passwordElement?.value ?? '';
     if (!current.display_name.trim() || new TextEncoder().encode(current.display_name.trim()).length > 256 || current.display_name.includes('\0')) {
       setError('MODEL_CONNECTION_NAME_REQUIRED');
@@ -651,7 +679,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         ? await backend.checkModelConnection({
             draft: buildCheckDraft({ ...checkingDraft, models: checkedModels }),
             ...(inputCandidate ? { input_candidate: inputCandidate } : {}),
-          })
+          }, networkEdit(checkingDraft.network))
         : await backend.checkRegisteredModelConnection({
             display_name: checkingDraft.display_name,
             inference_model_id: inferenceModelId,
@@ -664,8 +692,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
             check_id: checkingDraft.check_id,
             input_candidate: inputCandidate!,
             existing_source_id: checkingDraft.existing_source_id,
-            expected_source_revision: null,
-          });
+            expected_source_revision: checkingDraft.expected_source_revision ?? null,
+          }, networkEdit(checkingDraft.network));
       if (!aliveRef.current || activeCheckRef.current !== checkId || draftRef.current.edit_revision !== checkingDraft.edit_revision) return;
       if (!checkMatches(checked, { candidateRef: checkingDraft.candidate_ref, editRevision: checkingDraft.edit_revision, checkId })) {
         activeCheckRef.current = null;
@@ -678,6 +706,11 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       draftRef.current = acceptedDraft;
       setDraft(acceptedDraft);
       setResult(checked);
+      if (checked.failure && checked.failure.phase !== 'directory') {
+        setPhase('editing'); setScreen(checked.failure.phase === 'inference' ? 'manual' : 'connection');
+        if (networkRepairable(checked.failure)) setNetworkReveal(v => v + 1);
+        return;
+      }
       const checkFailure = checkFailureCode(checked);
       if (checkFailure) {
         setError(checkFailure);
@@ -691,7 +724,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       for (const model of checked.candidate.models) preservedModelIds.current.add(model.upstream_model_id);
       const selectable = checked.candidate.models.filter(model => model.selectable);
       if (saveAfterCheck) {
-        await saveChecked(checked, selectable.filter(model => checkingDraft.models.some(declared => declared.upstream_model_id === model.upstream_model_id)).map(model => model.model_ref));
+        await saveChecked(checked, selectable.filter(model => checkingDraft.models.some(declared => declared.upstream_model_id === model.upstream_model_id)).map(model => model.model_ref), 'manual');
         return;
       }
       if (custom && selectable.length === 0) {
@@ -740,6 +773,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           || draftRef.current.edit_revision !== checkingDraft.edit_revision) return;
         activeCheckRef.current = null;
         setError(code);
+        if (draftRef.current.network?.mode === 'manual' && ['INVALID_ARGUMENTS', 'application.error.invalid_arguments'].includes(code)) { setScreen('connection'); setNetworkReveal(v => v + 1); }
         setPhase('editing');
       } else if (newlyRegistered && !inputOwnedBySession) {
         await backend.releaseProtectedInput(newlyRegistered).catch(() => undefined);
@@ -827,12 +861,14 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const optionUnavailable = error === 'MODEL_CONNECTION_OPTIONS_UNAVAILABLE' || error === 'MODEL_CONNECTION_OPTION_UNAVAILABLE';
   const title = props.appendTo ? (zh ? `向「${props.appendTo.display_name}」添加模型` : `Add models to “${props.appendTo.display_name}”`) : zh ? '连接 API' : 'Connect an API';
   const step = screen === 'catalog' ? 0 : screen === 'connection' ? 1 : 2;
-  const footer = busy
+  const footer = networkReview && screen === 'network_review' && !busy
+    ? <><button className="btn" type="button" onClick={() => { setNetworkReview(null); setScreen(networkReview.returnScreen); }}>{zh ? '返回修改' : 'Back'}</button><button className="btn btn-primary" type="button" onClick={() => { const review = networkReview; setNetworkReview(null); setPhase('saving'); void applyPreview(review.preview, review.checked); }}>{zh ? '确认并保存' : 'Confirm and save'}</button></>
+    : busy
     ? <button className="btn" type="button" disabled={phase === 'saving'} onClick={cancelActiveCheck}>{phase === 'saving' ? (zh ? '正在保存…' : 'Saving…') : (zh ? '取消检查' : 'Cancel check')}</button>
     : screen === 'catalog'
       ? <><button className="btn" type="button" onClick={() => void requestClose('back')}>{zh ? '返回' : 'Back'}</button><span className="field-help">{zh ? '选择服务后继续配置' : 'Choose a service to continue'}</span></>
       : screen === 'connection'
-      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && props.singleProductShortcut ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || (!custom && (optionsLoading || !registeredExecutable))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
+      ? <><button className="btn" type="button" onClick={() => catalogEnabled ? returnToCatalog() : void requestClose('back')}>{catalogEnabled && props.singleProductShortcut ? (zh ? '更换服务' : 'Change service') : (zh ? '返回' : 'Back')}</button><button className="btn btn-primary" type="submit" form="mc-connection-form" disabled={!props.mutable || !networkReady || Boolean(manualProxyError(draft.network ?? networkDraft())) || (!custom && (optionsLoading || !registeredExecutable))}>{zh ? '检查并继续' : 'Check and continue'}</button></>
       : screen === 'manual'
         ? <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><button className="btn btn-primary" type="submit" form="mc-manual-form" disabled={!props.mutable}>{zh ? '检查并保存' : 'Check and save'}</button></>
         : <><button className="btn" type="button" onClick={backWithinFlow}>{zh ? '返回' : 'Back'}</button><span className="connection-selection-count">{zh ? `已选择 ${selectedCount} 个模型` : `${selectedCount} models selected`}</span><button className="btn btn-primary" type="button" disabled={!props.mutable || !selectedCount} onClick={() => void saveSelected()}>{zh ? '保存连接' : 'Save connection'}</button></>;
@@ -934,6 +970,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
             {!custom && <p className="field-help">{zh ? '检查连接配置；提供目录时读取模型，不发送推理请求。' : 'Checks connection settings and reads the model directory when available, without inference requests.'}</p>}
             <button className="btn btn-quiet connection-manual-entry" type="button" onClick={openManual}>{zh ? '手工维护模型' : 'Edit models manually'}</button>
           </fieldset>
+          {networkLoadError ? <div className="callout warn" role="alert">{zh ? '无法读取已保存的网络设置，请重试。' : 'Saved network settings could not be read. Retry.'}<button className="btn" type="button" onClick={() => setNetworkLoadAttempt(v => v + 1)}>{zh ? '重试' : 'Retry'}</button></div> : networkReady ? <NativeNetworkSettings key={editingKey.current ?? 'network'} value={draft.network ?? networkDraft()} language={language} disabled={!props.mutable} target={!custom && registeredOption ? { kind: 'registered', connection_option_id: registeredOption.connection_option_id, protocol: [...(registeredOption.endpoints ?? [])].sort((a, b) => a.stable_preference - b.stable_preference)[0]?.protocol ?? draft.protocol } : networkTarget(draft)} reveal={networkReveal} failure={result?.failure} onChange={network => invalidate(current => ({ ...current, network }), false, 'connection')} /> : <p role="status">{zh ? '正在读取网络设置…' : 'Reading network settings…'}</p>}
         </form>
 
         {screen === 'manual' && <form id="mc-manual-form" onSubmit={event => { event.preventDefault(); void runCheck(true); }}>
@@ -941,6 +978,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           <button className="btn" type="button" onClick={() => invalidate(current => ({ ...current, models: [...current.models, blankModel()] }), false, 'manual')}>{zh ? '添加模型 ID' : 'Add model ID'}</button>
         </form>}
 
+        {screen === 'network_review' && networkReview && networkSource && <NativeNetworkImpact before={networkSource.policy} after={networkEdit(draft.network).policy} models={networkSource.models} decisions={networkSource.decisions} language={language} />}
         {screen === 'models' && result && <section className="model-selection" aria-live="polite">
           <div className="connection-config-heading"><ProviderIcon optionId={custom ? draft.display_template_id : registeredOption?.connection_option_id} language={language} /><div><h3>{draft.display_name}</h3><p>{custom ? (zh ? '自定义 API' : 'Custom API') : productName}</p></div></div>
           <p className="v3-select-intro">{zh ? '选择需要接入的模型，已知能力会自动匹配。' : 'Choose models to connect. Known capabilities are matched automatically.'}</p>
@@ -962,6 +1000,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         </section>}
       </div>
       {optionsError && !busy && !custom && (screen === 'catalog' || Boolean(registeredOption)) && <div role="alert" className="callout bad" data-error-code={optionsError}><UiIcon name="warning" /><span>{connectionErrorMessage(optionsError, zh)}</span></div>}
+      {result?.failure && !busy && !networkRepairable(result.failure) && <p className="callout warn" role="alert">{networkFailureText(result.failure, zh)}</p>}
       {error && !busy && (!optionUnavailable || Boolean(registeredOption)) && <div ref={errorFeedback} role="alert" className="callout bad" data-error-code={error}><UiIcon name="warning" /><span>{connectionErrorMessage(error, zh)}</span></div>}
     </section>
   </Dialog>;

@@ -111,13 +111,23 @@ struct StoreInner {
     directory: Arc<secure_path::SecureDirectory>,
     budget: StreamBudget,
     streams: Mutex<BTreeMap<u64, Arc<ReplayStream>>>,
-    metadata: Mutex<Vec<Reservation>>,
+    metadata: Mutex<Vec<Arc<Reservation>>>,
+    cleanup: Arc<RequestDirectoryCleanup>,
     next_stream: AtomicU64,
     memory_live: Arc<AtomicUsize>,
     memory_gate: Arc<Mutex<()>>,
     force_disk: Arc<AtomicBool>,
     prevalidated: AtomicBool,
     terminal: AtomicBool,
+    fingerprints: Arc<crate::runtime_fingerprint::ContentFingerprints>,
+}
+
+struct RequestDirectoryCleanup(Arc<secure_path::SecureDirectory>);
+
+impl Drop for RequestDirectoryCleanup {
+    fn drop(&mut self) {
+        let _ = secure_path::remove_request_directory(&self.0);
+    }
 }
 
 pub struct ReplayWriter {
@@ -165,19 +175,22 @@ impl ReplayManager {
             std::mem::size_of::<StoreInner>() + 512,
         )?;
         let directory = secure_path::create_request_directory(&self.inner.root)?;
+        let cleanup = Arc::new(RequestDirectoryCleanup(Arc::clone(&directory)));
         Ok(ReplayStore {
             inner: Arc::new(StoreInner {
                 manager: Arc::clone(&self.inner),
                 directory,
                 budget,
                 streams: Mutex::new(BTreeMap::new()),
-                metadata: Mutex::new(vec![base_metadata]),
+                metadata: Mutex::new(vec![Arc::new(base_metadata)]),
+                cleanup,
                 next_stream: AtomicU64::new(0),
                 memory_live: Arc::new(AtomicUsize::new(0)),
                 memory_gate: Arc::new(Mutex::new(())),
                 force_disk: Arc::new(AtomicBool::new(false)),
                 prevalidated: AtomicBool::new(false),
                 terminal: AtomicBool::new(false),
+                fingerprints: Default::default(),
             }),
         })
     }
@@ -188,6 +201,91 @@ impl ReplayManager {
 }
 
 impl ReplayStore {
+    /// A read-only view for asynchronous content capture. It shares charged
+    /// semantic streams and metadata, never the raw request stream. Only the
+    /// final owning view removes the request directory on every platform.
+    pub(crate) fn content_lease(&self) -> Result<Self, ReplayError> {
+        if !self.is_prevalidated() {
+            return Err(ReplayError::Integrity);
+        }
+        let source = lock(&self.inner.streams);
+        let bytes = std::mem::size_of::<StoreInner>()
+            .saturating_add(512)
+            .saturating_add(source.len().saturating_mul(128))
+            .saturating_add(
+                lock(&self.inner.metadata)
+                    .len()
+                    .saturating_add(1)
+                    .saturating_mul(2)
+                    .saturating_mul(std::mem::size_of::<Arc<Reservation>>()),
+            );
+        let reservation = self.budget().reserve(MemoryRole::ModelIrBacking, bytes)?;
+        let streams = source
+            .iter()
+            .filter(|(_, stream)| !stream.is_raw())
+            .map(|(id, stream)| (*id, Arc::clone(stream)))
+            .collect();
+        let mut metadata = lock(&self.inner.metadata).clone();
+        metadata.push(Arc::new(reservation));
+        Ok(Self {
+            inner: Arc::new(StoreInner {
+                manager: Arc::clone(&self.inner.manager),
+                directory: Arc::clone(&self.inner.directory),
+                budget: self.inner.budget.clone(),
+                streams: Mutex::new(streams),
+                metadata: Mutex::new(metadata),
+                cleanup: Arc::clone(&self.inner.cleanup),
+                next_stream: AtomicU64::new(0),
+                memory_live: Arc::clone(&self.inner.memory_live),
+                memory_gate: Arc::clone(&self.inner.memory_gate),
+                force_disk: Arc::clone(&self.inner.force_disk),
+                prevalidated: AtomicBool::new(true),
+                terminal: AtomicBool::new(true),
+                fingerprints: Default::default(),
+            }),
+        })
+    }
+
+    pub(crate) fn content_retention_bytes(&self) -> usize {
+        let charges = lock(&self.inner.metadata);
+        let metadata = charges
+            .iter()
+            .map(|charge| charge.bytes())
+            .sum::<usize>()
+            .saturating_add(std::mem::size_of::<StoreInner>() + 512)
+            .saturating_add(
+                charges
+                    .len()
+                    .saturating_add(1)
+                    .saturating_mul(2 * std::mem::size_of::<Arc<Reservation>>()),
+            );
+        drop(charges);
+        lock(&self.inner.streams)
+            .values()
+            .filter(|stream| !stream.is_raw())
+            .fold(metadata, |bytes, stream| {
+                bytes.saturating_add(128).saturating_add(
+                    usize::try_from(stream.reference.byte_len()).unwrap_or(usize::MAX),
+                )
+            })
+    }
+
+    pub(crate) fn runtime_fingerprint(
+        &self,
+        reference: &ContentRef,
+    ) -> Result<[u8; 32], ReplayError> {
+        self.inner.fingerprints.reference(self, reference)
+    }
+
+    pub(crate) fn runtime_bytes_fingerprint(&self, bytes: &[u8]) -> [u8; 32] {
+        self.inner.fingerprints.inline(self.budget(), bytes)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn runtime_fingerprint_computations(&self) -> usize {
+        self.inner.fingerprints.computations()
+    }
+
     pub fn begin_raw(&self) -> Result<ReplayWriter, ReplayError> {
         self.begin_stream(MemoryRole::RawRequest)
     }
@@ -306,7 +404,7 @@ impl ReplayStore {
             .inner
             .budget
             .reserve(MemoryRole::ModelIrBacking, bytes)?;
-        lock(&self.inner.metadata).push(reservation);
+        lock(&self.inner.metadata).push(Arc::new(reservation));
         Ok(())
     }
 
@@ -353,12 +451,15 @@ impl ReplayStore {
     }
 
     #[cfg(test)]
-    fn truncate_stream_last_byte(&self, reference: &ContentRef) -> Result<(), ReplayError> {
+    pub(crate) fn truncate_stream_last_byte(
+        &self,
+        reference: &ContentRef,
+    ) -> Result<(), ReplayError> {
         let streams = lock(&self.inner.streams);
         streams
             .get(&reference.stream_ordinal())
             .ok_or(ReplayError::UnknownContentRef)?
-            .truncate_last_byte()
+            .truncate_last_byte(reference)
     }
 
     #[cfg(test)]
@@ -484,7 +585,6 @@ impl Drop for ReplayContentWriter {
 impl Drop for StoreInner {
     fn drop(&mut self) {
         lock(&self.streams).clear();
-        let _ = secure_path::remove_request_directory(&self.directory);
     }
 }
 

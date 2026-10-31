@@ -19,6 +19,34 @@ fn headers(bearer: &str) -> HeaderMap {
     h
 }
 #[test]
+fn regression_all_installed_product_commands_can_be_audited_without_expiring_a_session() {
+    let (_root, mut auth) = auth();
+    let code = auth.create_launch(local_target()).unwrap();
+    let session = auth
+        .exchange_launch(&code, peer(), &local_target().origin)
+        .unwrap();
+    for command in hiroute_product_session::catalog::commands() {
+        auth.audit_command(&session.session, "1234567890abcdef", &command.name, None)
+            .unwrap_or_else(|error| {
+                panic!("admitted command {} was rejected: {error:?}", command.name)
+            });
+    }
+    for invalid in [
+        "preview-save",
+        "preview/save",
+        "PREVIEW",
+        "preview save",
+        "preview\nsave",
+    ] {
+        assert_eq!(
+            auth.audit_command(&session.session, "1234567890abcdef", invalid, None),
+            Err(AuthError::Invalid)
+        );
+    }
+    assert!(auth.authenticate(&headers(&session.bearer), peer()).is_ok());
+}
+
+#[test]
 fn launch_is_loopback_only_short_lived_and_single_use() {
     let (_root, mut a) = auth();
     let code = a.create_launch(local_target()).unwrap();

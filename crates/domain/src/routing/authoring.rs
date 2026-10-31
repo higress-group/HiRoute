@@ -314,7 +314,20 @@ impl AgentPlanAuthoringV2 {
         };
         match classifier {
             ComplexityClassifierModeV1::DecisionService { service } => Some(service),
-            ComplexityClassifierModeV1::LocalRules => None,
+            ComplexityClassifierModeV1::LocalRules
+            | ComplexityClassifierModeV1::DecisionServiceV2 { .. } => None,
+        }
+    }
+
+    pub fn decision_service_v2(&self) -> Option<&super::DecisionServiceV2> {
+        let classifier = match &self.strategy {
+            AgentPlanStrategyV2::SmartSaving { classifier, .. } => classifier,
+            AgentPlanStrategyV2::Branches { routing } => &routing.classifier,
+            _ => return None,
+        };
+        match classifier {
+            ComplexityClassifierModeV1::DecisionServiceV2 { service } => Some(service),
+            _ => None,
         }
     }
 

@@ -1,4 +1,4 @@
-import { useState, type PropsWithChildren } from 'react';
+import { useState, type PropsWithChildren, type ReactNode, type Ref } from 'react';
 import { UiIcon } from './UiIcon';
 import type { Language } from './preferences';
 
@@ -11,17 +11,22 @@ export function Disclosure({
   label,
   language,
   defaultOpen = false,
+  open: controlledOpen,
+  summaryRef,
   className = '',
   onOpenChange,
   children,
 }: PropsWithChildren<{
-  label: string;
+  label: ReactNode;
+  open?: boolean;
+  summaryRef?: Ref<HTMLElement>;
   language: Language;
   defaultOpen?: boolean;
   className?: string;
   onOpenChange?(open: boolean): void;
 }>) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [localOpen, setOpen] = useState(defaultOpen);
+  const open = controlledOpen ?? localOpen;
   return <details
     className={`disclosure ${className}`.trim()}
     open={open}
@@ -31,7 +36,7 @@ export function Disclosure({
       onOpenChange?.(event.currentTarget.open);
     }}
   >
-    <summary aria-expanded={open}>
+    <summary aria-expanded={open} ref={summaryRef}>
       <span className="disclosure-label">{label}</span>
       <span className="disclosure-action">
         {disclosureActionLabel(open, language)}
