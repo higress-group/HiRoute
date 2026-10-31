@@ -1032,16 +1032,19 @@ fn assert_business_with_usage(
     assert_eq!(requests[0]["fact"]["attempts_finished"], 1);
     let semantic_commits = named("semantic_commit").len();
     assert_eq!(semantic_commits, if failed && !after_body { 0 } else { 1 });
-    if failed || !canonical_usage {
-        // Failed entities and an exhausted optional decoder cannot manufacture
-        // usage. Successful model delivery remains an independent fact.
+    if failed {
+        // Failed entities report no usage; never synthesize zero tokens.
         assert!(named("usage_and_cache").is_empty());
     } else {
-        assert_success_usage(facts, 1);
+        assert_usage_sources(facts, 1, canonical_usage);
     }
 }
 
 pub(super) fn assert_success_usage(facts: &[Value], ordinal: u64) {
+    assert_usage_sources(facts, ordinal, true);
+}
+
+fn assert_usage_sources(facts: &[Value], ordinal: u64, canonical_usage: bool) {
     let usage: Vec<_> = facts
         .iter()
         .filter(|r| r["fact"]["kind"] == "usage_and_cache")
@@ -1052,10 +1055,18 @@ pub(super) fn assert_success_usage(facts: &[Value], ordinal: u64) {
             .filter(|r| r["fact"]["source"] == source)
             .count()
     };
-    assert_eq!(count("accepted_canonical_model_event"), 1);
-    // completed_attempt suppresses provider usage if canonical usage arrived
-    // first. Both callback orders must retain exactly one canonical record.
-    assert!(count("provider_completion") <= 1);
+    assert_eq!(
+        count("accepted_canonical_model_event"),
+        usize::from(canonical_usage)
+    );
+    // A bounded optional decoder can lose the huge canonical frame. Main
+    // execution still delivers it and retains exact provider usage; never
+    // report that usage as an accepted canonical observation.
+    if canonical_usage {
+        assert!(count("provider_completion") <= 1);
+    } else {
+        assert_eq!(count("provider_completion"), 1);
+    }
     let attempt = facts
         .iter()
         .find(|r| r["fact"]["kind"] == "attempt_started" && r["fact"]["ordinal"] == ordinal)
