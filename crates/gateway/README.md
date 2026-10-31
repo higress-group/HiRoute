@@ -93,6 +93,14 @@ The standalone `hirouted` entry can attach the same typed diagnostics using
 capture or execution-fact storage. At Info, failed attempts retain the safe
 actual model and reasoning controls, HTTP protocol/status and body commit state.
 
+Local execution errors also emit `request_execution_failure` at Warn, including
+failures before `attempt_begin`. The original typed Core error is classified before
+transport conversion. The same request token relates the error to request shape,
+attempt/response admission and the last refused memory reservation's role, requested
+bytes and stream/worker/process limits. This snapshot survives owner cleanup;
+an optional-work refusal alone is not proof of the terminal failure's cause.
+These records contain no raw errors, conversation content or credentials.
+
 For operational lifecycle telemetry, [accepted response capture](src/observation/content.rs)
 reports transport writes only after they succeed, including an empty end-stream write.
 [Product lifecycle validation](../domain/src/observation/lifecycle.rs) preserves its actual

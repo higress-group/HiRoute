@@ -13,6 +13,8 @@ mod content_work;
 mod contracts;
 #[path = "observation/crypto.rs"]
 mod crypto;
+#[path = "observation/execution_failure.rs"]
+mod execution_failure;
 #[path = "observation/latency.rs"]
 pub(super) mod latency;
 #[path = "observation/otel.rs"]

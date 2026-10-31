@@ -1284,6 +1284,12 @@ impl ProductionGatewayRuntime {
                     candidates: hold_candidates.into(),
                 }),
             };
+            let diagnostic_shape = hiroute_diagnostics::event::ExecutionRequestShape {
+                raw_body_bytes: raw_body.byte_len(),
+                canonical_messages: canonical_request.messages.len() as u64,
+                tools: canonical_request.tools.len() as u64,
+                replay_disk_backed: replay.snapshot().disk_backed,
+            };
             let seed = Arc::new(ProductionReplaySeedEnvelope::new(ProductionReplaySeed {
                 templates: prepared_templates,
                 ingress: protocol,
@@ -1304,6 +1310,7 @@ impl ProductionGatewayRuntime {
                 continuation_scanner: active_continuation.scanner(),
             });
             set_phase(LocalPhase::Stream);
+            let diagnostic_budget = budget.clone();
             let execution = Box::pin(self.execution.process_bound_with_context(
                 &mut *core_session,
                 admission,
@@ -1313,6 +1320,15 @@ impl ProductionGatewayRuntime {
             let execution = adapters::with_active_response_delivery(active_continuation, execution);
             let execution = Box::pin(with_active_request(request_observation.clone(), execution));
             let result = execution.await;
+            if let Err(error) = &result {
+                request_observation.execution_failure(
+                    error,
+                    &diagnostic_budget,
+                    diagnostic_shape,
+                    core_session.response_started,
+                );
+            }
+            let result = result.map_err(|error| error.into_transport_error());
             #[cfg(feature = "e2e-test-control")]
             if let Err(error) = &result {
                 eprintln!("Gateway fixture execution failed: {error:?}");
