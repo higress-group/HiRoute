@@ -573,10 +573,10 @@ const scenarios = [
     await fresh(() => {
       c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')];
       c().management.sources[0].state = 'disabled';
-      c().handlers.check_saved_model_connection = payload => {
-        const checked = c().fixtureResponse('check_saved_model_connection', payload);
-        checked.candidate.models.push({ ...checked.candidate.models[0], model_ref: 'model-ref/new', upstream_model_id: 'new-model', display_name: 'New model' });
-        return checked;
+      c().handlers.check_saved_model_connection_v2 = payload => {
+        const result = c().fixtureResponse('check_saved_model_connection_v2', payload);
+        result.check.candidate.models.push({ ...result.check.candidate.models[0], model_ref: 'model-ref/new', upstream_model_id: 'new-model', display_name: 'New model' });
+        return result;
       };
     });
     await click('模型'); await click('向此接入添加模型');
@@ -601,11 +601,11 @@ const scenarios = [
   scenario('desktop.models.tool-check-selection', ['model-connections'], 'A tool check retains the chosen model with its fresh reference without selecting new inventory', async () => {
     await fresh(); await click('模型');
     setInput(await newBailianAPI(), 'synthetic-tool-check-input');
-    c().handlers.check_registered_model_connection = payload => {
-      const result = c().fixtureResponse('check_registered_model_connection', payload);
-      if (payload.request.inference_model_id) {
-        result.inference = 'verified';
-        result.candidate.models = result.candidate.models.map(model => ({ ...model, model_ref: `${model.model_ref}/checked` }));
+    c().handlers.check_registered_model_connection_v2 = payload => {
+      const result = c().fixtureResponse('check_registered_model_connection_v2', payload);
+      if (payload.request.request.inference_model_id) {
+        result.check.inference = 'verified';
+        result.check.candidate.models = result.check.candidate.models.map(model => ({ ...model, model_ref: `${model.model_ref}/checked` }));
       }
       return result;
     };
@@ -614,12 +614,13 @@ const scenarios = [
     assert(all('.model-result-row input:checked').length === 0, 'Inventory selected models without consent');
     all('.model-result-row input[type="checkbox"]')[0].click(); await pause(40);
     await click('验证工具调用（仅所选模型，可能计费）');
-    await until(() => calls('check_registered_model_connection').length === 2 && button('保存连接'), 'tool check completed');
+    await until(() => calls('check_registered_model_connection_v2').length === 2 && button('保存连接'), 'tool check completed');
     assert(all('.model-result-row input:checked').length === 1, 'Tool check lost the explicit model selection');
     assert(!button('保存连接').disabled, 'Successful tool check disabled save');
     await click('保存连接');
-    await until(() => calls('preview_compute_save_v3').length === 1, 'current save preview');
-    const preview = JSON.stringify(calls('preview_compute_save_v3')[0].payload);
+    await until(() => calls('preview_compute_save_v4').length === 1, 'current network-aware save preview');
+    assert(calls('preview_compute_save_v4')[0].payload.networkEdit.policy.mode === 'direct', 'Save lost the checked network policy');
+    const preview = JSON.stringify(calls('preview_compute_save_v4')[0].payload);
     assert(preview.includes('model-ref/qwen3-coder-plus/checked') && !preview.includes('model-ref/qwen3-max/checked'), 'Save did not use only the selected fresh model reference');
   }),
   scenario('desktop.routing.disabled-header', ['routing-editor'], 'A stopped route stays visibly disabled while its editor has unsaved changes', async () => {

@@ -426,8 +426,8 @@ export function DesktopApp() {
     openPage('routing');
   }
 
-  const modelTabs = <TabList className="model-category-tabs" label={language === 'zh' ? '模型类型' : 'Model categories'} value={modelTab}
-    onChange={next => void switchModelTab(next)} items={[
+  const modelTabs = <TabList className="model-category-tabs" focusScope="models" label={language === 'zh' ? '模型类型' : 'Model categories'} value={modelTab}
+    onChange={switchModelTab} items={[
       { value: 'general', label: language === 'zh' ? '通用模型' : 'General models' },
       { value: 'decisions', label: language === 'zh' ? '决策模型' : 'Decision models' },
     ]} />;

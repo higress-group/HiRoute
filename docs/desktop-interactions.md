@@ -44,6 +44,9 @@ a radio option pretending that configuration is already complete.
 Discard confirmations keep **继续编辑 / Keep editing** as the focused safe choice
 and separate the destructive discard action. An explicit Save in credential
 management can reapply its current set; it does not imply a live connection test.
+Keyboard activation keeps focus on the selected tab after its content changes,
+including peer views rendered in separate page frames. Focus must not fall back
+to the document and restart the user's navigation from the sidebar.
 
 ## Editing and operation state
 

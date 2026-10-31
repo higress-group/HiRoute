@@ -60,9 +60,13 @@ mockIPC((command, payload) => {
   control.commands.push({ command, payload: args });
   if (control.handlers[command]) return control.handlers[command](args);
   if (command === 'preview_native_network_route') return fixtureDecisionNetworkRoute();
-  if (command === 'native_source_network') return { source_id: (args.input as { source_id: string }).source_id,
-    source_revision: 1, network_revision: 0, policy: { mode: 'direct' }, applied_revision: 0,
-    application_state: 'applied', operation: null, routes: [fixtureDecisionNetworkRoute()], models: [], decisions: [] };
+  if (command === 'native_source_network') {
+    const source = control.management.sources.find(item => item.source_id === (args.input as { source_id: string }).source_id);
+    if (!source) throw { code: 'NOT_FOUND' };
+    return { source_id: source.source_id, source_revision: source.revision, network_revision: 0,
+      policy: { mode: 'direct' }, applied_revision: 0, application_state: 'applied', operation: null,
+      routes: [fixtureDecisionNetworkRoute()], models: source.models.map(model => ({ binding_id: model.binding_id, display_name: model.display_name })), decisions: [] };
+  }
   if (command === 'plugin:window|set_theme') return undefined;
   if (command === 'startup_status') return { state: 'ready', recovery_available: false };
   if (command === 'desktop_snapshot') return structuredClone(control.desktop);

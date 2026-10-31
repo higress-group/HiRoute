@@ -14,6 +14,19 @@ async function fresh(state, language = 'zh') {
 const writes = () => window.productShell.commands.filter(({command}) => /save_decision|test_decision|cli_entry_(install|remove)|apply_compute|preview_plan_editor/.test(command));
 
 export const interactionConsistencyScenarios = [
+  scenario('desktop.interactions.tab-focus-return', ['interaction-consistency'], 'Activating a model tab keeps keyboard focus on the newly visible selected tab', async () => {
+    for (const language of ['zh','en']) {
+      await fresh('decision',language);
+      const label=language==='zh'?'通用模型':'General models';
+      const target=all('.model-category-tabs button').find(n=>n.textContent===label);
+      target.focus();target.click();
+      await until(()=>all('.models-feature').length && !all('.decision-models-page').length,'Activated model view');
+      const selected=all('.model-category-tabs button').find(n=>n.textContent===label);
+      await pause();
+      assert(document.activeElement===selected,'Activating a tab lost focus when its former page became hidden');
+      assert(writes().length===0,'Activating a model view submitted a mutation');
+    }
+  }),
   scenario('desktop.interactions.credential-cancel', ['interaction-consistency'], 'Credential Cancel uses the same dirty-draft guard as closing the window and keeps persisted keys unchanged', async () => {
     await fresh('models-credentials-discard');
     const guard=all('dialog[open]')[0];
