@@ -48,7 +48,10 @@ Saved-source association edits reuse the same inline setup.
 A created API is retained and reused if association fails; pending association
 metadata alone cannot prove its original Operation completed. Closing before
 admission releases owned input, while a dispatched save retains native recovery
-ownership. API transport policy is independent of subscription proxy settings.
+ownership even when replay itself is refused. After confirmed association, a
+failed completion read retries only canonical readback; the association's own
+model-sync revision is not an external-edit conflict. API transport policy is
+independent of subscription proxy settings.
 `SubscriptionApiCredits.tsx` links provider claim instructions and Key setup,
 identifies eligible plans and excluded coding-client uses, and distinguishes API
 verification from credit activation. Official billing owns eligibility and balance.

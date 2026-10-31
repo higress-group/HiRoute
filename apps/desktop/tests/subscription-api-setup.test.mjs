@@ -35,7 +35,7 @@ function fixture(provider = 'codex') {
         api.models = latestChange.selected_model_refs.map(ref => model(ref.slice(6)));
         snapshot.sources.push(api); return { operation: op };
       },
-      getComputeSaveResult: async operation => { calls.result.push(operation); return { disposition: 'saved', source_id: api.source_id, bindings: [], operation: op }; },
+      getComputeSaveResult: async operation => { calls.result.push(operation); return { disposition: 'saved', source_id: api.source_id, saved_revision: 1, bindings: [], operation: op }; },
     },
     read: async () => structuredClone(snapshot),
     find: async key => { calls.find.push(key); return { disposition: 'saved', source_id: api.source_id, bindings: [], operation: op }; },
@@ -161,6 +161,38 @@ test('absent receipt replays the same sealed request and key', async () => {
   assert.equal(applied[0], request);
 });
 
+test('a rejected replay cannot release an earlier uncertain save or replace its request', async () => {
+  const f = fixture(), create = f.ports.backend.applyComputeSave, requests = [];
+  f.ports.backend.applyComputeSave = async request => {
+    requests.push(request);
+    if (requests.length === 1) { await create(request); throw new Error('reply lost'); }
+    throw { code: 'CONFIRMATION_STALE' };
+  };
+  f.ports.find = async key => {
+    f.calls.find.push(key);
+    return f.calls.find.length === 1 ? null : { disposition: 'saved', source_id: f.api.source_id, bindings: [], operation: op };
+  };
+  assert.equal((await f.connect()).state, 'pending');
+  assert.equal((await f.connect('')).state, 'pending');
+  assert.equal(f.setup.awaitingSave, true);
+  await f.setup.dispose();
+  assert.equal(f.calls.release.length, 0); assert.equal(f.calls.cancel.length, 0);
+  assert.equal((await f.connect('')).state, 'saved');
+  assert.equal(requests.length, 2); assert.equal(requests[0], requests[1]);
+  assert.equal(f.calls.apply.length, 1); assert.equal(f.calls.check.length, 1);
+  assert.deepEqual(f.calls.find, [requests[0].idempotency_key, requests[0].idempotency_key]);
+});
+
+test('a first submission rejected before admission permits a corrected attempt', async () => {
+  const attempt = { request: { idempotency_key: 'not-admitted' }, submitted: false };
+  const error = { code: 'CONFIRMATION_STALE' };
+  await assert.rejects(observeSaveAttempt(attempt, {
+    apply: async () => { throw error; }, result: async () => { throw new Error('not admitted'); },
+    find: async () => null, onOperation() {}, onUncertain() {}, current: () => true,
+  }), cause => cause === error);
+  assert.equal(attempt.submitted, false);
+});
+
 test('incomplete saved receipt stays pending rather than starting a duplicate creation', async () => {
   const f = fixture(); f.ports.backend.getComputeSaveResult = async () => ({ disposition: 'saved', bindings: [] });
   assert.equal((await f.connect()).state, 'pending'); assert.equal((await f.connect('')).state, 'pending');
@@ -183,17 +215,52 @@ test('active association does not bypass observation of its pending operation', 
 });
 
 test('saved API readback must remain the expected provider with matching members', async () => {
-  for (const field of ['provider', 'disabled', 'membership']) {
+  for (const field of ['provider', 'disabled', 'membership', 'revision']) {
     const f = fixture(), read = f.ports.read;
     f.ports.read = async () => {
       if (f.calls.apply.length) {
         if (field === 'provider') f.api.connection_identity.connection_option_id = 'other.api';
         if (field === 'disabled') f.api.state = 'disabled';
         if (field === 'membership') f.api.models = [model('unrelated')];
+        if (field === 'revision') f.api.revision++;
       }
       return read();
     };
     assert.equal((await f.connect()).reason, 'source_changed');
     assert.equal(f.calls.associate.length, 0);
   }
+});
+
+test('completion read retries after confirmed association and its own model sync revision', async () => {
+  const f = fixture(), read = f.ports.read, associate = f.ports.associate;
+  let unavailable = false;
+  f.checked.candidate.models.pop(); f.checked.observed_model_ids.pop();
+  f.ports.read = async () => {
+    if (unavailable) { unavailable = false; throw new Error('read interrupted'); }
+    return read();
+  };
+  f.ports.associate = async (...args) => {
+    await associate(...args);
+    f.api.revision++; f.api.models = f.ids.map(model);
+    unavailable = true;
+    return 'saved';
+  };
+  assert.deepEqual(await f.connect(), { state: 'pending', reason: 'readback_failed', api_source_id: f.api.source_id });
+  const result = await f.connect('');
+  assert.equal(result.state, 'saved'); assert.deepEqual(result.missing_model_ids, []);
+  assert.equal(f.calls.apply.length, 1); assert.equal(f.calls.check.length, 1); assert.equal(f.calls.associate.length, 1);
+});
+
+test('completion read still refuses a replaced association without another write', async () => {
+  const f = fixture(), read = f.ports.read, associate = f.ports.associate;
+  let unavailable = false;
+  f.ports.read = async () => {
+    if (unavailable) { unavailable = false; throw new Error('read interrupted'); }
+    return read();
+  };
+  f.ports.associate = async (...args) => { await associate(...args); unavailable = true; return 'saved'; };
+  assert.equal((await f.connect()).state, 'pending');
+  f.snapshot.subscription_api_links[0].api_source_id = 'source/other-api'; f.source.revision++;
+  assert.equal((await f.connect('')).reason, 'source_changed');
+  assert.equal(f.calls.apply.length, 1); assert.equal(f.calls.associate.length, 1);
 });

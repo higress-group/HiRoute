@@ -712,6 +712,10 @@ association and both saved memberships. No background catalog refresh enlarges t
 Uncertain writes SHALL resolve the original idempotent Operation before resubmission;
 a pending Operation cannot be replaced. Retry rechecks source revisions and the
 association. Changing or cancelling the action invalidates stale async results.
+Refusal of a replay SHALL NOT establish that an earlier uncertain submission was
+never admitted or release its credential ownership. After confirmed association
+and synchronization, completion-read retry SHALL be read-only and accept revisions
+advanced by that synchronization, while verifying the current provider and link.
 
 Association and import SHALL NOT create, reorder or change candidate groups or routing
 plans. The user chooses how to combine the sources. Association does not promise

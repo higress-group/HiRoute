@@ -8,7 +8,7 @@ import { observeSaveAttempt, type SaveAttempt, type SaveAttemptPorts } from './s
 export const NEW_SUBSCRIPTION_API = '@new-provider-api';
 export type InlineApiResult = {
   state: 'saved' | 'pending' | 'needs_input' | 'failed';
-  reason?: 'key_required' | 'unavailable' | 'check_failed' | 'models_unavailable' | 'save_failed' | 'link_failed' | 'source_changed';
+  reason?: 'key_required' | 'unavailable' | 'check_failed' | 'models_unavailable' | 'save_failed' | 'link_failed' | 'source_changed' | 'readback_failed';
   api_source_id?: string;
   missing_model_ids?: string[];
   failure?: NativeNetworkFailure | null;
@@ -32,6 +32,7 @@ export class NewSubscriptionApiSetup {
   private apiSourceId: string | null = null;
   private apiRevision: number | undefined;
   private linkUncertain = false;
+  private associationConfirmed = false;
   private owner: { sourceId: string; revision: number } | null = null;
   private checkId: string | null = null;
   private generation = 0;
@@ -61,6 +62,17 @@ export class NewSubscriptionApiSetup {
     return this.running;
   }
 
+  private completion(snapshot: ManagementSnapshot, source: ManagedSource | undefined): InlineApiResult {
+    const api = snapshot.sources.find(item => item.source_id === this.apiSourceId);
+    if (!source || subscriptionProvider(source) !== this.provider || !api || api.provenance !== 'registered' || api.state !== 'ready'
+      || api.connection_identity?.connection_option_id !== associatedApiOption(this.provider)
+      || !snapshot.subscription_api_links?.some(item => item.source_id === source.source_id && item.api_source_id === api.source_id)) {
+      return { state: 'failed', reason: 'source_changed' };
+    }
+    const imported = new Set(api.models.map(model => model.upstream_model_id));
+    return { state: 'saved', api_source_id: api.source_id, missing_model_ids: source.models.map(model => model.upstream_model_id).filter(id => !imported.has(id)) };
+  }
+
   private async run(source: Pick<ManagedSource, 'source_id' | 'revision'>, secret: string, network: NativeNetworkDraft, clearSecret: () => void): Promise<InlineApiResult> {
     const generation = this.generation;
     const current = () => this.ports.current() && generation === this.generation;
@@ -74,6 +86,9 @@ export class NewSubscriptionApiSetup {
       const link = snapshot.subscription_api_links?.find(item => item.source_id === saved.source_id);
       if (saved.revision !== this.owner.revision && (!this.apiSourceId || link?.api_source_id !== this.apiSourceId)) return failed('source_changed');
       if (!current()) return { state: 'pending' };
+      // Association and its synchronization are durable. Retrying completion only reads;
+      // their own API revisions must not be compared with the pre-association creation.
+      if (this.associationConfirmed) return this.completion(snapshot, saved);
 
       if (!this.apiSourceId && !this.attempt) {
         if (secret.trim()) {
@@ -158,13 +173,12 @@ export class NewSubscriptionApiSetup {
         if (linked === 'uncertain') return { state: 'pending', api_source_id: api.source_id };
         this.linkUncertain = false;
       }
+      this.associationConfirmed = true;
       const completed = await this.ports.read();
-      const finalApi = completed.sources.find(item => item.source_id === api.source_id);
-      if (!finalApi || !completed.subscription_api_links?.some(item => item.source_id === saved.source_id && item.api_source_id === api.source_id)) return failed('source_changed');
-      const imported = new Set(finalApi.models.map(model => model.upstream_model_id));
-      return { state: 'saved', api_source_id: api.source_id, missing_model_ids: saved.models.map(model => model.upstream_model_id).filter(id => !imported.has(id)) };
+      return this.completion(completed, completed.sources.find(item => item.source_id === saved.source_id));
     } catch {
       if (this.attempt && !this.attempt.submitted) this.attempt = null;
+      if (this.associationConfirmed) return { state: 'pending', reason: 'readback_failed', api_source_id: this.apiSourceId! };
       return failed(this.apiSourceId ? 'link_failed' : 'check_failed');
     }
   }

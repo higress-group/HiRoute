@@ -35,13 +35,15 @@ export async function observeSaveAttempt(attempt: SaveAttempt, ports: SaveAttemp
   }
   if (!result) {
     if (!ports.current()) return pending();
+    const earlierSubmission = attempt.submitted;
     attempt.submitted = true;
     try {
       const accepted = await ports.apply(attempt.request);
       attempt.operation = accepted.operation;
       ports.onOperation(accepted.operation);
     } catch (error) {
-      if (saveFailureDefinitelyPreAdmission(error) || saveFailureDefinitelyPreAdmission(safeConnectionErrorCode(error))) {
+      // Refusing this replay cannot disprove admission of an earlier lost call.
+      if (!earlierSubmission && (saveFailureDefinitelyPreAdmission(error) || saveFailureDefinitelyPreAdmission(safeConnectionErrorCode(error)))) {
         attempt.submitted = false;
         throw error;
       }

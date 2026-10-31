@@ -23,6 +23,7 @@ export type SubscriptionApiPickerHandle = {
 };
 
 export function inlineApiResultText(result: InlineApiResult, zh: boolean): string {
+  if (result.reason === 'readback_failed') return zh ? '订阅与 API 已保存，暂时无法读取最终状态。刷新只读取状态，不会重复保存。' : 'The subscription and API are saved. The final status is unavailable. Refresh only reads the status and does not save again.';
   if (result.state === 'pending') return zh ? 'API 保存结果待确认。可刷新原操作结果；订阅已保留。' : 'The API save is awaiting confirmation. Refresh the original operation; the subscription is retained.';
   const copy = {
     key_required: ['请填写 API Key，或选择仅使用订阅。', 'Enter an API key, or choose subscription only.'],

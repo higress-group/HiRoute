@@ -31,7 +31,7 @@ async function open({ provider = 'codex', entry = 'managed', mode = '', language
     await click('button', language === 'zh' ? '接入' : 'Connect');
   }
   await click('.modal-foot .btn-primary', language === 'zh' ? '检查订阅' : 'Check subscription');
-  await waitFor(client, 'document.querySelector("[data-subscription-api-choice]") && document.querySelectorAll(".v3-catalog input[type=checkbox]").length===2 && !document.querySelector(".modal-foot .btn-primary").disabled');
+  await waitFor(client, 'document.querySelector("[data-subscription-api-choice]") && document.querySelectorAll(".v3-catalog input[type=checkbox]").length===2 && document.querySelector(".modal-foot .btn-primary")?.disabled===false');
   if (entry === 'append') await click('.v3-catalog label', 'fixture model 2');
   assert.equal(await evaluate(client, 'document.querySelectorAll("[role=dialog]").length'), 1);
 }
@@ -72,7 +72,7 @@ try {
   }
   await run('authentication-failure-retries-only-api', async () => {
     await open({ mode: 'auth' }); await selectNew(); await save();
-    await waitFor(client, '!!document.querySelector("[data-subscription-saved]") && !document.querySelector(".modal-foot .btn-primary").disabled');
+    await waitFor(client, '!!document.querySelector("[data-subscription-saved]") && document.querySelector(".modal-foot .btn-primary")?.disabled===false');
     assert.equal(await evaluate(client, 'inlineSetup.state.apiCreated'), 0);
     assert.equal(await evaluate(client, 'document.querySelector("[data-subscription-api-key]").value'), '');
     await waitFor(client, 'document.activeElement===document.querySelector("[data-subscription-api-key]")');
@@ -85,7 +85,7 @@ try {
   });
   for (const mode of ['lost', 'link_failure', 'link_pending']) await run(`${mode}-reuses-saved-api`, async () => {
     await open({ mode }); await selectNew(); await save();
-    await waitFor(client, '!!document.querySelector("[data-subscription-saved]") && !document.querySelector(".modal-foot .btn-primary").disabled');
+    await waitFor(client, '!!document.querySelector("[data-subscription-saved]") && document.querySelector(".modal-foot .btn-primary")?.disabled===false');
     assert.equal(await evaluate(client, 'inlineSetup.state.apiCreated'), 1);
     if (mode === 'link_pending') {
       assert.equal(await evaluate(client, 'inlineSetup.state.management.subscription_api_links.length'), 1, 'active metadata alone cannot finish a pending operation');
@@ -95,6 +95,20 @@ try {
     await click('.modal-foot .btn-primary'); await linked();
     assert.equal(await evaluate(client, 'inlineSetup.state.apiCreated'), 1);
     if (mode === 'link_pending') assert.equal(await evaluate(client, 'inlineSetup.trace.filter(x=>x.command==="preview_compute_save_v3"&&x.payload.apiLink).length'), 1, 'retry observes the original association save');
+  });
+  await run('rejected-replay-retains-original-pending-save', async () => {
+    await open({ mode: 'replay_stale' }); await selectNew(); await save();
+    await waitFor(client, '!!document.querySelector("[data-subscription-saved]") && document.querySelector(".modal-foot .btn-primary")?.disabled===false');
+    await click('.modal-foot .btn-primary');
+    await waitFor(client, 'inlineSetup.trace.filter(x=>x.command==="apply_compute_save").length===3 && document.querySelector(".modal-foot .btn-primary")?.disabled===false');
+    assert.equal(await evaluate(client, 'document.querySelector("[data-subscription-api-choice]").disabled'), true, 'an earlier unknown write still owns setup');
+    assert.equal(await evaluate(client, 'inlineSetup.trace.some(x=>x.command==="release_protected_model_input")'), false);
+    await evaluate(client, 'inlineSetup.setMode("")');
+    await click('.modal-foot .btn-primary'); await linked();
+    assert.equal(await evaluate(client, 'inlineSetup.state.apiCreated'), 1);
+    assert.equal(await evaluate(client, 'inlineSetup.trace.filter(x=>x.command==="check_registered_model_connection_v2").length'), 1);
+    const keys = await evaluate(client, 'inlineSetup.trace.filter(x=>x.command==="apply_compute_save"&&x.payload.request.idempotency_key.startsWith("subscription-api-create:")).map(x=>x.payload.request.idempotency_key)');
+    assert.equal(keys.length, 2); assert.equal(keys[0], keys[1]);
   });
   for (const provider of ['codex', 'claude']) await run(`${provider}-existing-api-single-save`, async () => {
     await open({ provider, existing: true });
@@ -148,5 +162,5 @@ try {
   await writeFile(path.join(output, 'subscription-api-setup-report.json'), JSON.stringify({ tests: results.length, failed: results.filter(x => x.state === 'failed').length, results }, null, 2));
   for (const item of results) process.stdout.write(`${item.state}: ${item.name}${item.error ? ` ${item.error.split('\n')[0]}` : ''}\n`);
   client.close();
-  if (results.length !== 23 || results.some(x => x.state === 'failed')) process.exitCode = 1;
+  if (results.length !== 24 || results.some(x => x.state === 'failed')) process.exitCode = 1;
 }

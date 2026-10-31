@@ -60,7 +60,10 @@ mockIPC(async (command, args: any = {}) => {
   }
   if (command === 'apply_compute_save') {
     const request = args.request;
-    if (state.keys[request.idempotency_key]) return { operation: state.keys[request.idempotency_key].operation };
+    if (state.keys[request.idempotency_key]) {
+      if (state.mode === 'replay_stale') throw { code: 'CONFIRMATION_STALE' };
+      return { operation: state.keys[request.idempotency_key].operation };
+    }
     const { change, apiLink } = request.spec.desired_state;
     const native = change.subject.kind === 'candidate' && change.subject.candidate.candidate_ref === 'candidate/native-api';
     let source: any;
@@ -85,10 +88,11 @@ mockIPC(async (command, args: any = {}) => {
     const result = { disposition: 'saved', source_id: source.source_id, saved_revision: source.revision, bindings: [], operation };
     state.operations[operation.operation_id] = result; state.keys[request.idempotency_key] = result;
     if (apiLink) state.linkOperation = operation.operation_id;
-    if (native && state.mode === 'lost') throw new Error('fixture lost API reply');
+    if (native && ['lost', 'replay_stale'].includes(state.mode)) throw new Error('fixture lost API reply');
     return { operation };
   }
   if (command === 'get_compute_save_result') {
+    if (!args.operation && state.mode === 'replay_stale') return { disposition: 'failed', reason: 'OPERATION_NOT_FOUND', bindings: [] };
     const result = args.operation ? state.operations[args.operation.operation_id] : state.keys[args.idempotencyKey];
     if (result?.operation.operation_id === state.linkOperation && state.mode === 'link_pending') return { ...result, disposition: 'pending' };
     return result ?? { disposition: 'failed', reason: 'OPERATION_NOT_FOUND', bindings: [] };
