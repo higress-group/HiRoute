@@ -239,6 +239,12 @@ fn run_reference(
                     .collect::<Vec<_>>()
             });
             wire_sizes.extend(sizes);
+            // Opt-in sustained traffic keeps earlier capture queued while the
+            // next request executes. The ordinary reference still drains each
+            // wave, and the final checks always require complete capture.
+            if std::env::var_os("HIROUTE_LOCAL_WORK_BURST").is_some() {
+                continue;
+            }
             // End drained for each reference cell. Async work stays outside
             // foreground timings, but missing capture must fail the experiment.
             let records = request_timing::summaries(&fixture, wave + concurrency);
