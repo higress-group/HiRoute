@@ -96,9 +96,8 @@ catches what it misses.
    floor and the problem still matters, low-score protection moves the next stage to your
    primary model.
 
-<!-- README-SCREENSHOT S2: decision-extensions/assets/readme-trial-en.png -->
-> **Screenshot pending — trial setup.** Show the new and primary models, their sources, and
-> the trust slider with its clickable presets.
+<p align="center"><img src="decision-extensions/assets/readme-trial-en.png" alt="Try a new model: Qwen3-Coder-Plus from a Bailian Coding Plan as the model to try, GPT-6-Astra from a Codex subscription as primary with high reasoning, the System One decision model, and the trust slider between Cautious and Entrusted with Trial, Familiar, Trusted, Hands-off and Entrusted presets" width="560"></p>
+<p align="center"><sub>Pick the model to try and a primary model, then set a starting trust level. Sample connections.</sub></p>
 
 ### Adjust with evidence from your own tasks
 
@@ -107,9 +106,8 @@ bring together stage scores, the share handled by the regular group and availabl
 estimates. When there is enough evidence, a report suggests a step up or step down; replay
 the setting on your own records, inspect the changes and choose whether to publish.
 
-<!-- README-SCREENSHOT S3: decision-extensions/assets/readme-report-en.png -->
-> **Screenshot pending — real execution report.** Show the report's scope, scored stages
-> and a supported adjustment suggestion, if one is available.
+<p align="center"><img src="decision-extensions/assets/readme-report-en.png" alt="Model performance report: 77 stages from 9 sessions, a step-up suggestion to Trusted, 75% of stages on Regular at 90% competence, 3 low-score protections, an estimated Regular cost of $3.42 against a $11.86 primary reference, and per-model competence for Qwen3-Coder-Plus and GPT-5.6-Sol" width="760"></p>
+<p align="center"><sub>A model performance report suggests a step up once the regular model clears the bar. Sample data; costs are API-equivalent estimates.</sub></p>
 
 You can also tailor the judgment criteria to your own tasks and compare prompt changes
 using the [published evaluation method](experiments/system-one-routing-paper/README.md).
