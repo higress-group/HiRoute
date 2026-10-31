@@ -188,6 +188,9 @@ python3 scripts/package-desktop.py build \
 Credentials come only from the local keychain and never enter the repository or command
 output. The tool signs nested binaries and the app, submits and staples notarization, rebuilds
 the ZIP, then packages, signs, and notarizes the DMG; both notarizations must be Accepted.
+Developer ID upgrades compile that signing TeamIdentifier into the native updater as
+`HIROUTE_DEVELOPER_ID_TEAM`. Unconfigured or mismatched teams fail closed; a downloaded
+package cannot supply the trusted team.
 Self-signed builds are marked `controlled-trial` and make no Developer ID or notarization
 claim. That technical marker alone does not establish component disclosure, installation, or
 release review. Near-term public self-signed releases still require explicit applicable

@@ -1,10 +1,11 @@
 //! Native updater lifecycle. WebView chooses actions; source, paths and trust stay native.
 use hiroute_host_runtime::{
-    DesktopPackageIdentity, DesktopRelease, UpgradeAction, verify_desktop_app,
+    DesktopPackageIdentity, DesktopRelease, UpgradeAction, trusted_developer_id_team,
+    verify_desktop_app,
 };
 use serde::Serialize;
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -26,19 +27,28 @@ struct PreparedUpdate {
 }
 impl PreparedUpdate {
     fn revalidate(&self) -> Result<(), String> {
-        if verify_desktop_app(&self.current, "ai.hiroute.desktop", None, None)? != self.old_identity
-            || verify_desktop_app(
-                &self.staged,
-                "ai.hiroute.desktop",
-                Some(&self.release),
-                None,
-            )? != self.new_identity
+        if verify_update_package(&self.current, None)? != self.old_identity
+            || verify_update_package(&self.staged, Some(&self.release))? != self.new_identity
         {
             return Err("UPGRADE_PACKAGE_CHANGED".into());
         }
         Ok(())
     }
 }
+
+fn verify_update_package(
+    app: &Path,
+    release: Option<&DesktopRelease>,
+) -> Result<DesktopPackageIdentity, String> {
+    verify_desktop_app(
+        app,
+        "ai.hiroute.desktop",
+        release,
+        trusted_developer_id_team(),
+    )
+    .map_err(str::to_owned)
+}
+
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UpdateRecovery {
@@ -466,5 +476,24 @@ async fn recover_precommit(
         }
         Ok(Err(code)) if code == "UPGRADE_STOP_PENDING" => UpdateRecovery::StopPending,
         _ => UpdateRecovery::RestartRequired,
+    }
+}
+
+#[cfg(test)]
+mod trusted_publisher_tests {
+    use super::*;
+
+    #[test]
+    fn update_verifier_uses_compile_time_team_and_stays_host_owned() {
+        assert_eq!(
+            trusted_developer_id_team(),
+            option_env!("HIROUTE_DEVELOPER_ID_TEAM").filter(|team| !team.is_empty())
+        );
+        let error = verify_update_package(Path::new("/"), None).unwrap_err();
+        if cfg!(target_os = "macos") {
+            assert_ne!(error, "UPGRADE_PLATFORM_UNSUPPORTED");
+        } else {
+            assert_eq!(error, "UPGRADE_PLATFORM_UNSUPPORTED");
+        }
     }
 }

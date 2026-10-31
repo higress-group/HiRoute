@@ -31,6 +31,13 @@ BUILD_TIMINGS = []
 BINARIES = ("hiroute-desktop", "hirouted", "hiroute", "cliproxyapi")
 
 
+def compile_time_publisher_team(identity, team_identifier):
+    """Trusted Team ID comes from the signing identity, never from a candidate package."""
+    if identity == "-" or not team_identifier or team_identifier == "not set":
+        return None
+    return team_identifier
+
+
 def validate_release_versions(version):
     # Local Control uses the application-api package version for its exact
     # same-release handshake. It must track the shipped clients and daemon.
@@ -324,6 +331,10 @@ def build(args):
     environment["MACOSX_DEPLOYMENT_TARGET"] = MINIMUM_MACOS
     environment["HIROUTE_CPA_MANIFEST"] = str(manifest_path)
     environment["TAURI_CONFIG"] = json.dumps({"build": {"frontendDist": str(REPO / "apps/desktop/dist")}})
+    environment.pop("HIROUTE_DEVELOPER_ID_TEAM", None)
+    team = compile_time_publisher_team(args.identity, None if args.identity == "-" else teams[0])
+    if team:
+        environment["HIROUTE_DEVELOPER_ID_TEAM"] = team
     # Frontend is embedded by Tauri; no toolchain is needed on the installation machine.
     ui = REPO / "apps/desktop"
     run("npm", "ci", cwd=ui)

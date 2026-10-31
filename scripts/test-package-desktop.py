@@ -101,6 +101,18 @@ class BundleIdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "digest mismatch"):
             package.verify_contents(self.app, self.manifest)
 
+    def test_compile_time_publisher_team_comes_from_signing_identity(self):
+        self.assertIsNone(package.compile_time_publisher_team("-", "ABCD123456"))
+        self.assertIsNone(package.compile_time_publisher_team("-", "not set"))
+        self.assertIsNone(package.compile_time_publisher_team(
+            "Developer ID Application: Org (ABCD123456)", None))
+        self.assertIsNone(package.compile_time_publisher_team(
+            "Developer ID Application: Org (ABCD123456)", "not set"))
+        self.assertEqual(
+            package.compile_time_publisher_team(
+                "Developer ID Application: Org (ABCD123456)", "ABCD123456"),
+            "ABCD123456")
+
     def test_cpa_is_explicitly_signed_before_release_probe(self):
         events = []
         release = ("CLIProxyAPI Version: 8.0.4-hiroute.9, Commit: "
