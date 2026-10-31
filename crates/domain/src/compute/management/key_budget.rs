@@ -164,7 +164,8 @@ impl KeyBudgetSelectorV1 {
                 validate_identifier(key_id)?;
                 Ok(key_id.clone())
             }
-            Self::Input { candidate_ref } => crate::managed_key_id(source_id, candidate_ref),
+            Self::Input { candidate_ref } => crate::managed_key_id(source_id, candidate_ref)
+                .map_err(|_| ComputeManagementErrorV2::InvalidMutation),
         }
     }
 }

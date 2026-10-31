@@ -35,7 +35,9 @@ impl ComputeManagementMutationV4 {
         match self.source_mutation.as_ref() {
             ComputeManagementMutation::V2(v) => v.validate_shape(&original)?,
             ComputeManagementMutation::V3(v) => v.validate(&original)?,
-            ComputeManagementMutation::V4(_) | ComputeManagementMutation::V5(_) => {
+            ComputeManagementMutation::V4(_)
+            | ComputeManagementMutation::V5(_)
+            | ComputeManagementMutation::V6(_) => {
                 return Err(invalid);
             }
         }
