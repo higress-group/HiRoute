@@ -43,7 +43,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
         v.authoring.editor.candidates=v.authoring.editor.candidates.map(s=>({...s,reasoning:s.reasoning??{kind:'profile',profile:'high'}}));
         if(${stale}&&payload.input.authoring.plan_id)v.authoring.expected_head_revision=8;
       }
-      return ${delayed}&&payload.input.editor?new Promise(resolve=>setTimeout(()=>resolve(v),600)):v;
+      return ${delayed}&&payload.input.editor?new Promise(resolve=>{c.releaseModelRouteOptions=()=>resolve(v);}):v;
     };
     c.handlers.preview_plan_editor=payload=>{
       const i=payload.input;
@@ -108,8 +108,10 @@ try {
   });
   await run('model-route.save-waits-for-current-model-options',async()=>{
     await setup({others:false,delayed:true});await click('.model-route-action button','创建智能路由');await editorReady();
+    await waitFor(client,'typeof productShell.releaseModelRouteOptions==="function"');
     assert.equal(await evaluate(client,'document.querySelector(".toolbar-actions .btn-primary").disabled'),true);
     assert.equal((await current()).writes,0);
+    await evaluate(client,'productShell.releaseModelRouteOptions();true');
     await click('.toolbar-actions button','保存并创建');
     await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
   });
