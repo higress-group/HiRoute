@@ -280,6 +280,7 @@ where
     ) -> Result<SessionReuse, TransportError> {
         self.process_bound_inner(session, admission, None, None)
             .await
+            .map_err(GatewayExecutionError::into_transport_error)
     }
 
     /// Allocates the exact stream budget that a bound authority and core will
@@ -300,11 +301,11 @@ where
         admission: BoundRequestAdmission,
         budget: StreamBudget,
         provider_context: Arc<dyn Any + Send + Sync>,
-    ) -> Result<SessionReuse, TransportError> {
+    ) -> Result<SessionReuse, GatewayExecutionError> {
         if !self.budgets.owns_stream(&budget) {
-            return Err(TransportError::Io(
+            return Err(GatewayExecutionError::Transport(TransportError::Io(
                 "bound request budget belongs to another lifecycle".into(),
-            ));
+            )));
         }
         self.process_bound_inner(session, admission, Some(budget), Some(provider_context))
             .await
@@ -316,16 +317,16 @@ where
         admission: BoundRequestAdmission,
         budget: Option<StreamBudget>,
         provider_context: Option<Arc<dyn Any + Send + Sync>>,
-    ) -> Result<SessionReuse, TransportError> {
+    ) -> Result<SessionReuse, GatewayExecutionError> {
         if self.publications.is_some() {
-            return Err(TransportError::Io(
+            return Err(GatewayExecutionError::Transport(TransportError::Io(
                 "bound admission requires a bound-only lifecycle".into(),
-            ));
+            )));
         }
         let filters = self
             .filters
             .instantiate_request()
-            .map_err(|error| TransportError::Io(error.to_string().into()))?;
+            .map_err(GatewayExecutionError::Filter)?;
         let mut request_filters = GatewayFilterRequestOwner::new(filters);
         let result = async {
             let prepared = match (budget, provider_context) {
@@ -364,12 +365,10 @@ where
             request_filters.finalized = true;
         }
         match result {
-            Ok(reuse) => cleanup
-                .map(|()| reuse)
-                .map_err(GatewayExecutionError::into_transport_error),
+            Ok(reuse) => cleanup.map(|()| reuse),
             Err(error) => {
                 let _ = cleanup;
-                Err(error.into_transport_error())
+                Err(error)
             }
         }
     }

@@ -249,6 +249,94 @@ fn request_with_sinks(
     request_with_sinks_capacity(policy, diagnostics, enabled, sinks, 64 * 1024)
 }
 
+#[test]
+fn terminal_pre_attempt_failure_is_visible_at_info_with_pre_cleanup_budget_evidence() {
+    assert_pre_attempt_failure_diagnostic(true);
+}
+
+#[test]
+fn handled_pre_attempt_failure_is_visible_without_a_terminal_core_error() {
+    assert_pre_attempt_failure_diagnostic(false);
+}
+
+fn assert_pre_attempt_failure_diagnostic(terminal: bool) {
+    use hiroute_diagnostics::event::{ExecutionRequestShape, ProcessRole};
+    use hiroute_diagnostics::level::DiagnosticLevel;
+    use hiroute_diagnostics::record::Component;
+    use hiroute_diagnostics::runtime::{DiagnosticRuntime, RuntimeConfig};
+    use hiroute_gateway_core::runtime::body::{BudgetTree, MemoryRole};
+    use hiroute_gateway_core::runtime::driver::GatewayExecutionError;
+
+    let root = std::env::temp_dir().join(format!(
+        "hiroute-execution-failure-{}-{}",
+        std::process::id(),
+        super::unix_nanos()
+    ));
+    let runtime = DiagnosticRuntime::start(RuntimeConfig {
+        root: root.clone(),
+        role: ProcessRole::Daemon,
+        component: Component::Gateway,
+        parent_session_id: None,
+        level_override: Some(DiagnosticLevel::Info),
+    });
+    let request = request_with_diagnostics(OtelContentPolicy::Disabled, runtime.port());
+    let stream = BudgetTree::new(128, 64).unwrap().stream(32).unwrap();
+    let allocation = stream.reserve(MemoryRole::ModelIrBacking, 20).unwrap();
+    assert!(stream.reserve(MemoryRole::AttemptWire, 16).is_err());
+    drop(allocation);
+    let shape = ExecutionRequestShape {
+        raw_body_bytes: 2_000_000,
+        canonical_messages: 724,
+        tools: 21,
+        replay_disk_backed: true,
+    };
+    if terminal {
+        request.execution_failure(
+            &GatewayExecutionError::Provider("body budget exceeded".into()),
+            &stream,
+            shape,
+            false,
+        );
+    } else {
+        request.attempt_preparation_failure(&"body budget exceeded".into(), &stream, shape);
+    }
+    request.finish("failed");
+    runtime.shutdown();
+    let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
+    let rows: Vec<Value> = log
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let event_name = if terminal {
+        "request_execution_failure"
+    } else {
+        "attempt_preparation_failure"
+    };
+    let failure = rows
+        .iter()
+        .find(|row| !row["event"][event_name].is_null())
+        .unwrap();
+    let end = rows
+        .iter()
+        .find(|row| !row["event"]["request_end"].is_null())
+        .unwrap();
+    assert_eq!(failure["level"], "warn");
+    let detail = &failure["event"][event_name];
+    assert_eq!(
+        detail["request_token"],
+        end["event"]["request_end"]["request_token"]
+    );
+    assert!(!detail["request_token"].is_null());
+    assert_eq!(detail["source"], "provider");
+    assert_eq!(detail["reason"], "memory_budget_exceeded");
+    assert_eq!(detail["attempt_started"], false);
+    assert_eq!(detail["response_started"], false);
+    assert_eq!(detail["last_budget_rejection"]["stream_live_bytes"], 20);
+    assert_eq!(detail["last_budget_rejection"]["requested_bytes"], 16);
+    assert_eq!(stream.snapshot().unwrap().live, 0);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 fn request_with_sinks_capacity(
     policy: OtelContentPolicy,
     diagnostics: DiagnosticsPort,
