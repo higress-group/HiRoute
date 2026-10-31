@@ -48,9 +48,8 @@ mod native_evidence;
 
 #[path = "response_diagnostics_tests/business.rs"]
 mod business;
-use business::{
-    assert_business, assert_business_with_usage, assert_success_usage, wait_replay_clean,
-};
+pub(super) use business::assert_success_usage;
+use business::{assert_business, assert_business_with_usage, wait_replay_clean};
 
 const CHILD_CASE: &str = "HIROUTE_STREAM_DIAGNOSTIC_CASE";
 const CHILD_ROOT: &str = "HIROUTE_STREAM_DIAGNOSTIC_ROOT";
