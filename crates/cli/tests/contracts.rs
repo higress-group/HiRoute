@@ -107,6 +107,8 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "compute.network.apply",
             "compute.network.resolve",
             "compute.connection.preview-network",
+            "compute.budgets.get",
+            "compute.budgets.preview",
             "compute.defaults.get",
             "compute.defaults.preview",
             "models.metadata.list",
