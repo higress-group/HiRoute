@@ -10,7 +10,7 @@ fn routing_without_purpose_projects_a_nonempty_gateway_description() {
     .unwrap();
     let plan = publication.plans[0].clone().into_current().unwrap();
     let mut body = plan.body.as_ref().clone();
-    body.identity.purpose = AgentPlanPurpose::parse("").unwrap();
+    body.identity.purpose = crate::AgentPlanPurpose::parse("").unwrap();
     let current = CompiledAgentPlanV1::seal_current(body).unwrap();
     let expected = current.body.identity.display_name.as_str().to_owned();
     let aliases = materialize_aliases(std::slice::from_ref(&current), &publication.grants).unwrap();
