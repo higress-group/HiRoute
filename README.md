@@ -1,9 +1,7 @@
 <p align="right"><a href="README.zh-CN.md">简体中文</a></p>
 
 <p align="center">
-  <a href="https://hiroute.ai/">
-    <img src="apps/website/public/brand/github-social-preview.png" alt="HiRoute — intelligent routing for long-horizon agents" width="640">
-  </a>
+  <a href="https://hiroute.ai/en/#tour"><img src="apps/website/public/media/hiroute-promo-en-readme.jpg" alt="Watch the 3-minute HiRoute tour: a real session where a new model handles routine turns and the primary model steps in after a low score" width="760"></a>
 </p>
 
 <p align="center">
@@ -26,10 +24,6 @@
   <a href="https://github.com/higress-group/HiRoute/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/higress-group/HiRoute?display_name=tag&amp;sort=semver&amp;style=flat-square"></a>
   <a href="LICENSE"><img alt="Apache-2.0 license" src="https://img.shields.io/badge/license-Apache--2.0-5A6FE8?style=flat-square"></a>
   <a href="https://hiroute.ai/en/download/"><img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
-</p>
-
-<p align="center">
-  <a href="https://hiroute.ai/en/#tour"><img src="apps/website/public/media/hiroute-promo-en-readme.jpg" alt="Watch the 3-minute HiRoute tour: a real session where a new model handles routine turns and the primary model steps in after a low score" width="760"></a>
 </p>
 
 ## Real-world cost savings

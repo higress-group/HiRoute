@@ -1,9 +1,7 @@
 <p align="right"><a href="README.md">English</a></p>
 
 <p align="center">
-  <a href="https://hiroute.ai/">
-    <img src="apps/website/public/brand/github-social-preview.png" alt="HiRoute——面向长程 Agent 的智能路由" width="640">
-  </a>
+  <a href="https://hiroute.ai/#tour"><img src="apps/website/public/media/hiroute-promo-zh-readme.jpg" alt="观看 3 分钟 HiRoute 产品介绍：真实会话中，新模型处理常规轮次，低分后主力接手" width="760"></a>
 </p>
 
 <p align="center">
@@ -25,10 +23,6 @@
   <a href="https://github.com/higress-group/HiRoute/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/higress-group/HiRoute?display_name=tag&amp;sort=semver&amp;style=flat-square"></a>
   <a href="LICENSE"><img alt="Apache-2.0 许可证" src="https://img.shields.io/badge/license-Apache--2.0-5A6FE8?style=flat-square"></a>
   <a href="https://hiroute.ai/download/"><img alt="支持 macOS 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
-</p>
-
-<p align="center">
-  <a href="https://hiroute.ai/#tour"><img src="apps/website/public/media/hiroute-promo-zh-readme.jpg" alt="观看 3 分钟 HiRoute 产品介绍：真实会话中，新模型处理常规轮次，低分后主力接手" width="760"></a>
 </p>
 
 ## 真实场景的成本节省
