@@ -66,11 +66,18 @@ try {
     assert.equal(saved.budgets[0].assignment.budget_id,'budget/monthly');assert.equal(saved.budgets[0].assignment.expected_revision,3);assert.equal(saved.budgets[0].assignment.policy.amount_micros,120000000);assert.equal(saved.budgets[0].assignment.initial_remaining_micros,null);
     results.push({name,...geometry,singleSave:true});
   }
+  await navigate(client,`http://127.0.0.1:${httpPort}/key-budgets.html?pending=1`,{width:755,height:600});
+  await click('.list-row');await click('.btn','管理 Key 与额度');
+  await waitFor(client,'document.querySelector("[data-key-budget] input[type=checkbox]")?.checked===true');
+  await change('[data-key-budget] .key-budget-amount input','120');await click('.modal-foot .btn-primary');
+  await waitFor(client,'window.budgetTrace.length===1 && !!window.finishBudgetSave');
+  assert.equal(await evaluate(client,'[...document.querySelectorAll(".oc-credential-fields input,.oc-credential-fields select,.oc-credential-fields button")].every(e=>e.matches(":disabled"))'),true,'pending save freezes all Key and allowance edits');
+  await evaluate(client,'window.finishBudgetSave();true');await waitFor(client,'!document.querySelector(".modal")');
   await navigate(client,`http://127.0.0.1:${httpPort}/key-budgets.html?unavailable=1`,{width:755,height:600});
   await click('.list-row');await click('.btn','管理 Key 与额度');await waitFor(client,'document.querySelector(".modal")?.textContent.includes("额度暂不可用")');
   assert.equal(await evaluate(client,'document.querySelector("[data-key-budget]")!==null'),false);
   await writeFile(path.join(output,'results.json'),JSON.stringify({state:'green',scenarios:results,unavailablePreservesLimits:true},null,2));
-  console.log(JSON.stringify({state:'green',scenarios:results.length+1,output}));
+  console.log(JSON.stringify({state:'green',scenarios:results.length+2,output}));
 } finally {
   client?.close(); await stop(chrome); await stop(vite); await rm(profile, { recursive: true, force: true });
 }

@@ -11,7 +11,11 @@ fn policy(amount: u64) -> KeyBudgetPolicyV1 {
         renewal: None,
     }
 }
-fn configure(stores: &LocalStorageSet, assignment: KeyBudgetAssignmentV1, label: &str) -> String {
+pub(super) fn configure(
+    stores: &LocalStorageSet,
+    assignment: KeyBudgetAssignmentV1,
+    label: &str,
+) -> String {
     configure_index(stores, assignment, label, 0)
 }
 fn configure_index(
@@ -70,7 +74,7 @@ fn configure_index(
     );
     source.credentials[index].key_id.clone()
 }
-fn new_budget(amount: u64) -> KeyBudgetAssignmentV1 {
+pub(super) fn new_budget(amount: u64) -> KeyBudgetAssignmentV1 {
     KeyBudgetAssignmentV1::Configure {
         budget_id: None,
         expected_revision: 0,

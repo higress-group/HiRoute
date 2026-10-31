@@ -2,6 +2,7 @@
 pub(super) const CONTROL: &str = r#"
 ALTER TABLE compute_management_effects ADD COLUMN key_budget_witness_digest TEXT;
 ALTER TABLE compute_management_effects ADD COLUMN key_budget_accounting_digest TEXT;
+ALTER TABLE compute_management_effects ADD COLUMN key_budget_compensation_root TEXT;
 CREATE TABLE compute_key_budgets (
  workspace_id TEXT NOT NULL, budget_id TEXT NOT NULL, revision INTEGER NOT NULL,
  definition_json TEXT NOT NULL, balance_micros INTEGER NOT NULL, budget_epoch INTEGER NOT NULL DEFAULT 0,
@@ -54,6 +55,7 @@ pub(crate) fn validate(connection: &rusqlite::Connection) -> Result<(), crate::L
     connection.prepare("SELECT definition_json,balance_micros,reserved_micros,spent_micros,lifetime_spent_micros,renewal_index FROM compute_key_budgets LIMIT 0")?;
     connection.prepare("SELECT budget_id,key_id,key_generation,pricing_json,state FROM compute_key_spend_reservations LIMIT 0")?;
     connection.prepare("SELECT operation_id,witness_json,applied,compensated FROM compute_key_budget_effects LIMIT 0")?;
+    connection.prepare("SELECT sequence,reservation_id,budget_epoch,charged_micros FROM compute_key_spend_charges LIMIT 0")?;
     let mut statement =
         connection.prepare("SELECT budget_id,revision,definition_json FROM compute_key_budgets")?;
     for row in statement.query_map([], |r| {

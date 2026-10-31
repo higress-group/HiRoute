@@ -21,5 +21,5 @@ createRoot(document.getElementById('root')!).render(<PresentationRoot language={
   <Models language={language} snapshot={snapshot} mutable onRefresh={async () => {}} onPrepareKeyInput={async () => { throw new Error('No key edits expected'); }}
     onReadKeyMasks={async () => ({ source_id: source.source_id, source_revision: source.revision, keys: [{ key_id: 'key/budget', generation: 2, masked_key: 'sk-••••••••test' }] })}
     onPreview={async (change, budgets) => { trace.push({ change, budgets }); return { spec: {} as any, accept_digest: '', expected_revisions: snapshot.revisions, changes: [] }; }}
-    onApply={async () => 'saved'} onDiscardProtectedInputs={() => {}} />
+    onApply={async () => params.has('pending') ? await new Promise<'saved'>(resolve => { Object.assign(window, { finishBudgetSave: () => resolve('saved') }); }) : 'saved'} onDiscardProtectedInputs={() => {}} />
 </PresentationRoot>);

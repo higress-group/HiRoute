@@ -286,3 +286,40 @@ pub(super) fn apply(
     .map_err(|_| bad())?;
     Ok(())
 }
+
+/// A failed Secret edit may need forward references even when Control never
+/// activated. Bind that authenticated compensation root to the before witness.
+pub(super) fn reconcile_compensation(
+    db: &Connection,
+    workspace: &WorkspaceId,
+    operation: &str,
+    mutation: &ComputeManagementMutation,
+    repaired: &hiroute_domain::ComputeManagementSourceV2,
+) -> PortResult<()> {
+    let Some((witness, applied, compensated)) = effect(db, workspace, mutation, operation)? else {
+        return Ok(());
+    };
+    if (applied && !compensated)
+        || ledger::bindings(db, workspace, mutation.source_id())? != witness.bindings_before
+    {
+        return Err(bad());
+    }
+    let control_restored: bool = db
+        .query_row(
+            "SELECT compensated FROM control_effects WHERE operation_id=?1 AND workspace_id=?2",
+            params![operation, workspace.as_str()],
+            |r| r.get(0),
+        )
+        .map_err(|_| bad())?;
+    if !control_restored {
+        return Err(bad());
+    }
+    let digest = CanonicalDigest::of(repaired).map_err(|_| bad())?;
+    db.execute(
+        "UPDATE compute_key_budget_effects SET compensated=1 WHERE operation_id=?1",
+        [operation],
+    )
+    .map_err(|_| bad())?;
+    db.execute("UPDATE compute_management_effects SET key_budget_compensation_root=?2 WHERE operation_id=?1",params![operation,digest.as_str()]).map_err(|_|bad())?;
+    Ok(())
+}
