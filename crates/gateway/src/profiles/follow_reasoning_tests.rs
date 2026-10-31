@@ -227,6 +227,7 @@ fn follow_reasoning_budget_range_step_and_accounting_are_request_local() {
         IngressProtocol::Messages,
         &["low"],
     );
+    profile.capability.context.max_output_tokens = super::super::CriticalFact::Exact(8192);
     let baseline = ReasoningProfileCapability {
         profile_id: "budget-1024".into(),
         control_kind: ReasoningControlKind::Budget,
