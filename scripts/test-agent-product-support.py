@@ -23,6 +23,7 @@ from agent_product_support import apply_settings, run_native_command, expose_nat
 from publication_product import Product
 from publication_process import AgentSettingsPreviewBlocked
 import standalone_headless_product as headless
+import quickstart_analysis
 from dsh_native_context import DshModelSettings, read_patch, encode_patch
 from decision_services_product import DecisionEndpoint
 from additional_native_history_product import (
@@ -301,6 +302,35 @@ class ObservationReadRetryTests(unittest.TestCase):
         self.assertAlmostEqual(self.now, .1)
         self.assertLessEqual(second.kwargs['timeout'], first.kwargs['timeout'])
         self.assertEqual(self.product.outputs, [busy.stdout, b'', success.stdout, b''])
+
+    def test_quickstart_catalog_opts_into_typed_busy_without_changing_page(self):
+        page = {'request_id': 'request/current', 'limit': 1, 'cursor': 'frozen-page'}
+        payload = quickstart_analysis.query('catalog', page)
+
+        def reply(*arguments, **options):
+            request = json.loads(options['input'])
+            if request.get('read_failure_details') is not True:
+                return self.response({'status': 'unavailable', 'error': {
+                    'code': 'OBSERVATION_UNAVAILABLE', 'retryable': False,
+                    'details_schema': 'hiroute.error-details/none-v1',
+                }}, 6)
+            if execute.call_count == 1:
+                return self.response(self.busy(), 6)
+            return self.response({'status': 'succeeded', 'data': {
+                'contents': [{'content_id': 'current-content'}], 'next_cursor': None}})
+
+        with patch.object(headless.subprocess, 'run', side_effect=reply) as execute:
+            observed = self.product.cli('sessions', 'show', '--request-stdin',
+                                        payload=payload, retry_reader_busy=True)
+        self.assertEqual(observed['data']['contents'], [{'content_id': 'current-content'}])
+        self.assertEqual(execute.call_count, 2)
+        first, second = execute.call_args_list
+        self.assertEqual(first.args, second.args)
+        self.assertEqual(first.kwargs['input'], second.kwargs['input'])
+        self.assertEqual(json.loads(second.kwargs['input'])['intent'], {
+            'view': 'catalog', 'query': page})
+        self.assertAlmostEqual(self.now, .1)
+        self.assertLessEqual(second.kwargs['timeout'], first.kwargs['timeout'])
 
     def test_persistent_busy_fails_with_last_envelope_within_retry_budget(self):
         envelope = self.busy()
