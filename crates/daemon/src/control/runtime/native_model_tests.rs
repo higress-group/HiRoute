@@ -31,7 +31,10 @@ fn settings_status_joins_surface_checks_with_the_active_publication_revision() {
         return;
     }
     let root = tempfile::tempdir().unwrap();
-    let (runtime, cli_executable) = open_with_codex_fixture_surfaces(root.path());
+    let (mut runtime, cli_executable) = open_with_codex_fixture_surfaces(root.path());
+    // Only the paused status reader may own the stores during the lock probes.
+    // Stop and join maintenance, whose independent reads legitimately take that lock.
+    drop(runtime._observation_maintenance.take());
     let adapter = &runtime.adapter;
     let context = adapter
         .settings_context_for_agent("agent_codex_default")
