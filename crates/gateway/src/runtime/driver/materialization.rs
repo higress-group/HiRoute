@@ -379,39 +379,13 @@ pub(super) async fn materialize_attempt(
                 .ok_or_else(|| Arc::from(MATERIALIZATION_CREDENTIAL_EXHAUSTED))?,
         )
     };
-    let spend_estimate = if !ir.native_only {
-        crate::server::core_runtime::observation::active_request()
-            .and_then(|observation| {
-                observation.spending_price(
-                    stable_target,
-                    &profile.capability.model_configuration_id,
-                    expected_profile_digest,
-                )
-            })
-            .and_then(|pricing| {
-                Some(hiroute_domain::KeySpendEstimateV1 {
-                    pricing,
-                    input_bound: *profile.capability.context.max_input_tokens.exact()?,
-                    output_bound: ir
-                        .requested_max_output_tokens
-                        .unwrap_or(*profile.capability.context.max_output_tokens.exact()?)
-                        .min(*profile.capability.context.max_output_tokens.exact()?),
-                })
-            })
-    } else {
-        None
-    };
-    let mut spending = credential
-        .as_ref()
-        .map(|lease| lease.reserve_spending(spend_estimate.as_ref()))
-        .transpose()
-        .map_err(|error| match error {
-            hiroute_domain::KeyBudgetGateErrorV1::Authority(_) => {
-                Arc::from(MATERIALIZATION_AUTHORITY_FAILED)
-            }
-            _ => Arc::from(MATERIALIZATION_CREDENTIAL_EXHAUSTED),
-        })?
-        .flatten();
+    let mut spending = super::key_spending::reserve(
+        credential.as_ref(),
+        ir,
+        profile,
+        stable_target,
+        expected_profile_digest,
+    )?;
     let permits = if let Some(credential) = credential.as_ref() {
         if credential.credential_ref() != context.credential_ref().as_str() {
             return Err(Arc::from(MATERIALIZATION_AUTHORITY_FAILED));
