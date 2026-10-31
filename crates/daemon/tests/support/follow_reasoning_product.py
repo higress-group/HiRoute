@@ -1,7 +1,6 @@
 """Real source admission, Plan save/reopen, Gateway attempts and observation ingestion."""
 import http.client
 import json
-import sqlite3
 import sys
 import time
 
@@ -84,17 +83,23 @@ def run(repository):
                       {'change': change}, 'save-fixed-reasoning')
         assert request('xhigh')[0] == 200
         assert upstreams[2].requests[-1]['body']['reasoning']['effort'] == 'high'
-        paths = list(product.storage.rglob('activity.db'))
-        assert len(paths) == 1, paths
         deadline = time.monotonic() + 15
         while True:
-            with sqlite3.connect(paths[0].as_uri() + '?mode=ro', uri=True) as db:
-                facts = [json.loads(row[0]) for row in db.execute('SELECT envelope_json FROM execution_fact_events')]
-            facts = [f['fact'] for f in facts if f['trust']['served_model_id'] == product.model_alias]
+            sessions = product.public_cli('sessions list --include-unlinked --limit 50')[1]['data']['sessions']
+            receipts = {}
+            for session in sessions:
+                detail = product.public_cli('sessions show ' + session['session_id'])[1]['data']
+                for turn in detail['turns']:
+                    for receipt_id in turn['receipt_ids']:
+                        receipt = product.public_cli('sessions receipt ' + receipt_id)[1]['data']
+                        if receipt['trust']['served_model_id'] == product.model_alias:
+                            receipts[receipt_id] = receipt
+            facts = [event['fact'] for receipt in receipts.values() for event in receipt['ordered_facts']]
             resolutions = {f.get('reasoning_resolution') for f in facts if f.get('kind') == 'candidate_decision'}
-            if {'request', 'default_missing', 'default_unsupported'} <= resolutions:
+            if (len(receipts) == 4 and all(r['facts_completeness'] == 'complete' for r in receipts.values())
+                    and {'request', 'default_missing', 'default_unsupported'} <= resolutions):
                 break
-            assert time.monotonic() < deadline, ('missing actual reasoning receipts', resolutions)
+            assert time.monotonic() < deadline, ('missing actual reasoning receipts', resolutions, len(receipts))
             time.sleep(.05)
         assert any(f.get('requested_reasoning_disposition') == 'follow_request_with_default' for f in facts)
         product.plan_id = previous_id
