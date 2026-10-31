@@ -16,7 +16,7 @@
 <p align="center">
   <a href="https://hiroute.ai/en/download/">Download</a> ·
   <a href="#get-started">Quickstart</a> ·
-  <a href="#about-90-lower-cost-at-the-same-acceptance-standard">Cost results</a> ·
+  <a href="#real-world-cost-savings">Cost results</a> ·
   <a href="#how-well-does-the-routing-policy-work">Experiments</a> ·
   <a href="https://hiroute.ai/en/docs/">Documentation</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
@@ -28,31 +28,17 @@
   <a href="https://hiroute.ai/en/download/"><img alt="macOS and Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
-## About 90% lower cost at the same acceptance standard
+## Real-world cost savings
 
-Most of a long task is routine: reading code, collecting facts, applying known fixes. A few
-decisions need your strongest model. HiRoute sends each stage to the model it needs, so you
-stop paying primary-model prices for the routine parts.
-
-In a technical-research and architecture-review task, Qwen 3.8 Flash produced six research
-deliverables and GPT-6 Astra wrote the critical decision memo. In the two of three paired runs
-where both setups met the same delivery standard, the mixed setup cost **91–92% less** than
-running everything on Astra, and both passed the critical-decision review. Qwen alone avoided
-major errors in only one of three critical decisions.
+In a real research and architecture-review task, Qwen 3.8 Flash did the research and GPT-6 Astra
+made the critical decision. At the same acceptance standard, the task cost **about 90% less**
+than running everything on Astra.
 
 [![Cost of the same task at the same acceptance standard: HiRoute mixed costs about one twelfth of all Astra](news/assets/research-cost-en.svg)](news/2026-10-04-astra-qwen.en.md)
 
-Switching models does not eat the savings. HiRoute keeps one model through each turn's tool
-calls, so a switch loses the cache only once. Even with no cache hits on Qwen, the saving
-stayed above 90%.
+[![All Astra $2.067, HiRoute mixed $0.178 (91% saved), mixed with every input cached $0.124 (94% saved)](news/assets/cache-impact-en.svg)](news/2026-10-14-routing-cache-cost.en.md)
 
-[![The same mixed run with and without a perfect cache: all Astra $2.067, HiRoute mixed $0.178 (91% saved), mixed with every input cached $0.124 (94% saved)](news/assets/cache-impact-en.svg)](news/2026-10-14-routing-cache-cost.en.md)
-
-<sub>Costs are API-equivalent estimates and include every attempt and routing decision. The
-[experiment record](experiments/cases/research-cost-quality/README.md) keeps the third pair's results and
-the acceptance criteria.</sub>
-
-[Full case study](news/2026-10-04-astra-qwen.en.md) · [Switching models loses cache, not the savings](news/2026-10-14-routing-cache-cost.en.md)
+<sub>API-equivalent estimates. [Full case study](news/2026-10-04-astra-qwen.en.md)</sub>
 
 ## Familiar Agents, more model choices
 

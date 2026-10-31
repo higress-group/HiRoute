@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://hiroute.ai/download/">下载</a> ·
   <a href="#快速开始">快速开始</a> ·
-  <a href="#相同验收标准成本降低约-90">成本效果</a> ·
+  <a href="#真实场景的成本节省">成本效果</a> ·
   <a href="#选模效果用实验检验">实验结果</a> ·
   <a href="https://hiroute.ai/docs/">使用文档</a> ·
   <a href="CONTRIBUTING.md">参与贡献</a>
@@ -27,26 +27,16 @@
   <a href="https://hiroute.ai/download/"><img alt="支持 macOS 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
-## 相同验收标准，成本降低约 90%
+## 真实场景的成本节省
 
-长任务的大部分工作是常规的：读代码、整理资料、按已知方法修改。只有少数决策需要最强的模型。
-HiRoute 为每个阶段选择合适的模型，常规部分不再按主力的价格付费。
-
-在一次技术调研与架构评审任务中，Qwen 3.8 Flash 完成六份调研交付，GPT-6 Astra 撰写关键决策备忘录。
-三组对照中有两组双方都达到同一整单验收标准；在这两组里，混合模式比全部使用 Astra **省下 91%–92%**，
-关键决策均通过评审。只用 Qwen 时，三次关键决策只有一次没有重大错误。
+在一次真实的技术调研与架构评审任务中，Qwen 3.8 Flash 负责调研，GPT-6 Astra 负责关键决策。
+达到同样的验收标准，成本比全部使用 Astra **降低约 90%**。
 
 [![相同验收标准下的整单成本：HiRoute 混合约为全 Astra 的十二分之一](news/assets/research-cost-zh.svg)](news/2026-10-04-astra-qwen.zh-CN.md)
 
-切换模型不会吃掉省下的钱。HiRoute 在同一轮的工具调用中保持同一个模型，切换只损失一次缓存。
-即使 Qwen 一次缓存都没命中，节省比例仍在 90% 以上。
+[![全 Astra $2.067，HiRoute 混合 $0.178（省 91%），输入全部命中缓存时 $0.124（省 94%）](news/assets/cache-impact-zh.svg)](news/2026-10-14-routing-cache-cost.zh-CN.md)
 
-[![同一次混合运行有无完美缓存的对比：全 Astra $2.067，HiRoute 混合 $0.178（省 91%），输入全部命中缓存时 $0.124（省 94%）](news/assets/cache-impact-zh.svg)](news/2026-10-14-routing-cache-cost.zh-CN.md)
-
-<sub>费用为 API 等价估算，包含全部尝试和路由判断。[实验记录](experiments/cases/research-cost-quality/README.md)
-保留了第三组结果和验收标准。</sub>
-
-[完整案例](news/2026-10-04-astra-qwen.zh-CN.md) · [切换模型会损失缓存，智能路由还省钱吗？](news/2026-10-14-routing-cache-cost.zh-CN.md)
+<sub>费用为 API 等价估算。[完整案例](news/2026-10-04-astra-qwen.zh-CN.md)</sub>
 
 ## 熟悉的 Agent，更多模型选择
 
