@@ -17,14 +17,14 @@ export function SubscriptionApiCredits({ provider, language }: { provider: Linke
     <p className="field-help">{openai
       ? (zh ? '符合条件的 ChatGPT Pro / Business 可领取 API 赠金。' : 'Eligible ChatGPT Pro / Business plans can claim API credits.')
       : (zh ? '符合条件的 Claude Max / Ultra / Team 可领取 API 赠金。' : 'Eligible Claude Max / Ultra / Team plans can claim API credits.')}
-      {' '}<a href={guide} target="_blank" rel="noreferrer noopener" onClick={event => void open(event, guide)}>{zh ? '领取方式与适用范围' : 'How to claim and eligible uses'}</a>
+      {' '}<a href={guide} target="_blank" rel="noreferrer noopener" onClick={event => void open(event, guide)}>{zh ? '领取与说明' : 'Claim and details'}</a>
     </p>
-    <Disclosure language={language} label={zh ? 'API 赠金如何使用？' : 'How do API credits work?'}>
+    <Disclosure language={language} label={zh ? '赠金使用说明' : 'Using API credits'}>
       <p>{openai
-        ? (zh ? '前往 ChatGPT 的账单设置（Business 使用工作空间账单），在 API 赠金中关联你拥有的 API 组织并确认领取；在这里填写该组织下的 API Key。' : 'Open ChatGPT billing settings (workspace billing for Business). Link an API organization you own in the API credits benefit and confirm the claim. Enter a key from that organization here.')
-        : (zh ? '前往 Claude 的设置 → 账单（Team 使用组织设置 → 账单），在 API 赠金中关联 Claude Console 组织并确认领取；在这里填写该组织下的 API Key。' : 'Open Claude Settings → Billing (Organization settings → Billing for Team). Link a Claude Console organization in API credits and confirm the claim. Enter a key from that organization here.')}</p>
-      <p>{zh ? '赠金的领取资格、适用范围、余额和有效期可在官方说明及账单中查看。' : 'Check the official guide and billing page for credit eligibility, eligible uses, balance and expiry.'}</p>
-      <a href={quickstart} target="_blank" rel="noreferrer noopener" onClick={event => void open(event, quickstart)}>{zh ? '查看官方 API Key 设置指引' : 'Official API key setup guide'}</a>
+        ? (zh ? '在 ChatGPT 账单中关联 API 组织领取，再填写该组织的 Key（Business 使用工作空间账单）。' : 'Claim credits by linking your API organization in ChatGPT billing (workspace billing for Business), then use its key.')
+        : (zh ? '在 Claude 账单中关联 Console 组织领取，再填写该组织的 Key（Team 使用组织账单）。' : 'Claim credits by linking your Console organization in Claude billing (organization billing for Team), then use its key.')}</p>
+      <p>{zh ? '资格、范围与余额见官方说明及账单。' : 'See the official guide and billing page for eligibility, uses and balance.'}</p>
+      <a href={quickstart} target="_blank" rel="noreferrer noopener" onClick={event => void open(event, quickstart)}>{zh ? 'API Key 获取指引' : 'Get an API key'}</a>
     </Disclosure>
     {failed && <p className="field-help" role="status">{zh ? '链接未能打开，可复制链接后在浏览器访问。' : 'Could not open the link. Copy it into your browser.'}</p>}
   </div>;

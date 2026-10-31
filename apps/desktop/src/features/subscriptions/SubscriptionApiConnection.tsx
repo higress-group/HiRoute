@@ -93,14 +93,10 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
     void setup.dispose(); setResult(null); setKeyRequired(false); props.onChange('');
   }
   return <section className="detail-section subscription-api-setup" data-subscription-api-setup>
-    <p className="field-help">{usingExisting
-      ? (zh ? '沿用订阅中已选的模型，向下方已有 API 接入同步导入，无需重复选择。' : 'Reuse the subscription’s model selection in the existing API connection below.')
-      : setup.hasCredential && !setup.hasSavedApi
-        ? (zh ? 'Key 已暂存，可重试或更换；清除 Key 后可仅使用订阅。订阅已选模型会沿用，无需重复选择。' : 'The key is retained for retry or replacement. Clear it to use only the subscription. Its model selection is reused.')
-      : (zh ? 'Key 留空则仅使用订阅。填写后沿用订阅已选模型，无需重复选择；同一个保存按钮完成接入。' : 'Leave the key blank to use only the subscription. Enter a key to reuse its selected models, then complete setup with the same save button.')}</p>
+    {setup.hasCredential && !setup.hasSavedApi && <p className="field-help">{zh ? 'Key 已暂存，可重试或更换。' : 'Key retained. Retry or replace it.'}</p>}
     <p className="field-help">{zh
-      ? '填写 Key 或选择已有 API 并保存后，会额外导入一组来自 API 接入点的相同模型，仅导入 API 实际支持的模型。将两组模型加入同一候选组并设置优先顺序，例如订阅额度耗尽后自动使用 API 备用。'
-      : 'Saving an API key or linking an existing API also imports a matching set of models, where supported by the API. Add both sets to one candidate group and set their priority, for example to use the API as a fallback when the subscription quota runs out.'}</p>
+      ? `${usingExisting ? '保存关联后，同步导入相同模型。' : '保存 Key 后，增加一组 API 来源的相同模型。'}配置候选组后，订阅额度用尽时可自动备用。`
+      : `${usingExisting ? 'Save the link to sync matching models.' : 'Save a key to add matching API models.'} Configure a candidate group for fallback when subscription quota runs out.`}</p>
     {result && result.state !== 'saved' && <p ref={feedback} tabIndex={-1} className="callout warn subscription-api-feedback" role="status">{result.failure ? networkFailureText(result.failure, zh) : inlineApiResultText(result, zh)}</p>}
     {setup.hasSavedApi && result?.state !== 'saved' && <p className="field-help">{zh ? '这份 API 接入已独立保存，重试关联不会重复创建。' : 'This API connection is saved independently. Retrying the association will not create another.'}</p>}
     {!usingExisting && <div className="subscription-api-key">
@@ -110,7 +106,7 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
           if (!setup.hasCredential && !setup.hasSavedApi && !setup.awaitingSave) props.onChange(event.target.value.trim() ? NEW_SUBSCRIPTION_API : '');
         }} />
         {keyRequired && <span className="field-help" role="alert">{zh ? '请填写 Key，或选择仅使用订阅。' : 'Enter a key, or choose subscription only.'}</span>}
-        <span className="field-help">{zh ? '如使用订阅 API 赠金，请填写接收赠金的 API 组织下的 Key。' : 'To use subscription API credits, use a key from the organization receiving those credits.'}</span>
+        <span className="field-help">{zh ? '赠金请使用对应组织的 Key。' : 'For credits, use the receiving organization’s key.'}</span>
       </label>
       {setup.hasCredential && !setup.hasSavedApi && <button type="button" className="btn btn-quiet" disabled={locked} onClick={subscriptionOnly}>{zh ? '清除 Key，仅使用订阅' : 'Clear key; use subscription only'}</button>}
       <NativeNetworkSettings language={props.language} value={network} onChange={setNetwork} disabled={locked || setup.hasSavedApi} reveal={reveal} failure={result?.failure}
