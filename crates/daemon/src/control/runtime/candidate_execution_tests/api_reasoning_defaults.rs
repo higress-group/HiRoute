@@ -66,46 +66,48 @@ fn observed_api(
 #[test]
 fn old_api_imports_offer_effort_profiles_and_render_the_actual_native_parameter() {
     let catalog = current_catalog();
-    for protocol in [
-        UpstreamProtocol::Responses,
-        UpstreamProtocol::ChatCompletions,
-    ] {
-        let fact = observed_api(
-            &catalog,
-            "openai.platform.global.v1",
-            protocol,
-            "gpt-6.1-sol",
-        );
-        let before = serde_json::to_vec(&fact.capabilities).unwrap();
-        let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
-        candidate.validate().unwrap();
-        assert!(
-            matches!(&candidate.reasoning, NativeReasoningCapabilityV1::Discrete { profiles, .. }
-            if profiles == &["low", "medium", "high", "xhigh", "max"])
-        );
-        let profile = candidate
-            .protocol_profiles
-            .iter()
-            .find(|p| p.ingress_protocol == protocol)
-            .unwrap();
-        let high = profile
-            .capability
-            .reasoning_profiles
-            .iter()
-            .find(|r| r.profile_id == "high")
-            .unwrap();
-        assert_eq!(
-            high.render,
-            GatewayNativeReasoningRenderV1::ExactFields {
-                protocol,
-                fields: vec![field(
-                    "reasoning_effort",
-                    GatewayNativeReasoningValueV1::String("high".into()),
-                    protocol
-                )],
-            }
-        );
-        assert_eq!(serde_json::to_vec(&fact.capabilities).unwrap(), before);
+    for model in ["gpt-6.1-sol", "gpt-5.6-luna"] {
+        for protocol in [
+            UpstreamProtocol::Responses,
+            UpstreamProtocol::ChatCompletions,
+        ] {
+            let fact = observed_api(&catalog, "openai.platform.global.v1", protocol, model);
+            let before = serde_json::to_vec(&fact.capabilities).unwrap();
+            let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
+            candidate.validate().unwrap();
+            let expected_profiles = if model == "gpt-5.6-luna" {
+                vec!["none", "low", "medium", "high", "xhigh", "max"]
+            } else {
+                vec!["low", "medium", "high", "xhigh", "max"]
+            };
+            assert!(
+                matches!(&candidate.reasoning, NativeReasoningCapabilityV1::Discrete { profiles, .. }
+            if profiles.iter().map(String::as_str).collect::<Vec<_>>() == expected_profiles)
+            );
+            let profile = candidate
+                .protocol_profiles
+                .iter()
+                .find(|p| p.ingress_protocol == protocol)
+                .unwrap();
+            let high = profile
+                .capability
+                .reasoning_profiles
+                .iter()
+                .find(|r| r.profile_id == "high")
+                .unwrap();
+            assert_eq!(
+                high.render,
+                GatewayNativeReasoningRenderV1::ExactFields {
+                    protocol,
+                    fields: vec![field(
+                        "reasoning_effort",
+                        GatewayNativeReasoningValueV1::String("high".into()),
+                        protocol
+                    )],
+                }
+            );
+            assert_eq!(serde_json::to_vec(&fact.capabilities).unwrap(), before);
+        }
     }
 }
 

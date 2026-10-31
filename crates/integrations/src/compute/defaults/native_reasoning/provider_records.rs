@@ -117,23 +117,39 @@ mod tests {
             "gpt-5.6-terra",
             "gpt-6-astra",
         ] {
-            let result = resolve(&metadata, id).unwrap();
-            let expected: Vec<String> = if id == "gpt-6-astra" {
-                vec!["low", "medium", "high", "xhigh", "max"]
-            } else {
-                vec!["none", "low", "medium", "high", "xhigh", "max"]
-            }
-            .into_iter()
-            .map(str::to_owned)
-            .collect();
-            assert_eq!(
-                result.capability,
-                NativeReasoningCapabilityV1::Discrete {
-                    parameter: "reasoning_effort".into(),
-                    profiles: expected,
-                    default_profile: None,
+            for protocol in [
+                UpstreamProtocol::Responses,
+                UpstreamProtocol::ChatCompletions,
+            ] {
+                let suffix = if protocol == UpstreamProtocol::Responses {
+                    "/responses"
+                } else {
+                    "/chat/completions"
+                };
+                let result = openai_provider_default(
+                    &metadata,
+                    protocol,
+                    &format!("https://api.openai.com/v1{suffix}"),
+                    id,
+                )
+                .unwrap();
+                let expected: Vec<String> = if id == "gpt-6-astra" {
+                    vec!["low", "medium", "high", "xhigh", "max"]
+                } else {
+                    vec!["none", "low", "medium", "high", "xhigh", "max"]
                 }
-            );
+                .into_iter()
+                .map(str::to_owned)
+                .collect();
+                assert_eq!(
+                    result.capability,
+                    NativeReasoningCapabilityV1::Discrete {
+                        parameter: "reasoning_effort".into(),
+                        profiles: expected,
+                        default_profile: None,
+                    }
+                );
+            }
         }
         assert!(resolve(&metadata, "gpt-6.1-terra").is_none());
         assert!(resolve(&metadata, "gpt-reserve").is_none());
@@ -173,6 +189,8 @@ mod tests {
         let mut m = metadata();
         m.provider_records
             .retain(|p| p.provider_record_key == "openclaw/openai");
+        m.model_records
+            .retain(|r| r.provider_record_key == "openclaw/openai");
         let original = m.clone();
         for mutation in [0, 1, 2, 3] {
             let mut m = original.clone();
