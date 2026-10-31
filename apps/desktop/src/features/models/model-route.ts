@@ -53,4 +53,3 @@ export function modelRouteEditor(options: Options, request: ModelRouteRequest): 
   }
   return editor;
 }
-
