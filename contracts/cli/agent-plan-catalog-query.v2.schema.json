@@ -501,6 +501,10 @@
           "maxLength": 128,
           "type": "string"
         },
+        "follow_request_reasoning": {
+          "default": false,
+          "type": "boolean"
+        },
         "free": {
           "additionalProperties": false,
           "properties": {
