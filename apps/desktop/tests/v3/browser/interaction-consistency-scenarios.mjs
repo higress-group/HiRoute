@@ -1,5 +1,5 @@
 import { scenario } from './scenario-selection.mjs';
-import { seedInteractionAudit, openInteractionAudit } from './interaction-audit-fixtures.mjs';
+import { seedInteractionAudit, openInteractionAudit, loseInteractionAuthority } from './interaction-audit-fixtures.mjs';
 
 const visible = node => Boolean(node?.getClientRects().length);
 const all = selector => [...document.querySelectorAll(selector)].filter(visible);
@@ -14,6 +14,69 @@ async function fresh(state, language = 'zh') {
 const writes = () => window.productShell.commands.filter(({command}) => /save_decision|test_decision|cli_entry_(install|remove)|apply_compute|preview_plan_editor/.test(command));
 
 export const interactionConsistencyScenarios = [
+  scenario('desktop.interactions.update-download-cancel', ['interaction-consistency'], 'A pending macOS download permits cancellation while duplicate download and cancel requests are blocked', async () => {
+    for (const phase of ['downloading','verifying']) {
+      await fresh('settings-general');
+      const c=window.productShell;
+      const view={current_version:'0.5.0',phase:'available',available:{version:'0.5.1',notes:{zh:'更新说明',en:'Release notes'},size:1000},downloaded_bytes:0,active_calls:0,active_tasks:0,error:null,can_install:true,package_ready:false,recovery:null};
+      let releaseDownload,releaseCancel,downloads=0,cancels=0,downloadPending=false;
+      c.handlers.update_status=()=>structuredClone(view);
+      c.handlers.update_download=async()=>{downloads++;downloadPending=true;view.phase=phase;await new Promise(resolve=>{releaseDownload=resolve;});downloadPending=false;return structuredClone(view);};
+      c.handlers.update_cancel=async()=>{cancels++;assert(downloadPending,'Cancellation waited for the download command to finish');await new Promise(resolve=>{releaseCancel=resolve;});view.phase='available';return structuredClone(view);};
+      const button=copy=>all('.settings-group button').find(n=>n.textContent===copy);
+      await until(()=>button('下载更新')&&!button('下载更新').disabled,'Available update');
+      button('下载更新').click();button('下载更新')?.click();
+      await until(()=>button('取消升级'),'Polled download phase');
+      const cancel=button('取消升级');
+      assert(downloadPending&&!cancel.disabled,'A pending download disabled its cancel action');
+      cancel.click();cancel.click();await until(()=>cancels===1,'Cancel request');
+      assert(downloads===1&&cancel.disabled,'Download or cancellation was duplicated');
+      releaseCancel();await until(()=>!button('取消升级'),'Cancelled download status');
+      assert(button('下载更新').disabled,'Another download started before the original command returned');
+      releaseDownload();await until(()=>!button('下载更新').disabled,'Download and cancel flags cleared');
+      assert(cancels===1&&downloads===1,'Cancellation replayed a mutation');
+    }
+  }),
+  scenario('desktop.interactions.route-dirty-cancel', ['interaction-consistency'], 'New route Cancel preserves edited input, supports guarded draft save, and keeps read-only exits non-mutating', async () => {
+    for(const language of ['zh','en']) {
+      const t=(zh,en)=>language==='zh'?zh:en;
+      await fresh('routing-new',language);
+      const c=window.productShell,field=()=>all('.plan-identity-fields input')[0];
+      const cancel=()=>all('.routing-page .toolbar-actions button').find(n=>n.textContent===t('取消','Cancel'));
+      const dialog=()=>all('dialog[open]')[0];
+      const choose=copy=>[...dialog().querySelectorAll('button')].find(n=>n.textContent===copy).click();
+      const edit=(node,value)=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(node,value);node.dispatchEvent(new Event('input',{bubbles:true}));};
+      edit(field(),'Guarded route');await pause();cancel().click();
+      await until(()=>dialog(),'Dirty Cancel did not ask before discarding');
+      choose(t('继续编辑','Keep editing'));await until(()=>!dialog(),'Keep editing');
+      assert(field().value==='Guarded route'&&writes().length===0,'Keep editing lost draft input or saved it');
+      cancel().click();await until(()=>dialog(),'Discard choice');choose(t('不保存','Discard'));
+      await until(()=>!all('.new-plan-workspace').length,'Discard did not close');
+      assert(writes().length===0,'Discard submitted a route mutation');
+      await openInteractionAudit('routing-new',language);edit(field(),'Saved on leave');
+      edit(all('.plan-identity-fields input')[1],'Review draft');await pause();
+      let releaseSave;
+      c.handlers.preview_plan_editor=async({input})=>{
+        assert(input.action==='save_draft'&&input.editor.display_name==='Saved on leave','Leave changed the submitted intent');
+        await new Promise(resolve=>{releaseSave=resolve;});
+        c.desktop.catalog.drafts.push({draft_id:input.draft_id,revision:1,editor:structuredClone(input.editor)});
+        return {state:'succeeded',operation:{operation_id:'operation/guarded-leave',state:'succeeded',sequence:1,cancellable:false,safe_error_code:null}};
+      };
+      cancel().click();await until(()=>dialog(),'Save leave choice');choose(t('保存草稿并离开','Save draft and leave'));
+      await until(()=>releaseSave,'Draft submission');
+      assert([...dialog().querySelectorAll('.modal-foot button')].every(n=>n.disabled),'Pending draft save permits duplicate leave actions');
+      releaseSave();await until(()=>!dialog()&&!all('.new-plan-workspace').length,'Confirmed draft did not close');
+      assert(c.desktop.catalog.drafts.some(d=>d.editor.display_name==='Saved on leave'),'Leaving lost the saved draft');
+      await openInteractionAudit('routing-new',language);edit(field(),'Read-only draft');await pause();
+      const before=writes().length;await loseInteractionAuthority(c);
+      await until(()=>field().matches(':disabled'),'Lost write authority');cancel().click();await until(()=>dialog(),'Read-only Cancel guard');
+      assert(![...dialog().querySelectorAll('button')].some(n=>n.textContent===t('保存草稿并离开','Save draft and leave')),'Read-only exit offers a write');
+      choose(t('继续编辑','Keep editing'));await until(()=>!dialog(),'Read-only keep');assert(field().value==='Read-only draft','Read-only keep lost input');
+      cancel().click();await until(()=>dialog(),'Read-only discard');choose(t('放弃修改','Discard changes'));
+      await until(()=>!all('.new-plan-workspace').length,'Read-only discard did not close');
+      assert(writes().length===before,'Read-only cancellation submitted a mutation');
+    }
+  }),
   scenario('desktop.interactions.tab-focus-return', ['interaction-consistency'], 'Activating a model tab keeps keyboard focus on the newly visible selected tab', async () => {
     for (const language of ['zh','en']) {
       await fresh('decision',language);

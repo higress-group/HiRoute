@@ -26,7 +26,7 @@ import { PlanQuality, type PlanQualityModel } from './features/PlanQuality';
 import { PlanRuntimeSettings } from './features/PlanRuntimeSettings';
 import { agentEcosystem } from './features/agents/ecosystems';
 import { trialSelection } from './features/trial/model';
-import { confirmSaveDraftOrDiscard, useDiscardGuard } from './ui/discard-guard';
+import { confirmDiscard, confirmSaveDraftOrDiscard, useDiscardGuard } from './ui/discard-guard';
 import { resolvePersistedEditor, type PersistedEditor, type PersistenceIdentity, type PlanOperation } from './plan-editor-persistence';
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { invoke } from './host';
@@ -174,7 +174,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const [sourceOptions, setSourceOptions] = useState<Record<string, string | null>>({});
   const dirty = JSON.stringify(editor) !== baseline;
   const timeoutValidationError = requestTimeoutError(editor.limits.request_timeout_ms, editor.limits.attempt_timeout_ms, language);
-  const confirmLeave = () => confirmSaveDraftOrDiscard(language, () => act('save_draft'));
+  const confirmLeave = () => mutable ? confirmSaveDraftOrDiscard(language, () => act('save_draft')) : confirmDiscard(language);
   const confirmReplacement = async () => {
     const accepted = await confirmLeave();
     if (accepted) onClose();
@@ -187,7 +187,11 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   useImperativeHandle(ref, () => ({
     saveDraft: () => act('save_draft'),
     publish: () => act('publish'),
-    cancel: onClose,
+    cancel: () => {
+      if (busy || trialBusy) return;
+      if (dirty) void confirmReplacement();
+      else onClose();
+    },
     currentEditor: () => structuredClone(editor),
   }));
   useEffect(() => {
