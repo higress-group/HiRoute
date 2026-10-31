@@ -579,7 +579,10 @@ fn run_case(case: &str, root: &Path) {
                 .contains("authorization:")
         );
     }
-    wait_finished(&facts, reason.is_some() && !relay);
+    wait_finished(
+        &facts,
+        (reason.is_some() && !relay) || case == "large_complete_frame",
+    );
     gateway.shutdown();
     gateway.join(Duration::from_secs(5)).unwrap();
     let status = diagnostics.status();
@@ -623,6 +626,8 @@ fn run_case(case: &str, root: &Path) {
     native_evidence::assert_evidence(case, &records, &upstream_request, &response);
     if relay {
         assert_prebody_relay_business(&facts);
+    } else if case == "large_complete_frame" {
+        assert_business_with_usage(&facts, false, false, false);
     } else {
         assert_business(&facts, reason.is_some(), after_body);
     }
@@ -857,7 +862,7 @@ fn payload<'a>(record: &'a Value, name: &str) -> Option<&'a Value> {
         .get(name)
         .or_else(|| record.as_object()?.values().find_map(|v| payload(v, name)))
 }
-fn wait_finished(facts: &Facts, failed: bool) {
+fn wait_finished(facts: &Facts, usage_not_expected: bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let records = facts.0.lock().unwrap().clone();
@@ -867,7 +872,7 @@ fn wait_finished(facts: &Facts, failed: bool) {
         // Canonical usage can arrive after the terminal fact. Provider usage
         // is omitted when canonical usage was already recorded, so it is not
         // a completion barrier. The business oracle checks each source below.
-        let usage_complete = failed
+        let usage_complete = usage_not_expected
             || records.iter().any(|r| {
                 r.pointer("/fact/kind").and_then(Value::as_str) == Some("usage_and_cache")
                     && r["fact"]["source"] == "accepted_canonical_model_event"
@@ -934,6 +939,15 @@ fn assert_prebody_relay_business(facts: &[Value]) {
 }
 
 fn assert_business(facts: &[Value], failed: bool, after_body: bool) {
+    assert_business_with_usage(facts, failed, after_body, true);
+}
+
+fn assert_business_with_usage(
+    facts: &[Value],
+    failed: bool,
+    after_body: bool,
+    canonical_usage: bool,
+) {
     let named = |name| {
         facts
             .iter()
@@ -1018,8 +1032,9 @@ fn assert_business(facts: &[Value], failed: bool, after_body: bool) {
     assert_eq!(requests[0]["fact"]["attempts_finished"], 1);
     let semantic_commits = named("semantic_commit").len();
     assert_eq!(semantic_commits, if failed && !after_body { 0 } else { 1 });
-    if failed {
-        // Failed entities report no usage; never synthesize zero tokens.
+    if failed || !canonical_usage {
+        // Failed entities and an exhausted optional decoder cannot manufacture
+        // usage. Successful model delivery remains an independent fact.
         assert!(named("usage_and_cache").is_empty());
     } else {
         assert_success_usage(facts, 1);
