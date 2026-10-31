@@ -70,6 +70,10 @@ cache prices until supplied, validate every entered decimal and retain edits on
 failure. Key allowance setup SHALL point to this editor when a complete
 same-currency usage-estimate quote is required; enabling an allowance MUST NOT
 invent a price for an unsupported billing condition.
+Paid/custom Native APIs SHALL expose an editable usage-estimate context before
+the first override, including a currency explicitly selected by a bound Key
+allowance, even when current rates are unknown. This does not create a price or
+add ordinary subscription/free pricing contexts.
 
 Price edit/default-reset context SHALL capture source, Binding, override and selected-catalog revisions. A stale submission SHALL fail without overwriting current values. A default-price generation SHALL be derived from one validated catalog and the corresponding user configuration; concurrent refresh SHALL not install an older or mixed generation.
 

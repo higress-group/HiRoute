@@ -37,6 +37,9 @@ def allowance(product, source_id, key, amount, label, definition=None, currency=
 
 
 def price(product, binding, currency='USD'):
+    sources = control(product, 'ListCompute', {})['data']['sources']
+    model = next(model for source in sources for model in source['models'] if model['binding_id'] == binding)
+    assert {'currency': currency, 'valuation_kind': 'usage_estimate'} in model['presentation']['price_contexts'], model['presentation']
     target = {'query_id': 'key-budget', 'target_locator': {'kind': 'binding', 'binding_id': binding}, 'currency': currency, 'valuation_kind': 'usage_estimate'}
     before = product.preview('prices effective', {'targets': [target]})
     rates = {field: {'state': 'known', 'micros_per_million_tokens': 1_000_000} for field in ['input_uncached', 'output', 'cache_read', 'cache_write']}

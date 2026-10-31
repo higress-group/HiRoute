@@ -392,6 +392,9 @@ source-reusing decision leases, so existing published routes obey current limits
 Saved-Key inference probes without a complete quote fail closed at the
 [native check boundary](../../crates/daemon/src/control/runtime/model_connections/network_checks.rs).
 The [shared form](../../apps/desktop/src/features/key-budgets/KeyBudgetEditor.tsx)
-serves Key management and subscription/API setup. See the
+serves Key management and subscription/API setup. Missing prices can be completed
+in the [four-rate editor](../../apps/desktop/src/features/model-reference/PriceEditor.tsx);
+Native API presentation retains editable usage contexts, including bound budget
+currencies, without deriving prices from allowance amounts. See the
 [credential contract](../../issue-spec/specs/credential-pools/spec.md) and
 [real Gateway scenario](../../crates/daemon/tests/support/key_budget_product.py).
