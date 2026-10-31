@@ -168,6 +168,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const [optionsErrorCode, setOptionsErrorCode] = useState('');
   const [optionsRetry, setOptionsRetry] = useState(0);
   const currentOptionsKey = JSON.stringify([previewAgentId, editor, language, optionsRetry]);
+  const publicationReady = !!options && optionsKey === currentOptionsKey && !optionsLoading && !optionsError && !busy && !nameError;
   const [effort, setEffort] = useState<{ name: string; native: Native; value: Selection['reasoning']; apply: (value: Selection['reasoning']) => void } | null>(null);
   const [picker, setPicker] = useState<{ title: string; values: Selection[]; replace: (values: Selection[]) => void; free: boolean; preferred?: 'low' | 'high' } | null>(null);
   const unavailable = options?.unavailable_candidates ?? [];
@@ -185,7 +186,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   useDiscardGuard('routing', dirty, language, confirmReplacement);
   useEffect(() => { onDirty?.(dirty); }, [dirty, onDirty]);
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
-  useEffect(() => { onPublicationReady?.(!!options && !optionsError && !busy && !nameError); }, [options, optionsError, busy, nameError, onPublicationReady]);
+  useEffect(() => { onPublicationReady?.(publicationReady); }, [publicationReady, onPublicationReady]);
   useImperativeHandle(ref, () => ({
     saveDraft: () => act('save_draft'),
     publish: () => act('publish'),
@@ -256,9 +257,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     }
     if (timeoutValidationError) return { field: 'request_timeout', message: timeoutValidationError };
     if (optionsError) return { message: optionsError };
-    // A background refresh after an edit retains the last successful hints. The
-    // actual preview/admission validates the exact edited input and current facts.
-    if (!options) return { message: text('模型信息仍在读取，请稍后再试。', 'Model information is still loading. Try again shortly.') };
+    if (!options || optionsLoading || optionsKey !== currentOptionsKey) return { message: text('模型信息仍在读取，请稍后再试。', 'Model information is still loading. Try again shortly.') };
     const windowError = contextWindowError(editor.limits.context_window_tokens, options.context_window, language);
     if (windowError) return { field: 'context_window', message: windowError };
     if (editor.branch_routing && editor.mode === 'custom_branches') { const issue = routingIssue(editor.branch_routing, language); if (issue) return issue; }
@@ -457,7 +456,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const callsStopped = plan?.head.status === 'disabled';
   const editorState = dirty ? text('有未发布更改', 'Unpublished changes') : base.expected_draft_revision !== null ? text('草稿已保存', 'Draft saved') : plan ? callsStopped ? text('已停用', 'Disabled') : text('已启用', 'Active') : text('未发布', 'Unpublished');
   const editorTone = dirty || callsStopped ? 'warn' : plan && base.expected_draft_revision === null ? 'good' : 'info';
-  return <section className="plan-editor" aria-label={text('路由编辑器', 'Plan editor')}>{!creating && <header className="editor-header"><div className="editor-title"><div className="title-with-status"><h2>{editor.display_name || text('新建智能路由', 'New smart routing')}</h2><span className={`badge ${editorTone} no-dot`}>{editorState}</span>{callsStopped && (dirty || base.expected_draft_revision !== null) && <span className="badge warn no-dot">{text('已停用', 'Disabled')}</span>}</div></div><div className="editor-actions"><button className="btn" type="button" disabled={busy || (!dirty && Boolean(plan || draft))} onClick={() => void act('save_draft')}>{text('保存草稿', 'Save draft')}</button><button type="button" className="btn btn-primary" disabled={busy || !options || !!optionsError || (!dirty && !!plan && base.expected_draft_revision === null)} onClick={() => void act('publish')}><UiIcon name="upload" />{plan ? text('发布更改', 'Publish changes') : text('启用', 'Enable')}</button></div></header>}
+  return <section className="plan-editor" aria-label={text('路由编辑器', 'Plan editor')}>{!creating && <header className="editor-header"><div className="editor-title"><div className="title-with-status"><h2>{editor.display_name || text('新建智能路由', 'New smart routing')}</h2><span className={`badge ${editorTone} no-dot`}>{editorState}</span>{callsStopped && (dirty || base.expected_draft_revision !== null) && <span className="badge warn no-dot">{text('已停用', 'Disabled')}</span>}</div></div><div className="editor-actions"><button className="btn" type="button" disabled={busy || (!dirty && Boolean(plan || draft))} onClick={() => void act('save_draft')}>{text('保存草稿', 'Save draft')}</button><button type="button" className="btn btn-primary" disabled={!publicationReady || (!dirty && !!plan && base.expected_draft_revision === null)} onClick={() => void act('publish')}><UiIcon name="upload" />{plan ? text('发布更改', 'Publish changes') : text('启用', 'Enable')}</button></div></header>}
     {notice && <div className="callout" role="status"><UiIcon name="info" /><span>{notice}</span></div>}{error && <div role="alert" className="callout bad" data-error-code={diagnostic}><UiIcon name="warning" /><span>{error}</span></div>}
     {plan && <div className="segmented quality-view-tabs" role="tablist" aria-label={text('智能路由视图', 'Smart routing views')}>
       <button className={'segment' + (view === 'configuration' ? ' active' : '')} type="button" role="tab" aria-selected={view === 'configuration'} onClick={() => setView('configuration')}>{text('路由配置', 'Routing configuration')}</button>

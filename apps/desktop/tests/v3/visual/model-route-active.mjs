@@ -88,7 +88,7 @@ try {
       await click('.modal-foot .btn-primary',language==='zh'?'一起加入候选':'Add together as candidates');
       await editorReady();
       assert.deepEqual(await current(),{name:'gpt-6.1-sol',alias:'gpt-6.1-sol',purpose:'',required:false,bindings:['binding/codex/gpt-6-astra','binding/api/sol'],writes:0});
-      await waitFor(client, '!document.querySelector(".routing-page .toolbar-actions .btn-primary").disabled');
+      await waitFor(client, '![...document.querySelectorAll(".routing-page .toolbar-actions .btn-primary")].find(e=>e.getClientRects().length&&/保存并创建|Save and create/.test(e.textContent)).disabled');
       await shot(`model-route-editor-${id}`);
       await click('.toolbar-actions button',language==='zh'?'保存并创建':'Save and create');
       await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
@@ -109,7 +109,7 @@ try {
   await run('model-route.save-waits-for-current-model-options',async()=>{
     await setup({others:false,delayed:true});await click('.model-route-action button','创建智能路由');await editorReady();
     await waitFor(client,'typeof productShell.releaseModelRouteOptions==="function"');
-    assert.equal(await evaluate(client,'document.querySelector(".routing-page .toolbar-actions .btn-primary").disabled'),true);
+    assert.equal(await evaluate(client,'[...document.querySelectorAll(".routing-page .toolbar-actions .btn-primary")].find(e=>e.getClientRects().length&&/保存并创建|Save and create/.test(e.textContent)).disabled'),true);
     assert.equal((await current()).writes,0);
     await evaluate(client,'productShell.releaseModelRouteOptions();true');
     await click('.toolbar-actions button','保存并创建');
