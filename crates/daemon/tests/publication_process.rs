@@ -140,6 +140,11 @@ fn real_process_native_branch_credentials_preserve_source_and_key_permissions() 
 }
 
 #[test]
+fn real_process_key_budgets_reserve_settle_and_fallback_without_republishing() {
+    run_script("key_budget_product.py");
+}
+
+#[test]
 fn real_process_current_credential_pool_relays_without_republishing() {
     run_script("credential_pool_product.py");
 }

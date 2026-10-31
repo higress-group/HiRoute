@@ -12,6 +12,14 @@ fn policy(amount: u64) -> KeyBudgetPolicyV1 {
     }
 }
 fn configure(stores: &LocalStorageSet, assignment: KeyBudgetAssignmentV1, label: &str) -> String {
+    configure_index(stores, assignment, label, 0)
+}
+fn configure_index(
+    stores: &LocalStorageSet,
+    assignment: KeyBudgetAssignmentV1,
+    label: &str,
+    index: usize,
+) -> String {
     let source = saved(stores);
     let registry = TrustedComputeCandidateRegistry::new();
     let input = ProtectedInput;
@@ -35,7 +43,7 @@ fn configure(stores: &LocalStorageSet, assignment: KeyBudgetAssignmentV1, label:
             network_edit: None,
             key_budget_edits: vec![KeyBudgetEditV1 {
                 key: KeyBudgetSelectorV1::Saved {
-                    key_id: source.credentials[0].key_id.clone(),
+                    key_id: source.credentials[index].key_id.clone(),
                 },
                 assignment,
             }],
@@ -60,7 +68,7 @@ fn configure(stores: &LocalStorageSet, assignment: KeyBudgetAssignmentV1, label:
         preview,
         label,
     );
-    source.credentials[0].key_id.clone()
+    source.credentials[index].key_id.clone()
 }
 fn new_budget(amount: u64) -> KeyBudgetAssignmentV1 {
     KeyBudgetAssignmentV1::Configure {
@@ -271,6 +279,33 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
     let key = configure(&stores, new_budget(500), "key-budget-shared");
     let source = saved(&stores);
     let quote = estimate(&source.source_id);
+    let registry = TrustedComputeCandidateRegistry::new();
+    let added = candidate("candidate/budget-shared-second", "slot/primary");
+    registry.register_compute_candidate(added.clone()).unwrap();
+    let source = saved(&stores);
+    let mut change = edit(
+        &stores,
+        &source,
+        hiroute_application_api::ComputeManagementEditV1::Rename {
+            display_name: source.display_name.clone(),
+        },
+        &[],
+    );
+    change.key_edits = vec![ComputeKeyEditV2::Add {
+        input_candidate: added.candidate,
+    }];
+    lifecycle::execute(&stores, &registry, change, "key-budget-add-share-key");
+    let definition = view(&stores, &key).definition;
+    let second = configure_index(
+        &stores,
+        KeyBudgetAssignmentV1::Share {
+            budget_id: definition.budget_id,
+            expected_revision: definition.revision,
+        },
+        "key-budget-share-second",
+        1,
+    );
+    assert_eq!(view(&stores, &key).key_count, 2);
     let first = stores
         .control()
         .reserve_key_spend(&key, 1, Some(&quote))
@@ -285,7 +320,7 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
     )
     .unwrap();
     assert!(matches!(
-        other.reserve_key_spend(&key, 1, Some(&quote)),
+        other.reserve_key_spend(&second, 1, Some(&quote)),
         Err(KeyBudgetGateErrorV1::Exhausted)
     ));
     let mut wrong = quote.clone();

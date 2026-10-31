@@ -26,7 +26,8 @@ CREATE TABLE compute_key_spend_reservations (
  PRIMARY KEY(workspace_id,reservation_id),
  FOREIGN KEY(workspace_id,budget_id) REFERENCES compute_key_budgets(workspace_id,budget_id)
 );
-CREATE INDEX compute_key_spend_budget ON compute_key_spend_reservations(workspace_id,budget_id,state);
+CREATE INDEX compute_key_spend_budget ON compute_key_spend_reservations(workspace_id,budget_id,budget_epoch,state);
+CREATE INDEX compute_key_spend_pending ON compute_key_spend_reservations(state) WHERE state IN ('reserved','sent','pending');
 CREATE TABLE compute_key_budget_effects (
  operation_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, source_id TEXT NOT NULL,
  witness_json TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +60,32 @@ pub(crate) fn validate(connection: &rusqlite::Connection) -> Result<(), crate::L
             .validate()
             .map_err(|_| crate::LocalStorageError::InvalidData)?;
         if id != definition.budget_id || revision != definition.revision {
+            return Err(crate::LocalStorageError::InvalidData);
+        }
+    }
+    let inconsistent: bool=connection.query_row("SELECT EXISTS(
+        SELECT 1 FROM compute_key_budgets b WHERE b.revision<1 OR b.budget_epoch<0 OR b.renewal_index<0
+        OR b.reserved_micros<0 OR b.spent_micros<0 OR b.lifetime_spent_micros<0
+        OR b.reserved_micros != COALESCE((SELECT SUM(r.amount_micros) FROM compute_key_spend_reservations r
+            WHERE r.workspace_id=b.workspace_id AND r.budget_id=b.budget_id AND r.budget_epoch=b.budget_epoch
+                AND r.state IN ('reserved','sent','pending')),0)
+        UNION ALL SELECT 1 FROM compute_key_budget_bindings k
+        LEFT JOIN compute_management_sources s USING(workspace_id,source_id)
+        LEFT JOIN compute_key_budgets b ON b.workspace_id=k.workspace_id AND b.budget_id=k.budget_id
+        WHERE s.source_id IS NULL OR b.budget_id IS NULL OR NOT EXISTS(
+            SELECT 1 FROM json_each(s.source_json,'$.credentials') c WHERE json_extract(c.value,'$.key_id')=k.key_id)
+    )",[],|r|r.get(0))?;
+    if inconsistent {
+        return Err(crate::LocalStorageError::InvalidData);
+    }
+    // Only unresolved reservations remain startup dependencies; settled history
+    // is immutable evidence and is not decoded on every service start.
+    let mut reservations=connection.prepare("SELECT amount_micros,pricing_json FROM compute_key_spend_reservations WHERE state IN ('reserved','sent','pending')")?;
+    for row in reservations.query_map([], |r| Ok((r.get::<_, u64>(0)?, r.get::<_, String>(1)?)))? {
+        let (amount, json) = row?;
+        let estimate: hiroute_domain::KeySpendEstimateV1 =
+            serde_json::from_str(&json).map_err(|_| crate::LocalStorageError::InvalidData)?;
+        if estimate.upper_bound_micros() != Some(amount) {
             return Err(crate::LocalStorageError::InvalidData);
         }
     }

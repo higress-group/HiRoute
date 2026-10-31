@@ -136,6 +136,14 @@ pub(crate) fn apply_definition(
                 .transpose()?
                 .unwrap_or(0);
         }
+        if let Some(cap) = value
+            .policy
+            .renewal
+            .as_ref()
+            .and_then(|r| r.balance_cap_micros)
+        {
+            wallet.balance = wallet.balance.min(amount(cap)?);
+        }
         wallet.definition = value.clone();
         save(db, workspace, &wallet)
     } else {
@@ -339,3 +347,7 @@ impl ControlStore {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "key_budget_calendar_tests.rs"]
+mod calendar_tests;

@@ -2582,6 +2582,7 @@ dependencies = [
  "hiroute-integrations",
  "hiroute-platform",
  "hiroute-platform-test-support",
+ "jiff",
  "hmac",
  "rusqlite",
  "rustix",
