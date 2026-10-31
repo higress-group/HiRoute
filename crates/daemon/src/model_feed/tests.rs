@@ -3,7 +3,8 @@ use hiroute_integrations::model_feed::FeedPayload;
 
 fn payload(sequence: u64) -> Vec<u8> {
     let mut snapshot = crate::release_catalog::current_fixture_catalog().official_snapshot();
-    snapshot.data_revision = sequence.max(1);
+    // Publication order is independent of the maintained embedded data revision.
+    snapshot.data_revision += sequence.max(1);
     publication_bytes(&FeedPayload::from_snapshot(
         snapshot,
         sequence,
@@ -536,6 +537,7 @@ fn announcement_only_publication_preserves_semantic_generation_and_confirmation_
 fn higher_publication_sequence_cannot_lower_semantic_data_even_after_removal() {
     let root = tempfile::tempdir().unwrap();
     let service = open(root.path(), 0);
+    let embedded_revision = service.current().official_snapshot().data_revision;
     fetch(&service, 5).unwrap();
     service
         .remove(&service.removal_digest().unwrap(), false, |_, _| Ok(()))
@@ -563,7 +565,7 @@ fn higher_publication_sequence_cannot_lower_semantic_data_even_after_removal() {
     );
     assert_eq!(
         restarted.store.read_data_floor().unwrap().unwrap().revision,
-        5
+        embedded_revision + 5
     );
 }
 
@@ -691,6 +693,7 @@ fn model_feed_registry_qualification_changes_advance_once_without_changing_seman
 fn embedded_v2_upgrade_preserves_choices_and_acceptance_without_network() {
     let root = tempfile::tempdir().unwrap();
     let service = open(root.path(), 0);
+    let embedded_revision = service.current().official_snapshot().data_revision;
     fetch(&service, 5).unwrap();
     service.settings(Some(false), Some(true)).unwrap();
     let captured = service.current();
@@ -731,6 +734,9 @@ fn embedded_v2_upgrade_preserves_choices_and_acceptance_without_network() {
                 .unwrap()
                 .payload_digest
         );
-        assert_eq!(captured.official_snapshot().data_revision, 5);
+        assert_eq!(
+            captured.official_snapshot().data_revision,
+            embedded_revision + 5
+        );
     }
 }
