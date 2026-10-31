@@ -99,7 +99,7 @@ export function PlanRuntimeSettings({ limits, options, previewAgent: fixedPrevie
         {codex.state === 'available' ? <>
           <div className="plan-capability-value" data-codex-capability-summary>
             <strong>{text(`上下文 ${compact(codex.context_window)} · 输入 ${codex.input_modalities.includes('image') ? '文本/图片' : '文本'}`, `Context ${compact(codex.context_window)} · Input ${codex.input_modalities.includes('image') ? 'text/images' : 'text'}`)}</strong>
-            <span>{text('推理强度由路由配置决定', 'Reasoning effort is determined by the route configuration')}</span>
+            <span>{codex.reasoning === 'follow_request' ? text('思考档位跟随请求，不支持时使用默认档位', 'Reasoning follows the request, with a default when unsupported') : text('推理强度由路由配置决定', 'Reasoning effort is determined by the route configuration')}</span>
           </div>
           {codex.limitations.map(limit => <div className="callout warn" role="status" data-codex-capability-limit={limit.kind} key={limit.kind}>
             <UiIcon name="warning" /><div>
