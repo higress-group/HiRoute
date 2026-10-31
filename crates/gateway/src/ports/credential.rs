@@ -334,6 +334,40 @@ pub enum CredentialError {
     InvalidLease,
 }
 
+/// A dropped/cancelled in-flight request retains its reservation. Only proven
+/// unsent requests or complete protocol usage release it.
+pub struct KeySpendGuard {
+    authority: Arc<dyn hiroute_domain::KeySpendAuthorityV1>,
+    id: String,
+    finished: std::sync::atomic::AtomicBool,
+    sent: bool,
+}
+impl KeySpendGuard {
+    pub fn mark_sent(&mut self) -> hiroute_domain::PortResult<()> {
+        self.authority.mark_sent(&self.id)?;
+        self.sent = true;
+        Ok(())
+    }
+    pub fn settle(&self, settlement: hiroute_domain::KeySpendSettlementV1) {
+        use std::sync::atomic::Ordering;
+        if self.finished.load(Ordering::Acquire) {
+            return;
+        }
+        if self.authority.settle(&self.id, &settlement).is_ok() {
+            self.finished.store(true, Ordering::Release);
+        }
+    }
+}
+impl Drop for KeySpendGuard {
+    fn drop(&mut self) {
+        self.settle(if self.sent {
+            hiroute_domain::KeySpendSettlementV1::Unknown
+        } else {
+            hiroute_domain::KeySpendSettlementV1::Unsent
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,39 +403,5 @@ mod tests {
         assert!(headers[header::AUTHORIZATION].is_sensitive());
         headers.remove(header::AUTHORIZATION);
         assert_eq!(headers, before);
-    }
-}
-
-/// A dropped/cancelled in-flight request retains its reservation. Only proven
-/// unsent requests or complete protocol usage release it.
-pub struct KeySpendGuard {
-    authority: Arc<dyn hiroute_domain::KeySpendAuthorityV1>,
-    id: String,
-    finished: std::sync::atomic::AtomicBool,
-    sent: bool,
-}
-impl KeySpendGuard {
-    pub fn mark_sent(&mut self) -> hiroute_domain::PortResult<()> {
-        self.authority.mark_sent(&self.id)?;
-        self.sent = true;
-        Ok(())
-    }
-    pub fn settle(&self, settlement: hiroute_domain::KeySpendSettlementV1) {
-        use std::sync::atomic::Ordering;
-        if self.finished.load(Ordering::Acquire) {
-            return;
-        }
-        if self.authority.settle(&self.id, &settlement).is_ok() {
-            self.finished.store(true, Ordering::Release);
-        }
-    }
-}
-impl Drop for KeySpendGuard {
-    fn drop(&mut self) {
-        self.settle(if self.sent {
-            hiroute_domain::KeySpendSettlementV1::Unknown
-        } else {
-            hiroute_domain::KeySpendSettlementV1::Unsent
-        });
     }
 }
