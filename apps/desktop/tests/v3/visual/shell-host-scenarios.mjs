@@ -27,8 +27,16 @@ export async function runShellHostScenarios(client,baseUrl,output) {
   for(const language of ['zh','en'])for(const theme of ['light','dark'])for(const [width,height]of [[1200,813],[755,600]]) {
     for(const phase of ['ready','waiting','failed','catalog-unavailable']){
       await open(language,theme,width,height,phase);
-      const box=await evaluate(client,`(()=>{const wrap=document.querySelector('.settings-wrap');const rows=[...wrap.querySelectorAll('.settings-row')];return {overflow:wrap.scrollWidth>wrap.clientWidth+1,rows:rows.map(e=>{const b=e.getBoundingClientRect();return{width:b.width,overflow:e.scrollWidth>e.clientWidth+1};})};})()`);
-      assert(!box.overflow && box.rows.every(r=>r.width>200&&!r.overflow),'Shell settings overflow: '+JSON.stringify(box));
+      const box={panels:[]};
+      for(const section of ['general','runtime','records']) {
+        await evaluate(client,`document.querySelector('.settings-tabs button[aria-controls$="-panel-${section}"]').click()`);
+        await waitFor(client,`!document.querySelector('[data-settings-panel="${section}"]').hidden`);
+        const panel=await evaluate(client,`(()=>{const wrap=document.querySelector('.settings-wrap');const panel=wrap.querySelector('[data-settings-panel="${section}"]');const rows=[...panel.querySelectorAll('.settings-row')];return {section:${JSON.stringify(section)},overflow:wrap.scrollWidth>wrap.clientWidth+1,rows:rows.map(e=>{const b=e.getBoundingClientRect();return{width:b.width,overflow:e.scrollWidth>e.clientWidth+1};})};})()`);
+        assert(!panel.overflow && panel.rows.length>0 && panel.rows.every(r=>r.width>200&&!r.overflow),'Shell settings overflow: '+JSON.stringify(panel));
+        box.panels.push(panel);
+      }
+      await evaluate(client,'document.querySelector(\'.settings-tabs button[aria-controls$="-panel-general"]\').click()');
+      await waitFor(client,'!document.querySelector(\'[data-settings-panel="general"]\').hidden');
       if(phase==='ready') {
         const hostScreenshot=await screenshot(`shell-host-${language}-${theme}-${width}x${height}.png`);
         results.push({id:`shell.host.${language}.${theme}.${width}`,state:'green',screenshot:hostScreenshot});
