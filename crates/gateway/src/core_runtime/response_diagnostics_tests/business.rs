@@ -148,7 +148,7 @@ fn assert_usage_sources(facts: &[Value], ordinal: u64, canonical_usage: bool) {
     }
 }
 
-fn wait_replay_clean(root: &Path) {
+pub(super) fn wait_replay_clean(root: &Path) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if !root.exists() || fs::read_dir(root).unwrap().next().is_none() {
