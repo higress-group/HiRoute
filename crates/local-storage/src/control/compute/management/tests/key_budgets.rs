@@ -224,7 +224,7 @@ fn key_budget_atomic_save_accounting_reopen_rotation_and_legacy_edits_preserve_s
         ),
         "key-budget-legacy-rename",
     );
-    let replacement = candidate("candidate/budget-rotate", "slot/replacement");
+    let replacement = candidate("candidate/budget-rotate", "slot/primary");
     registry
         .register_compute_candidate(replacement.clone())
         .unwrap();
