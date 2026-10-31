@@ -29,7 +29,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use bytes::Bytes;
 use hiroute_gateway_core::runtime::body::{
-    BodyDirection, BodyError, BodyPlanExecutor, MemoryRole, StreamBudget,
+    BodyDirection, BodyError, BodyPlanExecutor, ChargedBytes, MemoryRole, StreamBudget,
 };
 use hiroute_gateway_core::runtime::driver::{
     BoundRequestAdmission, DecisionCandidateAuthority, GatewayCoreLifecycle,
@@ -1663,19 +1663,34 @@ impl GatewaySession for ReplayBodySession<'_> {
     }
 
     async fn read_request_body(&mut self) -> Result<Option<Bytes>, TransportError> {
+        let budget = self.budget.clone();
+        Ok(self
+            .read_request_body_charged(&budget, 16 * 1024)
+            .await?
+            .map(ChargedBytes::into_tracked_bytes))
+    }
+
+    async fn read_request_body_charged(
+        &mut self,
+        budget: &StreamBudget,
+        max_chunk_bytes: usize,
+    ) -> Result<Option<ChargedBytes>, TransportError> {
         let Some(reader) = self.request_body.as_mut() else {
             return Ok(None);
         };
+        // Replay already owns a bounded, charged reader. An opaque network
+        // allowance would reserve megabytes and copy this charged chunk again.
         let chunk = reader
-            .next_charged(&self.budget, MemoryRole::RawRequest, 16 * 1024)
+            .next_charged(
+                budget,
+                MemoryRole::RawRequest,
+                max_chunk_bytes.min(16 * 1024),
+            )
             .map_err(|_| TransportError::Io("replay integrity failure".into()))?;
-        match chunk {
-            Some(chunk) => Ok(Some(chunk.into_tracked_bytes())),
-            None => {
-                self.request_body.take();
-                Ok(None)
-            }
+        if chunk.is_none() {
+            self.request_body.take();
         }
+        Ok(chunk)
     }
 
     async fn write_response_head(

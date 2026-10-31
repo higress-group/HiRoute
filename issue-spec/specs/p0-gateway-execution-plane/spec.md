@@ -449,6 +449,18 @@ Restart removes orphaned spill instead of resuming an in-flight request. This
 temporary-file boundary does not relax durable observation acknowledgements,
 publication, installation or recovery barriers.
 
+A Replay-backed session SHALL transfer bounded charged chunks directly from its
+existing reader. It SHALL NOT reserve an opaque network-codec maximum or copy an
+already charged chunk merely to re-enter the Core request path. The caller's chunk
+bound, actual allocation credit, verified range/EOF checks and last-reader cleanup
+remain authoritative. Ordinary network readers retain their opaque-codec allowance.
+
+#### Scenario: Retained request state leaves credit for a bounded Replay read
+
+- **WHEN** legitimate request state leaves enough credit for a bounded Replay read but less than the opaque network reader's maximum allowance
+- **THEN** memory- and disk-backed bodies continue byte-for-byte without a false budget refusal, and the returned backing retains its charge until consumed.
+- **AND** smaller caller chunk bounds, invalid zero bounds, real allocation refusal and complete cleanup remain enforced.
+
 Replay cannot encrypt/authenticate/hash/fingerprint the entire raw body, pre-scan it
 again before provider solely for integrity, or seal-copy a second full representation.
 Existing syntax/depth/structure checks remain. ContentRef contains request-local
