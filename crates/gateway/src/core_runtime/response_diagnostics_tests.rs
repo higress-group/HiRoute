@@ -83,7 +83,8 @@ fn production_listener_stream_diagnostics_and_private_capture() {
         "invalid_lifecycle",
         "missing_terminal",
         "duplicate_terminal",
-        "resource_limit",
+        "large_complete_frame",
+        "large_missing_terminal",
         "drain_failure",
         "capture_known",
         "capture_unknown",
@@ -291,15 +292,23 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             wire.extend_from_slice(b"data: [DONE]\n\ndata: [DONE]\n\n");
             (wire, Some("duplicate_terminal"), None, 3)
         }
-        "resource_limit" => (
-            frame(chat(
+        "large_complete_frame" | "large_missing_terminal" => {
+            let complete = case == "large_complete_frame";
+            let mut value = chat(
                 json!({"content":"x".repeat(6 * 1024 * 1024)}),
-                Value::Null,
-            )),
-            Some("resource_limit"),
-            None,
-            0,
-        ),
+                if complete { json!("stop") } else { Value::Null },
+            );
+            if complete {
+                value["usage"] =
+                    json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
+            }
+            (
+                frame(value),
+                (!complete).then_some("missing_terminal"),
+                None,
+                0,
+            )
+        }
         "drain_failure" => {
             let mut wire = Vec::new();
             for _ in 0..40 {
@@ -345,6 +354,7 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
     if matches!(
         case,
         "invalid_arguments"
+            | "large_complete_frame"
             | "unknown_metadata"
             | "capture_known"
             | "capture_known_usage_first"
@@ -664,11 +674,9 @@ fn run_case(case: &str, root: &Path) {
             .filter_map(|r| payload(r, "response_failure"))
             .filter(|failure| failure.get("capture").is_some())
             .collect();
-        if case == "resource_limit" {
-            // Previously accepted partial chunks may exhaust the capture
-            // decoder's independent 512 KiB budget before the main decoder
-            // rejects the 6 MiB frame. Cancellation may instead reach that
-            // worker first. Neither ordering creates a second main failure.
+        if case == "large_missing_terminal" {
+            // Optional capture may exhaust its independent capacity before a
+            // serviceable 6 MiB main frame reaches its true missing terminal.
             assert!(capture_failures.len() <= 1, "{case}: {log}");
         } else {
             // Afterbody semantic failures cancel the offending chunk before
@@ -690,12 +698,32 @@ fn run_case(case: &str, root: &Path) {
                 "reason",
                 "frame_index",
             ] {
-                assert_eq!(capture[key], failure[key], "{case}: {key}");
+                if case != "large_missing_terminal" || !matches!(key, "reason" | "frame_index") {
+                    assert_eq!(capture[key], failure[key], "{case}: {key}");
+                }
             }
             assert!(capture["attempt_token"].is_null());
             assert_eq!(capture["capture"]["ingress_protocol"], "anthropic_messages");
             assert_eq!(capture["capture"]["upstream_protocol"], "open_ai_chat");
         }
+    } else if case == "large_complete_frame" {
+        // Optional bounded observation must not prevent successful conversion
+        // and exact delivery when required main-decoder state exceeds 8 MiB.
+        for failure in records
+            .iter()
+            .filter_map(|r| payload(r, "response_failure"))
+        {
+            assert!(failure.get("capture").is_some(), "{failure}");
+        }
+        let text: String = String::from_utf8_lossy(&response)
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter_map(|event| event["delta"]["text"].as_str().map(str::to_owned))
+            .collect();
+        assert_eq!(text.len(), 6 * 1024 * 1024);
+        assert!(text.bytes().all(|byte| byte == b'x'));
+        assert!(String::from_utf8_lossy(&response).contains("event: message_stop"));
     } else {
         assert!(
             records
