@@ -237,6 +237,8 @@ fn key_budget_atomic_save_accounting_reopen_rotation_and_legacy_edits_preserve_s
         },
         &[],
     );
+    rotation.edit = None;
+    rotation.selected_model_refs = source.models.iter().map(|m| m.model_ref.clone()).collect();
     rotation.key_edits = vec![ComputeKeyEditV2::Replace {
         key_id: key.clone(),
         expected_generation: source.credentials[0].credential.generation(),
@@ -322,6 +324,8 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
         },
         &[],
     );
+    change.edit = None;
+    change.selected_model_refs = source.models.iter().map(|m| m.model_ref.clone()).collect();
     change.key_edits = vec![ComputeKeyEditV2::Add {
         input_candidate: added.candidate,
     }];
@@ -394,6 +398,8 @@ fn key_budget_new_key_is_limited_in_the_same_secret_activation_operation() {
         },
         &[],
     );
+    change.edit = None;
+    change.selected_model_refs = source.models.iter().map(|m| m.model_ref.clone()).collect();
     change.key_edits = vec![ComputeKeyEditV2::Add {
         input_candidate: facts.candidate.clone(),
     }];
@@ -543,15 +549,33 @@ fn key_budget_missing_or_substituted_companion_blocks_real_control_activation() 
                 }],
             })
             .unwrap();
-        let op = OperationId::parse(format!(
-            "op_{}",
-            if missing {
-                "a".repeat(32)
-            } else {
-                "b".repeat(32)
-            }
-        ))
-        .unwrap();
+        let runtime = TransactionRuntime::default();
+        let external = NoExternal;
+        let coordinator = TransactionCoordinator::new(
+            stores.control(),
+            stores.secrets(),
+            stores.runtime(),
+            &external,
+            &input,
+            &runtime,
+        );
+        coordinator.reconcile_startup_and_open().unwrap();
+        let prepared = planner
+            .prepare_apply(ComputeConnectionApplyRequestV1 {
+                spec: preview.result.spec.clone(),
+                accept_digest: preview.result.accept_digest.clone(),
+                expected_revisions: preview.result.expected_revisions.clone(),
+                idempotency_key: "budget-corrupt-proof".into(),
+            })
+            .unwrap();
+        let accepted = coordinator
+            .accept_prepared(
+                &WorkspaceId::default(),
+                &VerifiedPrincipal::for_local_control(),
+                prepared,
+            )
+            .unwrap();
+        let op = accepted.operation().operation_id.clone();
         let effect = stores
             .control()
             .apply_control(
