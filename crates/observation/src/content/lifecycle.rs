@@ -1,3 +1,4 @@
+use crate::store::cached_sql;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 
@@ -78,55 +79,55 @@ fn apply_begin(
 ) -> Result<ContentProjectionAck, ContentProjectionError> {
     ensure_scope(transaction, envelope)?;
     if let Some(parent) = &envelope.parent_transcript_root {
-        let exists: bool = transaction
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM transcript_roots_v2
+        let exists: bool = cached_sql::query_row(
+            transaction,
+            "SELECT EXISTS(SELECT 1 FROM transcript_roots_v2
                  WHERE workspace_id=?1 AND transcript_root=?2 AND conversation_id=?3)",
-                params![
-                    envelope.correlation.workspace_id.as_str(),
-                    parent.as_str(),
-                    envelope.correlation.conversation_id.as_str(),
-                ],
-                |row| row.get(0),
-            )
-            .map_err(|_| ContentProjectionError::ActivityStorage)?;
+            params![
+                envelope.correlation.workspace_id.as_str(),
+                parent.as_str(),
+                envelope.correlation.conversation_id.as_str(),
+            ],
+            |row| row.get(0),
+        )
+        .map_err(|_| ContentProjectionError::ActivityStorage)?;
         if !exists {
             return Err(ContentProjectionError::UnknownTranscriptRoot(
                 parent.clone(),
             ));
         }
     }
-    let inserted = transaction
-        .execute(
-            "INSERT OR IGNORE INTO conversation_content_streams_v2
+    let inserted = cached_sql::execute(
+        transaction,
+        "INSERT OR IGNORE INTO conversation_content_streams_v2
              (workspace_id, producer_id, producer_epoch, stream_id, request_id, direction,
               fork_id, conversation_id, session_scope, correlation_provenance, turn_id,
               attempt_id, parent_transcript_root, state, next_chunk_ordinal, begin_sequence,
               completeness, updated_at_unix_nanos)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                      'open', 0, ?14, 'unknown', ?15)",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                envelope.producer.stream.producer_id.as_str(),
-                envelope.producer.stream.producer_epoch.as_str(),
-                envelope.producer.stream.stream_id.as_str(),
-                envelope.correlation.request_id.as_str(),
-                envelope.direction.as_str(),
-                envelope.fork_id,
-                envelope.correlation.conversation_id.as_str(),
-                enum_json(&envelope.correlation.session_scope)?,
-                enum_json(&envelope.correlation.correlation_provenance)?,
-                envelope.correlation.turn_id.as_str(),
-                envelope.attempt_id.as_ref().map(|value| value.as_str()),
-                envelope
-                    .parent_transcript_root
-                    .as_ref()
-                    .map(|value| value.as_str()),
-                i64_from_u64(envelope.sequence)?,
-                i64_from_u64(envelope.occurred_at_unix_nanos)?,
-            ],
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            envelope.producer.stream.producer_id.as_str(),
+            envelope.producer.stream.producer_epoch.as_str(),
+            envelope.producer.stream.stream_id.as_str(),
+            envelope.correlation.request_id.as_str(),
+            envelope.direction.as_str(),
+            envelope.fork_id,
+            envelope.correlation.conversation_id.as_str(),
+            enum_json(&envelope.correlation.session_scope)?,
+            enum_json(&envelope.correlation.correlation_provenance)?,
+            envelope.correlation.turn_id.as_str(),
+            envelope.attempt_id.as_ref().map(|value| value.as_str()),
+            envelope
+                .parent_transcript_root
+                .as_ref()
+                .map(|value| value.as_str()),
+            i64_from_u64(envelope.sequence)?,
+            i64_from_u64(envelope.occurred_at_unix_nanos)?,
+        ],
+    )
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
     if inserted == 0 {
         return Err(ContentProjectionError::ContentStateConflict {
             expected: ConversationContentPhaseV2::Append,
@@ -183,23 +184,23 @@ fn apply_append(
         stream.active_content_id = None;
     }
     ensure_message_and_content(transaction, envelope)?;
-    let (prior_byte_count, expected_byte_count, content_state) = transaction
-        .query_row(
-            "SELECT accumulated_byte_count, expected_byte_count, state
+    let (prior_byte_count, expected_byte_count, content_state) = cached_sql::query_row(
+        transaction,
+        "SELECT accumulated_byte_count, expected_byte_count, state
              FROM content_instances_v2 WHERE workspace_id=?1 AND content_id=?2",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                content_id.as_str()
-            ],
-            |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, Option<i64>>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            },
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            content_id.as_str()
+        ],
+        |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        },
+    )
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
     if content_state != "installing" {
         return Err(ContentProjectionError::ContentStateConflict {
             expected: ConversationContentPhaseV2::Finish,
@@ -235,25 +236,25 @@ fn apply_append(
         Err(_) => return Err(ContentProjectionError::ContentStorage),
     }
     store.note_object_path(&path);
-    transaction
-        .execute(
-            "INSERT INTO content_chunks_v2
+    cached_sql::execute(
+        transaction,
+        "INSERT INTO content_chunks_v2
              (workspace_id, content_id, chunk_ordinal, object_path, byte_offset, byte_count,
               event_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                content_id.as_str(),
-                i64::from(rejected),
-                store
-                    .object_locator(&path)
-                    .map_err(|_| ContentProjectionError::ContentCorrupt)?,
-                prior_byte_count,
-                i64_from_u64(bytes.len() as u64)?,
-                envelope.event_id.as_str(),
-            ],
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            content_id.as_str(),
+            i64::from(rejected),
+            store
+                .object_locator(&path)
+                .map_err(|_| ContentProjectionError::ContentCorrupt)?,
+            prior_byte_count,
+            i64_from_u64(bytes.len() as u64)?,
+            envelope.event_id.as_str(),
+        ],
+    )
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
     let accumulated = prior_byte_count
         .checked_add(i64_from_u64(bytes.len() as u64)?)
         .ok_or(ContentProjectionError::Invalid("canonical_bytes_base64"))?;
@@ -266,39 +267,39 @@ fn apply_append(
             rejected: accumulated.to_string(),
         });
     }
-    transaction
-        .execute(
-            "UPDATE content_instances_v2 SET accumulated_byte_count=?3
+    cached_sql::execute(
+        transaction,
+        "UPDATE content_instances_v2 SET accumulated_byte_count=?3
              WHERE workspace_id=?1 AND content_id=?2",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                content_id.as_str(),
-                accumulated
-            ],
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            content_id.as_str(),
+            accumulated
+        ],
+    )
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
     let next = rejected
         .checked_add(1)
         .ok_or(ContentProjectionError::Invalid("chunk_ordinal"))?;
-    transaction
-        .execute(
-            "UPDATE conversation_content_streams_v2
+    cached_sql::execute(
+        transaction,
+        "UPDATE conversation_content_streams_v2
              SET next_chunk_ordinal=?7, active_content_id=?8, updated_at_unix_nanos=?9
              WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND request_id=?4
                AND direction=?5 AND fork_id=?6",
-            params![
-                envelope.producer.stream.producer_id.as_str(),
-                envelope.producer.stream.producer_epoch.as_str(),
-                envelope.producer.stream.stream_id.as_str(),
-                envelope.correlation.request_id.as_str(),
-                envelope.direction.as_str(),
-                envelope.fork_id,
-                i64::from(next),
-                content_id.as_str(),
-                i64_from_u64(envelope.occurred_at_unix_nanos)?,
-            ],
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+        params![
+            envelope.producer.stream.producer_id.as_str(),
+            envelope.producer.stream.producer_epoch.as_str(),
+            envelope.producer.stream.stream_id.as_str(),
+            envelope.correlation.request_id.as_str(),
+            envelope.direction.as_str(),
+            envelope.fork_id,
+            i64::from(next),
+            content_id.as_str(),
+            i64_from_u64(envelope.occurred_at_unix_nanos)?,
+        ],
+    )
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
     let expected = accumulated_expected(transaction, envelope, content_id)?;
     if expected.is_some_and(|expected| expected == accumulated as u64) {
         acknowledged_blobs.push(finalize_content(
@@ -308,14 +309,14 @@ fn apply_append(
             content_id.as_str(),
         )?);
         cleanup_content_ids.push(content_id.clone());
-        transaction
-            .execute(
-                "UPDATE conversation_content_streams_v2 SET active_content_id=NULL
+        cached_sql::execute(
+            transaction,
+            "UPDATE conversation_content_streams_v2 SET active_content_id=NULL
                  WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND request_id=?4
                    AND direction=?5 AND fork_id=?6",
-                coordinate_params(envelope),
-            )
-            .map_err(|_| ContentProjectionError::ActivityStorage)?;
+            coordinate_params(envelope),
+        )
+        .map_err(|_| ContentProjectionError::ActivityStorage)?;
     }
     touch_content_session(transaction, envelope)?;
     Ok(ContentProjectionAck {
@@ -381,28 +382,28 @@ fn apply_terminal(
         Some(hiroute_domain::ContentCompletenessDeltaV2::Partial) => "partial",
         Some(hiroute_domain::ContentCompletenessDeltaV2::Unknown) | None => "unknown",
     };
-    transaction
-        .execute(
-            "UPDATE conversation_content_streams_v2
+    cached_sql::execute(
+        transaction,
+        "UPDATE conversation_content_streams_v2
              SET state=?7, result_transcript_root=?8, active_content_id=NULL,
                  terminal_sequence=?9, completeness=?10, updated_at_unix_nanos=?11
              WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND request_id=?4
                AND direction=?5 AND fork_id=?6",
-            params![
-                envelope.producer.stream.producer_id.as_str(),
-                envelope.producer.stream.producer_epoch.as_str(),
-                envelope.producer.stream.stream_id.as_str(),
-                envelope.correlation.request_id.as_str(),
-                envelope.direction.as_str(),
-                envelope.fork_id,
-                state,
-                result.as_str(),
-                i64_from_u64(envelope.sequence)?,
-                completeness,
-                i64_from_u64(envelope.occurred_at_unix_nanos)?,
-            ],
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+        params![
+            envelope.producer.stream.producer_id.as_str(),
+            envelope.producer.stream.producer_epoch.as_str(),
+            envelope.producer.stream.stream_id.as_str(),
+            envelope.correlation.request_id.as_str(),
+            envelope.direction.as_str(),
+            envelope.fork_id,
+            state,
+            result.as_str(),
+            i64_from_u64(envelope.sequence)?,
+            completeness,
+            i64_from_u64(envelope.occurred_at_unix_nanos)?,
+        ],
+    )
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
     touch_content_session(transaction, envelope)?;
     Ok(ContentProjectionAck {
         transcript_root: Some(result.to_string()),
@@ -449,22 +450,22 @@ fn ensure_message_and_content(
         .as_ref()
         .ok_or(ContentProjectionError::Invalid("content_blob_digest"))?;
     let occurred_at = i64_from_u64(envelope.occurred_at_unix_nanos)?;
-    let logical_message: Option<(String, String)> = transaction
-        .query_row(
-            "SELECT message_instance_id, message_role FROM content_message_instances_v2
+    let logical_message: Option<(String, String)> = cached_sql::query_row(
+        transaction,
+        "SELECT message_instance_id, message_role FROM content_message_instances_v2
          WHERE workspace_id=?1 AND request_id=?2 AND direction=?3 AND fork_id=?4
            AND message_ordinal=?5",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                envelope.correlation.request_id.as_str(),
-                envelope.direction.as_str(),
-                envelope.fork_id,
-                i64::from(message_ordinal),
-            ],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            envelope.correlation.request_id.as_str(),
+            envelope.direction.as_str(),
+            envelope.fork_id,
+            i64::from(message_ordinal),
+        ],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+    .optional()
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
     let rejected_message = (message.to_string(), role.to_owned());
     if logical_message
         .as_ref()
@@ -497,7 +498,8 @@ fn ensure_message_and_content(
         message.as_str(),
         &message_projection,
         || {
-            transaction.execute(
+            cached_sql::execute(
+                transaction,
                 "INSERT INTO content_message_instances_v2
              (workspace_id, message_instance_id, conversation_id, request_id, direction, fork_id,
               message_ordinal, message_role, occurred_at_unix_nanos)
@@ -516,8 +518,7 @@ fn ensure_message_and_content(
             )
         },
         || {
-            transaction.query_row(
-            "SELECT conversation_id, request_id, direction, fork_id, message_ordinal, message_role
+            cached_sql::query_row(transaction, "SELECT conversation_id, request_id, direction, fork_id, message_ordinal, message_role
              FROM content_message_instances_v2 WHERE workspace_id=?1 AND message_instance_id=?2",
             params![envelope.correlation.workspace_id.as_str(), message.as_str()],
             |row| Ok(serde_json::json!([row.get::<_, String>(0)?, row.get::<_, String>(1)?,
@@ -555,7 +556,8 @@ fn ensure_message_and_content(
         content.as_str(),
         &content_projection,
         || {
-            transaction.execute(
+            cached_sql::execute(
+                transaction,
                 "INSERT INTO content_instances_v2
              (workspace_id, content_id, message_instance_id, request_id, direction, fork_id,
               part_ordinal, content_kind, canonical_media_type, content_blob_digest,
@@ -583,7 +585,8 @@ fn ensure_message_and_content(
             )
         },
         || {
-            transaction.query_row(
+            cached_sql::query_row(
+                transaction,
                 "SELECT message_instance_id, request_id, direction, fork_id, part_ordinal,
                     content_kind, canonical_media_type, content_blob_digest, expected_byte_count,
                     has_content_ref, transport_frame_id, downstream_delivery
@@ -623,7 +626,8 @@ fn ensure_message_and_content(
         &reference_key,
         &reference_projection,
         || {
-            transaction.execute(
+            cached_sql::execute(
+                transaction,
                 "INSERT INTO request_content_refs_v2
              (workspace_id, request_id, direction, fork_id, message_instance_id, content_id,
               message_ordinal, part_ordinal, blob_digest)
@@ -642,7 +646,8 @@ fn ensure_message_and_content(
             )
         },
         || {
-            transaction.query_row(
+            cached_sql::query_row(
+                transaction,
                 "SELECT message_instance_id, content_id, blob_digest FROM request_content_refs_v2
              WHERE workspace_id=?1 AND request_id=?2 AND direction=?3 AND fork_id=?4
                AND message_ordinal=?5 AND part_ordinal=?6",
