@@ -21,6 +21,8 @@ import sys
 import tempfile
 import time
 
+sys.dont_write_bytecode = True
+
 
 REMOTE_READ = r'''
 import hashlib, json, os, stat, sys

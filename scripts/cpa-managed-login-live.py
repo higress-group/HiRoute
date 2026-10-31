@@ -25,6 +25,9 @@ import tempfile
 import time
 import webbrowser
 
+# This driver may load helpers from a retained validation checkout.
+sys.dont_write_bytecode = True
+
 
 def support_module(name):
     spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(name + '.py'))
