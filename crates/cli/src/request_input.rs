@@ -118,6 +118,22 @@ pub(crate) fn read_json(reader: impl Read, limit: u64) -> Result<Value, ErrorCod
     Ok(value)
 }
 
+/// Inherited setup JSON from `--spec-fd`, including stdin (`0`).
+/// Regular files and pipes are accepted; devices are rejected. Bound 1 MiB and 2s.
+#[cfg(unix)]
+pub(crate) fn read_json_from_fd(fd: u32) -> Result<Value, ErrorCode> {
+    let bytes = crate::unix_bounded_fd::read_unix_fd_bounded(
+        fd,
+        crate::unix_bounded_fd::UnixFdReadBounds {
+            min_fd: 0,
+            max_bytes: MAX_REQUEST_BYTES as usize,
+            timeout: std::time::Duration::from_secs(2),
+        },
+    )
+    .map_err(|_| ErrorCode::InvalidArguments)?;
+    read_json(bytes.as_slice(), MAX_REQUEST_BYTES)
+}
+
 // Value's normal deserializer silently keeps the last duplicate member. Reject duplicates
 // recursively before command owners choose a schema or deserialize tagged/flattened DTOs.
 struct StrictValue(Value);
@@ -225,5 +241,70 @@ mod tests {
             read_json(bytes.as_slice(), bytes.len() as u64 - 1),
             Err(ErrorCode::InvalidArguments)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn json_from_fd_accepts_file_and_pipe_and_rejects_device_and_oversize() {
+        use std::io::{Seek, SeekFrom, Write};
+        use std::os::fd::AsRawFd;
+
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(br#"{"ok":true}"#).unwrap();
+        file.seek(SeekFrom::Start(0)).unwrap();
+        assert_eq!(
+            read_json_from_fd(file.as_raw_fd() as u32).unwrap(),
+            serde_json::json!({"ok": true})
+        );
+
+        let (read, write) = nix::unistd::pipe().unwrap();
+        nix::unistd::write(&write, br#"{"ok":true}"#).unwrap();
+        drop(write);
+        assert_eq!(
+            read_json_from_fd(read.as_raw_fd() as u32).unwrap(),
+            serde_json::json!({"ok": true})
+        );
+
+        let zero = std::fs::File::open("/dev/zero").unwrap();
+        assert_eq!(
+            read_json_from_fd(zero.as_raw_fd() as u32),
+            Err(ErrorCode::InvalidArguments)
+        );
+
+        let mut oversized = tempfile::tempfile().unwrap();
+        oversized
+            .write_all(&vec![b'x'; MAX_REQUEST_BYTES as usize + 1])
+            .unwrap();
+        oversized.seek(SeekFrom::Start(0)).unwrap();
+        assert_eq!(
+            read_json_from_fd(oversized.as_raw_fd() as u32),
+            Err(ErrorCode::InvalidArguments)
+        );
+    }
+
+    #[cfg(unix)]
+    fn json_from_fd_timeout_under_watchdog(kind: &str, prefix: &[u8]) {
+        if let Some(fd) = crate::unix_bounded_fd::watchdog::child_fd() {
+            std::process::exit(if read_json_from_fd(fd).is_err() { 0 } else { 1 });
+        }
+        let (read, write) = nix::unistd::pipe().unwrap();
+        if !prefix.is_empty() {
+            nix::unistd::write(&write, prefix).unwrap();
+        }
+        let child = crate::unix_bounded_fd::watchdog::spawn(&read, kind);
+        crate::unix_bounded_fd::watchdog::wait(child, std::time::Duration::from_secs(5));
+        drop(write);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn json_from_fd_empty_pipe_times_out_under_watchdog() {
+        json_from_fd_timeout_under_watchdog("spec-empty", b"");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn json_from_fd_partial_json_without_eof_times_out_under_watchdog() {
+        json_from_fd_timeout_under_watchdog("spec-partial", br#"{"ok":true}"#);
     }
 }

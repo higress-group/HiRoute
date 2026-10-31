@@ -20,7 +20,8 @@ then select the permitted schema/intent and retain semantic checks:
 - `control_plane.rs`: typed management requests and Preview/Apply schema unions.
 - `observation.rs`: sessions, timeline, Facts, value and plan-quality intents.
 - `lib.rs`: Operation idempotency lookup; legacy positional command codecs.
-- `worker/input.rs`: dependency selection only; `--file` remains prompt text.
+- `worker/input.rs`: dependency selection only; `--file` is prompt text from a finite
+  regular file. Opening a FIFO does not wait for a writer.
 - `tasks.rs` and `work_plans.rs`: staged collaboration selectors and grant separation;
   adding a source does not promote these commands to the public command registry.
 
@@ -33,6 +34,10 @@ the borrowed handle without taking the caller's ownership, rejects stdio and non
 and bounds EOF reads in time and bytes. Unix descriptor flags retain their contracts;
 neither a request-file selector nor native handle text contains the credential itself.
 The shared reader does not execute a shell, alter requests or choose a business schema.
+Unix `--spec-fd`, including `0` for stdin, accepts an inherited regular file or pipe,
+rejects devices, and bounds the JSON read to 1 MiB and 2s, matching Windows
+`--spec-handle`. The deadline uses poll on `/dev/fd/N` without changing
+inherited file-status flags.
 
 `sessions receipt RECEIPT_ID` continues to serialize `SessionLookupV1` and read the v1
 RoutingReceipt. Both JSON sources accept only an `ObservationReadRequestV2` with the
