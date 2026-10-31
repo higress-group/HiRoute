@@ -48,7 +48,7 @@ impl LocalObservationStore {
             super::value_rollup::archive_request_value(&transaction, &spec, request, archive_id)?;
             crate::valuation::archive_request(&transaction, workspace, session, request)
                 .map_err(|_| Error::Unavailable)?;
-            cached_sql::execute(transaction, "INSERT OR IGNORE INTO observation_request_tombstones_v2(workspace_id,request_id,deleted_ms) VALUES(?1,?2,?3)",params![workspace,request,now_ms]).map_err(|_|Error::Unavailable)?;
+            cached_sql::execute(&transaction, "INSERT OR IGNORE INTO observation_request_tombstones_v2(workspace_id,request_id,deleted_ms) VALUES(?1,?2,?3)",params![workspace,request,now_ms]).map_err(|_|Error::Unavailable)?;
             for table in ["conversation_content_events_v2", "execution_fact_events"] {
                 super::records::retire_request_feedback(
                     &transaction,
@@ -59,7 +59,7 @@ impl LocalObservationStore {
                 )
                 .map_err(|_| Error::Unavailable)?;
             }
-            cached_sql::execute(transaction, "DELETE FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id IN(SELECT content_id FROM content_instances_v2 WHERE workspace_id=?1 AND request_id=?2)",params![workspace,request]).map_err(|_|Error::Unavailable)?;
+            cached_sql::execute(&transaction, "DELETE FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id IN(SELECT content_id FROM content_instances_v2 WHERE workspace_id=?1 AND request_id=?2)",params![workspace,request]).map_err(|_|Error::Unavailable)?;
             for table in [
                 "observation_sensitive_payloads_v2",
                 "content_instances_v2",
@@ -85,8 +85,8 @@ impl LocalObservationStore {
                     )
                     .map_err(|_| Error::Unavailable)?;
             }
-            cached_sql::execute(transaction, "DELETE FROM turns WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests r WHERE r.workspace_id=?1 AND r.turn_id=turns.turn_id)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
-            cached_sql::execute(transaction, "UPDATE sessions SET content_completeness='expired',facts_completeness='unknown',tombstone_reason='retention_expired',agent_id='',correlation='unproven' WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests WHERE workspace_id=?1 AND session_id=?2)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
+            cached_sql::execute(&transaction, "DELETE FROM turns WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests r WHERE r.workspace_id=?1 AND r.turn_id=turns.turn_id)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
+            cached_sql::execute(&transaction, "UPDATE sessions SET content_completeness='expired',facts_completeness='unknown',tombstone_reason='retention_expired',agent_id='',correlation='unproven' WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests WHERE workspace_id=?1 AND session_id=?2)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
         }
         // Removing the only Partial/Unknown request may improve completeness.
         // Rebuild once per affected session, never once per newly ingested fact.
@@ -107,7 +107,7 @@ impl LocalObservationStore {
                 hiroute_domain::FactsCompleteness::Unknown => "unknown",
             };
             cached_sql::execute(
-                transaction,
+                &transaction,
                 "UPDATE sessions SET facts_completeness=?3 WHERE workspace_id=?1 AND session_id=?2",
                 params![workspace, session, value],
             )
