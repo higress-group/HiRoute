@@ -64,6 +64,10 @@ Keep asking follow-up questions or let your Agent advance a long task. HiRoute c
 at supported new-input and context-reconstruction boundaries; tool continuations normally
 reuse the stage's decision. See [routing behavior and supported-client limits](apps/website/content/guides/model-routing.en.md).
 
+<p align="center">
+  <a href="https://hiroute.ai/en/#tour"><img src="apps/website/public/media/hiroute-promo-en-readme.jpg" alt="Watch the 3-minute HiRoute tour: a real session where a new model handles routine turns and the primary model steps in after a low score" width="760"></a>
+</p>
+
 [Watch the product tour](https://hiroute.ai/en/#tour) · [Explore routing modes](decision-extensions/README.md)
 
 ## Try new models with a primary model ready to help
