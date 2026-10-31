@@ -380,3 +380,16 @@ semantic identity against HEAD and the supplied baseline before release gating.
 Hosts use product-session; published execution remains in its existing owner.
 
 The [routing input fence](../../crates/local-storage/src/control/read_stamp.rs) advances with relevant local configuration writes, including external SQLite writers. Its [schema guards](../../crates/local-storage/src/migrations/routing_read_v32.rs) exclude native read grants and cursors. Routing still revalidates the actual CPA batch and current catalog identity.
+
+### Key spending authority
+
+[Key allowance policy](../../crates/domain/src/compute/management/key_budget.rs)
+wraps source saves without changing released source bytes. The
+[indexed Control ledger](../../crates/local-storage/src/control/key_budgets.rs)
+reserves before forwarding and settles captured protocol usage independently of
+observation delivery. Gateway credential leases carry that authority, including
+source-reusing decision leases, so existing published routes obey current limits.
+The [shared form](../../apps/desktop/src/features/key-budgets/KeyBudgetEditor.tsx)
+serves Key management and subscription/API setup. See the
+[credential contract](../../issue-spec/specs/credential-pools/spec.md) and
+[real Gateway scenario](../../crates/daemon/tests/support/key_budget_product.py).

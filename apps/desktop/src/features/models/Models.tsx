@@ -426,7 +426,7 @@ export function Models(props: Props) {
               ? <button className="btn" type="button" onClick={() => props.onReauthorize?.(source.source_id)}>{access === 'subscription' ? subscriptionMode === 'cpa_managed' ? text('重新独立登录', 'Sign in independently again') : text('重新检查订阅', 'Check subscription again') : text('重新检查接入', 'Check connection again')}</button>
                 : status !== 'needs_credentials' && canRecheck
                 ? <button className="btn" type="button" onClick={() => void recheckSource()}>{text('检查接入', 'Check connection')}</button>
-                : canManageCredentials && <button className="btn" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>}
+                : canManageCredentials && <button className="btn" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理 Key 与额度', 'Manage keys and allowances')}</button>}</div>}
           {recheckError && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{recheckError}</span><button className="btn" type="button" disabled={!canRecheck} onClick={() => void recheckSource()}>{text('重试', 'Retry')}</button></div>}
           {recheckNotice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{recheckNotice}</span></div></div>}
 
@@ -434,7 +434,7 @@ export function Models(props: Props) {
           {networkDirty && <p className="field-help" role="status">{text('请先保存或放弃网络修改，再切换或修改接入；保存结果未确认时，请刷新原操作。', 'Save or discard the network changes before switching or editing the connection. If a save is unconfirmed, refresh its original operation.')}</p>}
           {source.provenance !== 'connector_owned' && <NativeSourceNetworkEditor key={source.source_id} sourceId={source.source_id} language={props.language} mutable={props.mutable && !draft && !rechecking && !submitting} reveal={networkReveal} onDirty={setNetworkDirty} onSaved={async () => { setNetworkFailure(null); setRecheckError(''); setRecheckNotice(text('网络设置已更新，请重新检查接入。', 'Network settings changed. Check the connection again.')); await props.onRefresh(); }} />}
           <section className="detail-section">
-            <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>
+            <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理 Key 与额度', 'Manage keys and allowances')}</button>}</div>
             <strong>{source.display_name}</strong>
             <p className="field-help">{connectionName(source.connection_identity?.connection_option_id, props.language, source.connection_identity?.product_label ?? '')}</p>
             <div className="actions"><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => setLifecycle({ source, action: 'rename' })}>{text('重命名', 'Rename')}</button>{props.onAppend && <button className="btn" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => props.onAppend?.(source)}>{text('向此接入添加模型', 'Add models to this connection')}</button>}</div>
@@ -478,12 +478,12 @@ export function Models(props: Props) {
     {lifecycle && <ConnectionLifecycleDialog {...lifecycle} language={props.language} snapshot={props.snapshot} mutable={props.mutable} planNames={Object.fromEntries((props.plans ?? []).map(plan => [plan.agent_plan_id, `${plan.desired.display_name}${plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}`]))} onPreview={props.onPreview} onApply={props.onApply} onRefresh={props.onRefresh} onOpenPlan={props.onOpenPlan} onClose={() => setLifecycle(null)} />}
     <Dialog
       open={Boolean(draft && source)}
-      title={text('管理接入凭据', 'Manage connection credentials')}
+      title={text('API Key 与额度', 'API keys and allowances')}
       description={sourceLabel}
       closeLabel={text('关闭凭据设置', 'Close credential settings')}
       closeDisabled={submitting}
       onClose={() => { if (!submitting) cancelCredentials(); }}
-      footer={<><button className="btn" type="button" disabled={submitting} onClick={cancelCredentials}>{text('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-primary" type="button" disabled={submitting || networkDirty || !props.mutable || !draft?.selectedModels.length} onClick={() => void saveCredentials()}>{submitting ? text('正在保存…', 'Saving…') : text('保存凭据', 'Save credentials')}</button></>}
+      footer={<><button className="btn" type="button" disabled={submitting} onClick={cancelCredentials}>{text('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-primary" type="button" disabled={submitting || networkDirty || !props.mutable || !draft?.selectedModels.length} onClick={() => void saveCredentials()}>{submitting ? text('正在保存…', 'Saving…') : text('保存设置', 'Save settings')}</button></>}
     >
       {source && draft && <CredentialEditor language={props.language} source={source} model={model} draft={draft} errorCode={errorCode} onChange={setDraft} onEditingChange={setCredentialEditing} readKeyMasks={props.onReadKeyMasks} />}
     </Dialog>

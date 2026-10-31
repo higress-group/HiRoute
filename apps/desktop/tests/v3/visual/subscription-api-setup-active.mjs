@@ -165,9 +165,25 @@ try {
     assert.equal(await evaluate(client, 'inlineSetup.trace.filter(x=>x.command==="release_protected_model_input").length'), 1);
     assert.equal(await evaluate(client, 'inlineSetup.trace.filter(x=>x.command==="apply_compute_save").length'), 1);
   });
+  for (const provider of ['codex','claude']) await run(`${provider}-inline-allowance-one-save`,async()=>{
+    await open({provider});await selectNew();
+    await click('[data-key-budget] input[type=checkbox]');
+    await change('[data-key-budget] .key-budget-amount input','100');
+    await click('[data-key-budget] summary');
+    const initialSelector='[data-key-budget] details .field:last-of-type input';
+    await change(initialSelector,'25');
+    assert.equal(await evaluate(client,'document.querySelectorAll(".modal-foot .btn-primary").length'),1);
+    await screenshot(`inline-budget-${provider}`);
+    await save();await linked();
+    const actual=await evaluate(client,'inlineSetup.trace.filter(x=>x.command==="preview_compute_key_budgets")');
+    assert.equal(actual.length,1);const edit=actual[0].payload.keyBudgetEdits[0];
+    assert.deepEqual(edit.key,{kind:'input',candidate_ref:'input/api'});
+    assert.equal(edit.assignment.policy.amount_micros,100000000);assert.equal(edit.assignment.initial_remaining_micros,25000000);
+    assert.equal(edit.assignment.policy.renewal.mode,'reset');
+  });
   for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const [width, height] of [[755, 600], [1200, 813]]) await run(`layout-${language}-${theme}-${width}`, async () => {
     await open({ provider: language === 'en' ? 'claude' : 'codex', language, theme, width, height }); await selectNew();
-    const geometry = await evaluate(client, `(()=>{const d=document.querySelector('[role=dialog]'), f=d.querySelector('.modal-foot'), b=f.querySelector('.btn-primary'), form=d.querySelector('[data-subscription-api-setup]');const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}};return {dialog:rect(d),footer:rect(f),button:rect(b),key:rect(form.querySelector("[data-subscription-api-key]")),creditGuide:rect(form.querySelector(".subscription-api-credits a").closest("p")),creditGuideHref:form.querySelector(".subscription-api-credits a").href,bodyScroll:d.scrollWidth,bodyClient:d.clientWidth,fields:[...form.querySelectorAll('.field-label,input,select')].map(rect),text:form.innerText}})()`);
+    const geometry = await evaluate(client, `(()=>{const d=document.querySelector('[role=dialog]'), f=d.querySelector('.modal-foot'), b=f.querySelector('.btn-primary'), form=d.querySelector('[data-subscription-api-setup]');const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height}};return {dialog:rect(d),footer:rect(f),button:rect(b),key:rect(form.querySelector("[data-subscription-api-key]")),creditGuide:rect(form.querySelector(".subscription-api-credits a").closest("p")),creditGuideHref:form.querySelector(".subscription-api-credits a").href,bodyScroll:d.scrollWidth,bodyClient:d.clientWidth,fields:[...form.querySelectorAll('.field-label,input:not([type=checkbox]),select')].map(rect),text:form.innerText}})()`);
     assert.ok(geometry.button.top >= 0 && geometry.button.bottom <= height + 1, 'main action stays visible');
     assert.ok(geometry.bodyScroll <= geometry.bodyClient + 1, 'no horizontal overflow');
     assert.ok(geometry.creditGuide.bottom <= geometry.key.top, 'credit claim guidance appears above the API key field');

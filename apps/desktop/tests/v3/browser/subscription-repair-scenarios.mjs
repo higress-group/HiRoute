@@ -212,7 +212,7 @@ const scenarios = [
     assert(text().includes('没有匹配的模型'), 'API filter did not show empty');
     await click('清除筛选');
     assert(document.querySelector('.models-feature .list-row'), 'Model list failed to recover');
-    assert(!button('管理凭据'), 'ConnectorOwned exposed manual keys');
+    assert(!button('管理 Key 与额度'), 'ConnectorOwned exposed manual keys');
   }],
   ['scan empty, runtime unavailable and failed remain distinct', async () => {
     await fresh(control => { control.subscriptions = []; control.handlers.compute_scan = () => ({ connections: [], diagnostics: [] }); });

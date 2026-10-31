@@ -48,7 +48,7 @@ try {
     await navigate(client,`http://127.0.0.1:${httpPort}/key-budgets.html?lang=${language}&theme=${theme}`,{width,height});
     await waitFor(client, 'document.querySelector(".list-row")!==null');
     await click('.list-row');
-    await click('.btn',language==='zh'?'管理凭据':'Manage credentials');
+    await click('.btn',language==='zh'?'管理 Key 与额度':'Manage keys and allowances');
     await waitFor(client,'document.querySelector("[data-key-budget] input[type=checkbox]")?.checked===true');
     await click('[data-key-budget] summary',language==='zh'?'更多额度设置':'More allowance settings');
     const geometry=await evaluate(client,`(() => {const modal=document.querySelector('.modal'), body=modal.querySelector('.modal-body'),footer=modal.querySelector('.modal-foot');return {overflow:body.scrollWidth-body.clientWidth,footerBottom:footer.getBoundingClientRect().bottom,height:innerHeight,fields:[...body.querySelectorAll('.key-budget-editor input:not([type=checkbox]),.key-budget-editor select')].filter(e=>e.getClientRects().length).map(e=>{const r=e.getBoundingClientRect(),p=body.getBoundingClientRect();return {width:r.width,left:r.left-p.left,right:r.right-p.right}})};})()`);
@@ -57,6 +57,9 @@ try {
     // The original monthly policy is visible; changing an amount retains its ID/CAS.
     await change('[data-key-budget] .key-budget-amount input','120');
     const shot=await client.send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(output,`${name}.png`),Buffer.from(shot.data,'base64'));
+    await evaluate(client, '(()=>{const body=document.querySelector(".modal-body");body.scrollTop=body.scrollHeight;return true;})()');
+    await new Promise(resolve=>setTimeout(resolve,100));
+    const bottom=await client.send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(output,`${name}-advanced.png`),Buffer.from(bottom.data,'base64'));
     await click('.modal-foot .btn-primary');
     await waitFor(client,'window.budgetTrace.length===1 && !document.querySelector(".modal")');
     const saved=await evaluate(client,'window.budgetTrace[0]');
@@ -64,7 +67,7 @@ try {
     results.push({name,...geometry,singleSave:true});
   }
   await navigate(client,`http://127.0.0.1:${httpPort}/key-budgets.html?unavailable=1`,{width:755,height:600});
-  await click('.list-row');await click('.btn','管理凭据');await waitFor(client,'document.querySelector(".modal")?.textContent.includes("额度暂不可用")');
+  await click('.list-row');await click('.btn','管理 Key 与额度');await waitFor(client,'document.querySelector(".modal")?.textContent.includes("额度暂不可用")');
   assert.equal(await evaluate(client,'document.querySelector("[data-key-budget]")!==null'),false);
   await writeFile(path.join(output,'results.json'),JSON.stringify({state:'green',scenarios:results,unavailablePreservesLimits:true},null,2));
   console.log(JSON.stringify({state:'green',scenarios:results.length+1,output}));

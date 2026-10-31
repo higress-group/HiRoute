@@ -55,7 +55,10 @@ impl KeySpendEstimateV1 {
     fn rates(&self) -> Option<[u64; 4]> {
         self.pricing.validate().ok()?;
         let quote = self.pricing.quote.as_ref()?;
-        if !quote.unknown_reasons.is_empty() {
+        if self.pricing.unknown_reason.is_some()
+            || quote.valuation_kind != crate::PriceValuationKindV1::UsageEstimate
+            || !quote.unknown_reasons.is_empty()
+        {
             return None;
         }
         fn known(rate: &TokenRateV1) -> Option<u64> {

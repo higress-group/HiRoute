@@ -152,6 +152,7 @@ the existing subscription guidance.
 - **AND** in-flight/uncertain reservations remain accounted for after restart.
 
 Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/279
 - https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488572844
 
 ## Implementation references
@@ -159,3 +160,6 @@ Source SPEC comments:
 - [Current Native credential pool](../../../crates/local-storage/src/control/compute/management/runtime_pool.rs).
 - [Protected recognition masks](../../../crates/daemon/src/control/runtime/model_connections/key_masks.rs).
 - [Single-save model editing](../../../apps/desktop/src/features/models/model-draft.ts).
+
+- [Local spending ledger](../../../crates/local-storage/src/control/key_budgets.rs).
+- [Shared Key and subscription budget form](../../../apps/desktop/src/features/key-budgets/KeyBudgetEditor.tsx).
