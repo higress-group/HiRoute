@@ -9,6 +9,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,10 @@ import time
 
 sys.dont_write_bytecode = True
 
+_usage_spec = importlib.util.spec_from_file_location(
+    'subscription_usage_evidence', Path(__file__).with_name('cpa-managed-login-evidence.py'))
+usage_evidence = importlib.util.module_from_spec(_usage_spec)
+_usage_spec.loader.exec_module(usage_evidence)
 
 REMOTE_READ = r'''
 import hashlib, json, os, stat, sys
@@ -492,9 +497,7 @@ def restoration_assertions(product, sources):
 
 
 def observed_usage(product, results, encoded):
-    expected = {key: sum(item.get('usage', {}).get(field, 0) for item in results)
-                for key, field in (('input', 'input_tokens'), ('output', 'output_tokens'),
-                                   ('cache_read', 'cache_read_input_tokens'))}
+    expected = usage_evidence.expected_usage(results)
     query = {'schema': 'hiroute.observation.query/v2', 'intent': {
         'view': 'home_value', 'query': {'period': 'seven_days', 'session_id': None, 'currency': None}}}
     deadline = time.monotonic() + 30
@@ -504,6 +507,9 @@ def observed_usage(product, results, encoded):
                                           'expected_revisions': revisions}, 'real-value-' + str(time.monotonic_ns()))
         value = product.cli('value show', query, grant)[1]['data']
         actual = {item['metric']: item['known_sum'] for item in value['usage']}
+        product.observation_usage_evidence = {
+            'expected': expected, 'actual': {key: actual.get(key) for key in expected},
+            'pending_requests': value['pending_requests']}
         if all(actual.get(key) == total for key, total in expected.items()) and value['pending_requests'] == 0:
             return {'state': 'green', 'totals': expected, 'pending_requests': 0}
         require(time.monotonic() < deadline, 'observation_usage_did_not_converge')

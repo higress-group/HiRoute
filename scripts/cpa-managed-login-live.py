@@ -454,6 +454,8 @@ def native_borrowed_selected(arguments, configuration):
         report['state'] = 'green'
     except BaseException as error:
         report['failure'] = {'stage': stage, 'class': type(error).__name__, 'code': safe_code(error)}
+        if hasattr(product, 'observation_usage_evidence'):
+            report['observation'] = product.observation_usage_evidence
         report['failure'].update(evidence.failure_projection(product, stage))
         record({'scenario': stage, 'provider': provider, 'state': 'red'})
         report['diagnostics_final'] = product.diagnostics_snapshot()

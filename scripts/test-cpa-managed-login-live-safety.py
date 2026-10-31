@@ -511,6 +511,19 @@ class IncrementalObservation(unittest.TestCase):
     baseline = {'totals': {'input': 10000, 'output': 600, 'cache_read': 200}, 'pending_requests': 0}
     rows = [{'usage': {'input_tokens': 20, 'output_tokens': 5, 'cache_read_input_tokens': 2}}]
 
+    def test_messages_cache_buckets_count_as_input_without_double_counting_responses(self):
+        rows = [
+            {'provider': 'claude', 'usage': {'input_tokens': 300, 'output_tokens': 44,
+                'cache_read_input_tokens': 600, 'cache_creation_input_tokens': 100}},
+            {'provider': 'codex', 'usage': {'input_tokens': 1000, 'output_tokens': 44,
+                'cache_read_input_tokens': 600}},
+        ]
+        expected = {'input': 2000, 'output': 88, 'cache_read': 1200}
+        self.assertEqual(live.evidence.expected_usage(rows), expected)
+        baseline = {'totals': dict.fromkeys(expected, 0), 'pending_requests': 0}
+        current = {'totals': expected, 'pending_requests': 0}
+        self.assertEqual(live.evidence.observation_delta(baseline, current, rows)['state'], 'green')
+
     def test_historical_unparsed_send_stays_in_baseline_and_only_new_usage_is_accepted(self):
         current = {'totals': {'input': 10020, 'output': 605, 'cache_read': 202}, 'pending_requests': 0}
         result = live.evidence.observation_delta(self.baseline, current, self.rows)
@@ -982,7 +995,7 @@ class BoundLifecycleContinuation(unittest.TestCase):
             return {'scenario': scenario, 'provider': provider, 'state': 'green', 'usage': dict(usage)}
         def lifecycle(s, *args):
             s.record(gateway(None, 'claude', source, False, 'claude-managed-after-restart'))
-        after = {'totals': {'input': 160, 'output': 32, 'cache_read': 16}, 'pending_requests': 0}
+        after = {'totals': {'input': 163, 'output': 32, 'cache_read': 16}, 'pending_requests': 0}
         with patch.object(live, 'modules', return_value=(None, None, None, None, None, None, None)), \
                 patch.object(live.evidence, 'read_observation', side_effect=[baseline, after]), \
                 patch.object(live, 'gateway_roundtrip', side_effect=gateway), \
