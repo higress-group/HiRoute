@@ -67,6 +67,10 @@ pub struct BoundRequestAdmission {
 pub struct GatewayCoreLifecycleLimits {
     pub max_request_body_bytes: usize,
     pub write_quantum: usize,
+    pub request_read_chunk_bytes: usize,
+    /// Model proxy accounting never rejects an admitted request merely because
+    /// a nominal memory target is exceeded. Optional work has its own bounds.
+    pub memory_accounting_only: bool,
     /// Optional process/operator safety cap applied from request admission.
     /// The route-local compiled overall timeout remains the normal request
     /// budget. `None` ensures the default lifecycle never truncates it.
@@ -87,10 +91,16 @@ pub struct GatewayCoreLifecycleLimits {
 
 impl GatewayCoreLifecycleLimits {
     fn request_transport_chunk_bytes(&self) -> usize {
+        if self.memory_accounting_only {
+            return self
+                .max_request_body_bytes
+                .min(self.request_read_chunk_bytes);
+        }
         // Opaque codec backing and its exact charged copy coexist during admission.
         // Derive the workspace from its memory owner, not an extra frame quota.
         self.max_request_body_bytes
             .min((self.stream_memory_bytes / 2).max(1))
+            .min(self.request_read_chunk_bytes)
     }
 }
 
@@ -99,6 +109,8 @@ impl Default for GatewayCoreLifecycleLimits {
         Self {
             max_request_body_bytes: 1024 * 1024,
             write_quantum: 16 * 1024,
+            request_read_chunk_bytes: 4 * 1024 * 1024,
+            memory_accounting_only: false,
             bootstrap_hard_cap: None,
             cleanup_timeout: Duration::from_millis(500),
             process_memory_bytes: 256 * 1024 * 1024,
@@ -172,6 +184,7 @@ impl<S, P, F, T> GatewayCoreLifecycle<S, P, F, T> {
         limits: GatewayCoreLifecycleLimits,
     ) -> Result<Self, GatewayExecutionError> {
         if limits.max_request_body_bytes == 0
+            || limits.request_read_chunk_bytes == 0
             || limits.write_quantum == 0
             || limits
                 .bootstrap_hard_cap
@@ -180,7 +193,11 @@ impl<S, P, F, T> GatewayCoreLifecycle<S, P, F, T> {
         {
             return Err(GatewayExecutionError::InvalidLimits);
         }
-        let budgets = BudgetTree::new(limits.process_memory_bytes, limits.worker_memory_bytes)?;
+        let budgets = if limits.memory_accounting_only {
+            BudgetTree::accounting_only(limits.process_memory_bytes, limits.worker_memory_bytes)?
+        } else {
+            BudgetTree::new(limits.process_memory_bytes, limits.worker_memory_bytes)?
+        };
         let filter_executors = FilterExecutorPool::new(&limits)?;
         if limits.stream_memory_bytes > limits.worker_memory_bytes {
             return Err(GatewayExecutionError::InvalidLimits);

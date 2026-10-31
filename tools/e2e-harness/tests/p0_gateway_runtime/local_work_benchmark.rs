@@ -104,6 +104,21 @@ fn concurrent_tool_rich_history_preserves_capture_and_actual_predecessors() {
     run_reference(&wire, 8, 0, Some("memory"), 2);
 }
 
+#[test]
+fn dense_structural_request_is_forwarded_without_a_proxy_memory_quota() {
+    let properties = (0..18_000)
+        .map(|index| (format!("field_{index}"), json!({"type":"string"})))
+        .collect::<serde_json::Map<_, _>>();
+    let wire = json!({
+        "messages":[{"role":"user","content":"Return 42."}],
+        "tools":[{"type":"function","function":{
+            "name":"large_schema","description":"Synthetic structural input.",
+            "parameters":{"type":"object","properties":properties}
+        }}]
+    });
+    run_reference(&wire, 2, 0, Some("disk"), 1);
+}
+
 fn is_followup(index: usize, concurrency: usize) -> bool {
     index % (2 * concurrency) >= concurrency
 }

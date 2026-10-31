@@ -38,6 +38,7 @@ pub struct BudgetTree {
 
 #[derive(Debug)]
 struct BudgetState {
+    enforce_limits: bool,
     process_limit: usize,
     worker_limit: usize,
     process_live: usize,
@@ -85,6 +86,7 @@ impl BudgetTree {
         }
         Ok(Self {
             inner: Arc::new(Mutex::new(BudgetState {
+                enforce_limits: true,
                 process_limit,
                 worker_limit,
                 process_live: 0,
@@ -101,6 +103,14 @@ impl BudgetTree {
                 streams: HashMap::new(),
             })),
         })
+    }
+
+    /// Keep allocation ownership and peaks without making an accounting
+    /// watermark a rejection condition for an admitted model request.
+    pub fn accounting_only(process_target: usize, worker_target: usize) -> Result<Self, BodyError> {
+        let tree = Self::new(process_target, worker_target)?;
+        lock(&tree.inner).enforce_limits = false;
+        Ok(tree)
     }
 
     pub fn stream(&self, limit: usize) -> Result<StreamBudget, BodyError> {
@@ -223,9 +233,10 @@ impl StreamBudget {
                 stream.limit,
             )
         };
-        if process_next > inner.process_limit
-            || worker_next > inner.worker_limit
-            || stream_next > stream_limit
+        if inner.enforce_limits
+            && (process_next > inner.process_limit
+                || worker_next > inner.worker_limit
+                || stream_next > stream_limit)
         {
             let rejection = BudgetRejection {
                 role,
@@ -307,6 +318,9 @@ impl StreamBudget {
             .streams
             .get(&self.handle.id)
             .ok_or(BodyError::UnknownStreamBudget)?;
+        if !inner.enforce_limits {
+            return Ok(usize::MAX);
+        }
         Ok(stream
             .limit
             .saturating_sub(stream.live)
@@ -815,6 +829,25 @@ pub(super) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 #[cfg(test)]
 mod rejection_diagnostics_tests {
     use super::*;
+
+    #[test]
+    fn accounting_only_requests_exceed_all_targets_without_losing_ownership() {
+        let tree = BudgetTree::accounting_only(128, 64).unwrap();
+        let first = tree.stream(32).unwrap();
+        let allocation = first.reserve(MemoryRole::AttemptWire, 256).unwrap();
+        let second = tree.stream(32).unwrap();
+        let other = second.reserve(MemoryRole::RawRequest, 80).unwrap();
+        assert_eq!(first.snapshot().unwrap().live, 256);
+        assert_eq!(first.snapshot().unwrap().peak, 256);
+        assert_eq!(first.available_bytes().unwrap(), usize::MAX);
+        assert_eq!(tree.snapshot().process_live, 336);
+        assert_eq!(tree.snapshot().worker_live, 336);
+        assert_eq!(first.last_rejection(), None);
+        drop(allocation);
+        assert_eq!(tree.snapshot().process_live, 80);
+        drop(other);
+        assert_eq!(tree.snapshot().process_live, 0);
+    }
 
     #[test]
     fn refusal_keeps_the_pre_cleanup_budget_and_does_not_consume_credit() {
