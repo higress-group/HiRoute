@@ -49,7 +49,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
       const i=payload.input;
       const p=structuredClone(c.routeTemplate);Object.assign(p,{agent_plan_id:i.plan_id??'plan/new-sol',model_alias:i.editor.custom_alias,agent_plan_revision:1});
       p.head={...p.head,head_revision:(i.expected_head_revision??0)+1,status:'enabled'};
-      p.desired={display_name:i.editor.display_name,purpose:i.editor.purpose,mode:i.editor.mode,strategy:{mode:'custom',candidates:structuredClone(i.editor.candidates)},delegation_enabled:i.editor.delegation_enabled,requirements:i.editor.requirements,limits:i.editor.limits};
+      p.desired={display_name:i.editor.display_name,purpose:i.editor.purpose,follow_request_reasoning:i.editor.follow_request_reasoning,mode:i.editor.mode,strategy:{mode:'custom',candidates:structuredClone(i.editor.candidates)},delegation_enabled:i.editor.delegation_enabled,requirements:i.editor.requirements,limits:i.editor.limits};
       c.desktop.catalog={plans:[p],drafts:[]};
       return {state:'succeeded',operation:{operation_id:'operation/create-sol',state:'succeeded',sequence:1,cancellable:false}};
     };
@@ -113,6 +113,14 @@ try {
     await click('.mode-card','按难度分流');await click('.mode-card','固定模型');assert.equal(await checked(),false);
     assert.match(await evaluate(client,'document.querySelector(".effort-select").textContent'),/固定档位/);
     await shot('model-route-reasoning-fixed-choice');
+  });
+  await run('model-route.published-policy-survives-remount-and-mode-switch',async()=>{
+    await setup({others:false});await click('.model-route-action button','创建智能路由');await editorReady();
+    await click('.toolbar-actions button','保存并创建');
+    await waitFor(client,'productShell.desktop.catalog.plans.length===1 && !!document.querySelector(".editor-actions")');
+    assert.equal(await evaluate(client,'document.querySelector(".route-reasoning-policy input").checked'),true);
+    await click('.mode-card','按难度分流');
+    assert.equal(await evaluate(client,'document.querySelector(".route-reasoning-policy input").checked'),true);
   });
   await run('model-route.current-only-and-cancel',async()=>{
     await setup();await click('.model-route-action button','创建智能路由');await click('.modal-foot button','取消');
