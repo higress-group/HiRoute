@@ -1,0 +1,42 @@
+.subscription-api-setup {
+  min-width: 0;
+}
+.subscription-api-setup .field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+.subscription-api-setup .field-label,
+.subscription-api-setup .field-help,
+.subscription-api-credits,
+.subscription-api-credits a {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.subscription-api-setup select,
+.subscription-api-setup input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.subscription-api-setup .subscription-api-key {
+  margin-block: 12px;
+}
+.subscription-api-credits {
+  margin-block-start: 12px;
+}
+.subscription-api-credits .disclosure-body {
+  font-size: calc(12px * var(--hr-text-scale));
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.subscription-api-setup .native-network .disclosure-label > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.subscription-api-setup .subscription-api-feedback {
+  margin-block-start: 12px;
+}

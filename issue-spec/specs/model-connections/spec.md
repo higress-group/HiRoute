@@ -665,10 +665,11 @@ Source SPEC comments:
 ### Requirement: Subscription imports may synchronize into an explicitly associated API connection
 
 Independent Codex and Claude login and local-login discovery SHALL offer an optional
-saved or new native API connection. New API credentials use the ordinary protected API form and
-remain separate from subscription OAuth. Creating an associated API connection SHALL
-initially select the registered OpenAI API for Codex or Anthropic API for Claude, with
-its endpoint and authentication defaults. The user may explicitly change service. A
+saved or new native API connection in the same subscription flow. New API credentials
+use an inline protected Key field and remain separate from subscription OAuth. New
+associated API setup SHALL use the registered OpenAI API for Codex or Anthropic API
+for Claude, with its endpoint and authentication defaults and optional independent
+network settings. It SHALL NOT open a second connection dialog. A
 missing preferred product SHALL NOT silently select another provider; ordinary API
 entry defaults remain unchanged.
 Retained earlier association stores and operation envelopes SHALL remain recoverable
@@ -689,15 +690,22 @@ an API check and append only exact upstream IDs from the user's subscription sel
 that the API actually observes and qualifies. Existing API models, Binding identities,
 endpoint, credentials and routes remain unchanged. Subscription names or capabilities
 cannot prove API entitlement. The subscription selection SHALL be the only model
-selection in the association flow. The associated new-API form SHALL check and save
+selection in the association flow. The inline new-API setup SHALL check and save
 its exact observed, selectable API counterparts directly, without a second model
-picker or an opportunity to expand membership. Users select subscription models
-before opening that form. No matches SHALL leave the form recoverable with explicit
-guidance and retain the subscription selection. Ordinary API forms retain their
+picker or an opportunity to expand membership. A single primary save action SHALL
+first confirm the subscription save and then attempt the optional API Check,
+Save and association. Key and network validation SHALL happen before subscription
+submission; the credential owner SHALL remain mounted across saving states.
+API authentication/directory checks SHALL NOT send an implicit inference request.
+No matches SHALL leave API setup recoverable with explicit guidance while retaining
+the saved subscription. Ordinary API forms retain their
 independent model selection.
 
 Subscription success SHALL survive API authentication, directory or save failures.
-The saved subscription SHALL show imported, pending or unsupported API models and
+The same flow SHALL clearly distinguish a saved subscription from an incomplete API
+setup and offer API-only retry or finish-later without resubmitting the subscription
+approval. A created API SHALL be reused after association failure. The saved
+subscription SHALL show imported, pending or unsupported API models and
 permit explicit retry. Only a complete API directory can prove absence; a partial
 or unavailable read remains pending. A restart reconstructs pending imports from the
 association and both saved memberships. No background catalog refresh enlarges them.
@@ -707,12 +715,27 @@ association. Changing or cancelling the action invalidates stale async results.
 
 Association and import SHALL NOT create, reorder or change candidate groups or routing
 plans. The user chooses how to combine the sources. Association does not promise
-eligibility for API credits or change upstream billing classification.
+eligibility for API credits or change upstream billing classification. Provider-specific
+guidance SHALL link the official credit claim instructions, explain how to link the
+receiving API organization, and identify the eligible plans and excluded uses. OpenAI
+credits exclude Codex API-key usage; Anthropic credits exclude ordinary interactive
+Claude Code. API verification SHALL NOT be presented as claiming or activating credits.
+Eligibility, balance, expiry and deductions remain governed by official billing.
 
 #### Scenario: Configure a provider API without selecting models again
 
 - **WHEN** a user selects subscription models and creates the associated OpenAI or Anthropic API connection
-- **THEN** the form starts with the corresponding registered provider and saves only exact API-checked counterparts of that selection; it does not ask for another model selection
+- **THEN** the corresponding provider Key field is inline and one primary save action confirms the subscription before saving only exact API-checked counterparts; it does not ask for another model selection
+
+#### Scenario: Continue after optional API setup fails
+
+- **WHEN** the subscription is confirmed saved and its new API check, save or association fails
+- **THEN** the same flow says the subscription is saved, retains recoverable API context and offers API-only retry; an already created API and any pending original Operation are reused rather than recreated
+
+#### Scenario: Explain credit eligibility before connecting
+
+- **WHEN** a user opens optional API setup for a Codex or Claude subscription
+- **THEN** the flow shows provider-specific eligible plans and excluded coding-client usage, links official claiming instructions and explains using a Key from the receiving organization without claiming that HiRoute activates or guarantees the benefit
 
 #### Scenario: Subscription succeeds while the API is unavailable
 

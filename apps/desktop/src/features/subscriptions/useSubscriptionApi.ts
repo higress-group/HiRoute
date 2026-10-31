@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
 import { modelConnectionBackend } from '../model-connections/backend';
 import { clientIdempotencyKey } from '../model-connections/state';
-import { saveFailureDefinitelyPreAdmission } from './model';
 import type { ComputeSaveResult, ComputeSavePreview, ModelConnectionCheckView, OperationReference } from '../model-connections/types';
 import type { ManagedSource, ManagementChange, ManagementSnapshot } from '../models/types';
 import { apiLinkItems, isLinkedSubscription, synchronizeSubscriptionApi, type ApiSyncResult } from './api-sync';
+import { observeSaveAttempt, type SaveAttempt } from './save-attempt';
 
 export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, onUncertain }: {
   language: 'zh' | 'en'; mutable: boolean;
@@ -16,6 +16,7 @@ export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, 
   const alive = useRef(true);
   const running = useRef(new Set<string>());
   const checks = useRef(new Set<string>());
+  const linkAttempts = useRef(new Map<string, { target: string; attempt: SaveAttempt }>());
   const [busy, setBusy] = useState<ReadonlySet<string>>(new Set());
   const [results, setResults] = useState<Record<string, ApiSyncResult>>({});
   const backend = modelConnectionBackend(language);
@@ -28,11 +29,31 @@ export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, 
   }, []);
   const read = () => invoke<ManagementSnapshot>('compute_management_snapshot');
 
-  async function saveLink(sourceId: string, apiSourceId: string): Promise<'saved' | 'uncertain'> {
+  async function saveLink(sourceId: string, apiSourceId: string, expectedRevision?: number, current = () => true, renew = false): Promise<'saved' | 'uncertain'> {
     if (!mutable || !alive.current) throw new Error('TRUSTED_AUTHORITY_UNAVAILABLE');
+    const observe = async (attempt: SaveAttempt) => observeSaveAttempt(attempt, {
+      apply: request => backend.applyComputeSave(request), result: operation => backend.getComputeSaveResult(operation),
+      find: async idempotencyKey => {
+        const result = await invoke<ComputeSaveResult>('get_compute_save_result', { operation: null, idempotencyKey });
+        return result.reason === 'OPERATION_NOT_FOUND' ? null : result;
+      }, onOperation, onUncertain, current: () => alive.current && current(),
+    });
+    const pending = linkAttempts.current.get(sourceId);
+    if (pending) {
+      const result = await observe(pending.attempt);
+      if (result.disposition === 'pending') return 'uncertain';
+      linkAttempts.current.delete(sourceId);
+      if (result.disposition !== 'saved' || result.source_id !== sourceId) throw new Error('API_LINK_SAVE_FAILED');
+      await onRefresh();
+      if (pending.target === apiSourceId) return 'saved';
+      throw new Error('SOURCE_CHANGED');
+    }
     const snapshot = await read();
     const source = snapshot.sources.find(item => item.source_id === sourceId);
     if (!source || !isLinkedSubscription(source)) throw new Error('SOURCE_CHANGED');
+    if (!current()) return 'uncertain';
+    if (!renew && (snapshot.subscription_api_links?.find(link => link.source_id === sourceId)?.api_source_id ?? '') === apiSourceId) return 'saved';
+    if (expectedRevision !== undefined && source.revision !== expectedRevision) throw new Error('SOURCE_CHANGED');
     const change: ManagementChange = {
       schema: 'hiroute.compute-management-change/v2', subject: { kind: 'saved_source', source_id: source.source_id },
       expected_revisions: snapshot.revisions, selected_model_refs: source.models.map(model => model.model_ref),
@@ -41,19 +62,14 @@ export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, 
     const preview = await invoke<ComputeSavePreview>('preview_compute_save_v3', {
       change, defaultPreferences: {}, apiLink: apiSourceId ? { intent: 'associate', api_source_id: apiSourceId } : { intent: 'remove' },
     });
-    if (!alive.current) return 'uncertain';
-    let accepted: { operation: OperationReference };
-    try {
-      accepted = await backend.applyComputeSave({ spec: preview.spec, accept_digest: preview.accept_digest, expected_revisions: preview.expected_revisions, idempotency_key: clientIdempotencyKey('subscription-api-link') });
-    } catch (error) {
-      if (saveFailureDefinitelyPreAdmission(error)) throw error;
-      onUncertain(); return 'uncertain';
-    }
-    onOperation(accepted.operation);
+    if (!alive.current || !current()) return 'uncertain';
+    const attempt: SaveAttempt = { request: { spec: preview.spec, accept_digest: preview.accept_digest, expected_revisions: preview.expected_revisions, idempotency_key: clientIdempotencyKey('subscription-api-link') }, submitted: false };
+    linkAttempts.current.set(sourceId, { target: apiSourceId, attempt });
     let result: ComputeSaveResult;
-    try { result = await backend.getComputeSaveResult(accepted.operation); }
-    catch { onUncertain(); return 'uncertain'; }
-    if (result.disposition === 'pending') { onUncertain(); return 'uncertain'; }
+    try { result = await observe(attempt); }
+    catch (error) { if (!attempt.submitted) linkAttempts.current.delete(sourceId); throw error; }
+    if (result.disposition === 'pending') return 'uncertain';
+    linkAttempts.current.delete(sourceId);
     if (result.disposition !== 'saved' || result.source_id !== sourceId) throw new Error('API_LINK_SAVE_FAILED');
     if (alive.current) await onRefresh();
     return 'saved';
@@ -84,7 +100,7 @@ export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, 
           return value.reason === 'OPERATION_NOT_FOUND' ? null : value;
         },
         renewFailed: async (saved, apiSourceId) => {
-          if (await saveLink(saved.source_id, apiSourceId) !== 'saved') throw new Error('API_LINK_SAVE_UNCERTAIN');
+          if (await saveLink(saved.source_id, apiSourceId, saved.revision, () => alive.current, true) !== 'saved') throw new Error('API_LINK_SAVE_UNCERTAIN');
         },
         onOperation, onUncertain, current: () => alive.current,
         checkId: () => clientIdempotencyKey('subscription-api-check'),
@@ -103,13 +119,13 @@ export function useSubscriptionApi({ language, mutable, onOperation, onRefresh, 
     }
   }
 
-  async function associate(sourceId: string, apiSourceId: string) {
+  async function associate(sourceId: string, apiSourceId: string, expectedRevision?: number, current = () => true) {
     if (running.current.has(sourceId)) return 'uncertain' as const;
     running.current.add(sourceId); setBusy(new Set(running.current));
     let saved: 'saved' | 'uncertain';
-    try { saved = await saveLink(sourceId, apiSourceId); }
+    try { saved = await saveLink(sourceId, apiSourceId, expectedRevision, current); }
     finally { running.current.delete(sourceId); if (alive.current) setBusy(new Set(running.current)); }
-    if (saved === 'saved' && apiSourceId) await synchronize(sourceId);
+    if (saved === 'saved' && apiSourceId && current()) await synchronize(sourceId);
     if (saved === 'saved' && !apiSourceId && alive.current) setResults(previous => { const next = { ...previous }; delete next[sourceId]; return next; });
     return saved;
   }

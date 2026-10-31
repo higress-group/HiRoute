@@ -389,8 +389,6 @@ export type ModelConnectionBackend = {
 export type ModelConnectionFormProps = {
   /** Prefer this registered product once on entry; the user can still change it. */
   initialConnectionOptionId?: string;
-  /** Save the exact checked API counterparts of these subscription selections, without another picker. */
-  subscriptionModelIds?: string[];
   /** A caller-owned connection-source choice; the ordinary form still owns inputs/save. */
   connectionChoice?: import('react').ReactNode;
   allowCustom?: boolean;

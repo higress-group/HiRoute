@@ -31,12 +31,28 @@ automatic sign-in credential refresh, never renewal of the paid subscription.
 Device scans explicitly request native-only candidates. Independent HiRoute sign-ins
 stay in login management, while login continuation retains the complete candidate
 query and saved-source append uses exact source/revision lookup. The scan list keeps
-its native results separate from a selected independent-login candidate. The associated API form initially selects OpenAI for Codex or Anthropic for Claude.
-It snapshots the subscription's explicit model selection and, after an API check,
-saves only exact observed/selectable counterparts without opening the API model
-picker. Empty selections require choosing subscription models first; a check with
-no matching models retains the form and subscription selection. Ordinary API model
-selection and explicit service changes keep their existing behavior.
+its native results separate from a selected independent-login candidate.
+
+`SubscriptionApiConnection.tsx` owns optional existing-API selection and inline Key
+entry for the registered OpenAI API (Codex) or Anthropic API (Claude). The subscription
+flow keeps one primary save action and no nested API dialog or model picker.
+`ModelManagementPage.tsx` validates input, confirms the subscription save, and only
+then calls `new-api.ts` to check/save exact API-observed selectable counterparts of
+the saved subscription membership. The mounted inline credential owner survives
+loading and completion states. API failure retains the subscription and offers
+API-only retry or finish-later; it never reuses a consumed subscription approval.
+Saved-source association edits reuse the same inline setup.
+
+`new-api.ts` owns the protected input and new API creation before association.
+`save-attempt.ts` observes the original sealed request/key after uncertain writes.
+A created API is retained and reused if association fails; pending association
+metadata alone cannot prove its original Operation completed. Closing before
+admission releases owned input, while a dispatched save retains native recovery
+ownership. API transport policy is independent of subscription proxy settings.
+`SubscriptionApiCredits.tsx` links provider claim instructions and Key setup,
+identifies eligible plans and excluded coding-client uses, and distinguishes API
+verification from credit activation. Official billing owns eligibility and balance.
+Ordinary API connection forms retain their separate service and model selection.
 
 Tests belong to the Desktop subscription suites and the production Pilot path; shared
 contract and protected callback admission regressions belong to Application API, CLI and

@@ -42,9 +42,9 @@ network probing. Closed target-validation reasons survive the daemon error envel
 as `message_key` values and become localized correction text; raw exception strings
 and provider bodies never become UI messages.
 
-The first inventory check selects no models by default. An explicit Codex subscription
-API-association flow may supply the already selected upstream IDs; after a successful
-API check only exact selectable matches are preselected, for user review before save. A tool check on an explicitly selected
+The first inventory check selects no models by default. Subscription API association
+has a separate inline coordinator in `../subscriptions/new-api.ts`; the ordinary
+form has no subscription-specific save or selection mode. A tool check on an explicitly selected
 model preserves existing choices by exact upstream model identity within the same
 candidate and edit revision, using fresh selectable model references. Newly
 discovered, removed, or unavailable models are never automatically selected.
@@ -60,8 +60,12 @@ retain their original proof reader. The model detail default editor shows saved 
 values and records official-follow/preserve choices through normal Preview/Apply.
 
 `../subscriptions/SubscriptionApiConnection.tsx` owns the optional saved/new API picker
-for Codex/Claude login and scan imports and saved association edits. The normal API form owns
-its separate protected Key. `api-sync.ts` appends only exact API-observed models through
+for Codex/Claude login and scan imports and saved association edits. Its inline
+protected Key and provider network draft use the shared backend adapter, independently
+of subscription OAuth and proxy settings. One subscription save action confirms the
+subscription before optional API setup; a failed API step remains available for
+API-only retry. The normal API form owns its separate protected Key.
+`api-sync.ts` appends only exact API-observed models through
 ordinary Check/Preview/Apply after a successful explicit subscription import. It neither
 creates routes nor copies OAuth authority. The durable association and memberships
 reconstruct pending work; retry first resolves the original idempotent Operation.

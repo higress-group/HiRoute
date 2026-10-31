@@ -1,52 +1,124 @@
-import { useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Disclosure } from '../../ui';
-import { ModelConnectionForm } from '../model-connections/ModelConnectionForm';
+import { invoke } from '../../host/index.ts';
 import { modelConnectionBackend } from '../model-connections/backend';
-import { newModelConnectionDraft } from '../model-connections/new-draft';
-import type { OperationReference } from '../model-connections/types';
+import { NativeNetworkSettings } from '../model-connections/NativeNetworkSettings';
+import { manualProxyError, networkDraft, networkFailureText, networkRepairable } from '../model-connections/native-network';
+import type { ComputeSaveResult, OperationReference } from '../model-connections/types';
 import type { ManagedSource, ManagementSnapshot } from '../models/types';
 import { apiLinkItems, associatedApiOption, subscriptionProvider, type LinkedSubscriptionProvider, type ApiSyncResult } from './api-sync';
+import { NEW_SUBSCRIPTION_API, NewSubscriptionApiSetup, type InlineApiResult } from './new-api';
+import { SubscriptionApiCredits } from './SubscriptionApiCredits';
+import './subscription-api.css';
 
+export type SubscriptionApiAssociate = (sourceId: string, apiSourceId: string, expectedRevision?: number, current?: () => boolean) => Promise<'saved' | 'uncertain'>;
 type Common = {
   language: 'zh' | 'en'; snapshot: ManagementSnapshot; mutable: boolean; busy?: boolean;
   onRefresh(): Promise<void>; onOperation(operation: OperationReference): void; onUncertain(): void;
+  onAssociate: SubscriptionApiAssociate;
 };
-export function SubscriptionApiPicker(props: Common & { value: string; provider: LinkedSubscriptionProvider; modelIds: string[]; onChange(value: string): void }) {
-  const zh = props.language === 'zh';
-  const [creatingModels, setCreatingModels] = useState<string[] | null>(null);
-  const draft = useRef(newModelConnectionDraft('known'));
+export type SubscriptionApiPickerHandle = {
+  validate(): boolean;
+  connect(source: Pick<ManagedSource, 'source_id' | 'revision'>): Promise<InlineApiResult>;
+};
+
+export function inlineApiResultText(result: InlineApiResult, zh: boolean): string {
+  if (result.state === 'pending') return zh ? 'API 保存结果待确认。可刷新原操作结果；订阅已保留。' : 'The API save is awaiting confirmation. Refresh the original operation; the subscription is retained.';
+  const copy = {
+    key_required: ['请填写 API Key，或选择仅使用订阅。', 'Enter an API key, or choose subscription only.'],
+    unavailable: ['API 配置信息暂不可用，请重试。订阅已保留。', 'API configuration is unavailable. Retry; the subscription is retained.'],
+    check_failed: ['API 检查未完成，请检查 Key、权限或网络后重试。订阅已保留。', 'The API check did not complete. Review the key, permissions or network and retry. The subscription is retained.'],
+    models_unavailable: ['API 暂无可接入的同 ID 模型。订阅已保留，可稍后更换 API 或重试。', 'The API has no connectable exact-ID counterparts. The subscription is retained; choose another API or retry later.'],
+    save_failed: ['API 未保存，请重新填写 Key 后重试。订阅已保留。', 'The API was not saved. Re-enter the key and retry; the subscription is retained.'],
+    link_failed: ['API 已保存，关联尚未完成。重试将复用这份 API 接入。', 'The API was saved, but its association is incomplete. Retry reuses that API connection.'],
+    source_changed: ['订阅或 API 配置已变化，请关闭后重新打开确认。已有接入均已保留。', 'The subscription or API changed. Close and reopen to review. Existing connections are retained.'],
+  } as const;
+  return result.reason ? copy[result.reason][zh ? 0 : 1] : '';
+}
+
+export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Common & {
+  value: string; provider: LinkedSubscriptionProvider; onChange(value: string): void;
+}>(function SubscriptionApiPicker(props, ref) {
+  const zh = props.language === 'zh', providerName = props.provider === 'codex' ? 'OpenAI' : 'Anthropic';
+  const latest = useRef(props); latest.current = props;
+  const alive = useRef(true), key = useRef<HTMLInputElement>(null);
+  const feedback = useRef<HTMLParagraphElement>(null);
+  const [network, setNetwork] = useState(networkDraft);
+  const [reveal, setReveal] = useState(0);
+  const [result, setResult] = useState<InlineApiResult | null>(null);
+  const [keyRequired, setKeyRequired] = useState(false);
+  const [setup] = useState(() => new NewSubscriptionApiSetup(props.provider, {
+    backend: modelConnectionBackend(props.language),
+    read: () => invoke<ManagementSnapshot>('compute_management_snapshot'),
+    find: async idempotencyKey => {
+      const value = await invoke<ComputeSaveResult>('get_compute_save_result', { operation: null, idempotencyKey });
+      return value.reason === 'OPERATION_NOT_FOUND' ? null : value;
+    },
+    associate: (...args) => latest.current.onAssociate(...args),
+    onOperation: operation => latest.current.onOperation(operation),
+    onUncertain: () => latest.current.onUncertain(),
+    current: () => alive.current && latest.current.mutable && latest.current.value === NEW_SUBSCRIPTION_API,
+  }));
+  useEffect(() => { alive.current = true; return () => { alive.current = false; void setup.dispose(); }; }, [setup]);
+  useEffect(() => { if (props.value !== NEW_SUBSCRIPTION_API) { void setup.dispose(); setResult(null); } }, [props.value, setup]);
+  useEffect(() => {
+    if (!result || result.state === 'saved' || props.busy || networkRepairable(result.failure)) return;
+    if (result.failure?.phase === 'upstream_auth' || result.reason === 'key_required') key.current?.focus();
+    else feedback.current?.focus();
+  }, [result, props.busy]);
+  useImperativeHandle(ref, () => ({
+    validate() {
+      if (props.value !== NEW_SUBSCRIPTION_API) return true;
+      if (manualProxyError(network)) { setReveal(value => value + 1); return false; }
+      if (setup.awaitingSave || setup.hasSavedApi || setup.hasCredential || key.current?.value.trim()) return true;
+      setKeyRequired(true); key.current?.focus(); return false;
+    },
+    async connect(source) {
+      const secret = key.current?.value ?? '';
+      const answer = await setup.connect(source, secret, network, () => { if (key.current?.value === secret) key.current.value = ''; });
+      if (alive.current) { setResult(answer); if (networkRepairable(answer.failure)) setReveal(value => value + 1); }
+      return answer;
+    },
+  }));
   const choices = props.snapshot.sources.filter(source => source.provenance !== 'connector_owned');
-  return <section className="detail-section">
-    <label className="field"><span className="field-label">{zh ? '关联 API 接入（可选）' : 'Associated API connection (optional)'}</span>
-      <select className="select" disabled={!props.mutable || props.busy} value={props.value} onChange={event => props.onChange(event.target.value)}>
-        <option value="">{zh ? '不关联 API' : 'No associated API'}</option>
-        {props.value && !choices.some(source => source.source_id === props.value) && <option value={props.value}>{zh ? '关联的 API 接入已删除' : 'Associated API connection was deleted'}</option>}
-        {choices.map(source => <option key={source.source_id} value={source.source_id}>{source.display_name}{source.state !== 'ready' ? (zh ? '（当前不可用）' : ' (unavailable)') : ''}</option>)}
+  const preferred = choices.filter(source => source.connection_identity?.connection_option_id === associatedApiOption(props.provider));
+  const others = choices.filter(source => !preferred.includes(source));
+  const option = (source: ManagedSource) => <option key={source.source_id} value={source.source_id}>{source.display_name}{source.state !== 'ready' ? (zh ? '（当前不可用）' : ' (unavailable)') : ''}</option>;
+  const locked = !props.mutable || props.busy || setup.awaitingSave;
+  return <section className="detail-section subscription-api-setup" data-subscription-api-setup>
+    <label className="field"><span className="field-label">{zh ? '同时接入 API（可选）' : 'Connect an API too (optional)'}</span>
+      <select className="select" data-subscription-api-choice disabled={locked} value={props.value} onChange={event => { setResult(null); props.onChange(event.target.value); }}>
+        <option value="">{zh ? '仅使用订阅' : 'Subscription only'}</option>
+        <option value={NEW_SUBSCRIPTION_API}>{zh ? `填写 ${providerName} API Key` : `Enter a ${providerName} API key`}</option>
+        {props.value && props.value !== NEW_SUBSCRIPTION_API && !choices.some(source => source.source_id === props.value) && <option value={props.value}>{zh ? '关联的 API 接入已删除' : 'Associated API connection was deleted'}</option>}
+        {preferred.length > 0 && <optgroup label={zh ? `已有 ${providerName} API 接入` : `Existing ${providerName} API connections`}>{preferred.map(option)}</optgroup>}
+        {others.length > 0 && <optgroup label={zh ? '其他已有 API 接入' : 'Other existing API connections'}>{others.map(option)}</optgroup>}
       </select>
     </label>
-    <p className="field-help">{zh ? '保存订阅后，也会向此 API 接入导入相同 ID 的模型。以后追加导入继续同步；API 失败不影响订阅，可稍后重试。候选组和优先级由你选择。' : 'After saving the subscription, import matching model IDs into this API connection too. Later imports also sync. API failures keep the subscription intact and can be retried. You choose candidate groups and their priority.'}</p>
-    <button className="btn btn-quiet" type="button" disabled={!props.mutable || props.busy || !props.modelIds.length} onClick={() => setCreatingModels([...new Set(props.modelIds)])}>{zh ? '新建关联 API 接入' : 'Create an associated API connection'}</button>
-    {!props.modelIds.length && <p className="field-help">{zh ? '先检查订阅并选择模型，再新建关联 API。' : 'Check the subscription and choose its models before creating the associated API.'}</p>}
-    {creatingModels && <ModelConnectionForm language={props.language} mutable={props.mutable}
-      initialConnectionOptionId={associatedApiOption(props.provider)}
-      initialDraft={draft.current} subscriptionModelIds={creatingModels}
-      existingNames={props.snapshot.sources.map(source => source.display_name)} expectedRevisions={props.snapshot.revisions}
-      connectionChoice={<p className="field-help">{zh ? '填写 API Key 后检查并保存，自动使用订阅中已选的模型，无需重复选择。API 接入独立保存；返回后保存订阅关联。' : 'Enter the API key, then check and save using the models already selected in the subscription. No second model selection is needed. The API connection is saved separately; return to save the subscription association.'}</p>}
-      backend={modelConnectionBackend(props.language)} onBack={() => setCreatingModels(null)} onCancel={() => setCreatingModels(null)}
-      onSaveAccepted={props.onOperation} onSaveUncertain={props.onUncertain}
-      onSaveResult={result => { if (result.disposition === 'saved' && result.source_id) { props.onChange(result.source_id); setCreatingModels(null); } void props.onRefresh(); }}
-      restoreFocus={() => {}} />}
+    <p className="field-help">{zh ? '沿用订阅中已选的模型，无需重复选择。一个保存动作完成订阅与 API 设置；API 失败时订阅仍会保留。' : 'Reuse the subscription’s model selection. One save completes subscription and API setup; API failures keep the subscription intact.'}</p>
+    {result && result.state !== 'saved' && <p ref={feedback} tabIndex={-1} className="callout warn subscription-api-feedback" role="status">{result.failure ? networkFailureText(result.failure, zh) : inlineApiResultText(result, zh)}</p>}
+    {setup.hasSavedApi && result?.state !== 'saved' && <p className="field-help">{zh ? '这份 API 接入已独立保存，重试关联不会重复创建。' : 'This API connection is saved independently. Retrying the association will not create another.'}</p>}
+    {props.value === NEW_SUBSCRIPTION_API && <div className="subscription-api-key">
+      <label className="field"><span className="field-label">{providerName} API Key</span>
+        <input ref={key} className="input" type="password" autoComplete="new-password" spellCheck={false} data-subscription-api-key disabled={locked || setup.hasSavedApi} aria-invalid={keyRequired || undefined} placeholder={setup.hasCredential ? (zh ? 'Key 已暂存，重新输入可替换' : 'Key retained; enter a new key to replace it') : (zh ? '填写 API Key' : 'Enter API key')} onChange={() => setKeyRequired(false)} />
+        {keyRequired && <span className="field-help" role="alert">{zh ? '请填写 Key，或选择仅使用订阅。' : 'Enter a key, or choose subscription only.'}</span>}
+        <span className="field-help">{zh ? '如使用订阅 API 赠金，请填写接收赠金的 API 组织下的 Key。' : 'To use subscription API credits, use a key from the organization receiving those credits.'}</span>
+      </label>
+      <NativeNetworkSettings language={props.language} value={network} onChange={setNetwork} disabled={locked || setup.hasSavedApi} reveal={reveal} failure={result?.failure}
+        target={{ kind: 'registered', connection_option_id: associatedApiOption(props.provider), protocol: props.provider === 'codex' ? 'responses' : 'messages' }} />
+    </div>}
+    <SubscriptionApiCredits provider={props.provider} language={props.language} />
   </section>;
-}
+});
 
 export function SavedSubscriptionApi(props: Common & {
   source: ManagedSource; result?: ApiSyncResult;
-  onAssociate(apiSourceId: string): Promise<'saved' | 'uncertain'>;
   onRetry(): void;
 }) {
   const zh = props.language === 'zh';
   const link = props.snapshot.subscription_api_links?.find(item => item.source_id === props.source.source_id);
   const api = props.snapshot.sources.find(source => source.source_id === link?.api_source_id);
+  const picker = useRef<SubscriptionApiPickerHandle>(null);
   const [selection, setSelection] = useState<string | undefined>();
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
@@ -58,14 +130,20 @@ export function SavedSubscriptionApi(props: Common & {
     if (saving || props.busy || !props.mutable) return;
     setSaving(true); setError('');
     try {
-      const outcome = await props.onAssociate(selection ?? link?.api_source_id ?? '');
+      const choice = selection ?? link?.api_source_id ?? '';
+      if (choice === NEW_SUBSCRIPTION_API) {
+        if (!picker.current?.validate()) return;
+        const answer = await picker.current.connect(props.source);
+        if (answer.state !== 'saved') return;
+      }
+      const outcome = choice === NEW_SUBSCRIPTION_API ? 'saved' : await props.onAssociate(props.source.source_id, choice, props.source.revision);
       setEditing(false); setSelection(undefined);
       if (outcome === 'uncertain') setError(zh ? '关联保存结果待确认，请等待操作恢复后刷新。' : 'Association save is awaiting confirmation. Refresh after operation recovery.');
     } catch { setError(zh ? '关联未保存，请刷新后重试。订阅和 API 模型均保留。' : 'The association was not saved. Refresh and retry; subscription and API models are retained.'); }
     finally { setSaving(false); }
   }
   return <section className="detail-section">
-    <div className="detail-section-head"><h3>{zh ? '关联 API' : 'Associated API'}</h3><button className="btn btn-quiet" type="button" disabled={!props.mutable || props.busy || saving} onClick={() => setEditing(!editing)}>{link ? (zh ? '调整关联' : 'Edit association') : (zh ? '关联 API 接入' : 'Associate an API connection')}</button></div>
+    <div className="detail-section-head"><h3>{zh ? '订阅与 API' : 'Subscription and API'}</h3><button className="btn btn-quiet" type="button" disabled={!props.mutable || props.busy || saving} onClick={() => setEditing(!editing)}>{link ? (zh ? '调整关联' : 'Edit association') : (zh ? '关联 API 接入' : 'Associate an API connection')}</button></div>
     {link && <>
       <p>{api?.display_name ?? (zh ? '关联的 API 接入已删除，请调整关联。' : 'The associated API connection was deleted. Edit the association.')}</p>
       {api && api.state !== 'ready' && <p className="field-help" role="status">{zh ? '此 API 接入当前不可用。请在 API 接入中启用或补充凭据；已导入的模型会保留。' : 'This API connection is unavailable. Enable it or provide credentials in the API connection; imported models are retained.'}</p>}
@@ -74,9 +152,9 @@ export function SavedSubscriptionApi(props: Common & {
         <button className="btn" type="button" disabled={!props.mutable || props.busy || saving || !api} onClick={props.onRetry}>{zh ? '重试同步' : 'Retry sync'}</button></>}
     </>}
     {editing && <>
-      <SubscriptionApiPicker {...props} provider={subscriptionProvider(props.source)!} busy={props.busy || saving} value={selection ?? link?.api_source_id ?? ''} onChange={setSelection} modelIds={props.source.models.map(model => model.upstream_model_id)} />
+      <SubscriptionApiPicker ref={picker} {...props} provider={subscriptionProvider(props.source)!} busy={props.busy || saving} value={selection ?? link?.api_source_id ?? ''} onChange={setSelection} />
       <p className="field-help">{zh ? '取消关联只停止后续同步，保留两边已经导入的模型。' : 'Removing the association stops future syncs and retains models already imported into both sources.'}</p>
-      <button className="btn btn-primary" type="button" disabled={!props.mutable || props.busy || saving} onClick={() => void save()}>{saving ? (zh ? '正在保存…' : 'Saving…') : (zh ? '保存关联' : 'Save association')}</button>
+      <button className="btn btn-primary" type="button" disabled={!props.mutable || props.busy || saving} onClick={() => void save()}>{saving ? (zh ? '正在保存…' : 'Saving…') : (zh ? '保存设置' : 'Save setup')}</button>
     </>}
     {error && <p className="callout warn" role="status">{error}</p>}
   </section>;
