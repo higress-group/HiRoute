@@ -1067,9 +1067,9 @@ fn dense_async_history_waits_for_record_credit_and_keeps_every_original_byte() {
             Ok(accounted_acknowledgement(record))
         }
     }
-    // Use the production record quantum: tiny synthetic records retain more
-    // source index metadata than this deliberately small Content allowance.
-    let fixture = ReplayFixture::with_record_bytes(1024 * 1024, 16 * 1024);
+    // Keep the source disk-backed under this deliberately small Content
+    // allowance, so this scenario exercises encoded-record backpressure.
+    let fixture = ReplayFixture::with_record_bytes(16 * 1024, 16 * 1024);
     let messages: Vec<_> = (0..256)
         .map(|index| {
             json!({
