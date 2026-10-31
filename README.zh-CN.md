@@ -27,6 +27,10 @@
   <a href="https://hiroute.ai/download/"><img alt="支持 macOS 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
+<p align="center">
+  <a href="https://hiroute.ai/#tour"><img src="apps/website/public/media/hiroute-promo-zh-readme.jpg" alt="观看 3 分钟 HiRoute 产品介绍：真实会话中，新模型处理常规轮次，低分后主力接手" width="760"></a>
+</p>
+
 ## 真实场景的成本节省
 
 在一次真实的技术调研与架构评审任务中，Qwen 3.8 Flash 负责调研，GPT-6 Astra 负责关键决策。
@@ -74,7 +78,7 @@ HiRoute 结合这些判断与你的路由计划，选择实际执行的模型。
 你可以继续追问，也可以让 Agent 自动推进长任务。HiRoute 在受支持的新输入与上下文重建窗口
 重新判断，同一阶段的工具续接通常沿用已有决策。详见[路由行为与客户端支持范围](apps/website/content/guides/model-routing.zh.md)。
 
-[观看产品介绍](https://hiroute.ai/#tour) · [了解路由模式](decision-extensions/README.zh-CN.md)
+[了解路由模式](decision-extensions/README.zh-CN.md)
 
 ## 新模型逐步试，主力随时准备接手
 
