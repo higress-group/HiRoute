@@ -155,19 +155,23 @@ def run(repository):
 
 
 def run_streams(repository):
-    from usage_query_gateway_product import UsageUpstream, gateway_request, USAGE
+    from publication_process import configure_model_settings_v2
+    from usage_query_gateway_product import UsageUpstream, gateway_request, publish_plan, USAGE
     for protocol in ['responses', 'messages']:
         product, upstream = Product(repository), UsageUpstream()
         product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
         try:
             product.start()
-            saved = save_native_source(product, upstream, NATIVE_TOKEN, protocol=protocol)
+            saved = save_native_source(product, upstream, NATIVE_TOKEN, protocol=protocol,
+                                       context_tokens=131072 if protocol == 'messages' else 32768)
             source = next(row for row in control(product, 'ListCompute', {})['data']['sources']
                           if row['source_id'] == saved['source_id'])
             allowance(product, saved['source_id'], source['keys'][0]['key_id'], 1_000_000, 'stream-' + protocol)
             price(product, saved['binding_id'])
-            publish_plan_and_agent(product, saved['binding_id'])
-            gateway_request(product, 'responses', product.model_alias, True, product.bearer(product.agent_connection))
+            plan_id, alias = publish_plan(product, saved['binding_id'], protocol)
+            agent = 'agent_codex_default' if protocol == 'responses' else 'agent_claude_default'
+            configure_model_settings_v2(product, [plan_id], 'budget-stream-' + protocol, agent_id=agent)
+            gateway_request(product, protocol, alias, True, product.bearer(product.agent_connection))
             expected = sum(USAGE[(protocol, True)][:2])
             deadline = time.monotonic() + 5
             while True:
