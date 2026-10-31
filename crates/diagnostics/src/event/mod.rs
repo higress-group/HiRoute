@@ -16,6 +16,7 @@ mod native_completion;
 mod native_routing;
 mod observation;
 mod protected_channel;
+mod request_failure;
 mod request_projection;
 mod request_timing;
 mod startup;
@@ -37,6 +38,7 @@ pub use native_completion::*;
 pub use native_routing::*;
 pub use observation::*;
 pub use protected_channel::*;
+pub use request_failure::*;
 pub use request_projection::*;
 pub use request_timing::*;
 pub use startup::*;
@@ -72,6 +74,7 @@ pub enum DiagnosticEvent {
     ProtectedExchange(ProtectedExchange),
     RequestBegin(RequestBegin),
     RequestEnd(RequestEnd),
+    RequestExecutionFailure(RequestExecutionFailure),
     RequestTimingSummary(RequestTimingSummary),
     RouteSelected(RouteSelected),
     AttemptBegin(AttemptBegin),
@@ -182,6 +185,7 @@ impl DiagnosticEvent {
                 RequestOutcome::Completed => Info,
                 _ => Warn,
             },
+            DiagnosticEvent::RequestExecutionFailure(_) => Warn,
             DiagnosticEvent::AttemptEnd(end) => match end.outcome {
                 AttemptOutcome::Completed
                     if end.provider_result == Some(WireModelResult::Unknown) =>
@@ -288,6 +292,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::ProtectedExchange(_) => "protected_exchange",
             DiagnosticEvent::RequestBegin(_) => "request_begin",
             DiagnosticEvent::RequestEnd(_) => "request_end",
+            DiagnosticEvent::RequestExecutionFailure(_) => "request_execution_failure",
             DiagnosticEvent::RequestTimingSummary(_) => "request_timing_summary",
             DiagnosticEvent::RouteSelected(_) => "route_selected",
             DiagnosticEvent::AttemptBegin(_) => "attempt_begin",

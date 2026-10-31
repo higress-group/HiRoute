@@ -36,6 +36,21 @@ Redundant native endpoint aliases cannot fabricate separate credential failures.
 Observation being disabled does not make the diagnostic model outcome automatically
 successful or unknown if the runtime has an authoritative result.
 
+Terminal local Core execution errors MUST remain typed until diagnostic
+classification. At Info, a failed request MUST retain its closed error source and
+reason, content-free request scale and whether an Attempt or response began.
+Memory admission refusal evidence MUST retain role, requested bytes and current
+stream/worker/process usage and limits at refusal, surviving later owner cleanup.
+An optional-work refusal MUST NOT by itself be labeled the terminal cause.
+
+#### Scenario: A long request disconnects before any model Attempt
+
+- **WHEN** locally admitted execution fails before an upstream Attempt begins
+- **THEN** the same request's diagnostic identity MUST relate the terminal local
+  error to request scale and available allocation-refusal evidence at Info,
+  without raw errors, prompts, headers or credentials; diagnostics MUST preserve
+  the existing failure, cancellation and cleanup behavior.
+
 #### Scenario: A Home read is rejected after successful Local Control calls
 
 - **WHEN** Desktop snapshot or observation transport succeeds but the final product
