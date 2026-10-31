@@ -662,3 +662,12 @@ button.option-row[aria-pressed='true'] { border-color: var(--accent); background
 .route-reasoning-modes .segment:has(:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .route-reasoning-modes .segment:has(:disabled) { cursor: default; opacity: .6; }
 .route-reasoning-policy .field-help { margin: 9px 0 0; line-height: 1.6; }
+
+.model-defaults-editor fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.model-defaults-editor dl { display: grid; margin: 14px 0 0; }
+.model-default-field { display: grid; grid-template-columns: minmax(105px, .8fr) minmax(0, 1.8fr); gap: 18px; min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--divider); }
+.model-default-field dt { color: var(--text-soft); font-size: calc(13px * var(--hr-text-scale)); font-weight: 500; line-height: 1.5; }
+.model-default-field dd { display: grid; gap: 8px; min-width: 0; margin: 0; }
+.model-default-field strong { font-size: calc(13px * var(--hr-text-scale)); font-weight: 600; overflow-wrap: anywhere; }
+.model-default-field .select, .model-default-field .input { min-width: 0; font-size: calc(13px * var(--hr-text-scale)); }
+.model-default-reasoning { display: grid; gap: 12px; min-width: 0; }

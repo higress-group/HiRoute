@@ -230,6 +230,23 @@ fn api_reasoning_survives_normal_v3_save_reopen_and_preserves_manual_values() {
             "GetComputeDefaults",
             serde_json::json!({"source_id":saved.source_id}),
         );
+        if model == "gpt-6-astra" {
+            for (key, expected) in [
+                ("tool", serde_json::json!(true)),
+                ("vision", serde_json::json!(true)),
+                ("streaming", serde_json::json!(true)),
+                ("context_tokens", serde_json::json!(1_050_000)),
+                ("max_output_tokens", serde_json::json!(128_000)),
+            ] {
+                let view = &defaults["models"][0]["fields"][key];
+                assert!(view["saved_value"].is_null());
+                assert_eq!(view["effective_value"], expected);
+                assert!(matches!(
+                    view["origin"].as_str(),
+                    Some("embedded" | "website_cache" | "inferred")
+                ));
+            }
+        }
         let field = &defaults["models"][0]["fields"]["native_reasoning"];
         assert_eq!(field["saved_value"], serde_json::to_value(&manual).unwrap());
         assert_eq!(field["intent"], "preserve_saved");
@@ -288,5 +305,140 @@ fn api_reasoning_survives_normal_v3_save_reopen_and_preserves_manual_values() {
                 .unwrap(),
             preferences
         );
+        drop(stores);
+        if model == "gpt-6-astra" {
+            let custom: std::collections::BTreeMap<hiroute_domain::ModelDefaultFieldV1, hiroute_domain::ModelDefaultPreferenceV1> = serde_json::from_value(serde_json::json!({
+                "tool":{"intent":"custom","value":false},"vision":{"intent":"custom","value":null},
+                "context_tokens":{"intent":"custom","value":64000},"max_output_tokens":{"intent":"custom","value":4096},
+                "native_reasoning":{"intent":"custom","value":{"kind":"discrete","parameter":"reasoning_effort","profiles":["low","high"],"default_profile":"low"}}
+            })).unwrap();
+            save_preferences(
+                &runtime,
+                &service,
+                &saved.source_id,
+                binding,
+                custom.clone(),
+                "custom-model-facts",
+            );
+            drop(service);
+            drop(runtime);
+            let runtime = super::super::ProductionControlRuntime::open_with_release_catalog(
+                root.path(),
+                catalog.clone(),
+            )
+            .unwrap();
+            let service = crate::control::LocalControlDaemon::new(
+                hiroute_application::ApplicationService::new(runtime.application_ports()),
+            );
+            let read = dispatch(
+                &service,
+                "GetComputeDefaults",
+                serde_json::json!({"source_id":saved.source_id}),
+            );
+            for (key, expected) in [
+                ("tool", serde_json::json!(false)),
+                ("vision", serde_json::Value::Null),
+                ("context_tokens", serde_json::json!(64000)),
+                ("max_output_tokens", serde_json::json!(4096)),
+            ] {
+                let field = &read["models"][0]["fields"][key];
+                assert_eq!(field["saved_value"], expected);
+                assert_eq!(field["effective_value"], expected);
+                assert_eq!(field["intent"], "custom");
+                assert_eq!(field["origin"], "custom");
+            }
+            let options = dispatch(
+                &service,
+                "GetPlanEditorOptions",
+                serde_json::json!({"authoring":{},"include_unavailable":true}),
+            );
+            assert_eq!(options["context_window"]["maximum_tokens"], 64000);
+            let candidate = options["candidates"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|c| c["binding_id"] == binding.as_str())
+                .unwrap();
+            assert_eq!(
+                candidate["reasoning"]["profiles"],
+                serde_json::json!(["low", "high"])
+            );
+            let raw = runtime
+                .adapter
+                .stores_lock()
+                .unwrap()
+                .control()
+                .compute_management_source(&saved.source_id)
+                .unwrap()
+                .unwrap();
+            assert_eq!(raw.models, saved.models);
+            assert_eq!(raw.credentials, saved.credentials);
+            let follow = custom
+                .keys()
+                .map(|field| (*field, ModelDefaultPreferenceV1::FollowMetadata))
+                .collect();
+            save_preferences(
+                &runtime,
+                &service,
+                &saved.source_id,
+                binding,
+                follow,
+                "follow-model-metadata",
+            );
+            let followed = dispatch(
+                &service,
+                "GetComputeDefaults",
+                serde_json::json!({"source_id":saved.source_id}),
+            );
+            assert_eq!(
+                followed["models"][0]["fields"]["context_tokens"]["effective_value"],
+                1_050_000
+            );
+            assert_eq!(
+                followed["models"][0]["fields"]["vision"]["effective_value"],
+                true
+            );
+            assert_eq!(
+                followed["models"][0]["fields"]["tool"]["intent"],
+                "follow_metadata"
+            );
+        }
     }
+}
+
+fn save_preferences(
+    runtime: &super::super::ProductionControlRuntime,
+    service: &crate::control::LocalControlDaemon,
+    source_id: &str,
+    binding: &str,
+    fields: std::collections::BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
+    identity: &str,
+) {
+    let defaults = dispatch(
+        service,
+        "GetComputeDefaults",
+        serde_json::json!({"source_id":source_id}),
+    );
+    let change:ComputeManagementChangeV3=serde_json::from_value(serde_json::json!({
+        "schema":"hiroute.compute-management-change/v3", "change":{
+            "schema":"hiroute.compute-management-change/v2","subject":{"kind":"saved_source","source_id":source_id},
+            "expected_revisions":defaults["revisions"],"selected_model_refs":[],"intent":"save_ready","key_edits":[],"edit":{"action":"rename","display_name":"API reasoning regression"}
+        },"default_preferences":{(binding):fields}
+    })).unwrap();
+    let p = runtime.adapter.preview_compute_save_v3(change).unwrap();
+    let response = service.dispatch_wire(hiroute_application_api::LocalControlWireRequestV2 {
+        schema_version: hiroute_application_api::LOCAL_CONTROL_SCHEMA_V2,
+        request_id: identity.into(),
+        operation_id: "ApplyComputeConnectionChange".into(),
+        payload: serde_json::to_value(ComputeConnectionApplyRequestV1 {
+            spec: p.spec,
+            accept_digest: p.accept_digest,
+            expected_revisions: p.expected_revisions,
+            idempotency_key: identity.into(),
+        })
+        .unwrap(),
+        protected_grant: None,
+    });
+    assert!(response.error.is_none(), "{:?}", response.error);
+    assert_eq!(response.operation.unwrap().state, "succeeded");
 }

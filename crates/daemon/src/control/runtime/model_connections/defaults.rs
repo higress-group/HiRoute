@@ -52,13 +52,25 @@ pub(in crate::control::runtime) fn project_source(
     source: &ComputeManagementSourceV2,
     preferences: &SourceDefaultPreferencesV1,
 ) -> ComputeManagementSourceV2 {
+    project_source_with_origins(catalog, source, preferences).0
+}
+fn project_source_with_origins(
+    catalog: &TrustedReleaseCatalog,
+    source: &ComputeManagementSourceV2,
+    preferences: &SourceDefaultPreferencesV1,
+) -> (
+    ComputeManagementSourceV2,
+    BTreeMap<String, BTreeMap<ModelDefaultFieldV1, bool>>,
+) {
+    let mut origins = BTreeMap::new();
     let mut effective = source.clone();
     for model in &mut effective.models {
         let fields = preferences
             .get(&model.binding_id)
             .cloned()
             .unwrap_or_default();
-        let current = scoped_capability(catalog, source, model).and_then(|cap| {
+        let scope = scoped_capability(catalog, source, model);
+        let current = scope.and_then(|cap| {
             let definition = catalog.model_data().model(&cap.model_configuration_id)?;
             let reasoning = catalog
                 .native_reasoning()
@@ -84,22 +96,28 @@ pub(in crate::control::runtime) fn project_source(
                     .is_some_and(|id| catalog.model_data().model(id).is_none()),
             )
         });
-        if let Some(default) = hiroute_integrations::compute::missing_api_reasoning_default(
-            catalog,
-            &source.provenance,
-            &source.target,
-            &source.authentication,
-            &model.upstream_model_id,
-            &model.capabilities.native_reasoning,
-            fields.get(&ModelDefaultFieldV1::NativeReasoning),
-        ) {
-            model.capabilities.native_reasoning = ComputeManagementFactValueV2 {
-                value: Some(default.capability),
-                basis: ComputeManagementFactBasisV2::RuntimeFallback,
-            };
+        if scope.is_none() {
+            let completion = hiroute_integrations::compute::complete_missing_api_capabilities(
+                catalog,
+                &source.provenance,
+                &source.target,
+                &source.authentication,
+                &model.upstream_model_id,
+                &model.capabilities,
+                &fields,
+            );
+            model.capabilities = completion.capabilities;
+            origins.insert(
+                model.binding_id.clone(),
+                completion
+                    .filled_fields
+                    .into_iter()
+                    .map(|field| (field, completion.inferred_fields.contains(&field)))
+                    .collect(),
+            );
         }
     }
-    effective
+    (effective, origins)
 }
 impl LocalControlAdapter {
     pub(super) fn compute_defaults(
@@ -123,7 +141,7 @@ impl LocalControlAdapter {
         let revisions = control
             .current_revisions(&WorkspaceId::default())
             .map_err(map_port)?;
-        let projected = project_source(&catalog, &source, &preferences);
+        let (projected, origins) = project_source_with_origins(&catalog, &source, &preferences);
         let mut models = Vec::new();
         for (saved, effective) in source.models.iter().zip(&projected.models) {
             let cap = scoped_capability(&catalog, &source, saved);
@@ -135,17 +153,6 @@ impl LocalControlAdapter {
                 protocol_endpoint_id: cap.protocol_endpoint_id.clone(),
             });
             let fields_preferences = preferences.get(&saved.binding_id);
-            let api_reasoning_default =
-                hiroute_integrations::compute::missing_api_reasoning_default(
-                    &catalog,
-                    &source.provenance,
-                    &source.target,
-                    &source.authentication,
-                    &saved.upstream_model_id,
-                    &saved.capabilities.native_reasoning,
-                    fields_preferences.and_then(|p| p.get(&ModelDefaultFieldV1::NativeReasoning)),
-                )
-                .is_some();
             let mut fields = BTreeMap::new();
             macro_rules! field {
                 ($name:ident, $key:ident) => {{
@@ -153,31 +160,61 @@ impl LocalControlAdapter {
                     let intent = fields_preferences.and_then(|p| p.get(&ModelDefaultFieldV1::$key));
                     let follows = matches!(
                         intent,
-                        Some(ModelDefaultPreferenceV1::FollowOfficial { .. })
+                        Some(
+                            ModelDefaultPreferenceV1::FollowOfficial { .. }
+                                | ModelDefaultPreferenceV1::FollowMetadata
+                        )
                     ) || intent.is_none()
                         && saved_fact.basis == ComputeManagementFactBasisV2::RegisteredCatalog
                         && locator.is_some();
                     fields.insert(
                         ModelDefaultFieldV1::$key,
                         ComputeDefaultFieldViewV1 {
-                            saved_value: serde_json::to_value(&saved_fact.value)
-                                .map_err(|_| ComputeManagementControlError::Corrupt)?,
-                            effective_value: if follows && locator.is_none() {
+                            saved_value: match intent {
+                                Some(ModelDefaultPreferenceV1::Custom { value }) => {
+                                    serde_json::to_value(value)
+                                }
+                                _ => serde_json::to_value(&saved_fact.value),
+                            }
+                            .map_err(|_| ComputeManagementControlError::Corrupt)?,
+                            effective_value: if matches!(
+                                intent,
+                                Some(ModelDefaultPreferenceV1::FollowOfficial { .. })
+                            ) && locator.is_none()
+                            {
                                 serde_json::Value::Null
                             } else {
                                 serde_json::to_value(&effective.capabilities.$name.value)
                                     .map_err(|_| ComputeManagementControlError::Corrupt)?
                             },
-                            intent: if follows {
-                                "follow_official"
-                            } else {
-                                "preserve_saved"
+                            intent: match intent {
+                                Some(ModelDefaultPreferenceV1::Custom { .. }) => "custom",
+                                Some(ModelDefaultPreferenceV1::FollowMetadata) => "follow_metadata",
+                                _ if follows => "follow_official",
+                                _ => "preserve_saved",
                             }
                             .into(),
-                            origin: if follows
-                                || (ModelDefaultFieldV1::$key
-                                    == ModelDefaultFieldV1::NativeReasoning
-                                    && api_reasoning_default)
+                            origin: if matches!(
+                                intent,
+                                Some(ModelDefaultPreferenceV1::Custom { .. })
+                            ) {
+                                "custom"
+                            } else if matches!(
+                                intent,
+                                Some(ModelDefaultPreferenceV1::FollowMetadata)
+                            ) && effective.capabilities.$name.value.is_none()
+                            {
+                                "unavailable"
+                            } else if origins
+                                .get(&saved.binding_id)
+                                .and_then(|fields| fields.get(&ModelDefaultFieldV1::$key))
+                                == Some(&true)
+                            {
+                                "inferred"
+                            } else if follows
+                                || origins.get(&saved.binding_id).is_some_and(|fields| {
+                                    fields.contains_key(&ModelDefaultFieldV1::$key)
+                                })
                             {
                                 if catalog.official_data_from_feed() {
                                     "website_cache"

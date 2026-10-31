@@ -22,13 +22,13 @@ enforces this condition on publication and reopen; Agent and Gateway catalogs us
 the route display name when its saved purpose is empty, preserving their nonempty
 description contracts.
 
-Missing reasoning on saved registered OpenAI/Anthropic API models is resolved by
+Missing capability, exact limit and reasoning facts on saved registered OpenAI/Anthropic API models are resolved by
 the shared scoped metadata default in `hiroute-integrations`. The daemon uses the
 same default for model/default reads and candidate materialization. It matches the
 registered target, protocol, authentication, product and exact upstream ID, and
 preserves explicit source values, exact FollowOfficial intent and frozen
 publications. PreserveSaved protects meaningful saved facts; an absent or generic
-runtime-fallback reasoning fact can still receive this missing-value default.
+runtime-fallback capability fact can still receive this missing-value default.
 The read projection does not rewrite stored sources or qualify entitlement.
 
 OpenAI API-scoped provider/model records can fill absent binding metadata only
@@ -36,3 +36,10 @@ when the exact API root, authentication, protocol and ID match the installed
 official connector's native effort convention. Their effort sets are ordered
 natively; conflicts and withdrawn bindings stay unresolved. Subscription records
 never supply API controls.
+
+Model capability editing has two visible modes: Custom and Follow HiRoute model
+metadata. Custom values, including unknown, are source-default choices sealed by
+the ordinary preview/save operation; they do not rewrite source membership or
+credential evidence. Legacy preserved/official-locator policies retain their exact
+meaning and bytes. New model/default reads and publication share the effective
+projection; already published revisions keep their frozen capabilities.

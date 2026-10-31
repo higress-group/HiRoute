@@ -30,14 +30,13 @@ try {
     await click('.list-row','Qwen3-Coder-Plus');
     await waitFor(client,`document.querySelectorAll('.model-default-field').length===6`);
     await evaluate(client,`document.querySelector('.model-defaults-editor').scrollIntoView({block:'center'});true`);
-    assert.equal(await evaluate(client,`document.querySelector('#model-default-vision').value`),'preserve_saved');
-    // Missing facts and derived generic fallbacks share the metadata projection;
-    // FollowOfficial still offers a literal Preserve saved option.
-    assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning option[value=preserve_saved]').textContent.includes(${JSON.stringify(lang==='zh'?'保留已保存值':'Preserve saved')})`),true);
+    assert.equal(await evaluate(client,`document.querySelector('#model-default-vision').value`),'custom');
+    // Retained saved/exact-locator choices map to exactly two visible modes.
+    assert.deepEqual(await evaluate(client,`[...document.querySelector('#model-default-native_reasoning').options].map(o=>o.value)`),['follow_metadata','custom']);
     for(const fallback of [false,true]) {
       await evaluate(client,`metadataFixture.automaticReasoning=true;metadataFixture.fallbackReasoning=${fallback};dispatchEvent(new Event('model-feed-changed'));true`);
-      await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.selectedOptions[0].textContent.includes(${JSON.stringify(lang==='zh'?'按模型元信息补齐':'Model metadata default')})`);
-      assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').value`),'preserve_saved');
+      await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='follow_metadata'`);
+      assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').value`),'follow_metadata');
       assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').closest('dd').querySelector('strong').textContent`),'low / medium / high / xhigh / max');
       await evaluate(client,`document.querySelector('#model-default-native_reasoning').scrollIntoView({block:'center'});true`);
       assert.equal(await evaluate(client,`(()=>{const r=document.querySelector('#model-default-native_reasoning').closest('.model-default-field').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})()`),true,'the affected reasoning row must be visible');
@@ -45,15 +44,18 @@ try {
     }
     results.push({id:`metadata.reasoning-automatic.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked IPC; missing and derived fallback facts'});
     await evaluate(client,`metadataFixture.automaticReasoning=false;dispatchEvent(new Event('model-feed-changed'));true`);
-    await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='follow_official'`);
+    await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='follow_metadata'`);
 
-    await select('#model-default-context_tokens','preserve_saved');
-    await click('.model-defaults-editor button',lang==='zh'?'预览修改':'Preview changes');
-    await waitFor(client,`[...document.querySelectorAll('.model-defaults-editor button')].some(e=>e.textContent.includes(${JSON.stringify(lang==='zh'?'保存默认值选择':'Save default choices')}))`);
-    assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='preview_compute_save_v3').payload.defaultPreferences['binding/bailian/qwen-coder'].context_tokens.intent`),'preserve_saved');
+    await select('#model-default-context_tokens','custom');
+    await evaluate(client,`(()=>{const e=document.querySelector('[data-default-field=context_tokens] input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'64000');e.dispatchEvent(new Event('input',{bubbles:true}));metadataFixture.failSave=true;return true;})()`);
+    await click('.model-defaults-editor button',lang==='zh'?'保存修改':'Save changes');
+    await waitFor(client,`!!document.querySelector('.model-defaults-editor [role=alert]')`);
+    assert.deepEqual(await evaluate(client,`trialTrace.find(x=>x.command==='preview_compute_save_v3').payload.defaultPreferences['binding/bailian/qwen-coder'].context_tokens`),{intent:'custom',value:64000});
+    assert.equal(await evaluate(client,`document.querySelector('#model-default-context_tokens').value`),'custom');
+    assert.equal(await evaluate(client,`document.querySelector('[data-default-field=context_tokens] input').value`),'64000');
     await evaluate(client,`metadataFixture.fail=true;dispatchEvent(new Event('model-feed-changed'));true`);
     await waitFor(client,`!!document.querySelector('.model-defaults-editor [role=alert]')`);
-    assert.equal(await evaluate(client,`document.querySelector('#model-default-context_tokens').value`),'preserve_saved');
+    assert.equal(await evaluate(client,`document.querySelector('[data-default-field=context_tokens] input').value`),'64000');
     await shot(`defaults-error-retains-draft-${lang}-${theme}-${width}`);
     await evaluate(client,`metadataFixture.fail=false;true`);
     await click('.model-defaults-editor [role=alert] button',lang==='zh'?'重新读取':'Reload');

@@ -30,8 +30,19 @@ pub struct OfficialModelLocatorV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "intent", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ModelDefaultPreferenceV1 {
+    Custom { value: ModelDefaultValueV1 },
+    FollowMetadata,
+    // Retained source choices and sealed Operations keep their original bytes.
     PreserveSaved,
     FollowOfficial { locator: OfficialModelLocatorV1 },
+}
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ModelDefaultValueV1 {
+    Boolean(bool),
+    Tokens(u64),
+    Reasoning(NativeReasoningCapabilityV1),
+    Unknown(()),
 }
 pub type SourceDefaultPreferencesV1 =
     BTreeMap<String, BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>>;
@@ -51,6 +62,29 @@ pub fn validate_source_default_preferences(
             return Err(ComputeManagementErrorV2::InvalidMutation);
         }
         for (field, policy) in fields {
+            if let ModelDefaultPreferenceV1::Custom { value } = policy {
+                let valid = match (field, value) {
+                    (_, ModelDefaultValueV1::Unknown(())) => true,
+                    (
+                        ModelDefaultFieldV1::Tool
+                        | ModelDefaultFieldV1::Vision
+                        | ModelDefaultFieldV1::Streaming,
+                        ModelDefaultValueV1::Boolean(_),
+                    ) => true,
+                    (
+                        ModelDefaultFieldV1::ContextTokens | ModelDefaultFieldV1::MaxOutputTokens,
+                        ModelDefaultValueV1::Tokens(value),
+                    ) => *value > 0,
+                    (
+                        ModelDefaultFieldV1::NativeReasoning,
+                        ModelDefaultValueV1::Reasoning(value),
+                    ) => value.validate().is_ok(),
+                    _ => false,
+                };
+                if !valid {
+                    return Err(ComputeManagementErrorV2::InvalidCapability);
+                }
+            }
             if let ModelDefaultPreferenceV1::FollowOfficial { locator } = policy {
                 let basis = match field {
                     ModelDefaultFieldV1::Tool => model.capabilities.tool.basis,

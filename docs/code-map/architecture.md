@@ -361,7 +361,7 @@ turn endpoints; shared retained-analysis classification and recorded facts remai
 The [feed service](../../crates/daemon/src/model_feed) owns complete snapshot selection,
 semantic/publication floors and retrieval. [Admission](../../crates/integrations/src/model_feed)
 qualifies installed execution without discarding descriptive records. The shared
-[capability resolver](../../crates/integrations/src/compute/defaults.rs) joins saved intent
+[capability resolver](../../crates/integrations/src/compute/defaults.rs) joins custom/follow-metadata intent
 and exact current endpoint/product facts; [price projection](../../crates/daemon/src/control/runtime/prices/official.rs)
 uses the same scope with the existing valuation engine. [Source preference persistence](../../crates/local-storage/src/control/compute/management/defaults.rs)
 shares source revisions, effect activation and compensation. The [metadata query owner](../../crates/daemon/src/control/runtime/model_feed/metadata.rs)

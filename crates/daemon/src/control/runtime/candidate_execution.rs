@@ -302,16 +302,29 @@ pub(super) fn materialize_management_candidate(
         }
         _ => return None,
     };
-    let tool = fact.capabilities.tool.value.unwrap_or(true);
-    let vision = fact.capabilities.vision.value.unwrap_or(false);
-    let streaming = fact.capabilities.streaming.value.unwrap_or(true);
-    let context_tokens = fact
-        .capabilities
+    let capabilities = catalog.map_or_else(
+        || fact.capabilities.clone(),
+        |catalog| {
+            hiroute_integrations::compute::complete_missing_api_capabilities(
+                catalog,
+                &fact.provenance,
+                &fact.target,
+                &fact.authentication,
+                &fact.upstream_model_id,
+                &fact.capabilities,
+                &fact.default_preferences,
+            )
+            .capabilities
+        },
+    );
+    let tool = capabilities.tool.value.unwrap_or(true);
+    let vision = capabilities.vision.value.unwrap_or(false);
+    let streaming = capabilities.streaming.value.unwrap_or(true);
+    let context_tokens = capabilities
         .context_tokens
         .value
         .unwrap_or(UNKNOWN_TEXT_CONTEXT_TOKENS);
-    let max_output_tokens = fact
-        .capabilities
+    let max_output_tokens = capabilities
         .max_output_tokens
         .value
         .unwrap_or(UNKNOWN_TEXT_OUTPUT_TOKENS)
@@ -452,7 +465,13 @@ pub(super) fn materialize_management_candidate(
     let reasoning = ModelNativeReasoningV1 {
         model_configuration_id: model_configuration_id.clone(),
         capability: metadata_reasoning.as_ref().map_or_else(
-            || fact.native_reasoning.clone(),
+            || {
+                capabilities
+                    .native_reasoning
+                    .value
+                    .clone()
+                    .unwrap_or_else(|| fact.native_reasoning.clone())
+            },
             |value| value.capability.clone(),
         ),
         native_render_convention: metadata_reasoning

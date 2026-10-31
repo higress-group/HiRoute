@@ -156,8 +156,24 @@ A registered check SHALL submit option identity, expected provenance, edit corre
 
 Saved source/binding identity, selected membership, credentials, target and historical admission provenance SHALL survive compatible metadata updates. A catalog-derived capability SHALL resolve from the current selected snapshot for new authoring/publication. A catalog digest change or a compatible change of context limit, tool/vision/streaming support or supported reasoning values alone SHALL NOT invalidate an otherwise legal saved connection. Existing user-declared values SHALL retain their source-local meaning and editable authority. Refresh SHALL neither fabricate a successful connection check nor overwrite historical save evidence.
 
+Desktop model capability settings SHALL expose exactly two choices per field:
+Custom and Follow HiRoute model metadata. Custom supports editing and saving
+booleans, positive token limits and native reasoning capabilities, including an
+explicit unknown value. Saved custom choices SHALL take precedence over later
+metadata updates, and changes SHALL use the normal source/default preview and
+protected save transaction without another provider request. Following metadata
+SHALL use the exact current source/product/protocol/model scope; missing or
+conflicting facts SHALL remain unknown rather than retaining a stale custom value.
+The page SHALL identify current effective values and distinguish saved custom,
+metadata-derived/inferred and unavailable facts. “Official default” SHALL NOT
+label bundled client assertions or inference. Legacy preserved and exact official
+locator choices SHALL retain their original serialized meaning and map to these
+two visible choices without rewriting retained data. Existing published routes
+and sessions SHALL retain their frozen capabilities until explicitly republished.
+
 New and already saved observed models on the registered OpenAI and Anthropic APIs
-SHALL resolve absent or derived-fallback reasoning controls from one current
+SHALL resolve absent or derived-fallback tool/vision/streaming, exact token-limit
+and reasoning facts from one current
 metadata snapshot when the exact registered destination, protocol, authentication,
 product and upstream model ID match a supported native reasoning convention.
 The projection SHALL be shared by model/default reads, recheck prefill, routing
@@ -166,15 +182,16 @@ SHALL retain their distinct native fields and required companion controls.
 Labels, another product's subscription membership, an unknown ID or an ambiguous
 mapping SHALL NOT establish these defaults. Where an API product has no exact
 binding for that ID, complete API-scoped provider/model prefill records MAY supply
-OpenAI efforts only after their sole exact API root, supported protocol, API-key
+known capability/limit facts and OpenAI efforts only after their sole exact API root, supported protocol, API-key
 kind and model ID match the already qualified official connector. The installed
 connector owns the native parameter path. Model hints SHALL NOT supply new wire
 conventions, provider defaults, membership or billing. Conflicting or unsupported
 efforts, ambiguous URLs and explicit withdrawn/rejected API bindings SHALL keep
 missing controls unresolved; subscription records SHALL NOT supply API defaults.
 
-Explicit non-fallback source capability values and exact FollowOfficial intent
-SHALL take precedence. PreserveSaved on an absent or derived-fallback reasoning
+Custom choices and explicit non-fallback source capability values SHALL take
+precedence unless the user explicitly selects Follow HiRoute model metadata.
+Legacy exact FollowOfficial intent SHALL retain its scoped meaning. Legacy PreserveSaved on an absent or derived-fallback capability
 fact SHALL allow this missing-value projection, including preferences established
 automatically by earlier imports. Explicit fixed non-thinking settings, manual
 profile subsets and defaults SHALL retain their saved meaning.

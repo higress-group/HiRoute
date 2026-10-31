@@ -2459,6 +2459,21 @@
         "crates/domain/src/observation/execution_validation.rs",
         "crates/domain/src/observation/execution_tests.rs"
       ]
+    },
+    {
+      "contract": "hiroute.model-default-preference/v1",
+      "field": "retained preserve_saved and follow_official variants",
+      "mode": "legacy_adapter",
+      "owner": "compute-management-defaults",
+      "allowed_paths": [
+        "crates/domain/src/compute/management/defaults.rs",
+        "crates/integrations/src/compute/defaults.rs",
+        "crates/integrations/src/compute/defaults/native_reasoning.rs",
+        "crates/daemon/src/control/runtime/model_connections/defaults.rs",
+        "apps/desktop/src/features/model-feed/ModelDefaultsEditor.tsx"
+      ],
+      "reason": "Retained source choices and sealed Operations keep their original canonical bytes and exact saved/official-locator meaning. Current explicit edits use custom values or follow_metadata; the Desktop maps retained choices to the same two visible modes without rewriting them. Custom unknown is an explicit value and cannot be filled automatically.",
+      "removal_condition": "Retire only after the release support policy explicitly retires all supported retained source/default choices and unfinished Operations, or an authenticated migration preserves their original meaning."
     }
   ]
 }
