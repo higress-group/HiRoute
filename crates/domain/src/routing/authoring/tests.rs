@@ -1,5 +1,23 @@
 use super::*;
 
+#[test]
+fn follow_reasoning_retains_legacy_configuration_and_round_trips_opt_in() {
+    let released: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/released-plan-editor.v2.json")).unwrap();
+    let old = released["editor"].clone();
+    let mut draft: PlanEditorStateV2 = serde_json::from_value(old.clone()).unwrap();
+    assert!(!draft.follow_request_reasoning);
+    assert_eq!(serde_json::to_value(&draft).unwrap(), old);
+    assert!(!draft.effective().unwrap().follow_request_reasoning);
+    let original = draft.candidates.clone();
+    draft.follow_request_reasoning = true;
+    let effective = draft.effective().unwrap();
+    assert!(effective.follow_request_reasoning);
+    let reopened = effective.editor(None).unwrap();
+    assert!(reopened.follow_request_reasoning);
+    assert_eq!(reopened.candidates, original);
+}
+
 fn editor() -> PlanEditorStateV2 {
     serde_json::from_value(serde_json::json!({
         "schema": PLAN_EDITOR_SCHEMA_V2, "display_name": "代码整理", "purpose": "整理代码",

@@ -699,6 +699,7 @@ fn route() -> RouteDecisionFactV1 {
 
 fn candidate() -> CandidateDecisionFactV1 {
     CandidateDecisionFactV1 {
+        reasoning_resolution: None,
         candidate_id: "candidate-1".to_owned(),
         stable_binding_id: "binding-1".to_owned(),
         group_id: "group-1".to_owned(),

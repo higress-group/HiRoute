@@ -344,6 +344,10 @@ pub(crate) fn observed_history_with_replay<'a>(
         }
     }
     instructions.bool(request.parallel_tool_calls);
+    if let Some(control) = &request.requested_reasoning.followed_control {
+        instructions.tag(b"follow-request-reasoning");
+        instructions.json(&serde_json::to_value(control).ok()?)?;
+    }
     // The sealed Agent Plan owns reasoning effort/budget. The typed Responses
     // options below retain and hash the supported summary sibling.
     match &request.responses_options {

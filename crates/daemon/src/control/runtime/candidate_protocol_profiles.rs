@@ -129,6 +129,7 @@ pub(super) fn protocol_profiles(
             continue;
         };
         profiles.push(GatewayCandidateProtocolProfileV1 {
+            follow_request_reasoning: false,
             schema_version: "hiroute.candidate-protocol-profile/v1".into(),
             native_target: face.native_target.clone(),
             path_id: format!(

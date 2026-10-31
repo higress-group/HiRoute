@@ -27,6 +27,47 @@ fn named() -> PlanAuthoringRequestV1 {
 }
 
 #[test]
+fn follow_reasoning_defaults_only_new_fixed_routes_and_keeps_saved_choices() {
+    let candidates = [candidate(
+        "binding/a",
+        NativeReasoningCapabilityV1::Discrete {
+            parameter: "reasoning_effort".into(),
+            profiles: vec!["low".into(), "medium".into(), "high".into()],
+            default_profile: Some("medium".into()),
+        },
+    )];
+    let mut input = named();
+    input.candidates = Some(vec![selection("binding/a")]);
+    let mut editor = prepare_authoring(&input, None, &candidates).unwrap().editor;
+    assert!(editor.follow_request_reasoning);
+    assert_eq!(
+        editor.candidates[0].reasoning,
+        Some(ReasoningSelectionV1::Profile {
+            profile: "medium".into()
+        })
+    );
+    editor.follow_request_reasoning = false;
+    let saved = saved(editor.clone());
+    input.plan_id = Some(saved.agent_plan_id.clone());
+    let reopened = prepare_authoring(&input, Some(&saved), &candidates)
+        .unwrap()
+        .editor;
+    assert_eq!(
+        reopened.follow_request_reasoning,
+        editor.follow_request_reasoning
+    );
+    assert_eq!(reopened.candidates, editor.candidates);
+    input.plan_id = None;
+    input.mode = Some(PlanEditorMode::SmartSaving);
+    assert!(
+        !prepare_authoring(&input, None, &candidates)
+            .unwrap()
+            .editor
+            .follow_request_reasoning
+    );
+}
+
+#[test]
 fn route_authoring_without_purpose_can_publish_and_reopen() {
     let candidates = [candidate(
         "binding/a",

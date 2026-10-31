@@ -39,7 +39,10 @@ export function modelRouteEditor(options: Options, request: ModelRouteRequest): 
     throw { code: 'CHANGE_PREVIEW_STALE' };
   }
   const editor = structuredClone(options.authoring.editor);
-  if (!request.plan) editor.custom_alias = request.modelId;
+  if (!request.plan) {
+    editor.custom_alias = request.modelId;
+    editor.follow_request_reasoning = true;
+  }
   // Budget-only models have no shared automatic reasoning choice. Seed a visible,
   // valid minimum in this explicit creation flow; Save still admits the exact value.
   const previous = new Set(request.plan?.desired.strategy.candidates?.map(item => item.binding_id));

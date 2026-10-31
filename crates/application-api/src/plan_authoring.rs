@@ -237,6 +237,7 @@ pub enum CodexInputModalityV1 {
 #[serde(rename_all = "snake_case")]
 pub enum CodexReasoningControlV1 {
     RouteConfiguration,
+    FollowRequest,
 }
 
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

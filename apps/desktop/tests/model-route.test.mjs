@@ -20,6 +20,7 @@ test('new model routes prefill exact ID, fixed mode and explicitly ordered candi
   const value = modelRouteEditor({ authoring: { editor }, candidates: [{ binding_id: 'binding/api', reasoning: { kind: 'budget', minimum_tokens: 1024 } }] }, request);
   assert.equal(value.custom_alias, request.modelId);
   assert.equal(value.purpose, '');
+  assert.equal(value.follow_request_reasoning, true);
   assert.deepEqual(value.candidates.map(item => item.reasoning), [{ kind: 'profile', profile: 'high' }, { kind: 'budget', tokens: 1024 }]);
   assert.equal(editor.candidates[1].reasoning, undefined, 'options are not mutated');
 });

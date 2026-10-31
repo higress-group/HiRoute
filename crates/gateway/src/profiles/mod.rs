@@ -7,6 +7,7 @@
 mod capability;
 mod connector;
 mod context;
+mod follow_reasoning;
 mod reasoning;
 #[path = "fixed_reasoning.rs"]
 mod request_reasoning;
@@ -19,6 +20,7 @@ pub mod planner;
 pub use capability::*;
 pub use connector::*;
 pub use context::*;
+pub use follow_reasoning::RequestedNativeReasoning;
 pub use planner::*;
 pub use reasoning::*;
 

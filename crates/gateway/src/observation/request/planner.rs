@@ -86,6 +86,7 @@ impl RequestObservation {
                 });
             self.emit_execution(
                 ExecutionFactV1::CandidateDecision(Box::new(CandidateDecisionFactV1 {
+                    reasoning_resolution: candidate.and_then(|c| c.reasoning_resolution),
                     candidate_id: evaluation.candidate_id.clone(),
                     stable_binding_id: evaluation.stable_binding_id.clone(),
                     group_id: evaluation.group_id.clone(),

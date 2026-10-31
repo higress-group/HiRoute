@@ -652,6 +652,8 @@ pub enum RankingReasonCodeV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateDecisionFactV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_resolution: Option<crate::ReasoningResolutionV1>,
     pub candidate_id: String,
     pub stable_binding_id: String,
     pub group_id: String,

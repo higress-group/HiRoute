@@ -29,6 +29,39 @@ fn policy() -> CodexDefaultPolicy<'static> {
 }
 
 #[test]
+fn follow_reasoning_catalog_offers_only_frozen_native_efforts_and_keeps_saved_default() {
+    let mut value = plan();
+    for profile in std::sync::Arc::make_mut(&mut value.body)
+        .materialized
+        .attempt_owned
+        .groups
+        .iter_mut()
+        .flat_map(|g| &mut g.candidates)
+        .flat_map(|c| &mut c.protocol_profiles)
+    {
+        profile.follow_request_reasoning = true;
+    }
+    let value = reseal(value);
+    let before = serde_json::to_value(&value).unwrap();
+    let entry = plan_entry(&value, 99).unwrap();
+    let efforts = entry["supported_reasoning_levels"].as_array().unwrap();
+    assert!(!efforts.is_empty());
+    assert!(efforts.iter().any(|e| e["effort"] == "high"));
+    assert!(!efforts.iter().any(|e| e["effort"] == "max"));
+    assert!(entry["default_reasoning_level"].is_null());
+    assert!(entry["description"].as_str().unwrap().contains("跟随请求"));
+    assert_eq!(serde_json::to_value(&value).unwrap(), before);
+    original()
+        .append_plans(
+            &[value],
+            policy(),
+            CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
+        )
+        .unwrap();
+}
+
+#[test]
 fn hiroute_only_catalog_uses_published_plan_without_native_cache() {
     let root = tempfile::tempdir().unwrap();
     let config = root.path().join("config.toml");

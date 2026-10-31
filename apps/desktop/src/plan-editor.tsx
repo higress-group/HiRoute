@@ -36,19 +36,19 @@ type Mode = 'fixed_model' | 'smart_saving' | 'free_first' | 'custom_branches';
 type Work = { harness: 'codex_cli' | 'claude_code' | 'qoder_cli' | 'pi' | 'deepseek_harness' | 'opencode'; protocol: 'responses' | 'messages' };
 type SmartClassifier = Classifier;
 // Inactive inputs belong to this editing session, never to the persisted plan.
-export type PlanEditorMemory = { branchRouting?: BranchRouting; customWindowTokens?: number };
+export type PlanEditorMemory = { branchRouting?: BranchRouting; customWindowTokens?: number; reasoningPolicyChosen?: boolean };
 export type Smart = { economy: Selection[]; primary: Selection[]; judgment: Judgment; /** @deprecated Accepted only for saved plans and drafts. */ reselect_on_user_message?: boolean; classifier: SmartClassifier; complex_keywords: string[] };
 type Free = { candidates: Selection[]; primary: Selection[]; primary_fallback: boolean };
-export type Editor = { schema: string; display_name: string; purpose: string; custom_alias?: string; mode: Mode; branch_routing?: BranchRouting | null; candidates: Selection[]; smart: Smart; free: Free; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: { context_window_tokens?: number; maximum_attempts: number; request_timeout_ms: number; attempt_timeout_ms: number } };
+export type Editor = { schema: string; display_name: string; purpose: string; custom_alias?: string; mode: Mode; follow_request_reasoning?: boolean; branch_routing?: BranchRouting | null; candidates: Selection[]; smart: Smart; free: Free; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: { context_window_tokens?: number; maximum_attempts: number; request_timeout_ms: number; attempt_timeout_ms: number } };
 type StoredRouting = BranchRouting & { native_protocol?: unknown };
 type StoredSmart = Smart & { native_protocol?: unknown };
-export type Plan = { protocol_advice?: ProtocolAdvice; agent_plan_id: string; desired: { display_name: string; purpose: string; mode: Mode; strategy: { mode: string; candidates?: Selection[]; routing?: StoredRouting } & Partial<StoredSmart & Free>; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: Editor['limits'] }; head: { head_revision: number; status: string }; agent_plan_revision: number; model_alias: string; publication: { revision: number; digest: string }; execution: string };
+export type Plan = { protocol_advice?: ProtocolAdvice; agent_plan_id: string; desired: { display_name: string; purpose: string; mode: Mode; follow_request_reasoning?: boolean; strategy: { mode: string; candidates?: Selection[]; routing?: StoredRouting } & Partial<StoredSmart & Free>; delegation_enabled: boolean; work?: Work; requirements: Record<string, unknown>; limits: Editor['limits'] }; head: { head_revision: number; status: string }; agent_plan_revision: number; model_alias: string; publication: { revision: number; digest: string }; execution: string };
 export type Draft = { draft_id: string; plan_id?: string; base_head_revision?: number; revision: number; editor: Editor };
 type Native = NativeReasoning;
 type Candidate = { binding_id: string; model_configuration_id: string; display_name: string; reasoning: Native; billing_class: string; routable: boolean; ingress_protocols: string[]; native_ingress_protocols?: string[] };
 type CodexCapabilityLimit = { kind: 'context_window' | 'image_input'; binding_ids: string[] };
 type CodexCapabilityIssue = { kind: 'plan_compilation' | 'invalid_compiled_plan' | 'responses_protocol' | 'request_capabilities' | 'instruction_roles' | 'context_input' | 'context_output' | 'context_total' | 'reasoning_profile' | 'context_window'; binding_id?: string };
-type CodexCapabilities = { state: 'available'; context_window: number; input_modalities: ('text' | 'image')[]; reasoning: 'route_configuration'; limitations: CodexCapabilityLimit[]; fixed_limits: ('parallel_tool_calls_disabled')[] }
+type CodexCapabilities = { state: 'available'; context_window: number; input_modalities: ('text' | 'image')[]; reasoning: 'route_configuration' | 'follow_request'; limitations: CodexCapabilityLimit[]; fixed_limits: ('parallel_tool_calls_disabled')[] }
   | { state: 'unavailable'; issues: CodexCapabilityIssue[] };
 export type ClaudeCapabilities = { state: 'available'; context_window: number; plan_window: number } | { state: 'unavailable'; reason: string };
 export type DshCapabilities = { state: 'available'; protocol: 'responses'; context_window: number; max_output_tokens: number } | { state: 'unavailable'; reason: 'invalid_plan' | 'responses_unavailable' | 'budget_unavailable' };
@@ -161,6 +161,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const [validationIssue, setValidationIssue] = useState<ValidationIssue | null>(null);
   const [diagnostic, setDiagnostic] = useState('');
   const memory = useRef(editingMemory ?? {}).current;
+  memory.reasoningPolicyChosen ??= Boolean(plan || draft || initialContent);
   const [moreSettingsOpen, setMoreSettingsOpen] = useState(editor.delegation_enabled);
   const [optionsError, setOptionsError] = useState('');
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -236,6 +237,8 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     update({ candidates: [{ binding_id: first.binding_id, reasoning: defaultReasoning(first.binding_id) }] });
   }, [creating, options, editor.mode, editor.candidates.length, initialBindingId]);
   function defaultReasoning(bindingId: string, preferred: 'low' | 'high' = 'high'): Selection['reasoning'] {
+    const native = options?.candidates.find(value => value.binding_id === bindingId)?.reasoning;
+    if (editor.follow_request_reasoning && native?.kind === 'discrete' && native.default_profile && native.profiles.includes(native.default_profile)) return { kind: 'profile', profile: native.default_profile };
     if (trialOnly) {
       const candidate = options?.candidates.find(value => value.binding_id === bindingId);
       return candidate ? trialSelection(candidate).selection.reasoning : undefined;
@@ -389,23 +392,25 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     } catch (e) { reportError(e); } finally { setBusy(false); }
   }
   const billing = (value?: string) => value === 'free' ? text('免费', 'Free') : value === 'subscription' ? text('订阅', 'Subscription') : value === 'paid' ? text('按量付费', 'Usage priced') : text('价格未记录', 'Price not recorded');
-  function reasoningControl(selection: Selection, candidate: Candidate | undefined, apply: (reasoning: Selection['reasoning']) => void, labeled = false) {
+  function reasoningControl(selection: Selection, candidate: Candidate | undefined, apply: (reasoning: Selection['reasoning']) => void) {
     const native = candidate?.reasoning;
+    const prefix = editor.follow_request_reasoning ? text('默认档位', 'Default level') : text('固定档位', 'Fixed level');
     const reasoningLabel = selection.reasoning?.kind === 'profile' ? selection.reasoning.profile
       : selection.reasoning?.kind === 'toggle' ? (selection.reasoning.enabled ? text('思考开启', 'Reasoning on') : text('思考关闭', 'Reasoning off'))
       : selection.reasoning?.kind === 'budget' ? `${selection.reasoning.tokens} tokens` : text('设置思考强度', 'Set reasoning');
     if (native?.kind === 'fixed') return <span className="effort-select">{text('供应商默认', 'Provider default')}</span>;
     if (!native) return <span className="effort-select">{!options && optionsLoading ? text('正在读取思考设置…', 'Loading reasoning…') : text('思考设置未取得', 'Reasoning unavailable')}</span>;
-    return <button type="button" className="effort-select" aria-label={`${candidate.display_name} · ${text('思考强度', 'Reasoning')}`} onClick={() => setEffort({ name: candidate.display_name, native, value: selection.reasoning, apply })}>{labeled ? `${text('思考强度', 'Reasoning')}: ${reasoningLabel}` : reasoningLabel}</button>;
+    return <button type="button" className="effort-select" aria-label={`${candidate.display_name} · ${text('思考强度', 'Reasoning')}`} onClick={() => setEffort({ name: candidate.display_name, native, value: selection.reasoning, apply })}>{`${prefix}: ${reasoningLabel}`}</button>;
   }
   function changeMode(mode: Mode) {
     if (mode === editor.mode) return;
     if (editor.branch_routing && editor.mode === 'custom_branches') memory.branchRouting = structuredClone(editor.branch_routing);
+    const policy = memory.reasoningPolicyChosen ? {} : { follow_request_reasoning: mode === 'fixed_model' };
     const ready = options?.candidates.filter(candidate => candidate.routable) ?? [];
     if (mode === 'fixed_model') {
       const current = editor.candidates[0] ?? editor.smart.primary[0] ?? editor.smart.economy[0] ?? editor.free.primary[0] ?? editor.free.candidates[0];
       const candidate = (current ? ready.find(item => item.binding_id === current.binding_id) : undefined) ?? ready[0];
-      update({ mode, candidates: editor.candidates.length ? editor.candidates : candidate
+      update({ ...policy, mode, candidates: editor.candidates.length ? editor.candidates : candidate
         ? [current?.binding_id === candidate.binding_id
           ? current
           : { binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.binding_id) }]
@@ -413,7 +418,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
       return;
     }
     if (mode === 'custom_branches') {
-      update({ mode, branch_routing: structuredClone(editor.branch_routing ?? memory.branchRouting ?? branchRouting(services.find(view => isNativeRecord(view.service))?.service)) }); return;
+      update({ ...policy, mode, branch_routing: structuredClone(editor.branch_routing ?? memory.branchRouting ?? branchRouting(services.find(view => isNativeRecord(view.service))?.service)) }); return;
     }
     if (mode === 'smart_saving') {
       const smart = { ...editor.smart };
@@ -423,10 +428,10 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
         const service = services.find(view => isNativeRecord(view.service))?.service;
         if (service) smart.classifier = classifierFor(structuredClone(service));
       }
-      update({ mode, smart }); return;
+      update({ ...policy, mode, smart }); return;
     }
     const candidates = editor.free.candidates.length ? editor.free.candidates : ready.filter(candidate => candidate.billing_class === 'free').map(candidate => ({ binding_id: candidate.binding_id, reasoning: defaultReasoning(candidate.binding_id, 'low') }));
-    update({ mode, free: { ...editor.free, candidates } });
+    update({ ...policy, mode, free: { ...editor.free, candidates } });
   }
   function group(title: string, subtitle: string, values: Selection[], replace: (s: Selection[]) => void, { free = false, preferred, primary = false, groupId = '' }: { free?: boolean; preferred?: 'low' | 'high'; primary?: boolean; groupId?: string } = {}) {
     const candidates = options?.candidates ?? [];
@@ -464,7 +469,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     </div>}
     <fieldset disabled={busy}><div hidden={!!plan && view !== 'configuration'}><section className="editor-section"><div className="editor-section-heading"><div><h3>{text('这份智能路由用来做什么', 'What this routing is for')}</h3><p>{text('Agent 根据用途选择适合任务的路由。', 'Your Agent uses this description to choose a route.')}</p></div></div><div className="plan-identity-fields"><label><span className="sr-only">{text('名称', 'Name')}</span><input className="input" autoFocus={creating} required placeholder={text('名称，例如：代码实现', 'Name, e.g. Code implementation')} aria-invalid={!!nameError && (invalidFields || nameTouched || !!editor.display_name)} aria-describedby={nameError && (invalidFields || nameTouched || !!editor.display_name) ? "route-name-error" : undefined} value={editor.display_name} onChange={e => { setNameTouched(true); update({ display_name: e.target.value }); }} />{nameError && (invalidFields || nameTouched || !!editor.display_name) && <span id="route-name-error" className="oc-inline-error">{nameError}</span>}</label><label><span className="sr-only">{text('使用场景', 'Purpose')}</span><input className="input" required={editor.delegation_enabled} placeholder={editor.delegation_enabled ? text('使用场景：适合做什么，期望交付什么', 'Purpose: tasks and expected results') : text('使用场景（选填）', 'Purpose (optional)')} maxLength={512} aria-invalid={invalidFields && editor.delegation_enabled && !editor.purpose.trim()} aria-describedby={invalidFields && editor.delegation_enabled && !editor.purpose.trim() ? "route-purpose-error" : undefined} value={editor.purpose} onChange={e => update({ purpose: e.target.value })} />{invalidFields && editor.delegation_enabled && !editor.purpose.trim() && <span id="route-purpose-error" className="oc-inline-error">{text('请填写使用场景', 'Enter a purpose')}</span>}</label>
     </div><div className="field plan-alias"><label><span className="field-label">{text('接入模型名', 'Connection model name')}</span><input className="input plan-alias-field" readOnly={!!plan} value={editor.custom_alias ?? options?.suggested_alias ?? ''} placeholder="hiroute-…" maxLength={64} aria-invalid={validationIssue?.field === 'alias'} onChange={e => update({ custom_alias: e.target.value })} /></label><span className="field-help">{text('在 Agent 中使用此名称调用这条智能路由。创建后保持稳定。', 'Use this name in an Agent to call the smart route. It remains stable after creation.')}</span>{validationIssue?.field === 'alias' && <span className="oc-inline-error">{validationIssue.message}</span>}{!plan && editor.custom_alias !== undefined && <button className="btn" type="button" onClick={() => update({ custom_alias: undefined })}>{text('恢复自动名称', 'Use automatic name')}</button>}</div></section>
-    <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('怎样使用模型', 'How to use models')}</h3></div></div>{optionsError && <div className="callout warn route-local-error" role="alert" data-error-code={optionsErrorCode}><UiIcon name="warning" /><span>{optionsError}</span><button className="btn" type="button" onClick={() => setOptionsRetry(value => value + 1)}>{text('重试', 'Retry')}</button></div>}{!optionsError && options && !options.candidates.some(candidate => candidate.routable) && <p className="field-help" role="status">{unavailable.length ? text('已接入的模型当前不可用于路由，请查看下方原因并在模型页面处理。', 'Connected models are currently unavailable for routing. Review the reasons below and update them on the Models page.') : text('还没有可用于路由的模型，请先在模型页面接入模型。', 'No routable models yet. Connect a model on the Models page.')}</p>}{!optionsError && unavailable.length > 0 && <Disclosure className="route-unavailable-models" language={language} label={text(`不可用模型（${unavailable.length}）`, `Unavailable models (${unavailable.length})`)}>{options?.unavailable_candidate_count && <p>{text(`共 ${options.unavailable_candidate_count} 个不可用模型，此处显示前 ${unavailable.length} 个。可在模型页面查看并处理全部接入。`, `${options.unavailable_candidate_count} models are unavailable; showing the first ${unavailable.length}. Review all connections on the Models page.`)}</p>}<ul>{unavailable.map(item => <li key={item.binding_id}><strong>{item.display_name}</strong> — {candidateUnavailableMessage(item.reason, language)}</li>)}</ul></Disclosure>}<div className="mode-switcher plan-mode-switcher">{(['fixed_model', 'smart_saving', 'custom_branches', 'free_first'] as Mode[]).map((m, i) => trialOnly && m !== 'smart_saving' ? null : <button className={`mode-card${editor.mode === m ? ' active' : ''}`} type="button" aria-pressed={editor.mode === m} key={m} onClick={() => changeMode(m)}><strong>{text(['固定模型', '按难度分流', '自定义分支', '免费优先'][i], ['Fixed model', 'Difficulty routing', 'Custom branches', 'Free first'][i])}</strong><span>{text(['按固定顺序依次尝试候选模型', '简单任务用常规组合，复杂任务用主力组合', '按自己的任务条件选择分支和模型', '先用免费模型，可选择主力兜底'][i], ['Try candidate models in a fixed order', 'Regular for simple tasks; primary for complex work', 'Choose branches and models by your task conditions', 'Use free models first, with optional primary fallback'][i])}</span></button>)}</div></section>
+    <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('怎样使用模型', 'How to use models')}</h3></div></div>{optionsError && <div className="callout warn route-local-error" role="alert" data-error-code={optionsErrorCode}><UiIcon name="warning" /><span>{optionsError}</span><button className="btn" type="button" onClick={() => setOptionsRetry(value => value + 1)}>{text('重试', 'Retry')}</button></div>}{!optionsError && options && !options.candidates.some(candidate => candidate.routable) && <p className="field-help" role="status">{unavailable.length ? text('已接入的模型当前不可用于路由，请查看下方原因并在模型页面处理。', 'Connected models are currently unavailable for routing. Review the reasons below and update them on the Models page.') : text('还没有可用于路由的模型，请先在模型页面接入模型。', 'No routable models yet. Connect a model on the Models page.')}</p>}{!optionsError && unavailable.length > 0 && <Disclosure className="route-unavailable-models" language={language} label={text(`不可用模型（${unavailable.length}）`, `Unavailable models (${unavailable.length})`)}>{options?.unavailable_candidate_count && <p>{text(`共 ${options.unavailable_candidate_count} 个不可用模型，此处显示前 ${unavailable.length} 个。可在模型页面查看并处理全部接入。`, `${options.unavailable_candidate_count} models are unavailable; showing the first ${unavailable.length}. Review all connections on the Models page.`)}</p>}<ul>{unavailable.map(item => <li key={item.binding_id}><strong>{item.display_name}</strong> — {candidateUnavailableMessage(item.reason, language)}</li>)}</ul></Disclosure>}<div className="mode-switcher plan-mode-switcher">{(['fixed_model', 'smart_saving', 'custom_branches', 'free_first'] as Mode[]).map((m, i) => trialOnly && m !== 'smart_saving' ? null : <button className={`mode-card${editor.mode === m ? ' active' : ''}`} type="button" aria-pressed={editor.mode === m} key={m} onClick={() => changeMode(m)}><strong>{text(['固定模型', '按难度分流', '自定义分支', '免费优先'][i], ['Fixed model', 'Difficulty routing', 'Custom branches', 'Free first'][i])}</strong><span>{text(['按固定顺序依次尝试候选模型', '简单任务用常规组合，复杂任务用主力组合', '按自己的任务条件选择分支和模型', '先用免费模型，可选择主力兜底'][i], ['Try candidate models in a fixed order', 'Regular for simple tasks; primary for complex work', 'Choose branches and models by your task conditions', 'Use free models first, with optional primary fallback'][i])}</span></button>)}</div><div className="field route-reasoning-policy"><label className="check"><input type="checkbox" checked={!!editor.follow_request_reasoning} onChange={event => { memory.reasoningPolicyChosen = true; update({ follow_request_reasoning: event.target.checked }); }} /><span>{text('跟随请求的思考档位', 'Follow the request’s reasoning level')}</span></label><span className="field-help">{editor.follow_request_reasoning ? text('未指定或不支持时，使用各模型的默认档位。', 'Use each model’s default when omitted or unsupported.') : text('始终使用各模型的固定档位。', 'Always use each model’s fixed level.')}{editor.mode === 'smart_saving' && text(' 开启后可能改变各组的能力与成本。', ' Following requests may change each group’s capability and cost.')}</span></div></section>
     {editor.mode === 'fixed_model' && <section className="editor-section"><div className="editor-section-heading"><div><h3>{text('固定模型顺序', 'Fixed model order')}</h3><p>{text('HiRoute 按此顺序尝试；不满足能力或暂时不可用的模型会被跳过。', 'HiRoute tries this order, skipping models that cannot satisfy the request or are temporarily unavailable.')}</p></div></div>{group(text('候选模型', 'Candidate models'), text('发布后保持此顺序', 'Keep this order after publication'), editor.candidates, candidates => update({ candidates }), { groupId: 'fixed' })}</section>}
     {editor.mode === 'smart_saving' && <>
       <DecisionSelector classifier={editor.smart.classifier} smart allowHeuristic={!trialOnly} services={services} language={language} onChange={classifier => update({ smart: { ...editor.smart, classifier } })} onOpenServices={onOpenServices} error={validationIssue?.group === 'classifier' ? validationIssue.message : undefined} />

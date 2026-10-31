@@ -433,6 +433,7 @@ mod tests {
             unreachable!()
         };
         PlanEditorStateV2 {
+            follow_request_reasoning: false,
             branch_routing: None,
             schema: PLAN_EDITOR_SCHEMA_V2.into(),
             display_name: desired.display_name.as_str().to_owned(),

@@ -52,38 +52,25 @@ pub trait PlannerInputAuthority: Send + Sync {
 #[derive(Default)]
 pub struct PublicationPlannerInputAuthority;
 
+pub(crate) enum BoundRequestReasoning {
+    Unchanged,
+    Fixed(crate::server::core_runtime::profiles::ReasoningProfileCapability),
+    Following(crate::server::core_runtime::profiles::RequestedNativeReasoning),
+}
+
 impl PublicationPlannerInputAuthority {
     pub(crate) fn bind_request_reasoning(
         document: &serde_json::Value,
         ingress: IngressProtocol,
         authorized: &AuthorizedRequestPlan,
-    ) -> Result<Option<crate::server::core_runtime::profiles::ReasoningProfileCapability>, PortError>
-    {
+    ) -> Result<BoundRequestReasoning, PortError> {
         use crate::server::core_runtime::profiles::PlannerRouteIdentityV2;
 
-        if !matches!(
-            authorized.planner_policy().identity,
-            PlannerRouteIdentityV2::Fixed { .. }
-        ) {
-            return Ok(None);
-        }
-        let native = match ingress {
-            IngressProtocol::Responses => document.get("reasoning"),
-            IngressProtocol::ChatCompletions => document.get("reasoning_effort"),
-            IngressProtocol::Messages => (document.get("thinking").is_some()
-                || document.get("output_config").is_some())
-            .then_some(document),
-        };
-        let Some(native) = native else {
-            return Ok(None);
-        };
         let bindings = authorized
             .core_binding()
             .candidate_bindings()
             .map_err(|_| PortError::Rejected)?;
-        let [binding] = bindings else {
-            return Err(PortError::Rejected);
-        };
+        let binding = bindings.first().ok_or(PortError::Rejected)?;
         let attempt = authorized
             .core_binding()
             .resolve_attempt(*binding)
@@ -103,13 +90,37 @@ impl PublicationPlannerInputAuthority {
             .get(&ingress)
             .ok_or(PortError::Rejected)?
             .protocol_profile;
+        if matches!(
+            authorized.planner_policy().identity,
+            PlannerRouteIdentityV2::Plan { .. }
+        ) {
+            return if profile.follow_request_reasoning {
+                crate::server::core_runtime::profiles::RequestedNativeReasoning::from_document(
+                    document, ingress,
+                )
+                .map(BoundRequestReasoning::Following)
+                .map_err(|_| PortError::InvalidReasoningControl)
+            } else {
+                Ok(BoundRequestReasoning::Unchanged)
+            };
+        }
+        let native = match ingress {
+            IngressProtocol::Responses => document.get("reasoning"),
+            IngressProtocol::ChatCompletions => document.get("reasoning_effort"),
+            IngressProtocol::Messages => (document.get("thinking").is_some()
+                || document.get("output_config").is_some())
+            .then_some(document),
+        };
+        let Some(native) = native else {
+            return Ok(BoundRequestReasoning::Unchanged);
+        };
         let selected = profile
             .select_native_reasoning(native, ingress)
             .map_err(|_| PortError::InvalidReasoningControl)?;
         let selected = selected
             .selected_reasoning()
             .map_err(|_| PortError::InvalidReasoningControl)?;
-        Ok(Some(selected.clone()))
+        Ok(BoundRequestReasoning::Fixed(selected.clone()))
     }
 }
 
@@ -222,6 +233,22 @@ fn build_planner_input(
             .protocol_profile
             .for_request_reasoning(&request)
             .map_err(|_| PortError::InvalidReasoningControl)?;
+        let resolution = if published.protocol_profile.follow_request_reasoning {
+            let control = request
+                .requested_reasoning
+                .followed_control
+                .as_ref()
+                .ok_or(PortError::InvalidReasoningControl)?;
+            Some(
+                published
+                    .protocol_profile
+                    .follow_reasoning_with_resolution(control)
+                    .map_err(|_| PortError::InvalidReasoningControl)?
+                    .1,
+            )
+        } else {
+            None
+        };
         let projection = project_candidate_facts(&request, &profile)?;
         if let Some((reason, message_index)) = projection.rejection
             && let Some(observation) = crate::server::core_runtime::observation::active_request()
@@ -266,6 +293,7 @@ fn build_planner_input(
             .map_err(|_| PortError::Rejected)?
         };
         candidate.statically_enabled = true;
+        candidate.reasoning_resolution = resolution;
         candidate.request_projection_exclusion = projection.exclusion;
         if let Some(prepared) = projection.template
             && let Some(templates) = templates.as_mut()

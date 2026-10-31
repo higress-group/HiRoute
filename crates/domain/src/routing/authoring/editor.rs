@@ -7,6 +7,7 @@ impl AgentPlanAuthoringV2 {
     ) -> Result<PlanEditorStateV2, PlanAuthoringError> {
         self.validate()?;
         let mut editor = PlanEditorStateV2 {
+            follow_request_reasoning: self.follow_request_reasoning,
             schema: PLAN_EDITOR_SCHEMA_V2.into(),
             display_name: self.display_name.as_str().into(),
             purpose: self.purpose.as_str().into(),
