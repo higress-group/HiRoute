@@ -1,5 +1,6 @@
 //! Stream identity is shared only inside protocol evidence. Frozen outcomes and
 //! content metadata remain independently committed, bounded records.
+use crate::store::cached_sql;
 use crate::writer::ObservationStoreError as Error;
 use hiroute_domain::ObservationStreamV1;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -80,16 +81,13 @@ pub(crate) fn intern_stream(
 ) -> Result<i64, Error> {
     let args = params![channel, producer, epoch, stream];
     let query = "SELECT stream_ref FROM observation_streams_v5 WHERE channel=?1 AND producer_id=?2 AND producer_epoch=?3 AND stream_id=?4";
-    if let Some(id) = db
-        .prepare_cached(query)
-        .map_err(|_| Error::ActivityUnavailable)?
-        .query_row(args, |r| r.get(0))
+    if let Some(id) = cached_sql::query_row(db, query, args, |r| r.get(0))
         .optional()
         .map_err(|_| Error::ActivityUnavailable)?
     {
         return Ok(id);
     }
-    db.prepare_cached("INSERT INTO observation_streams_v5(channel,producer_id,producer_epoch,stream_id) VALUES(?1,?2,?3,?4)").map_err(|_| Error::ActivityUnavailable)?.execute( args).map_err(|_| Error::ActivityUnavailable)?;
+    cached_sql::execute(db, "INSERT INTO observation_streams_v5(channel,producer_id,producer_epoch,stream_id) VALUES(?1,?2,?3,?4)", args).map_err(|_| Error::ActivityUnavailable)?;
     Ok(db.last_insert_rowid())
 }
 
@@ -147,7 +145,12 @@ pub(super) fn retire_request_feedback(
         _ => return Ok(0),
     };
     let order = retirement_order(table).ok_or(rusqlite::Error::InvalidQuery)?;
-    let retired: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 WHERE workspace_id=?1 AND request_id=?2)", params![workspace,request], |r|r.get(0))?;
+    let retired: bool = cached_sql::query_row(
+        db,
+        "SELECT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 WHERE workspace_id=?1 AND request_id=?2)",
+        params![workspace, request],
+        |r| r.get(0),
+    )?;
     if !retired {
         return Err(rusqlite::Error::InvalidQuery);
     }
