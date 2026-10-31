@@ -21,8 +21,9 @@ pub fn missing_api_reasoning_default(
     // fallback (or an absent fact) may receive current descriptive defaults.
     if preference.is_some()
         || !matches!(
-            saved.basis,
-            ComputeManagementFactBasisV2::Unknown | ComputeManagementFactBasisV2::RuntimeFallback
+            (&saved.value, saved.basis),
+            (None, ComputeManagementFactBasisV2::Unknown)
+                | (Some(_), ComputeManagementFactBasisV2::RuntimeFallback)
         )
         || target.scheme != "https"
         || target.port != 443
