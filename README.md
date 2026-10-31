@@ -36,9 +36,14 @@ than running everything on Astra.
 
 [![Cost of the same task at the same acceptance standard: HiRoute mixed costs about one twelfth of all Astra](news/assets/research-cost-en.svg)](news/2026-10-04-astra-qwen.en.md)
 
-[![All Astra $2.067, HiRoute mixed $0.178 (91% saved), mixed with every input cached $0.124 (94% saved)](news/assets/cache-impact-en.svg)](news/2026-10-14-routing-cache-cost.en.md)
-
 <sub>API-equivalent estimates. [Full case study](news/2026-10-04-astra-qwen.en.md)</sub>
+
+### Switching models keeps the savings
+
+HiRoute changes models only at clear boundaries: a new user message, or context compaction and
+rebuild. Tool calls within a turn stay on the same model. A switch misses the cache once, then
+later calls hit it again, so cache loss does not eat into the savings.
+[Switching Models Loses Cache, Not the Savings](https://hiroute.ai/en/news/routing-cache-cost/)
 
 ## Familiar Agents, more model choices
 

@@ -34,9 +34,13 @@
 
 [![相同验收标准下的整单成本：HiRoute 混合约为全 Astra 的十二分之一](news/assets/research-cost-zh.svg)](news/2026-10-04-astra-qwen.zh-CN.md)
 
-[![全 Astra $2.067，HiRoute 混合 $0.178（省 91%），输入全部命中缓存时 $0.124（省 94%）](news/assets/cache-impact-zh.svg)](news/2026-10-14-routing-cache-cost.zh-CN.md)
-
 <sub>费用为 API 等价估算。[完整案例](news/2026-10-04-astra-qwen.zh-CN.md)</sub>
+
+### 切换模型，省下的钱不会丢
+
+HiRoute 只在明确的边界切换模型：用户发送新消息，或上下文压缩、重建时。同一轮内的工具调用始终使用同一个模型。
+切换后只有第一次请求丢失缓存，之后的调用会重新命中，缓存损失不会吃掉省下的成本。
+[切换模型会损失缓存，智能路由还省钱吗？](https://hiroute.ai/news/routing-cache-cost/)
 
 ## 熟悉的 Agent，更多模型选择
 
