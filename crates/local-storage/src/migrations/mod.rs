@@ -40,7 +40,7 @@ mod delegation_native_lifecycle_v21;
 mod delegation_v10;
 #[cfg(test)]
 mod integration_v17_tests;
-mod key_budgets_v37;
+pub(crate) mod key_budgets_v37;
 mod legacy_subscription_api_v35;
 mod plan_authoring_v10;
 mod source_defaults_v31;

@@ -52,7 +52,7 @@ pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::Lo
 }
 
 #[cfg(test)]
-pub(super) fn remove_test_shape(db: &rusqlite::Connection) {
+pub(crate) fn remove_test_shape(db: &rusqlite::Connection) {
     db.execute_batch(
         "DROP TABLE compute_key_budget_effects;
          DROP TABLE compute_key_spend_charges;
