@@ -1,4 +1,4 @@
-import { budgetAssignment, type BudgetDraft, type KeyBudgetEdit } from '../key-budgets/types';
+import { budgetAssignment, type BudgetDraft, type KeyBudgetEdit } from '../key-budgets/types.ts';
 import { randomId } from '../../random-id.ts';
 import type { KeyEdit, ManagedSource, PreparedKeyInput, ProtectedKeyInput } from './types';
 

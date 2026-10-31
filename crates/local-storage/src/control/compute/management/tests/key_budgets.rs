@@ -278,15 +278,20 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
         .unwrap();
     // A second connection holds its own SQLite writer; the existing reservation
     // is visible atomically, independent of observations or process memory.
-    let other = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let other = ControlStore::open(
+        &crate::test_storage_authority(),
+        root.path().join("live/control.db"),
+        root.path().join("backups"),
+    )
+    .unwrap();
     assert!(matches!(
-        other.control().reserve_key_spend(&key, 1, Some(&quote)),
+        other.reserve_key_spend(&key, 1, Some(&quote)),
         Err(KeyBudgetGateErrorV1::Exhausted)
     ));
     let mut wrong = quote.clone();
     wrong.pricing.quote.as_mut().unwrap().currency = "CNY".into();
     assert!(matches!(
-        other.control().reserve_key_spend(&key, 1, Some(&wrong)),
+        other.reserve_key_spend(&key, 1, Some(&wrong)),
         Err(KeyBudgetGateErrorV1::CurrencyMismatch)
     ));
     let mut unknown = quote.clone();
@@ -294,11 +299,10 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
     q.rates.cache_write = TokenRateV1::unknown(PriceUnknownReasonV1::CacheRateNotCollected);
     q.quote_digest = q.computed_digest().unwrap();
     assert!(matches!(
-        other.control().reserve_key_spend(&key, 1, Some(&unknown)),
+        other.reserve_key_spend(&key, 1, Some(&unknown)),
         Err(KeyBudgetGateErrorV1::PriceUnavailable)
     ));
     other
-        .control()
         .settle_key_spend(&first.reservation_id, &KeySpendSettlementV1::Unsent)
         .unwrap();
     assert_eq!(view(&stores, &key).available_micros, 500);

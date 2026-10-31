@@ -29,7 +29,7 @@ function fixture(provider = 'codex') {
         checked.input_digest = 'sha256:check';
         return structuredClone(checked);
       },
-      previewComputeSave: async (change, network) => { calls.preview.push({ change, network }); latestChange = change; return { spec: { command_id: 'compute.connection.apply', desired_state: change }, accept_digest: 'sha256:preview', expected_revisions: snapshot.revisions }; },
+      previewComputeSave: async (change, network, budgets) => { calls.preview.push({ change, network, budgets }); latestChange = change; return { spec: { command_id: 'compute.connection.apply', desired_state: change }, accept_digest: 'sha256:preview', expected_revisions: snapshot.revisions }; },
       applyComputeSave: async request => {
         calls.apply.push(request);
         api.models = latestChange.selected_model_refs.map(ref => model(ref.slice(6)));
@@ -263,4 +263,15 @@ test('completion read still refuses a replaced association without another write
   f.snapshot.subscription_api_links[0].api_source_id = 'source/other-api'; f.source.revision++;
   assert.equal((await f.connect('')).reason, 'source_changed');
   assert.equal(f.calls.apply.length, 1); assert.equal(f.calls.associate.length, 1);
+});
+
+test('inline API allowance joins the same preview once for either subscription provider', async () => {
+  for (const provider of ['codex', 'claude']) {
+    const f = fixture(provider);
+    const assignment = { intent: 'configure', budget_id: null, expected_revision: 0, display_name: 'API credits', policy: { currency: 'USD', amount_micros: 100_000_000, renewal: null }, initial_remaining_micros: 25_000_000 };
+    const result = await f.setup.connect({ source_id: f.source.source_id, revision: 4 }, 'fixture-key', networkDraft(), () => {}, assignment);
+    assert.equal(result.state, 'saved');
+    assert.equal(f.calls.preview.length, 1); assert.equal(f.calls.apply.length, 1);
+    assert.deepEqual(f.calls.preview[0].budgets, [{ key: { kind: 'input', candidate_ref: f.calls.preview[0].change.key_edits.find(edit => edit.action === 'add').input_candidate.candidate_ref }, assignment }]);
+  }
 });
