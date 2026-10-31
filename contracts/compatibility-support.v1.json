@@ -2362,6 +2362,21 @@
     },
     {
       "contract": "hiroute.compute-management-mutation/v2",
+      "field": "pre-schema37 source effects have no Key budget witness or binding",
+      "mode": "recovery_read_only",
+      "owner": "compute-management",
+      "allowed_paths": [
+        "crates/local-storage/src/control/key_budgets/current.rs",
+        "crates/local-storage/src/control/compute/management/key_budgets.rs",
+        "crates/local-storage/src/control/compute/management/tests/key_budgets.rs",
+        "crates/local-storage/src/control/compute/management/tests/network.rs",
+        "crates/local-storage/src/migrations/mod.rs"
+      ],
+      "reason": "Supported source operations predate local Key budgets. An absent primary witness is admitted only when both companion effects and current bindings are absent. Released source saves retain current limits without changing their sealed bytes. Schema37 is an additive three-store upgrade; retained earlier target36 batches finish before advancing. A missing witness or binding belonging to an activated budget operation fails closed.",
+      "removal_condition": "Retire only after supported released source operations, retained unfinished writes and earlier migration batches are explicitly retired under the release support policy. Current budget producers use V6 and always authenticate their companion effects."
+    },
+    {
+      "contract": "hiroute.compute-management-mutation/v2",
       "field": "pre-schema36 compute_management_effects has SQL NULL api_link_before and api_link_after",
       "mode": "recovery_read_only",
       "owner": "compute-management",

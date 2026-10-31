@@ -77,7 +77,7 @@ fn assert_latest_and_preserved(root: &Path, key: &[u8]) {
 #[test]
 fn upgrade_progress_tracks_real_conversion_and_is_silent_after_completion() {
     use hiroute_host_runtime::StorageUpgradePhase::*;
-    for target in [24, LATEST_SCHEMA_VERSION] {
+    for target in [24, 36, LATEST_SCHEMA_VERSION] {
         let directory = crate::test_tempdir().unwrap();
         let root = directory.path().join("storage");
         source_batch(&root, target);

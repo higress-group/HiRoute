@@ -885,16 +885,16 @@ impl ProductionGatewayRuntime {
                     continue;
                 }
             };
-            if let Some(spending) = spending.as_mut() {
-                if spending.mark_sent().is_err() {
-                    return active_failure_or_abort(
-                        CallFailure::Unavailable,
-                        call_deadline,
-                        overall_deadline,
-                        fixed_timeout_wins,
-                        &cancellation,
-                    );
-                }
+            if let Some(spending) = spending.as_mut()
+                && spending.mark_sent().is_err()
+            {
+                return active_failure_or_abort(
+                    CallFailure::Unavailable,
+                    call_deadline,
+                    overall_deadline,
+                    fixed_timeout_wins,
+                    &cancellation,
+                );
             }
             let result = self
                 .call_classifier_attempt(

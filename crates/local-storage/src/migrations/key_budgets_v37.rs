@@ -51,6 +51,21 @@ pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::Lo
     Ok(())
 }
 
+#[cfg(test)]
+pub(super) fn remove_test_shape(db: &rusqlite::Connection) {
+    db.execute_batch(
+        "DROP TABLE compute_key_budget_effects;
+         DROP TABLE compute_key_spend_charges;
+         DROP TABLE compute_key_spend_reservations;
+         DROP TABLE compute_key_budget_bindings;
+         DROP TABLE compute_key_budgets;
+         ALTER TABLE compute_management_effects DROP COLUMN key_budget_witness_digest;
+         ALTER TABLE compute_management_effects DROP COLUMN key_budget_accounting_digest;
+         ALTER TABLE compute_management_effects DROP COLUMN key_budget_compensation_root;",
+    )
+    .unwrap();
+}
+
 pub(crate) fn validate(connection: &rusqlite::Connection) -> Result<(), crate::LocalStorageError> {
     connection.prepare("SELECT definition_json,balance_micros,reserved_micros,spent_micros,lifetime_spent_micros,renewal_index FROM compute_key_budgets LIMIT 0")?;
     connection.prepare("SELECT budget_id,key_id,key_generation,pricing_json,state FROM compute_key_spend_reservations LIMIT 0")?;

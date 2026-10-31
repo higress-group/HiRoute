@@ -5,7 +5,7 @@ import json
 import sys
 import time
 from credential_pool_product import save_source
-from model_connections_product import MODEL, NATIVE_TOKEN, NativeUpstream, control, publish_plan_and_agent, save_native_source
+from model_connections_product import MODEL, NATIVE_TOKEN, NativeUpstream, control, declared, publish_plan_and_agent, save_native_source
 from publication_product import Product, encoded
 from plan_content_process import read_content
 
@@ -44,6 +44,25 @@ def price(product, binding, currency='USD'):
     product.apply('prices override apply', 'ApplyPriceOverrideChange', preview, {'spec': preview['spec']}, 'key-budget-price-' + currency)
 
 
+def saved_probe(product, upstream, saved, inference):
+    source = next(row for row in control(product, 'ListCompute', {})['data']['sources']
+                  if row['source_id'] == saved['source_id'])
+    draft = {'inference_model_id': MODEL if inference else None, 'candidate_ref': None,
+        'lineage_ref': 'lineage/native/product', 'display_name': source['display_name'],
+        'existing_source_id': saved['source_id'], 'expected_source_revision': source['revision'],
+        'edit_revision': 1, 'check_id': 'budget-probe-' + str(time.monotonic_ns()),
+        'base_url': upstream.base_url, 'base_kind': 'api_root', 'request_path_override': None,
+        'inventory_path_override': '/v1/models', 'protocol': 'responses',
+        'protocol_profile_id': 'profile/custom/responses', 'protocol_profile_revision': 1,
+        'authentication': {'kind': 'bearer'}, 'additional_endpoints': [], 'configuration_revision': 1,
+        'models': [{'upstream_model_id': MODEL, 'display_name': MODEL,
+            'catalog_configuration_id': None, 'membership': 'user_declared', 'capabilities': {
+                'tool': declared(True), 'vision': declared(False), 'streaming': declared(True),
+                'context_tokens': declared(32768), 'max_output_tokens': declared(4096),
+                'native_reasoning': declared({'kind': 'fixed', 'profile': 'provider-default'})}}]}
+    return product.public_cli('compute connection test', {'kind': 'native', 'request': {'draft': draft}}, success=False)
+
+
 def run(repository):
     product, upstream = Product(repository), NativeUpstream()
     product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
@@ -58,7 +77,17 @@ def run(repository):
         product.secrets.add(fallback)
         product.register_protected_frame({'schema': 'hiroute.protected-input/v1', 'registration_id': hashlib.sha256(b'budget-fallback').hexdigest(), **candidate, 'secret': fallback})
         save_source(product, saved, [{'action': 'add', 'input_candidate': candidate}], 'budget-add-fallback')
+        # The same public saved-Key probe is reachable before a limit is set.
+        assert saved_probe(product, upstream, saved, True)[0] == 0
+        assert any(row['method'] == 'POST' for row in upstream.requests), upstream.requests
         configured = allowance(product, source_id, first, 1_000_000, 'initial')
+        with upstream.lock:
+            before_probe = len(upstream.requests)
+        exit_code, refused = saved_probe(product, upstream, saved, True)
+        assert exit_code != 0 and refused['error']['code'] == 'ACTION_REQUIRED', refused
+        assert len(upstream.requests) == before_probe, 'limited saved-Key probe reached upstream'
+        assert saved_probe(product, upstream, saved, False)[0] == 0
+        assert all(row['method'] == 'GET' for row in upstream.requests[before_probe:])
         publish_plan_and_agent(product, saved['binding_id'])
         frozen = read_content(product)
 
@@ -125,5 +154,35 @@ def run(repository):
         product.close(); upstream.close()
 
 
+def run_streams(repository):
+    from usage_query_gateway_product import UsageUpstream, gateway_request, USAGE
+    for protocol in ['responses', 'messages']:
+        product, upstream = Product(repository), UsageUpstream()
+        product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
+        try:
+            product.start()
+            saved = save_native_source(product, upstream, NATIVE_TOKEN, protocol=protocol)
+            source = next(row for row in control(product, 'ListCompute', {})['data']['sources']
+                          if row['source_id'] == saved['source_id'])
+            allowance(product, saved['source_id'], source['keys'][0]['key_id'], 1_000_000, 'stream-' + protocol)
+            price(product, saved['binding_id'])
+            publish_plan_and_agent(product, saved['binding_id'])
+            gateway_request(product, 'responses', product.model_alias, True, product.bearer(product.agent_connection))
+            expected = sum(USAGE[(protocol, True)][:2])
+            deadline = time.monotonic() + 5
+            while True:
+                balance = query(product, saved['source_id'])['budgets'][0]
+                if balance['lifetime_spent_micros'] == expected:
+                    break
+                assert time.monotonic() < deadline, balance
+                time.sleep(.02)
+            assert balance['reserved_micros'] == 0 and balance['available_micros'] == 1_000_000 - expected, balance
+            assert upstream.requests == [(protocol, True)], upstream.requests
+            print(json.dumps({'scenario': 'key-budget-stream-' + protocol, 'state': 'green', 'charged_micros': expected, 'pending_micros': 0}), flush=True)
+        finally:
+            product.close(); upstream.close()
+
+
 if __name__ == '__main__':
     run(sys.argv[1])
+    run_streams(sys.argv[1])

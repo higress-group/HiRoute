@@ -550,7 +550,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | 31 | 32 | 33 | 34 | 35 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | 31 | 32 | 33 | 34 | 35 | 36 | LATEST_SCHEMA_VERSION
         ) || (set.target_schema_version() == 24
             && [
                 set.control.manifest(),
@@ -596,7 +596,11 @@ impl MigrationSetCoordinator {
             let source = set.control.manifest().schema_version;
             matches!(
                 (source, set.target_schema_version()),
-                (32, 33..=36) | (33, 34..=36) | (34, 35..=36) | (35, 36)
+                (32, 33..=37)
+                    | (33, 34..=37)
+                    | (34, 35..=37)
+                    | (35, 36..=37)
+                    | (36, 37)
             ) && [
                 set.control.manifest(),
                 set.runtime.manifest(),

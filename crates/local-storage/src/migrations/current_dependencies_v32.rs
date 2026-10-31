@@ -110,6 +110,7 @@ pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::Lo
 
 #[cfg(test)]
 pub(super) fn remove_test_shape(db: &rusqlite::Connection) {
+    super::key_budgets_v37::remove_test_shape(db);
     super::subscription_api_v36::remove_test_shape(db);
     super::source_network_v35::remove_test_shape(db);
     super::decision_sources_v34::remove_test_shape(db);

@@ -879,6 +879,11 @@ mod tests {
                 "schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2,"subject":{"kind":"saved_source","source_id":"source/budget"},
                 "expected_revisions":{"target":1,"dependencies":{}},"selected_model_refs":["model/one"],"intent":"save_ready","key_edits":[],"validation":validation()
             }});
+            // Preview emits canonical typed bytes, omitting default/empty fields.
+            let base = serde_json::to_value(
+                serde_json::from_value::<ComputeManagementChangeV3>(base).unwrap(),
+            )
+            .unwrap();
             let child = if network {
                 serde_json::json!({"schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4,"change":base,"network":{"schema":hiroute_domain::NATIVE_NETWORK_MUTATION_SCHEMA_V1,"before":null,"after":null}})
             } else {

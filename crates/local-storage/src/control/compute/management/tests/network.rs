@@ -176,8 +176,8 @@ fn missing_current_policy_is_refused_and_source_deletion_cascades_its_policy() {
 }
 
 #[test]
-fn schema34_and_35_sources_preserve_policy_through_production_startup() {
-    for source_version in [34, 35] {
+fn schema34_through_36_sources_preserve_policy_through_production_startup() {
+    for source_version in [34, 35, 36] {
         let directory = tempdir().unwrap();
         populate_saved_source(directory.path(), &WorkspaceId::default());
         let (identity, keys, models) = {
@@ -192,7 +192,10 @@ fn schema34_and_35_sources_preserve_policy_through_production_startup() {
                     .unwrap();
             if database == "control" {
                 let transaction = connection.transaction().unwrap();
-                transaction.execute_batch("DROP TABLE compute_subscription_api_links; ALTER TABLE compute_management_effects DROP COLUMN api_link_before; ALTER TABLE compute_management_effects DROP COLUMN api_link_after;").unwrap();
+                crate::migrations::key_budgets_v37::remove_test_shape(&transaction);
+                if source_version < 36 {
+                    transaction.execute_batch("DROP TABLE compute_subscription_api_links; ALTER TABLE compute_management_effects DROP COLUMN api_link_before; ALTER TABLE compute_management_effects DROP COLUMN api_link_after;").unwrap();
+                }
                 if source_version == 34 {
                     transaction.execute_batch("DROP TABLE native_source_network; ALTER TABLE compute_management_effects DROP COLUMN network_before; ALTER TABLE compute_management_effects DROP COLUMN network_after;").unwrap();
                 }

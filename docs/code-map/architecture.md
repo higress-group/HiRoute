@@ -389,6 +389,8 @@ wraps source saves without changing released source bytes. The
 reserves before forwarding and settles captured protocol usage independently of
 observation delivery. Gateway credential leases carry that authority, including
 source-reusing decision leases, so existing published routes obey current limits.
+Saved-Key inference probes without a complete quote fail closed at the
+[native check boundary](../../crates/daemon/src/control/runtime/model_connections/network_checks.rs).
 The [shared form](../../apps/desktop/src/features/key-budgets/KeyBudgetEditor.tsx)
 serves Key management and subscription/API setup. See the
 [credential contract](../../issue-spec/specs/credential-pools/spec.md) and

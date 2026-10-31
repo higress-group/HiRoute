@@ -129,6 +129,10 @@ Budget counters, reservations and idempotent settlement MUST be durable and use
 indexed bounded reads, independent of unrelated history size. Currency conversion
 is not implicit. All amounts are exact integer currency micros.
 
+Saved-Key inference probes and source-reusing decision requests without a complete
+price/usage contract MUST refuse limited Keys before resolving the Secret or
+forwarding. Directory/authentication-only checks remain available.
+
 An exhausted or unpriceable Key MUST be skipped through the existing admitted
 Key order and candidate fallback contracts, without altering user-disabled state,
 reordering candidates or cancelling already committed responses. A due renewal

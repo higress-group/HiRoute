@@ -603,6 +603,7 @@ fn retained_association_schema35(root: &std::path::Path, leave_network_witness: 
         let mut db = rusqlite::Connection::open(root.join(format!("live/{database}.db"))).unwrap();
         let tx = db.transaction().unwrap();
         if database == "control" {
+            crate::migrations::key_budgets_v37::remove_test_shape(&tx);
             // The component handoff fixture inserts an opaque historical Check row.
             // Construct its admitted locator projection before freezing the old source;
             // production migration must neither clear dirty evidence nor rebuild it.
