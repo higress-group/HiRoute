@@ -9,6 +9,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,12 @@ import sys
 import tempfile
 import time
 
+sys.dont_write_bytecode = True
+
+_usage_spec = importlib.util.spec_from_file_location(
+    'subscription_usage_evidence', Path(__file__).with_name('cpa-managed-login-evidence.py'))
+usage_evidence = importlib.util.module_from_spec(_usage_spec)
+_usage_spec.loader.exec_module(usage_evidence)
 
 REMOTE_READ = r'''
 import hashlib, json, os, stat, sys
@@ -74,9 +81,13 @@ def digest(path):
 
 
 def remote_source(host, kind, mode):
-    command = 'python3 -c ' + shlex.quote(REMOTE_READ) + ' ' + shlex.quote(kind) + ' ' + shlex.quote(mode)
+    if host == 'local':
+        command = [sys.executable, '-c', REMOTE_READ, kind, mode]
+    else:
+        remote = 'python3 -c ' + shlex.quote(REMOTE_READ) + ' ' + shlex.quote(kind) + ' ' + shlex.quote(mode)
+        command = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, remote]
     result = subprocess.run(
-        ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host, command],
+        command,
         capture_output=True, timeout=30)
     require(result.returncode == 0, f'{kind}:native_source_read_failed:{result.returncode}')
     return json.loads(result.stdout)
@@ -177,7 +188,10 @@ def subscription_save(product, kind, apply_control, prepare_control_apply):
     models = [item for item in candidate['models'] if item['selectable']]
     if kind == 'claude':
         models = [item for item in models if 'haiku' in item['upstream_model_id'].lower()]
-        preferred = ('claude-haiku-4-5-20251001', 'claude-haiku-4-5')
+        requested = getattr(product, 'requested_claude_model', None)
+        if requested:
+            models = [item for item in models if item['upstream_model_id'] == requested]
+        preferred = (requested,) if requested else ('claude-haiku-4-5-20251001', 'claude-haiku-4-5')
     else:
         preferred = ('gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5.1-codex-mini')
         models = [item for item in models if item['upstream_model_id'] in preferred]
@@ -207,6 +221,14 @@ def publish_plan(product, kind, source, judgment_fixture, configure_model_settin
     selection = {'binding_id': source['binding_id']}
     if kind == 'codex':
         selection['reasoning'] = {'kind': 'profile', 'profile': 'low'}
+    else:
+        from claude_subscription_catalog_product import baseline_reasoning
+        snapshot = product.control('ListCompute', {'source_id': source['source_id']})['data']
+        model = next(item for saved in snapshot['sources'] for item in saved['models']
+                     if item['binding_id'] == source['binding_id'])
+        reasoning = baseline_reasoning(model)
+        if reasoning is not None:
+            selection['reasoning'] = reasoning
     editor = {
         'schema': 'hiroute.plan-editor/v2', 'display_name': kind + ' real subscription acceptance',
         'purpose': 'Bounded real upstream acceptance', 'mode': 'fixed_model', 'candidates': [selection],
@@ -306,6 +328,10 @@ def gateway(product, kind, source, stream, label, allowed=True):
                 tools=[tool], max_tokens=16)
         else:
             body.update(messages=[{'role': 'user', 'content': 'Reply with OK only.'}], max_tokens=8)
+        if source.get('model') == 'claude-haiku-5-5':
+            # Adaptive thinking shares the output budget. The older 16-token
+            # tool-result probe can truncate before a complete answer.
+            body['max_tokens'] = 2048
     else:
         endpoint = '/v1/responses'
         body.update(input='Reply with OK only.', reasoning={'effort': 'low'}, max_output_tokens=64)
@@ -388,6 +414,7 @@ def gateway(product, kind, source, stream, label, allowed=True):
     return {'scenario': label, 'provider': kind, 'state': 'green', 'http_status': status,
             'stream': stream, 'usage': usage_numbers(usage), 'answer_verified': True,
             'tool_round': tool_round, 'multi_turn_verified': tool_round == 'tool_result',
+            'max_output_tokens': body.get('max_tokens', body.get('max_output_tokens')),
             'duration_seconds': round(time.monotonic() - started, 3)}
 
 
@@ -431,6 +458,10 @@ def auth_audit(product, require_both=True):
         require(root.is_dir(), directory + ':runtime_absent')
         configurations = list(root.rglob('config.yaml'))
         require(len(configurations) == 1, directory + ':config_absent')
+        cloak_line = next((line for line in configurations[0].read_text().splitlines()
+                           if line.startswith('disable-claude-cloak-mode:')), None)
+        require(cloak_line in ('disable-claude-cloak-mode: true', 'disable-claude-cloak-mode: false'),
+                directory + ':cloak_policy_absent')
         auth_line = next((line for line in configurations[0].read_text().splitlines()
                           if line.startswith('auth-dir:')), None)
         require(auth_line is not None, directory + ':auth_directory_absent')
@@ -445,7 +476,8 @@ def auth_audit(product, require_both=True):
             require(not forbidden_refresh(value), directory + ':refresh_authority_in_cpa')
             require(not any('expir' in key.lower() for key in value), directory + ':expiry_in_cpa')
             auth.append({'sha256': digest(path), 'mode': '0o600', 'refresh_authority': False})
-        result[directory] = {'auth_file_count': len(auth), 'auth': auth}
+        result[directory] = {'auth_file_count': len(auth), 'auth': auth,
+                             'claude_cloaking_enabled': cloak_line.endswith('false')}
     if require_both:
         require(result['cpa']['auth_file_count'] == 1 and result['cpa-claude']['auth_file_count'] == 1,
                 'both_providers_must_have_one_access_only_lease')
@@ -465,9 +497,7 @@ def restoration_assertions(product, sources):
 
 
 def observed_usage(product, results, encoded):
-    expected = {key: sum(item.get('usage', {}).get(field, 0) for item in results)
-                for key, field in (('input', 'input_tokens'), ('output', 'output_tokens'),
-                                   ('cache_read', 'cache_read_input_tokens'))}
+    expected = usage_evidence.expected_usage(results)
     query = {'schema': 'hiroute.observation.query/v2', 'intent': {
         'view': 'home_value', 'query': {'period': 'seven_days', 'session_id': None, 'currency': None}}}
     deadline = time.monotonic() + 30
@@ -477,6 +507,9 @@ def observed_usage(product, results, encoded):
                                           'expected_revisions': revisions}, 'real-value-' + str(time.monotonic_ns()))
         value = product.cli('value show', query, grant)[1]['data']
         actual = {item['metric']: item['known_sum'] for item in value['usage']}
+        product.observation_usage_evidence = {
+            'expected': expected, 'actual': {key: actual.get(key) for key in expected},
+            'pending_requests': value['pending_requests']}
         if all(actual.get(key) == total for key, total in expected.items()) and value['pending_requests'] == 0:
             return {'state': 'green', 'totals': expected, 'pending_requests': 0}
         require(time.monotonic() < deadline, 'observation_usage_did_not_converge')
@@ -532,6 +565,7 @@ def run(arguments):
     os.environ['HIROUTE_VALIDATION_PRODUCT_BIN_DIR'] = str(arguments.product_bin.resolve())
     temporary = tempfile.TemporaryDirectory(prefix='hiroute-real-subscriptions-')
     product = RealProduct(repository, root=Path(temporary.name) / 'p')
+    product.requested_claude_model = getattr(arguments, 'claude_model', None)
     report = {'candidate_sha': candidate, 'state': 'red', 'scenarios': [], 'native_sources': {},
               'binaries': {name: digest(arguments.product_bin / name) for name in ('hiroute', 'hirouted')},
               'cpa': {'version': pin['version'], 'commit': pin['commit'], 'patch_sha256': pin['patch_sha256'],
@@ -679,6 +713,7 @@ if __name__ == '__main__':
     parser.add_argument('--claude-cli', required=True, type=Path)
     parser.add_argument('--codex-host', required=True)
     parser.add_argument('--claude-host', required=True)
+    parser.add_argument('--claude-model', help='Require this exact selectable Haiku model; never substitute another generation')
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--isolated-source-failure', action='store_true')

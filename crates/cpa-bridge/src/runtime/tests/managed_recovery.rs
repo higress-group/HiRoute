@@ -82,6 +82,16 @@ fn managed_orphan_stop_authenticates_but_never_replaces_for_proxy_change() {
         panic!("not ready")
     };
     let auth_dir = first.spec.auth_dir.clone();
+    let config_path = first
+        .spec
+        .state_root
+        .join(&first.spec.instance_id)
+        .join("config.yaml");
+    let config = std::fs::read_to_string(&config_path).unwrap().replace(
+        "disable-claude-cloak-mode: false",
+        "disable-claude-cloak-mode: true",
+    );
+    private_atomic_write(&config_path, config.as_bytes()).unwrap();
     // Stop-only cleanup must not parse this unfinished OAuth write.
     private_atomic_write(&auth_dir.join("unfinished.json"), b"{").unwrap();
     let owner_path = leave_orphan(first);
