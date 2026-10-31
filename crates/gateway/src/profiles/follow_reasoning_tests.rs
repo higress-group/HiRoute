@@ -221,6 +221,39 @@ fn follow_reasoning_rejects_malformed_controls_before_replay() {
 }
 
 #[test]
+fn follow_reasoning_receipt_projection_retains_only_bounded_native_controls() {
+    for (protocol, document, expected) in [
+        (
+            IngressProtocol::Responses,
+            json!({"reasoning":{"effort":"xhigh","summary":"auto"}}),
+            json!({"effort":"xhigh"}),
+        ),
+        (
+            IngressProtocol::ChatCompletions,
+            json!({"reasoning_effort":"high"}),
+            json!("high"),
+        ),
+        (
+            IngressProtocol::Messages,
+            json!({"thinking":{"type":"enabled","budget_tokens":2048,"display":"omitted"}}),
+            json!({"thinking":{"type":"enabled","budget_tokens":2048}}),
+        ),
+        (
+            IngressProtocol::Messages,
+            json!({"thinking":{"type":"adaptive"},"output_config":{"effort":"high","format":{"type":"json_schema"}}}),
+            json!({"thinking":{"type":"adaptive"},"output_config":{"effort":"high"}}),
+        ),
+    ] {
+        let control = RequestedNativeReasoning::from_document(&document, protocol).unwrap();
+        assert_eq!(control.native_value(protocol), Some(expected));
+    }
+    assert_eq!(
+        RequestedNativeReasoning::default().native_value(IngressProtocol::Responses),
+        None
+    );
+}
+
+#[test]
 fn follow_reasoning_budget_range_step_and_accounting_are_request_local() {
     let mut profile = candidate(
         IngressProtocol::Messages,
