@@ -39,6 +39,8 @@ try {
       await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.selectedOptions[0].textContent.includes(${JSON.stringify(lang==='zh'?'按模型元信息补齐':'Model metadata default')})`);
       assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').value`),'preserve_saved');
       assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').closest('dd').querySelector('strong').textContent`),'low / medium / high / xhigh / max');
+      await evaluate(client,`document.querySelector('#model-default-native_reasoning').scrollIntoView({block:'center'});true`);
+      assert.equal(await evaluate(client,`(()=>{const r=document.querySelector('#model-default-native_reasoning').closest('.model-default-field').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})()`),true,'the affected reasoning row must be visible');
       await geometry(width);await shot(`reasoning-automatic-${fallback?'fallback':'missing'}-${lang}-${theme}-${width}`);
     }
     results.push({id:`metadata.reasoning-automatic.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked IPC; missing and derived fallback facts'});
