@@ -1015,7 +1015,7 @@ pub async fn dispatch(
             struct Arguments {
                 change: WebComputeManagementChangeV2,
                 default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
-                network_edit: Option<hiroute_domain::NativeNetworkEditV1>,
+                network_edit: Option<hiroute_application_api::NativeNetworkEditV1>,
                 key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
             }
             let input: Arguments = serde_json::from_value(args)

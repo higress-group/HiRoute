@@ -1155,7 +1155,7 @@
       },
       {
         "name": "network_edit",
-        "type": "Option<hiroute_domain::NativeNetworkEditV1>"
+        "type": "Option<hiroute_application_api::NativeNetworkEditV1>"
       },
       {
         "name": "key_budget_edits",

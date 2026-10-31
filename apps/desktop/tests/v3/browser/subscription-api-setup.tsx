@@ -52,7 +52,7 @@ mockIPC(async (command, args: any = {}) => {
     const check = { candidate: { candidate: { candidate_ref: 'candidate/native-api', candidate_revision: 1 }, correlation: { candidate_ref: 'candidate/native-api', edit_revision: request.edit_revision, check_id: request.check_id, input_digest: 'sha256:api' }, producer: 'native', provenance: 'registered', display_name: request.display_name, models, input_state: 'provided', fact_state: 'complete' }, input_digest: 'sha256:api', authentication: state.mode === 'auth' ? 'rejected' : 'verified', directory: models.length ? 'available' : 'empty', inference: 'not_run', observed_model_ids: models.map((item: any) => item.upstream_model_id) };
     return { check, network: { policy: args.request.network_edit.policy, expected_network_revision: 0, route: { mode: 'direct', route: 'direct', reason: 'policy_direct', destination: 'https://api.example.test', state_revision: 'sha256:network', failure: null } }, failure: state.mode === 'auth' ? { phase: 'upstream_auth', code: 'upstream_auth', retryable: false } : null };
   }
-  if (['preview_compute_save', 'preview_compute_save_v3', 'preview_compute_save_v4'].includes(command)) {
+  if (['preview_compute_save', 'preview_compute_save_v3', 'preview_compute_save_v4', 'preview_compute_key_budgets'].includes(command)) {
     const change = args.change;
     const apiLink = args.apiLink ?? null;
     if (apiLink && state.mode === 'link_failure') throw new Error('fixture association unavailable');

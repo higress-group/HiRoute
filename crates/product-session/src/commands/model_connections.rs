@@ -712,7 +712,7 @@ pub async fn preview_compute_key_budgets(
     state: &CommandState<'_>,
     change: WebComputeManagementChangeV2,
     default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
-    network_edit: Option<hiroute_domain::NativeNetworkEditV1>,
+    network_edit: Option<hiroute_application_api::NativeNetworkEditV1>,
     key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
 ) -> Result<WebComputeSavePreviewV2, DesktopFailure> {
     let input = ComputeKeyBudgetSaveRequestV1 {

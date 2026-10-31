@@ -115,7 +115,7 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
         <span className="field-help">{zh ? '赠金请使用对应组织的 Key。' : 'For credits, use the receiving organization’s key.'}</span>
       </label>
       {setup.hasCredential && !setup.hasSavedApi && <button type="button" className="btn btn-quiet" disabled={locked} onClick={subscriptionOnly}>{zh ? '清除 Key，仅使用订阅' : 'Clear key; use subscription only'}</button>}
-      <KeyBudgetEditor language={props.language} value={allowance} onChange={value => { setAllowance(value); setAllowanceError(false); }} disabled={locked || setup.hasSavedApi} />
+      <KeyBudgetEditor language={props.language} value={allowance} onChange={value => { setAllowance(value); setAllowanceError(false); if (value.enabled) props.onChange(NEW_SUBSCRIPTION_API); else if (!key.current?.value.trim() && !setup.hasCredential) props.onChange(''); }} disabled={locked || setup.hasSavedApi} />
       {allowanceError && <p className="oc-inline-error" role="alert">{zh ? '请填写有效金额，并检查补充日期、时区和余额上限。' : 'Enter a valid amount and check the renewal date, time zone and balance cap.'}</p>}
       <NativeNetworkSettings language={props.language} value={network} onChange={setNetwork} disabled={locked || setup.hasSavedApi} reveal={reveal} failure={result?.failure}
         target={{ kind: 'registered', connection_option_id: associatedApiOption(props.provider), protocol: props.provider === 'codex' ? 'responses' : 'messages' }} />

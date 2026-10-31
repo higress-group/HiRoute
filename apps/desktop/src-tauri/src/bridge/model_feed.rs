@@ -401,7 +401,7 @@ pub(super) async fn preview_compute_key_budgets(
     state: State<'_, DesktopState>,
     change: hiroute_product_session::commands::WebComputeManagementChangeV2,
     default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
-    network_edit: Option<hiroute_domain::NativeNetworkEditV1>,
+    network_edit: Option<hiroute_application_api::NativeNetworkEditV1>,
     key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
 ) -> Result<hiroute_product_session::commands::WebComputeSavePreviewV2, DesktopFailure> {
     main_window(&window)?;
