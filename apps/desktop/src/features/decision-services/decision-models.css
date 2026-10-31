@@ -131,6 +131,8 @@
 .decision-models-page .decision-heading { gap: 12px; }
 .decision-models-page .decision-heading h2 { font-size: 18px; line-height: 1.4; font-weight: 650; }
 .decision-models-page .decision-heading p { font-size: 12px; line-height: 1.6; }
+.decision-removal .detail-section-head { flex-wrap: wrap; }
+.decision-removal .detail-section-head h3 { margin: 0; }
 .decision-models-page .split-view { grid-template-rows: minmax(0, 1fr); }
 .decision-models-page .detail-pane { display: flex; flex-direction: column; }
 .decision-models-page .oc-model-back { flex-shrink: 0; }

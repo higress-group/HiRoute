@@ -93,6 +93,16 @@ Decision editor captures also exercise the 840×975 intermediate window in both
 languages and themes. The detail pane must fill the split-view grid; a leftover
 compact-layout row must not compress the fields while leaving unused space.
 
+`desktop.decisions.details-and-removal` expands failure diagnostics without exposing
+configuration hashes, preserves exact tested identity, and checks standalone removal,
+confirmation, Cancel, reference rejection and successful exact-revision removal
+without deleting a shared source or its keys. `desktop.decisions.extension-removal`
+checks the same entry and confirmation for custom extensions.
+`desktop.decisions.removal-references` checks visible route blockers and a pending
+test readback that invalidates the revision captured by an open confirmation.
+Production captures include the standalone action, confirmation and retained-reference
+rejection in Chinese/English, light/dark and both supported windows.
+
 Run the focused production-component cases with
 `node tests/v3/visual/new-model-trial.mjs <evidence-directory> --session-live-refresh`
 or `--presentation` from the Desktop directory. They use production styles and

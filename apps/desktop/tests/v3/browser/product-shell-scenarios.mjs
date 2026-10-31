@@ -961,7 +961,8 @@ const scenarios = [
     setInput(input('credential'), 'synthetic-closure-key'); await pause(40);
     await click('仅保存'); await until(() => store.services[0].revision === 3, 'shared -> independent save');
     assert(sent().service.connection.authentication.kind === 'independent' && sources() === '[]', `Independent save registered sources: ${sources()}`);
-    all('summary').find(item => item.textContent.includes('详情与更多操作')).click(); await pause(40); await click('删除决策模型'); await click('删除');
+    await click('移除模型'); await until(() => all('[role="dialog"]').length, 'whole-service removal confirmation');
+    all('[role="dialog"] button').find(item => item.textContent.trim() === '移除模型').click();
     await until(() => !store.services.length, 'whole-service deletion');
     assert(sent().service === null && sources() === JSON.stringify([{ source_id: a, revision: 3 }, { source_id: b, revision: 7 }]), `Deletion did not name every related source: ${sources()}`);
     assert(!store.rejected.length, `The store rejected a request shape: ${JSON.stringify(store.rejected)}`);

@@ -8,6 +8,97 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
     assert(button, 'The OpenAI preset is missing'); button.click(); await pause(40);
   };
   return [
+    scenario('desktop.decisions.details-and-removal', ['decision-services', 'model-connections'], 'Details explain the current test without opaque hashes; removal is visible, confirmed, cancellable and preserves shared credentials', async () => {
+      for (const language of ['zh', 'en']) {
+        const t = (zh, en) => language === 'zh' ? zh : en;
+        const sourceId = 'source/review/removal';
+        const record = { schema: 'hiroute.decision-service/v2', id: 'decision/review/removal', revision: 3, name: 'Review decisions', connection: { kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model: 'gpt-6-luna', endpoint: 'https://api.openai.test/v1/decisions', timeout_ms: 10000, authentication: { kind: 'shared_source', source_id: sourceId, source_lineage_digest: c().decisionSource(sourceId).lineage_digest } } };
+        let store;
+        await fresh(() => { store = decisionStore([record], [c().decisionSource(sourceId)]); });
+        localStorage.setItem('hiroute.language', language); c().remount();
+        await click(t('模型', 'Models')); await click(t('决策模型', 'Decision models'));
+        await click(t('测试连接', 'Test connection'));
+        await until(() => document.querySelector('.decision-test-result.passed'), 'passed connection');
+        const diagnostic = () => all('.decision-test-result summary').find(item => item.textContent.includes(t('诊断详情', 'Diagnostic details')));
+        // Inspect an expanded diagnostic too: hiding hashes behind a disclosure is not the repair.
+        diagnostic()?.click(); await pause(40);
+        assert(!text().includes('sha256:'), 'Opaque configuration hashes are still shown in connection details');
+        assert(!diagnostic(), 'A successful test retains an empty or unnecessary diagnostic disclosure');
+        assert(calls('test_decision_service_v3')[0].payload.input.expected_configuration_digest === store.view(record.id).configuration_digest, 'Presentation changes dropped the exact tested configuration identity');
+        store.test = () => ({ outcome: 'failed', failure_code: 'DECISION_AUTHENTICATION_REJECTED' });
+        await click(t('重新测试', 'Test again'));
+        await until(() => document.querySelector('.decision-test-result.failed'), 'failed connection');
+        assert(diagnostic(), 'A failed test lost its support diagnostic'); diagnostic().click(); await pause(40);
+        assert(text().includes('DECISION_AUTHENTICATION_REJECTED') && !text().includes('sha256:'), 'Failure diagnostics expose hashes or hide the typed failure code');
+        const removal = () => all('.decision-removal button').find(item => item.textContent.trim() === t('移除模型', 'Remove model'));
+        assert(removal() && !removal().disabled && !removal().closest('details'), 'The model detail has no usable standalone removal section');
+        removal().scrollIntoView({ block: 'center' });
+        const bounds = removal().getBoundingClientRect(); assert(bounds.top >= 0 && bounds.bottom <= innerHeight, 'The standalone removal action cannot be brought into view');
+        const confirm = () => {
+          const button = all('[role="dialog"] button').find(item => item.textContent.trim() === t('移除模型', 'Remove model'));
+          assert(button && !button.disabled, 'The explicit removal confirmation is missing'); button.click();
+        };
+        removal().click(); await until(() => all('[role="dialog"]').length, 'removal confirmation');
+        assert(calls('save_decision_service_v2').length === 0 && text().includes(t('仅移除这个决策模型，保留 API 接入及其 Key。', 'Remove only this decision model; retain its API connection and keys.')), 'Opening removal mutates state or fails to explain shared credential retention');
+        await click(t('取消', 'Cancel'));
+        assert(store.services.length === 1 && calls('save_decision_service_v2').length === 0, 'Cancel removed the decision configuration');
+        const save = c().handlers.save_decision_service_v2;
+        c().handlers.save_decision_service_v2 = () => { throw { code: 'DECISION_IN_USE' }; };
+        removal().click(); await until(() => all('[role="dialog"]').length, 'blocked removal confirmation'); confirm();
+        await until(() => text().includes(t('仍被引用，请先调整引用再移除', 'Still referenced. Update references before removing')), 'reference rejection');
+        assert(store.services.length === 1 && text().includes(record.name), 'A rejected removal hid the existing configuration');
+        assert(all('[role="dialog"] .btn-danger')[0]?.disabled, 'A rejected removal still allows resubmitting the same unconfirmed intent');
+        await click(t('取消', 'Cancel'));
+        c().handlers.save_decision_service_v2 = save;
+        const sourceBefore = JSON.stringify(store.sources), managedBefore = JSON.stringify(c().management.sources);
+        removal().click(); await until(() => all('[role="dialog"]').length, 'successful removal confirmation'); confirm();
+        await until(() => store.services.length === 0 && text().includes(t('已移除。', 'Removed.')), 'removed configuration readback');
+        const input = calls('save_decision_service_v2').at(-1).payload.input;
+        assert(input.change.id === record.id && input.change.expected_revision === 3 && input.change.service === null && input.secret === null, 'Removal changed its exact revision transaction or submitted a secret');
+        assert(JSON.stringify(store.sources) === sourceBefore && JSON.stringify(c().management.sources) === managedBefore, 'Removing a decision configuration modified its API source or keys');
+        assert(calls('test_decision_service_v3').length === 2 && calls('preview_plan_editor').length === 0, 'Removal implicitly tested or published');
+      }
+    }),
+    scenario('desktop.decisions.extension-removal', ['decision-services'], 'Custom extensions share the visible confirmed removal action', async () => {
+      let store;
+      const record = { schema: 'hiroute.decision-service/v2', id: 'decision/review/extension', revision: 2, name: 'Review extension', connection: { kind: 'custom', endpoint: 'https://extension.example.test/decide', timeout_ms: 10000, auth_header: null } };
+      await fresh(() => { store = decisionStore([record]); });
+      await click('模型'); await click('决策模型');
+      const removal = all('.decision-removal button').find(item => item.textContent.trim() === '移除扩展');
+      assert(removal && !removal.disabled && !removal.closest('details'), 'The extension detail has no standalone removal action'); removal.scrollIntoView({ block: 'center' }); removal.click();
+      await until(() => all('[role="dialog"]').length, 'extension removal confirmation');
+      assert(text().includes('移除「Review extension」？') && calls('save_decision_service_v2').length === 0, 'Extension removal is not separately identified or confirmed');
+      await click('取消'); assert(store.services.length === 1, 'Cancel removed an extension');
+    }),
+    scenario('desktop.decisions.removal-references', ['decision-services', 'routing-editor'], 'Removal blocks visible references and never adopts a newer revision behind an open confirmation', async () => {
+      const sourceId = 'source/review/references';
+      const record = { schema: 'hiroute.decision-service/v2', id: 'decision/review/references', revision: 3, name: 'Referenced decisions', connection: { kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model: 'gpt-6-luna', endpoint: 'https://api.openai.test/v1/decisions', timeout_ms: 10000, authentication: { kind: 'shared_source', source_id: sourceId, source_lineage_digest: c().decisionSource(sourceId).lineage_digest } } };
+      await fresh(() => {
+        decisionStore([record], [c().decisionSource(sourceId)]);
+        c().desktop.catalog.plans[0].desired.strategy.classifier = { kind: 'decision_service_v2', service: structuredClone(record) };
+      });
+      await click('模型'); await click('决策模型'); await click('移除模型');
+      await until(() => all('[role="dialog"]').length, 'referenced removal');
+      assert(all('[role="dialog"] .btn-danger')[0]?.disabled && all('[role="dialog"] .callout.warn button').some(item => item.textContent.includes('日常编码')), 'Current route references are not explained and blocking');
+      assert(calls('save_decision_service_v2').length === 0, 'A referenced confirmation submitted a removal');
+      await click('取消');
+      let store, releaseTest;
+      await fresh(() => {
+        store = decisionStore([record], [c().decisionSource(sourceId)]);
+        const original = c().handlers.test_decision_service_v3;
+        c().handlers.test_decision_service_v3 = payload => new Promise(resolve => {
+          const admitted = original(payload); releaseTest = () => resolve(admitted);
+        });
+      });
+      await click('模型'); await click('决策模型'); await click('测试连接');
+      await until(() => releaseTest, 'pending test'); await click('移除模型');
+      await until(() => all('[role="dialog"]').length, 'frozen removal identity');
+      store.services[0] = { ...store.services[0], revision: 4 };
+      releaseTest();
+      await until(() => text().includes('这份配置已发生变化'), 'new revision invalidates removal confirmation');
+      assert(all('[role="dialog"] .btn-danger')[0]?.disabled && calls('save_decision_service_v2').length === 0, 'An open confirmation adopted the newer revision');
+      await click('取消'); assert(store.services[0].revision === 4, 'Cancelling the stale confirmation modified the newer configuration');
+    }),
     scenario('desktop.decisions.suggested-origin-key', ['decision-services'], 'Restoring suggested settings clears a pending key only when the independent origin changes', async () => {
       await fresh(() => decisionStore());
       await click('模型'); await click('决策模型'); await click('添加决策模型');
