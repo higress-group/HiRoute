@@ -485,6 +485,35 @@ mod tests {
                     EmitOutcome::Queued,
                 );
             }
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let published = diagnostic_tail(&diagnostics).is_ok_and(|bytes| {
+                    bytes.ends_with(b"\n")
+                        && bytes
+                            .split(|byte| *byte == b'\n')
+                            .filter_map(|line| DiagnosticRecordV1::parse_line(line).ok())
+                            .any(|record| {
+                                record.boot_id == boot
+                                    && match (outcome, record.event) {
+                                        (Some(expected), DiagnosticEvent::StartupEnd(end)) => {
+                                            end.outcome == expected
+                                        }
+                                        (None, DiagnosticEvent::ProcessStart(_)) => true,
+                                        _ => false,
+                                    }
+                            })
+                });
+                if published {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "current boot was not published: status={:?}, queue={:?}",
+                    runtime.status(),
+                    runtime.queue_snapshot(),
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
             runtime.shutdown();
             // Shutdown is bounded. This integration case separately waits for actual
             // role release, so neither reading nor the next boot races the producer.
