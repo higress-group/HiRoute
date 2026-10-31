@@ -726,10 +726,15 @@ advanced by that synchronization, while verifying the current provider and link.
 Association and import SHALL NOT create, reorder or change candidate groups or routing
 plans. The user chooses how to combine the sources. Association does not promise
 eligibility for API credits or change upstream billing classification. Provider-specific
-guidance SHALL link the official credit claim instructions, explain how to link the
-receiving API organization, and identify the eligible plans and excluded uses. OpenAI
-credits exclude Codex API-key usage; Anthropic credits exclude ordinary interactive
-Claude Code. API verification SHALL NOT be presented as claiming or activating credits.
+guidance SHALL link the official credit claim and scope instructions, explain how to
+link the receiving API organization, and identify eligible plans. The flow SHALL
+explain that saving a Key adds matching API-origin models alongside subscription
+models, limited to API-supported counterparts. It SHALL explain user-configured
+candidate groups and priority, including API fallback after subscription quota
+exhaustion; association alone does not configure that fallback. API verification
+SHALL NOT be presented as claiming or activating credits.
+Detailed provider usage-policy caveats belong to the linked official scope guidance
+and SHALL NOT be repeated as warning copy in this setup flow.
 Eligibility, balance, expiry and deductions remain governed by official billing.
 
 #### Scenario: Configure a provider API without selecting models again
@@ -745,7 +750,7 @@ Eligibility, balance, expiry and deductions remain governed by official billing.
 #### Scenario: Explain credit eligibility before connecting
 
 - **WHEN** a user opens optional API setup for a Codex or Claude subscription
-- **THEN** the flow shows provider-specific eligible plans and excluded coding-client usage, links official claiming instructions and explains using a Key from the receiving organization without claiming that HiRoute activates or guarantees the benefit
+- **THEN** the flow identifies eligible plans, links official claim/scope instructions and explains using a Key from the receiving organization; it also explains the two model sources and user-configured candidate-group fallback without claiming that HiRoute activates the credit benefit
 
 #### Scenario: Subscription succeeds while the API is unavailable
 

@@ -59,8 +59,11 @@ failed completion read retries only canonical readback; the association's own
 model-sync revision is not an external-edit conflict. API transport policy is
 independent of subscription proxy settings.
 `SubscriptionApiCredits.tsx` links provider claim instructions and Key setup,
-identifies eligible plans and excluded coding-client uses, and distinguishes API
-verification from credit activation. Official billing owns eligibility and balance.
+identifies eligible plans and directs scope/balance questions to official guidance.
+The inline setup explains the additional API-origin model set and configuring a
+candidate group to use the API after subscription quota exhaustion. Association
+alone still leaves groups and priority user-authored. Official billing owns credit
+eligibility and balance; Key verification does not activate the benefit.
 Ordinary API connection forms retain their separate service and model selection.
 
 Tests belong to the Desktop subscription suites and the production Pilot path; shared

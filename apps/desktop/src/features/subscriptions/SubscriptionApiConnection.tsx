@@ -97,7 +97,10 @@ export const SubscriptionApiPicker = forwardRef<SubscriptionApiPickerHandle, Com
       ? (zh ? '沿用订阅中已选的模型，向下方已有 API 接入同步导入，无需重复选择。' : 'Reuse the subscription’s model selection in the existing API connection below.')
       : setup.hasCredential && !setup.hasSavedApi
         ? (zh ? 'Key 已暂存，可重试或更换；清除 Key 后可仅使用订阅。订阅已选模型会沿用，无需重复选择。' : 'The key is retained for retry or replacement. Clear it to use only the subscription. Its model selection is reused.')
-      : (zh ? 'Key 留空则仅使用订阅。填写后沿用订阅已选模型，无需重复选择；同一个保存按钮完成接入，API 失败时订阅仍会保留。' : 'Leave the key blank to use only the subscription. Enter a key to reuse its selected models. One save completes setup; API failures keep the subscription intact.')}</p>
+      : (zh ? 'Key 留空则仅使用订阅。填写后沿用订阅已选模型，无需重复选择；同一个保存按钮完成接入。' : 'Leave the key blank to use only the subscription. Enter a key to reuse its selected models, then complete setup with the same save button.')}</p>
+    <p className="field-help">{zh
+      ? '保存后会额外导入一组来自 API 接入点的相同模型，仅导入 API 实际支持的模型。将两组模型加入同一候选组并设置优先顺序，例如订阅额度耗尽后自动使用 API 备用。'
+      : 'Saving also imports a matching set of models from the API connection, where supported by the API. Add both sets to one candidate group and set their priority, for example to use the API as a fallback when the subscription quota runs out.'}</p>
     {result && result.state !== 'saved' && <p ref={feedback} tabIndex={-1} className="callout warn subscription-api-feedback" role="status">{result.failure ? networkFailureText(result.failure, zh) : inlineApiResultText(result, zh)}</p>}
     {setup.hasSavedApi && result?.state !== 'saved' && <p className="field-help">{zh ? '这份 API 接入已独立保存，重试关联不会重复创建。' : 'This API connection is saved independently. Retrying the association will not create another.'}</p>}
     {!usingExisting && <div className="subscription-api-key">
