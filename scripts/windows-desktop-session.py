@@ -223,6 +223,20 @@ if([DesktopWindow]::GetForegroundWindow() -ne $p.MainWindowHandle){
  throw 'Native Desktop is not foreground; inspect focus.json'
 }
 $root=[Windows.Automation.AutomationElement]::FromHandle($p.MainWindowHandle)
+function VisibleUnique($elements) {
+ $seen=@{}
+ $visible=[Collections.Generic.List[Windows.Automation.AutomationElement]]::new()
+ foreach($e in $elements) {
+  $id=$e.GetRuntimeId() -join '.'
+  if(-not $seen.ContainsKey($id)) {
+   $seen[$id]=$true
+   if(-not $e.Current.IsOffscreen){$visible.Add($e)}
+  }
+ }
+ $script:observation=@{raw_count=$elements.Count;unique_count=$seen.Count;visible_count=$visible.Count;limit=1600}
+ if($visible.Count -gt 1600){throw 'UI Automation tree exceeds observation bound'}
+ return $visible.ToArray()
+}
 function Observe($root) {
  $all=$root.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)
  # Some WebView2 fragment roots are reachable by a native accessibility hit
@@ -233,16 +247,15 @@ function Observe($root) {
   $top=$hit
   for($i=0;$i -lt 40;$i++) {
    if($top.Current.ControlType -eq [Windows.Automation.ControlType]::Document){
-    return @($all)+@($top)+@($top.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition))
+    return @(VisibleUnique (@($all)+@($top)+@($top.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition))))
    }
    $top=[Windows.Automation.TreeWalker]::RawViewWalker.GetParent($top)
    if($null -eq $top -or $top.Equals($root)){break}
   }
  }
- return @($all)
+ return @(VisibleUnique @($all))
 }
 $all=@(Observe $root)
-if($all.Count -gt 1600){throw 'UI Automation tree exceeds observation bound'}
 if($q.action -in @('invoke','text','close','click','scroll')) {
  if($q.action -eq 'close') {
   $closeHandle=$p.MainWindowHandle
@@ -301,7 +314,7 @@ try {
  $graphics.CopyFromScreen([int]$r.X,[int]$r.Y,0,0,$bitmap.Size)
  $bitmap.Save((Join-Path $PSScriptRoot 'window.png'),[Drawing.Imaging.ImageFormat]::Png)
 } finally {$graphics.Dispose();$bitmap.Dispose()}
-@{pid=$p.Id;handle=$p.MainWindowHandle.ToInt64();width=$r.Width;height=$r.Height;window=$root.Current.Name;nodes=$nodes}|ConvertTo-Json -Depth 6 -Compress
+@{pid=$p.Id;handle=$p.MainWindowHandle.ToInt64();width=$r.Width;height=$r.Height;window=$root.Current.Name;observation=$script:observation;nodes=$nodes}|ConvertTo-Json -Depth 6 -Compress
 '''
 
 

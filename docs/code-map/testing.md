@@ -56,7 +56,8 @@ local entry tests; follow the [App lifecycle guide](../desktop-tauri-pilot.md#ma
 backups after explicit user authorization; it does not establish a product scenario.
 [Native Desktop session actions](../../scripts/windows-desktop-session.py) admit
 the installed NSIS member and collect actual Windows UI Automation/screenshot
-evidence. Bounded model-feed status and metadata queries provide directory
+evidence. Its visible-node projection deduplicates Runtime IDs before the bounded
+observation, including after an action. Bounded model-feed status and metadata queries provide directory
 readback; model mutations still use native UI actions. Public CLI readback is
 distinguished from a UI action, and a cross-build
 replacement is distinguished from a newer-version update.
