@@ -43,7 +43,7 @@ try {
       await geometry(width);await shot(`reasoning-automatic-${fallback?'fallback':'missing'}-${lang}-${theme}-${width}`);
     }
     results.push({id:`metadata.reasoning-automatic.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked IPC; missing and derived fallback facts'});
-    await evaluate(client,`metadataFixture.automaticReasoning=false;dispatchEvent(new Event('model-feed-changed'));true`);
+    await evaluate(client,`metadataFixture.automaticReasoning=true;metadataFixture.reasoningParameter='output_config.effort';dispatchEvent(new Event('model-feed-changed'));true`);
     await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='follow_metadata'`);
 
     await select('#model-default-context_tokens','custom');
@@ -76,6 +76,13 @@ try {
     await fill('[data-capability-profiles]','low, high, ');
     assert.equal(await evaluate(client,`document.querySelector('[data-capability-profiles]').value`),'low, high, ');
     await select('.model-default-reasoning label select','low');
+    // Kind cycling must keep native wire parameters and edited values, including Claude adaptive.
+    for (const kind of ['unknown','budget']) {
+      await select('.model-default-reasoning > select',kind);await select('.model-default-reasoning > select','discrete');
+      assert.equal(await evaluate(client,`document.querySelector('[data-capability-profiles]').value`),'low, high');
+      assert.equal(await evaluate(client,`document.querySelector('.model-default-reasoning label select').value`),'low');
+    }
+
     await select('#model-default-context_tokens','follow_metadata');await select('#model-default-context_tokens','custom');
     assert.equal(await evaluate(client,`document.querySelector('[data-default-field=context_tokens] input').value`),'64000');
     await evaluate(client,`metadataFixture.failSave=false;document.querySelector('.model-defaults-editor .actions').scrollIntoView({block:'center'});true`);
@@ -84,7 +91,7 @@ try {
     await waitFor(client,`!document.querySelector('.model-defaults-editor .actions')`);
     const payloads=await evaluate(client,`trialTrace.filter(x=>x.command==='preview_compute_save_v3').map(x=>x.payload)`);
     assert.equal(payloads.length,beforeSave+1);
-    assert.deepEqual(payloads.at(-1).defaultPreferences['binding/bailian/qwen-coder'],{context_tokens:{intent:'custom',value:64000},tool:{intent:'custom',value:false},vision:{intent:'custom',value:null},max_output_tokens:{intent:'custom',value:4096},native_reasoning:{intent:'custom',value:{kind:'discrete',parameter:'reasoning_effort',profiles:['low','high'],default_profile:'low'}}});
+    assert.deepEqual(payloads.at(-1).defaultPreferences['binding/bailian/qwen-coder'],{context_tokens:{intent:'custom',value:64000},tool:{intent:'custom',value:false},vision:{intent:'custom',value:null},max_output_tokens:{intent:'custom',value:4096},native_reasoning:{intent:'custom',value:{kind:'discrete',parameter:'output_config.effort',profiles:['low','high'],default_profile:'low'}}});
     assert.deepEqual(payloads.at(-1).change.key_edits,[]);
     results.push({id:`metadata.custom-save.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked save callback; invalid/retained/unknown/typed values and one Save'});
     await click('.model-feed-actions button',lang==='zh'?'详情':'Details');
@@ -149,6 +156,20 @@ try {
     await click('[role=dialog] footer button',lang==='zh'?'取消':'Cancel');
     assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='model_feed_remove_apply').length`),0);
     results.push({id:`metadata.defaults-pages-impact.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked IPC'});
+    // Reopening a saved Custom Unknown still exposes the exact native template on demand.
+    await client.send('Page.navigate',{url:`${base}new-model-trial.html?metadata=1&metadata-custom-unknown=1&lang=${lang}&theme=${theme}`});
+    await click('.list-row','Qwen3-Coder-Plus');
+    await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='custom'`);
+    assert.equal(await evaluate(client,`document.querySelector('.model-default-reasoning > select').value`),'unknown');
+    await select('.model-default-reasoning > select','discrete');
+    await waitFor(client,`!!document.querySelector('[data-capability-profiles]')`);
+    assert.equal(await evaluate(client,`document.querySelector('[data-capability-profiles]').value`),'low, medium, high, xhigh, max');
+    await evaluate(client,`metadataFixture.failSave=true;true`);
+    await click('.model-defaults-editor .btn-primary',lang==='zh'?'保存修改':'Save changes');
+    await waitFor(client,`trialTrace.some(x=>x.command==='preview_compute_save_v3')`);
+    assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='preview_compute_save_v3').payload.defaultPreferences['binding/bailian/qwen-coder'].native_reasoning.value.parameter`),'output_config.effort');
+    await geometry(width);await shot(`defaults-reopened-unknown-${lang}-${theme}-${width}`);
+    results.push({id:`metadata.reopened-unknown.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked persisted response; exact native template restored'});
   }
   await client.send('Page.navigate',{url:`${base}new-model-trial.html?metadata=1&transport=console&lang=en`});
   await click('.model-feed-actions button','Details');

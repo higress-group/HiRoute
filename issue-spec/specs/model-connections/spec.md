@@ -195,6 +195,14 @@ Legacy exact FollowOfficial intent SHALL retain its scoped meaning. Legacy Prese
 fact SHALL allow this missing-value projection, including preferences established
 automatically by earlier imports. Explicit fixed non-thinking settings, manual
 profile subsets and defaults SHALL retain their saved meaning.
+Changing a custom reasoning kind and returning to a known native kind SHALL
+preserve that kind's draft and parameter template. An explicitly requested native
+reference MAY be returned from the same qualified metadata snapshot, independently
+of a saved Custom unknown value; omitted requests and responses SHALL retain the
+legacy wire shape. This reference SHALL NOT itself change effective source values.
+Qualified native and connector-owned materialization SHALL retain native companion
+controls for compatible custom discrete subsets and clear incompatible companions
+for fixed or other controls. Unsupported native names and protocols remain invalid.
 Resolving a missing value SHALL NOT rewrite stored sources, keys, membership,
 admission evidence or already published reasoning selections. The effective value
 and its metadata origin SHALL be visible separately from a missing saved value.

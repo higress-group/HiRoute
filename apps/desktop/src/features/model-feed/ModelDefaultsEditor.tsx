@@ -9,7 +9,7 @@ import type { ModelDeclaration } from '../model-connections/types';
 type Field = 'tool' | 'vision' | 'streaming' | 'context_tokens' | 'max_output_tokens' | 'native_reasoning';
 type Preference = { intent: 'custom'; value: unknown } | { intent: 'follow_metadata' };
 type FieldView = { saved_value: unknown; effective_value: unknown; intent: string; origin: string; locator: Record<string, string> | null };
-type Defaults = { source_id: string; source_revision: number; revisions: { target: number; dependencies: Record<string, number> }; reviewed_on: string; models: { binding_id: string; fields: Record<Field, FieldView> }[] };
+type Defaults = { source_id: string; source_revision: number; revisions: { target: number; dependencies: Record<string, number> }; reviewed_on: string; models: { binding_id: string; fields: Record<Field, FieldView>; native_reasoning_reference?: unknown }[] };
 const follows = (field: FieldView) => ['follow_metadata', 'follow_official'].includes(field.intent) || (field.intent === 'preserve_saved' && (field.saved_value === null || field.origin !== 'preserved'));
 
 export function ModelDefaultsEditor({ source, bindingId, language, mutable, onApply, onSaved }: {
@@ -31,7 +31,7 @@ export function ModelDefaultsEditor({ source, bindingId, language, mutable, onAp
   useEffect(() => { saving.current = false; editRevisions.current = null; setDraft({}); setCustom({}); setView(null); setError(''); setBusy(false); setUncertain(false); }, [source.source_id, bindingId]);
   useEffect(() => {
     let live = true;
-    const load = () => { void readCurrentCatalog(() => invoke<Defaults>('compute_defaults', { input: { source_id: source.source_id } })).then(value => {
+    const load = () => { void readCurrentCatalog(() => invoke<Defaults>('compute_defaults', { input: { source_id: source.source_id, include_native_reference: true } })).then(value => {
       if (live) {setView(value); setError('');}
     }).catch(() => {if (live) setError(t('未能读取模型资料，请重试。', 'Could not load model metadata. Retry.'));}); };
     load(); window.addEventListener('model-feed-changed', load);
@@ -79,7 +79,7 @@ export function ModelDefaultsEditor({ source, bindingId, language, mutable, onAp
           const policy:Preference=e.target.value==='custom'?{intent:'custom',value:Object.prototype.hasOwnProperty.call(custom,name)?custom[name]:field.effective_value}:{intent:'follow_metadata'};
           editRevisions.current ??= view?.revisions ?? null;setDraft(d=>({...d,[name]:policy}));setError('');
         }}><option value="follow_metadata">{t('跟随 HiRoute 模型资料','Follow HiRoute model metadata')}</option><option value="custom">{t('自定义','Custom')}</option></select>
-        {mode==='custom'&&<ModelCapabilityInput field={name} label={labels[name]} value={value} language={language} onChange={next=>{editRevisions.current ??= view?.revisions ?? null;setCustom(d=>({...d,[name]:next}));setDraft(d=>({...d,[name]:{intent:'custom',value:next}}));setError('');}}/>}
+        {mode==='custom'&&<ModelCapabilityInput field={name} label={labels[name]} value={value} reference={name==='native_reasoning' ? model.native_reasoning_reference ?? field.effective_value : field.effective_value} language={language} onChange={next=>{editRevisions.current ??= view?.revisions ?? null;setCustom(d=>({...d,[name]:next}));setDraft(d=>({...d,[name]:{intent:'custom',value:next}}));setError('');}}/>}
       </dd></div>;
     })}</dl></fieldset></>}
     {error&&<p role="alert">{error} <button className="btn btn-quiet" onClick={()=>{editRevisions.current=null;setRetry(n=>n+1);}} disabled={busy}>{t('重新读取','Reload')}</button></p>}

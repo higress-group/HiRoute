@@ -43,3 +43,9 @@ the ordinary preview/save operation; they do not rewrite source membership or
 credential evidence. Legacy preserved/official-locator policies retain their exact
 meaning and bytes. New model/default reads and publication share the effective
 projection; already published revisions keep their frozen capabilities.
+
+The editor opts into a same-snapshot native reference so a saved Custom unknown
+choice can later restore its exact native parameter without guessing from model
+names. This does not change the current custom value. Each native kind keeps its
+staged draft while switching kinds; compatible native companion controls are
+retained during both native and connector-owned materialization.

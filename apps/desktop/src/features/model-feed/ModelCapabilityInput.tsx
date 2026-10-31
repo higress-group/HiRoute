@@ -1,17 +1,26 @@
+import { useRef } from 'react';
 import { reasoningValue } from '../model-connections/form-support';
 import type { NativeReasoning } from '../model-connections/types';
 
-export function ModelCapabilityInput({ field, label, value, language, onChange }: {
-  field: string; label: string; value: unknown; language: 'zh' | 'en'; onChange(value: unknown): void;
+export function ModelCapabilityInput({ field, label, value, reference, language, onChange }: {
+  field: string; label: string; value: unknown; reference: unknown; language: 'zh' | 'en'; onChange(value: unknown): void;
 }) {
+  type Native = Exclude<NativeReasoning, {kind: 'unknown'}>;
+  const drafts = useRef<Partial<Record<Native['kind'], Native>>>({});
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   if (['tool', 'vision', 'streaming'].includes(field)) return <select className="select" aria-label={label + ' · ' + t('自定义', 'Custom')} value={value === true ? 'true' : value === false ? 'false' : 'unknown'} onChange={e => onChange(e.target.value === 'unknown' ? null : e.target.value === 'true')}>
     <option value="true">{t('支持', 'Supported')}</option><option value="false">{t('不支持', 'Not supported')}</option><option value="unknown">{t('未知', 'Unknown')}</option>
   </select>;
   if (field !== 'native_reasoning') return <input className="input" aria-label={label + ' · ' + t('自定义上限', 'Custom limit')} type="number" min="1" step="1" placeholder={t('未知', 'Unknown')} value={typeof value === 'number' ? value : ''} onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))} />;
-  const native = value as Exclude<NativeReasoning, {kind: 'unknown'}> | null;
+  const native = value as Native | null;
+  const original = reference as Native | null;
   return <div className="model-default-reasoning">
-    <select className="select" aria-label={t('自定义思考方式', 'Custom reasoning kind')} value={native?.kind ?? 'unknown'} onChange={e => onChange(reasoningValue(e.target.value as NativeReasoning['kind'], native))}>
+    <select className="select" aria-label={t('自定义思考方式', 'Custom reasoning kind')} value={native?.kind ?? 'unknown'} onChange={e => {
+      if (native) drafts.current[native.kind] = native;
+      const kind = e.target.value as NativeReasoning['kind'];
+      const previous = kind === 'unknown' ? undefined : drafts.current[kind] ?? (original?.kind === kind ? original : undefined);
+      onChange(reasoningValue(kind, previous));
+    }}>
       <option value="unknown">{t('未知', 'Unknown')}</option><option value="fixed">{t('供应商固定', 'Provider fixed')}</option><option value="discrete">{t('可选档位', 'Discrete levels')}</option><option value="toggle">{t('开关', 'On / off')}</option><option value="budget">{t('Token 预算', 'Token budget')}</option>
     </select>
     {native?.kind === 'discrete' && <>

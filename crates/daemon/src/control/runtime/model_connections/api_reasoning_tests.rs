@@ -381,6 +381,60 @@ fn api_reasoning_survives_normal_v3_save_reopen_and_preserves_manual_values() {
                 .unwrap();
             assert_eq!(raw.models, saved.models);
             assert_eq!(raw.credentials, saved.credentials);
+            let mut unknown = custom.clone();
+            unknown.insert(
+                hiroute_domain::ModelDefaultFieldV1::NativeReasoning,
+                ModelDefaultPreferenceV1::Custom {
+                    value: hiroute_domain::ModelDefaultValueV1::Unknown(()),
+                },
+            );
+            save_preferences(
+                &runtime,
+                &service,
+                &saved.source_id,
+                binding,
+                unknown,
+                "custom-unknown",
+            );
+            drop(service);
+            drop(runtime);
+            let runtime = super::super::ProductionControlRuntime::open_with_release_catalog(
+                root.path(),
+                catalog.clone(),
+            )
+            .unwrap();
+            let service = crate::control::LocalControlDaemon::new(
+                hiroute_application::ApplicationService::new(runtime.application_ports()),
+            );
+            let old = dispatch(
+                &service,
+                "GetComputeDefaults",
+                serde_json::json!({"source_id":saved.source_id}),
+            );
+            assert!(old["models"][0].get("native_reasoning_reference").is_none());
+            let with_reference = dispatch(
+                &service,
+                "GetComputeDefaults",
+                serde_json::json!({"source_id":saved.source_id,"include_native_reference":true}),
+            );
+            assert!(
+                with_reference["models"][0]["fields"]["native_reasoning"]["effective_value"]
+                    .is_null()
+            );
+            assert_eq!(
+                with_reference["models"][0]["fields"]["native_reasoning"]["intent"],
+                "custom"
+            );
+            assert_eq!(
+                with_reference["models"][0]["native_reasoning_reference"]["parameter"],
+                "reasoning_effort"
+            );
+            assert!(
+                with_reference["models"][0]["native_reasoning_reference"]["profiles"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&serde_json::json!("high"))
+            );
             let follow = custom
                 .keys()
                 .map(|field| (*field, ModelDefaultPreferenceV1::FollowMetadata))

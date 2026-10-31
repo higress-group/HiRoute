@@ -44,6 +44,7 @@ mod reuse_tests;
 
 mod routing_lock_tests;
 mod trial_snapshot_tests;
+mod model_defaults_tests;
 
 struct Fixture {
     runtime: Option<ProductionControlRuntime>,

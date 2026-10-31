@@ -493,6 +493,8 @@ pub(super) fn materialize_management_candidate(
             .and_then(|value| value.render_convention)
             .or_else(|| qualified_native_render_convention(fact, catalog)),
     };
+    let native_capability = reasoning.capability.clone();
+    let reasoning = reasoning.with_source_capability(native_capability);
     let mut protocol_faces = vec![ProtocolFace {
         protocol: protocol_endpoint.protocol,
         request_path: protocol_endpoint.request_path.clone(),
@@ -706,7 +708,7 @@ pub(super) fn materialize_connector_management_candidate(
     model.capabilities.streaming = effective.streaming.value?;
     model.capabilities.context_tokens = effective.context_tokens.value?;
     model.capabilities.max_output_tokens = effective.max_output_tokens.value?;
-    reasoning.capability = effective.native_reasoning.value?;
+    reasoning = reasoning.with_source_capability(effective.native_reasoning.value?);
     let pool = catalog
         .transient_cpa_credential_pool(registered, &desired.source, &desired.binding)
         .ok()?;

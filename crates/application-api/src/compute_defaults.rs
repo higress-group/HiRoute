@@ -54,6 +54,11 @@ pub fn saved_compute_change(
 #[serde(deny_unknown_fields)]
 pub struct ComputeDefaultsQueryV1 {
     pub source_id: String,
+    #[serde(default, skip_serializing_if = "native_reference_disabled")]
+    pub include_native_reference: bool,
+}
+fn native_reference_disabled(value: &bool) -> bool {
+    !value
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -71,6 +76,8 @@ pub struct ComputeModelDefaultsV1 {
     pub model_configuration_id: Option<String>,
     pub fields:
         std::collections::BTreeMap<hiroute_domain::ModelDefaultFieldV1, ComputeDefaultFieldViewV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_reasoning_reference: Option<hiroute_domain::NativeReasoningCapabilityV1>,
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -80,4 +87,49 @@ pub struct ComputeDefaultsResultV1 {
     pub revisions: hiroute_domain::RevisionSetV1,
     pub reviewed_on: String,
     pub models: Vec<ComputeModelDefaultsV1>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_reference_is_opt_in_without_changing_existing_wire_shapes() {
+        let old = serde_json::json!({"source_id":"source/test"});
+        let query: ComputeDefaultsQueryV1 = serde_json::from_value(old.clone()).unwrap();
+        assert!(!query.include_native_reference);
+        assert_eq!(serde_json::to_value(query).unwrap(), old);
+        let old = serde_json::json!({"binding_id":"binding/test","model_configuration_id":null,"fields":{}});
+        let model: ComputeModelDefaultsV1 = serde_json::from_value(old.clone()).unwrap();
+        assert!(model.native_reasoning_reference.is_none());
+        assert_eq!(serde_json::to_value(model).unwrap(), old);
+        let schema = command_schemas("compute.defaults.get").unwrap();
+        assert!(
+            schema
+                .request
+                .to_string()
+                .contains("include_native_reference")
+        );
+        assert!(
+            schema
+                .response
+                .to_string()
+                .contains("native_reasoning_reference")
+        );
+        let preferences = command_schemas("compute.defaults.preview")
+            .unwrap()
+            .request
+            .to_string();
+        for intent in [
+            "custom",
+            "follow_metadata",
+            "preserve_saved",
+            "follow_official",
+        ] {
+            assert!(
+                preferences.contains(intent),
+                "missing live schema variant {intent}"
+            );
+        }
+    }
 }

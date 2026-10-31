@@ -253,6 +253,34 @@ impl LocalControlAdapter {
                 binding_id: saved.binding_id.clone(),
                 model_configuration_id: saved.catalog_configuration_id.clone(),
                 fields,
+                native_reasoning_reference: if query.include_native_reference {
+                    if let Some(cap) = cap {
+                        catalog
+                            .native_reasoning()
+                            .iter()
+                            .find(|native| {
+                                native.model_configuration_id == cap.model_configuration_id
+                            })
+                            .map(|native| native.capability.clone())
+                    } else {
+                        let unknown = ComputeManagementFactValueV2 {
+                            value: None,
+                            basis: ComputeManagementFactBasisV2::Unknown,
+                        };
+                        hiroute_integrations::compute::missing_api_reasoning_default(
+                            &catalog,
+                            &source.provenance,
+                            &source.target,
+                            &source.authentication,
+                            &saved.upstream_model_id,
+                            &unknown,
+                            None,
+                        )
+                        .map(|value| value.capability)
+                    }
+                } else {
+                    None
+                },
             });
         }
         if self
