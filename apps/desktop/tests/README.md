@@ -1,5 +1,13 @@
 # Desktop behavior tests
 
+The focused saved-model route flow runs with
+`node tests/v3/visual/new-model-trial.mjs /path/to/evidence --model-route`.
+It exercises production DesktopApp navigation, same-ID source choices, exact-ID
+fixed-route defaults, one explicit save, existing-route append/CAS and conditional
+purpose requirements, with supported-window geometry and screenshots in both
+languages/themes. IPC is synthetic; actual CLI/daemon save, Agent catalog and
+restart are covered by `real_process_route_only_model_id_and_empty_purpose_survive_restart`.
+
 Native startup presentation is owned by `src-tauri/src/bridge/launch_presentation.rs`
 and the macOS launch observer in `hiroute-desktop-host-effects`. Their Rust cases
 cover early/late reasons, foreground fallback, background/duplicate suppression,

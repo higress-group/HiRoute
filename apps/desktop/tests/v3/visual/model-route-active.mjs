@@ -11,10 +11,11 @@ async function click(selector, label) {
   await waitFor(client, `(()=>{const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>(${visible})(e)&&e.textContent.includes(${JSON.stringify(label)}));if(!e)return false;e.click();return true;})()`);
 }
 async function shot(name) {
+  await evaluate(client, 'Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))).then(()=>true)');
   const capture = await client.send('Page.captureScreenshot', { format: 'png' });
   await writeFile(path.join(output, `${name}.png`), Buffer.from(capture.data, 'base64'));
 }
-async function setup({ language = 'zh', theme = 'light', width = 1200, height = 813, others = true, existing = false, stale = false, mode = 'fixed_model' } = {}) {
+async function setup({ language = 'zh', theme = 'light', width = 1200, height = 813, others = true, existing = false, stale = false, delayed = false, mode = 'fixed_model' } = {}) {
   await navigate(client, `${base}product-shell.html`, { width, height });
   await waitFor(client, 'Boolean(window.productShell) && !!document.querySelector(".sidebar")');
   await evaluate(client, `(()=>{
@@ -42,7 +43,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
         v.authoring.editor.candidates=v.authoring.editor.candidates.map(s=>({...s,reasoning:s.reasoning??{kind:'profile',profile:'high'}}));
         if(${stale}&&payload.input.authoring.plan_id)v.authoring.expected_head_revision=8;
       }
-      return v;
+      return ${delayed}&&payload.input.editor?new Promise(resolve=>setTimeout(()=>resolve(v),600)):v;
     };
     c.handlers.preview_plan_editor=payload=>{
       const i=payload.input;
@@ -87,6 +88,7 @@ try {
       await click('.modal-foot .btn-primary',language==='zh'?'一起加入候选':'Add together as candidates');
       await editorReady();
       assert.deepEqual(await current(),{name:'gpt-6.1-sol',alias:'gpt-6.1-sol',purpose:'',required:false,bindings:['binding/codex/gpt-6-astra','binding/api/sol'],writes:0});
+      await waitFor(client, '!document.querySelector(".toolbar-actions .btn-primary").disabled');
       await shot(`model-route-editor-${id}`);
       await click('.toolbar-actions button',language==='zh'?'保存并创建':'Save and create');
       await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
@@ -103,6 +105,13 @@ try {
   await run('model-route.single-source-goes-directly-to-prefilled-editor',async()=>{
     await setup({others:false});await click('.model-route-action button','创建智能路由');await editorReady();
     assert.equal(await evaluate(client,'document.querySelectorAll("[role=dialog]").length'),0);assert.equal((await current()).alias,'gpt-6.1-sol');
+  });
+  await run('model-route.save-waits-for-current-model-options',async()=>{
+    await setup({others:false,delayed:true});await click('.model-route-action button','创建智能路由');await editorReady();
+    assert.equal(await evaluate(client,'document.querySelector(".toolbar-actions .btn-primary").disabled'),true);
+    assert.equal((await current()).writes,0);
+    await click('.toolbar-actions button','保存并创建');
+    await waitFor(client,'productShell.commands.some(c=>c.command==="preview_plan_editor")');
   });
   await run('model-route.existing-fixed-route-retains-settings-and-order',async()=>{
     await setup({existing:true});await click('.model-route-action button','创建智能路由');await click('.modal-foot .btn-primary','一起加入候选');await editorReady();
