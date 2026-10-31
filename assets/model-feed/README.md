@@ -40,6 +40,8 @@ rollback or different semantic content at the same revision against HEAD and the
 supplied baseline. Current development source is sufficient publication basis;
 no stable release record, development package verification or prior client acceptance
 is required. Recorded supported source readers still receive compatibility checks.
+Missing recorded source history, moved tags and unreadable reader bytes fail validation;
+an available recorded source that genuinely has no v2 reader can be skipped.
 Unsupported execution
 requirements remain descriptive; they do not remove otherwise valid metadata. The
 publication's `source_revision` names the committed release-bundle tree, which is

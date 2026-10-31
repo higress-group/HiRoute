@@ -428,6 +428,11 @@ Source generation and publication SHALL remain reproducible from the recorded re
 - **WHEN** a future full-catalog wire shape is incompatible with a supported released reader
 - **THEN** the new contract uses a versioned endpoint, the supported old contract remains available according to policy, and both derive from the reviewed source without erasing client acceptance state.
 
+#### Scenario: Retain recorded-reader checks during development publication
+
+- **WHEN** an eligible recorded release has unavailable source history, a moved tag or unreadable reader bytes
+- **THEN** generation fails without replacing the publication; missing compatibility evidence is not treated as absence of a supported reader. An available exact source that genuinely has no reader for this wire contract can be excluded from its compatibility checks.
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/191#issuecomment-6295423043
 

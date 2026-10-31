@@ -99,19 +99,31 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
         {
             return Err("invalid recorded release identity".into());
         }
-        let reader = git_bytes(
+        let resolved = git(root, &["rev-parse", &format!("{}^{{commit}}", release.tag)])?;
+        if resolved.trim() != release.revision {
+            return Err(format!("recorded release tag moved: {}", release.tag));
+        }
+        let reader_path = "crates/integrations/src/model_feed/mod.rs";
+        if git(
             root,
             &[
-                "show",
-                &format!(
-                    "{}:crates/integrations/src/model_feed/mod.rs",
-                    release.revision
-                ),
+                "ls-tree",
+                "--name-only",
+                &release.revision,
+                "--",
+                reader_path,
             ],
-        );
-        if !reader
-            .is_ok_and(|bytes| String::from_utf8_lossy(&bytes).contains("hiroute.model-feed/v2"))
+        )?
+        .trim()
+        .is_empty()
         {
+            continue;
+        }
+        let reader = git_bytes(
+            root,
+            &["show", &format!("{}:{reader_path}", release.revision)],
+        )?;
+        if !String::from_utf8_lossy(&reader).contains("hiroute.model-feed/v2") {
             continue;
         }
         let snapshot = read(&format!("contracts/releases/{}", release.file))?;
@@ -124,10 +136,6 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
             || record["release"]["tag"] != release.tag
         {
             return Err("release snapshot identity mismatch".into());
-        }
-        let resolved = git(root, &["rev-parse", &format!("{}^{{commit}}", release.tag)])?;
-        if resolved.trim() != release.revision {
-            return Err(format!("recorded release tag moved: {}", release.tag));
         }
         let catalog = load_catalog(
             |file| {

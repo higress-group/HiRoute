@@ -426,6 +426,48 @@ fn development_source_publishes_without_release_records_or_package_verification(
 }
 
 #[test]
+fn development_publication_does_not_ignore_missing_recorded_history() {
+    let (directory, base) = unpublished_repository();
+    let root = directory.path();
+    let index = root.join("contracts/releases/index.v1.json");
+    let write_record = |revision: &str| {
+        std::fs::write(
+            &index,
+            serde_json::to_vec(&serde_json::json!({
+                "schema": "hiroute.release-contract-index/v1",
+                "releases": [{
+                    "channel": "stable", "file": "v0.3.2.json", "tag": "v0.3.2",
+                    "revision": revision, "sha256": "0".repeat(64)
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    };
+    write_record(&base);
+    assert!(
+        build(root, false)
+            .unwrap_err()
+            .contains("recorded Git source is unavailable")
+    );
+    repository_git(root, &["tag", "v0.3.2"]);
+    write_record(&"f".repeat(40));
+    assert!(
+        build(root, false)
+            .unwrap_err()
+            .contains("recorded release tag moved")
+    );
+    assert_eq!(
+        std::fs::read(root.join("assets/model-feed/payload.json")).unwrap(),
+        b"null\n"
+    );
+    // An available, exact recorded source that genuinely has no v2 reader is distinct.
+    write_record(&base);
+    build(root, false).unwrap();
+    build(root, true).unwrap();
+}
+
+#[test]
 fn unpublished_source_rejects_changed_embedded_data_without_a_revision_increase() {
     let (directory, base) = unpublished_repository();
     let root = directory.path();
