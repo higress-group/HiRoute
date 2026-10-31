@@ -121,8 +121,10 @@ Release, and attach every DMG, Linux archive and companion manifest, and the x64
 Windows NSIS installer with its `.identity.json` sidecar when Windows is in scope.
 Windows headless archives are internal payloads and must not be published. The
 installer identity must bind the exact source/hash and every required native case
-from `scripts/windows-desktop-cases.json`; compilation or a Server-only run does
-not satisfy the Windows 11 ordinary-user gate. After
+from `scripts/windows-desktop-cases.json`, with the actual OS/build recorded.
+For 0.5.0, the maintainer-approved scope in #193 uses the existing Server host
+for the Windows 11 desktop selection; all selected standard-user cases still
+apply. Compilation alone does not establish native acceptance. After
 reviewing those assets, add their exact filenames, sizes, and digests to the
 manifest on `main`. Publish the GitHub Release only after that record lands.
 The workflow freezes that `main` revision for the website, resolves the tag's
