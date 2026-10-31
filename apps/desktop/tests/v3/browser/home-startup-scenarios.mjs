@@ -5,6 +5,7 @@ export function homeStartupScenarios({ until, control }) {
   const settled = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const health = () => document.querySelector('.sidebar-health');
   const routeButton = () => [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '新建智能路由' && button.getClientRects().length);
+  const routeUnavailable = () => [...document.querySelectorAll('.callout.warn')].find(callout => callout.textContent.includes('路由可以查看，暂时不能修改'));
   const readyRoute = async c => {
     c.reset();
     await until(() => health()?.querySelector('.good'), 'initial healthy service');
@@ -147,14 +148,20 @@ export function homeStartupScenarios({ until, control }) {
     scenario('desktop.home.service-refresh-authority', ['home-startup'], 'Refreshing service display retains health without retaining permission', async () => {
       const c = control(); let release;
       try {
-        await readyRoute(c);
+        c.reset();
+        await until(() => health()?.querySelector('.good'), 'initial healthy service');
         c.handlers.desktop_snapshot = () => new Promise(resolve => { release = resolve; });
         window.dispatchEvent(new Event('focus'));
         await until(() => release && health()?.textContent.includes('正在更新'), 'held same-target refresh');
+        document.querySelector('button[aria-label="智能路由"]').click();
+        await until(() => routeButton()?.disabled, 'routing opened during refresh');
         assert(health().querySelector('.good'), 'Healthy display was lost during the refresh');
         assert(routeButton().disabled, 'Previous display authorized a routing mutation during refresh');
+        assert(document.body.innerText.includes('正在读取路由'), 'Routing refresh did not show its loading state');
+        assert(!routeUnavailable(), 'Opening routing during a healthy refresh falsely warned that the service was not ready');
         release(structuredClone(c.desktop));
         await until(() => !routeButton().disabled && !health().textContent.includes('正在更新'), 'fresh authority');
+        assert(!routeUnavailable(), 'Healthy routing retained the service warning');
 
         const notComposed = structuredClone(c.desktop);
         notComposed.service.gateway = 'not_composed';
@@ -181,6 +188,7 @@ export function homeStartupScenarios({ until, control }) {
         const readOnly = structuredClone(c.desktop); readOnly.trusted_authority = false;
         release(readOnly);
         await until(() => health()?.textContent.includes('只读连接') && routeButton().disabled, 'read-only response');
+        assert(routeUnavailable(), 'Confirmed read-only routing lost its warning');
 
         const recovery = structuredClone(c.desktop); recovery.service.recovery_ready = false;
         c.handlers.desktop_snapshot = () => recovery;
@@ -191,6 +199,12 @@ export function homeStartupScenarios({ until, control }) {
         c.handlers.desktop_snapshot = () => unavailable;
         window.dispatchEvent(new Event('focus'));
         await until(() => health()?.textContent.includes('本机服务不可用') && routeButton().disabled, 'unavailable gateway');
+        assert(routeUnavailable(), 'Confirmed unavailable routing lost its warning');
+
+        c.handlers.desktop_snapshot = () => structuredClone(c.desktop);
+        window.dispatchEvent(new Event('focus'));
+        await until(() => !routeButton().disabled && !health().textContent.includes('正在更新'), 'recovered writable routing');
+        assert(!routeUnavailable(), 'Service recovery retained the routing warning');
       } finally { c.reset(); release?.(structuredClone(c.desktop)); await settled(); }
     }),
     scenario('desktop.home.service-disconnect-generation', ['home-startup'], 'Connection loss invalidates the previous display and ignores an older response', async () => {
