@@ -12,7 +12,7 @@ hiroute-client-core = { path = "../client-core" }
 hiroute-host-runtime = { path = "../host-runtime" }
 tokio = { workspace = true, features = ["signal", "time"] }
 hiroute-application-api = { path = "../application-api" }
-nix = { workspace = true, features = ["signal", "user", "term"] }
+nix = { workspace = true, features = ["fs", "poll", "signal", "term", "user"] }
 serde.workspace = true
 serde_json.workspace = true
 zeroize.workspace = true
