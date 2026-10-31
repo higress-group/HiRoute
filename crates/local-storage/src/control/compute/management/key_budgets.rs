@@ -121,7 +121,37 @@ fn effect(
             return Err(bad());
         }
     }
+    if applied {
+        accounting(db, workspace, mutation.source_id(), operation, &witness)?;
+    }
     Ok(Some((witness, applied, compensated)))
+}
+fn accounting(
+    db: &Connection,
+    workspace: &WorkspaceId,
+    source: &str,
+    operation: &str,
+    witness: &KeyBudgetMutationV1,
+) -> PortResult<std::collections::BTreeMap<String, ledger::PolicyUndo>> {
+    let (json,digest):(Option<String>,Option<String>)=db.query_row("SELECT b.accounting_before_json,m.key_budget_accounting_digest FROM compute_key_budget_effects b JOIN compute_management_effects m USING(operation_id) WHERE b.operation_id=?1 AND b.workspace_id=?2 AND b.source_id=?3",params![operation,workspace.as_str(),source],|r|Ok((r.get(0)?,r.get(1)?))).map_err(|_|bad())?;
+    let value: serde_json::Value =
+        serde_json::from_str(&json.ok_or_else(bad)?).map_err(|_| bad())?;
+    let expected = CanonicalDigest::of(&value).map_err(|_| bad())?;
+    if digest.as_deref() != Some(expected.as_str()) {
+        return Err(bad());
+    }
+    let map: std::collections::BTreeMap<String, ledger::PolicyUndo> =
+        serde_json::from_value(value).map_err(|_| bad())?;
+    for (id, undo) in &map {
+        if !witness
+            .definitions_before
+            .iter()
+            .any(|before| before.budget_id == *id && undo.matches(before))
+        {
+            return Err(bad());
+        }
+    }
+    Ok(map)
 }
 pub(super) fn current_matches(
     db: &Connection,
@@ -160,6 +190,34 @@ pub(super) fn apply(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| bad())?
         .as_millis() as i64;
+    let undo = if restore {
+        accounting(db, workspace, source, operation, &witness)?
+    } else {
+        let mut undo = std::collections::BTreeMap::new();
+        for before in &witness.definitions_before {
+            if witness
+                .definitions_after
+                .iter()
+                .any(|after| after.budget_id == before.budget_id && after != before)
+            {
+                let captured = ledger::capture_policy_undo(db, workspace, &before.budget_id, now)?
+                    .ok_or_else(bad)?;
+                if !captured.matches(before) {
+                    return Err(bad());
+                }
+                undo.insert(before.budget_id.clone(), captured);
+            }
+        }
+        let value = serde_json::to_value(&undo).map_err(|_| bad())?;
+        let digest = CanonicalDigest::of(&value).map_err(|_| bad())?;
+        db.execute(
+            "UPDATE compute_key_budget_effects SET accounting_before_json=?2 WHERE operation_id=?1",
+            params![operation, encode(&value)?],
+        )
+        .map_err(|_| bad())?;
+        db.execute("UPDATE compute_management_effects SET key_budget_accounting_digest=?2 WHERE operation_id=?1",params![operation,digest.as_str()]).map_err(|_|bad())?;
+        undo
+    };
     let values = if restore {
         &witness.definitions_before
     } else {
@@ -184,6 +242,16 @@ pub(super) fn apply(
                 .checked_add(1)
                 .ok_or_else(bad)?;
         } else if witness.definitions_before.iter().any(|old| old == value) {
+            continue;
+        }
+        if restore {
+            ledger::restore_policy_undo(
+                db,
+                workspace,
+                &desired,
+                undo.get(&desired.budget_id).ok_or_else(bad)?,
+                now,
+            )?;
             continue;
         }
         ledger::apply_definition(

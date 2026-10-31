@@ -235,7 +235,7 @@ fn key_budget_atomic_save_accounting_reopen_rotation_and_legacy_edits_preserve_s
     );
     rotation.key_edits = vec![ComputeKeyEditV2::Replace {
         key_id: key.clone(),
-        expected_generation: source.credentials[0].generation,
+        expected_generation: source.credentials[0].credential.generation(),
         input_candidate: replacement.candidate,
     }];
     lifecycle::execute(&stores, &registry, rotation, "key-budget-rotate");
@@ -627,4 +627,120 @@ fn key_budget_ceiling_edits_preserve_granted_money_through_policy_compensation()
         450,
         "only a future grant applies the new ceiling; rollback cannot erase existing funds"
     );
+}
+
+#[test]
+fn key_budget_missing_current_binding_is_rejected_before_secret_lease_and_reopen() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    configure(&stores, new_budget(1_000), "key-budget-current-proof");
+    let source = saved(&stores);
+    stores
+        .control()
+        .validate_current_key_budgets(&source.source_id)
+        .unwrap();
+    stores.control().with_connection(|db| {
+        db.execute("DELETE FROM compute_key_budget_bindings", [])
+            .unwrap()
+    });
+    assert!(
+        stores
+            .control()
+            .validate_current_key_budgets(&source.source_id)
+            .is_err()
+    );
+    assert!(
+        stores
+            .lease_native_credential_exact(&super::runtime_leases::frozen_request(&source, 0, 0))
+            .is_err()
+    );
+    drop(stores);
+    assert!(
+        LocalStorageSet::open_for_daemon_startup(root.path()).is_err(),
+        "missing active bindings cannot become unlimited on restart"
+    );
+}
+
+#[test]
+fn key_budget_policy_undo_uses_the_original_calendar_and_preserves_one_time_holds() {
+    use crate::control::key_budgets::{apply_definition, capture_policy_undo, restore_policy_undo};
+    let at = "2027-01-30T00:00:00Z"
+        .parse::<jiff::Timestamp>()
+        .unwrap()
+        .as_millisecond();
+    let later = "2027-02-02T00:00:00Z"
+        .parse::<jiff::Timestamp>()
+        .unwrap()
+        .as_millisecond();
+    for old_reset in [false, true] {
+        let root = tempdir().unwrap();
+        populate_saved_source(root.path(), &WorkspaceId::default());
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let key = configure(&stores, new_budget(500), "key-budget-policy-undo");
+        let source = saved(&stores);
+        let pending = stores
+            .control()
+            .reserve_key_spend(&key, 1, Some(&estimate(&source.source_id)))
+            .unwrap()
+            .unwrap();
+        stores
+            .control()
+            .mark_key_spend_sent(&pending.reservation_id)
+            .unwrap();
+        stores
+            .control()
+            .settle_key_spend(&pending.reservation_id, &KeySpendSettlementV1::Unknown)
+            .unwrap();
+        let mut old = view(&stores, &key).definition;
+        let rule = KeyBudgetRenewalV1 {
+            period: KeyBudgetPeriodV1::Daily,
+            mode: KeyBudgetRenewalModeV1::Reset,
+            anchor_local: "2027-01-31T00:00:00".into(),
+            timezone: "UTC".into(),
+            balance_cap_micros: None,
+        };
+        if old_reset {
+            old.policy.renewal = Some(rule.clone());
+        }
+        let undo=stores.control().with_connection(|db| {
+            apply_definition(db,&WorkspaceId::default(),&old,None,at).unwrap();
+            db.execute("UPDATE compute_key_budgets SET balance_micros=50,spent_micros=450,lifetime_spent_micros=450",[]).unwrap();
+            capture_policy_undo(db,&WorkspaceId::default(),&old.budget_id,at).unwrap().unwrap()
+        });
+        let mut temporary = old.clone();
+        temporary.revision += 1;
+        temporary.policy.renewal = if old_reset { None } else { Some(rule) };
+        stores.control().with_connection(|db| {
+            apply_definition(db, &WorkspaceId::default(), &temporary, None, at).unwrap()
+        });
+        // The temporary reset may already have run before interrupted rollback.
+        stores
+            .control()
+            .key_budget_views(&[old.budget_id.clone()], later)
+            .unwrap();
+        old.revision = temporary.revision + 1;
+        stores.control().with_connection(|db| {
+            restore_policy_undo(db, &WorkspaceId::default(), &old, &undo, later).unwrap()
+        });
+        let restored = stores
+            .control()
+            .key_budget_views(&[old.budget_id.clone()], later)
+            .unwrap()
+            .remove(0);
+        if old_reset {
+            assert_eq!(
+                (restored.balance_micros, restored.reserved_micros),
+                (500, 0),
+                "restored reset must issue its due allowance"
+            );
+        } else {
+            assert_eq!(
+                (restored.balance_micros, restored.reserved_micros),
+                (50, 325),
+                "temporary resets cannot grant one-time funds or erase unknown holds"
+            );
+        }
+        assert_eq!(restored.lifetime_spent_micros, 450);
+    }
 }

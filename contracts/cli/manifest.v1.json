@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:9cc0651513ac62b99c12e9f8ea84362244d2de2a030f3aba4876bdd33057e36a",
+  "descriptor_digest": "sha256:8869b6c9460ddadec7c71213aae16ec9d7d3fcebc30fbcd9cd013e22a11ae04c",
   "visibility": "release",
   "commands": [
     {
@@ -3203,6 +3203,104 @@
       },
       "negative": {
         "scenario_id": "p0.compute.connection.preview-network.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.budgets.get",
+      "path": [
+        "compute",
+        "budgets",
+        "get"
+      ],
+      "operation_id": "GetComputeKeyBudgets",
+      "trace_ids": [
+        "CLI-081",
+        "APP-081"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Read Key allowance bindings, balances and periodic renewal.",
+        "usage": "hiroute compute budgets get [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute budgets get --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.budgets.get"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.budgets.get.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.budgets.get.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.budgets.preview",
+      "path": [
+        "compute",
+        "budgets",
+        "preview"
+      ],
+      "operation_id": "PreviewComputeKeyBudgets",
+      "trace_ids": [
+        "CLI-082",
+        "APP-082"
+      ],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "preview",
+      "request_schema": "hiroute.empty-request/v1",
+      "response_schema": "hiroute.command-result/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Preview an atomic source, Key and spending allowance save.",
+        "usage": "hiroute compute budgets preview [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
+        "network_and_model_use": "No model use and no non-fixture network access.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute compute budgets preview --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id compute.budgets.preview"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.compute.budgets.preview.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.compute.budgets.preview.negative",
         "polarity": "negative",
         "state": "executable"
       }

@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:9cc0651513ac62b99c12e9f8ea84362244d2de2a030f3aba4876bdd33057e36a",
+  "descriptor_digest": "sha256:8869b6c9460ddadec7c71213aae16ec9d7d3fcebc30fbcd9cd013e22a11ae04c",
   "files": {
     "agent-check-request.v1.schema.json": "sha256:fbd9e9b19282a5ed8c3e30b5ae16538bc01318a70e4bb7c7a55e8e0472553feb",
     "agent-launch-descriptor-request.v1.schema.json": "sha256:28f2f9d2d7f9a1618bea0f13383002429bc9e0ff56166cbee86958a245d0fd48",
@@ -10,7 +10,7 @@
     "console-launch-request.v1.schema.json": "sha256:bb201709ef64e99036a97d5879a32a8e4e3a9517010e1041def223e723e7f385",
     "console-token-create.v1.schema.json": "sha256:10cc9b80ed0bec4a5ca80e098cf0ee94710eedd7dfce292cf4a8770a11be78ec",
     "console-token-revoke.v1.schema.json": "sha256:fbec29753f6effd3c854bff57984b3c3932ac5b6f2345e52151e353c15933b36",
-    "coverage-manifest.v1.json": "sha256:ba1896c2ca0bc56b02243a19482c762d627e1a44948cf263d80d8243a6cd21b4",
+    "coverage-manifest.v1.json": "sha256:93f8b5eb148cd3acda4e797cf26901029336fd11c76d9dbce99ae13134f36835",
     "delegation-cancel-request.v1.schema.json": "sha256:0822c53fc16acfcd618fbef66410939f33f634313389a6df4705f414a468b878",
     "delegation-continue-request.v1.schema.json": "sha256:da2f81607f37d154a0fa698a107b37d4b0e9d5a03693dcbcc41e0b7e65db5b93",
     "delegation-get-request.v1.schema.json": "sha256:85b29839c1c508018ebe40e4b2bb5c1dce7c3a87c27efa30b196b2d1b6658471",
@@ -24,7 +24,7 @@
     "local-control-hello.v2.schema.json": "sha256:538ef4bc24188aabb0eac6d806db6bc1f85b1ba0faa16f21c19909102721405c",
     "local-control.v2.schema.json": "sha256:4b654de90cd6e333b3953379e5b2e1c5125f1dcbe307b7c7c73f12bb2032d18c",
     "machine-envelope.v2.schema.json": "sha256:6ca8fa1456681a063ede1d977df054572be3b01ce942d5ba7efce96d99150aa1",
-    "manifest.v1.json": "sha256:2d1578262dc9f157f9dc3605858ea6345d70f03077d8db5fd7545aadcfd032a5",
+    "manifest.v1.json": "sha256:ea654f681ea3c4d81cda5155ccc0396415d6ecac73689bf824047c801a04f7c1",
     "model-availability.v2.schema.json": "sha256:d88c63eac738009e082547db754fe38f546a9aa75a9f5880eb519e7675bafa7c",
     "model-feed-removal-preview.v2.schema.json": "sha256:5499e50f6af10fc591aaeffae87ed648f79f0e610125471ff1b2b9f321df1d8d",
     "model-feed-remove.v1.schema.json": "sha256:49a8fb7e2ba909141937cca4e73828706b0b67ea44622ae553c6da12fa8036cc",
@@ -36,7 +36,7 @@
     "plan-draft-change.v1.schema.json": "sha256:14ddf9430fc9a329511e1296a765049a29fb4baf76deee274e409a6181aa5786",
     "plan-editor.v2.schema.json": "sha256:3ab2c44d3c76c945cda6e863a3b1737ac4f534c33ce1988aef791dc34ee81bad",
     "plan-lifecycle-change.v1.schema.json": "sha256:38eff4c86cd9c3992498d3be72f47b94a883493d7d056db6db9fb4eddcb9d147",
-    "planned-manifest.v1.json": "sha256:54f81a86559ccfbe78c3626e5173dec1ace096ed1bcce828804ba85d4d8bd5b1",
+    "planned-manifest.v1.json": "sha256:86602433925ea4c9b0d41c3a80740090d9e1ee9bc6eb4085d9e10aa983d21f9f",
     "prepare-discovered-model-connection-request.v1.schema.json": "sha256:4451d8d7d06160f399d683bc3987ac2bd458af09994e4e0d989687667f6af1bd",
     "publication-checkpoint-change.v1.schema.json": "sha256:6207fc42212f0205d9dded7985d805100c8acc5f748bc76dd1871fd1da686ade",
     "routing-timeline-selection.v1.schema.json": "sha256:630e4ec4fdcfe1ffa421565e384bb06384f6f05e6fd0325ae52490d425c9f50c",

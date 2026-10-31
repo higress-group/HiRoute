@@ -25,6 +25,12 @@ pub(super) fn validate(
     let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if version >= 37 {
         super::super::key_budgets_v37::validate(&connection)?;
+        let mut sources = connection.prepare("SELECT source_id FROM compute_management_sources")?;
+        for source in sources.query_map([], |r| r.get::<_, String>(0))? {
+            control
+                .validate_current_key_budgets(&source?)
+                .map_err(|_| LocalStorageError::InvalidData)?;
+        }
     }
     if version >= 36 {
         super::super::subscription_api_v36::validate_links(&connection)?;

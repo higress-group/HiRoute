@@ -1,6 +1,7 @@
 //! Additive local spending authority; source/Key and older operation bytes stay unchanged.
 pub(super) const CONTROL: &str = r#"
 ALTER TABLE compute_management_effects ADD COLUMN key_budget_witness_digest TEXT;
+ALTER TABLE compute_management_effects ADD COLUMN key_budget_accounting_digest TEXT;
 CREATE TABLE compute_key_budgets (
  workspace_id TEXT NOT NULL, budget_id TEXT NOT NULL, revision INTEGER NOT NULL,
  definition_json TEXT NOT NULL, balance_micros INTEGER NOT NULL, budget_epoch INTEGER NOT NULL DEFAULT 0,
@@ -29,9 +30,17 @@ CREATE TABLE compute_key_spend_reservations (
 );
 CREATE INDEX compute_key_spend_budget ON compute_key_spend_reservations(workspace_id,budget_id,budget_epoch,state);
 CREATE INDEX compute_key_spend_pending ON compute_key_spend_reservations(state) WHERE state IN ('reserved','sent','pending');
+CREATE TABLE compute_key_spend_charges (
+ sequence INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL, budget_id TEXT NOT NULL,
+ reservation_id TEXT NOT NULL, budget_epoch INTEGER NOT NULL, created_at_ms INTEGER NOT NULL,
+ settled_at_ms INTEGER NOT NULL, charged_micros INTEGER NOT NULL CHECK(charged_micros>=0),
+ UNIQUE(workspace_id,reservation_id)
+);
+CREATE INDEX compute_key_spend_charge_budget ON compute_key_spend_charges(workspace_id,budget_id,sequence);
+
 CREATE TABLE compute_key_budget_effects (
  operation_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, source_id TEXT NOT NULL,
- witness_json TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0,
+ witness_json TEXT NOT NULL, accounting_before_json TEXT, applied INTEGER NOT NULL DEFAULT 0,
  compensated INTEGER NOT NULL DEFAULT 0
 );
 "#;

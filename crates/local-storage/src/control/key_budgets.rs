@@ -1,11 +1,14 @@
 //! Indexed spending authority. Request admission never scans observation/history tables.
+mod current;
+mod policy_undo;
 use super::*;
 use hiroute_domain::{
     KeyBudgetDefinitionV1, KeyBudgetGateErrorV1, KeyBudgetRenewalModeV1, KeyBudgetViewV1,
     KeySpendEstimateV1, KeySpendReservationV1, KeySpendSettlementV1,
 };
+pub(crate) use policy_undo::{PolicyUndo, capture_policy_undo, restore_policy_undo};
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Wallet {
     definition: KeyBudgetDefinitionV1,
     balance: i64,
@@ -156,6 +159,10 @@ pub(crate) fn apply_definition(
 }
 
 impl ControlStore {
+    pub fn validate_current_key_budgets(&self, source: &str) -> PortResult<()> {
+        current::validate(&self.connection.borrow(), &WorkspaceId::default(), source)
+    }
+
     pub fn key_spend_currency(&self, key_id: &str) -> PortResult<Option<String>> {
         let db = self.connection.borrow();
         let json:Option<String>=db.query_row("SELECT b.definition_json FROM compute_key_budget_bindings k JOIN compute_key_budgets b ON b.workspace_id=k.workspace_id AND b.budget_id=k.budget_id WHERE k.workspace_id=?1 AND k.key_id=?2",params![WorkspaceId::default().as_str(),key_id],|r|r.get(0)).optional().map_err(|_|failure())?;
@@ -341,6 +348,7 @@ impl ControlStore {
         }
         wallet.lifetime = wallet.lifetime.checked_add(charge).ok_or_else(failure)?;
         save(&tx, &workspace, &wallet)?;
+        tx.execute("INSERT INTO compute_key_spend_charges(workspace_id,budget_id,reservation_id,budget_epoch,created_at_ms,settled_at_ms,charged_micros) SELECT workspace_id,budget_id,reservation_id,budget_epoch,created_at_ms,?3,?4 FROM compute_key_spend_reservations WHERE workspace_id=?1 AND reservation_id=?2",params![workspace.as_str(),id,at,amount(charge)?]).map_err(|_|failure())?;
         tx.execute("UPDATE compute_key_spend_reservations SET state=?3,settled_at_ms=?4,charged_micros=?5 WHERE workspace_id=?1 AND reservation_id=?2",params![workspace.as_str(),id,if matches!(settlement,KeySpendSettlementV1::Unsent){"released"}else{"settled"},at,amount(charge)?]).map_err(|_|failure())?;
         tx.commit().map_err(|_| failure())?;
         Ok(())

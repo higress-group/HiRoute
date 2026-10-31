@@ -49,6 +49,9 @@ impl LocalControlAdapter {
                 return Err(ComputeManagementControlError::Invalid);
             }
             control
+                .validate_current_key_budgets(source)
+                .map_err(|_| ComputeManagementControlError::Unavailable)?;
+            control
                 .key_budget_bindings(source)
                 .map_err(|_| ComputeManagementControlError::Unavailable)?
         } else {
