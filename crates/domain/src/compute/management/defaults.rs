@@ -168,6 +168,7 @@ impl ComputeManagementMutationV3 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ComputeManagementMutation {
+    V6(ComputeManagementMutationV6),
     V5(ComputeManagementMutationV5),
     V4(crate::ComputeManagementMutationV4),
     V3(ComputeManagementMutationV3),
@@ -177,6 +178,7 @@ impl Deref for ComputeManagementMutation {
     type Target = ComputeManagementMutationV2;
     fn deref(&self) -> &Self::Target {
         match self {
+            Self::V6(value) => &value.source_mutation,
             Self::V5(value) => &value.source_mutation,
             Self::V4(value) => &value.source_mutation,
             Self::V2(value) => value,
@@ -187,6 +189,7 @@ impl Deref for ComputeManagementMutation {
 impl ComputeManagementMutation {
     pub fn validate_for_spec(&self, spec: &ChangeSpecV1) -> Result<(), ComputeManagementErrorV2> {
         match self {
+            Self::V6(value) => value.validate(spec),
             Self::V2(value) => value.validate_shape(spec),
             Self::V3(value) => value.validate(spec),
             Self::V5(value) => value.validate(spec),
@@ -201,6 +204,7 @@ impl ComputeManagementMutation {
         &Option<ComputeSubscriptionApiLinkV1>,
     )> {
         match self {
+            Self::V6(value) => value.source_mutation.api_link_change(),
             Self::V5(value) => Some((&value.api_link_before, &value.api_link_after)),
             _ => None,
         }
@@ -210,6 +214,7 @@ impl ComputeManagementMutation {
         &self,
     ) -> Option<(&SourceDefaultPreferencesV1, &SourceDefaultPreferencesV1)> {
         match self {
+            Self::V6(value) => value.source_mutation.preferences(),
             Self::V5(value) => value.source_mutation.preferences(),
             Self::V4(v) => v.source_mutation.preferences(),
             Self::V2(_) => None,
@@ -217,8 +222,16 @@ impl ComputeManagementMutation {
         }
     }
 
+    pub fn key_budgets(&self) -> Option<&KeyBudgetMutationV1> {
+        match self {
+            Self::V6(value) => Some(&value.budgets),
+            _ => None,
+        }
+    }
+
     pub fn network(&self) -> Option<&crate::NativeNetworkMutationV1> {
         match self {
+            Self::V6(v) => v.source_mutation.network(),
             Self::V4(v) => Some(&v.network),
             Self::V2(_) | Self::V3(_) | Self::V5(_) => None,
         }

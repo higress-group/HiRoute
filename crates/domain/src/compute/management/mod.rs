@@ -18,6 +18,10 @@ use crate::{
 mod api_link;
 mod defaults;
 pub use api_link::*;
+mod key_budget;
+pub use key_budget::*;
+#[cfg(test)]
+mod key_budget_tests;
 pub use defaults::*;
 mod decision_target;
 pub use decision_target::*;
