@@ -387,6 +387,10 @@ pub(super) fn request_body(raw: &[u8]) -> Value {
 }
 
 pub(super) fn response_body(raw: &[u8]) -> Value {
+    serde_json::from_slice(&response_entity(raw)).unwrap()
+}
+
+pub(super) fn response_entity(raw: &[u8]) -> Vec<u8> {
     let start = raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
     let head = std::str::from_utf8(&raw[..start]).unwrap();
     let mut remaining = &raw[start..];
@@ -405,7 +409,7 @@ pub(super) fn response_body(raw: &[u8]) -> Value {
                     remaining, b"\r\n",
                     "response entity must finish exactly once"
                 );
-                return serde_json::from_slice(&decoded).unwrap();
+                return decoded;
             }
             assert_eq!(&remaining[size..size + 2], b"\r\n");
             decoded.extend_from_slice(&remaining[..size]);
@@ -426,7 +430,7 @@ pub(super) fn response_body(raw: &[u8]) -> Value {
         length,
         "response entity must satisfy its length"
     );
-    serde_json::from_slice(remaining).unwrap()
+    remaining.to_vec()
 }
 
 #[test]
