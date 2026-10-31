@@ -6,7 +6,8 @@
 
 This is the Markdown manuscript for community review before final typesetting and
 arXiv submission. The main research snapshot is dated 18 October 2026, with a
-mathematical dependency-state supplement dated 28 October 2026. It studies how a
+mathematical dependency-state supplement dated 28 October 2026 and a native-interface
+transfer follow-up dated 29 October 2026. It studies how a
 System One decision interface can support routing that combines current task
 demand with historical performance and the present applicability of an execution
 problem. HiRoute supplies the open-source implementation of that decision contract.
@@ -32,6 +33,9 @@ selection under the declared policy; they are not executor task-completion rates
 - [Mathematical dependency states](main.md#58-mathematical-workflows-protecting-unresolved-dependencies):
   independent workflows, controlled protection/release states and separate
   chronological checkpoints, with [data and offline replay](supplements/mathematics-history/README.md).
+- [Second native decision interface](main.md#510-transfer-to-a-second-native-decision-interface):
+  a post-hoc reviewed Jev/OpenAI comparison, with the same exclusions across models
+  and forms; [tables, complete-set results and replay](supplements/decision-interface-transfer/README.md).
 - [Decision costs](main.md#observed-decision-costs): API-reported Jev charges, including
   approximately USD 0.084–0.086 per 1,000 three-question requests in the measured workloads.
 - [Implementation](main.md#6-hiroute-implementation-and-reproducibility) and
@@ -43,6 +47,19 @@ reported synthetic checkpoints, with observable protection, release and failure
 modes. Final action accuracy is not executor task-completion rate or realized cost
 savings. The manuscript does not claim a universal backend ranking or a universal
 advantage of three questions over a well-specified direct selector.
+
+## Reviewed native-interface comparison
+
+The latest Jev/OpenAI comparison uses a **post-hoc reviewed subset** with 14 disputed
+records excluded equally across models, forms and languages. It retains 98 engineering
+records (80 determinate actions) and 40 mathematical dependency-state records.
+For Jev 1.14, complete-policy direct → three-question workflow-macro action accuracy
+is **67.31% → 96.15%** in engineering and **54.86% → 100.00%** in mathematics.
+OpenAI Decisions (`gpt-6-luna`) scores **50.00% → 91.35%** and **65.97% → 88.89%**.
+The [supplement](supplements/decision-interface-transfer/README.md) gives the selection
+rationale, class counts, components, Jev 1.13 results and full-population comparison.
+Original labels and older study tables remain unchanged. This is not a new blind test
+or evidence of production OpenAI integration.
 
 ## Exact study questions
 
@@ -125,7 +142,7 @@ elsewhere in `experiments/` apply to their own case studies, not this paper.
 
 The public draft identifies AI construction and review systems by role, without
 disclosing their model identities, and describes the hosted decision access service
-without naming it. Evaluated Jev/Qwen versions, AI participation, procedural
+without naming it. Evaluated Jev/Qwen versions and the OpenAI follow-up model, AI participation, procedural
 separation, numerical settings, usage charges and transport differences remain
 explicit. These disclosure limits constrain exact regeneration and service-level
 reproduction. They do not convert AI review into independent human review.

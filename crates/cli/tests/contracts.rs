@@ -6,7 +6,13 @@ use hiroute_application_api::{generated_contract_files, planned_commands, releas
 #[test]
 fn checked_in_contracts_are_exact_generator_output() {
     let output = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../contracts/cli");
-    for file in generated_contract_files() {
+    let generated = generated_contract_files();
+    assert_eq!(
+        generated,
+        generated_contract_files(),
+        "generator is not deterministic"
+    );
+    for file in generated {
         let actual = std::fs::read_to_string(output.join(file.relative_path))
             .unwrap_or_else(|error| panic!("missing generated {}: {error}", file.relative_path));
         assert_eq!(actual, file.contents, "{} is stale", file.relative_path);

@@ -456,6 +456,7 @@ fn c_request_uses_the_frozen_version_and_never_substitutes_current_q2() {
     for protocol in [
         hiroute_domain::NativeProtocolV1::c_v1(),
         hiroute_domain::NativeProtocolV1::c_v2(),
+        hiroute_domain::NativeProtocolV1::c_v3(),
     ] {
         let mut authority = c_authority();
         let mut judgment = JudgmentSettingsV1::default();
@@ -494,6 +495,11 @@ fn c_request_uses_the_frozen_version_and_never_substitutes_current_q2() {
     assert_eq!(wires[0]["questions"]["q1"], wires[1]["questions"]["q1"]);
     assert_ne!(wires[0]["questions"]["q2"], wires[1]["questions"]["q2"]);
     assert_ne!(policies[0], policies[1]);
+    assert_eq!(wires[1]["state"], wires[2]["state"]);
+    assert_eq!(wires[1]["questions"]["q0"], wires[2]["questions"]["q0"]);
+    assert_eq!(wires[1]["questions"]["q1"], wires[2]["questions"]["q1"]);
+    assert_ne!(wires[1]["questions"]["q2"], wires[2]["questions"]["q2"]);
+    assert_ne!(policies[1], policies[2]);
 }
 
 #[test]

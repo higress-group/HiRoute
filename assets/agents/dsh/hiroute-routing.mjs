@@ -11,9 +11,12 @@ const MAX_USER_MESSAGES = 128;
 const MAX_CURRENT_MESSAGES = 32;
 const MAX_EVENTS = 512;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-// Native context producers supplement an activation; peers and unknown producers
-// still invalidate its current-input proof. Desktop also installs these two.
-const SUPPLEMENTAL_SOURCES = new Set(["runtime-context", "compact-checkpoint", "skill-catalog", "time-context"]);
+// These native producers supplement the current task, including DSH's tool-loop
+// guard. Their text remains in the complete wire scope; peers and unknown
+// producers still invalidate current-input proof, regardless of their wording.
+const SUPPLEMENTAL_SOURCES = new Set([
+  "runtime-context", "compact-checkpoint", "skill-catalog", "time-context", "repeat-tool-reminder",
+]);
 const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 function textPart(part, native) {

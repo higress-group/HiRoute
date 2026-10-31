@@ -462,6 +462,7 @@
     "hiroute.subscription-proxy/v1",
     "hiroute.system-one-c/v1",
     "hiroute.system-one-c/v2",
+    "hiroute.system-one-c/v3",
     "hiroute.system-one-legacy/v1",
     "hiroute.system-status/v1",
     "hiroute.trial-setup-snapshot/v1",
@@ -557,14 +558,14 @@
         "hiroute.system-one-c"
       ],
       "current_contracts": [
-        "hiroute.system-one-c/v2"
+        "hiroute.system-one-c/v3"
       ],
       "legacy_support": [
         {
           "contract": "hiroute.system-one-c/v1",
           "mode": "frozen_fixture",
           "owner": "decision-foundation",
-          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v2.",
+          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v3.",
           "removal_condition": "Retire only when the supported release and retained-publication policy permits removing all v1 readers and authenticated historical evidence.",
           "allowed_paths": [
             "apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs",
@@ -572,6 +573,25 @@
             "crates/daemon/tests/support/c_protocol_product.py",
             "crates/domain/src/routing/fixtures/baseline-c-default-publication.json",
             "crates/domain/src/routing/system_one_c.rs"
+          ]
+        },
+        {
+          "contract": "hiroute.system-one-c/v2",
+          "mode": "frozen_fixture",
+          "owner": "decision-foundation",
+          "reason": "Execute sealed C v2 publications, retained Operations, observations and explicit diagnostics with their exact original applicability bundle after C v3 becomes the current authoring producer. Do not replace historical questions or regrade old stages.",
+          "removal_condition": "Retire only when the release and retained-publication support policy permits removing all C v2 readers and authenticated evidence.",
+          "allowed_paths": [
+            "contracts/cli/historical-applicability-test.v1.schema.json",
+            "crates/domain/src/routing/assessment.rs",
+            "crates/domain/src/routing/c_observation.rs",
+            "crates/domain/src/routing/fixtures/system_one_c_v2.json",
+            "crates/domain/src/routing/fixtures/baseline-c-v2-default-publication.json",
+            "crates/domain/src/routing/system_one_c.rs",
+            "crates/domain/src/routing/system_one_c_tests.rs",
+            "crates/gateway/src/core_runtime/classification/system_one_tests.rs",
+            "crates/daemon/tests/support/c_protocol_product.py",
+            "decision-extensions/api/system-one-design.md"
           ]
         }
       ]
@@ -1557,7 +1577,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2408,6 +2428,25 @@
         "crates/local-storage/src/migrations/source_network_v35.rs"
       ],
       "field": "pre-policy saved source without companion state"
+    },
+    {
+      "contract": "hiroute.system-one-c/v2",
+      "field": "immutable native C v2 applicability bundle and sealed execution identity",
+      "mode": "frozen_fixture",
+      "owner": "decision-foundation",
+      "reason": "C v3 clarifies unmet outcomes and partial acceptance. Retained C v2 publications keep their fixed question bytes and policy/content digests, and continue to execute and reopen without resolution to the new default.",
+      "removal_condition": "Retire only after explicit support-policy retirement of retained C v2 publications and Operations.",
+      "allowed_paths": [
+        "contracts/cli/historical-applicability-test.v1.schema.json",
+        "crates/domain/src/routing/assessment.rs",
+        "crates/domain/src/routing/c_observation.rs",
+        "crates/domain/src/routing/fixtures/system_one_c_v2.json",
+        "crates/domain/src/routing/fixtures/baseline-c-v2-default-publication.json",
+        "crates/domain/src/routing/system_one_c.rs",
+        "crates/domain/src/routing/system_one_c_tests.rs",
+        "crates/gateway/src/core_runtime/classification/system_one_tests.rs",
+        "crates/daemon/tests/support/c_protocol_product.py"
+      ]
     }
   ]
 }

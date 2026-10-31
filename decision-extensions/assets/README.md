@@ -2,7 +2,7 @@
 
 ## Native session captures
 
-The README, homepage and model-routing guide use
+The homepage and model-routing guide use
 [English](quality-native-en.png) and [Chinese](quality-native-zh-CN.png) captures
 of the real macOS Desktop Sessions page. Both are 2400×2100 pixels, captured at
 1200×1050 logical points, with the navigation, session list and two complete
@@ -26,6 +26,46 @@ No credentials or
 existing observation stores were copied. The original development app and system
 language preference were restored after capture. A native rendering check does
 not replace routing or provider acceptance.
+
+## README session recordings
+
+The root README uses [English](readme-session-en.png) and [Chinese](readme-session-zh-CN.png)
+frames from macOS screen recordings of real DeepSeek Harness Desktop sessions routed
+through HiRoute Desktop release builds, not browser mocks. Both sessions work on the same
+fictional Account Export project with live provider calls: DeepSeek V4.1 Flash in the
+regular group, GPT-6 Astra as primary, a 0.90 simple-probability threshold and a 0.50
+competence floor. Scores, token counts and API-equivalent cost estimates are what those
+sessions recorded; they are not benchmark results.
+
+Each frame is cropped to the Sessions pane without repainting or compositing. The English
+frame is 950×1046 from a 1× recording of one continuous six-turn session in which every
+turn was fully observed. A low score on the third turn applied low-score protection to
+the user's next message, and later turns returned to Flash. The frame comes from reviewing
+that finished session with the protected turn selected, so the pointer rests on that turn.
+Its build also contained two then-unmerged changes: a stage-assessment prompt revision
+([#293](https://github.com/higress-group/HiRoute/pull/293)) and a DeepSeek Harness
+adapter fix ([#295](https://github.com/higress-group/HiRoute/pull/295)). The Chinese frame
+is 1900×2072 from a 2× recording, with the pointer resting on the selected turn.
+
+## README trial and report captures
+
+The README's [trust level](readme-trial-en.png) ([中文](readme-trial-zh-CN.png)) and
+[model performance report](readme-report-en.png) ([中文](readme-report-zh-CN.png)) images
+render the production trust-level control and model-performance report from the Plan editor in
+headless Chrome at device scale 2, dark theme (matching the session recordings), 1200-pixel viewport
+width. The trust image is cropped
+to the slider and presets with Trusted selected; the report image to the report section.
+Neither is repainted.
+
+The data is synthetic: the browser fixtures under `apps/desktop/tests/v3/browser`, served
+through the development-only [readme-docs.html](../../apps/desktop/readme-docs.html). That
+entry gives the plan an English name for English captures and replaces the report's cost comparison with an illustrative
+$3.42 routed versus $11.86 primary-reference estimate. Counts, suggestions and scores are
+fixture values, not measured results.
+
+To reproduce, run `node_modules/.bin/vite` from `apps/desktop` and open
+`/readme-docs.html?polish=1&native=1&view=editor&theme=dark&lang=en`: click Trusted in the trust
+control, then open Model performance. Use `lang=zh` for Chinese.
 
 ## Current product component captures
 
@@ -99,3 +139,6 @@ The bilingual `jev-decision-*.svg` files illustrate the built-in decision path a
 optional custom extension: category, degree and preceding-stage assessment are
 separate questions, while HiRoute owns thresholds and execution. They are editable
 vector diagrams, not measured traces.
+
+The bilingual `readme-routing-comparison-*.svg` charts plot the reviewed-subset results of the
+[decision-interface comparison](../../experiments/system-one-routing-paper/supplements/decision-interface-transfer/README.md).

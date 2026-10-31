@@ -1,0 +1,31 @@
+{
+  "schema": "hiroute.decision-interface-transfer/v1",
+  "files": {
+    "README.md": "4d54e2de84f36e8f509e4f77f167a77596058e279f8e2c70284bd674e5133238",
+    "RESULTS.md": "1590204557200ce35e53e34b9cde1d21b766f2539ccf44e76cf9241afceb1109",
+    "adapter.py": "3e29771cf74b7f0ffc0be9d2729eae6d223362a14d0404904d4e28982826716a",
+    "inputs.jsonl": "f9e4ba87c0dbaf96a12ed536f99d1656f35539828deb3ec6628af43d7a0ac5a4",
+    "labels.jsonl": "70b90078fb67c5402a1b7c80f55c2516abdf35628f2c479c7fcf3d4262c1a77f",
+    "provenance.json": "921f5a6630d65ac56010ba7a1adfb5effdab48d06cd11b10156a7f1358820907",
+    "questions.json": "c20dbeed8d4fb618440f13bf317d5a2288c468da17227c5f6a5d8786fea6a2ca",
+    "reference-results.json": "c5cefeaf1fbc4035b9498e0e342c603ed3edfa286d767248d8666008129f3ad9",
+    "replay.py": "d5d9fda12f2f23cdedb46dd42dabcaf8f4f1fae3711caaf53cccc1986503139b",
+    "requests.jsonl.gz": "e7bb959aaaaa6fc2d04d1f66a6b1020f584cbd7f8b67c928d3df5b46277b8815",
+    "responses.jsonl.gz": "44e65173796bbeb130f831056a1b2c919b1e13c071b5d1d2ce0def7cc9c46ce7",
+    "selection.json": "2d1664312cf1dccc3a555d3831505341405239eac536095ed0b8401b2fd5987b"
+  },
+  "paper_dependencies": {
+    "analysis/context_eval.py": "5bddb535ae387e81b5567b806122f574201986043cad51f1cbf1075d726ae33a",
+    "analysis/fair_methods.py": "fbe290b1da47e49f3fa8efb32b963dd366e19744e697cc9523b1c8423257c2aa",
+    "analysis/methods.py": "e727e760a9ece0c3999289eece60afdc31224e78ae270ace858206340f6fd79d",
+    "policies/minus-cross-target-questions.json": "22f551f17928763e4ef845501903886a71f336fd354189e0e0623427770f0e6e",
+    "policies/engineering-direct-policy.txt": "305ca3ec7ae1976e7da1e1127099b6aae4d088c1704da4dfb683d0991c228b2e",
+    "policies/legacy-questions.json": "0a1b33fdbd4c5f85e6323295fb1ce9cbc756fdd7e94aca6717b45c5c323796c5",
+    "policies/mathematics-three-questions.json": "c45539e182fc26c6db18048ea954518dfe83ae0e75792ad22e1b07d1314a39e3",
+    "policies/engineering-three-questions.json": "50ffefc958c455c18094e19da2f8926cdb92f4b203e1210e89815cd86c003742",
+    "policies/mathematics-direct-explicit.json": "56c61e4ddef2b6a1398a1ab8f94a9f9a512d08bc0daa5067b1cdde7d93cb3e30",
+    "policies/engineering-direct-explicit.json": "46ec81b064aa27410df1524a59ac366b298f5ff3761dd31ba79f97fe4efc62ae",
+    "policies/engineering-direct-original.json": "5b90310763e4c10c6e3e6c40c1c149dbe50aeed445367626bb042d1477d759d8",
+    "policies/partition-only-questions.json": "32fd65284f938d32d6057f6a0a08886855edfe8c873f7e58e3b863e6e9c77230"
+  }
+}
