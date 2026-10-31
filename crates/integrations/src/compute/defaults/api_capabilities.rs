@@ -23,7 +23,7 @@ pub fn complete_missing_api_capabilities(
         inferred_fields: BTreeSet::new(),
     };
     let defaults = super::api_scope::api_endpoint(catalog, provenance, target, authentication)
-        .map(|endpoint| metadata_defaults(catalog.model_metadata(), endpoint, upstream))
+        .map(|endpoint| metadata_defaults(catalog.model_metadata(), &endpoint, upstream))
         .unwrap_or_else(unknown);
     if matches!(
         preferences.get(&ModelDefaultFieldV1::NativeReasoning),
@@ -513,7 +513,7 @@ mod tests {
             .clone();
         duplicate.capability_hints.vision = MetadataCapabilityStateV1::Unsupported;
         m.model_records.push(duplicate);
-        let result = metadata_defaults(&m, e, "gpt-6-astra");
+        let result = metadata_defaults(&m, &e, "gpt-6-astra");
         assert_eq!(result.vision.value, None);
         assert_eq!(result.tool.value, Some(true));
         assert_eq!(result.context_tokens.value, Some(1_050_000));

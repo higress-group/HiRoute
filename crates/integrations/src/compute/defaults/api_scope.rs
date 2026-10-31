@@ -1,12 +1,12 @@
 //! Match API metadata only to the installed official native endpoint, never a compatible proxy.
 use super::*;
 
-pub(super) fn api_endpoint<'a>(
-    catalog: &'a TrustedReleaseCatalog,
+pub(super) fn api_endpoint(
+    catalog: &TrustedReleaseCatalog,
     provenance: &ComputeManagementProvenanceV2,
     target: &ComputeManagementTargetV2,
     authentication: &GatewayAuthenticationSemanticsV1,
-) -> Option<&'a ProtocolEndpointV1> {
+) -> Option<ProtocolEndpointV1> {
     if target.scheme != "https" || target.port != 443 {
         return None;
     }
@@ -42,5 +42,5 @@ pub(super) fn api_endpoint<'a>(
     if endpoints.next().is_some() {
         return None;
     }
-    Some(endpoint)
+    Some(endpoint.clone())
 }

@@ -14,9 +14,9 @@ mod control_plane;
 mod defaults;
 pub use control_plane::*;
 pub use defaults::{
-    ApiReasoningDefault, matching_endpoint_metadata, missing_api_reasoning_default,
-    official_capability_defaults, resolve_managed_defaults, saved_native_capability_digest,
-    without_current_defaults,
+    ApiCapabilityCompletion, ApiReasoningDefault, complete_missing_api_capabilities,
+    matching_endpoint_metadata, missing_api_reasoning_default, official_capability_defaults,
+    resolve_managed_defaults, saved_native_capability_digest, without_current_defaults,
 };
 
 #[derive(Clone, Debug)]
