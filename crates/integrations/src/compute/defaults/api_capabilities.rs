@@ -448,7 +448,7 @@ mod tests {
                 ModelDefaultFieldV1::NativeReasoning
             ]
             .iter()
-            .any(|field| result.filled_fields.contains(field))
+            .all(|field| !result.filled_fields.contains(field))
         );
         result.capabilities.validate().unwrap();
     }
