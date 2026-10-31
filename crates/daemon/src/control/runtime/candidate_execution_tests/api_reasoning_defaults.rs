@@ -202,3 +202,91 @@ fn manual_api_controls_and_saved_default_preferences_keep_their_original_meaning
         }
     );
 }
+
+#[test]
+fn custom_anthropic_efforts_keep_the_required_adaptive_wire_companion() {
+    let catalog = current_catalog();
+    let mut fact = observed_api(
+        &catalog,
+        "anthropic.platform.global.v1",
+        UpstreamProtocol::Messages,
+        "claude-opus-5-5",
+    );
+    let custom = NativeReasoningCapabilityV1::Discrete {
+        parameter: "output_config.effort".into(),
+        profiles: vec!["low".into(), "high".into()],
+        default_profile: Some("low".into()),
+    };
+    fact.default_preferences.insert(
+        ModelDefaultFieldV1::NativeReasoning,
+        ModelDefaultPreferenceV1::Custom {
+            value: hiroute_domain::ModelDefaultValueV1::Reasoning(custom.clone()),
+        },
+    );
+    let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
+    candidate.validate().unwrap();
+    assert_eq!(candidate.reasoning, custom);
+    let profile = candidate
+        .protocol_profiles
+        .iter()
+        .find(|p| p.ingress_protocol == UpstreamProtocol::Messages)
+        .unwrap()
+        .capability
+        .reasoning_profiles
+        .iter()
+        .find(|r| r.profile_id == "high")
+        .unwrap();
+    assert_eq!(
+        profile.render,
+        GatewayNativeReasoningRenderV1::ExactFields {
+            protocol: UpstreamProtocol::Messages,
+            fields: vec![
+                field(
+                    "output_config.effort",
+                    GatewayNativeReasoningValueV1::String("high".into()),
+                    UpstreamProtocol::Messages
+                ),
+                field(
+                    "thinking.type",
+                    GatewayNativeReasoningValueV1::String("adaptive".into()),
+                    UpstreamProtocol::Messages
+                )
+            ]
+        }
+    );
+}
+
+#[test]
+fn custom_unknown_and_following_missing_metadata_never_resurrect_saved_controls() {
+    let catalog = current_catalog();
+    for preference in [
+        ModelDefaultPreferenceV1::Custom {
+            value: hiroute_domain::ModelDefaultValueV1::Unknown(()),
+        },
+        ModelDefaultPreferenceV1::FollowMetadata,
+    ] {
+        let mut fact = observed_api(
+            &catalog,
+            "openai.platform.global.v1",
+            UpstreamProtocol::Responses,
+            "gpt-reserve",
+        );
+        let old = NativeReasoningCapabilityV1::Discrete {
+            parameter: "reasoning_effort".into(),
+            profiles: vec!["low".into(), "high".into()],
+            default_profile: Some("high".into()),
+        };
+        fact.native_reasoning = old.clone();
+        fact.capabilities.native_reasoning = user_fact(old);
+        fact.default_preferences
+            .insert(ModelDefaultFieldV1::NativeReasoning, preference);
+        let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
+        candidate.validate().unwrap();
+        assert_eq!(
+            candidate.reasoning,
+            NativeReasoningCapabilityV1::Fixed {
+                profile: "provider-default".into()
+            }
+        );
+    }
+}

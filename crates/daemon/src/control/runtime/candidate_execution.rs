@@ -470,7 +470,22 @@ pub(super) fn materialize_management_candidate(
                     .native_reasoning
                     .value
                     .clone()
-                    .unwrap_or_else(|| fact.native_reasoning.clone())
+                    .unwrap_or_else(|| {
+                        if matches!(
+                            fact.default_preferences
+                                .get(&hiroute_domain::ModelDefaultFieldV1::NativeReasoning),
+                            Some(
+                                hiroute_domain::ModelDefaultPreferenceV1::Custom { .. }
+                                    | hiroute_domain::ModelDefaultPreferenceV1::FollowMetadata
+                            )
+                        ) {
+                            hiroute_domain::NativeReasoningCapabilityV1::Fixed {
+                                profile: "provider-default".into(),
+                            }
+                        } else {
+                            fact.native_reasoning.clone()
+                        }
+                    })
             },
             |value| value.capability.clone(),
         ),
