@@ -118,6 +118,48 @@ fn follow_reasoning_each_fallback_candidate_reuses_the_original_request() {
 }
 
 #[test]
+fn follow_reasoning_uses_exact_normalized_toggle_wire_without_guessing_high() {
+    let mut profile = candidate(
+        IngressProtocol::Responses,
+        IngressProtocol::Responses,
+        &["low"],
+    );
+    profile.capability.reasoning_profiles = [false, true]
+        .into_iter()
+        .map(|enabled| ReasoningProfileCapability {
+            profile_id: if enabled { "enabled" } else { "disabled" }.into(),
+            control_kind: ReasoningControlKind::Toggle,
+            render: NativeReasoningRender::ExactFields {
+                protocol: IngressProtocol::Responses,
+                fields: vec![NativeReasoningFieldAssignment {
+                    path: vec!["enable_thinking".into()],
+                    value: NativeReasoningValue::Bool(enabled),
+                }],
+            },
+            accounting: ReasoningAccounting::WithinOutputCap,
+            additional_reservation_tokens: 0,
+        })
+        .collect();
+    profile.capability.selected_reasoning_profile_id = "disabled".into();
+    for (effort, expected, reason) in [
+        ("low", "enabled", Request),
+        ("none", "disabled", Request),
+        ("high", "disabled", DefaultUnsupported),
+    ] {
+        let control = RequestedNativeReasoning::from_document(
+            &json!({"reasoning":{"effort":effort}}),
+            IngressProtocol::Responses,
+        )
+        .unwrap();
+        let (selected, actual) = profile
+            .follow_reasoning_with_resolution(&control, None)
+            .unwrap();
+        assert_eq!(selected.selected_reasoning().unwrap().profile_id, expected);
+        assert_eq!(actual, reason);
+    }
+}
+
+#[test]
 fn follow_reasoning_absent_unsupported_and_legacy_fixed_keep_saved_default() {
     let mut profile = candidate(
         IngressProtocol::Responses,

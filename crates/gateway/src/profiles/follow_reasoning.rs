@@ -134,6 +134,21 @@ impl CandidateProtocolProfile {
             IngressProtocol::Messages => &["output_config", "effort"],
         };
         let matches_string = |path: &[&str], value: &str| {
+            if profile.control_kind == super::ReasoningControlKind::Toggle {
+                let enabled = match profile.profile_id.as_str() {
+                    "enabled" => Some(true),
+                    "disabled" => Some(false),
+                    _ => None,
+                };
+                if let Some(enabled) = enabled {
+                    if protocol == IngressProtocol::Responses && path == ["reasoning", "effort"] {
+                        return value == if enabled { "low" } else { "none" };
+                    }
+                    if protocol == IngressProtocol::Messages && path == ["thinking", "type"] {
+                        return value == if enabled { "enabled" } else { "disabled" };
+                    }
+                }
+            }
             profile.render.fields().iter().any(|f| {
                 f.path.iter().map(String::as_str).eq(path.iter().copied())
                     && f.value == NativeReasoningValue::String(value.to_owned())

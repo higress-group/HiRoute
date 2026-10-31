@@ -319,12 +319,39 @@ fn request_reasoning_levels(plan: &CompiledAgentPlanV1) -> Vec<Value> {
         .flat_map(|g| &g.candidates)
         .flat_map(|c| &c.protocol_profiles)
         .filter(|p| p.follow_request_reasoning && p.ingress_protocol == UpstreamProtocol::Responses)
-        .flat_map(|p| &p.capability.reasoning_profiles)
-        .flat_map(|r| r.render.fields())
-        .filter(|f| f.path == ["reasoning", "effort"])
-        .filter_map(|f| match &f.value {
-            hiroute_domain::GatewayNativeReasoningValueV1::String(s) => Some(s.as_str()),
-            _ => None,
+        .flat_map(|p| {
+            p.capability.reasoning_profiles.iter().filter_map(move |r| {
+                if p.capability.upstream_protocol == UpstreamProtocol::Responses
+                    && r.control_kind == hiroute_domain::GatewayReasoningControlKindV1::Toggle
+                {
+                    match r.profile_id.as_str() {
+                        "enabled" => return Some("low"),
+                        "disabled" => return Some("none"),
+                        _ => (),
+                    }
+                }
+                let path: &[&str] = match p.capability.upstream_protocol {
+                    UpstreamProtocol::Responses => &["reasoning", "effort"],
+                    UpstreamProtocol::ChatCompletions => &["reasoning_effort"],
+                    UpstreamProtocol::Messages => &["output_config", "effort"],
+                };
+                r.render.fields().iter().find_map(|field| {
+                    if !field
+                        .path
+                        .iter()
+                        .map(String::as_str)
+                        .eq(path.iter().copied())
+                    {
+                        return None;
+                    }
+                    match &field.value {
+                        hiroute_domain::GatewayNativeReasoningValueV1::String(s) => {
+                            Some(s.as_str())
+                        }
+                        _ => None,
+                    }
+                })
+            })
         })
         .collect::<BTreeSet<_>>();
     ["none", "minimal", "low", "medium", "high", "xhigh", "max"].into_iter()
