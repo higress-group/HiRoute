@@ -812,3 +812,30 @@ fn requirements() -> RequestCapabilityRequirementsV1 {
 fn digest(value: &str) -> CanonicalDigest {
     CanonicalDigest::of_bytes(value.as_bytes())
 }
+
+#[test]
+fn follow_reasoning_receipts_validate_and_old_contract_cannot_authenticate_new_fields() {
+    let mut decision = route();
+    decision.requested_reasoning_disposition =
+        RequestedReasoningDispositionV1::FollowRequestWithDefault;
+    let followed = envelope(1, ExecutionFactV1::RouteDecision(Box::new(decision)), None);
+    followed.validate().unwrap();
+    let mut candidate = candidate();
+    candidate.reasoning_resolution = Some(crate::ReasoningResolutionV1::DefaultUnsupported);
+    let mut fact = envelope(
+        2,
+        ExecutionFactV1::CandidateDecision(Box::new(candidate)),
+        None,
+    );
+    fact.validate().unwrap();
+    fact.schema_digest = CanonicalDigest::parse(
+        "sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295",
+    )
+    .unwrap();
+    assert!(fact.validate_persisted_contract().is_err());
+    if let ExecutionFactV1::CandidateDecision(candidate) = &mut fact.fact {
+        candidate.reasoning_resolution = None;
+    }
+    fact.validate_persisted_contract().unwrap();
+    assert!(fact.validate().is_err());
+}

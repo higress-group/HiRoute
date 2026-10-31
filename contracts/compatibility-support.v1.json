@@ -1577,7 +1577,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2446,6 +2446,18 @@
         "crates/domain/src/routing/system_one_c_tests.rs",
         "crates/gateway/src/core_runtime/classification/system_one_tests.rs",
         "crates/daemon/tests/support/c_protocol_product.py"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "pre-request-reasoning contract digest sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate retained observations without inferring a request reasoning policy or candidate resolution; live ingestion uses the single current descriptor.",
+      "removal_condition": "Retire only after all active and supported recovery stores containing this exact digest are explicitly retired.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs"
       ]
     }
   ]

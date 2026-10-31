@@ -31,7 +31,7 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295";
+    "sha256:9e6d31fead103a6203f3bd4c6464b5a63c0ddd5ea0e2cad6674be31f2cc03c38";
 
 /// Exact bounded membership of an immutable captured stage revision. Source
 /// uncertainty and association uncertainty do not mean execution is missing.
@@ -523,6 +523,8 @@ pub struct RequestCapabilityRequirementsV1 {
 pub enum RequestedReasoningDispositionV1 {
     Absent,
     OverriddenByAgentPlan,
+    AppliedToFixedBinding,
+    FollowRequestWithDefault,
 }
 
 /// Typed carrier for the one intentionally provider-native reasoning field.

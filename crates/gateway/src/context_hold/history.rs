@@ -1414,6 +1414,33 @@ mod tests {
     }
 
     #[test]
+    fn follow_reasoning_controls_separate_history_while_legacy_ignores_effort() {
+        use crate::server::core_runtime::profiles::RequestedNativeReasoning;
+        use crate::server::request_plan::IngressProtocol;
+        let mut low = request(vec![text(MessageRole::User, "same")]);
+        low.requested_reasoning.followed_control = Some(
+            RequestedNativeReasoning::from_document(
+                &serde_json::json!({"reasoning":{"effort":"low"}}),
+                IngressProtocol::Responses,
+            )
+            .unwrap(),
+        );
+        let mut high = low.clone();
+        high.requested_reasoning.followed_control = Some(
+            RequestedNativeReasoning::from_document(
+                &serde_json::json!({"reasoning":{"effort":"high"}}),
+                IngressProtocol::Responses,
+            )
+            .unwrap(),
+        );
+        let key = [11; 32];
+        assert_ne!(
+            visible_history(&low, &key).unwrap().instruction_digest,
+            visible_history(&high, &key).unwrap().instruction_digest
+        );
+    }
+
+    #[test]
     fn responses_wire_search_and_annotations_extend_their_ordered_history_position() {
         use crate::server::core_runtime::adapters::decode_ingress_request;
         use serde_json::json;

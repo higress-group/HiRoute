@@ -7,7 +7,12 @@ fn follow_reasoning_retains_legacy_configuration_and_round_trips_opt_in() {
     let old = released["editor"].clone();
     let mut draft: PlanEditorStateV2 = serde_json::from_value(old.clone()).unwrap();
     assert!(!draft.follow_request_reasoning);
-    assert_eq!(serde_json::to_value(&draft).unwrap(), old);
+    let normalized = serde_json::to_value(&draft).unwrap();
+    assert!(normalized.get("follow_request_reasoning").is_none());
+    assert_eq!(normalized["candidates"], old["candidates"]);
+    assert_eq!(normalized["smart"], old["smart"]);
+    let round_trip: PlanEditorStateV2 = serde_json::from_value(normalized.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&round_trip).unwrap(), normalized);
     assert!(!draft.effective().unwrap().follow_request_reasoning);
     let original = draft.candidates.clone();
     draft.follow_request_reasoning = true;

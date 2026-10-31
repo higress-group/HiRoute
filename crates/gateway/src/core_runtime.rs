@@ -572,7 +572,15 @@ impl ProductionGatewayRuntime {
                 Err(error) => {
                     let (status, code) = match error {
                         crate::server::composition::PortError::InvalidReasoningControl => {
-                            (StatusCode::BAD_REQUEST, "FIXED_REASONING_UNSUPPORTED")
+                            let code = if matches!(
+                                authorized.planner_policy().identity,
+                                profiles::PlannerRouteIdentityV2::Plan { .. }
+                            ) {
+                                "REQUEST_REASONING_INVALID"
+                            } else {
+                                "FIXED_REASONING_UNSUPPORTED"
+                            };
+                            (StatusCode::BAD_REQUEST, code)
                         }
                         _ => (
                             StatusCode::INTERNAL_SERVER_ERROR,

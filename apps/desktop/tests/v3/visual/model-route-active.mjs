@@ -102,7 +102,7 @@ try {
     await setup({others:false});await click('.model-route-action button','创建智能路由');await editorReady();
     const checked=()=>evaluate(client,'document.querySelector(".route-reasoning-policy input").checked');
     assert.equal(await checked(),true);
-    assert.match(await evaluate(client,'document.querySelector(".effort-select").textContent'),/默认档位/);
+    await waitFor(client,'document.querySelector(".effort-select")?.textContent.includes("默认档位")');
     await click('.mode-card','按难度分流');assert.equal(await checked(),false);
     assert.match(await evaluate(client,'document.querySelector(".route-reasoning-policy").textContent'),/能力与成本/);
     await click('.mode-card','固定模型');assert.equal(await checked(),true);

@@ -91,6 +91,11 @@ fn real_process_v2_plan_content_and_alias_recover_exactly() {
 }
 
 #[test]
+fn real_process_follow_request_reasoning_preserves_fallback_and_saved_configuration() {
+    run_script("follow_reasoning_product.py");
+}
+
+#[test]
 fn real_process_route_only_model_id_and_empty_purpose_survive_restart() {
     run_script_case("plan_content_process.py", Some("route-only"));
 }
