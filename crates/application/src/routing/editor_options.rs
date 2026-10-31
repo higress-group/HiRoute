@@ -73,19 +73,17 @@ pub(crate) fn prepare_authoring(
                                     .iter()
                                     .find(|v| v.binding_id == selection.binding_id)
                                     .and_then(|v| {
-                                        if editor.follow_request_reasoning {
-                                            if let NativeReasoningCapabilityV1::Discrete {
+                                        if editor.follow_request_reasoning
+                                            && let NativeReasoningCapabilityV1::Discrete {
                                                 profiles,
                                                 default_profile: Some(default),
                                                 ..
                                             } = &v.reasoning
-                                            {
-                                                if profiles.contains(default) {
-                                                    return Some(ReasoningSelectionV1::Profile {
-                                                        profile: default.clone(),
-                                                    });
-                                                }
-                                            }
+                                            && profiles.contains(default)
+                                        {
+                                            return Some(ReasoningSelectionV1::Profile {
+                                                profile: default.clone(),
+                                            });
                                         }
                                         default_reasoning(&v.reasoning, economy)
                                     })

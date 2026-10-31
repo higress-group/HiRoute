@@ -78,6 +78,34 @@ impl RequestedNativeReasoning {
         })
     }
 
+    /// Durable, bounded native control evidence; never a request-local Replay marker.
+    pub(crate) fn native_value(&self, ingress: IngressProtocol) -> Option<Value> {
+        if self.is_absent() {
+            return None;
+        }
+        match ingress {
+            IngressProtocol::Responses => Some(serde_json::json!({"effort":self.effort})),
+            IngressProtocol::ChatCompletions => self
+                .effort
+                .as_ref()
+                .map(|effort| Value::String(effort.clone())),
+            IngressProtocol::Messages => {
+                let mut value = serde_json::Map::new();
+                if let Some(kind) = &self.thinking_type {
+                    let mut thinking = serde_json::json!({"type":kind});
+                    if let Some(tokens) = self.budget_tokens {
+                        thinking["budget_tokens"] = tokens.into();
+                    }
+                    value.insert("thinking".into(), thinking);
+                }
+                if let Some(effort) = &self.effort {
+                    value.insert("output_config".into(), serde_json::json!({"effort":effort}));
+                }
+                Some(Value::Object(value))
+            }
+        }
+    }
+
     pub(crate) fn is_absent(&self) -> bool {
         self == &Self::default()
     }

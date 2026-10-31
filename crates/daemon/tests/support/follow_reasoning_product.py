@@ -83,6 +83,8 @@ def run(repository):
                       {'change': change}, 'save-fixed-reasoning')
         assert request('xhigh')[0] == 200
         assert upstreams[2].requests[-1]['body']['reasoning']['effort'] == 'high'
+        product.stop()
+        product.start()
         deadline = time.monotonic() + 15
         while True:
             sessions = product.public_cli('sessions list --include-unlinked --limit 50')[1]['data']['sessions']
@@ -101,7 +103,11 @@ def run(repository):
                 break
             assert time.monotonic() < deadline, ('missing actual reasoning receipts', resolutions, len(receipts))
             time.sleep(.05)
-        assert any(f.get('requested_reasoning_disposition') == 'follow_request_with_default' for f in facts)
+        controls = [f.get('requested_reasoning_value') for f in facts
+                    if f.get('requested_reasoning_disposition') == 'follow_request_with_default']
+        assert None in controls, controls
+        efforts = {value['value']['effort']['value'] for value in controls if value is not None}
+        assert {'xhigh', 'unsupported-future-level'} <= efforts, efforts
         product.plan_id = previous_id
         assert read_content(product) == previous
         print(json.dumps({'scenario': 'follow-request-reasoning', 'state': 'green',
