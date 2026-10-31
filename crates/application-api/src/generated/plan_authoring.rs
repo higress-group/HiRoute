@@ -16,7 +16,7 @@ pub(super) fn classifier_definition() -> Value {
     let service = object(
         &["id", "revision", "name", "connection"],
         json!({
-            "id":{"type":"string","maxLength":128},"revision":{"type":"integer","minimum":1},"name":{"type":"string","maxLength":128},
+            "id":{"type":"string","maxLength":128},"revision":{"type":"integer","minimum":0},"name":{"type":"string","maxLength":128},
             "connection":{"oneOf":[
                 object(&["kind","provider","model","endpoint","timeout_ms","auth_header"],json!({"kind":{"const":"system_one"},"provider":{"type":"string","maxLength":128},"model":{"type":"string","maxLength":256},"endpoint":endpoint,"timeout_ms":timeout,"auth_header":auth})),
                 object(&["kind","endpoint","timeout_ms"],json!({"kind":{"const":"custom"},"endpoint":endpoint,"timeout_ms":timeout,"auth_header":{"oneOf":[{"type":"null"},auth]}}))
@@ -209,5 +209,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn editor_schema_accepts_parked_service_without_authorizing_active_execution() {
+        let released: Value = serde_json::from_str(include_str!(
+            "../../../domain/src/routing/authoring/fixtures/released-plan-editor.v2.json"
+        ))
+        .unwrap();
+        let mut wire = released["editor"].clone();
+        wire["follow_request_reasoning"] = true.into();
+        wire["smart"]["classifier"] = json!({"kind":"decision_service","service":{
+            "id":"","revision":0,"name":"","connection":{
+                "kind":"custom","endpoint":"","timeout_ms":10000,"auth_header":null
+            }
+        }});
+        let mut editor: hiroute_domain::PlanEditorStateV2 = serde_json::from_value(wire).unwrap();
+        editor.validate_draft().unwrap();
+        editor.effective().unwrap();
+        let service = &definitions()["editor"]["properties"]["smart"]["properties"]["classifier"]["oneOf"]
+            [1]["properties"]["service"];
+        assert_eq!(service["properties"]["revision"]["minimum"], 0);
+        editor.mode = hiroute_domain::PlanEditorMode::SmartSaving;
+        editor.smart.economy = editor.candidates.clone();
+        editor.smart.primary = editor.candidates.clone();
+        assert!(editor.smart.classifier.validate().is_err());
+        assert!(editor.effective().is_err());
     }
 }
