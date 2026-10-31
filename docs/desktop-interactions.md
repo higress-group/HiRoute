@@ -41,6 +41,10 @@ the setting's save model. Do not expose a confirmation-based Enable as an
 immediate toggle. A provider directory entry remains a navigational action, not
 a radio option pretending that configuration is already complete.
 
+Discard confirmations keep **继续编辑 / Keep editing** as the focused safe choice
+and separate the destructive discard action. An explicit Save in credential
+management can reapply its current set; it does not imply a live connection test.
+
 ## Editing and operation state
 
 - Distinguish unchanged, edited, submitting, confirmed, failed and unverified.

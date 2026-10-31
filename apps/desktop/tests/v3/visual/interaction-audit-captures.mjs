@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { evaluate, navigate, waitFor } from './cdp-client.mjs';
 
-export const interactionAuditStates = ['home', 'home-empty', 'models', 'models-add', 'models-directory', 'models-credentials', 'models-remove', 'models-network',
+export const interactionAuditStates = ['home', 'home-empty', 'models', 'models-add', 'models-directory', 'models-credentials', 'models-credentials-discard', 'models-remove', 'models-network',
   'decision', 'decision-editor', 'decision-extension-editor', 'decision-readonly', 'decision-extension-readonly', 'decision-remove',
   'routing', 'routing-new', 'routing-quality', 'routing-mapping', 'routing-worker', 'routing-readonly', 'agent', 'agent-editor', 'agent-token', 'tasks', 'task-cancel',
   'sessions', 'sessions-facts', 'sessions-cleanup', 'sessions-quality', 'settings-general', 'settings-runtime', 'settings-records', 'settings-error', 'console-login', 'console-expired',

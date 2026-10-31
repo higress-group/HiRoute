@@ -219,7 +219,8 @@ export function Models(props: Props) {
   }
 
   function cancelCredentials() {
-    discardCredentials();
+    if (submittingRef.current) return;
+    void confirmCredentialReplacement();
   }
 
   async function saveCredentials() {

@@ -259,7 +259,7 @@ the model-to-route scenario. Focused browser flags remain available:
 logic alone, run `node --test tests/scenario-selection.test.mjs`.
 
 For a full interaction comparison, use `HIROUTE_UI_FULL_AUDIT=1` with the shell
-runner and the six `desktop.interactions.*` IDs in `HIROUTE_BROWSER_SCENARIOS`.
+runner and the seven `desktop.interactions.*` IDs in `HIROUTE_BROWSER_SCENARIOS`.
 It captures Chinese/English, light/dark and 1200×813 / 755×600 under production
 styles. `HIROUTE_AUDIT_STATES` selects an affected surface; `HIROUTE_AUDIT_QUICK=1`
 is an exploratory single-display pass. Baseline mode (`HIROUTE_UI_CAPTURE_BASELINE=1`)

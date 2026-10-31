@@ -63,6 +63,7 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.interactions.credential-cancel',
   'desktop.interactions.read-only-exit',
   'desktop.interactions.tab-navigation',
   'desktop.interactions.unknown-cli',

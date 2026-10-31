@@ -14,6 +14,19 @@ async function fresh(state, language = 'zh') {
 const writes = () => window.productShell.commands.filter(({command}) => /save_decision|test_decision|cli_entry_(install|remove)|apply_compute|preview_plan_editor/.test(command));
 
 export const interactionConsistencyScenarios = [
+  scenario('desktop.interactions.credential-cancel', ['interaction-consistency'], 'Credential Cancel uses the same dirty-draft guard as closing the window and keeps persisted keys unchanged', async () => {
+    await fresh('models-credentials-discard');
+    const guard=all('dialog[open]')[0];
+    assert(guard,'Credential Cancel silently discarded an edited draft');
+    const keep=[...guard.querySelectorAll('button')].find(n=>n.textContent==='继续编辑');
+    keep.click();await until(()=>!all('dialog[open]').length,'Keep editing did not dismiss guard');
+    assert(all('[role="dialog"]').length===1 && !all('.oc-key-row').length,'Keep editing lost the credential draft');
+    const cancel=all('[role="dialog"] .modal-foot button').find(n=>n.textContent==='取消');
+    cancel.click();await until(()=>all('dialog[open]').length,'Repeated Cancel did not guard draft');
+    [...all('dialog[open]')[0].querySelectorAll('button')].find(n=>n.textContent==='放弃修改').click();
+    await until(()=>!all('[role="dialog"],dialog[open]').length,'Discard did not close credential editor');
+    assert(writes().length===0 && window.productShell.management.sources.find(n=>n.source_id==='source/bailian/coding').keys.length===1,'Discard changed persisted credentials');
+  }),
   scenario('desktop.interactions.read-only-exit', ['interaction-consistency'], 'Decision model and extension drafts can be cancelled after authority is lost without saving or testing', async () => {
     for (const state of ['decision-readonly', 'decision-extension-readonly']) {
       await fresh(state);
