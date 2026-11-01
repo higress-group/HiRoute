@@ -8,6 +8,33 @@ use serde_json::json;
 
 use super::*;
 
+#[test]
+fn shared_management_skill_has_discoverable_yaml_within_the_managed_resource_limit() {
+    let skill = include_str!("../../../../assets/skills/hiroute-management/SKILL.md");
+    hiroute_application::agent_connection::CollaborationSkillTemplate::bundled(
+        "shared-management-v2",
+        skill,
+    )
+    .expect("the shared Skill must fit its production ownership contract");
+    let (header, _) = skill
+        .strip_prefix("---\n")
+        .and_then(|body| body.split_once("\n---\n"))
+        .expect("Agents need a complete Skill frontmatter block");
+    let metadata: serde_yaml::Value =
+        serde_yaml::from_str(header).expect("Agents must be able to parse the shared Skill");
+    assert_eq!(metadata["name"].as_str(), Some("hiroute-management"));
+    assert!(
+        metadata["description"]
+            .as_str()
+            .is_some_and(|value| !value.trim().is_empty())
+    );
+    assert_eq!(
+        metadata["metadata"]["schema"].as_str(),
+        Some("hiroute.management-skill/v1")
+    );
+    assert_eq!(metadata["metadata"]["access"].as_str(), Some("local-user"));
+}
+
 fn observation(kind: AgentKindV1, version: &str) -> AgentScanObservationV1 {
     AgentScanObservationV1 {
         schema: AGENT_SCAN_OBSERVATION_SCHEMA_V1.to_owned(),

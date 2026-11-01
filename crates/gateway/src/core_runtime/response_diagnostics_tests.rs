@@ -46,6 +46,11 @@ mod pre_attempt_cancel;
 #[path = "response_diagnostics_tests/native_evidence.rs"]
 mod native_evidence;
 
+#[path = "response_diagnostics_tests/business.rs"]
+mod business;
+pub(super) use business::assert_success_usage;
+use business::{assert_business, assert_business_with_usage, wait_replay_clean};
+
 const CHILD_CASE: &str = "HIROUTE_STREAM_DIAGNOSTIC_CASE";
 const CHILD_ROOT: &str = "HIROUTE_STREAM_DIAGNOSTIC_ROOT";
 const TOKEN: &str = "SENTINEL_CLIENT_CREDENTIAL";
@@ -83,7 +88,8 @@ fn production_listener_stream_diagnostics_and_private_capture() {
         "invalid_lifecycle",
         "missing_terminal",
         "duplicate_terminal",
-        "resource_limit",
+        "large_complete_frame",
+        "large_missing_terminal",
         "drain_failure",
         "capture_known",
         "capture_unknown",
@@ -291,15 +297,23 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
             wire.extend_from_slice(b"data: [DONE]\n\ndata: [DONE]\n\n");
             (wire, Some("duplicate_terminal"), None, 3)
         }
-        "resource_limit" => (
-            frame(chat(
+        "large_complete_frame" | "large_missing_terminal" => {
+            let complete = case == "large_complete_frame";
+            let mut value = chat(
                 json!({"content":"x".repeat(6 * 1024 * 1024)}),
-                Value::Null,
-            )),
-            Some("resource_limit"),
-            None,
-            0,
-        ),
+                if complete { json!("stop") } else { Value::Null },
+            );
+            if complete {
+                value["usage"] =
+                    json!({"prompt_tokens":11,"completion_tokens":7,"total_tokens":18});
+            }
+            (
+                frame(value),
+                (!complete).then_some("missing_terminal"),
+                None,
+                0,
+            )
+        }
         "drain_failure" => {
             let mut wire = Vec::new();
             for _ in 0..40 {
@@ -345,6 +359,7 @@ fn sample(case: &str) -> (Vec<u8>, Option<&'static str>, Option<&'static str>, u
     if matches!(
         case,
         "invalid_arguments"
+            | "large_complete_frame"
             | "unknown_metadata"
             | "capture_known"
             | "capture_known_usage_first"
@@ -569,7 +584,10 @@ fn run_case(case: &str, root: &Path) {
                 .contains("authorization:")
         );
     }
-    wait_finished(&facts, reason.is_some() && !relay);
+    wait_finished(
+        &facts,
+        (reason.is_some() && !relay) || case == "large_complete_frame",
+    );
     gateway.shutdown();
     gateway.join(Duration::from_secs(5)).unwrap();
     let status = diagnostics.status();
@@ -613,6 +631,8 @@ fn run_case(case: &str, root: &Path) {
     native_evidence::assert_evidence(case, &records, &upstream_request, &response);
     if relay {
         assert_prebody_relay_business(&facts);
+    } else if case == "large_complete_frame" {
+        assert_business_with_usage(&facts, false, false, false);
     } else {
         assert_business(&facts, reason.is_some(), after_body);
     }
@@ -664,11 +684,9 @@ fn run_case(case: &str, root: &Path) {
             .filter_map(|r| payload(r, "response_failure"))
             .filter(|failure| failure.get("capture").is_some())
             .collect();
-        if case == "resource_limit" {
-            // Previously accepted partial chunks may exhaust the capture
-            // decoder's independent 512 KiB budget before the main decoder
-            // rejects the 6 MiB frame. Cancellation may instead reach that
-            // worker first. Neither ordering creates a second main failure.
+        if case == "large_missing_terminal" {
+            // Optional capture may exhaust its independent capacity before a
+            // serviceable 6 MiB main frame reaches its true missing terminal.
             assert!(capture_failures.len() <= 1, "{case}: {log}");
         } else {
             // Afterbody semantic failures cancel the offending chunk before
@@ -690,12 +708,34 @@ fn run_case(case: &str, root: &Path) {
                 "reason",
                 "frame_index",
             ] {
-                assert_eq!(capture[key], failure[key], "{case}: {key}");
+                if case != "large_missing_terminal" || !matches!(key, "reason" | "frame_index") {
+                    assert_eq!(capture[key], failure[key], "{case}: {key}");
+                }
             }
             assert!(capture["attempt_token"].is_null());
             assert_eq!(capture["capture"]["ingress_protocol"], "anthropic_messages");
             assert_eq!(capture["capture"]["upstream_protocol"], "open_ai_chat");
         }
+    } else if case == "large_complete_frame" {
+        // Optional bounded observation must not prevent successful conversion
+        // and exact delivery when required main-decoder state exceeds 8 MiB.
+        for failure in records
+            .iter()
+            .filter_map(|r| payload(r, "response_failure"))
+        {
+            assert!(failure.get("capture").is_some(), "{failure}");
+        }
+        let entity = pre_attempt_cancel::response_entity(&response);
+        let text: String = String::from_utf8(entity)
+            .unwrap()
+            .lines()
+            .filter_map(|line| line.strip_prefix("data: "))
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter_map(|event| event["delta"]["text"].as_str().map(str::to_owned))
+            .collect();
+        assert_eq!(text.len(), 6 * 1024 * 1024);
+        assert!(text.bytes().all(|byte| byte == b'x'));
+        assert!(String::from_utf8_lossy(&response).contains("event: message_stop"));
     } else {
         assert!(
             records
@@ -829,7 +869,7 @@ fn payload<'a>(record: &'a Value, name: &str) -> Option<&'a Value> {
         .get(name)
         .or_else(|| record.as_object()?.values().find_map(|v| payload(v, name)))
 }
-fn wait_finished(facts: &Facts, failed: bool) {
+fn wait_finished(facts: &Facts, usage_not_expected: bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         let records = facts.0.lock().unwrap().clone();
@@ -839,7 +879,7 @@ fn wait_finished(facts: &Facts, failed: bool) {
         // Canonical usage can arrive after the terminal fact. Provider usage
         // is omitted when canonical usage was already recorded, so it is not
         // a completion barrier. The business oracle checks each source below.
-        let usage_complete = failed
+        let usage_complete = usage_not_expected
             || records.iter().any(|r| {
                 r.pointer("/fact/kind").and_then(Value::as_str) == Some("usage_and_cache")
                     && r["fact"]["source"] == "accepted_canonical_model_event"
@@ -903,144 +943,4 @@ fn assert_prebody_relay_business(facts: &[Value]) {
     assert_eq!(requests[0]["fact"]["attempts_finished"], 2);
     assert_eq!(named("semantic_commit").len(), 1);
     assert_success_usage(facts, 2);
-}
-
-fn assert_business(facts: &[Value], failed: bool, after_body: bool) {
-    let named = |name| {
-        facts
-            .iter()
-            .filter(|r| r.pointer("/fact/kind").and_then(Value::as_str) == Some(name))
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        named("attempt_started").len(),
-        1,
-        "only one actual attempt may run: bounded prebody or committed afterbody"
-    );
-    let finished = named("attempt_finished");
-    assert_eq!(finished.len(), 1);
-    assert_eq!(finished[0]["fact"]["ordinal"], 1);
-    assert_eq!(
-        finished[0]["fact"]["outcome"],
-        if after_body {
-            "postcommit_transport_failed"
-        } else if failed {
-            "rejected"
-        } else {
-            "accepted"
-        }
-    );
-    if failed && !after_body {
-        // Relay eligibility remains Continue; the separately frozen one-attempt
-        // budget ends the request without promoting another candidate.
-        assert_eq!(finished[0]["fact"]["disposition"], "continue");
-        assert_eq!(finished[0]["fact"]["retryable"], true);
-        assert_eq!(
-            finished[0]["fact"]["commits"]["downstream_semantic"],
-            "clear"
-        );
-    }
-    if after_body {
-        let semantic_started = finished[0]["fact"]["commits"]["downstream_semantic"] != "clear";
-        assert_eq!(
-            finished[0]["fact"]["termination_reason"],
-            if semantic_started {
-                "stream_started_no_retry"
-            } else {
-                "provider_encoder_failure"
-            }
-        );
-        assert_eq!(
-            finished[0]["fact"]["stream_outcome"],
-            if semantic_started {
-                "stream_started_no_retry"
-            } else {
-                "aborted_before_semantic_commit"
-            }
-        );
-    }
-    assert_eq!(
-        finished[0]["fact"]["commits"]["upstream_request"],
-        "write_confirmed"
-    );
-    assert_eq!(
-        finished[0]["fact"]["commits"]["downstream_headers"],
-        if failed && !after_body {
-            "clear"
-        } else {
-            "write_confirmed"
-        }
-    );
-    let requests = named("request_finished");
-    assert_eq!(finished[0]["fact"]["cleanup_outcome"], "completed");
-    assert_eq!(requests.len(), 1);
-    assert_eq!(
-        requests[0]["fact"]["outcome"],
-        if failed {
-            if finished[0]["fact"]["commits"]["downstream_semantic"] != "clear" {
-                "postcommit_transport_failed"
-            } else {
-                "failed"
-            }
-        } else {
-            "accepted"
-        }
-    );
-    assert_eq!(requests[0]["fact"]["attempts_started"], 1);
-    assert_eq!(requests[0]["fact"]["attempts_finished"], 1);
-    let semantic_commits = named("semantic_commit").len();
-    assert_eq!(semantic_commits, if failed && !after_body { 0 } else { 1 });
-    if failed {
-        // Failed entities report no usage; never synthesize zero tokens.
-        assert!(named("usage_and_cache").is_empty());
-    } else {
-        assert_success_usage(facts, 1);
-    }
-}
-
-pub(super) fn assert_success_usage(facts: &[Value], ordinal: u64) {
-    let usage: Vec<_> = facts
-        .iter()
-        .filter(|r| r["fact"]["kind"] == "usage_and_cache")
-        .collect();
-    let count = |source: &str| {
-        usage
-            .iter()
-            .filter(|r| r["fact"]["source"] == source)
-            .count()
-    };
-    assert_eq!(count("accepted_canonical_model_event"), 1);
-    // completed_attempt suppresses provider usage if canonical usage arrived
-    // first. Both callback orders must retain exactly one canonical record.
-    assert!(count("provider_completion") <= 1);
-    let attempt = facts
-        .iter()
-        .find(|r| r["fact"]["kind"] == "attempt_started" && r["fact"]["ordinal"] == ordinal)
-        .unwrap();
-    assert!(attempt["attempt_id"].is_string());
-    for record in usage {
-        assert_eq!(record["fact"]["ordinal"], ordinal);
-        assert_eq!(record["attempt_id"], attempt["attempt_id"]);
-        assert_eq!(record["correlation"], attempt["correlation"]);
-        assert!(matches!(
-            record["fact"]["source"].as_str(),
-            Some("provider_completion" | "accepted_canonical_model_event")
-        ));
-        assert_eq!(record["fact"]["input_tokens"], 11);
-        assert_eq!(record["fact"]["output_tokens"], 7);
-    }
-}
-
-fn wait_replay_clean(root: &Path) {
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        if !root.exists() || fs::read_dir(root).unwrap().next().is_none() {
-            return;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "Replay resources survived request cleanup"
-        );
-        std::thread::sleep(Duration::from_millis(5));
-    }
 }

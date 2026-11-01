@@ -6,7 +6,6 @@ use std::sync::mpsc::{SyncSender, sync_channel};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
-use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation};
 use serde_json::Value;
 
 use crate::replay::ReplayStore;
@@ -92,7 +91,6 @@ struct RequestSnapshot {
     instructions: Vec<CanonicalInstruction>,
     messages: Vec<CanonicalMessage>,
     tools: Vec<CanonicalTool>,
-    _reservation: Reservation,
 }
 
 impl ContentWorkProducer {
@@ -169,10 +167,12 @@ impl ContentWorkProducer {
                         }
                     }
                     if matches!(&job.command, Command::Request { .. }) {
-                        // The active snapshot remains fully charged by its
-                        // request/process reservation. Transfer its queue
-                        // charge before emitting encoded records; otherwise
-                        // the same payload unnecessarily occupies both slots.
+                        // One active source is bounded by its admission under
+                        // the existing Content ceiling. Release queue credit
+                        // for encoded records; queued sources plus records
+                        // remain under that ceiling, with at most one active
+                        // source of the same maximum size. Shared Replay RAM
+                        // retains its original allocation reservations.
                         job._retained.shrink_to(JOB_OVERHEAD);
                     }
                     let started = Instant::now();
@@ -268,8 +268,9 @@ impl RequestObservation {
             return;
         }
         let bytes = snapshot_bytes(request);
+        let retained = bytes.saturating_add(replay.content_lease_memory_bytes());
         if !self.inner.channels.content.work_can_fit(
-            bytes
+            retained
                 .saturating_add(JOB_OVERHEAD)
                 .saturating_add(queue_storage_bytes()),
         ) {
@@ -281,31 +282,7 @@ impl RequestObservation {
             self.capture_request_fallback(request, replay);
             return;
         }
-        // Shared Replay bytes are not a second payload in the Content queue.
-        // Charge their optional extended lifetime to the existing request /
-        // process budget, including disk bytes. Under pressure, retain the
-        // original synchronous path rather than lose previously capturable data.
-        let retained = bytes.saturating_add(replay.content_retention_bytes());
-        let Ok(memory) = replay
-            .budget()
-            .reserve(MemoryRole::ModelIrBacking, retained)
-        else {
-            #[cfg(feature = "e2e-test-control")]
-            eprintln!(
-                "capture request fallback: reason=request_budget bytes={bytes} retained={retained} available={:?}",
-                replay.budget().available_bytes()
-            );
-            self.capture_request_fallback(request, replay);
-            return;
-        };
-        let Ok(lease) = replay.content_lease() else {
-            #[cfg(feature = "e2e-test-control")]
-            eprintln!("capture request fallback: reason=content_lease bytes={bytes}");
-            drop(memory);
-            self.capture_request_fallback(request, replay);
-            return;
-        };
-        let Some((queue, reservation)) = self.content_work_reservation(bytes) else {
+        let Some((queue, reservation)) = self.content_work_reservation(retained) else {
             #[cfg(feature = "e2e-test-control")]
             eprintln!(
                 "capture request fallback: reason=shared_credit bytes={bytes} state={:?}",
@@ -315,8 +292,11 @@ impl RequestObservation {
             // when this snapshot fits alone. No content has been queued for
             // this request yet: keep the original nonblocking encoder instead
             // of declaring a gap merely because optional ownership was refused.
-            drop(lease);
-            drop(memory);
+            self.capture_request_fallback(request, replay);
+            return;
+        };
+        let Ok(lease) = replay.content_lease() else {
+            drop(reservation);
             self.capture_request_fallback(request, replay);
             return;
         };
@@ -330,7 +310,6 @@ impl RequestObservation {
             instructions: request.instructions.clone(),
             messages: request.messages.clone(),
             tools: request.tools.clone(),
-            _reservation: memory,
         });
         self.send_content_work(
             status,

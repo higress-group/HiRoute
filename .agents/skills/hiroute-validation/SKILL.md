@@ -31,6 +31,14 @@ loading every execution, diagnosis and retention guide.
   gates, and record justified scope adjustments. Docs/tooling use their own checks;
   product smoke covers affected business paths. Expand for cross-boundary contracts,
   dependencies or unresolved impact, rather than location or test duration alone.
+- For resource/performance changes, apply the [serviceability rule](../../../AGENTS.md).
+  Select real production-entry cases for the affected pressure, long/concurrent request,
+  fallback, cancellation and cleanup paths. Verify valid requests beyond internal memory
+  targets complete with exact content and affected history/attribution/recovery intact.
+  Compare exact-revision before/after resident memory, CPU through asynchronous drain,
+  and complete local foreground time including fallback; separate external waiting.
+  Preserve configured request limits, timeouts and retries. Report cold/warm workloads
+  and sample limits; an admission-accounting bound is not a whole-process RSS bound.
 - Run selected Python/Node checks directly. Use `scripts/validation.py` and the
   caller's configured host for Cargo and Desktop/Pilot execution. Final evidence
   uses an exact committed candidate locally and a pushed candidate remotely.

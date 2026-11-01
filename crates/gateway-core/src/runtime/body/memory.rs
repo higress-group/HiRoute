@@ -38,6 +38,7 @@ pub struct BudgetTree {
 
 #[derive(Debug)]
 struct BudgetState {
+    enforce_limits: bool,
     process_limit: usize,
     worker_limit: usize,
     process_live: usize,
@@ -62,6 +63,20 @@ struct StreamState {
     rejected: usize,
     role_live: [usize; 9],
     role_peak: [usize; 9],
+    last_rejection: Option<BudgetRejection>,
+}
+
+/// Evidence at the refusal, before later cleanup releases the owners.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BudgetRejection {
+    pub role: MemoryRole,
+    pub requested_bytes: usize,
+    pub stream_live_bytes: usize,
+    pub stream_limit_bytes: usize,
+    pub worker_live_bytes: usize,
+    pub worker_limit_bytes: usize,
+    pub process_live_bytes: usize,
+    pub process_limit_bytes: usize,
 }
 
 impl BudgetTree {
@@ -71,6 +86,7 @@ impl BudgetTree {
         }
         Ok(Self {
             inner: Arc::new(Mutex::new(BudgetState {
+                enforce_limits: true,
                 process_limit,
                 worker_limit,
                 process_live: 0,
@@ -87,6 +103,14 @@ impl BudgetTree {
                 streams: HashMap::new(),
             })),
         })
+    }
+
+    /// Keep allocation ownership and peaks without making an accounting
+    /// watermark a rejection condition for an admitted model request.
+    pub fn accounting_only(process_target: usize, worker_target: usize) -> Result<Self, BodyError> {
+        let tree = Self::new(process_target, worker_target)?;
+        lock(&tree.inner).enforce_limits = false;
+        Ok(tree)
     }
 
     pub fn stream(&self, limit: usize) -> Result<StreamBudget, BodyError> {
@@ -121,6 +145,7 @@ impl BudgetTree {
                 rejected: 0,
                 role_live: [0; 9],
                 role_peak: [0; 9],
+                last_rejection: None,
             },
         );
         Ok(StreamBudget {
@@ -208,17 +233,29 @@ impl StreamBudget {
                 stream.limit,
             )
         };
-        if process_next > inner.process_limit
-            || worker_next > inner.worker_limit
-            || stream_next > stream_limit
+        if inner.enforce_limits
+            && (process_next > inner.process_limit
+                || worker_next > inner.worker_limit
+                || stream_next > stream_limit)
         {
+            let rejection = BudgetRejection {
+                role,
+                requested_bytes: bytes,
+                stream_live_bytes: stream_next - bytes,
+                stream_limit_bytes: stream_limit,
+                worker_live_bytes: inner.worker_live,
+                worker_limit_bytes: inner.worker_limit,
+                process_live_bytes: inner.process_live,
+                process_limit_bytes: inner.process_limit,
+            };
             inner.process_rejected += 1;
             inner.worker_rejected += 1;
-            inner
+            let stream = inner
                 .streams
                 .get_mut(&self.handle.id)
-                .ok_or(BodyError::UnknownStreamBudget)?
-                .rejected += 1;
+                .ok_or(BodyError::UnknownStreamBudget)?;
+            stream.rejected += 1;
+            stream.last_rejection = Some(rejection);
             let snapshot = snapshot_for_observation(&inner, self.handle.id)?;
             drop(inner);
             self.observe_memory(role, snapshot);
@@ -266,6 +303,13 @@ impl StreamBudget {
         Ok(snapshot_from_stream(stream))
     }
 
+    pub fn last_rejection(&self) -> Option<BudgetRejection> {
+        lock(&self.handle.inner)
+            .streams
+            .get(&self.handle.id)
+            .and_then(|stream| stream.last_rejection)
+    }
+
     /// Optional scratch may use spare capacity without displacing required
     /// request work. A later allocation still goes through normal admission.
     pub fn available_bytes(&self) -> Result<usize, BodyError> {
@@ -274,6 +318,9 @@ impl StreamBudget {
             .streams
             .get(&self.handle.id)
             .ok_or(BodyError::UnknownStreamBudget)?;
+        if !inner.enforce_limits {
+            return Ok(usize::MAX);
+        }
         Ok(stream
             .limit
             .saturating_sub(stream.live)
@@ -777,4 +824,83 @@ pub(super) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[cfg(test)]
+mod rejection_diagnostics_tests {
+    use super::*;
+
+    #[test]
+    fn accounting_only_requests_exceed_all_targets_without_losing_ownership() {
+        let tree = BudgetTree::accounting_only(128, 64).unwrap();
+        let first = tree.stream(32).unwrap();
+        let allocation = first.reserve(MemoryRole::AttemptWire, 256).unwrap();
+        let second = tree.stream(32).unwrap();
+        let other = second.reserve(MemoryRole::RawRequest, 80).unwrap();
+        assert_eq!(first.snapshot().unwrap().live, 256);
+        assert_eq!(first.snapshot().unwrap().peak, 256);
+        assert_eq!(first.available_bytes().unwrap(), usize::MAX);
+        assert_eq!(tree.snapshot().process_live, 336);
+        assert_eq!(tree.snapshot().worker_live, 336);
+        assert_eq!(first.last_rejection(), None);
+        drop(allocation);
+        assert_eq!(tree.snapshot().process_live, 80);
+        drop(other);
+        assert_eq!(tree.snapshot().process_live, 0);
+    }
+
+    #[test]
+    fn refusal_keeps_the_pre_cleanup_budget_and_does_not_consume_credit() {
+        let tree = BudgetTree::new(128, 64).unwrap();
+        let stream = tree.stream(32).unwrap();
+        assert_eq!(stream.last_rejection(), None);
+        let live = stream.reserve(MemoryRole::ModelIrBacking, 20).unwrap();
+        assert!(matches!(
+            stream.reserve(MemoryRole::AttemptWire, 16),
+            Err(BodyError::BudgetExceeded)
+        ));
+        let failure = stream.last_rejection().unwrap();
+        assert_eq!(failure.role, MemoryRole::AttemptWire);
+        assert_eq!(
+            (
+                failure.requested_bytes,
+                failure.stream_live_bytes,
+                failure.stream_limit_bytes
+            ),
+            (16, 20, 32)
+        );
+        assert_eq!(
+            (failure.worker_live_bytes, failure.worker_limit_bytes),
+            (20, 64)
+        );
+        assert_eq!(
+            (failure.process_live_bytes, failure.process_limit_bytes),
+            (20, 128)
+        );
+        assert_eq!(stream.snapshot().unwrap().live, 20);
+        drop(live);
+        assert_eq!(stream.snapshot().unwrap().live, 0);
+        assert_eq!(stream.last_rejection(), Some(failure));
+    }
+
+    #[test]
+    fn another_request_can_exhaust_the_worker_without_exhausting_this_stream() {
+        let tree = BudgetTree::new(128, 64).unwrap();
+        let other = tree.stream(48).unwrap();
+        let other_live = other.reserve(MemoryRole::ModelIrBacking, 48).unwrap();
+        let stream = tree.stream(32).unwrap();
+        let live = stream.reserve(MemoryRole::RawRequest, 8).unwrap();
+        assert!(matches!(
+            stream.reserve(MemoryRole::AttemptWire, 16),
+            Err(BodyError::BudgetExceeded)
+        ));
+        let failure = stream.last_rejection().unwrap();
+        assert!(failure.stream_live_bytes + failure.requested_bytes <= failure.stream_limit_bytes);
+        assert!(failure.worker_live_bytes + failure.requested_bytes > failure.worker_limit_bytes);
+        assert_eq!(other.last_rejection(), None);
+        drop(other_live);
+        assert!(stream.reserve(MemoryRole::AttemptWire, 16).is_ok());
+        drop(live);
+        assert_eq!(stream.last_rejection(), Some(failure));
+    }
 }

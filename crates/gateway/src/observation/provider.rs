@@ -108,7 +108,23 @@ impl ProviderRuntimePort for ObservedProductionProvider {
             .as_str()
             .starts_with("credential/none/")
             .then(|| context.credential_ref().as_str().to_owned());
-        let (request, inner) = self.inner.materialize_attempt(logical, context).await?;
+        let budget = context.budget;
+        let (request, inner) = match self.inner.materialize_attempt(logical, context).await {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                // The core can handle this failure by advancing selection or
+                // returning a local reply. Preserve its cause before that
+                // successful transport result hides the failed preparation.
+                if let Some(observation) = active_request() {
+                    observation.attempt_preparation_failure(
+                        &error,
+                        budget,
+                        logical.diagnostic_request_shape(),
+                    );
+                }
+                return Err(error);
+            }
+        };
         let observation = active_request().filter(RequestObservation::tracks_attempts);
         if let Some(observation) = &observation {
             observation.lock_state().managed_cpa = inner.trusts_cpa_execution_metadata();
