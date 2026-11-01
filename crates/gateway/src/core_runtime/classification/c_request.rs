@@ -21,6 +21,14 @@ pub(super) fn request_template<'a>(
     current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, CallFailure> {
     let request = request.into();
+    if authority.context_budget.is_some() {
+        return super::adaptive_request::request_template(
+            authority,
+            request,
+            history,
+            current_input_origin_unverified,
+        );
+    }
     let protocol = authority
         .native_protocol
         .as_ref()
@@ -119,6 +127,7 @@ pub(super) fn request_template<'a>(
     }
     let requested = bindings.applicability.is_some();
     let observation = RoutingObservationV1 {
+        context_budget: None,
         protocol: protocol.protocol.schema.clone(),
         content_digest: protocol.digest.clone(),
         bundle_digest: hiroute_domain::CanonicalDigest::of(&protocol.protocol.fixed)

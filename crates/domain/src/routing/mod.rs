@@ -15,6 +15,8 @@ mod decision_v3;
 pub use decision_v3::*;
 mod decision_context;
 pub use decision_context::*;
+mod decision_context_observation;
+pub use decision_context_observation::*;
 mod legacy_category;
 mod system_one_c;
 pub use system_one_c::*;
