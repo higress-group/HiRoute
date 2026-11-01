@@ -610,6 +610,7 @@ fn permission_effect_hardens_only_pinned_identity_and_never_reverts_mode() {
         startup_recovery_complete: std::sync::atomic::AtomicBool::new(true),
         delegation_native_cleanup_cursor: Mutex::new(None),
         delegation_task_maintenance_cursor: Mutex::new(None),
+        delegation_text_reader: Mutex::new(None),
     };
     let typed = AgentConfigPermissionIntentV1::from_filesystem_scanner(
         finding.discovered_source_ref.clone(),

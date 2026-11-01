@@ -17,6 +17,9 @@ use tempfile::TempDir;
 use crate::writer::{IngestOutcome, ObservationCommitPort, ObservationStoreError};
 use crate::{DigestAuthority, LocalObservationStore};
 
+mod batch;
+mod pressure;
+
 struct Fixture {
     _root: TempDir,
     store: Arc<LocalObservationStore>,

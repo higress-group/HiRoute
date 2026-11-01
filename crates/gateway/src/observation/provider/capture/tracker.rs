@@ -60,6 +60,7 @@ struct CanonicalWireUnit {
     bytes: Vec<u8>,
     offset: usize,
     delivery: CanonicalFrameDelivery,
+    _wire_reservation: Reservation,
 }
 
 impl CanonicalResponseTracker {
@@ -432,15 +433,15 @@ impl CanonicalResponseTracker {
         if !bytes.is_empty() {
             let charge = super::capture_charge(bytes.capacity(), 1)
                 .ok_or("canonical_capture_budget_overflow")?;
-            self.pending_delivery.reservations.push(
-                self.budget
-                    .reserve(MemoryRole::OutputQueue, charge)
-                    .map_err(|_| "canonical_capture_budget_exceeded")?,
-            );
+            let wire_reservation = self
+                .budget
+                .reserve(MemoryRole::OutputQueue, charge)
+                .map_err(|_| "canonical_capture_budget_exceeded")?;
             self.pending.push_back(CanonicalWireUnit {
                 bytes,
                 offset: 0,
                 delivery: std::mem::take(&mut self.pending_delivery),
+                _wire_reservation: wire_reservation,
             });
         }
         Ok(())

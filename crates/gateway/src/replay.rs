@@ -16,6 +16,7 @@ use thiserror::Error;
 
 use crate::content_ref::ContentRef;
 
+mod overflow;
 mod secure_path;
 mod stream;
 #[cfg(windows)]
@@ -25,12 +26,16 @@ mod stream;
 #[allow(unsafe_code)]
 mod windows_acl;
 
+pub(crate) use overflow::{
+    OverflowFactory, OverflowQuota, OverflowRange, OverflowStats, OverflowWriter,
+};
 pub use stream::ReplayReader;
 use stream::{ReplayStream, ReplayStreamBuilder};
 pub(crate) use stream::{write_canonical_json, write_canonical_object};
 
-// Spill before a single large JSON string and serde's decode scratch can
-// compete for the same 8 MiB request memory budget.
+// Raw Replay backing has its own unchanged residency policy. This is separate
+// from the encoded Content overflow queue and from forwarding accounting; the
+// latter records allocations instead of enforcing a fixed 8 MiB request cap.
 const DEFAULT_MEMORY_THRESHOLD: usize = 1024 * 1024;
 const DEFAULT_RECORD_BYTES: usize = 16 * 1024;
 const DEFAULT_ORPHAN_TTL: Duration = Duration::from_secs(24 * 60 * 60);

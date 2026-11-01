@@ -111,8 +111,8 @@ impl<W: ObservationCommitPort> ObservationRecordSink for GatewayExecutionFactSin
     }
 }
 
-/// Content-v2 receiver. Each begin/append/finish/abort event is committed independently and its
-/// rich ACK/NACK is returned without an adapter-owned checkpoint or acknowledgement cache.
+/// Content-v2 receiver. A bounded ordered prefix can share one durability
+/// barrier; rich feedback stays per envelope, without an adapter-owned checkpoint.
 pub struct GatewayConversationContentSink<W> {
     writer: Arc<W>,
     #[cfg(feature = "integration-test-hooks")]
@@ -135,6 +135,76 @@ impl<W> GatewayConversationContentSink<W> {
 impl<W: ObservationCommitPort> ConversationContentSink for GatewayConversationContentSink<W> {}
 
 impl<W: ObservationCommitPort> ObservationRecordSink for GatewayConversationContentSink<W> {
+    fn deliver_batch(
+        &self,
+        records: &[ObservationRecord],
+    ) -> Vec<Result<ObservationAck, ObservationNack>> {
+        if records.is_empty() {
+            return Vec::new();
+        }
+        if records.iter().any(ObservationRecord::is_gap_heartbeat) {
+            let mut results = Vec::new();
+            for record in records {
+                let result = self.deliver(record);
+                let rejected = result.is_err();
+                results.push(result);
+                if rejected {
+                    break;
+                }
+            }
+            return results;
+        }
+        let mut envelopes = Vec::new();
+        let mut rejected = None;
+        for record in records {
+            let result = project_content_payload(record.payload())
+                .map_err(DeliveryError::Projection)
+                .and_then(|envelope| {
+                    ensure_content_stamp(record, &envelope)?;
+                    Ok(envelope)
+                });
+            match result {
+                Ok(envelope) => envelopes.push(envelope),
+                Err(error) => {
+                    rejected = Some(error);
+                    break;
+                }
+            }
+        }
+        #[cfg(feature = "integration-test-hooks")]
+        if !envelopes.is_empty()
+            && self
+                .fail_once
+                .swap(false, std::sync::atomic::Ordering::AcqRel)
+        {
+            return vec![Err(delivery_nack(
+                &records[0],
+                DeliveryError::ReceiverUnavailable(true),
+            ))];
+        }
+        let references: Vec<_> = envelopes.iter().collect();
+        let outcomes = if references.is_empty() {
+            Vec::new()
+        } else {
+            match self.writer.ingest_content_batch(&references) {
+                Ok(outcomes) => outcomes,
+                Err(error) => return vec![Err(delivery_nack(&records[0], store_error(error)))],
+            }
+        };
+        let mut results: Vec<_> = records
+            .iter()
+            .zip(outcomes)
+            .map(|(record, outcome)| isolate(record, || project(ingest_feedback(outcome))))
+            .collect();
+        if results.len() == envelopes.len()
+            && results.iter().all(Result::is_ok)
+            && let Some(error) = rejected
+        {
+            results.push(Err(delivery_nack(&records[results.len()], error)));
+        }
+        results
+    }
+
     fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack> {
         isolate(record, || {
             let outcome = if record.is_gap_heartbeat() {

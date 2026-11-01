@@ -598,13 +598,41 @@ mod tests {
             .env_clear()
             .env("HOME", &native.home)
             .env("PATH", path);
-        super::super::native_probe_process::capture(
+        #[cfg(not(windows))]
+        let result = super::super::native_probe_process::capture(
             command,
             false,
             std::time::Duration::from_secs(5),
             4096,
-        )
-        .unwrap();
+        );
+        #[cfg(windows)]
+        let result = super::super::windows_runtime::bounded_diagnose_error(
+            &command,
+            false,
+            std::time::Duration::from_secs(5),
+            4096,
+            |bytes| {
+                let text = String::from_utf8_lossy(bytes).to_ascii_lowercase();
+                eprintln!(
+                    "native Git closed stderr: bytes={} invalid_path={} invalid_reference={} create_directory={} access_denied={} repository={} verbatim={}",
+                    bytes.len(),
+                    text.contains("invalid path") || text.contains("invalid argument"),
+                    text.contains("invalid reference") || text.contains("not a valid object name"),
+                    text.contains("create directory")
+                        || text.contains("create leading directories"),
+                    text.contains("permission denied") || text.contains("access is denied"),
+                    text.contains("not a git repository")
+                        || text.contains("not in a git directory"),
+                    text.contains(r"\\?\")
+                );
+            },
+        );
+        result.unwrap_or_else(|error| {
+            panic!(
+                "native Git fixture command {:?} failed: {error:?}",
+                args.first()
+            )
+        });
     }
 
     #[test]
@@ -641,16 +669,16 @@ mod tests {
             &search_path,
         );
         let linked = base.join("linked");
+        // Keep canonical paths for native identity checks, but pass Git the
+        // ordinary drive spelling rather than Rust's Win32 verbatim prefix.
+        #[cfg(windows)]
+        let linked_argument = linked.to_str().unwrap().trim_start_matches(r"\\?\");
+        #[cfg(not(windows))]
+        let linked_argument = linked.to_str().unwrap();
         git(
             &native,
             &repository,
-            &[
-                "worktree",
-                "add",
-                "--detach",
-                linked.to_str().unwrap(),
-                "HEAD",
-            ],
+            &["worktree", "add", "--detach", linked_argument, "HEAD"],
             &search_path,
         );
         let foreign_config = base.join("opencode.json");

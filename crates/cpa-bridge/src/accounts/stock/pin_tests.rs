@@ -169,13 +169,23 @@ impl Fixture {
                     body.len()
                 );
                 if let Err(error) = written {
-                    assert!(matches!(
+                    let disconnected = matches!(
                         error.kind(),
                         std::io::ErrorKind::BrokenPipe
                             | std::io::ErrorKind::ConnectionReset
                             | std::io::ErrorKind::TimedOut
                             | std::io::ErrorKind::WouldBlock
-                    ));
+                    );
+                    // Winsock may report WSAECONNABORTED after the caller's
+                    // deadline closes the request, as in the control-race fixture.
+                    #[cfg(windows)]
+                    let disconnected = disconnected || error.raw_os_error() == Some(10053);
+                    assert!(
+                        disconnected,
+                        "fixture response write failed outside closed socket errors: kind={:?} native={:?}",
+                        error.kind(),
+                        error.raw_os_error()
+                    );
                 }
             }
         });
@@ -317,7 +327,12 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
         let _ = std::net::TcpStream::connect(self.address);
-        self.worker.take().unwrap().join().unwrap();
+        let result = self.worker.take().unwrap().join();
+        // Keep the original test failure instead of aborting the whole harness
+        // with a second panic while unwinding. A cleanup-only failure still fails.
+        if !thread::panicking() {
+            result.unwrap();
+        }
     }
 }
 

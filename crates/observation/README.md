@@ -19,6 +19,18 @@ defaults. Bindings are supplied on every execution. Parameter evaluation, error
 classification, validation, transaction commits, durable ACKs and recovery remain
 unchanged. No queue, content cache or storage format is introduced.
 
+Content persistence can group an already queued ordered prefix of at most 32
+envelopes into one transaction. The Gateway does not wait to fill a batch and
+keeps its existing byte admission. Newly written staging and blob files retain
+their handles through a bounded eight-worker file-sync barrier; only after every
+file barrier and the SQL commit succeed are the original per-envelope ACKs
+returned. A NACK ends the prefix, and later records stay queued until its gap is
+accounted. A file or transaction failure returns no ACK for the transaction.
+Original envelope bytes, digests, feedback identities, replay validation and
+on-disk paths remain unchanged. See `store/ingest/content` and
+`content/durability`; the real-process pressure case covers consecutive streamed
+turns, exact content, complete roots and reopen without a plaintext collector.
+
 `store/gap` resolves an arriving sequence within its exact channel, producer,
 epoch and stream. The stream/end-sequence index skips unrelated streams and
 already-ended gaps; every overlapping gap still retains its scope, loss status
@@ -118,6 +130,10 @@ unreclaimable or protected data may keep usage above this soft threshold.
 Page release consumes each bounded incremental-vacuum result and yields to pinned
 readers before selecting more requests. Request cleanup starts from existing
 request indices so unrelated workspace history does not consume its SQL budget.
+Sensitive payloads, link evidence and native-root evidence have universal
+workspace/request seek indexes; session-only or partial candidate indexes do not
+bound a request's absent-member lookup. Current-store reopen installs missing
+derived indexes once without rewriting evidence or changing the format marker.
 Turn cleanup has a workspace/turn request lookup index, including on current-store
 reopen. A large WAL still receives a nonwaiting checkpoint attempt: its physical
 high-water mark is not evidence of remaining frames or a reason to block forever.

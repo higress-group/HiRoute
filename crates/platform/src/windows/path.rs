@@ -233,7 +233,7 @@ fn relative_with_write_policy(
     Ok(file)
 }
 
-fn check_type(file: &File, directory: bool) -> io::Result<()> {
+pub(super) fn check_type(file: &File, directory: bool) -> io::Result<()> {
     let metadata = file.metadata()?;
     if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
         || metadata.is_dir() != directory

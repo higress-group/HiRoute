@@ -1,6 +1,7 @@
 //! Rejected proxy attempts from the pinned, account-free packaged CPA journey.
 //! No upstream connection or TLS tunnel is created. CONNECT identifies an origin,
 //! not its encrypted path, request body, OAuth success or model authorization.
+use sha2::{Digest, Sha256};
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -12,9 +13,9 @@ use zeroize::Zeroizing;
 const HEADER_BOUND: usize = 8 * 1024;
 const CONNECTION_BOUND: Duration = Duration::from_secs(2);
 const ATTEMPT_BOUND: usize = 64;
-// Exact a270e7b9e57aaecd8f82555f44c2108518ad2330 source:
-// cmd/server/main.go:790-794 starts this updater even with --local-model.
-// internal/misc/antigravity_version.go:29,187-202 uses this HTTPS origin through
+// Exact dbb706215a3afd2f0ea3c96482d4233856466caa source:
+// cmd/server/main.go:833 starts this updater even with --local-model.
+// internal/misc/antigravity_version.go:32,215-232 uses this HTTPS origin through
 // Go's default transport. This is deliberately an origin comparison, not a claim
 // that the manifest path has been observed through an encrypted tunnel.
 const UPDATER: &str = "antigravity-hub-auto-updater-974169037036.us-central1.run.app:443";
@@ -57,6 +58,10 @@ enum Method {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Destination {
     StockVersionUpdaterOrigin,
+    // Diagnostic distinctions only: the managed config disables this updater,
+    // and neither management origin is an approved account-free attempt.
+    ManagementReleaseOrigin,
+    ManagementFallbackOrigin,
     CodexOAuth,
     ClaudeOAuth,
     CodexModelOrigin,
@@ -66,6 +71,8 @@ enum Destination {
 fn destination(value: &str) -> Destination {
     match value {
         UPDATER => Destination::StockVersionUpdaterOrigin,
+        "api.github.com:443" => Destination::ManagementReleaseOrigin,
+        "cpamc.router-for.me:443" => Destination::ManagementFallbackOrigin,
         "auth.openai.com:443" => Destination::CodexOAuth,
         "claude.ai:443" | "console.anthropic.com:443" => Destination::ClaudeOAuth,
         "chatgpt.com:443" => Destination::CodexModelOrigin,
@@ -78,6 +85,9 @@ fn destination(value: &str) -> Destination {
 struct HeaderFacts {
     method: Method,
     destination: Destination,
+    // Test-only equality evidence for a previously unknown CONNECT authority.
+    // No origin text, URL path, authentication or raw header is retained.
+    unknown_destination_digest: Option<[u8; 32]>,
     valid: bool,
     authentication: bool,
     body: bool,
@@ -87,6 +97,7 @@ fn classify(bytes: &[u8]) -> HeaderFacts {
     let mut facts = HeaderFacts {
         method: Method::Other,
         destination: Destination::Other,
+        unknown_destination_digest: None,
         valid: false,
         authentication: false,
         body: false,
@@ -111,6 +122,9 @@ fn classify(bytes: &[u8]) -> HeaderFacts {
         _ => Method::Other,
     };
     facts.destination = destination(fields[1]);
+    if facts.destination == Destination::Other {
+        facts.unknown_destination_digest = Some(Sha256::digest(fields[1].as_bytes()).into());
+    }
     let mut hosts = 0;
     let mut agents = 0;
     for line in lines {
@@ -284,7 +298,7 @@ impl Observation {
             serde_json::from_str(include_str!("../../../../vendor/cpa/source.json")).unwrap();
         assert!(
             source["repository"] == "https://github.com/router-for-me/CLIProxyAPI"
-                && source["commit"] == "a270e7b9e57aaecd8f82555f44c2108518ad2330",
+                && source["commit"] == "dbb706215a3afd2f0ea3c96482d4233856466caa",
             "updater-origin observation must be reviewed for the actual pinned CPA source"
         );
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -445,6 +459,8 @@ mod tests {
     fn only_exact_pinned_updater_origin_is_an_approved_rejected_connect() {
         assert!(approved(&request(UPDATER, "")));
         for target in [
+            "api.github.com:443",
+            "cpamc.router-for.me:443",
             "auth.openai.com:443",
             "claude.ai:443",
             "chatgpt.com:443",

@@ -1,6 +1,7 @@
 pub(crate) mod fingerprint;
 mod history;
 mod identity;
+mod replay_json;
 mod routing;
 mod store;
 
@@ -15,9 +16,11 @@ use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
 #[cfg(test)]
 pub(crate) use history::visible_history;
-pub(crate) use history::write_canonical_json_with_replay;
 pub(crate) use history::{HistoryEvidence, visible_history_with_replay};
 pub(crate) use history::{branch_anchors, observed_history_with_replay};
+pub(crate) use replay_json::{
+    CanonicalJsonReplayCursor, JsonFuel, JsonPumpStatus, write_canonical_json_with_replay,
+};
 
 #[derive(Clone, Debug)]
 pub(crate) struct HistoryAnchors {

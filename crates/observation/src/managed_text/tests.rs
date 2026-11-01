@@ -31,6 +31,85 @@ fn complete(store: &LocalObservationStore, input: &ManagedTextInput) -> ManagedT
 }
 
 #[test]
+fn retained_visibility_reader_observes_later_commits_without_pinning_wal() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = store(directory.path());
+    let event = input("reader-a", 10);
+    let reference = store.managed_text_put(&event, 100).unwrap();
+    let mut reader = store.managed_text_reader().unwrap();
+    assert_eq!(
+        reader.resolve(&event.scope, &reference, 100).unwrap().state,
+        ManagedTextState::Pending
+    );
+    let completed = complete(&store, &event);
+    assert_eq!(
+        reader.resolve(&event.scope, &reference, 100).unwrap(),
+        completed
+    );
+    assert!(reader.connection.is_autocommit());
+    let checkpoint_busy: i64 = store
+        .connection
+        .lock()
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(checkpoint_busy, 0);
+
+    let preview = store
+        .managed_text_delete_preview(&event.scope, 100, 100)
+        .unwrap();
+    let deletion = store.managed_text_delete_apply(&preview).unwrap();
+    let hidden = reader.resolve(&event.scope, &reference, 100).unwrap();
+    assert_eq!(hidden.state, ManagedTextState::Deleted);
+    assert_eq!(hidden.visibility_generation, deletion.visibility_generation);
+
+    let later = input("reader-b", 101);
+    let later_ref = store.managed_text_put(&later, 200).unwrap();
+    assert_eq!(
+        reader.resolve(&later.scope, &later_ref, 200).unwrap(),
+        later_ref
+    );
+    assert_eq!(
+        reader
+            .resolve(&later.scope, &later_ref, 101 + RETENTION_MS)
+            .unwrap()
+            .state,
+        ManagedTextState::Expired
+    );
+    assert!(reader.connection.is_autocommit());
+}
+
+#[test]
+fn retained_visibility_reader_keeps_scope_and_reference_validation() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = store(directory.path());
+    let event = input("reader-scope", 10);
+    let reference = complete(&store, &event);
+    let mut reader = store.managed_text_reader().unwrap();
+    let mut other = event.scope.clone();
+    other.run_id = "another-run".into();
+    assert_eq!(
+        reader.resolve(&other, &reference, 100),
+        Err(ManagedTextError::ScopeMismatch)
+    );
+    let mut forged = reference.clone();
+    forged.scope = other.clone();
+    assert_eq!(
+        reader.resolve(&other, &forged, 100),
+        Err(ManagedTextError::Unavailable)
+    );
+    forged = reference.clone();
+    forged.opaque_id.clear();
+    assert_eq!(
+        reader.resolve(&event.scope, &forged, 100),
+        Err(ManagedTextError::Invalid)
+    );
+    assert_eq!(
+        reader.resolve(&event.scope, &reference, 100).unwrap(),
+        reference
+    );
+}
+
+#[test]
 fn event_retries_preserve_deadline_and_conflicting_content_is_rejected() {
     let directory = tempfile::tempdir().unwrap();
     let store = store(directory.path());

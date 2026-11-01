@@ -562,6 +562,11 @@ HiRoute SHALL allow the local installation owner to save or disable one durable 
 - **WHEN** capacity retention commits a request's logical retirement and its physical cleanup is interrupted or deferred, including across restart
 - **THEN** fresh Plan-quality reads immediately omit stages ending in that request and omit assessments triggered by it from samples, filters and summary scores; existing quality cursors become stale, while unrelated retained evidence remains unchanged and physical cleanup resumes in bounded passes. Content-only deletion retains current request membership, stages and scores.
 
+#### Scenario: Unrelated history cannot consume a retired request's cleanup budget
+
+- **WHEN** a bounded capacity pass resumes a retired request amid a large retained workspace, including a cleanup table with no remaining row for that request
+- **THEN** selection uses the exact workspace/request key rather than scanning unrelated session payloads, link evidence or native-root evidence; current-format reopen installs missing derived indexes without rewriting retained rows, changing the format or policy, extending the maintenance budget, or weakening shared-reference and replay barriers.
+
 #### Scenario: Physical release is reported honestly
 
 - **WHEN** retired detail is hidden but shared survivors or reusable database pages prevent immediate file shrink

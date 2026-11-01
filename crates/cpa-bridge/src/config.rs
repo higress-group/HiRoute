@@ -652,7 +652,7 @@ mod tests {
 
     #[test]
     fn managed_config_requires_cloaking_and_recovers_a_hashed_live_configuration() {
-        let temp = tempfile::tempdir().unwrap();
+        let temp = crate::private_test_support::tempdir().unwrap();
         let auth = temp.path().join("auth");
         ensure_private_dir(&auth).unwrap();
         let secrets = InstanceSecrets::generate().unwrap();

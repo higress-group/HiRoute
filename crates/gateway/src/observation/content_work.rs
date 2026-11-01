@@ -1,90 +1,35 @@
-//! Ordered, optional content encoding. Runtime accepted-output history is
-//! updated before work reaches this lane and never waits for its completion.
-use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{SyncSender, sync_channel};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
-
-use serde_json::Value;
-
-use crate::replay::ReplayStore;
-use crate::server::core_runtime::model_ir::{
-    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource,
-    ModelRequestIRV1, OpaqueProviderState, ToolOutput,
-};
-
+//! Optional Content source ownership. Canonical history/usage are updated first.
 use super::RequestObservation;
 use super::content::CanonicalFrameDelivery;
 use super::producer::{ChannelProducer, ObservationWorkReservation};
 use super::request::AttemptObservation;
 use super::schema::LifecycleFactV1;
+use crate::replay::ReplayStore;
+use crate::server::core_runtime::model_ir::{
+    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource,
+    ModelRequestIRV1, OpaqueProviderState, ToolOutput,
+};
+use serde_json::Value;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
-const JOB_SLOTS: usize = 256;
-const JOB_OVERHEAD: usize = 1024;
-// Optional capture may park for credit; it never extends a model deadline.
-// Bound each stalled credit wait; successful records keep making progress without
-// an arbitrary whole-transcript deadline or a polling/retry loop.
-const CREDIT_WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(1);
+#[path = "content_work/queue.rs"]
+mod queue;
+#[cfg(test)]
+pub(super) use queue::ContentGate;
+pub(super) use queue::ContentStatus;
+use queue::{Command, JOB_OVERHEAD, WorkQueue};
 
-fn queue_storage_bytes() -> usize {
-    JOB_SLOTS * (std::mem::size_of::<Box<Job>>() + 2 * std::mem::size_of::<usize>()) + JOB_OVERHEAD
-}
+const SNAPSHOT_LIMIT: usize = 16 * 1024 * 1024;
+// Lazy cursor buffers, borrowed object indexes/stack are charged separately.
+const CURSOR_BUFFERS: usize = 96 * 1024;
 
 #[derive(Clone, Default)]
 pub(super) struct ContentWorkProducer {
     shared: Arc<OnceLock<Arc<WorkQueue>>>,
     initialize: Arc<Mutex<()>>,
     #[cfg(test)]
-    gate: Option<Arc<(Mutex<bool>, std::sync::Condvar)>>,
-}
-
-struct WorkQueue {
-    sender: SyncSender<Box<Job>>,
-}
-
-#[derive(Default)]
-pub(super) struct ContentStatus {
-    failed: AtomicBool,
-    response_begin: AtomicBool,
-    response_terminal: AtomicBool,
-}
-
-impl ContentStatus {
-    pub(super) fn failed(&self) -> bool {
-        self.failed.load(Ordering::Acquire)
-    }
-
-    pub(super) fn stop(&self) {
-        self.failed.store(true, Ordering::Release);
-    }
-}
-
-struct Job {
-    request: RequestObservation,
-    status: Arc<ContentStatus>,
-    queued: Instant,
-    command: Command,
-    _retained: ObservationWorkReservation,
-}
-
-enum Command {
-    #[cfg(test)]
-    Barrier(SyncSender<()>),
-    Request {
-        snapshot: Box<RequestSnapshot>,
-        replay: ReplayStore,
-    },
-    BeginResponse(Arc<AttemptObservation>),
-    Delivery {
-        attempt: Arc<AttemptObservation>,
-        frame_id: String,
-        delivery: CanonicalFrameDelivery,
-    },
-    TerminalResponse {
-        phase: &'static str,
-        reason: Option<&'static str>,
-    },
+    gate: queue::Gate,
 }
 
 struct RequestSnapshot {
@@ -93,170 +38,49 @@ struct RequestSnapshot {
     tools: Vec<CanonicalTool>,
 }
 
-impl ContentWorkProducer {
-    #[cfg(test)]
-    pub(super) fn paused() -> (Self, ContentGate) {
-        let gate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
-        (
-            Self {
-                gate: Some(Arc::clone(&gate)),
-                ..Self::default()
-            },
-            ContentGate(gate),
-        )
-    }
-
-    #[cfg(test)]
-    pub(super) fn flush(&self, request: &RequestObservation) {
-        let queue = self.shared.get().expect("started content worker");
-        let (sender, receiver) = sync_channel(1);
-        let reservation = request
-            .inner
-            .channels
-            .content
-            .reserve_work(JOB_OVERHEAD)
-            .unwrap();
-        let mut job = Box::new(Job {
-            request: request.clone(),
-            status: Arc::new(ContentStatus::default()),
-            queued: Instant::now(),
-            command: Command::Barrier(sender),
-            _retained: reservation,
-        });
-        let deadline = Instant::now() + std::time::Duration::from_secs(5);
-        loop {
-            match queue.sender.try_send(job) {
-                Ok(()) => break,
-                Err(std::sync::mpsc::TrySendError::Full(returned)) if Instant::now() < deadline => {
-                    job = returned;
-                    std::thread::yield_now();
-                }
-                Err(_) => panic!("content worker barrier unavailable"),
-            }
-        }
-        receiver
-            .recv_timeout(std::time::Duration::from_secs(5))
-            .unwrap();
-    }
-
-    fn queue(&self, content: &ChannelProducer) -> Option<Arc<WorkQueue>> {
-        if let Some(queue) = self.shared.get() {
-            return Some(Arc::clone(queue));
-        }
-        // Initialization failure is transient; do not cache an unavailable
-        // worker forever after one request encounters capacity pressure.
-        let _initializing = self.initialize.try_lock().ok()?;
-        if let Some(queue) = self.shared.get() {
-            return Some(Arc::clone(queue));
-        }
-        let slots = content.reserve_work(queue_storage_bytes())?;
-        let (sender, receiver) = sync_channel::<Box<Job>>(JOB_SLOTS);
-        #[cfg(test)]
-        let gate = self.gate.clone();
-        std::thread::Builder::new()
-            .name("hiroute-content-capture".into())
-            .spawn(move || {
-                let _slots = slots;
-                while let Ok(job) = receiver.recv() {
-                    let mut job = *job;
-                    #[cfg(test)]
-                    if let Some(gate) = &gate {
-                        let mut open = gate.0.lock().unwrap();
-                        while !*open {
-                            open = gate.1.wait(open).unwrap();
-                        }
-                    }
-                    if matches!(&job.command, Command::Request { .. }) {
-                        // One active source is bounded by its admission under
-                        // the existing Content ceiling. Release queue credit
-                        // for encoded records; queued sources plus records
-                        // remain under that ceiling, with at most one active
-                        // source of the same maximum size. Shared Replay RAM
-                        // retains its original allocation reservations.
-                        job._retained.shrink_to(JOB_OVERHEAD);
-                    }
-                    let started = Instant::now();
-                    let mut request = job.request.clone();
-                    request.content_credit_wait = Some(CREDIT_WAIT_LIMIT);
-                    let failed = job.status.failed.load(Ordering::Acquire);
-                    if !failed {
-                        let result =
-                            catch_unwind(AssertUnwindSafe(|| process(&request, job.command)));
-                        match result {
-                            Ok(true) => {}
-                            Ok(false) => request
-                                .fail_content_work(&job.status, "content_capture_unavailable"),
-                            Err(_) => request
-                                .fail_content_work(&job.status, "content_capture_worker_panicked"),
-                        }
-                    }
-                    if let Some(latency) = &request.inner.latency {
-                        latency.capture_completed(
-                            job.queued,
-                            started,
-                            failed || job.status.failed.load(Ordering::Acquire),
-                        );
-                    }
-                }
-            })
-            .ok()?;
-        let queue = Arc::new(WorkQueue { sender });
-        let _ = self.shared.set(Arc::clone(&queue));
-        Some(queue)
+pub(super) struct CaptureRun(Mutex<(usize, usize, Instant)>);
+impl CaptureRun {
+    fn new() -> Self {
+        Self(Mutex::new((0, 0, Instant::now())))
     }
 }
 
-fn process(request: &RequestObservation, command: Command) -> bool {
-    match command {
-        #[cfg(test)]
-        Command::Barrier(sender) => {
-            let _ = sender.send(());
-            true
-        }
-        Command::Request { snapshot, replay } => request.capture_request_payload(
-            &snapshot.instructions,
-            &snapshot.messages,
-            &snapshot.tools,
-            &replay,
-        ),
-        Command::BeginResponse(attempt) => {
-            request.begin_content("response_delivered", Some(&attempt));
-            true
-        }
-        Command::Delivery {
-            attempt,
-            frame_id,
-            delivery,
-        } => {
-            request.emit_response_content(&attempt, &frame_id, delivery);
-            true
-        }
-        Command::TerminalResponse { phase, reason } => {
-            request.terminal_content("response_delivered", phase, reason);
-            true
-        }
-    }
-}
-
-#[cfg(test)]
-pub(super) struct ContentGate(Arc<(Mutex<bool>, std::sync::Condvar)>);
-
-#[cfg(test)]
-impl ContentGate {
-    pub(super) fn release(&self) {
-        *self.0.0.lock().unwrap() = true;
-        self.0.1.notify_all();
-    }
-}
-
-#[cfg(test)]
-impl Drop for ContentGate {
-    fn drop(&mut self) {
-        self.release();
+/// The synchronous fallback has no runtime, blocking executor or polling loop.
+/// Its same traversal has no suspension points when background is false.
+pub(super) fn inline<F: std::future::Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.as_mut().poll(&mut context) {
+        std::task::Poll::Ready(value) => value,
+        std::task::Poll::Pending => panic!("Inline Content unexpectedly suspended"),
     }
 }
 
 impl RequestObservation {
+    pub(super) async fn content_checkpoint(&self, bytes: usize, force: bool) {
+        let Some(run) = &self.content_run else {
+            return;
+        };
+        let should_yield = {
+            let mut state = run.0.lock().unwrap_or_else(|error| error.into_inner());
+            state.0 += 1;
+            state.1 = state.1.saturating_add(bytes);
+            if force
+                || state.0 >= 32
+                || state.1 >= 256 * 1024
+                || state.2.elapsed() >= std::time::Duration::from_millis(2)
+            {
+                *state = (0, 0, Instant::now());
+                true
+            } else {
+                false
+            }
+        };
+        if should_yield {
+            tokio::task::yield_now().await;
+        }
+    }
+
     pub(crate) fn capture_request_async(&self, request: &ModelRequestIRV1, replay: &ReplayStore) {
         if !self.is_enabled() {
             return;
@@ -267,31 +91,44 @@ impl RequestObservation {
         if !self.captures_content() {
             return;
         }
+        self.inner.content_spool.bind(replay.overflow_factory());
         let bytes = snapshot_bytes(request);
-        let retained = bytes.saturating_add(replay.content_lease_memory_bytes());
-        if !self.inner.channels.content.work_can_fit(
-            retained
-                .saturating_add(JOB_OVERHEAD)
-                .saturating_add(queue_storage_bytes()),
-        ) {
-            #[cfg(feature = "e2e-test-control")]
-            eprintln!(
-                "capture request fallback: reason=snapshot_size bytes={bytes} state={:?}",
-                self.inner.channels.content.work_state()
-            );
+        let retained = bytes
+            .saturating_add(replay.content_lease_memory_bytes())
+            .saturating_add(snapshot_cursor_bytes(request));
+        if bytes > SNAPSHOT_LIMIT
+            || !self
+                .inner
+                .channels
+                .content
+                .work_can_fit(retained.saturating_add(JOB_OVERHEAD))
+        {
             self.capture_request_fallback(request, replay);
             return;
         }
-        let Some((queue, reservation)) = self.content_work_reservation(retained) else {
-            #[cfg(feature = "e2e-test-control")]
-            eprintln!(
-                "capture request fallback: reason=shared_credit bytes={bytes} state={:?}",
-                self.inner.channels.content.work_state()
-            );
-            // Another request can occupy the optional snapshot allowance even
-            // when this snapshot fits alone. No content has been queued for
-            // this request yet: keep the original nonblocking encoder instead
-            // of declaring a gap merely because optional ownership was refused.
+        let Some(queue) = self
+            .inner
+            .channels
+            .content_work
+            .queue(&self.inner.channels.content)
+        else {
+            self.capture_request_fallback(request, replay);
+            return;
+        };
+        let status = self
+            .inner
+            .async_content
+            .get_or_init(|| Arc::new(ContentStatus::default()));
+        if !queue.register(self, status) {
+            self.capture_request_fallback(request, replay);
+            return;
+        }
+        let Some(reservation) = self
+            .inner
+            .channels
+            .content
+            .reserve_work(retained.saturating_add(JOB_OVERHEAD))
+        else {
             self.capture_request_fallback(request, replay);
             return;
         };
@@ -300,39 +137,35 @@ impl RequestObservation {
             self.capture_request_fallback(request, replay);
             return;
         };
-        let status = self
-            .inner
-            .async_content
-            .get_or_init(|| Arc::new(ContentStatus::default()));
-        // Capture only the fields consumed by the existing observation encoder.
-        // The native wire tree and routing/history metadata are never cloned.
         let snapshot = Box::new(RequestSnapshot {
             instructions: request.instructions.clone(),
             messages: request.messages.clone(),
             tools: request.tools.clone(),
         });
-        self.send_content_work(
+        if !queue.push_data(
+            self,
             status,
-            queue,
             reservation,
             Command::Request {
                 snapshot,
                 replay: lease,
             },
-        );
+        ) {
+            self.fail_content_work(status, "content_capture_queue_unavailable");
+        }
     }
 
     fn capture_request_fallback(&self, request: &ModelRequestIRV1, replay: &ReplayStore) {
+        let status = self
+            .inner
+            .async_content
+            .get_or_init(|| Arc::new(ContentStatus::default()));
         if !self.capture_request_payload(
             &request.instructions,
             &request.messages,
             &request.tools,
             replay,
         ) {
-            let status = self
-                .inner
-                .async_content
-                .get_or_init(|| Arc::new(ContentStatus::default()));
             self.fail_content_work(status, "content_capture_unavailable");
         }
     }
@@ -345,12 +178,13 @@ impl RequestObservation {
             self.begin_content("response_delivered", Some(attempt));
             return;
         };
-        if status.response_begin.swap(true, Ordering::AcqRel) {
+        if status
+            .response_begin
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
             return;
         }
-        self.enqueue_content_work(status, attempt_bytes(attempt), || {
-            Command::BeginResponse(Arc::new(attempt.clone()))
-        });
+        self.enqueue_content_control(status, Command::BeginResponse(attempt.attempt_id.clone()));
     }
 
     pub(super) fn finish_response_content(
@@ -365,32 +199,58 @@ impl RequestObservation {
             self.terminal_content("response_delivered", phase, reason);
             return;
         };
-        if status.response_terminal.swap(true, Ordering::AcqRel) {
+        if status
+            .response_terminal
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
             return;
         }
-        self.enqueue_content_work(status, JOB_OVERHEAD, || Command::TerminalResponse {
-            phase,
-            reason,
-        });
+        self.enqueue_content_control(status, Command::TerminalResponse { phase, reason });
+    }
+
+    fn enqueue_content_control(&self, status: &Arc<ContentStatus>, command: Command) {
+        let queue = self
+            .inner
+            .channels
+            .content_work
+            .queue(&self.inner.channels.content);
+        if !queue.is_some_and(|queue| queue.push_control(self, status, command)) {
+            self.fail_content_work(status, "content_capture_control_unavailable");
+        }
     }
 
     pub(super) fn defer_response_content(
         &self,
         attempt: &AttemptObservation,
         frame_id: &str,
-        delivery: CanonicalFrameDelivery,
+        mut delivery: CanonicalFrameDelivery,
     ) {
         let Some(status) = self.inner.async_content.get() else {
             self.emit_response_content(attempt, frame_id, delivery);
             return;
         };
-        let bytes = delivery
+        if status.failed() {
+            return;
+        }
+        let retained = delivery
             .reservations
             .iter()
-            .fold(
-                attempt_bytes(attempt).saturating_add(frame_id.len()),
-                |size, reservation| size.saturating_add(reservation.bytes()),
-            )
+            .fold(0usize, |size, item| size.saturating_add(item.bytes()));
+        let retained = if retained == 0 {
+            let mut size = SerializedSize(0);
+            if serde_json::to_writer(&mut size, &delivery.events).is_err() {
+                self.fail_content_work(status, "content_capture_unavailable");
+                return;
+            }
+            size.0.saturating_mul(4).saturating_add(512)
+        } else {
+            retained
+        };
+        let bytes = attempt
+            .attempt_id
+            .len()
+            .saturating_add(frame_id.len())
+            .saturating_add(retained)
             .saturating_add(
                 delivery
                     .events
@@ -398,124 +258,114 @@ impl RequestObservation {
                     .saturating_mul(std::mem::size_of::<
                         crate::server::core_runtime::model_ir::ModelStreamEventV1,
                     >()),
-            );
-        self.enqueue_content_work(status, bytes, || Command::Delivery {
-            attempt: Arc::new(attempt.clone()),
-            frame_id: frame_id.into(),
-            delivery,
-        });
-    }
-
-    fn enqueue_content_work(
-        &self,
-        status: &Arc<ContentStatus>,
-        bytes: usize,
-        build: impl FnOnce() -> Command,
-    ) {
-        if let Some((queue, reservation)) = self.reserve_content_work(status, bytes) {
-            self.send_content_work(status, queue, reservation, build());
-        }
-    }
-
-    fn reserve_content_work(
-        &self,
-        status: &ContentStatus,
-        bytes: usize,
-    ) -> Option<(Arc<WorkQueue>, ObservationWorkReservation)> {
-        if status.failed.load(Ordering::Acquire) {
-            return None;
-        }
-        let result = self.content_work_reservation(bytes);
-        if result.is_none() {
-            #[cfg(feature = "e2e-test-control")]
-            eprintln!(
-                "capture work reservation refused: bytes={bytes} state={:?}",
-                self.inner.channels.content.work_state()
-            );
-            self.fail_content_work(status, "content_capture_queue_unavailable");
-        }
-        result
-    }
-
-    fn content_work_reservation(
-        &self,
-        bytes: usize,
-    ) -> Option<(Arc<WorkQueue>, ObservationWorkReservation)> {
-        let queue = self
+            )
+            .saturating_add(JOB_OVERHEAD);
+        let Some(queue) = self
             .inner
             .channels
             .content_work
-            .queue(&self.inner.channels.content)?;
-        self.inner
-            .channels
-            .content
-            .reserve_work(bytes.saturating_add(JOB_OVERHEAD))
-            .map(|reservation| (queue, reservation))
-    }
-
-    fn send_content_work(
-        &self,
-        status: &Arc<ContentStatus>,
-        queue: Arc<WorkQueue>,
-        reservation: ObservationWorkReservation,
-        command: Command,
-    ) {
-        let mut request = self.clone();
-        request
-            .content_occurred_at
-            .get_or_insert_with(super::unix_nanos);
-        // Allocate only admitted jobs. JOB_OVERHEAD covers this allocation;
-        // the bounded channel retains pointers instead of 256 maximum-size jobs.
-        let job = Box::new(Job {
-            request,
-            status: Arc::clone(status),
-            queued: Instant::now(),
-            command,
-            _retained: reservation,
-        });
-        if queue.sender.try_send(job).is_err() {
-            self.fail_content_work(status, "content_capture_queue_full");
+            .queue(&self.inner.channels.content)
+        else {
+            self.fail_content_work(status, "content_capture_queue_unavailable");
+            return;
+        };
+        let Some(reservation) = self.inner.channels.content.reserve_work(bytes) else {
+            self.fail_content_work(status, "content_capture_queue_unavailable");
+            return;
+        };
+        // Typed ownership transfers only after independent Content admission.
+        // Wire bytes have their own owner and never enter this transfer.
+        delivery.reservations.clear();
+        if !queue.push_data(
+            self,
+            status,
+            reservation,
+            Command::Delivery {
+                attempt_id: attempt.attempt_id.clone(),
+                frame_id: frame_id.into(),
+                delivery,
+            },
+        ) {
+            self.fail_content_work(status, "content_capture_queue_unavailable");
         }
     }
 
-    fn fail_content_work(&self, status: &ContentStatus, reason: &'static str) {
-        if status.failed.swap(true, Ordering::AcqRel) {
+    pub(super) fn fail_content_work(&self, status: &Arc<ContentStatus>, reason: &'static str) {
+        if !status.note_failure(reason) {
             return;
         }
-        // Reuse the independent bounded loss pulse. It cannot be trapped behind
-        // full payload slots. Never invent a complete transcript after a gap.
         self.inner.channels.content.declare_work_loss();
-        self.terminal_content("request_input", "abort", Some(reason));
-        self.terminal_content("response_delivered", "abort", Some(reason));
-        if let Some(latency) = &self.inner.latency {
-            let now = Instant::now();
-            latency.capture_completed(now, now, true);
+        // Core records only bounded metadata; abort encoding/backing cleanup
+        // belongs to the Content thread, not the transport/history owner.
+        if let Some(queue) = self
+            .inner
+            .channels
+            .content_work
+            .queue(&self.inner.channels.content)
+        {
+            let _ = queue.wake(self, status);
         }
     }
 }
 
-fn attempt_bytes(attempt: &AttemptObservation) -> usize {
-    [
-        &attempt.attempt_id,
-        &attempt.stable_binding_id,
-        &attempt.credential_ref,
-        &attempt.key_id,
-        &attempt.provider_name,
-        &attempt.request_model,
-        &attempt.upstream_protocol,
-        &attempt.model_configuration_id,
-        &attempt.adapter_revision,
-        &attempt.candidate_id,
-        &attempt.profile_digest,
-        &attempt.start_reason,
-    ]
-    .iter()
-    .fold(
-        std::mem::size_of::<AttemptObservation>() + JOB_OVERHEAD,
-        |size, value| size.saturating_add(value.len()),
-    )
-    .saturating_add(attempt.previous_attempt_id.as_ref().map_or(0, String::len))
-    .saturating_add(attempt.cost_class.as_ref().map_or(0, String::len))
+impl ContentWorkProducer {
+    #[cfg(test)]
+    pub(super) fn paused() -> (Self, ContentGate) {
+        let (gate, control) = ContentGate::new();
+        (
+            Self {
+                gate,
+                ..Self::default()
+            },
+            control,
+        )
+    }
+    #[cfg(test)]
+    pub(super) fn flush(&self, request: &RequestObservation) {
+        let queue = self.shared.get().expect("started content worker");
+        let status = request
+            .inner
+            .async_content
+            .get()
+            .expect("registered Content request");
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        assert!(queue.push_control(request, status, Command::Barrier(sender)));
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+    }
+    fn queue(&self, content: &ChannelProducer) -> Option<Arc<WorkQueue>> {
+        if let Some(queue) = self.shared.get() {
+            return Some(Arc::clone(queue));
+        }
+        let _initializing = self.initialize.try_lock().ok()?;
+        if let Some(queue) = self.shared.get() {
+            return Some(Arc::clone(queue));
+        }
+        #[cfg(test)]
+        let gate = self.gate.clone();
+        #[cfg(not(test))]
+        let gate = ();
+        let queue = Arc::new(WorkQueue::spawn(content, gate)?);
+        let _ = self.shared.set(Arc::clone(&queue));
+        Some(queue)
+    }
+}
+
+struct SerializedSize(usize);
+
+impl std::io::Write for SerializedSize {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self
+            .0
+            .checked_add(bytes.len())
+            .ok_or_else(|| std::io::Error::other("content size overflow"))?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 fn snapshot_bytes(request: &ModelRequestIRV1) -> usize {
@@ -613,12 +463,54 @@ fn json_bytes(value: &Value) -> usize {
     }
 }
 
-#[cfg(test)]
-mod allocation_tests {
-    use super::*;
-
-    #[test]
-    fn admitted_job_header_and_allocation_fit_the_existing_per_job_charge() {
-        assert!(std::mem::size_of::<Job>() + 2 * std::mem::size_of::<usize>() <= JOB_OVERHEAD);
+// Only one part is traversed at a time. Reserve its maximum borrowed stack and
+// sorted object index in addition to the immutable source, before cloning it.
+fn snapshot_cursor_bytes(request: &ModelRequestIRV1) -> usize {
+    fn value_bytes(value: &Value) -> usize {
+        let frame = crate::context_hold::CanonicalJsonReplayCursor::frame_bytes();
+        match value {
+            Value::Array(items) => 2 * frame + items.iter().map(value_bytes).max().unwrap_or(0),
+            Value::Object(fields) => {
+                2 * frame
+                    + fields
+                        .len()
+                        .saturating_mul(2 * std::mem::size_of::<(&str, &Value)>())
+                    + fields.values().map(value_bytes).max().unwrap_or(0)
+            }
+            _ => 2 * frame,
+        }
     }
+    fn parts_bytes(parts: &[ContentPart]) -> usize {
+        parts
+            .iter()
+            .map(|part| match part {
+                ContentPart::ToolCall { arguments, .. } => value_bytes(arguments),
+                ContentPart::ToolResult {
+                    output: ToolOutput::Json(value),
+                    ..
+                } => value_bytes(value),
+                ContentPart::ProviderState { state } => value_bytes(&state.value),
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0)
+    }
+    request
+        .instructions
+        .iter()
+        .map(|item| parts_bytes(&item.content))
+        .chain(
+            request
+                .messages
+                .iter()
+                .map(|item| parts_bytes(&item.content)),
+        )
+        .chain(
+            request
+                .tools
+                .iter()
+                .filter_map(|item| item.input_schema.as_ref().map(value_bytes)),
+        )
+        .max()
+        .unwrap_or(0)
 }

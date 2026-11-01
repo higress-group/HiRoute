@@ -14,7 +14,9 @@ use hiroute_domain::ObservationChannel;
 pub use channel::{ConversationContentChannel, FactChannel, OfferOutcome};
 pub use hiroute_domain::{ObservationAckV2, ObservationNackDetailV1, ObservationNackV1};
 pub use lifecycle::BoundedLifecycleReceiverV2;
-pub use port::{IngestOutcome, ObservationCommitPort, ObservationStoreError};
+pub use port::{
+    IngestOutcome, MAX_CONTENT_BATCH_RECORDS, ObservationCommitPort, ObservationStoreError,
+};
 
 #[derive(Clone)]
 pub struct LocalObservationWriter {
