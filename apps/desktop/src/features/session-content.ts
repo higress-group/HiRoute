@@ -2,7 +2,7 @@ export type ReadableEvent = { kind: 'text' | 'reasoning' | 'refusal'; text: stri
 
 // These names come from the canonical Gateway content contract, not text patterns.
 export function isPrivateContentKind(kind: string): boolean {
-  return kind === 'provider_state' || kind === 'reasoning_delta' || kind === 'reasoning_finished';
+  return kind === 'provider_state' || kind === 'reasoning' || kind === 'reasoning_delta' || kind === 'reasoning_finished';
 }
 
 export function isTechnicalContentKind(kind: string): boolean {

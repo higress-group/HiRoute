@@ -44,8 +44,9 @@ identity keeps only the original `metadata` and `client_metadata` roots so
 externalizing native content cannot change Claude/Codex identity enrichment.
 
 [Optional content encoding](src/observation/content_work.rs) uses one ordered,
-bounded worker per observation channel set. Its immutable snapshot retains only
-instructions, messages, tools and charged semantic Replay backing. It does not
+bounded worker per observation channel set. After existing continuity admission,
+its immutable source retains only selected semantic messages and charged Replay
+backing. Setup/tool-definition snapshots and opaque provider state are excluded. It does not
 retain the raw ingress body. Request capture closes before response capture so
 their transcript roots remain related. Accepted-output history and usage update
 at delivery; neither waits for content encoding or SQLite. Capacity or capture
@@ -409,7 +410,11 @@ locators. [Observation regressions](src/observation/content/request_json_replay_
 cover nested strings, tool JSON, literal-marker isolation and missing backing.
 Content-part owners compute message/content identities once and pass them to their
 chunks; the capture lifetime owns its fixed fork identity. Digest algorithms,
-transcript ordering and queued envelope shapes remain unchanged.
+transcript ordering and body-integrity algorithms remain unchanged. The matched private content port
+is v3; semantic response segments preserve status/annotations and conflicting final
+versions without keeping every protocol delta. Queue pressure never falls back to
+synchronous full-history traversal; an admitted part finishes before optional capture
+aborts. First-seen context and current-input anchors do not become scoring authority.
 Response ciphertext remains excluded from retained observation content.
 The response tracker retains accepted lifecycle evidence separately from that
 presentation policy. Converted responses use the protocol renderer's omission

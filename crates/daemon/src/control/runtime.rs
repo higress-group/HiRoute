@@ -668,17 +668,10 @@ impl ProductionControlRuntime {
         let digest_authority = DigestAuthority::new(*observation_workspace_key);
         let observation_root = storage_root.join("observation");
         let observation = Arc::new(
-            if startup.preserve_observation_source {
-                LocalObservationStore::open_fresh_after_seal(
-                    observation_root,
-                    digest_authority.clone(),
-                )
-            } else {
-                LocalObservationStore::open_for_daemon_startup(
-                    observation_root,
-                    digest_authority.clone(),
-                )
-            }
+            LocalObservationStore::open_for_daemon_startup(
+                observation_root,
+                digest_authority.clone(),
+            )
             .map_err(|error| {
                 startup.report_failure(stores.record_observation_startup_failure(
                     storage_root,

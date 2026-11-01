@@ -3,11 +3,9 @@ use super::RequestObservation;
 use super::content::CanonicalFrameDelivery;
 use super::producer::{ChannelProducer, ObservationWorkReservation};
 use super::request::AttemptObservation;
-use super::schema::LifecycleFactV1;
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
-    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource,
-    ModelRequestIRV1, OpaqueProviderState, ToolOutput,
+    CanonicalMessage, ContentPart, ImageSource, ModelRequestIRV1, OpaqueProviderState, ToolOutput,
 };
 use serde_json::Value;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -37,14 +35,13 @@ pub(crate) struct InputCaptureSelection {
     pub(crate) start: usize,
     pub(crate) ordinal_base: usize,
     pub(crate) current_ordinal: Option<u32>,
+    pub(crate) activity_ordinal: u32,
     pub(crate) boundary_verified: bool,
     pub(crate) turn_anchor: Option<String>,
 }
 
 struct RequestSnapshot {
-    instructions: Vec<CanonicalInstruction>,
     messages: Vec<CanonicalMessage>,
-    tools: Vec<CanonicalTool>,
 }
 
 pub(super) struct CaptureRun(Mutex<(usize, usize, Instant)>);
@@ -97,13 +94,30 @@ impl RequestObservation {
         current: Option<usize>,
         turn_anchor: Option<String>,
     ) {
+        let boundary_verified = start.is_some();
+        let activity = if let Some(start) = start {
+            start.min(request.messages.len())
+        } else {
+            // No claim of continuity: retain the observed trailing input
+            // window. Any earlier carried activity is first-seen context only.
+            let tail = request
+                .messages
+                .iter()
+                .rposition(|message| {
+                    message.role == crate::server::core_runtime::model_ir::MessageRole::Assistant
+                })
+                .map_or(0, |index| index + 1);
+            current.filter(|index| *index >= tail).unwrap_or(tail)
+        };
         let start = start.unwrap_or(0).min(request.messages.len());
         let _ = self.inner.input_capture.set(InputCaptureSelection {
             start,
             ordinal_base: request.instructions.len().saturating_add(start),
             current_ordinal: current
                 .and_then(|n| u32::try_from(request.instructions.len().checked_add(n)?).ok()),
-            boundary_verified: start > 0,
+            activity_ordinal: u32::try_from(request.instructions.len().saturating_add(activity))
+                .unwrap_or(u32::MAX),
+            boundary_verified,
             turn_anchor,
         });
     }
@@ -112,9 +126,7 @@ impl RequestObservation {
         if !self.is_enabled() {
             return;
         }
-        self.emit_lifecycle(LifecycleFactV1::CanonicalRequestAccepted {
-            canonicalization_version: "hiroute.model-request-ir/v1".into(),
-        });
+        self.canonical_request_accepted();
         if !self.captures_content() {
             return;
         }
@@ -177,9 +189,7 @@ impl RequestObservation {
             return;
         };
         let snapshot = Box::new(RequestSnapshot {
-            instructions: Vec::new(),
             messages: messages.to_vec(),
-            tools: Vec::new(),
         });
         if !queue.push_data(
             self,
@@ -239,6 +249,11 @@ impl RequestObservation {
         {
             return;
         }
+        let (phase, reason) = if status.failed() {
+            ("abort", Some("content_capture_unavailable"))
+        } else {
+            (phase, reason)
+        };
         self.enqueue_content_control(status, Command::TerminalResponse { phase, reason });
     }
 

@@ -64,14 +64,7 @@ impl ObservationCommitPort for LocalObservationStore {
         {
             let content_erased: bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM sessions WHERE workspace_id=?1 AND session_id=?2 AND content_completeness IN('deleted','expired'))",params![envelope.correlation.workspace_id.as_str(),envelope.correlation.conversation_id.as_str()],|row|row.get(0)).map_err(|_|ObservationStoreError::ActivityUnavailable)?;
             if matches!(outcome, IngestOutcome::Ack(_)) && !content_erased {
-                let facts = super::fact_log::load_request(
-                    &transaction,
-                    &envelope.correlation.workspace_id,
-                    &envelope.correlation.request_id,
-                )?;
-                if !facts.iter().any(|stored| stored == envelope) {
-                    return Err(ObservationStoreError::Corrupt);
-                }
+                super::fact_log::verify_retry(&transaction, envelope)?;
             }
             transaction
                 .commit()

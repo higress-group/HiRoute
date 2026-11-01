@@ -23,7 +23,7 @@ fn seed(store: &LocalObservationStore, blobs: usize, references: usize) {
                  (workspace_id,content_id,message_instance_id,request_id,direction,fork_id,
                   part_ordinal,content_kind,canonical_media_type,content_blob_digest,
                   has_content_ref,accumulated_byte_count,state,created_at_unix_nanos)
-                 VALUES('workspace',?1,'message',?1,'response','fork',0,'text','text/plain',?2,1,7,'complete',1)",
+                 VALUES('workspace',?1,?1,?1,'response','fork',0,'text','text/plain',?2,1,7,'complete',1)",
                 params![format!("content-{id:06}-{reference}"), digest],
             ).unwrap();
         }

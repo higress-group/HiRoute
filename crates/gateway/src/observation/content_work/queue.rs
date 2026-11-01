@@ -345,12 +345,7 @@ async fn process(request: &RequestObservation, command: Command) -> bool {
     match command {
         Command::Request { snapshot, replay } => {
             request
-                .capture_request_payload_run(
-                    &snapshot.instructions,
-                    &snapshot.messages,
-                    &snapshot.tools,
-                    &replay,
-                )
+                .capture_request_payload_run(&snapshot.messages, &replay)
                 .await
         }
         Command::Delivery {
@@ -376,6 +371,17 @@ async fn process(request: &RequestObservation, command: Command) -> bool {
             true
         }
         Command::Abort(reason) => {
+            request.begin_content_at_run("request_input", None).await;
+            let attempt = request
+                .lock_state()
+                .accepted_attempt
+                .as_ref()
+                .map(|a| a.attempt_id.clone());
+            if let Some(attempt) = attempt {
+                request
+                    .begin_content_at_run("response_delivered", Some(&attempt))
+                    .await;
+            }
             request
                 .terminal_content_run("request_input", "abort", Some(reason))
                 .await;

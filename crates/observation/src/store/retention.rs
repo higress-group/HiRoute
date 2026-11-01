@@ -655,6 +655,12 @@ fn delete_detail_rows(
             )
             .map_err(|_| ObservationQueryError::Unavailable)?;
     }
+    super::fact_identity::retire_session(
+        transaction,
+        spec.workspace_id.as_str(),
+        spec.session_id.as_str(),
+    )
+    .map_err(|_| ObservationQueryError::Unavailable)?;
     transaction
         .execute(
             "DELETE FROM execution_fact_events WHERE workspace_id=?1 AND session_id=?2",

@@ -45,7 +45,7 @@ fn failed_file_barrier_returns_no_ack_and_no_advanced_checkpoint_then_exact_retr
     let connection = fixture.store.connection.lock();
     let events: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM conversation_content_events_v2",
+            "SELECT COUNT(*) FROM observation_current_batch_v6",
             [],
             |r| r.get(0),
         )

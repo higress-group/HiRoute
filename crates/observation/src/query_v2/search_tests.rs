@@ -426,7 +426,7 @@ fn catalog_preserves_occurrences_and_ancestry_stops_at_cycles() {
         for (occurrence, ordinal) in [("occurrence", 0), ("again", 1)] {
             db.execute("INSERT INTO content_message_instances_v2(workspace_id,message_instance_id,conversation_id,request_id,direction,fork_id,message_ordinal,message_role,occurred_at_unix_nanos) VALUES(?1,?2,'session','request','request','fork',?3,'user',100000000)",params![WorkspaceId::DEFAULT,occurrence,ordinal]).unwrap();
         }
-        db.execute("INSERT INTO content_instances_v2 SELECT workspace_id,'content-again','again',request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2 WHERE content_id='content'",[]).unwrap();
+        db.execute("INSERT INTO content_instances_v2(workspace_id,content_id,message_instance_id,request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos) SELECT workspace_id,'content-again','again',request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2 WHERE content_id='content'",[]).unwrap();
         db.execute("INSERT INTO transcript_roots_v2 VALUES(?1,'root','session','request','request','fork','root','finish',100000000)",[WorkspaceId::DEFAULT]).unwrap();
     }
     let mut q = ObservationCatalogQueryV2 {

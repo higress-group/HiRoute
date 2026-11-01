@@ -94,7 +94,9 @@ pub(super) struct RequestObservationInner {
 
 #[derive(Default)]
 pub(super) struct RequestObservationState {
+    pub(super) canonical_request_recorded: bool,
     pub(super) response_content_draining: bool,
+    pub(super) request_content_draining: bool,
     pub(super) semantic_response: Option<super::content::semantic::SemanticResponse>,
     pub(super) managed_cpa: bool,
     #[cfg(all(unix, debug_assertions))]

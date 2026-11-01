@@ -5,8 +5,8 @@ use serde_json::Value;
 use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt};
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
-    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource, MessageRole,
-    ModelRequestIRV1, ToolOutput, ToolResultStatusV1,
+    CanonicalMessage, ContentPart, ImageSource, MessageRole, ModelRequestIRV1, ToolOutput,
+    ToolResultStatusV1,
 };
 
 use super::super::crypto::WorkspaceHmac;
@@ -62,16 +62,28 @@ impl RequestObservation {
         );
     }
 
-    /// Copies canonical request fields into the content producer before core
-    /// execution starts. Replay references are opened and dropped inside this
-    /// call; no observation task or queued envelope retains ReplayStore.
+    pub(crate) fn canonical_request_accepted(&self) {
+        if !self.is_enabled() {
+            return;
+        }
+        let already = {
+            let mut state = self.lock_state();
+            std::mem::replace(&mut state.canonical_request_recorded, true)
+        };
+        if !already {
+            self.emit_lifecycle(LifecycleFactV1::CanonicalRequestAccepted {
+                canonicalization_version: CANONICALIZATION_VERSION.into(),
+            });
+        }
+    }
+
+    /// Records selected semantic activity after the existing continuity owner
+    /// has selected its boundary. This does not snapshot setup or tool schemas.
     pub fn capture_request(&self, request: &ModelRequestIRV1, replay: &ReplayStore) {
         if !self.is_enabled() {
             return;
         }
-        self.emit_lifecycle(LifecycleFactV1::CanonicalRequestAccepted {
-            canonicalization_version: CANONICALIZATION_VERSION.into(),
-        });
+        self.canonical_request_accepted();
         if !self.captures_content() {
             return;
         }
@@ -88,34 +100,14 @@ impl RequestObservation {
             );
         }
         let start = self.inner.input_capture.get().map_or(0, |s| s.start);
-        super::super::content_work::inline(self.capture_request_payload_run(
-            &[],
-            &request.messages[start..],
-            &[],
-            replay,
-        ));
-    }
-
-    pub(in crate::server::core_runtime::observation) fn capture_request_payload(
-        &self,
-        instructions: &[CanonicalInstruction],
-        messages: &[CanonicalMessage],
-        tools: &[CanonicalTool],
-        replay: &ReplayStore,
-    ) -> bool {
-        super::super::content_work::inline(self.capture_request_payload_run(
-            instructions,
-            messages,
-            tools,
-            replay,
-        ))
+        super::super::content_work::inline(
+            self.capture_request_payload_run(&request.messages[start..], replay),
+        );
     }
 
     pub(in crate::server::core_runtime::observation) async fn capture_request_payload_run(
         &self,
-        instructions: &[CanonicalInstruction],
         messages: &[CanonicalMessage],
-        tools: &[CanonicalTool],
         replay: &ReplayStore,
     ) -> bool {
         let snapshot = replay.snapshot();
@@ -127,9 +119,7 @@ impl RequestObservation {
             },
         }));
         self.begin_content_at_run("request_input", None).await;
-        let result = self
-            .capture_request_fields_run(instructions, messages, tools, replay)
-            .await;
+        let result = self.capture_request_fields_run(messages, replay).await;
         match result {
             Ok(()) => {
                 self.terminal_content_run("request_input", "finish", None)
@@ -149,9 +139,7 @@ impl RequestObservation {
 
     async fn capture_request_fields_run(
         &self,
-        _instructions: &[CanonicalInstruction],
         messages: &[CanonicalMessage],
-        _tools: &[CanonicalTool],
         replay: &ReplayStore,
     ) -> Result<(), ()> {
         let mut message_ordinal = self
@@ -198,17 +186,6 @@ impl RequestObservation {
         Ok(())
     }
 
-    async fn capture_parts_run(
-        &self,
-        replay: &ReplayStore,
-        message_ordinal: u32,
-        role: &str,
-        parts: &[ContentPart],
-    ) -> Result<(), ()> {
-        self.capture_parts_from_run(replay, message_ordinal, role, 0, parts)
-            .await
-    }
-
     async fn capture_parts_from_run(
         &self,
         replay: &ReplayStore,
@@ -218,6 +195,9 @@ impl RequestObservation {
         parts: &[ContentPart],
     ) -> Result<(), ()> {
         for part in parts {
+            if self.content_capture_failed() {
+                return Err(());
+            }
             match part {
                 ContentPart::Text { text } => {
                     self.append_value_run(
@@ -485,6 +465,10 @@ impl RequestObservation {
         media_type: &str,
         reference: &ContentRef,
     ) -> Result<(), ()> {
+        if self.content_capture_failed() {
+            return Err(());
+        }
+        let _drain = super::PartDrain::new(self, false);
         let mut digest = WorkspaceHmac::new(&self.inner.key, b"conversation-content-blob");
         digest.update(CANONICALIZATION_VERSION.as_bytes());
         digest.update(media_type.as_bytes());
@@ -576,6 +560,10 @@ impl RequestObservation {
         media_type: &str,
         bytes: &[u8],
     ) {
+        if self.content_capture_failed() {
+            return;
+        }
+        let _drain = super::PartDrain::new(self, false);
         let mut digest = WorkspaceHmac::new(&self.inner.key, b"conversation-content-blob");
         digest.update(CANONICALIZATION_VERSION.as_bytes());
         digest.update(media_type.as_bytes());

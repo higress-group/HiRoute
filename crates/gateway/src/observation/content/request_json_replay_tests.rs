@@ -290,25 +290,27 @@ fn production_request(wire: &Value, replay: &ReplayStore, inline_limit: usize) -
 
 fn state_request(values: impl IntoIterator<Item = Value>) -> ModelRequestIRV1 {
     use crate::server::core_runtime::adapters::decode_ingress_request;
-    use crate::server::core_runtime::model_ir::OpaqueProviderState;
-    let mut request = decode_ingress_request(IngressProtocol::Responses, &json!({
-        "model":"route", "input":[{"type":"reasoning","summary":[],"encrypted_content":"placeholder"}]
-    })).unwrap();
+    use crate::server::core_runtime::model_ir::{ToolKindV1, ToolOutput, ToolResultStatusV1};
+    let mut request = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"route","input":"placeholder"}),
+    )
+    .unwrap();
     request.messages[0].content = values
         .into_iter()
-        .map(|value| ContentPart::ProviderState {
-            state: Box::new(OpaqueProviderState {
-                block_index: None,
-                kind: "encrypted_content".into(),
-                value,
-            }),
+        .enumerate()
+        .map(|(index, value)| ContentPart::ToolResult {
+            logical_id: format!("call-{index}"),
+            tool_kind: ToolKindV1::Function,
+            output: ToolOutput::Json(value),
+            status: ToolResultStatusV1::Unknown,
         })
         .collect();
     request
 }
 
 #[test]
-fn request_json_capture_expands_production_reasoning_string_leaves() {
+fn request_capture_excludes_opaque_provider_state_and_setup_without_changing_ingress() {
     for threshold in [64, 2 * 1024 * 1024] {
         for inline_limit in [0, 8 * 1024, 64 * 1024] {
             let fixture = ReplayFixture::new(threshold);
@@ -322,9 +324,13 @@ fn request_json_capture_expands_production_reasoning_string_leaves() {
                 inline_limit,
             );
             let captured = capture(&request, &fixture.store);
-            assert_eq!(
-                captured_json(&captured, "provider_state"),
-                vec![json!(opaque)]
+            assert!(captured_json(&captured, "provider_state").is_empty());
+            assert!(
+                captured
+                    .records
+                    .iter()
+                    .all(|record| record["message_role"] != "system"
+                        && record["message_role"] != "developer")
             );
         }
     }
@@ -364,7 +370,7 @@ fn request_json_capture_preserves_typed_nested_replay_and_all_json_consumers() {
         *output = ToolOutput::Json(value.clone());
         request.tools[0].input_schema = Some(value.clone());
         let captured = capture(&request, &fixture.store);
-        for kind in ["tool_call_arguments", "tool_result_json", "tool_schema"] {
+        for kind in ["tool_call_arguments", "tool_result_json"] {
             assert_eq!(
                 captured_json(&captured, kind),
                 vec![expected.clone()],
@@ -376,7 +382,7 @@ fn request_json_capture_preserves_typed_nested_replay_and_all_json_consumers() {
             &fixture.store,
         );
         assert_eq!(
-            captured_json(&captured, "provider_state"),
+            captured_json(&captured, "tool_result_json"),
             vec![expected, nested]
         );
     }
@@ -390,7 +396,7 @@ fn request_json_capture_keeps_small_inline_values_without_new_replay_ranges() {
         .collect();
     assert_eq!(fixture.store.snapshot().live_streams, 0);
     let captured = capture(&state_request(expected.clone()), &fixture.store);
-    assert_eq!(captured_json(&captured, "provider_state"), expected);
+    assert_eq!(captured_json(&captured, "tool_result_json"), expected);
     assert_eq!(fixture.store.snapshot().live_streams, 0);
 }
 
@@ -404,15 +410,15 @@ fn request_json_capture_preserves_a_literal_locator_after_production_ingress_iso
     let literal = live.wire_marker();
     let request = production_request(
         &json!({"model":"route","input":[
-            {"type":"reasoning","summary":[],"encrypted_content":literal}
+            {"type":"function_call_output","call_id":"literal-call","output":{"literal":literal}}
         ]}),
         &fixture.store,
         0,
     );
     let captured = capture(&request, &fixture.store);
     assert_eq!(
-        captured_json(&captured, "provider_state"),
-        vec![json!(literal)]
+        captured_json(&captured, "tool_result_json"),
+        vec![json!({"literal":literal})]
     );
 }
 
@@ -716,10 +722,14 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
     observation.finish_response_content("finish", None);
     // The original content was validated at admission. Simulate backing loss
     // only after the optional worker owns its lease and before it reads.
-    let ContentPart::ProviderState { state } = &input.messages[0].content[0] else {
-        panic!("canonical state fixture")
+    let ContentPart::ToolResult {
+        output: crate::server::core_runtime::model_ir::ToolOutput::Json(value),
+        ..
+    } = &input.messages[0].content[0]
+    else {
+        panic!("canonical tool result fixture")
     };
-    let reference = state.value.content_ref().unwrap();
+    let reference = value.content_ref().unwrap();
     fixture.store.truncate_stream_last_byte(&reference).unwrap();
     assert!(
         std::io::copy(
@@ -751,7 +761,7 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
 }
 
 #[test]
-fn queued_snapshot_pressure_falls_back_without_retaining_an_async_snapshot() {
+fn queued_archive_pressure_marks_optional_loss_without_synchronous_history_fallback() {
     use crate::server::core_runtime::adapters::decode_ingress_request;
     let fixture = ReplayFixture::new(1024 * 1024);
     let text = "x".repeat(20 * 1024);
@@ -795,30 +805,18 @@ fn queued_snapshot_pressure_falls_back_without_retaining_an_async_snapshot() {
         observation.inner.channels.content.work_state().unwrap().1,
         other_bytes
     );
-    assert!(!observation.inner.async_content.get().unwrap().failed());
+    assert!(observation.inner.async_content.get().unwrap().failed());
     assert_eq!(fixture.store.budget().snapshot().unwrap().live, before);
-    let mut captured = Vec::new();
-    loop {
-        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert!(record["loss_watermark"].is_null(), "{record}");
-        assert_ne!(record["phase"], "abort");
-        if record["phase"] == "append" {
-            captured.extend(decoded_base64(
-                record["canonical_bytes_base64"].as_str().unwrap(),
-            ));
-        }
-        if record["phase"] == "finish" {
-            break;
-        }
-    }
-    // The background gate is still closed: these exact bytes and terminal root
-    // must have come from the borrowed synchronous fallback.
-    assert_eq!(captured, text.as_bytes());
+    assert!(
+        receiver.try_recv().is_err(),
+        "no archive traversal in the foreground"
+    );
+    gate.release();
+    observation.inner.channels.content_work.flush(&observation);
     assert_eq!(
         observation.inner.channels.content.work_state().unwrap().1,
         other_bytes
     );
-    gate.release();
 }
 
 #[test]

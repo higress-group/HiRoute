@@ -50,6 +50,8 @@ impl LocalObservationStore {
                 .map_err(|_| Error::Unavailable)?;
             cached_sql::execute(&transaction, "INSERT OR IGNORE INTO observation_request_tombstones_v2(workspace_id,request_id,deleted_ms) VALUES(?1,?2,?3)",params![workspace,request,now_ms]).map_err(|_|Error::Unavailable)?;
             cached_sql::execute(&transaction, "DELETE FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id IN(SELECT content_id FROM content_instances_v2 WHERE workspace_id=?1 AND request_id=?2)",params![workspace,request]).map_err(|_|Error::Unavailable)?;
+            super::fact_identity::retire_request(&transaction, workspace, request, None)
+                .map_err(|_| Error::Unavailable)?;
             for table in [
                 "observation_sensitive_payloads_v2",
                 "content_instances_v2",

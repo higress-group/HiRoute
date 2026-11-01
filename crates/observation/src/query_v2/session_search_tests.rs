@@ -293,7 +293,7 @@ fn session_search_reaches_late_matches_without_directory_pages_and_survives_new_
     let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
     source(&store, b"background");
     store.connection.lock().execute_batch("WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<27800)
-      INSERT INTO content_instances_v2 SELECT workspace_id,'copy-'||n,message_instance_id,request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2,ids WHERE content_id='content';").unwrap();
+      INSERT INTO content_instances_v2(workspace_id,content_id,message_instance_id,request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos) SELECT workspace_id,'copy-'||n,message_instance_id,request_id,direction,fork_id,part_ordinal+n,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2,ids WHERE content_id='content';").unwrap();
     add(
         &store,
         "match-new",

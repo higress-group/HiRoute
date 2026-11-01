@@ -116,7 +116,18 @@ pub(super) fn load_at(
     sequence: u64,
 ) -> Result<Option<Commit>, Error> {
     if channel(kind)? != "content" {
-        return Ok(load(db, kind, stream)?.filter(|head| head.sequence == sequence));
+        if let Some(head) = load(db, kind, stream)?.filter(|head| head.sequence == sequence) {
+            return Ok(Some(head));
+        }
+        // Retained business facts already prove their immutable identity. This
+        // adds no protocol log, and the caller authenticates the one raw fact.
+        let row:Option<(String,String)>=cached_sql::query_row(db,"SELECT event_id,envelope_digest FROM execution_fact_events WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND sequence=?4",
+            params![stream.producer_id.as_str(),stream.producer_epoch.as_str(),stream.stream_id.as_str(),i64::try_from(sequence).map_err(|_|Error::Corrupt)?],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(|_|Error::ActivityUnavailable)?;
+        return Ok(row.map(|(event_id, digest)| Commit {
+            sequence,
+            event_id,
+            digest,
+        }));
     }
     let row:Option<(String,String)>=cached_sql::query_row(db,
         "SELECT event_id,payload_digest FROM observation_current_batch_v6 WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND sequence=?4",

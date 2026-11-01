@@ -46,6 +46,7 @@ pub(super) fn migrate(connection: &mut Connection) -> Result<(), ObservationStor
         EXECUTION_FACT_SCHEMA_V3,
         CONVERSATION_CONTENT_SCHEMA_V4,
         super::current_commit::SCHEMA,
+        super::fact_identity::SCHEMA,
     ] {
         tx.execute_batch(ddl)
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;

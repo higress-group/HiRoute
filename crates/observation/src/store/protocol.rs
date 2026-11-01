@@ -88,7 +88,8 @@ pub(super) fn preflight(
         let existing: Option<(i64, String)> = cached_sql::query_row(
             transaction,
             "SELECT sequence,envelope_digest FROM execution_fact_events
-             WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND event_id=?4",
+             WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND event_id=?4
+             UNION ALL SELECT sequence,payload_digest FROM retired_execution_identities_v6 WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND event_id=?4 LIMIT 1",
             params![
                 stream.producer_id.as_str(),
                 stream.producer_epoch.as_str(),

@@ -368,7 +368,7 @@ fn accepted_response_abort_preserves_attempt_frame_ref_parent_and_query_coordina
 fn wrong_schema_digest_sequence_identity_and_terminal_state_are_durable_typed_nacks() {
     let fixture = Fixture::new();
     let mut version = fixture.begin(1);
-    version.schema_version = "hiroute.observation.conversation-content-envelope/v3".into();
+    version.schema_version = "hiroute.observation.conversation-content-envelope/v999".into();
     assert!(matches!(nack(fixture.ingest(&version)).detail,
         ObservationNackDetailV1::UnsupportedSchema { ref rejected_schema_version, .. }
             if rejected_schema_version.ends_with("/v3")));

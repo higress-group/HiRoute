@@ -8,6 +8,7 @@ mod extensions;
 mod unified_retention;
 
 mod current_commit;
+mod fact_identity;
 pub(crate) mod fact_log;
 #[cfg(test)]
 mod field_replay_tests;

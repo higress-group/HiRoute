@@ -20,6 +20,41 @@ const CANONICALIZATION_VERSION: &str = "hiroute.model-request-ir/v1";
 const CANONICAL_RESPONSE_EVENT_MEDIA_TYPE: &str =
     "application/vnd.hiroute.model-stream-event+json;version=1";
 
+/// Finish an already admitted part if later optional work loses its queue slot.
+/// Otherwise a failure between two chunks would strand a complete accepted
+/// semantic segment as unreadable assembly. Drop restores nested terminal drain.
+struct PartDrain<'a> {
+    request: &'a RequestObservation,
+    response: bool,
+    previous: bool,
+}
+impl<'a> PartDrain<'a> {
+    fn new(request: &'a RequestObservation, response: bool) -> Self {
+        let mut state = request.lock_state();
+        let flag = if response {
+            &mut state.response_content_draining
+        } else {
+            &mut state.request_content_draining
+        };
+        let previous = std::mem::replace(flag, true);
+        Self {
+            request,
+            response,
+            previous,
+        }
+    }
+}
+impl Drop for PartDrain<'_> {
+    fn drop(&mut self) {
+        let mut state = self.request.lock_state();
+        if self.response {
+            state.response_content_draining = self.previous;
+        } else {
+            state.request_content_draining = self.previous;
+        }
+    }
+}
+
 #[path = "content/request.rs"]
 mod request;
 #[path = "content/semantic.rs"]
@@ -50,6 +85,15 @@ impl CanonicalFrameDelivery {
 }
 
 impl RequestObservation {
+    pub(super) fn content_capture_failed(&self) -> bool {
+        self.content_background
+            && self
+                .inner
+                .async_content
+                .get()
+                .is_some_and(|status| status.failed())
+    }
+
     pub(super) fn terminal_content(
         &self,
         direction: &'static str,
@@ -395,8 +439,7 @@ impl RequestObservation {
         }
         let selection = self.inner.input_capture.get()?;
         Some(hiroute_domain::ObservationCaptureMetadataV1 {
-            context_only: ordinal
-                .is_some_and(|n| selection.current_ordinal.is_none_or(|current| n < current)),
+            context_only: ordinal.is_some_and(|n| n < selection.activity_ordinal),
             boundary_verified: selection.boundary_verified,
             input_anchor_id: selection.current_ordinal.and_then(|ordinal| {
                 hiroute_domain::MessageInstanceId::parse(
@@ -461,8 +504,11 @@ impl RequestObservation {
 
     async fn emit_content_run(&self, event: ContentEvent<'_>) {
         if self.content_background
-            && event.phase != "abort"
-            && !self.lock_state().response_content_draining
+            && !matches!(event.phase, "begin" | "abort")
+            && !{
+                let state = self.lock_state();
+                state.response_content_draining || state.request_content_draining
+            }
             && self
                 .inner
                 .async_content
@@ -718,6 +764,10 @@ impl RequestObservation {
         _frame_id: &str,
         event: ModelStreamEventV1,
     ) {
+        let draining = self.lock_state().response_content_draining;
+        if self.content_capture_failed() && !draining {
+            return;
+        }
         let Some(kind) = canonical_response_content_kind(&event.event) else {
             return;
         };
@@ -730,6 +780,7 @@ impl RequestObservation {
             .await;
             return;
         };
+        let _drain = PartDrain::new(self, true);
         let part_ordinal = {
             let mut state = self.lock_state();
             let ordinal = state.response_part_ordinal;
