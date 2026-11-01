@@ -59,6 +59,7 @@
     "hiroute.borrowed-codex-evidence/v1",
     "hiroute.borrowed-codex-revision/v1",
     "hiroute.borrowed-codex-source-path/v1",
+    "hiroute.build-identity/v1",
     "hiroute.candidate-capability/v1",
     "hiroute.candidate-protocol-profile/v1",
     "hiroute.change-preview-consent/v1",

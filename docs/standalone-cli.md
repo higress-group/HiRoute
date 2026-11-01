@@ -222,6 +222,27 @@ To clear a saved proxy, unset all six variables and restart. Proxy failure does 
 fall back to direct connections. Do not share the private snapshot: proxy URLs may
 contain credentials. This does not change native Codex login or token refresh ownership.
 
+## Identify the installed build
+
+```sh
+hiroute version --output json
+hiroute --version
+hirouted --version
+```
+
+These commands work offline and initialize no service, storage or native account.
+`hiroute version` defaults to one ordinary machine envelope containing a
+`hiroute.build-identity/v1` record; `--version` and `-V` default to text, with
+`--output json|text|quiet` available on the CLI. The record identifies the component,
+package version, compiled source revision, OS and architecture. The daemon's
+`--version`/`-V` prints its own identity as one JSON document. Use the actual installed
+daemon executable when the CLI and service may have different installations.
+
+The source revision comes only from the build's `HIROUTE_BUILD_SOURCE_SHA` input.
+Missing or invalid build metadata is `null` in JSON and `unknown` in text. Runtime
+environment variables and Git in the current directory cannot replace it. A CLI
+identity does not establish which daemon process is currently serving requests.
+
 ## CLI Quickstart: connect, inspect, and adjust
 
 The same path works from a terminal or any Agent with the HiRoute management Skill. The caller can manage a different Agent; its own model need not use HiRoute. Model routing, management and task delegation remain independent.
@@ -839,6 +860,20 @@ for a surface that supports only Messages.
 
 ## JSON request input
 
+Input diagnostics include static semantic requirements as well as JSON syntax.
+Use `--error-details --output json` to obtain the existing bounded diagnostic data;
+ordinary errors keep their machine shape and usage exit code. The explanation is
+also written to stderr. Keep stderr separate from the complete stdout JSON.
+
+Routing publication reports missing `work` when delegation is enabled, unsupported
+Worker protocols, and judgment threshold/floor values outside `0..1000` integer
+thousandths. Additional-model entries report unsupported protocols at a wildcard
+field path rather than copying context or Plan IDs. These facts come from the same
+domain rules as publication/settings validation. Incomplete draft storage remains
+separate from publication. Dynamic Plan capability, current account access and
+native login remain authoritative at their existing checks; a syntax diagnostic
+does not infer an account entitlement.
+
 Every command that accepts `--request-stdin` also accepts `--request-file PATH`:
 
 ```sh
@@ -1008,9 +1043,28 @@ the task again. Use a new submission key for a new run; replaying the previous
 key returns the existing failed run. Discovery/selection is not a compatibility
 preflight and does not install or update the adapter.
 
-Set routing-editor `delegation_enabled` to `true`, add
-`"work":{"harness":"codex_cli","protocol":"responses"}`, and publish again. Then submit,
-locate, wait for, and read the task:
+Enable delegation through the same public Preview/Apply workflow:
+
+```sh
+hiroute routing preview --plan PLAN_ID --delegation enable \
+  --worker-harness codex_cli --worker-protocol responses \
+  --apply-file worker-plan-apply.json
+hiroute routing apply --request-file worker-plan-apply.json
+```
+
+For a new Plan, combine these flags with the ordinary name, purpose, mode and
+model/group choices. The complete selection is stored in the existing editor as
+`delegation_enabled` and `work`. Supply both Worker flags together; omitting both
+preserves an existing selection. Enabling a Plan without a selection returns
+explicit required choices. `--delegation disable` keeps the selection but disables
+the published Plan's delegation eligibility. Unrelated edits retain its delegation
+state and work. Inspect the Preview and exact Apply file; Preview does not publish,
+install a native CLI, enable collaboration or call a model.
+
+`responses` and `messages` are the supported Worker Plan protocol syntax; actual
+Harness/Plan capability remains subject to normal admission and native checks.
+The typed routing-editor JSON remains available. Then submit, locate, wait for,
+and read the task:
 
 ```sh
 hiroute worker exec --plan PLAN_ID --cwd /absolute/project \
@@ -1023,6 +1077,17 @@ hiroute worker wait --run RUN_ID --wait-timeout 30 --output json
 hiroute worker result --run RUN_ID --output json
 hiroute worker list --output json
 ```
+
+An explicit request to execute a Worker does not require an installed collaboration
+Skill. Standing delegation policy is separate. When the user requests it, use
+`agents collaboration configure AGENT_ID --trigger explicit --preview`, review the
+effect, then configure without `--preview` and with one stable `--idempotency-key`.
+The `explicit` trigger delegates only when asked; `delegate-by-default` permits
+suitable delegation within the user's task. This installs `hiroute-collaboration`
+independently of model routing and the management Skill. Use collaboration status
+to inspect the result and collaboration disable or owned facet Restore to remove
+it. Native Skill loading may require a fresh session. See
+[the collaboration workflow](#configure-agent-collaboration) for complete commands.
 
 A wait timeout means only that work is still running and does not cancel it. After an
 uncertain response, query with the original submission key or replay that exact JSON unchanged
