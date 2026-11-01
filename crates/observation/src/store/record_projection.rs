@@ -4,6 +4,7 @@
 use hiroute_domain::{ConversationContentEnvelopeV1, ObservationStreamV1, canonicalize_json};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::io::{self, Write};
 
 use super::records;
 use crate::writer::ObservationStoreError as Error;
@@ -91,6 +92,9 @@ pub(crate) fn decode(frame: &[u8], shared: &Value) -> Result<Value, Error> {
     if length > records::MAX_RECORD || frame.len() > length + 37 {
         return Err(Error::Corrupt);
     }
+    // Check source fields before cloning them into the decoded value. A corrupt
+    // SQL field must not turn a bounded record into an unbounded allocation.
+    let _ = bounded_digest(shared, length)?;
     let body = records::payload(frame, header[0] == 3, length)?;
     if body.len() > length {
         return Err(Error::Corrupt);
@@ -98,11 +102,37 @@ pub(crate) fn decode(frame: &[u8], shared: &Value) -> Result<Value, Error> {
     let mut value = serde_json::from_slice(&body).map_err(|_| Error::Corrupt)?;
     restore(&mut value, shared)?;
     let value = canonicalize_json(value);
-    let original = serde_json::to_vec(&value).map_err(|_| Error::Corrupt)?;
-    if original.len() != length || Sha256::digest(&original)[..] != header[5..37] {
+    let (remaining, digest) = bounded_digest(&value, length)?;
+    if remaining != 0 || digest[..] != header[5..37] {
         return Err(Error::Corrupt);
     }
     Ok(value)
+}
+
+fn bounded_digest(value: &Value, length: usize) -> Result<(usize, [u8; 32]), Error> {
+    struct Verifier {
+        remaining: usize,
+        digest: Sha256,
+    }
+    impl Write for Verifier {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            if bytes.len() > self.remaining {
+                return Err(io::Error::other("record exceeds its original length"));
+            }
+            self.remaining -= bytes.len();
+            self.digest.update(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut verifier = Verifier {
+        remaining: length,
+        digest: Sha256::new(),
+    };
+    serde_json::to_writer(&mut verifier, value).map_err(|_| Error::Corrupt)?;
+    Ok((verifier.remaining, verifier.digest.finalize().into()))
 }
 
 fn subtract(value: &mut Value, shared: &Value) -> Result<(), Error> {

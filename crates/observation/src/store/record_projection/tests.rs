@@ -27,6 +27,11 @@ fn complete_values_survive_projection_including_unknown_and_null_fields() {
         decode(&frame, &changed).is_err(),
         "stream identity is checksum-bound"
     );
+    changed["identity"]["stream"] = json!("x".repeat(records::MAX_RECORD + 1));
+    assert!(
+        decode(&frame, &changed).is_err(),
+        "oversized source fields are rejected before restoration"
+    );
 }
 
 #[test]
