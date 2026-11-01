@@ -55,8 +55,8 @@ fn positive(value: &str) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn flags(values: &[&str]) -> Flags {
-        Flags::parse(
+    fn read_policy(values: &[&str], existing: Option<&Value>) -> Result<DecisionContextPolicyV1> {
+        let flags = Flags::parse(
             &values.iter().map(|v| (*v).into()).collect::<Vec<_>>(),
             &[
                 "--context-window-tokens",
@@ -65,16 +65,16 @@ mod tests {
             ],
             &[],
             &["--context-window-auto"],
-        )
-        .unwrap()
+        )?;
+        policy(&flags, existing)
     }
     #[test]
     fn preserves_saved_intent_and_restores_automatic_explicitly() {
         let saved = json!({"context":{"policy":{"mode":"custom","window_tokens":100000,"per_question_tokens":40000,"typesafe_long_context":"disabled"}}});
-        let retained = policy(&flags(&[]), Some(&saved)).unwrap();
+        let retained = read_policy(&[], Some(&saved)).unwrap();
         assert_eq!(retained.window_tokens, Some(100000));
         assert_eq!(retained.per_question_tokens, Some(40000));
-        let automatic = policy(&flags(&["--context-window-auto"]), Some(&saved)).unwrap();
+        let automatic = read_policy(&["--context-window-auto"], Some(&saved)).unwrap();
         assert_eq!(automatic.mode, DecisionContextModeV1::Automatic);
         assert_eq!(automatic.window_tokens, None);
         assert_eq!(automatic.per_question_tokens, None);
@@ -83,31 +83,31 @@ mod tests {
             TypeSafeLongContextV1::Disabled
         );
         assert_eq!(
-            policy(&flags(&[]), None).unwrap(),
+            read_policy(&[], None).unwrap(),
             DecisionContextPolicyV1::default()
         );
     }
     #[test]
     fn rejects_invalid_unsigned_windows_caps_and_conflicting_modes() {
         for invalid in ["0", "-1", "1.5", "4294967296", "+32000"] {
-            assert!(policy(&flags(&["--context-window-tokens", invalid]), None).is_err());
+            assert!(read_policy(&["--context-window-tokens", invalid], None).is_err());
         }
         assert!(
-            policy(
-                &flags(&["--context-window-tokens", "32000", "--context-window-auto"]),
+            read_policy(
+                &["--context-window-tokens", "32000", "--context-window-auto"],
                 None
             )
             .is_err()
         );
-        assert!(policy(&flags(&["--context-question-tokens", "10000"]), None).is_err());
+        assert!(read_policy(&["--context-question-tokens", "10000"], None).is_err());
         assert!(
-            policy(
-                &flags(&[
+            read_policy(
+                &[
                     "--context-window-tokens",
                     "32000",
                     "--context-question-tokens",
                     "32001"
-                ]),
+                ],
                 None
             )
             .is_err()

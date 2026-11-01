@@ -105,6 +105,12 @@ pre-adaptive baseline. Run baseline and candidate sequentially on the same idle 
 foreground time including fallback, CPU through capture drain, sampled daemon RSS, tool-heavy/concurrent
 requests and unrelated-state growth. Its numeric evidence records revisions and binary hashes; the sample
 does not certify provider capacity, allocator bounds or performance on other hosts.
+For a managed comparison, select the ignored `measure_adaptive_decision_context_resources`
+test in `publication_process` with `integration-test-hooks` and reserve the backend host with
+`--exclusive`. Pass a separately built baseline checkout through Cargo's
+`--config 'env.HIROUTE_DECISION_CONTEXT_BASELINE_CHECKOUT="/path/to/baseline"'`.
+The test keeps the runner lease for both revisions and saves numeric results under
+`artifacts/decision-context-resources/`; candidate binary overrides are removed for the baseline.
 
 | Layer | Appropriate assertion | Evidence limit |
 | --- | --- | --- |

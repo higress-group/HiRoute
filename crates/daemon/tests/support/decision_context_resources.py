@@ -61,6 +61,7 @@ class Usage:
 
 
 def run(repository, legacy, output):
+    Endpoint.requests.clear()
     product, upstream = Product(repository), NativeUpstream()
     product.collaboration_only = True
     provider_times, model_times = [], []
@@ -219,5 +220,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('repository', type=Path)
     parser.add_argument('--legacy', action='store_true')
-    parser.add_argument('--output', type=Path, required=True)
-    args = parser.parse_args(); run(args.repository, args.legacy, args.output)
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--baseline-checkout', type=Path,
+        default=os.environ.get('HIROUTE_DECISION_CONTEXT_BASELINE_CHECKOUT'))
+    args = parser.parse_args()
+    output = args.output or args.repository / 'artifacts/decision-context-resources/candidate.json'
+    if args.baseline_checkout:
+        if args.legacy:
+            parser.error('--legacy and --baseline-checkout are mutually exclusive')
+        # The managed candidate receipt must never select the baseline's binaries.
+        candidate_bin = os.environ.pop('HIROUTE_VALIDATION_PRODUCT_BIN_DIR', None)
+        try:
+            run(args.baseline_checkout, True, output.with_name('baseline.json'))
+        finally:
+            if candidate_bin is not None:
+                os.environ['HIROUTE_VALIDATION_PRODUCT_BIN_DIR'] = candidate_bin
+    run(args.repository, args.legacy, output)
