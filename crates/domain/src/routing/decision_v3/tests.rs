@@ -46,7 +46,7 @@ fn service(window: u32) -> DecisionServiceV3 {
                 },
             },
         },
-        context: Some(context(window)),
+        context: Some(Box::new(context(window))),
     }
 }
 

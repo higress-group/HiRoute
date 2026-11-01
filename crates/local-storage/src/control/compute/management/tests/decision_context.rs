@@ -81,7 +81,10 @@ fn accepted_v3_context_recovers_once_when_metadata_resolution_is_unavailable() {
             id: "decision/context-recovery".into(),
             revision: 1,
             name: "Context recovery".into(),
-            context: Some(DecisionContextConfigurationV1 { policy, resolved }),
+            context: Some(Box::new(DecisionContextConfigurationV1 {
+                policy,
+                resolved,
+            })),
             connection: DecisionConnectionV2::Native {
                 provider: "fixture".into(),
                 wire_protocol: DecisionWireProtocolV2::OpenaiDecisions,

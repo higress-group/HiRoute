@@ -1296,6 +1296,13 @@ integers; the question cap cannot exceed the request window. A request override 
 any independent provider question cap. `--context-window-auto` clears both custom overrides.
 Omitted edit flags preserve saved intent.
 
+To inspect a draft without saving it, run `hiroute decision context preview --request-file
+context-draft.json --output json`. The file contains `endpoint`, `model`, `wire_protocol` and
+`policy`; inspect the exact installed request with `hiroute schema show --command-id
+decision.context.preview --include-schema --output json`. The response includes the effective
+limits and their metadata, user or fallback sources. This operation uses local metadata and
+does not contact the decision provider.
+
 `--typesafe-long-context auto|off` defaults to automatic. Only the exact official HTTPS
 TypeSafe System One destination receives the typed long-context header; compatible proxies and
 other providers do not. Turning it off selects the smaller maintained provider limits.

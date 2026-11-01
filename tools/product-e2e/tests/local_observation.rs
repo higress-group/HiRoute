@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use hiroute_application_api::{CommandLifecycle, command_by_id};
 use hiroute_domain::{
     CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1, CONVERSATION_CONTENT_PORT_DIGEST_V2,
-    CONVERSATION_CONTENT_SCHEMA_V2, EXECUTION_FACT_PORT_DIGEST_V2, EXECUTION_FACT_SCHEMA_V2,
-    OBSERVATION_ACK_SCHEMA_V2, OBSERVATION_NACK_SCHEMA_V1, OBSERVATION_RETENTION_SCHEMA_V1,
-    SEVEN_DAYS_MILLIS,
+    CONVERSATION_CONTENT_SCHEMA_V2, CanonicalDigest, EXECUTION_FACT_PORT_DIGEST_V2,
+    EXECUTION_FACT_SCHEMA_V2, OBSERVATION_ACK_SCHEMA_V2, OBSERVATION_NACK_SCHEMA_V1,
+    OBSERVATION_RETENTION_SCHEMA_V1, SEVEN_DAYS_MILLIS,
 };
 use serde::Deserialize;
 
@@ -129,7 +129,15 @@ fn local_observation_boundary_golden_records_product_completion() {
     assert_eq!(golden.production_evidence, PRODUCTION_EVIDENCE);
     assert_eq!(golden.composition_owner, PRODUCTION_EVIDENCE_OWNER);
     assert_eq!(golden.execution_fact_schema, EXECUTION_FACT_SCHEMA_V2);
+    // This completed journey predates budget diagnostics. Keep its original authenticated
+    // descriptor and golden bytes; current ingestion uses the extended descriptor instead.
+    let original =
+        include_str!("../../../crates/domain/src/observation/fixtures/pre-context-contract.json");
     assert_eq!(
+        golden.execution_fact_port_digest,
+        CanonicalDigest::of_bytes(original.trim_end_matches('\n').as_bytes()).as_str()
+    );
+    assert_ne!(
         golden.execution_fact_port_digest,
         EXECUTION_FACT_PORT_DIGEST_V2
     );

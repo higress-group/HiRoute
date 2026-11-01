@@ -146,15 +146,15 @@ pub(super) fn request_template(
     };
     refs.extend(replay.refs.iter().cloned());
     // No second admission pass follows either removal.
-    if target_partial || !selected_stage.execution_evidence {
-        if let Some(id) = bindings.applicability.take() {
-            questions.remove(&id);
-        }
+    if (target_partial || !selected_stage.execution_evidence)
+        && let Some(id) = bindings.applicability.take()
+    {
+        questions.remove(&id);
     }
-    if !selected_stage.execution_evidence {
-        if let Some(id) = bindings.assessment.take() {
-            questions.remove(&id);
-        }
+    if !selected_stage.execution_evidence
+        && let Some(id) = bindings.assessment.take()
+    {
+        questions.remove(&id);
     }
     let state = State {
         latest_user: &latest,

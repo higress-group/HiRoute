@@ -24,7 +24,7 @@ pub struct DecisionServiceV3 {
     pub name: String,
     pub connection: DecisionConnectionV2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context: Option<DecisionContextConfigurationV1>,
+    pub context: Option<Box<DecisionContextConfigurationV1>>,
 }
 
 impl<'de> Deserialize<'de> for DecisionServiceV3 {
@@ -38,7 +38,7 @@ impl<'de> Deserialize<'de> for DecisionServiceV3 {
             name: String,
             connection: DecisionConnectionV2,
             #[serde(default)]
-            context: Option<DecisionContextConfigurationV1>,
+            context: Option<Box<DecisionContextConfigurationV1>>,
         }
         let wire = Wire::deserialize(deserializer)?;
         let service = Self {
