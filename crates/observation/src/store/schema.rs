@@ -9,30 +9,7 @@ pub(super) fn migrate(connection: &mut Connection) -> Result<(), ObservationStor
         "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='observation_meta' AND type='table')",
         [], |r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
     if exists {
-        let version: String = connection
-            .query_row(
-                "SELECT value FROM observation_meta WHERE key='schema_version'",
-                [],
-                |r| r.get(0),
-            )
-            .map_err(|_| ObservationStoreError::Corrupt)?;
-        if version != STORE_SCHEMA_VERSION {
-            return Err(ObservationStoreError::Corrupt);
-        }
-        let generation: String = connection
-            .query_row(
-                "SELECT value FROM observation_meta WHERE key='format_generation'",
-                [],
-                |r| r.get(0),
-            )
-            .map_err(|_| ObservationStoreError::Corrupt)?;
-        if generation.len() != 32 || !generation.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(ObservationStoreError::Corrupt);
-        }
-        let count:u64=connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name IN('logical_requests','observation_checkpoints','observation_current_commits_v6','conversation_content_streams_v2','content_message_instances_v2','content_instances_v2','content_blobs_v2','transcript_roots_v2')",[],|r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
-        if count != 8 {
-            return Err(ObservationStoreError::Corrupt);
-        }
+        validate_current(connection)?;
     } else {
         let populated:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%')",[],|r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
         if populated {
@@ -73,6 +50,35 @@ pub(super) fn migrate(connection: &mut Connection) -> Result<(), ObservationStor
     .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
     tx.commit()
         .map_err(|_| ObservationStoreError::ActivityUnavailable)
+}
+
+/// Read-only admission shared by startup preflight and the current writer.
+pub(super) fn validate_current(connection: &Connection) -> Result<(), ObservationStoreError> {
+    let version: String = connection
+        .query_row(
+            "SELECT value FROM observation_meta WHERE key='schema_version'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|_| ObservationStoreError::Corrupt)?;
+    if version != STORE_SCHEMA_VERSION {
+        return Err(ObservationStoreError::Corrupt);
+    }
+    let generation: String = connection
+        .query_row(
+            "SELECT value FROM observation_meta WHERE key='format_generation'",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|_| ObservationStoreError::Corrupt)?;
+    if generation.len() != 32 || !generation.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(ObservationStoreError::Corrupt);
+    }
+    let count:u64=connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name IN('logical_requests','observation_checkpoints','observation_current_commits_v6','conversation_content_streams_v2','content_message_instances_v2','content_instances_v2','content_blobs_v2','transcript_roots_v2','observation_current_batch_v6','observation_capture_scopes_v6','observation_input_anchors_v6','retired_execution_identities_v6')",[],|r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
+    if count != 12 {
+        return Err(ObservationStoreError::Corrupt);
+    }
+    Ok(())
 }
 
 const BASE_SCHEMA_V2: &str = r#"

@@ -1,5 +1,5 @@
-//! Format admission only. Production startup seals legacy history before opening
-//! the fresh current writer; historical rows and objects are never converted here.
+//! Read-only format admission. Known old observations are reset by startup;
+//! historical rows and objects are never converted here.
 #[cfg(test)]
 mod tests;
 use crate::writer::ObservationStoreError as Error;
@@ -92,11 +92,16 @@ pub(crate) fn required(root: &Path) -> Result<bool, Error> {
             Ok(false)
         }
         Some("6") => {
-            validate_tables(root, true)?;
+            let db = Connection::open_with_flags(
+                root.join("activity.db"),
+                OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .map_err(|_| Error::Corrupt)?;
+            super::schema::validate_current(&db)?;
             Ok(false)
         }
         Some("4") => {
-            validate_tables(root, false)?;
+            validate_legacy_tables(root)?;
             Ok(true)
         }
         Some("1" | "2" | "3" | "5") => Ok(true),
@@ -104,7 +109,7 @@ pub(crate) fn required(root: &Path) -> Result<bool, Error> {
     }
 }
 
-fn validate_tables(root: &Path, current: bool) -> Result<(), Error> {
+fn validate_legacy_tables(root: &Path) -> Result<(), Error> {
     let db =
         Connection::open_with_flags(root.join("activity.db"), OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|_| Error::Corrupt)?;
@@ -112,7 +117,6 @@ fn validate_tables(root: &Path, current: bool) -> Result<(), Error> {
     if count != 4 {
         return Err(Error::Corrupt);
     }
-    if current && !db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='observation_current_commits_v6')",[],|r|r.get::<_,bool>(0)).map_err(|_|Error::Corrupt)?{return Err(Error::Corrupt);}
     Ok(())
 }
 

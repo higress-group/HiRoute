@@ -218,3 +218,47 @@ fn query_cursors_are_bound_to_the_observation_generation_not_only_the_installati
             .is_ok()
     );
 }
+
+#[test]
+fn current_format_missing_immutable_capture_state_is_preserved_as_corrupt() {
+    for table in [
+        "observation_current_batch_v6",
+        "observation_capture_scopes_v6",
+        "observation_input_anchors_v6",
+        "retired_execution_identities_v6",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("observation");
+        let store = LocalObservationStore::open(&root, authority()).unwrap();
+        store.set_capacity_limit(Some(10_000_000_000)).unwrap();
+        drop(store);
+        let db = Connection::open(root.join("activity.db")).unwrap();
+        db.execute_batch(&format!("DROP TABLE {table}")).unwrap();
+        drop(db);
+        assert!(matches!(upgrade::required(&root), Err(Error::Corrupt)));
+        assert!(matches!(
+            LocalObservationStore::open_for_daemon_startup(&root, authority()),
+            Err(Error::Corrupt)
+        ));
+        assert!(!journal(&root).unwrap().exists());
+        let db = Connection::open(root.join("activity.db")).unwrap();
+        assert_eq!(
+            db.query_row(
+                "SELECT value FROM observation_meta WHERE key='max_active_bytes'",
+                [],
+                |row| row.get::<_, String>(0)
+            )
+            .unwrap(),
+            "10000000000"
+        );
+        assert_eq!(
+            db.query_row(
+                "SELECT COUNT(*) FROM sqlite_schema WHERE name=?1",
+                [table],
+                |row| row.get::<_, u64>(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
+}
