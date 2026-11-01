@@ -107,8 +107,8 @@ requests and unrelated-state growth. Its numeric evidence records revisions and 
 does not certify provider capacity, allocator bounds or performance on other hosts.
 For a managed comparison, select the ignored `measure_adaptive_decision_context_resources`
 test in `publication_process` with `integration-test-hooks` and reserve the backend host with
-`--exclusive`. Pass a separately built baseline checkout through Cargo's
-`--config 'env.HIROUTE_DECISION_CONTEXT_BASELINE_CHECKOUT="/path/to/baseline"'`.
+`--exclusive`. Stage `artifacts/decision-context-resources/input.json` with
+`{"baseline_checkout":"/path/to/baseline"}` in the retained candidate checkout before admission.
 The test keeps the runner lease for both revisions and saves numeric results under
 `artifacts/decision-context-resources/`; candidate binary overrides are removed for the baseline.
 

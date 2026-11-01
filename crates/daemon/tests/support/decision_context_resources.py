@@ -224,6 +224,11 @@ if __name__ == '__main__':
     parser.add_argument('--baseline-checkout', type=Path,
         default=os.environ.get('HIROUTE_DECISION_CONTEXT_BASELINE_CHECKOUT'))
     args = parser.parse_args()
+    input_file = args.repository / 'artifacts/decision-context-resources/input.json'
+    if args.baseline_checkout is None and input_file.is_file():
+        resource_input = json.loads(input_file.read_text())
+        assert set(resource_input) == {'baseline_checkout'}, 'unknown resource input fields'
+        args.baseline_checkout = Path(resource_input['baseline_checkout']).resolve(strict=True)
     output = args.output or args.repository / 'artifacts/decision-context-resources/candidate.json'
     if args.baseline_checkout:
         if args.legacy:
