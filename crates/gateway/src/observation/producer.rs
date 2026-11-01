@@ -202,10 +202,9 @@ impl ChannelDiagnosticsSink {
     }
 }
 
-impl ObservationRecordSink for ChannelDiagnosticsSink {
-    fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack> {
-        let result = self.inner.deliver(record);
-        match &result {
+impl ChannelDiagnosticsSink {
+    fn report(&self, record: &ObservationRecord, result: &Result<ObservationAck, ObservationNack>) {
+        match result {
             Ok(_) => {
                 if record.is_gap_heartbeat()
                     && let Some(loss) = record.stamp().loss_watermark
@@ -243,7 +242,25 @@ impl ObservationRecordSink for ChannelDiagnosticsSink {
                 }
             }
         }
+    }
+}
+
+impl ObservationRecordSink for ChannelDiagnosticsSink {
+    fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack> {
+        let result = self.inner.deliver(record);
+        self.report(record, &result);
         result
+    }
+
+    fn deliver_batch(
+        &self,
+        records: &[ObservationRecord],
+    ) -> Vec<Result<ObservationAck, ObservationNack>> {
+        let results = self.inner.deliver_batch(records);
+        for (record, result) in records.iter().zip(&results) {
+            self.report(record, result);
+        }
+        results
     }
 }
 

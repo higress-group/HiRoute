@@ -253,15 +253,18 @@ impl AsyncRecordTiming {
         Instant::now()
     }
 
+    #[cfg(test)]
     pub(super) fn end_delivery(&self, started: Instant, delivered: bool) {
+        self.end_delivery_work(elapsed_us(started), delivered);
+    }
+
+    /// A shared batch barrier's elapsed work is apportioned once across its
+    /// processed records, rather than counted in full for every envelope.
+    pub(super) fn end_delivery_work(&self, work_us: u64, delivered: bool) {
         if self.0.resolved.swap(true, Relaxed) {
             return;
         }
-        self.0
-            .request
-            .0
-            .sink_work_us
-            .fetch_add(elapsed_us(started), Relaxed);
+        self.0.request.0.sink_work_us.fetch_add(work_us, Relaxed);
         let count = if delivered {
             &self.0.request.0.delivered
         } else {

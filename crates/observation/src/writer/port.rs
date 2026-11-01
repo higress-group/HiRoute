@@ -10,6 +10,8 @@ pub enum IngestOutcome {
     Nack(ObservationNackV1),
 }
 
+pub const MAX_CONTENT_BATCH_RECORDS: usize = 32;
+
 pub trait ObservationCommitPort: Send + Sync {
     fn ingest_fact(
         &self,
@@ -22,6 +24,29 @@ pub trait ObservationCommitPort: Send + Sync {
         envelope: &ConversationContentEnvelopeV1,
         channel_losses: &[LossNoticeV1],
     ) -> Result<IngestOutcome, ObservationStoreError>;
+
+    /// Commit an ordered prefix and stop at the first NACK. ACKs are returned
+    /// only after the prefix's files and transaction are durable. A store error
+    /// returns no ACK; the caller must retain the unprocessed records.
+    fn ingest_content_batch(
+        &self,
+        envelopes: &[&ConversationContentEnvelopeV1],
+    ) -> Result<Vec<IngestOutcome>, ObservationStoreError> {
+        let mut outcomes = Vec::new();
+        for envelope in envelopes {
+            let outcome = match self.ingest_content(envelope, &[]) {
+                Ok(outcome) => outcome,
+                Err(error) if outcomes.is_empty() => return Err(error),
+                Err(_) => break,
+            };
+            let rejected = matches!(outcome, IngestOutcome::Nack(_));
+            outcomes.push(outcome);
+            if rejected {
+                break;
+            }
+        }
+        Ok(outcomes)
+    }
 
     fn ingest_gap_heartbeat(
         &self,

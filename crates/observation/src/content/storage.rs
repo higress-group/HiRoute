@@ -323,6 +323,7 @@ pub(crate) fn finalize_content(
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
     content_id: &str,
+    durability: &mut super::durability::ContentDurability,
 ) -> Result<ObservationBlobAcknowledgementV1, ContentProjectionError> {
     #[cfg(test)]
     let _finalizing = crate::store::ingest_profile::span("blob_finalize");
@@ -397,10 +398,6 @@ pub(crate) fn finalize_content(
                 .map_err(|_| ContentProjectionError::ContentStorage)?;
         }
     }
-    output
-        .sync_all()
-        .map_err(|_| ContentProjectionError::ContentStorage)?;
-    drop(output);
     store.note_object_path(&install_path);
     let (actual_digest, byte_count) = accumulator.finish();
     if actual_digest.as_str() != expected_digest {
@@ -430,10 +427,22 @@ pub(crate) fn finalize_content(
         {
             return Err(ContentProjectionError::ContentCorrupt);
         }
+        drop(output);
         fs::remove_file(&install_path).map_err(|_| ContentProjectionError::ContentStorage)?;
+        // An unacknowledged earlier transaction may have installed this name
+        // before its durability barrier failed. Sync the retained target,
+        // rather than an equal but discarded temporary inode.
+        durability.retain(
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&blob_path)
+                .map_err(|_| ContentProjectionError::ContentStorage)?,
+        );
     } else {
         fs::rename(&install_path, &blob_path)
             .map_err(|_| ContentProjectionError::ContentStorage)?;
+        durability.retain(output);
     }
     store.note_object_path(&install_path);
     store.note_object_path(&blob_path);
