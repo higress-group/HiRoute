@@ -85,6 +85,22 @@ impl LocalControlAdapter {
                 {
                     None
                 } else if let Some(key) = source.enabled_credentials().next() {
+                    stores
+                        .control()
+                        .validate_current_key_budgets(source_id)
+                        .map_err(|_| ComputeManagementControlError::Unavailable)?;
+                    // Inference probes have no complete quote/settlement contract.
+                    // Directory and authentication checks remain available, but
+                    // must never turn a limited saved Key into unmetered traffic.
+                    if draft.inference_model_id.is_some()
+                        && stores
+                            .control()
+                            .key_spend_currency(&key.key_id)
+                            .map_err(|_| ComputeManagementControlError::Unavailable)?
+                            .is_some()
+                    {
+                        return Err(ComputeManagementControlError::ActionRequired);
+                    }
                     let subject = VerifiedSecretSubjectV1::from_authenticated_transport(
                         "hirouted",
                         format!("source/{}", source.source_id),

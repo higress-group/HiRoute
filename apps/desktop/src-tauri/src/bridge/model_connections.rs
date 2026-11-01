@@ -5,6 +5,7 @@ pub async fn compute_subscriptions(
     state: State<'_, DesktopState>,
     source_id: Option<String>,
     expected_source_revision: Option<u64>,
+    native_only: Option<bool>,
 ) -> Result<WebComputeSubscriptionCandidatesV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -37,6 +38,7 @@ pub async fn compute_subscriptions(
         &product_state,
         source_id,
         expected_source_revision,
+        native_only,
     )
     .await
 }
@@ -715,7 +717,8 @@ pub async fn apply_compute_save(
 pub async fn get_compute_save_result(
     window: WebviewWindow,
     state: State<'_, DesktopState>,
-    operation: OperationReferenceV1,
+    operation: Option<OperationReferenceV1>,
+    idempotency_key: Option<String>,
 ) -> Result<WebComputeSaveResultV2, DesktopFailure> {
     main_window(&window)?;
     let broker = window.state::<WebConfirmationState>();
@@ -743,6 +746,11 @@ pub async fn get_compute_save_result(
         &state.2,
         &state.3,
     );
-    hiroute_product_session::commands::get_compute_save_result(&context, &product_state, operation)
-        .await
+    hiroute_product_session::commands::get_compute_save_result(
+        &context,
+        &product_state,
+        operation,
+        idempotency_key,
+    )
+    .await
 }

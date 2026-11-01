@@ -70,6 +70,7 @@ fn saved_subscription_mode_survives_unavailable_credentials_and_v2_stays_strict(
                 &hiroute_domain::WorkspaceId::default(),
                 &ComputeManagementQueryV2 {
                     source_id: Some(source.source_id.clone()),
+                    ..Default::default()
                 },
                 None,
             )
@@ -83,7 +84,8 @@ fn saved_subscription_mode_survives_unavailable_credentials_and_v2_stays_strict(
                     &FailingRuntimeRead,
                     &hiroute_domain::WorkspaceId::default(),
                     &ComputeManagementQueryV2 {
-                        source_id: Some("source/other".into())
+                        source_id: Some("source/other".into()),
+                        ..Default::default()
                     },
                     None,
                 ),

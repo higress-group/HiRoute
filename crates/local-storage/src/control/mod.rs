@@ -1,4 +1,5 @@
 mod capability_registration;
+pub(crate) mod key_budgets;
 
 use hiroute_diagnostics::publication::{PublicationStage, measure};
 use std::cell::RefCell;

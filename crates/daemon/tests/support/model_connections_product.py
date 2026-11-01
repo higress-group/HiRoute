@@ -28,6 +28,7 @@ class NativeUpstream:
         self.requests = []
         self.rejected_token = None
         self.reject_reasoning_history = False
+        self.rejected_status = None
         self.function_tools = False
         self.lock = threading.Lock()
         owner = self
@@ -68,6 +69,9 @@ class NativeUpstream:
                 self.record(body)
                 assert self.path == '/v1/responses', self.path
                 assert body['model'] == MODEL, body
+                if owner.rejected_status is not None:
+                    self.send_json(owner.rejected_status, {'error': {'message': 'fixture temporary failure', 'type': 'server_error'}})
+                    return
                 if self.headers.get('Authorization') == 'Bearer ' + str(owner.rejected_token):
                     self.send_json(401, {'error': {'message': 'fixture rejected key', 'type': 'invalid_api_key'}})
                     return
@@ -176,7 +180,7 @@ def save_native_source(product, upstream, token=None, unknown=False,
                        context_tokens=32768, cli_input=False,
                        source_display_name='Product Native API',
                        model_display_name='Manual Native Model',
-                       inventory_path='/v1/models', network_policy=None):
+                       inventory_path='/v1/models', network_policy=None, native_reasoning=None):
     status = control(product, 'GetClientServiceStatus', {})['data']
     suffix = ('-unknown' if unknown else '') + ('-' + variant if variant else '')
     candidate_ref = 'candidate/native/product' + suffix
@@ -228,7 +232,7 @@ def save_native_source(product, upstream, token=None, unknown=False,
                 'streaming': declared(True),
                 'context_tokens': declared(context_tokens),
                 'max_output_tokens': declared(4096),
-                'native_reasoning': declared({
+                'native_reasoning': declared(native_reasoning or {
                     'kind': 'fixed', 'profile': 'provider-default'}),
             },
         }],
@@ -722,12 +726,16 @@ def run(repository, expected_sha=None):
         configure_reference_price(product, saved['binding_id'], 2_000_000)
         assert timeline_amounts(product, session_id, 1) == frozen_amounts
         assert_live_credential_switches(product, upstream, saved)
+        # Response delivery precedes asynchronous valuation. Freeze all three
+        # completed valuations before testing their persistence across restart.
+        settled_amounts = timeline_amounts(product, session_id, 3)
         product.stop()
         product.start()
         recheck_saved_native_source(product, saved, 3, 'after-restart')
         recheck_saved_native_source(product, unknown, 3, 'unknown-after', unknown=True)
         assert_session_record(product, started_ms, saved['binding_id'])
         reopened_amounts = timeline_amounts(product, session_id, 3)
+        assert reopened_amounts == settled_amounts, 'restart changed settled valuations'
         for request, costs in frozen_amounts.items():
             assert reopened_amounts[request] == costs, 'price edits rewrote historical valuation'
         first_amount = sum(cost['known_micros'] for costs in frozen_amounts.values() for cost in costs)

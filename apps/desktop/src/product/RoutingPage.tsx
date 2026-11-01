@@ -1,3 +1,4 @@
+import type { ModelRouteRequest } from '../features/models/model-route';
 import { TrialAgentMapping } from '../features/trial/TrialAgentMapping';
 import { Dialog } from '../ui';
 import { trustLevelLabel } from '../features/trust/levels';
@@ -15,7 +16,7 @@ import { agentModelPlanIds } from '../features/agents/status';
 import { agentBrand, agentDisplayName } from '../features/agents/ecosystems';
 import { routingEditorEntries } from '../routing-editor-entries';
 
-export type RoutingEditorIntent = { key: string; plan?: Plan; draft?: Draft; staleDraft?: boolean; initialBindingId?: string; initialContent?: Editor; editingMemory?: PlanEditorMemory; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string };
+export type RoutingEditorIntent = { key: string; plan?: Plan; draft?: Draft; staleDraft?: boolean; initialBindingId?: string; initialModelRoute?: ModelRouteRequest; initialContent?: Editor; editingMemory?: PlanEditorMemory; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string };
 
 export function RoutingPage({ language, active = true, refreshVersion = 0, snapshot, operation, loading, busy, mutationAllowed, suggestionPlanIds = [], initialEditor = null, notice, onRefresh, onOperation, onOpenAgent, onOpenSession, onOpenSessions, onOpenServices }: {
   language: 'zh' | 'en'; snapshot: DesktopSnapshot | null; loading: boolean; busy: boolean;
@@ -46,6 +47,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
   const [error, setError] = useState('');
   const [persistedNotice, setPersistedNotice] = useState('');
   const [editorBusy, setEditorBusy] = useState(false);
+  const [publicationReady, setPublicationReady] = useState(false);
   const [pendingPersistence, setPendingPersistence] = useState<{ action: 'save_draft' | 'publish'; identity: PersistenceIdentity; operationId: string | null } | null>(null);
   const initialized = useRef(!!initialEditor);
   const trigger = useRef<HTMLElement | null>(null);
@@ -147,7 +149,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
   const pageActions = creating ? <>
     <button className="btn" type="button" disabled={pageLocked} onClick={() => void planEditor.current?.saveDraft()}>{text('保存草稿', 'Save draft')}</button>
     <button className="btn" type="button" disabled={editorBusy} onClick={() => planEditor.current?.cancel()}>{text('取消', 'Cancel')}</button>
-    <button className="btn btn-primary" type="button" disabled={pageLocked} onClick={() => void planEditor.current?.publish()}>{text('启用', 'Enable')}</button>
+    <button className="btn btn-primary" type="button" disabled={pageLocked || !publicationReady} onClick={() => void planEditor.current?.publish()}>{editor?.initialModelRoute ? text('保存并创建', 'Save and create') : text('启用', 'Enable')}</button>
   </> : entries.length ? <button className="btn btn-primary" disabled={busy || localBusy || !mutable} onClick={event => void newRoute(event.currentTarget)}><UiIcon name="plus" />{text('新建智能路由', 'New smart routing')}</button> : undefined;
   const closeEditor = () => {
     const next = creating ? returnEditor.current : null;
@@ -161,12 +163,12 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
   };
   const editorView = editor ? <fieldset className="detail-fieldset" disabled={!mutable || busy || localBusy || editorBusy}>
     {editor.staleDraft && <div className="callout warn" role="status"><UiIcon name="warning" /><div><strong>{text('这是基于旧版本的草稿', 'This draft is based on an older version')}</strong><p>{text('当前生效路由已单独显示在列表中。保留此草稿供查看；如需继续，请先读取当前配置再重新编辑。', 'The active route is listed separately. This draft is retained for inspection; reload the current route before editing further.')}</p></div></div>}
-    <PlanEditor ref={planEditor} key={`${editor.key}:${editor.draft?.revision ?? editor.plan?.head.head_revision ?? 'new'}`} creating={creating} plan={editor.plan} draft={editor.draft} initialBindingId={editor.initialBindingId} initialView={editor.initialView} initialDivisionBranch={editor.initialDivisionBranch} initialContent={editor.initialContent} onCreateDraft={async initialContent => {
+    <PlanEditor ref={planEditor} key={`${editor.key}:${editor.draft?.revision ?? editor.plan?.head.head_revision ?? 'new'}`} creating={creating} plan={editor.plan} draft={editor.draft} initialBindingId={editor.initialBindingId} initialModelRoute={editor.initialModelRoute} initialView={editor.initialView} initialDivisionBranch={editor.initialDivisionBranch} initialContent={editor.initialContent} onCreateDraft={async initialContent => {
       if (dirty && !(await requestEditorReplacement('routing'))) return false;
       returnEditor.current = editor; setPendingPersistence(null); setPersistedNotice(''); setDirty(false); setShowList(false);
       setEditor({ key: randomId(), initialContent, editingMemory: {} });
       return true;
-    }} editingMemory={editor.editingMemory} language={language} active={active} refreshVersion={refreshVersion} usedBy={usedBy} usedByState={usedByState} onOpenAgent={onOpenAgent} onOpenSession={onOpenSession} onOpenServices={onOpenServices} onDirty={next => { setDirty(next); if (next) setPersistedNotice(''); }} onEdit={() => setPendingPersistence(null)} onBusyChange={setEditorBusy} onOperation={onOperation} onPersisted={(next, action, identity, submitted) => { setPendingPersistence(next ? null : { action, identity, operationId: submitted?.operation_id ?? null }); if (next) { returnEditor.current = null; setEditor(current => ({ ...next, editingMemory: current?.editingMemory ?? {} })); setDirty(false); setPersistedNotice(action === 'save_draft' ? text('草稿已保存，可以继续编辑或发布。', 'Draft saved. Continue editing or publish.') : text('更改已发布，新请求将使用当前路由。', 'Changes published. New requests will use this routing.')); } }} onDone={onRefresh} onClose={closeEditor} />
+    }} editingMemory={editor.editingMemory} language={language} active={active} refreshVersion={refreshVersion} usedBy={usedBy} usedByState={usedByState} onOpenAgent={onOpenAgent} onOpenSession={onOpenSession} onOpenServices={onOpenServices} onDirty={next => { setDirty(next); if (next) setPersistedNotice(''); }} onEdit={() => setPendingPersistence(null)} onBusyChange={setEditorBusy} onPublicationReady={setPublicationReady} onOperation={onOperation} onPersisted={(next, action, identity, submitted) => { setPendingPersistence(next ? null : { action, identity, operationId: submitted?.operation_id ?? null }); if (next) { returnEditor.current = null; setEditor(current => ({ ...next, editingMemory: current?.editingMemory ?? {} })); setDirty(false); setPersistedNotice(action === 'save_draft' ? text('草稿已保存，可以继续编辑或发布。', 'Draft saved. Continue editing or publish.') : text('更改已发布，新请求将使用当前路由。', 'Changes published. New requests will use this routing.')); } }} onDone={onRefresh} onClose={closeEditor} />
   </fieldset> : null;
   return <ProductPage
     title={creating ? text('新建智能路由', 'New smart routing') : text('智能路由', 'Smart routing')}

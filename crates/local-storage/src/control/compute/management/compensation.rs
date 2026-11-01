@@ -113,6 +113,13 @@ pub(in crate::control) fn reconcile(
         .ok_or_else(|| conflict("compute.compensation.workspace_revision"))?;
     let encoded =
         encode(&serde_json::json!({"schema":"hiroute.control-desired/v1","value":desired}))?;
+    key_budgets::reconcile_compensation(
+        &transaction,
+        &operation.workspace_id,
+        operation.operation_id.as_str(),
+        &mutation,
+        &repaired,
+    )?;
     write_source(
         &transaction,
         &operation.workspace_id,

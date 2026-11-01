@@ -53,6 +53,24 @@ fn catalog_fixture() -> (AgentPlanGrantV1, AgentPlanCatalogV1) {
 }
 
 #[test]
+fn route_without_purpose_keeps_the_released_agent_catalog_nonempty() {
+    let plans = vec![published("plan/gpt-6.1-sol", "gpt-6.1-sol", "")];
+    plans[0].validate().unwrap();
+    let grant = AgentPlanGrantV1::derive(
+        AgentIngressProtocolV1::Responses,
+        plans[0].agent_plan_id.clone(),
+        BTreeSet::from([plans[0].agent_plan_id.clone()]),
+        &plans,
+    )
+    .unwrap();
+    let catalog =
+        AgentPlanCatalogV1::from_grant(&grant, AgentIngressProtocolV1::Responses, &plans).unwrap();
+    catalog.validate_exact_grant(&grant).unwrap();
+    assert_eq!(catalog.entries[0].purpose, plans[0].display_name.as_str());
+    assert!(RoutingInstructionOverlayV1::render(&catalog).is_ok());
+}
+
+#[test]
 fn agents_grant_catalog_and_overlay_are_the_same_exact_alias_set() {
     let (grant, catalog) = catalog_fixture();
     catalog.validate_exact_grant(&grant).unwrap();

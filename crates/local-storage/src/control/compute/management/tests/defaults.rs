@@ -28,6 +28,7 @@ fn model_defaults_commit_with_source_cas_preserve_original_source_proofs_and_res
         )]);
         let preview = planner
             .preview_v3(hiroute_application_api::ComputeManagementChangeV3 {
+                api_link: None,
                 schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
                 change: edit(
                     &stores,
@@ -150,6 +151,7 @@ pub(super) fn save_preserved_defaults(
     )]);
     let preview = planner
         .preview_v3(hiroute_application_api::ComputeManagementChangeV3 {
+            api_link: None,
             schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
             change: edit(
                 stores,

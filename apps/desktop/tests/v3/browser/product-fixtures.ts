@@ -281,7 +281,7 @@ export const codeImplementationPlan: Plan = {
 };
 
 // API fixture: production defaults and reopening are owned by routing options.
-export function fixturePlanAuthoring(plan?: Plan): AuthoringOptions {
+export function fixturePlanAuthoring(plan?: Plan, input: Partial<Pick<Editor, 'mode' | 'display_name' | 'purpose' | 'candidates'>> = {}): AuthoringOptions {
   const editor: Editor = {
     schema: 'hiroute.plan-editor/v2', display_name: '', purpose: '', mode: 'fixed_model', candidates: [],
     smart: { economy: [], primary: [], judgment: structuredClone(defaultJudgment), reselect_on_user_message: true,
@@ -309,6 +309,14 @@ export function fixturePlanAuthoring(plan?: Plan): AuthoringOptions {
     }
     else editor.candidates = strategy.candidates ?? [];
   }
+  for (const field of ['mode', 'display_name', 'purpose'] as const) {
+    if (input[field] !== undefined) Object.assign(editor, { [field]: input[field] });
+  }
+  if (input.candidates) editor.candidates = input.candidates.map(selection => {
+    const model = readyManagement.sources.flatMap(source => source.models).find(model => model.binding_id === selection.binding_id);
+    const native = model?.native_reasoning as { kind?: string } | undefined;
+    return { ...selection, reasoning: selection.reasoning ?? (native?.kind === 'discrete' ? { kind: 'profile' as const, profile: 'high' } : native?.kind === 'toggle' ? { kind: 'toggle' as const, enabled: true } : undefined) };
+  });
   return { editor, plan_id: plan?.agent_plan_id ?? null, expected_head_revision: plan?.head.head_revision ?? null,
     required_choices: [], candidate_defaults: readyManagement.sources.flatMap(source => source.models.map(model => ({
       binding_id: model.binding_id,
@@ -687,7 +695,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     },
   };
   if (command === 'plan_editor_options') return {
-    ...(payload?.input?.authoring ? { authoring: fixturePlanAuthoring(readyDesktop.catalog.plans.find(plan => plan.agent_plan_id === payload.input.authoring.plan_id)) } : {}),
+    ...(payload?.input?.authoring ? { authoring: fixturePlanAuthoring(readyDesktop.catalog.plans.find(plan => plan.agent_plan_id === payload.input.authoring.plan_id), payload.input.authoring) } : {}),
     context_window: fresh || !payload?.input?.editor ? null : { maximum_tokens: 64000, default_tokens: 64000 },
     suggested_alias: 'hiroute-daily-coding',
     candidates: fresh ? [] : readyManagement.sources.flatMap(source => source.models.map(model => ({ binding_id: model.binding_id, model_configuration_id: model.catalog_configuration_id ?? model.upstream_model_id, display_name: model.display_name, reasoning: model.native_reasoning ?? { kind: 'fixed', profile: 'provider-default' }, billing_class: model.presentation?.billing_class ?? 'unknown', routable: source.state === 'ready', ingress_protocols: ['responses', 'messages'] }))),

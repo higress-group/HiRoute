@@ -289,6 +289,8 @@ pub enum PaidBudgetQuoteFactV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlannerCandidateFactsV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_resolution: Option<hiroute_domain::ReasoningResolutionV1>,
     pub schema_version: String,
     pub candidate_id: String,
     pub stable_binding_id: String,
@@ -504,6 +506,7 @@ impl PlannerCandidateFactsV1 {
     ) -> Result<Self, PlannerError> {
         let profile_digest = canonical_digest(&protocol_profile)?;
         Ok(Self {
+            reasoning_resolution: None,
             schema_version: CANDIDATE_FACTS_SCHEMA.into(),
             candidate_id: candidate_id.into(),
             stable_binding_id: stable_binding_id.into(),

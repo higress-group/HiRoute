@@ -125,9 +125,9 @@ export function PriceEditor({
     }
     const formValues = form ? new FormData(form) : null;
     const submittedRates = mode === 'manual' && formValues
-      ? [String(formValues.get('input_rate') ?? ''), String(formValues.get('output_rate') ?? ''), rates[2] ?? '', rates[3] ?? '']
+      ? ['input_rate', 'output_rate', 'cache_read_rate', 'cache_write_rate'].map(name => String(formValues.get(name) ?? ''))
       : rates;
-    if (mode === 'manual' && (!submittedRates[0] || !submittedRates[1] || !/^\d+(?:\.\d{1,6})?$/.test(submittedRates[0]) || !/^\d+(?:\.\d{1,6})?$/.test(submittedRates[1]))) {
+    if (mode === 'manual' && (!submittedRates[0] || !submittedRates[1] || submittedRates.some(value => value !== '' && !/^\d+(?:\.\d{1,6})?$/.test(value)))) {
       setRates(submittedRates);
       setError('INVALID_PRICE_DECIMAL');
       return;
@@ -142,8 +142,7 @@ export function PriceEditor({
             kind: 'set' as const,
             input_uncached: submittedRates[0],
             output: submittedRates[1],
-            // The compact V3 form edits input/output only. Preserve effective cache
-            // rates instead of silently replacing them with zeroes.
+            // Blank cache rates remain explicitly unknown; zero must be entered.
             cache_read: submittedRates[2] || null,
             cache_write: submittedRates[3] || null,
           };
@@ -190,8 +189,9 @@ export function PriceEditor({
         <label className="check-row"><input type="radio" name="price-mode" checked={mode === 'manual'} disabled={busy} onChange={() => { dirty.current = true; setMode('manual'); setError(''); }} /><div><strong>{zh ? '手工设置费率' : 'Set rates manually'}</strong><span>{context ? `${zh ? '币种' : 'Currency'} ${context.currency} · ${zh ? '每 100 万 tokens' : 'per million tokens'}` : '—'}</span></div></label>
       </div>}
       {!loading && mode === 'manual' && <div className="oc-field-grid price-rate-fields">
-        {[zh ? '输入价格' : 'Input price', zh ? '输出价格' : 'Output price'].map((label, index) => <label className="field" key={label}><span className="field-label">{label}</span><input className="input" name={index === 0 ? 'input_rate' : 'output_rate'} data-autofocus={index === 0 ? true : undefined} inputMode="decimal" required pattern="[0-9]+(\.[0-9]{1,6})?" value={rates[index]} placeholder={`${context?.currency ?? ''} / 1M tokens`} onChange={event => { dirty.current = true; setError(''); setRates(current => current.map((value, item) => item === index ? event.target.value : value)); }} /></label>)}
+        {[zh ? '输入价格' : 'Input price', zh ? '输出价格' : 'Output price', zh ? '缓存读取价格（选填）' : 'Cache read price (optional)', zh ? '缓存写入价格（选填）' : 'Cache write price (optional)'].map((label, index) => <label className="field" key={label}><span className="field-label">{label}</span><input className="input" name={['input_rate', 'output_rate', 'cache_read_rate', 'cache_write_rate'][index]} data-autofocus={index === 0 ? true : undefined} inputMode="decimal" required={index < 2} disabled={busy || !writable} pattern="[0-9]+(\.[0-9]{1,6})?" value={rates[index]} placeholder={`${context?.currency ?? ''} / 1M tokens`} onChange={event => { dirty.current = true; setError(''); setRates(current => current.map((value, item) => item === index ? event.target.value : value)); }} /></label>)}
       </div>}
+      {!loading && mode === 'manual' && <p className="field-help">{zh ? '缓存价格留空为未知；Key 额度限制需要补齐四项单价。' : 'Blank cache prices remain unknown. Key spending limits require all four rates.'}</p>}
       {!writable && <div className="callout warn"><UiIcon name="warning" /><span>{zh ? '当前接入不支持价格编辑。' : 'This connection does not support pricing edits.'}</span></div>}
       {notice && <div className="callout" role="status"><UiIcon name="info" /><span>{notice}</span></div>}
       {error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{errorMessage(error, zh)}</span></div>}

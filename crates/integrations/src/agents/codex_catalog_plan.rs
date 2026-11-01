@@ -91,16 +91,31 @@ pub(super) fn plan_entry(
             CodexInputModalityV1::Image => "image",
         })
         .collect::<Vec<_>>();
+    let levels = request_reasoning_levels(plan);
+    let following = plan
+        .body
+        .materialized
+        .attempt_owned
+        .groups
+        .iter()
+        .flat_map(|g| &g.candidates)
+        .flat_map(|c| &c.protocol_profiles)
+        .any(|p| p.follow_request_reasoning);
     let description = format!(
-        "HiRoute 路由计划：{}；推理强度由计划配置决定",
+        "HiRoute 路由计划：{}；{}",
         plan.body.identity.purpose.as_str(),
+        if following {
+            "思考档位跟随请求，不支持时使用模型默认档位"
+        } else {
+            "推理强度由计划配置决定"
+        }
     );
     Ok(json!({
         "slug": plan.model_alias().as_str(),
         "display_name": plan.body.identity.display_name.as_str(),
         "description": description,
         "visibility": "list", "supported_in_api": true, "priority": priority,
-        "default_reasoning_level": null, "supported_reasoning_levels": [],
+        "default_reasoning_level": null, "supported_reasoning_levels": levels,
         "shell_type": "shell_command", "apply_patch_tool_type": null,
         "model_messages": {
             "instructions_template": generic_prompt(), "instructions_variables": null,
@@ -282,10 +297,67 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
     CodexClientCapabilityPreviewV1::Available {
         context_window,
         input_modalities,
-        reasoning: CodexReasoningControlV1::RouteConfiguration,
+        reasoning: if request_reasoning_levels(plan).is_empty() {
+            CodexReasoningControlV1::RouteConfiguration
+        } else {
+            CodexReasoningControlV1::FollowRequest
+        },
         limitations,
         fixed_limits: vec![CodexFixedCapabilityLimitV1::ParallelToolCallsDisabled],
     }
+}
+
+/// The union is intentional: each candidate falls back independently when an
+/// effort offered by another candidate is unsupported. Never invent equivalences.
+fn request_reasoning_levels(plan: &CompiledAgentPlanV1) -> Vec<Value> {
+    let efforts = plan
+        .body
+        .materialized
+        .attempt_owned
+        .groups
+        .iter()
+        .flat_map(|g| &g.candidates)
+        .flat_map(|c| &c.protocol_profiles)
+        .filter(|p| p.follow_request_reasoning && p.ingress_protocol == UpstreamProtocol::Responses)
+        .flat_map(|p| {
+            p.capability.reasoning_profiles.iter().filter_map(move |r| {
+                if p.capability.upstream_protocol == UpstreamProtocol::Responses
+                    && r.control_kind == hiroute_domain::GatewayReasoningControlKindV1::Toggle
+                {
+                    match r.profile_id.as_str() {
+                        "enabled" => return Some("low"),
+                        "disabled" => return Some("none"),
+                        _ => (),
+                    }
+                }
+                let path: &[&str] = match p.capability.upstream_protocol {
+                    UpstreamProtocol::Responses => &["reasoning", "effort"],
+                    UpstreamProtocol::ChatCompletions => &["reasoning_effort"],
+                    UpstreamProtocol::Messages => &["output_config", "effort"],
+                };
+                r.render.fields().iter().find_map(|field| {
+                    if !field
+                        .path
+                        .iter()
+                        .map(String::as_str)
+                        .eq(path.iter().copied())
+                    {
+                        return None;
+                    }
+                    match &field.value {
+                        hiroute_domain::GatewayNativeReasoningValueV1::String(s) => {
+                            Some(s.as_str())
+                        }
+                        _ => None,
+                    }
+                })
+            })
+        })
+        .collect::<BTreeSet<_>>();
+    ["none", "minimal", "low", "medium", "high", "xhigh", "max"].into_iter()
+        .filter(|effort| efforts.contains(effort))
+        .map(|effort| json!({"effort":effort,"description":format!("{effort} (model default if unsupported)")}))
+        .collect()
 }
 
 fn limiting_bindings<'a>(

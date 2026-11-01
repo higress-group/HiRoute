@@ -167,7 +167,9 @@ pub(super) fn validate_execution(
             return Err(PlanVersionError::Invalid);
         }
         for (candidate, selected) in group.candidates.iter().zip(selected) {
-            if candidate.binding_id != selected.binding_id
+            if candidate.protocol_profiles.iter().any(|profile| {
+                profile.follow_request_reasoning != configuration.follow_request_reasoning
+            }) || candidate.binding_id != selected.binding_id
                 || !same_reasoning(&selected.reasoning, &candidate.exact_reasoning)
             {
                 return Err(PlanVersionError::Invalid);

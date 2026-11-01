@@ -23,6 +23,7 @@ use super::{
 };
 
 mod defaults;
+mod key_budgets;
 mod lifecycle;
 mod network;
 

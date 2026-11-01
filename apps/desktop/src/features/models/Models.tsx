@@ -1,3 +1,7 @@
+import { KeyBudgetEditor } from '../key-budgets/KeyBudgetEditor';
+import { budgetDraft, type KeyBudgetEdit, type KeyBudgetResult, type BudgetView } from '../key-budgets/types';
+import { CreateModelRoute } from './CreateModelRoute';
+import type { ModelRouteRequest } from './model-route';
 import { NativeSourceNetworkEditor } from '../model-connections/NativeSourceNetworkEditor';
 import { networkFailureText, networkRepairable, type NativeNetworkFailure } from '../model-connections/native-network';
 import { ModelDefaultsEditor } from '../model-feed/ModelDefaultsEditor';
@@ -14,7 +18,7 @@ import { Dialog, Disclosure, UiIcon } from '../../ui';
 import { confirmDiscard, useDiscardGuard } from '../../ui/discard-guard';
 import type { PriceDisplay } from '../model-reference/types';
 import { clientOperationId } from '../model-connections/state';
-import { addDraftKey, buildCredentialEdits, clearSecrets, createDraft, maskEnteredKey, moveDraftKey, type ModelDraft } from './model-draft';
+import { addDraftKey, buildCredentialEdits, buildKeyBudgetEdits, validateDraftBudgets, clearSecrets, createDraft, maskEnteredKey, moveDraftKey, type ModelDraft } from './model-draft';
 import { subscriptionAttentionCopy } from './subscription-copy';
 import { ConnectionLifecycleDialog } from './ConnectionLifecycleDialog';
 import type {
@@ -29,6 +33,7 @@ import type {
 } from './types';
 
 type Props = {
+  renderSubscriptionApi?(source: ManagedSource): React.ReactNode;
   language: 'zh' | 'en';
   snapshot: ManagementSnapshot;
   initialSourceId?: string | null;
@@ -36,14 +41,13 @@ type Props = {
   onRefresh(): Promise<void>;
   onPrepareKeyInput(sourceId: string, input: ProtectedKeyInput): Promise<PreparedKeyInput>;
   onReadKeyMasks?(source: ManagedSource): Promise<KeyMasks>;
-  onPreview(change: ManagementChange): Promise<SavePreview>;
+  onPreview(change: ManagementChange, budgetEdits?: KeyBudgetEdit[]): Promise<SavePreview>;
   onApply(preview: SavePreview): Promise<'saved' | 'uncertain'>;
   onDiscardProtectedInputs(): void;
   onCredentialsSaved?(): void;
   plans?: Plan[];
   onOpenPlan?(planId: string): void;
-  onTryModel?(modelId: string | undefined, bindingId: string): void;
-  onCreatePlan?(bindingId: string): void;
+  onCreatePlan?(request: ModelRouteRequest): void;
   onEditPrice?(source: ManagedSource, model: ManagedModel): void;
   priceRefresh?: ReadonlyMap<string, number>;
   onReauthorize?(sourceId: string): void;
@@ -95,6 +99,7 @@ function safeErrorCode(error: unknown): string {
     if (typeof value.code === 'string' && /^[A-Za-z0-9_.\/-]{1,80}$/.test(value.code)) return value.code;
     pending.push(value.error, value.envelope, value.failure);
   }
+  if (error instanceof Error && error.message === 'KEY_BUDGET_INVALID') return error.message;
   return 'COMPUTE_MANAGEMENT_SAVE_FAILED';
 }
 
@@ -232,6 +237,7 @@ export function Models(props: Props) {
     setSubmitting(true);
     setErrorCode('');
     try {
+      validateDraftBudgets(draft);
       const edits = await buildCredentialEdits(source, draft, props.onPrepareKeyInput);
       const change: ManagementChange = {
         schema: 'hiroute.compute-management-change/v2',
@@ -241,7 +247,7 @@ export function Models(props: Props) {
         intent: draft.enabled ? 'save_ready' : 'save_disabled',
         key_edits: edits,
       };
-      const preview = await props.onPreview(change);
+      const preview = await props.onPreview(change, buildKeyBudgetEdits(draft, edits));
       const outcome = await props.onApply(preview);
       setDraft(clearSecrets(draft));
       setDraft(null);
@@ -402,6 +408,10 @@ export function Models(props: Props) {
             <StatusBadge value={status} reason={reason} subscription={access === 'subscription'} language={props.language} />
           </div>
 
+          {model && props.onCreatePlan && <CreateModelRoute key={model.binding_id} model={model} snapshot={props.snapshot} plans={props.plans ?? []} language={props.language} disabled={!props.mutable || submitting || networkDirty || status !== 'available'} onCreate={props.onCreatePlan} onOpenPlan={props.onOpenPlan} />}
+
+          {props.renderSubscriptionApi?.(source)}
+
           {model?.catalog_configuration_id && <ModelOriginDetails modelId={model.catalog_configuration_id} language={props.language} />}
 
           {model && <ModelDefaultsEditor source={source} bindingId={model.binding_id} language={props.language} mutable={props.mutable && !networkDirty} onApply={props.onApply} onSaved={props.onRefresh} />}
@@ -416,7 +426,7 @@ export function Models(props: Props) {
               ? <button className="btn" type="button" onClick={() => props.onReauthorize?.(source.source_id)}>{access === 'subscription' ? subscriptionMode === 'cpa_managed' ? text('重新独立登录', 'Sign in independently again') : text('重新检查订阅', 'Check subscription again') : text('重新检查接入', 'Check connection again')}</button>
                 : status !== 'needs_credentials' && canRecheck
                 ? <button className="btn" type="button" onClick={() => void recheckSource()}>{text('检查接入', 'Check connection')}</button>
-                : canManageCredentials && <button className="btn" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>}
+                : canManageCredentials && <button className="btn" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理 Key 与额度', 'Manage keys and allowances')}</button>}</div>}
           {recheckError && <div className="callout bad" role="alert"><UiIcon name="warning" /><span>{recheckError}</span><button className="btn" type="button" disabled={!canRecheck} onClick={() => void recheckSource()}>{text('重试', 'Retry')}</button></div>}
           {recheckNotice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="check" /><span>{recheckNotice}</span></div></div>}
 
@@ -424,7 +434,7 @@ export function Models(props: Props) {
           {networkDirty && <p className="field-help" role="status">{text('请先保存或放弃网络修改，再切换或修改接入；保存结果未确认时，请刷新原操作。', 'Save or discard the network changes before switching or editing the connection. If a save is unconfirmed, refresh its original operation.')}</p>}
           {source.provenance !== 'connector_owned' && <NativeSourceNetworkEditor key={source.source_id} sourceId={source.source_id} language={props.language} mutable={props.mutable && !draft && !rechecking && !submitting} reveal={networkReveal} onDirty={setNetworkDirty} onSaved={async () => { setNetworkFailure(null); setRecheckError(''); setRecheckNotice(text('网络设置已更新，请重新检查接入。', 'Network settings changed. Check the connection again.')); await props.onRefresh(); }} />}
           <section className="detail-section">
-            <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理凭据', 'Manage credentials')}</button>}</div>
+            <div className="detail-section-head"><h3>{text('接入来源', 'Connection')}</h3>{canManageCredentials && <button className="btn btn-quiet" type="button" disabled={networkDirty} onClick={() => setDraft(createDraft(source))}>{text('管理 Key 与额度', 'Manage keys and allowances')}</button>}</div>
             <strong>{source.display_name}</strong>
             <p className="field-help">{connectionName(source.connection_identity?.connection_option_id, props.language, source.connection_identity?.product_label ?? '')}</p>
             <div className="actions"><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => setLifecycle({ source, action: 'rename' })}>{text('重命名', 'Rename')}</button>{props.onAppend && <button className="btn" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => props.onAppend?.(source)}>{text('向此接入添加模型', 'Add models to this connection')}</button>}</div>
@@ -456,8 +466,7 @@ export function Models(props: Props) {
 
           {model && <section className="detail-section">
             <div className="detail-section-head"><h3>{text('用于这些路由', 'Used in these routes')}</h3></div>
-            {props.onTryModel && <button className="btn" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => props.onTryModel?.(model.catalog_configuration_id, model.binding_id)}>{text('试用这个模型', 'Try this model')}</button>}
-            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan || networkDirty}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}{plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p>{props.onCreatePlan && model && <button className="btn" type="button" disabled={networkDirty} onClick={() => props.onCreatePlan?.(model.binding_id)}><UiIcon name="plus" />{text('创建智能路由', 'Create routing')}</button>}</>}
+            {usedPlans.length ? usedPlans.map(plan => <button className="list-row v3-linked" type="button" key={plan.agent_plan_id} onClick={() => props.onOpenPlan?.(plan.agent_plan_id)} disabled={!props.onOpenPlan || networkDirty}><UiIcon name="route" /><span className="row-main">{plan.desired.display_name}{plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}</span><UiIcon name="chevronRight" /></button>) : <><p className="muted">{text('还没有加入已发布的路由。', 'Not used by a published route yet.')}</p></>}
           </section>}
 
           {model && <section className="detail-section"><div className="detail-section-head"><h3>{text('移除模型', 'Remove model')}</h3><button className="btn btn-quiet" type="button" disabled={!props.mutable || submitting || networkDirty} onClick={() => setLifecycle({ source, model, action: 'remove' })}>{text('移除模型', 'Remove model')}</button></div><p className="muted">{text('仅从所属接入移除这个模型。', 'Remove this model from its connection.')}</p></section>}
@@ -469,14 +478,14 @@ export function Models(props: Props) {
     {lifecycle && <ConnectionLifecycleDialog {...lifecycle} language={props.language} snapshot={props.snapshot} mutable={props.mutable} planNames={Object.fromEntries((props.plans ?? []).map(plan => [plan.agent_plan_id, `${plan.desired.display_name}${plan.head.status === 'disabled' ? text('（已停用）', ' (disabled)') : ''}`]))} onPreview={props.onPreview} onApply={props.onApply} onRefresh={props.onRefresh} onOpenPlan={props.onOpenPlan} onClose={() => setLifecycle(null)} />}
     <Dialog
       open={Boolean(draft && source)}
-      title={text('管理接入凭据', 'Manage connection credentials')}
+      title={text('API Key 与额度', 'API keys and allowances')}
       description={sourceLabel}
       closeLabel={text('关闭凭据设置', 'Close credential settings')}
       closeDisabled={submitting}
       onClose={() => { if (!submitting) cancelCredentials(); }}
-      footer={<><button className="btn" type="button" disabled={submitting} onClick={cancelCredentials}>{text('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-primary" type="button" disabled={submitting || networkDirty || !props.mutable || !draft?.selectedModels.length} onClick={() => void saveCredentials()}>{submitting ? text('正在保存…', 'Saving…') : text('保存凭据', 'Save credentials')}</button></>}
+      footer={<><button className="btn" type="button" disabled={submitting} onClick={cancelCredentials}>{text('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-primary" type="button" disabled={submitting || networkDirty || !props.mutable || !draft?.selectedModels.length} onClick={() => void saveCredentials()}>{submitting ? text('正在保存…', 'Saving…') : text('保存设置', 'Save settings')}</button></>}
     >
-      {source && draft && <CredentialEditor language={props.language} source={source} model={model} draft={draft} errorCode={errorCode} onChange={setDraft} onEditingChange={setCredentialEditing} readKeyMasks={props.onReadKeyMasks} />}
+      {source && draft && <CredentialEditor language={props.language} source={source} model={model} draft={draft} errorCode={errorCode} onChange={setDraft} onEditingChange={setCredentialEditing} readKeyMasks={props.onReadKeyMasks} disabled={submitting} />}
     </Dialog>
   </section>;
 }
@@ -567,7 +576,7 @@ function ModelPriceSummary({ language, model, billing, contexts, refreshVersion 
   return <div className="v3-price"><strong>{currency}{trim(rates[0])} / {currency}{trim(rates[1])}</strong><span>{zh ? '输入 / 输出 · 每 100 万 tokens' : 'Input / output · per million tokens'} · {context.currency} · {origin === 'manual' ? (zh ? '人工费率' : 'Manual rates') : (zh ? '目录或参考费率' : 'Catalog or reference rates')}</span></div>;
 }
 
-function CredentialEditor({ language, source, model, draft, errorCode, onChange, onEditingChange, readKeyMasks }: {
+function CredentialEditor({ language, source, model, draft, errorCode, onChange, onEditingChange, readKeyMasks, disabled }: {
   language: 'zh' | 'en';
   source: ManagedSource;
   model: ManagedModel | undefined;
@@ -576,6 +585,7 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
   onChange(value: ModelDraft): void;
   onEditingChange(value: boolean): void;
   readKeyMasks?: Props['onReadKeyMasks'];
+  disabled?: boolean;
 }) {
   const zh = language === 'zh';
   const text = (cn: string, en: string) => zh ? cn : en;
@@ -592,6 +602,30 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
     return () => { active = false; };
   }, [source.source_id, source.revision, readKeyMasks]);
   useEffect(() => { setShowSecret(false); }, [editing]);
+
+  const [allowances, setAllowances] = useState<KeyBudgetResult | null>(null);
+  const [shared, setShared] = useState<BudgetView[]>([]);
+  const [budgetLoading, setBudgetLoading] = useState(true);
+  const [budgetError, setBudgetError] = useState(false);
+  const [budgetReload, setBudgetReload] = useState(0);
+  const [budgetCursor, setBudgetCursor] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true; setBudgetLoading(true); setAllowances(null); setBudgetError(false);
+    void Promise.all([
+      invoke<KeyBudgetResult>('compute_key_budgets', { input: { source_id: source.source_id, cursor: null } }),
+      invoke<KeyBudgetResult>('compute_key_budgets', { input: { source_id: null, cursor: null } }),
+    ]).then(([owned, available]) => {
+      if (!active) return;
+      if (!owned || !available) throw new Error('BUDGET_UNAVAILABLE');
+      setAllowances(owned); setShared(available.budgets); setBudgetCursor(available.next_cursor);
+    }).catch(() => { if (active) setBudgetError(true); }).finally(() => { if (active) setBudgetLoading(false); });
+    return () => { active = false; };
+  }, [source.source_id, source.revision, budgetReload]);
+  async function loadMoreBudgets() {
+    try { const page = await invoke<KeyBudgetResult>('compute_key_budgets', { input: { source_id: null, cursor: budgetCursor } });
+      setShared(items => [...items, ...page.budgets]); setBudgetCursor(page.next_cursor);
+    } catch { setBudgetError(true); }
+  }
   const visibleKeys = draft.keys.filter(key => !key.removed);
   function keyLabel(key: ModelDraft['keys'][number]) {
     return key.replacement ? maskEnteredKey(key.replacement)
@@ -639,12 +673,13 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
     }
   }
 
-  return <div>
+  return <fieldset disabled={disabled} className="oc-credential-fields">
     <p className="v3-select-intro">{text('同一接入的模型共用这组凭据，按下列顺序尝试。', 'Models on this connection share these credentials, tried in order.')}</p>
     <p className="oc-meta">{text('影响模型：', 'Models: ')}{affected || text('暂无模型', 'None')}</p>
     {visibleKeys.map((key, index) => {
       const availability = summarizeAvailability(source.keys.find(item => item.key_id === key.keyId)?.model_statuses.filter(item => !model || item.binding_id === model.binding_id).map(item => item.availability) ?? [], language);
-      return <div className="oc-key-row" key={key.draftId} onKeyDown={event => {
+      const current = allowances?.budgets.find(item => item.definition.budget_id === allowances.bindings[key.keyId ?? '']);
+      return <div className="oc-key-budget" key={key.draftId}><div className="oc-key-row" onKeyDown={event => {
         if (event.altKey && event.key === 'ArrowUp') { event.preventDefault(); onChange(moveDraftKey(draft, key.draftId, -1)); }
         if (event.altKey && event.key === 'ArrowDown') { event.preventDefault(); onChange(moveDraftKey(draft, key.draftId, 1)); }
       }}>
@@ -656,8 +691,13 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
           <button className="icon-btn" type="button" aria-label={text('替换 Key', 'Replace key')} onClick={() => { setEditing({ kind: 'replace', draftId: key.draftId }); setSecretError(''); onEditingChange(true); updateKey(key.draftId, item => ({ ...item, replacement: '' })); }}><UiIcon name="refresh" /></button>
           <button className="icon-btn" type="button" aria-label={text('移除', 'Remove')} onClick={() => removeKey(key.draftId)}><UiIcon name="trash" /></button>
         </div>
+      </div>
+      {!budgetLoading && !budgetError && <KeyBudgetEditor language={language} value={key.budget ?? budgetDraft(current)} current={current} shared={shared} disabled={disabled} onChange={budget => updateKey(key.draftId, item => ({ ...item, budget }))} />}
       </div>;
     })}
+    {budgetLoading && <p className="field-help" role="status">{text('读取额度…', 'Loading allowances…')}</p>}
+    {budgetError && <p className="field-help" role="status">{text('额度暂不可用，已有额度继续生效。', 'Allowances unavailable; existing limits remain active.')} <button type="button" className="btn btn-quiet" onClick={() => setBudgetReload(value => value + 1)}>{text('重试', 'Retry')}</button></p>}
+    {budgetCursor && !budgetError && <button type="button" className="btn btn-quiet" onClick={() => void loadMoreBudgets()}>{text('加载更多共用额度', 'Load more shared allowances')}</button>}
     {!visibleKeys.length && <p className="oc-meta">{text('还没有凭据，添加后可用于这个接入。', 'No credentials yet. Add one for this connection.')}</p>}
     {draft.keys.some(key => key.removed && key.keyId) && <div className="callout warn">
       <strong>{text('保存后移除', 'Removed on save')}</strong>
@@ -672,8 +712,9 @@ function CredentialEditor({ language, source, model, draft, errorCode, onChange,
     </div> : source.actions.includes('add_key') && <button className="btn" type="button" onClick={() => { setEditing({ kind: 'add' }); setSecretError(''); onEditingChange(true); }}><UiIcon name="plus" />{text('添加 API Key', 'Add API key')}</button>}
     {errorCode && <div className="callout bad" role="alert" data-error-code={errorCode}><UiIcon name="warning" /><span>{errorCode === 'CREDENTIAL_INPUT_PENDING'
       ? text('请先加入或取消正在输入的凭据。', 'Add or cancel the credential currently being entered first.')
+      : errorCode === 'KEY_BUDGET_INVALID' ? text('请检查额度金额、补充日期、时区和余额上限。', 'Check the allowance amount, renewal date, time zone and balance cap.')
       : text('凭据未保存，修改已保留。请读取当前状态后重试。', 'Credentials were not saved. Your changes are retained; refresh the current state and try again.')}</span></div>}
-  </div>;
+  </fieldset>;
 }
 
 function summarizeAvailability(values: string[], language: 'zh' | 'en') {

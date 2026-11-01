@@ -35,13 +35,25 @@ impl ModelNativeReasoningV1 {
             {
                 return Err(ComputeContractError::InvalidModelData);
             }
-            Some(NativeReasoningRenderConventionV1::ZhipuThinkingChat) if !matches!(&self.capability, NativeReasoningCapabilityV1::Discrete { parameter, profiles, default_profile } if parameter == "reasoning_effort" && profiles == &["low", "high", "max"] && default_profile.as_deref() == Some("max")) =>
+            Some(NativeReasoningRenderConventionV1::ZhipuThinkingChat) if !matches!(&self.capability, NativeReasoningCapabilityV1::Discrete { parameter, profiles, .. } if parameter == "reasoning_effort" && profiles.iter().all(|profile| matches!(profile.as_str(), "low" | "high" | "max"))) =>
             {
                 return Err(ComputeContractError::InvalidModelData);
             }
             _ => {}
         }
         Ok(())
+    }
+
+    /// Source-local capability choices keep companions only for the convention's own control.
+    pub fn with_source_capability(mut self, capability: NativeReasoningCapabilityV1) -> Self {
+        self.capability = capability;
+        self.native_render_convention = self.native_render_convention.filter(|convention| {
+            matches!((&self.capability, convention),
+                (NativeReasoningCapabilityV1::Discrete { parameter, .. }, NativeReasoningRenderConventionV1::ClaudeAdaptiveEffortMessages) if parameter == "output_config.effort")
+                || matches!((&self.capability, convention),
+                    (NativeReasoningCapabilityV1::Discrete { parameter, .. }, NativeReasoningRenderConventionV1::ZhipuThinkingChat) if parameter == "reasoning_effort")
+        });
+        self
     }
 
     /// Consumers must check the selected source protocol before rendering this convention.

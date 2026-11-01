@@ -706,7 +706,7 @@ const scenarios = [
     await click('通用模型');
     await until(() => all('.oc-models .master-list button').some(item => item.textContent.includes('Qwen3-Coder-Plus')), 'Bailian model');
     all('.oc-models .master-list button').find(item => item.textContent.includes('Qwen3-Coder-Plus')).click(); await pause(40);
-    await click('管理凭据'); await click('保存凭据');
+    await click('管理 Key 与额度'); await click('保存设置');
     await until(() => calls('preview_compute_save').length > 0, 'credential preview');
     assert(calls('preview_compute_save').at(-1).payload.change.expected_revisions.target === c().management.revisions.target, 'Credential change reused the revision from before the decision save');
     await until(() => text().includes('接入凭据已保存'), 'credential save completed');

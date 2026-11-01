@@ -34,12 +34,15 @@ use crate::{LocalSecretStore, LocalStorageSet, RuntimeStore};
 mod compensation_guards;
 mod decision;
 mod defaults;
+mod key_budget_replay;
+mod key_budgets;
 mod lifecycle;
 mod network;
 mod recovery;
 mod released_lifecycle;
 mod removal_guards;
 mod runtime_leases;
+mod subscription_api;
 mod subscription_selection;
 
 struct ProtectedInput;

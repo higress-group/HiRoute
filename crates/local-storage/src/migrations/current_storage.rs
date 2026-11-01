@@ -121,9 +121,11 @@ pub(crate) fn validate_current_storage(
         return audit_current_storage(control, runtime, secrets);
     }
     if version >= 35 {
-        super::source_network_v35::validate(&control.connection.borrow())?;
+        super::source_network_v35::validate(&control.connection.borrow())
+            .map_err(|error| error.at_upgrade_stage("source network policy"))?;
     }
     dependencies::validate(control, runtime, secrets)
+        .map_err(|error| error.at_upgrade_stage("current dependencies"))
 }
 
 pub(crate) fn audit_current_storage(
@@ -195,6 +197,9 @@ pub(crate) fn audit_current_storage(
                 .map_err(|_| LocalStorageError::InvalidData)?;
         }
         drop(defaults);
+    }
+    if control_version >= 36 {
+        super::subscription_api_v36::validate_links(&connection)?;
     }
     // Cross-store grant/publication equality is checked only after Operation recovery.
     // Each store's format and integrity must already be valid before recovery writes.

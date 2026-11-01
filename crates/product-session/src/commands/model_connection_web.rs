@@ -329,6 +329,14 @@ struct WebComputeManagementChangeV3 {
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct WebComputeManagementChangeV5 {
+    schema: String,
+    change: WebComputeManagementChangeV3,
+    api_link: hiroute_domain::ComputeSubscriptionApiLinkIntentV1,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 struct WebSavedNetworkChangeV4 {
     schema: String,
     change: serde_json::Value,
@@ -336,6 +344,48 @@ struct WebSavedNetworkChangeV4 {
 }
 
 fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6)
+    {
+        let mut outer: hiroute_application_api::ComputeManagementChangeV6 =
+            serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
+        if !matches!(
+            outer
+                .change
+                .get("schema")
+                .and_then(serde_json::Value::as_str),
+            Some(
+                hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+            )
+        ) {
+            return Err("RESPONSE_DATA_INVALID");
+        }
+        outer.change = change_for_web(outer.change)?;
+        return serde_json::to_value(outer).map_err(|_| "RESPONSE_DATA_INVALID");
+    }
+
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
+        || hiroute_domain::is_legacy_subscription_api_change(&value)
+    {
+        let linked: hiroute_application_api::ComputeManagementChangeV5 =
+            serde_json::from_value(value).map_err(|_| "RESPONSE_DATA_INVALID")?;
+        if linked.change.api_link.is_some() {
+            return Err("RESPONSE_DATA_INVALID");
+        }
+        return serde_json::to_value(WebComputeManagementChangeV5 {
+            schema: linked.schema,
+            change: WebComputeManagementChangeV3 {
+                schema: linked.change.schema,
+                change: linked.change.change.into(),
+                default_preferences: linked.change.default_preferences,
+            },
+            api_link: linked.api_link,
+        })
+        .map_err(|_| "RESPONSE_DATA_INVALID");
+    }
     if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
     {
@@ -376,6 +426,46 @@ fn change_for_web(value: serde_json::Value) -> Result<serde_json::Value, &'stati
 }
 fn change_for_native(value: serde_json::Value) -> Result<serde_json::Value, &'static str> {
     if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6)
+    {
+        let mut outer: hiroute_application_api::ComputeManagementChangeV6 =
+            serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
+        if !matches!(
+            outer
+                .change
+                .get("schema")
+                .and_then(serde_json::Value::as_str),
+            Some(
+                hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                    | hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+            )
+        ) {
+            return Err("REQUEST_INVALID");
+        }
+        outer.change = change_for_native(outer.change)?;
+        return serde_json::to_value(outer).map_err(|_| "REQUEST_INVALID");
+    }
+
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5)
+        || hiroute_domain::is_legacy_subscription_api_change(&value)
+    {
+        let linked: WebComputeManagementChangeV5 =
+            serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
+        return serde_json::to_value(hiroute_application_api::ComputeManagementChangeV5 {
+            schema: linked.schema,
+            change: ComputeManagementChangeV3 {
+                api_link: None,
+                schema: linked.change.schema,
+                change: linked.change.change.try_into()?,
+                default_preferences: linked.change.default_preferences,
+            },
+            api_link: linked.api_link,
+        })
+        .map_err(|_| "REQUEST_INVALID");
+    }
+    if value.get("schema").and_then(serde_json::Value::as_str)
         == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
     {
         let mut outer: WebSavedNetworkChangeV4 =
@@ -401,6 +491,7 @@ fn change_for_native(value: serde_json::Value) -> Result<serde_json::Value, &'st
         let change: WebComputeManagementChangeV3 =
             serde_json::from_value(value).map_err(|_| "REQUEST_INVALID")?;
         serde_json::to_value(ComputeManagementChangeV3 {
+            api_link: None,
             schema: change.schema,
             change: change.change.try_into()?,
             default_preferences: change.default_preferences,
@@ -463,6 +554,7 @@ impl WebComputeConnectionApplyRequestV1 {
             .get("schema")
             .and_then(serde_json::Value::as_str)
             == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+            && !hiroute_domain::is_legacy_subscription_api_change(&self.spec.desired_state)
     }
 }
 
@@ -681,15 +773,28 @@ mod tests {
 
     #[test]
     fn preview_and_apply_restore_the_exact_native_change() {
-        round_trip_native_change(false);
+        round_trip_native_change(false, false);
     }
 
     #[test]
     fn model_defaults_v3_preview_and_apply_restore_the_exact_native_change() {
-        round_trip_native_change(true);
+        round_trip_native_change(true, false);
     }
 
-    fn round_trip_native_change(with_defaults: bool) {
+    #[test]
+    fn association_v5_preview_and_apply_restore_exact_native_revision() {
+        round_trip_native_change(true, true);
+    }
+
+    #[test]
+    fn legacy_association_v4_preview_and_apply_preserve_the_original_wire_envelope() {
+        round_trip_native_change_with_format(true, true, true);
+    }
+
+    fn round_trip_native_change(with_defaults: bool, with_link: bool) {
+        round_trip_native_change_with_format(with_defaults, with_link, false);
+    }
+    fn round_trip_native_change_with_format(with_defaults: bool, with_link: bool, legacy: bool) {
         let revisions = RevisionSetV1 {
             target: 3,
             dependencies: BTreeMap::new(),
@@ -709,7 +814,7 @@ mod tests {
             key_edits: Vec::new(),
             validation: Some(validation()),
         };
-        let desired = if with_defaults {
+        let mut desired = if with_defaults {
             serde_json::json!({
                 "schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3,
                 "change": change,
@@ -718,6 +823,13 @@ mod tests {
         } else {
             serde_json::to_value(&change).unwrap()
         };
+        if with_link {
+            desired = serde_json::json!({
+                "schema": if legacy { hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4 } else { hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5 },
+                "change": desired,
+                "api_link": { "intent": "associate", "api_source_id": "source/api" }
+            });
+        }
         let preview = ComputeSavePreviewV2 {
             candidate: None,
             validation: Some(validation()),
@@ -736,7 +848,9 @@ mod tests {
         let web =
             serde_json::to_value(WebComputeSavePreviewV2::try_from(preview).unwrap()).unwrap();
         assert_eq!(
-            if with_defaults {
+            if with_link {
+                web["spec"]["desired_state"]["change"]["change"]["validation"]["validation_revision"].clone()
+            } else if with_defaults {
                 web["spec"]["desired_state"]["change"]["validation"]["validation_revision"].clone()
             } else {
                 web["spec"]["desired_state"]["validation"]["validation_revision"].clone()
@@ -751,10 +865,45 @@ mod tests {
                 "idempotency_key": "subscription-save:example"
             }))
             .unwrap();
+        assert!(!request.is_native_network_save());
         let native = ComputeConnectionApplyRequestV1::try_from(request).unwrap();
         assert_eq!(native.spec.desired_state, desired);
         let restored =
             hiroute_application_api::saved_compute_change(native.spec.desired_state).unwrap();
         assert_eq!(restored, change);
+    }
+    #[test]
+    fn key_budget_v6_web_round_trip_keeps_policy_and_exact_validation_with_network() {
+        for network in [false, true] {
+            let base = serde_json::json!({"schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3,"default_preferences":{},"change": {
+                "schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2,"subject":{"kind":"saved_source","source_id":"source/budget"},
+                "expected_revisions":{"target":1,"dependencies":{}},"selected_model_refs":["model/one"],"intent":"save_ready","key_edits":[],"validation":validation()
+            }});
+            // Preview emits canonical typed bytes, omitting default/empty fields.
+            let base = serde_json::to_value(
+                serde_json::from_value::<ComputeManagementChangeV3>(base).unwrap(),
+            )
+            .unwrap();
+            let child = if network {
+                serde_json::json!({"schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4,"change":base,"network":{"schema":hiroute_domain::NATIVE_NETWORK_MUTATION_SCHEMA_V1,"before":null,"after":null}})
+            } else {
+                base
+            };
+            let native = serde_json::json!({"schema":hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6,"change":child,"key_budget_edits":[{"key":{"kind":"saved","key_id":"credential/one"},"assignment":{"intent":"configure","budget_id":null,"expected_revision":0,"display_name":"API credits","policy":{"currency":"USD","amount_micros":100000000,"renewal":null},"initial_remaining_micros":25000000}}]});
+            let web = change_for_web(native.clone()).unwrap();
+            assert_eq!(web["key_budget_edits"], native["key_budget_edits"]);
+            assert!(
+                serde_json::to_string(&web)
+                    .unwrap()
+                    .contains(&format!("\"validation_revision\":\"{LARGE_REVISION}\""))
+            );
+            assert_eq!(change_for_native(web).unwrap(), native);
+            let mut unknown = native.clone();
+            unknown["unexpected"] = serde_json::json!(true);
+            assert!(change_for_web(unknown).is_err());
+            let mut nested = native.clone();
+            nested["change"] = native;
+            assert!(change_for_web(nested).is_err());
+        }
     }
 }

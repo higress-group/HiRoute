@@ -414,11 +414,16 @@ pub enum RequestedReasoningDisposition {
     Absent,
     OverriddenByAgentPlan,
     AppliedToFixedBinding,
+    FollowRequestWithDefault,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RequestedReasoningControl {
+    /// Bounded controls captured before Replay externalization. Each candidate
+    /// resolves the original request independently against its frozen directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) followed_control: Option<super::super::profiles::RequestedNativeReasoning>,
     /// Messages return-text policy, fixed before Replay externalizes controls.
     /// It never changes computation, accounting, or persisted IR contracts.
     #[serde(skip)]
@@ -435,6 +440,7 @@ pub struct RequestedReasoningControl {
 impl RequestedReasoningControl {
     pub fn absent() -> Self {
         Self {
+            followed_control: None,
             messages_omit_thinking: false,
             native_value: None,
             disposition: RequestedReasoningDisposition::Absent,
@@ -445,6 +451,7 @@ impl RequestedReasoningControl {
 
     pub fn overridden(native_value: Value) -> Self {
         Self {
+            followed_control: None,
             messages_omit_thinking: false,
             native_value: Some(native_value),
             disposition: RequestedReasoningDisposition::OverriddenByAgentPlan,

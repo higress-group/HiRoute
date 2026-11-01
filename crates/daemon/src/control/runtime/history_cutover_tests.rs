@@ -57,17 +57,25 @@ fn core_upgrade_reuses_current_history_and_snapshots_only_authority() {
         let metadata = fs::metadata(&observation).unwrap();
         (metadata.dev(), metadata.ino())
     };
-    // Synthetic immediately preceding Core shape; Observation remains current.
+    // Synthetic main schema 35 source; Observation remains current.
     // Released-package upgrade acceptance is separate from this entry regression.
     let db = Connection::open(root.join("live/control.db")).unwrap();
     db.execute_batch(
-        "DROP TABLE native_source_network;
-         ALTER TABLE compute_management_effects DROP COLUMN network_before;
-         ALTER TABLE compute_management_effects DROP COLUMN network_after;",
+        "DROP TABLE compute_key_budget_effects;
+         DROP TABLE compute_key_spend_charges;
+         DROP TABLE compute_key_spend_reservations;
+         DROP TABLE compute_key_budget_bindings;
+         DROP TABLE compute_key_budgets;
+         ALTER TABLE compute_management_effects DROP COLUMN key_budget_witness_digest;
+         ALTER TABLE compute_management_effects DROP COLUMN key_budget_accounting_digest;
+         ALTER TABLE compute_management_effects DROP COLUMN key_budget_compensation_root;
+         DROP TABLE compute_subscription_api_links;
+         ALTER TABLE compute_management_effects DROP COLUMN api_link_before;
+         ALTER TABLE compute_management_effects DROP COLUMN api_link_after;",
     )
     .unwrap();
     // The synthetic shape change must retain a valid locator stamp, as the
-    // genuine v34 source did before its unrelated v35 schema additions.
+    // genuine main v35 source did before the additive v36/v37 steps.
     let schema: i64 = db
         .pragma_query_value(None, "schema_version", |row| row.get(0))
         .unwrap();
@@ -80,7 +88,7 @@ fn core_upgrade_reuses_current_history_and_snapshots_only_authority() {
     for name in ["control.db", "runtime.db", "secrets.db"] {
         Connection::open(root.join("live").join(name))
             .unwrap()
-            .pragma_update(None, "user_version", 34)
+            .pragma_update(None, "user_version", 35)
             .unwrap();
     }
     let package = temporary.path().join("old-package");
@@ -109,7 +117,7 @@ fn core_upgrade_reuses_current_history_and_snapshots_only_authority() {
         assert_eq!(
             old.pragma_query_value(None, "user_version", |row| row.get::<_, u32>(0))
                 .unwrap(),
-            34
+            35
         );
     }
     drop(runtime);

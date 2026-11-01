@@ -59,7 +59,16 @@ impl AgentPlanCatalogV1 {
                 return Err(CatalogError::GrantMismatch);
             }
             let display_name = normalize_text(plan.display_name.as_str(), 128)?;
-            let purpose = normalize_text(plan.purpose.as_str(), MAX_AGENT_PURPOSE_CHARS)?;
+            // Route-only plans may omit purpose. Keep the released Agent catalog
+            // nonempty by describing that callable model with its display name.
+            let purpose = normalize_text(
+                if plan.purpose.as_str().is_empty() {
+                    plan.display_name.as_str()
+                } else {
+                    plan.purpose.as_str()
+                },
+                MAX_AGENT_PURPOSE_CHARS,
+            )?;
             entries.push(AgentPlanCatalogEntryV1 {
                 agent_plan_id: plan.agent_plan_id.clone(),
                 model_alias: plan.model_alias.clone(),

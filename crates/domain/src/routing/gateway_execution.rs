@@ -419,6 +419,23 @@ pub enum GatewayNativeReasoningRenderV1 {
     },
 }
 
+impl GatewayNativeReasoningRenderV1 {
+    pub fn fields(&self) -> &[GatewayNativeReasoningFieldAssignmentV1] {
+        match self {
+            Self::NoControlParameter => &[],
+            Self::ExactFields { fields, .. } | Self::ExactBudget { fields, .. } => fields,
+        }
+    }
+}
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningResolutionV1 {
+    Request,
+    DefaultMissing,
+    DefaultUnsupported,
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GatewayReasoningProfileCapabilityV1 {
@@ -512,6 +529,8 @@ pub struct GatewayCandidateCapabilityProfileV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct GatewayCandidateProtocolProfileV1 {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follow_request_reasoning: bool,
     pub schema_version: String,
     pub path_id: String,
     pub ingress_protocol: UpstreamProtocol,
@@ -849,7 +868,7 @@ mod tests {
     fn explicit_http_gateway_targets_keep_exact_user_and_connector_scopes() {
         for uri in [
             "http://192.0.2.10/v1/responses",
-            "http://192.168.1.10:8123/v1/responses",
+            "http://198.51.100.10:8123/v1/responses",
             "http://gateway.invalid:8123/v1/responses",
             "http://localhost:8123/v1/responses",
             "http://127.0.0.1:8123/v1/responses",
