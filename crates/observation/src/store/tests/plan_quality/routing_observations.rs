@@ -378,11 +378,25 @@ fn supported_c_observations_remain_readable_in_distinct_cohorts() {
     v2.protocol = v2_frozen.protocol.schema.clone();
     v2.content_digest = v2_frozen.digest.clone();
     v2.bundle_digest = CanonicalDigest::of(&v2_frozen.protocol.fixed).unwrap();
+    let v3_protocol = NativeProtocolV1::c_v3();
+    let mut judgment = JudgmentSettingsV1::default();
+    v3_protocol.current_assessment(&mut judgment);
+    let v3_frozen = FrozenNativeProtocolV1::freeze(
+        &v3_protocol,
+        judgment.degree.definition().into(),
+        [(SMART_SAVING_SCOPE_ID.into(), judgment)],
+    )
+    .unwrap();
+    let mut v3 = observation(4);
+    v3.protocol = v3_frozen.protocol.schema.clone();
+    v3.content_digest = v3_frozen.digest.clone();
+    v3.bundle_digest = CanonicalDigest::of(&v3_frozen.protocol.fixed).unwrap();
     let new = observation(4);
     assert_eq!(old.protocol, SYSTEM_ONE_C_V1);
     assert_eq!(v2.protocol, SYSTEM_ONE_C_V2);
-    assert_eq!(new.protocol, SYSTEM_ONE_C_V3);
-    assert!(old.validate() && v2.validate() && new.validate());
+    assert_eq!(v3.protocol, SYSTEM_ONE_C_V3);
+    assert_eq!(new.protocol, SYSTEM_ONE_C_V4);
+    assert!(old.validate() && v2.validate() && v3.validate() && new.validate());
     let old_bytes = serde_json::to_vec(&old).unwrap();
 
     let directory = tempfile::tempdir().unwrap();
@@ -390,7 +404,7 @@ fn supported_c_observations_remain_readable_in_distinct_cohorts() {
     let fixture = Fixture::new("versioned-c-observation");
     let channel = fact_channel(&fixture, 1024 * 1024);
     let writer = writer(&store);
-    for (index, observation) in [old.clone(), v2.clone(), new.clone()]
+    for (index, observation) in [old.clone(), v2.clone(), v3.clone(), new.clone()]
         .into_iter()
         .enumerate()
     {
@@ -424,7 +438,7 @@ fn supported_c_observations_remain_readable_in_distinct_cohorts() {
         .routing_observations
         .unwrap();
     assert_eq!(summary.coverage, "complete");
-    assert_eq!(summary.cohorts.len(), 3);
+    assert_eq!(summary.cohorts.len(), 4);
     assert!(
         summary
             .cohorts
@@ -444,6 +458,13 @@ fn supported_c_observations_remain_readable_in_distinct_cohorts() {
             .cohorts
             .iter()
             .any(|c| c.cohort.protocol == SYSTEM_ONE_C_V3
+                && c.cohort.content_digest == v3.content_digest)
+    );
+    assert!(
+        summary
+            .cohorts
+            .iter()
+            .any(|c| c.cohort.protocol == SYSTEM_ONE_C_V4
                 && c.cohort.content_digest == new.content_digest)
     );
     let facts = store

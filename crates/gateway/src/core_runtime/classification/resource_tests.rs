@@ -97,6 +97,7 @@ async fn optional_projection_capacity_falls_back_without_changing_input_or_sourc
                     admitted_network: None,
                     request: &request,
                     current_input: None,
+                    current_input_position: None,
                     native_user_unavailable: false,
                     current_input_origin_unverified: false,
                     replay: &replay,

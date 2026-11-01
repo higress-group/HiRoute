@@ -676,6 +676,13 @@ captured, and B SHALL be able to evaluate A's newly accepted execution. Uncaptur
 older context remains partial. Counter rollback and unsupported producers disclose
 uncertainty rather than permanently disabling smart routing.
 
+The current C protocol may supply readable replayed User/Assistant text before
+the current input as separate request background, as specified in
+[decision services](../decision-services/spec.md). This resolves references in a
+short current instruction without reconstructing capture, proving a predecessor,
+or changing assessment membership/completeness. A validated native input window
+owns this background boundary even when synthetic User content follows it.
+
 Codex native metadata SHALL recognize only the supported explicit auxiliary kinds
 `memory`, `prewarm` and `compaction`. A coherent canonical memory request remains
 auxiliary when it omits thread/session/turn identities; compatibility projections

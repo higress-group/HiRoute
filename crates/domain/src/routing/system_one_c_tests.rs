@@ -30,7 +30,10 @@ fn stock_questions_and_composition_are_the_public_frozen_c_full() {
     j.competence.standard = Some(super::super::AssessmentStandardV1::Default);
     assert_eq!(j.competence.floor_millis, 317);
     assert_eq!(j.degree.simple_threshold_millis, 819);
-    assert_eq!(composed_assessment(Some(&p), &j), stock_c_questions()["q1"]);
+    assert_eq!(
+        composed_assessment(Some(&p), &j),
+        stock_c_v4_questions()["q1"]
+    );
     assert_eq!(
         CanonicalDigest::of(&stock_c_questions()).unwrap().as_str(),
         format!("sha256:{C_FULL_CHECKSUM}")
@@ -62,7 +65,7 @@ fn supported_c_versions_bind_exact_bundles_and_separate_policy_identity() {
     );
     let old = NativeProtocolV1::c_v1();
     let v2 = NativeProtocolV1::c_v2();
-    let new = NativeProtocolV1::default();
+    let new = NativeProtocolV1::c_v3();
     assert_eq!(new.schema, SYSTEM_ONE_C_V3);
     for protocol in [&old, &v2, &new] {
         protocol.validate().unwrap();
@@ -183,6 +186,46 @@ fn frozen_content_and_effective_authoring_must_both_agree() {
     let mut changed = p.clone();
     changed.schema = "hiroute.system-one-c/v99".into();
     assert_eq!(changed.validate(), Err(NativeProtocolError::Unsupported));
+}
+
+#[test]
+fn c_v4_binds_replayed_context_meaning_without_reinterpreting_frozen_v3() {
+    let old = NativeProtocolV1::c_v3();
+    let old_bytes = serde_json::to_vec(&old).unwrap();
+    let current = NativeProtocolV1::default();
+    assert_eq!(current.schema, SYSTEM_ONE_C_V4);
+    current.validate().unwrap();
+    assert_eq!(
+        super::super::NativeProtocolSelectionV1::default()
+            .resolve()
+            .unwrap(),
+        current
+    );
+    assert_eq!(
+        CanonicalDigest::of(&stock_c_v4_questions())
+            .unwrap()
+            .as_str(),
+        format!("sha256:{C_V4_FULL_CHECKSUM}")
+    );
+    for instructions in [
+        &current.fixed.degree_prefix,
+        &current.fixed.assessment_wrapper,
+    ] {
+        assert!(instructions.contains("state.request_context"));
+        assert!(instructions.contains("not Gateway-captured execution"));
+    }
+    let restored: NativeProtocolV1 = serde_json::from_slice(&old_bytes).unwrap();
+    restored.validate().unwrap();
+    assert_eq!(serde_json::to_vec(&restored).unwrap(), old_bytes);
+    assert!(!restored.fixed.degree_prefix.contains("request_context"));
+    let mismatched = NativeProtocolV1 {
+        schema: SYSTEM_ONE_C_V3.into(),
+        ..current
+    };
+    assert_eq!(
+        mismatched.validate(),
+        Err(NativeProtocolError::FixedContent)
+    );
 }
 
 #[test]

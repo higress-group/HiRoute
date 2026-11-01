@@ -209,7 +209,7 @@ valid selected-path answers. Invalid applicability retains only an otherwise
 eligible historical protection opportunity. Duplicate/unknown question identities
 and malformed framing must not be repaired by positional guesses.
 
-Codec choice MUST leave logical C v1/v2/v3 content, history partition, thresholds,
+Codec choice MUST leave logical C v1/v2/v3/v4 content, history partition, thresholds,
 score inheritance, selected-path reduction and fallback unchanged. Prepare from
 the common bounded representation and account for actual encoded wire bytes;
 conversion must not materialize the same large Replay history twice. Runtime
@@ -272,14 +272,29 @@ The frozen scope standard MUST record authored assessment intent as default or
 custom, including categorical scopes. Resolve defaults at compilation and seal
 actual effective contents; observations use that stored standard directly without
 relabeling or claiming experimental equivalence. Keep C category wording in its fixed
-v1 fixture; legacy native wording has its own current source, independent of that
-fixture. Pure composition logic may be shared. Disposable unreleased C encodings
+v1 fixture; C v4 additionally prefixes its frozen request-context evidence limit
+to categorical questions. Legacy native wording has its own current source,
+independent of that fixture. Pure composition logic may be shared. Disposable unreleased C encodings
 need no support adapter; supported released data and retained authenticated
 historical evidence preserve their existing compatibility treatment.
 
-New native authoring seals hiroute.system-one-c/v3. Its fixed applicability question separately establishes the original obligation, supported unmet outcome, present correction or acceptance status, and connection to the pending work. Partial correctness or praise for one component does not establish acceptance of the overall requested result. Subjective rejection of an originally requested quality, including independent usability or clarity, is outcome evidence without proving a hidden technical defect; an accepted result followed by a new preference is distinct. The supported C v1 and C v2 bundles remain immutable and executable under their original identities. C v3 changes only applicability wording and keeps the existing model/state/questions envelope, context layout, eight-turn cap, question bindings, probability rules, category/degree template and assessment wrapper. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
+New native authoring seals hiroute.system-one-c/v4. Its fixed applicability question separately establishes the original obligation, supported unmet outcome, present correction or acceptance status, and connection to the pending work. Partial correctness or praise for one component does not establish acceptance of the overall requested result. Subjective rejection of an originally requested quality, including independent usability or clarity, is outcome evidence without proving a hidden technical defect; an accepted result followed by a new preference is distinct. C v4 adds explicitly replayed request background for interpreting requirements and references, independently of captured execution. The supported C v1, v2 and v3 bundles remain immutable and executable with their original questions and input meaning. Each supported schema resolves only its own exact fixed bundle; a mismatched schema/content pair, unknown schema or tampered digest is rejected. Protocol identity participates in the existing frozen content and execution-policy identities, preventing assessment inheritance across different frozen policies.
 
-Current readers accept authenticated v1, v2 and v3 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier also accepts explicitly supplied supported v2 and v3 protocols with their own exact bundles. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
+Current readers accept authenticated v1, v2, v3 and v4 publications, retained Operations and observations without rewriting their original bytes or digests. New observations record the actual executed protocol and retain version/content-separated cohorts. Existing historical-applicability diagnostic v1 requests with frozen v1 protocols retain their meaning; the same request carrier also accepts explicitly supplied supported v2, v3 and v4 protocols with their own exact bundles. Its result shape, protected authority and one-call question-count limits are unchanged. Opening a draft prepares the current protocol for a later explicit publication; it does not change the active publication or custom assessment text. No storage migration or automatic republishing is implied.
+
+C v4 request_context SHALL retain a bounded recent suffix of readable User and Assistant text before the current input, with original roles, zero-based canonical request message positions and an explicit request_replay source. It SHALL use the start of a validated native input event/window when supplied, otherwise the current observed User. It SHALL remain outside prior_context, assessment_stage and actual-history membership. Replayed summaries may resolve references and requirements, including after Gateway restart, expiry or compaction, but SHALL NOT establish accepted execution, tool outcomes, stage completion, execution success/failure or correction of a captured problem. The fixed decision and assessment instructions SHALL state that limit. Tool results, provider state and instruction-role content SHALL NOT be imported through this channel. When an explicit native input projection lacks a usable position here, disclose boundary_unavailable rather than reclassifying current input as background.
+
+The request context admission SHALL preserve current input, frozen questions and captured-stage priority, use at most sixteen textual message envelopes and the remaining existing 262144-byte wire budget after captured history, and disclose truncation. It SHALL use the selected System One or OpenAI Decisions codec's actual serialized size, including escaping and Replay-backed lengths, without materializing the complete transcript. A replayed claim cannot create an assessment target or change a partial target into a complete one. Optional background cannot turn an otherwise representable decision request into an oversized request. Model-specific adaptive budgeting is a separate policy.
+
+#### Scenario: A short instruction after lost capture
+
+- **WHEN** captured history is unavailable but the admitted request contains an assistant action summary followed by a short instruction referring to it
+- **THEN** C v4 supplies the summary as replayed request background and the current instruction separately, without inventing a prior execution stage or asking a competence question about the summary.
+
+#### Scenario: Captured history across native compaction
+
+- **WHEN** a valid compression relationship selects a retained same-scope predecessor and the client replays a summary
+- **THEN** captured prior turns and the actual assessed stage retain their separate partitions, while the summary remains replayed request background and cannot complete an unproven stage.
 
 #### Scenario: Frozen C questions
 
@@ -309,7 +324,7 @@ Current readers accept authenticated v1, v2 and v3 publications, retained Operat
 #### Scenario: Current feedback protocol on new publication
 
 - **WHEN** a new native route is explicitly saved and published with otherwise eligible same-core rejection feedback
-- **THEN** the sealed protocol is C v3 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
+- **THEN** the sealed protocol is C v4 and its applicability question recognizes the rejected outcome without requiring a diagnosed defect; routing still consumes independent finite probabilities and unchanged eligibility guards.
 
 #### Scenario: Supported v1 execution and recovery
 
