@@ -99,7 +99,8 @@ fn allocated(path: &Path) -> u64 {
 #[test]
 #[ignore = "requires explicitly staged current field envelopes and a private stopped business fixture"]
 fn current_writer_storage_and_reads_for_private_semantic_field_corpus() {
-    let directory = Path::new("artifacts/semantic-observation-field");
+    let directory =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/semantic-observation-field");
     assert!(
         directory.join("manifest.json").is_file(),
         "explicitly staged field fixture only"

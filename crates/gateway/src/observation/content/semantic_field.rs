@@ -1,7 +1,6 @@
 //! Opt-in offline field corpus. Inputs are operator-owned selected semantic
 //! fields and original accepted events, never committed private conversations.
 use super::super::{CanonicalFrameDelivery, ModelStreamEventV1};
-use super::*;
 use crate::server::core_runtime::observation;
 use crate::server::core_runtime::observation::{
     GatewayObservationSinks, accounted_acknowledgement,
@@ -80,13 +79,14 @@ fn event(mut value: Value) -> ModelStreamEventV1 {
 #[test]
 #[ignore = "requires an explicitly staged private semantic field corpus"]
 fn export_actual_semantic_capture_for_private_field_corpus() {
-    let directory = std::path::Path::new("artifacts/semantic-observation-field");
+    let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../artifacts/semantic-observation-field");
     let input =
         BufReader::new(File::open(directory.join("input.jsonl")).expect("explicit private corpus"));
-    fs::create_dir_all(directory).unwrap();
+    fs::create_dir_all(&directory).unwrap();
     let (sender, receiver) = mpsc::channel();
     let sink = Arc::new(Export {
-        file: Mutex::new(File::create(directory.join("capture.jsonl")).unwrap()),
+        file: Mutex::new(File::create_new(directory.join("capture.jsonl")).unwrap()),
         done: sender,
     });
     let mut channels: Option<observation::ObservationChannels> = None;

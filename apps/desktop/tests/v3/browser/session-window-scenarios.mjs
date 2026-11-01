@@ -1160,6 +1160,35 @@ const scenarios = [
     await until(() => document.querySelector('.routing-quote')?.textContent.includes('The real opening question'), 'actual opening excerpt');
   }],
 
+
+  ['semantic captures show imported context without attributing it and keep accepted final text', async () => {
+    await fresh(control => {
+      const session = 'observation-session/semantic-archive';
+      const request = control.makeRequest(session, 0, Date.now() - 1000, { final_native_model: 'actual-primary-model' });
+      control.requests[session] = [request];
+      seedUserText(control, request, 'Current semantic question');
+      const item = (id, ordinal, role, kind, direction, media, capture) => ({ content_id: id, message_occurrence_id: String(ordinal), message_ordinal: ordinal, part_ordinal: 0, role, kind, direction, media_type: media, state: 'complete', capture });
+      const context = `${request.request_id}/context`;
+      const delta = `${request.request_id}/delta`;
+      const terminal = `${request.request_id}/terminal`;
+      control.catalog[request.request_id].unshift(item(context, 0, 'assistant', 'text', 'request_input', 'text/plain', { context_only: true, boundary_verified: false }));
+      control.catalog[request.request_id].push(item(delta, 2, 'assistant', 'text_delta', 'response_delivered', 'application/vnd.hiroute.model-stream-event+json;version=1'));
+      control.catalog[request.request_id].push({ ...item(terminal, 2, 'assistant', 'text_finished', 'response_delivered', 'application/vnd.hiroute.semantic-terminal+json;version=1'), part_ordinal: 1 });
+      control.texts[context] = 'Imported answer without executor evidence';
+      control.texts[delta] = JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence: 1, event: { kind: 'text_delta', index: 0, text: 'SEMANTIC-ACCEPTED-FINAL' } });
+      control.texts[terminal] = JSON.stringify({ schema_version: 'hiroute.semantic-terminal/v1', sequence: 2, text_source: 'accepted_segments', event: { kind: 'text_finished', index: 0, status: 'completed', annotations: [] } });
+    });
+    await until(() => rows().length === 1, 'semantic archive session'); rows()[0].click();
+    await until(() => document.querySelector('.transcript-body')?.innerText.includes('SEMANTIC-ACCEPTED-FINAL'), 'accepted semantic text');
+    const messages = [...document.querySelectorAll('.transcript-body .message')];
+    const imported = messages.find(item => item.textContent.includes('Imported answer'));
+    assert(imported?.textContent.includes('历史上下文 · 执行模型未知'), 'Imported context claims an executing model');
+    assert(!imported.querySelector('.badge.info'), 'Current executor leaked onto imported history');
+    assert(document.querySelector('.transcript-body').innerText.match(/SEMANTIC-ACCEPTED-FINAL/g)?.length === 1, 'Terminal metadata erased or duplicated accepted text');
+    assert(!document.querySelector('.transcript-body').innerText.includes('accepted_segments'), 'Terminal metadata leaked as an answer');
+    assert(reads('catalog').some(call => queryOf(call).include_semantic_metadata), 'Reader did not opt in to semantic provenance');
+  }],
+
 ];
 
 export const sessionWindowScenarioCount = scenarios.length;
