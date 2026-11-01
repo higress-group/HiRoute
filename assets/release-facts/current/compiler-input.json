@@ -4382,11 +4382,11 @@
         {
           "canonical_identity": "decision-model-preview",
           "capabilities": {
-            "computer": "not-applicable",
-            "file": "not-applicable",
-            "streaming": "not-applicable",
-            "tool": "not-applicable",
-            "web": "not-applicable"
+            "computer": "not_applicable",
+            "file": "not_applicable",
+            "streaming": "not_applicable",
+            "tool": "not_applicable",
+            "web": "not_applicable"
           },
           "context_tokens": {
             "state": "not_applicable",
@@ -4411,7 +4411,7 @@
           "modalities": {
             "image_input": "unknown",
             "text_input": "supported",
-            "text_output": "not-applicable"
+            "text_output": "not_applicable"
           },
           "model_key": "decision-model-preview",
           "publisher": "Alibaba Cloud Model Studio",
@@ -5734,11 +5734,11 @@
         {
           "canonical_identity": "jev-1.13",
           "capabilities": {
-            "computer": "not-applicable",
-            "file": "not-applicable",
-            "streaming": "not-applicable",
-            "tool": "not-applicable",
-            "web": "not-applicable"
+            "computer": "not_applicable",
+            "file": "not_applicable",
+            "streaming": "not_applicable",
+            "tool": "not_applicable",
+            "web": "not_applicable"
           },
           "context_tokens": {
             "state": "not_applicable",
@@ -5763,7 +5763,7 @@
           "modalities": {
             "image_input": "unknown",
             "text_input": "supported",
-            "text_output": "not-applicable"
+            "text_output": "not_applicable"
           },
           "model_key": "jev-1.13",
           "publisher": "TypeSafe",
@@ -5783,11 +5783,11 @@
         {
           "canonical_identity": "jev-1.14",
           "capabilities": {
-            "computer": "not-applicable",
-            "file": "not-applicable",
-            "streaming": "not-applicable",
-            "tool": "not-applicable",
-            "web": "not-applicable"
+            "computer": "not_applicable",
+            "file": "not_applicable",
+            "streaming": "not_applicable",
+            "tool": "not_applicable",
+            "web": "not_applicable"
           },
           "context_tokens": {
             "state": "not_applicable",
@@ -5812,7 +5812,7 @@
           "modalities": {
             "image_input": "unknown",
             "text_input": "supported",
-            "text_output": "not-applicable"
+            "text_output": "not_applicable"
           },
           "model_key": "jev-1.14",
           "publisher": "TypeSafe",
