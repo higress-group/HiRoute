@@ -163,16 +163,12 @@ pub trait ObservationRecordSink: Send + Sync {
         &self,
         records: &[ObservationRecord],
     ) -> Vec<Result<ObservationAck, ObservationNack>> {
-        let mut results = Vec::with_capacity(records.len());
-        for record in records {
-            let result = self.deliver(record);
-            let rejected = result.is_err();
-            results.push(result);
-            if rejected {
-                break;
-            }
-        }
-        results
+        // Existing sinks retain exactly one failure/isolation boundary. Only
+        // a receiver with an explicit durable group-commit implementation may
+        // acknowledge several records together.
+        records
+            .first()
+            .map_or_else(Vec::new, |record| vec![self.deliver(record)])
     }
 }
 

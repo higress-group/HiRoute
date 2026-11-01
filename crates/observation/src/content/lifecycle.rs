@@ -262,7 +262,6 @@ fn apply_append(
         params![
             envelope.correlation.workspace_id.as_str(),
             content_id.as_str(),
-            durability,
             i64::from(rejected),
             store
                 .object_locator(&path)
@@ -325,6 +324,7 @@ fn apply_append(
             transaction,
             envelope,
             content_id.as_str(),
+            durability,
         )?);
         cleanup_content_ids.push(content_id.clone());
         cached_sql::execute(
