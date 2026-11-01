@@ -43,6 +43,23 @@ fn large_flat_tree_is_bounded_and_resumes_with_linear_progress() {
 }
 
 #[test]
+fn exhausted_time_budget_still_makes_one_entry_progress() {
+    let fixture = tempfile::tempdir().unwrap();
+    let root = fixture.path().join("retired");
+    fs::create_dir(&root).unwrap();
+    for index in 0..257 {
+        fs::write(root.join(index.to_string()), b"copy").unwrap();
+    }
+    let mut removal = DirectoryRemoval::open(&root, directory_identity(&root).unwrap()).unwrap();
+    for removed in 1..=258 {
+        let progress = removal.step(128, Duration::ZERO).unwrap();
+        assert_eq!(progress.removed, 1);
+        assert_eq!(progress.done, removed == 258);
+    }
+    assert!(!root.exists());
+}
+
+#[test]
 fn replaced_root_and_descendant_are_never_adopted() {
     let fixture = tempfile::tempdir().unwrap();
     let root = fixture.path().join("retired");

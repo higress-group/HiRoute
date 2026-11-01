@@ -33,14 +33,14 @@ impl Fixture {
         UpgradeCleanup::new(&self.storage)
     }
 }
-fn drain(cleanup: &UpgradeCleanup) -> usize {
-    let start = Instant::now();
-    for tick in 0..300 {
-        if cleanup
-            .cycle_at(start + Duration::from_secs(tick * 10))
-            .unwrap()
-        {
-            return tick as usize;
+fn drain(cleanup: &UpgradeCleanup) {
+    // The largest fixture has 1,001 files. A cooperative time budget may
+    // legitimately stop after one deletion; follow the scheduled due time
+    // instead of imposing wall-clock throughput on a loaded filesystem.
+    for _ in 0..2_048 {
+        let due = cleanup.state.lock().unwrap().due;
+        if cleanup.cycle_at(due).unwrap() {
+            return;
         }
     }
     panic!("cleanup did not finish");
@@ -127,14 +127,14 @@ fn old_claim_does_not_remove_a_replacement_source() {
 }
 
 #[test]
-fn batches_back_off_and_resume_without_full_rescans() {
+fn batches_back_off_and_make_bounded_progress() {
     let f = Fixture::new();
     for i in 0..1_001 {
         f.file(&f.backups.join(i.to_string()), b"backup");
     }
     let cleanup = f.controller();
     cleanup.service_ready();
-    let now = Instant::now();
+    let now = cleanup.state.lock().unwrap().due;
     cleanup.cycle_at(now).unwrap(); // publish claim
     let job = cleanup
         .state
@@ -145,14 +145,34 @@ fn batches_back_off_and_resume_without_full_rescans() {
         .unwrap()
         .path
         .clone();
-    cleanup.cycle_at(now + Duration::from_secs(10)).unwrap();
-    let count = fs::read_dir(job.join("data")).unwrap().count();
+    let mut previous_due = cleanup.state.lock().unwrap().due;
+    cleanup.cycle_at(previous_due).unwrap();
+    let payload = job.join("data");
+    let mut count = fs::read_dir(&payload).unwrap().count();
     assert!((873..1_001).contains(&count));
     for _ in 0..100 {
-        cleanup.cycle_at(now + Duration::from_secs(10)).unwrap();
+        cleanup.cycle_at(previous_due).unwrap();
     }
-    assert_eq!(fs::read_dir(job.join("data")).unwrap().count(), count);
-    assert!(drain(&cleanup) < 20);
+    assert_eq!(fs::read_dir(&payload).unwrap().count(), count);
+    while count > 0 {
+        let due = cleanup.state.lock().unwrap().due;
+        assert!(due >= previous_due + INTERVAL);
+        cleanup.cycle_at(due - Duration::from_nanos(1)).unwrap();
+        assert_eq!(fs::read_dir(&payload).unwrap().count(), count);
+        cleanup.cycle_at(due).unwrap();
+        let remaining = match fs::read_dir(&payload) {
+            Ok(entries) => entries.count(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+            Err(error) => panic!("cannot inspect retired payload: {error}"),
+        };
+        assert!(remaining < count, "a due batch must make progress");
+        assert!(count - remaining <= BATCH, "each batch stays bounded");
+        count = remaining;
+        previous_due = due;
+    }
+    drain(&cleanup);
+    assert!(!payload.exists());
+    assert!(!job.exists());
 }
 
 fn handoff(f: &Fixture, target: &[u8], owned: bool) -> (PathBuf, Vec<u8>) {
@@ -256,13 +276,15 @@ fn failed_cleanup_stays_pending_and_backs_off_until_repaired() {
     crate::prepare_owner_directory(&wrapper).unwrap();
     f.file(&wrapper.join("unexpected"), b"preserve");
     cleanup.service_ready();
-    let now = Instant::now();
+    let now = cleanup.state.lock().unwrap().due;
     cleanup.cycle_at(now).unwrap(); // discover, without admitting unknown material
-    assert!(cleanup.cycle_at(now + Duration::from_secs(10)).is_err());
-    for seconds in 11..15 {
+    let due = cleanup.state.lock().unwrap().due;
+    assert!(cleanup.cycle_at(due).is_err());
+    assert!(cleanup.state.lock().unwrap().due >= due + Duration::from_secs(5));
+    for seconds in 1..5 {
         assert!(
             !cleanup
-                .cycle_at(now + Duration::from_secs(seconds))
+                .cycle_at(due + Duration::from_secs(seconds))
                 .unwrap()
         );
     }
