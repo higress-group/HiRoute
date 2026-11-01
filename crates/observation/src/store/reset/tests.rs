@@ -3,6 +3,9 @@ use super::*;
 fn legacy(parent: &Path, setting: Option<&str>) -> PathBuf {
     let root = parent.join("observation");
     private_fs::create_directory(&root).unwrap();
+    // Released native processes create private files. Do not depend on this
+    // test harness's default owner/DACL when constructing the old SQL source.
+    drop(private_fs::create_file(&root.join("activity.db"), private_fs::FileMode::Data).unwrap());
     let db = Connection::open(root.join("activity.db")).unwrap();
     db.execute_batch("CREATE TABLE observation_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO observation_meta VALUES('schema_version','3'); CREATE TABLE old_history(body TEXT); INSERT INTO old_history VALUES('old observations');").unwrap();
     if let Some(value) = setting {
@@ -19,6 +22,21 @@ fn legacy(parent: &Path, setting: Option<&str>) -> PathBuf {
 
 fn authority() -> DigestAuthority {
     DigestAuthority::new([42; 32])
+}
+
+#[test]
+fn fresh_database_reopens_through_private_admission_without_process_defaults() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("observation");
+    let store = LocalObservationStore::open(&root, authority()).unwrap();
+    store.set_capacity_limit(Some(10_000_000_000)).unwrap();
+    drop(store);
+    private_fs::open_private_file(&root.join("activity.db")).unwrap();
+    let reopened = LocalObservationStore::open(&root, authority()).unwrap();
+    assert_eq!(
+        reopened.capacity_status().unwrap().max_active_bytes,
+        Some(10_000_000_000)
+    );
 }
 
 #[test]

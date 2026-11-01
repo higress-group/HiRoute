@@ -122,6 +122,18 @@ impl LocalObservationStore {
         fs::create_dir_all(&blob_root).map_err(|_| ObservationStoreError::Io)?;
         let activity_path = root.join("activity.db");
         let fresh = !activity_path.exists();
+        if fresh {
+            // SQLite otherwise inherits process defaults, which need not name
+            // the actual user as owner on Windows. This store must be able to
+            // reopen its own database through private-file admission.
+            drop(
+                hiroute_platform::private_fs::create_file(
+                    &activity_path,
+                    hiroute_platform::private_fs::FileMode::Data,
+                )
+                .map_err(|_| ObservationStoreError::Io)?,
+            );
+        }
         let mut connection = Connection::open(&activity_path)
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
         if fresh {
