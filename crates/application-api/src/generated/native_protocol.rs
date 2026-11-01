@@ -24,7 +24,8 @@ fn resolved_protocol() -> Value {
     json!({"oneOf":[
         pair(hiroute_domain::SYSTEM_ONE_C_V1, hiroute_domain::NativeFixedContentV1::c_v1()),
         pair(hiroute_domain::SYSTEM_ONE_C_V2, hiroute_domain::NativeFixedContentV1::c_v2()),
-        pair(hiroute_domain::SYSTEM_ONE_C_V3, hiroute_domain::NativeFixedContentV1::c_v3())
+        pair(hiroute_domain::SYSTEM_ONE_C_V3, hiroute_domain::NativeFixedContentV1::c_v3()),
+        pair(hiroute_domain::SYSTEM_ONE_C_V4, hiroute_domain::NativeFixedContentV1::c_v4())
     ]})
 }
 fn frozen() -> Value {
@@ -120,7 +121,7 @@ mod tests {
         let versions = schema["properties"]["protocol"]["properties"]["protocol"]["oneOf"]
             .as_array()
             .unwrap();
-        assert_eq!(versions.len(), 3);
+        assert_eq!(versions.len(), 4);
         for (entry, schema, fixed) in [
             (
                 &versions[0],
@@ -136,6 +137,11 @@ mod tests {
                 &versions[2],
                 hiroute_domain::SYSTEM_ONE_C_V3,
                 hiroute_domain::NativeFixedContentV1::c_v3(),
+            ),
+            (
+                &versions[3],
+                hiroute_domain::SYSTEM_ONE_C_V4,
+                hiroute_domain::NativeFixedContentV1::c_v4(),
             ),
         ] {
             assert_eq!(entry["additionalProperties"], false);

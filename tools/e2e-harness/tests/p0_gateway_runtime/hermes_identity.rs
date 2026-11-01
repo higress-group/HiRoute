@@ -2,6 +2,9 @@ use super::*;
 use hiroute_gateway::server::publication::token_sha256;
 use serde_json::{Value, json};
 
+#[path = "hermes_decision_context.rs"]
+mod decision_context;
+
 #[test]
 fn hermes_equal_prompts_and_unproven_ids_are_isolated_by_the_real_listener() {
     assert_native_identity(false);

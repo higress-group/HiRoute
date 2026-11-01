@@ -820,6 +820,7 @@ impl ProductionGatewayRuntime {
                         admitted_network: None,
                         request: routing_request,
                         current_input: routing_view.current_input(),
+                        current_input_position: routing_view.current_input_position(),
                         native_user_unavailable: native_user_unavailable
                             || routing_view.current_input_unavailable(),
                         current_input_origin_unverified,

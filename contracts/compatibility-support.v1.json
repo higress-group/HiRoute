@@ -468,6 +468,7 @@
     "hiroute.system-one-c/v1",
     "hiroute.system-one-c/v2",
     "hiroute.system-one-c/v3",
+    "hiroute.system-one-c/v4",
     "hiroute.system-one-legacy/v1",
     "hiroute.system-status/v1",
     "hiroute.trial-setup-snapshot/v1",
@@ -564,14 +565,14 @@
         "hiroute.system-one-c"
       ],
       "current_contracts": [
-        "hiroute.system-one-c/v3"
+        "hiroute.system-one-c/v4"
       ],
       "legacy_support": [
         {
           "contract": "hiroute.system-one-c/v1",
           "mode": "frozen_fixture",
           "owner": "decision-foundation",
-          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v3.",
+          "reason": "Execute supported sealed v1 publications, retained Operations, observations and explicit diagnostics with their original fixed content and identities while new native authoring uses v4.",
           "removal_condition": "Retire only when the supported release and retained-publication policy permits removing all v1 readers and authenticated historical evidence.",
           "allowed_paths": [
             "apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs",
@@ -585,7 +586,7 @@
           "contract": "hiroute.system-one-c/v2",
           "mode": "frozen_fixture",
           "owner": "decision-foundation",
-          "reason": "Execute sealed C v2 publications, retained Operations, observations and explicit diagnostics with their exact original applicability bundle after C v3 becomes the current authoring producer. Do not replace historical questions or regrade old stages.",
+          "reason": "Execute sealed C v2 publications, retained Operations, observations and explicit diagnostics with their exact original applicability bundle after C v4 becomes the current authoring producer. Do not replace historical questions or regrade old stages.",
           "removal_condition": "Retire only when the release and retained-publication support policy permits removing all C v2 readers and authenticated evidence.",
           "allowed_paths": [
             "contracts/cli/historical-applicability-test.v1.schema.json",
@@ -597,6 +598,22 @@
             "crates/domain/src/routing/system_one_c_tests.rs",
             "crates/gateway/src/core_runtime/classification/system_one_tests.rs",
             "crates/daemon/tests/support/c_protocol_product.py",
+            "decision-extensions/api/system-one-design.md"
+          ]
+        },
+        {
+          "contract": "hiroute.system-one-c/v3",
+          "mode": "frozen_fixture",
+          "owner": "decision-foundation",
+          "reason": "Execute sealed C v3 publications, retained Operations, observations and explicit diagnostics with the original questions and captured-history-only input. Replayed request background is introduced only by C v4.",
+          "removal_condition": "Retire only when the release and retained-publication support policy permits removing all C v3 readers and authenticated evidence.",
+          "allowed_paths": [
+            "contracts/cli/historical-applicability-test.v1.schema.json",
+            "crates/domain/src/routing/assessment.rs",
+            "crates/domain/src/routing/c_observation.rs",
+            "crates/domain/src/routing/system_one_c.rs",
+            "crates/domain/src/routing/system_one_c_tests.rs",
+            "crates/gateway/src/core_runtime/classification/request_context_tests.rs",
             "decision-extensions/api/system-one-design.md"
           ]
         }
