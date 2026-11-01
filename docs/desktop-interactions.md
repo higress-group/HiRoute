@@ -101,6 +101,12 @@ an empty screen look active.
 
 ## Implementation and acceptance
 
+Human frontend review prioritizes interaction taste: whether the changed journey
+is natural, clear, coherent and restrained. Use representative production states
+and explain the user benefit and tradeoff. Existing automated checks guard
+functional correctness by impact; they are not an extra manual checklist.
+Native effects and release acceptance keep their separate evidence requirements.
+
 1. For affected flows, record the entry, analogous existing pattern, state
    transitions, authority/side effects and any intentional difference. Keep
    detailed domain requirements in their owning feature contract.

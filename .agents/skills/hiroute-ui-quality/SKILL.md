@@ -16,6 +16,20 @@ before choosing new controls, wording, save behavior or confirmation layout.
 Read the relevant feature contract for actual authority and side effects; visual
 uniformity must not erase meaningful domain or host differences.
 
+## Review interaction taste first
+
+Manual frontend acceptance focuses on the quality of the changed user journey:
+natural entry points, clear information hierarchy, coherent action placement,
+recognizable peer interactions, readable forms and restrained feedback. Judge
+real production screenshots and the relevant key path. Preserve useful domain
+differences and leave suitable interactions alone; state the user benefit and
+tradeoff of a proposed adjustment.
+
+Use existing automated regressions to guard functional behavior, selecting by
+actual impact. Do not turn their detailed cases or a screenshot count into a
+mandatory manual tour. Native side effects and release acceptance retain their
+separate owners and evidence requirements.
+
 ## Find the production owner
 
 Trace the live entry/component/style imports first. Desktop `src/main.tsx` loads
