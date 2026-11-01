@@ -5,10 +5,13 @@ use hiroute_client_core::{Client, LocalEndpoint};
 use hiroute_host_runtime::StandaloneLayout;
 use serde_json::{Value, json};
 use std::{
-    io::{Read, Write},
+    io::Write,
     net::{SocketAddr, TcpListener, TcpStream},
     time::Duration,
 };
+#[path = "tests/http_client.rs"]
+mod http_client;
+
 pub(super) fn request(operation: &str, payload: Value) -> LocalControlWireRequestV2 {
     LocalControlWireRequestV2 {
         schema_version: LOCAL_CONTROL_SCHEMA_V2,
@@ -34,13 +37,12 @@ pub(super) fn http(
         .map(|b| format!("Authorization: Bearer {b}\r\n"))
         .unwrap_or_default();
     write!(stream,"{} {path} HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\nContent-Type: application/json\r\nX-HiRoute-Context: 1234567890abcdef\r\n{authorization}{extra}Content-Length: {}\r\n\r\n{body}",if body.is_empty(){"GET"}else{"POST"},body.len()).unwrap();
-    let mut raw = String::new();
-    stream.read_to_string(&mut raw).unwrap();
-    let (status, content) = raw.split_once("\r\n\r\n").unwrap();
+    let (status, content) = http_client::response(stream)
+        .unwrap_or_else(|error| panic!("console HTTP {path} failed: {error}"));
     let code = status.split_whitespace().nth(1).unwrap().parse().unwrap();
     (
         code,
-        serde_json::from_str(content).unwrap_or(Value::Null),
+        serde_json::from_str(&content).unwrap_or(Value::Null),
         status.into(),
     )
 }

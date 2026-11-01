@@ -80,6 +80,28 @@ enum SourceByte {
 }
 
 impl StringSource<'_> {
+    fn copy_plain(&mut self, output: &mut [u8], fuel: &mut JsonFuel) -> usize {
+        let (bytes, offset) = match self {
+            Self::Inline { bytes, offset } => (*bytes, offset),
+            Self::Replay {
+                buffer,
+                used,
+                offset,
+                ..
+            } => (&buffer[..*used], offset),
+        };
+        let available = &bytes[*offset..];
+        let length = available.len().min(output.len()).min(fuel.bytes);
+        let count = available[..length]
+            .iter()
+            .position(|byte| *byte < 0x20 || *byte == b'"' || *byte == b'\\')
+            .unwrap_or(length);
+        output[..count].copy_from_slice(&available[..count]);
+        *offset += count;
+        fuel.bytes -= count;
+        count
+    }
+
     fn next(&mut self, fuel: &mut JsonFuel) -> Result<SourceByte, ReplayError> {
         match self {
             Self::Inline { bytes, offset } => {
@@ -175,6 +197,14 @@ impl<'a> Quoted<'a> {
             } else if self.phase == 3 {
                 return Ok((written, true));
             } else {
+                // Keep ordinary UTF-8 spans contiguous; only actual escapes
+                // need the small pending buffer. Avoid a byte-at-a-time copy
+                // in the shared history/capture critical path.
+                let plain = self.source.copy_plain(&mut output[written..], fuel);
+                if plain != 0 {
+                    written += plain;
+                    continue;
+                }
                 let byte = match self.source.next(fuel)? {
                     SourceByte::End => {
                         self.phase = 2;
