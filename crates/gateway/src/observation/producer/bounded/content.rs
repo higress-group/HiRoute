@@ -305,6 +305,8 @@ pub(crate) enum ContentPublishFailure {
     OverflowIntegrity,
     OverflowCapacity,
     Disconnected,
+    #[cfg(feature = "e2e-test-control")]
+    UnexpectedOverflow,
 }
 
 impl ContentPublishFailure {
@@ -316,6 +318,8 @@ impl ContentPublishFailure {
             Self::OverflowIntegrity => "content_overflow_integrity_failed",
             Self::OverflowCapacity => "content_overflow_capacity_exhausted",
             Self::Disconnected => "content_capture_worker_disconnected",
+            #[cfg(feature = "e2e-test-control")]
+            Self::UnexpectedOverflow => "unexpected_content_overflow_in_test",
         }
     }
 }
@@ -456,7 +460,8 @@ impl ByteBoundedObservationProducer {
             let scratch = resources
                 .encode(background, estimate.saturating_mul(2))
                 .await;
-            let mut spill = spool.can_spill()
+            let mut spill = background
+                && spool.can_spill()
                 && spool.wants_spill(
                     resources,
                     self.shared.queued_bytes.load(Ordering::Acquire),
@@ -471,11 +476,11 @@ impl ByteBoundedObservationProducer {
             }
             let mut credit =
                 self.content_ticket(if spill { descriptor_bytes } else { estimate }, class);
-            if credit.is_none() && !spill && spool.can_spill() {
+            if credit.is_none() && background && !spill && spool.can_spill() {
                 spill = true;
                 credit = self.content_ticket(descriptor_bytes, class);
             }
-            if credit.is_none() && background {
+            if credit.is_none() {
                 credit = self.content_ticket(resources.limits.progress, ContentSlotClass::Progress);
                 if credit.is_some() {
                     spill = false;
@@ -510,12 +515,25 @@ impl ByteBoundedObservationProducer {
         // A conservative estimate is not a new legal-record limit. Unexpected
         // larger envelopes can use the same admitted descriptor and backing.
         if accounted_bytes > credit.bytes
+            && background
             && spool.can_spill()
             && !matches!(credit.content_slot, Some(ContentSlotClass::Progress))
         {
             spill = true;
         }
         let record = if spill {
+            #[cfg(feature = "e2e-test-control")]
+            {
+                static FORBIDDEN: OnceLock<bool> = OnceLock::new();
+                if *FORBIDDEN.get_or_init(|| {
+                    std::env::var("HIROUTE_TEST_OBSERVATION_CONTENT_OVERFLOW").as_deref()
+                        == Ok("forbid")
+                }) {
+                    // A production-path negative oracle: it never alters the
+                    // normal no-spill path, and fails rather than hiding IO.
+                    return Err(ContentPublishFailure::UnexpectedOverflow);
+                }
+            }
             let owner = spool.retained(&self.shared);
             let writer = spool
                 .writer(resources)

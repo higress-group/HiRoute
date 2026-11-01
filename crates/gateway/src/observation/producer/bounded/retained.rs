@@ -5,7 +5,20 @@ use crate::replay::{OverflowRange, ReplayError};
 
 enum Payload {
     Resident(Arc<[u8]>),
-    Spilled(OverflowRange),
+    // Ordinary records do not pay for Content-only spill/workspace metadata.
+    WithWorkspace(Box<ResidentWorkspace>),
+    Spilled(Box<RetainedSpill>),
+}
+
+struct ResidentWorkspace {
+    bytes: Arc<[u8]>,
+    _workspace: EncodeScratch,
+}
+
+struct RetainedSpill {
+    // Reclaim backing before returning its descriptor credit.
+    range: OverflowRange,
+    _owner: SpillOwner,
 }
 
 pub(super) struct QueuedRecord {
@@ -14,8 +27,6 @@ pub(super) struct QueuedRecord {
     accounted_bytes: usize,
     timing: Option<super::super::super::latency::AsyncRecordTiming>,
     _credit: RecordCredit,
-    _spill_owner: Option<SpillOwner>,
-    _workspace: Option<EncodeScratch>,
 }
 
 impl QueuedRecord {
@@ -26,8 +37,6 @@ impl QueuedRecord {
             accounted_bytes: record.accounted_bytes,
             timing: record.timing,
             _credit: credit,
-            _spill_owner: None,
-            _workspace: None,
         }
     }
 
@@ -41,12 +50,13 @@ impl QueuedRecord {
     ) -> Self {
         Self {
             stamp,
-            payload: Payload::Spilled(range),
+            payload: Payload::Spilled(Box::new(RetainedSpill {
+                range,
+                _owner: owner,
+            })),
             accounted_bytes,
             timing,
             _credit: credit,
-            _spill_owner: Some(owner),
-            _workspace: None,
         }
     }
 
@@ -65,7 +75,9 @@ impl QueuedRecord {
         // admission. Keep original stamp/timing on every short-prefix retry.
         let (payload, scratch) = match &self.payload {
             Payload::Resident(bytes) => (Arc::clone(bytes), None),
-            Payload::Spilled(range) => {
+            Payload::WithWorkspace(resident) => (Arc::clone(&resident.bytes), None),
+            Payload::Spilled(spilled) => {
+                let range = &spilled.range;
                 // Includes the temporary Vec -> Arc overlap. Legal large
                 // single records keep the original one-record exception.
                 let mut scratch = self
@@ -94,7 +106,33 @@ impl QueuedRecord {
     }
 
     pub(super) fn hold_workspace(mut self, workspace: EncodeScratch) -> Self {
-        self._workspace = Some(workspace);
+        self.payload = match self.payload {
+            Payload::Resident(bytes) => Payload::WithWorkspace(Box::new(ResidentWorkspace {
+                bytes,
+                _workspace: workspace,
+            })),
+            _ => unreachable!("only a resident record borrows encoder workspace"),
+        };
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ordinary_record_layout_does_not_include_content_spill_state() {
+        assert!(
+            std::mem::size_of::<QueuedRecord>()
+                <= std::mem::size_of::<ObservationRecord>()
+                    + std::mem::size_of::<RecordCredit>()
+                    + 2 * std::mem::size_of::<usize>()
+        );
+        assert!(
+            std::mem::size_of::<QueuedRecord>()
+                + std::mem::size_of::<RetainedSpill>()
+                + 4 * std::mem::size_of::<usize>()
+                <= super::super::content::CONTENT_RECORD_BYTES
+        );
     }
 }

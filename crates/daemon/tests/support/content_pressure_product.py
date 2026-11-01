@@ -1,8 +1,9 @@
 """Zero-model pressure through real Gateway capture, production sink and storage.
 
-Three consecutive streamed turns deliberately overlap asynchronous persistence.
+Three consecutive turns and four concurrent streams exercise asynchronous persistence.
 There is no environment file collector, paid endpoint or modified request deadline.
 """
+from concurrent.futures import ThreadPoolExecutor
 import http.client
 import http.server
 import json
@@ -20,6 +21,7 @@ from usage_query_gateway_product import json_event, publish_plan
 
 PARTS = 4096
 TURNS = 3
+CONCURRENT = 4
 
 
 def fragment(index):
@@ -85,12 +87,12 @@ class PressureUpstream:
         self.thread.join(timeout=5)
 
 
-def durable_content(product):
+def durable_content(product, expected=TURNS):
     with activity_database(product) as db:
         requests = [row[0] for row in db.execute(
             "SELECT request_id FROM logical_requests WHERE outcome='accepted' "
             "AND finished_at_ms IS NOT NULL ORDER BY request_id")]
-    return requests if len(requests) == TURNS and all(
+    return requests if len(requests) == expected and all(
         complete_content(product, request) for request in requests) else []
 
 
@@ -120,6 +122,10 @@ def verify_exact_bytes(product, requests):
 def run(repository):
     product, upstream = Product(repository), PressureUpstream()
     product.enable_debug_diagnostics()
+    # The normal default-budget workload must not require the new encoded
+    # spill lane. This test-only guard fails at that exact write path; original
+    # raw Replay behavior and all HTTP/persistence assertions remain unchanged.
+    product.env['HIROUTE_TEST_OBSERVATION_CONTENT_OVERFLOW'] = 'forbid'
     try:
         product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
         product.start()
@@ -158,13 +164,54 @@ def run(repository):
             assert not durable_gaps(product), 'production content channel lost an admitted record'
             time.sleep(.05)
         verify_exact_bytes(product, requests)
+        first_requests = set(requests)
+        # Authenticate once outside parallel request execution. Every request
+        # uses a distinct native session, so this tests actual overlap rather
+        # than the same conversation's deliberate turn serialization.
+        bearer = product.bearer(product.agent_connection)
+
+        def concurrent_request(index):
+            client = http.client.HTTPConnection('127.0.0.1', product.port, timeout=30)
+            started = time.monotonic()
+            try:
+                client.request('POST', '/v1/responses', encoded({
+                    'model': product.model_alias,
+                    'input': [{'role': 'user', 'content': f'parallel pressure {index}'}],
+                    'stream': True}), {
+                    'Content-Type': 'application/json', 'X-HiRoute-Token': bearer,
+                    'session-id': f'content-pressure-parallel-{index}'})
+                response = client.getresponse()
+                payload = response.read()
+                assert response.status == 200
+                events = [json.loads(line[6:]) for line in payload.decode().splitlines()
+                          if line.startswith('data: ') and line[6:] != '[DONE]']
+                assert [event['delta'] for event in events
+                        if event['type'] == 'response.output_text.delta'] == list(map(fragment, range(PARTS)))
+                assert events[-1]['type'] == 'response.completed'
+                return time.monotonic() - started
+            finally:
+                client.close()
+
+        with ThreadPoolExecutor(max_workers=CONCURRENT) as executor:
+            parallel_seconds = list(executor.map(concurrent_request, range(CONCURRENT)))
+        expected = TURNS + CONCURRENT
+        assert len(upstream.requests) == expected
+        deadline = time.monotonic() + 90
+        while not (requests := durable_content(product, expected)):
+            assert time.monotonic() < deadline, 'concurrent accepted capture never became durable and complete'
+            assert not durable_gaps(product), 'concurrent content channel lost an admitted record'
+            time.sleep(.05)
+        assert first_requests.issubset(requests)
+        verify_exact_bytes(product, requests)
         assert not durable_gaps(product)
         product.stop()
         product.start()
-        assert durable_content(product) == requests
+        assert durable_content(product, expected) == requests
         verify_exact_bytes(product, requests)
         print(json.dumps({'scenario': 'production-content-pressure', 'state': 'green',
-                          'turns': TURNS, 'exact_delta_parts': TURNS * PARTS,
+                          'turns': TURNS, 'concurrent_requests': CONCURRENT,
+                          'exact_delta_parts': expected * PARTS,
+                          'parallel_seconds': parallel_seconds,
                           'forward_seconds': forwarded, 'reopen_exact': True}), flush=True)
     finally:
         product.close()

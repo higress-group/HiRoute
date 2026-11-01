@@ -177,3 +177,66 @@ fn spilled_large_record_drains_with_full_source_credit_and_reclaims_consumed_tai
     drop(manager);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn foreground_fallback_uses_ram_progress_without_waiting_or_writing_overflow() {
+    let root = std::fs::canonicalize(std::env::temp_dir())
+        .unwrap()
+        .join(format!(
+            "hiroute-foreground-progress-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+    let manager = ReplayManager::open(ReplayConfig {
+        root: root.clone(),
+        memory_threshold_bytes: 1024,
+        record_bytes: 31,
+        orphan_ttl: Duration::from_secs(60),
+    })
+    .unwrap();
+    let budget = BudgetTree::new(1024 * 1024, 1024 * 1024).unwrap();
+    let replay = manager
+        .begin_request(budget.stream(1024 * 1024).unwrap())
+        .unwrap();
+    let spool = Arc::new(ContentSpool::default());
+    spool.bind(replay.overflow_factory());
+    drop(replay);
+    let sink = Arc::new(BytesSink::default());
+    let mut limits = ContentQueueLimits::for_capacity(64 * 1024);
+    limits.soft = 0;
+    let producer =
+        ByteBoundedObservationProducer::new_content(identity("foreground"), limits, sink.clone())
+            .unwrap();
+    // A spill descriptor fits, but the body does not. Foreground publication
+    // must still avoid optional filesystem work and all background waiters.
+    let source = producer
+        .reserve_work(limits.bytes - limits.control - 4096)
+        .unwrap();
+    let bytes = vec![b'f'; 20 * 1024];
+    crate::server::core_runtime::observation::content_work::inline(producer.publish_content(
+        None,
+        bytes.len() + 512,
+        false,
+        false,
+        &spool,
+        |_| Ok(bytes.clone()),
+    ))
+    .unwrap();
+    sink.wait();
+    let snapshot = producer.content_resource_snapshot().unwrap();
+    assert_eq!(snapshot.overflow_created_segments, 0);
+    assert_eq!(snapshot.overflow_written_bytes, 0);
+    assert!(snapshot.foreground_encode_peak_bytes >= bytes.len());
+    sink.release();
+    drop(source);
+    producer.flush(Duration::from_secs(5)).unwrap();
+    assert_eq!(*lock(&sink.records), vec![(1, bytes)]);
+    assert_eq!(producer.stats().dropped, 0);
+    drop(producer);
+    drop(spool);
+    drop(manager);
+    std::fs::remove_dir_all(root).unwrap();
+}

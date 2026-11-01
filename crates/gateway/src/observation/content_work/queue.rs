@@ -406,7 +406,19 @@ async fn run_ready(ready: Option<Box<ReadyRequest>>) {
             state.take()
         };
         // Backing handles and large sources are dropped outside the state lock.
-        drop(discard);
+        // Admitted jobs discarded after a real capture failure still belong in
+        // that request's diagnostic totals; they consumed no encoder work.
+        for discarded in discard {
+            if let Some(latency) = &ready.request.inner.latency {
+                latency.capture_completed(
+                    discarded.queued,
+                    Instant::now(),
+                    std::time::Duration::ZERO,
+                    true,
+                );
+            }
+            drop(discarded);
+        }
         let Some(mut job) = job else {
             continue;
         };

@@ -60,8 +60,8 @@ A single Content thread cooperatively resumes per-request serial futures. A
 borrowed JSON cursor preserves canonical key order, Replay provenance, escaping,
 chunk boundaries and HMAC bytes without copying the semantic tree. The borrowed
 foreground fallback runs that same traversal synchronously and never waits for
-background credit or SQLite; include its full local encoding/Replay/temporary-IO
-cost in performance measurements.
+background credit, encoded-overflow IO or SQLite; include its full local
+encoding/Replay-read cost in performance measurements.
 
 Content prefers RAM. Above its 96 MiB high watermark it can retain already encoded
 records in private segmented temporary backing; below 64 MiB it resumes RAM after
