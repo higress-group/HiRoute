@@ -44,7 +44,7 @@ fn repeated_history_writer_size_and_cpu() {
             ack(fixture.ingest(&append));
         }
         sequence += 1;
-        let mut finish = fixture.finish(sequence, &format!("{request:064x}"));
+        let mut finish = fixture.finish(sequence, &format!("{request:02x}"));
         finish.correlation.request_id = request_id;
         ack(fixture.ingest(&finish));
     }
