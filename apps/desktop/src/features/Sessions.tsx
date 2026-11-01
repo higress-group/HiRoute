@@ -550,7 +550,7 @@ function MessageOccurrence({ request, items, anchor, language, modelLabel, techn
   const importedContext = items.length > 0 && items.every(item => item.capture?.context_only === true);
   const contextOnly = importedContext || role === 'user' && !anchor && items.length > 0 && items.every(item => contextParts[item.content_id] === true);
   const roleLabel = importedContext ? (language === 'zh' ? '历史上下文 · 执行模型未知' : 'Historical context · execution model unknown') : technical ? (language === 'zh' ? '工具上下文' : 'Tool context') : contextOnly ? (language === 'zh' ? 'Agent 附加上下文' : 'Agent-added context') : role === 'assistant' ? (language === 'zh' ? 'Agent 回答' : 'Agent answer') : role === 'user' ? (language === 'zh' ? '你的问题' : 'Your question') : role;
-  const potential = items.some(item => !item.media_type.includes('hiroute.model-stream-event'));
+  const potential = items.some(item => !item.media_type.includes('hiroute.model-stream-event') && !item.media_type.includes('hiroute.semantic-terminal'));
   const responseText = coalesceResponseText(Object.values(events));
   const visible = potential || responseText.some(part => part.text.length > 0) || Object.values(visibility).some(Boolean);
   const incomplete = items.some(item => !['available', 'complete'].includes(item.state)) || Object.values(partIncomplete).some(Boolean);
@@ -578,7 +578,7 @@ function MessagePart({ request, item, anchor, language, onEvent, onVisibility, o
   useEffect(() => { marker.current?.scrollIntoView({ block: 'center' }); }, [text]);
   const event = readableEvent(text, item.media_type, item.direction);
   useEffect(() => { if (event && event.kind !== 'reasoning' && onEvent) onEvent(item.content_id, event); }, [text, item.content_id, onEvent]);
-  const structuredPending = item.media_type.includes('hiroute.model-stream-event') && !text && !error;
+  const structuredPending = (item.media_type.includes('hiroute.model-stream-event') || item.media_type.includes('hiroute.semantic-terminal')) && !text && !error;
   const hiddenEvent = Boolean((structuredPending || (event && (event.kind === 'block' || event.kind === 'reasoning' || ((event.kind === 'tool' || event.kind === 'text' || event.kind === 'refusal') && onEvent)))) && anchor === undefined && !error && !cursor);
   useEffect(() => { onVisibility(item.content_id, !hiddenEvent); }, [hiddenEvent, item.content_id, onVisibility]);
   useEffect(() => { onIncomplete(item.content_id, state !== 'available' && state !== 'complete'); }, [item.content_id, onIncomplete, state]);

@@ -459,9 +459,15 @@ fn routing_attempt_receipt_and_value_survive_content_v2_migration_and_restart() 
             )
             .unwrap();
     }
+    let unaffected = FactChannel::new(fixture.fact_stream.clone(), 64 * 1024);
+    assert_eq!(unaffected.offer(facts[9].clone()), OfferOutcome::Accepted);
+    assert!(
+        matches!(writer.consume_fact(&unaffected), WriterCycleOutcome::Ack(_)),
+        "retry checks its own fact, independent of unrelated request growth/corruption"
+    );
     let tampered_replay = FactChannel::new(fixture.fact_stream.clone(), 64 * 1024);
     assert_eq!(
-        tampered_replay.offer(facts[9].clone()),
+        tampered_replay.offer(facts[0].clone()),
         OfferOutcome::Accepted
     );
     assert_eq!(

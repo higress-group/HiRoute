@@ -629,6 +629,10 @@ impl RequestObservation {
 }
 
 #[cfg(test)]
+#[path = "semantic_field.rs"]
+mod field;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

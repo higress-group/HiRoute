@@ -66,3 +66,15 @@ test('search excerpt centers on the original UTF-8 anchor', () => {
  const result = excerptAround(before + '命中内容' + '后'.repeat(300), new TextEncoder().encode(before).length);
  assert.match(result, /命中内容/); assert.ok(result.length <= 162); assert.ok(!result.includes('�'));
 });
+
+test('semantic terminal metadata never replaces accepted segments with an empty final', () => {
+ const terminalMedia = 'application/vnd.hiroute.semantic-terminal+json;version=1';
+ const raw = JSON.stringify({ schema_version: 'hiroute.semantic-terminal/v1', sequence: 2, text_source: 'accepted_segments', event: { kind: 'text_finished', index: 0, status: 'completed', annotations: [] } });
+ const terminal = readableEvent(raw, terminalMedia, 'response_delivered');
+ assert.deepEqual(terminal, { kind: 'block', block: 'text_finished' });
+ const delta = readableEvent(encode({ kind: 'text_delta', index: 0, text: 'retained' }), media, 'response_delivered');
+ assert.deepEqual(coalesceResponseText([delta, terminal]), [{ kind: 'text', index: 0, text: 'retained' }]);
+ assert.equal(readableEvent(raw, media, 'response_delivered'), null);
+ assert.equal(readableEvent(raw.replace('accepted_segments', 'unknown'), terminalMedia, 'response_delivered'), null);
+ assert.equal(readableEvent(raw.replace('"annotations":[]', '"text":"","annotations":[]'), terminalMedia, 'response_delivered'), null);
+});

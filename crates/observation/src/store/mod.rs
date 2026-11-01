@@ -24,6 +24,8 @@ mod reset;
 mod retention;
 mod safe_facts;
 mod schema;
+#[cfg(test)]
+mod semantic_field;
 pub(crate) mod sensitive;
 #[cfg(test)]
 pub(crate) mod tests;

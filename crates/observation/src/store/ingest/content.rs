@@ -92,6 +92,22 @@ impl LocalObservationStore {
                 },
             )));
         }
+        if let Err(error) = envelope.validate() {
+            let expected = load_checkpoint(transaction, ObservationChannel::Content, stream)?
+                .accounted
+                .saturating_add(1);
+            let outcome = IngestOutcome::Nack(content_validation_nack(envelope, expected, error));
+            persist_feedback(
+                transaction,
+                stream,
+                envelope.sequence,
+                envelope.event_id.as_str(),
+                payload_digest.as_str(),
+                &outcome,
+                envelope.occurred_at_unix_nanos,
+            )?;
+            return Ok(outcome);
+        }
         if let Some(outcome) = load_feedback(
             transaction,
             "conversation_content",
@@ -119,22 +135,6 @@ impl LocalObservationStore {
                     Err(_) => return Err(ObservationStoreError::Corrupt),
                 }
             }
-            return Ok(outcome);
-        }
-        if let Err(error) = envelope.validate() {
-            let expected = load_checkpoint(transaction, ObservationChannel::Content, stream)?
-                .accounted
-                .saturating_add(1);
-            let outcome = IngestOutcome::Nack(content_validation_nack(envelope, expected, error));
-            persist_feedback(
-                transaction,
-                stream,
-                envelope.sequence,
-                envelope.event_id.as_str(),
-                payload_digest.as_str(),
-                &outcome,
-                envelope.occurred_at_unix_nanos,
-            )?;
             return Ok(outcome);
         }
         let envelope_losses = envelope.reported_losses();

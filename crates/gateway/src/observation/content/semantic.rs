@@ -9,6 +9,20 @@ use std::collections::BTreeMap;
 const MAX_BLOCKS: usize = 128;
 pub(super) const RESERVATION_BYTES: usize = 256 * 1024;
 
+pub(super) struct SemanticEvent {
+    pub event: ModelStreamEventV1,
+    pub text_omitted: bool,
+}
+
+impl From<ModelStreamEventV1> for SemanticEvent {
+    fn from(event: ModelStreamEventV1) -> Self {
+        Self {
+            event,
+            text_omitted: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct Key(u32, u8, String);
 struct Proof {
@@ -68,24 +82,24 @@ impl SemanticResponse {
         }
     }
 
-    fn flush_into(&mut self, output: &mut Vec<ModelStreamEventV1>) {
+    fn flush_into(&mut self, output: &mut Vec<SemanticEvent>) {
         if let Some((_, event)) = self.pending.take() {
-            output.push(event);
+            output.push(event.into());
         }
     }
 
-    pub(super) fn accept(&mut self, mut event: ModelStreamEventV1) -> Vec<ModelStreamEventV1> {
+    pub(super) fn accept(&mut self, mut event: ModelStreamEventV1) -> Vec<SemanticEvent> {
         let mut output = Vec::new();
         let Some((value, index, kind, finished)) = text(&event.event) else {
             self.flush_into(&mut output);
-            output.push(event);
+            output.push(event.into());
             return output;
         };
         if matches!(&event.event, ModelEvent::ToolArgumentsDelta{logical_id,..} if logical_id.len()>4096)
         {
             self.partial = true;
             self.flush_into(&mut output);
-            output.push(event);
+            output.push(event.into());
             return output;
         }
         let tool = if let ModelEvent::ToolArgumentsDelta { logical_id, .. } = &event.event {
@@ -98,24 +112,29 @@ impl SemanticResponse {
         let identity = Key(index, kind, tool);
         if finished {
             self.flush_into(&mut output);
+            let mut text_omitted = false;
             if let Some(proof) = self.proofs.get(&identity) {
                 let mut full = WorkspaceHmac::new(&self.key, b"semantic-accepted-text");
                 full.update_stream(value.as_bytes());
                 if value.len() == proof.bytes && full.finish() == proof.hash.clone().finish() {
-                    // Retain status/annotations/phase without another full copy
-                    // of already accepted text. Empty finals never erase deltas.
+                    // The encoder uses a distinct semantic-terminal media type:
+                    // this is metadata, never an empty canonical final answer.
                     text_mut(&mut event.event).expect("text final").clear();
+                    text_omitted = true;
                 } else {
                     self.partial = true;
                 }
             }
-            output.push(event);
+            output.push(SemanticEvent {
+                event,
+                text_omitted,
+            });
             return output;
         }
         if !self.proofs.contains_key(&identity) && self.proofs.len() >= MAX_BLOCKS {
             self.partial = true;
             self.flush_into(&mut output);
-            output.push(event);
+            output.push(event.into());
             return output;
         }
         let proof = self
@@ -164,7 +183,7 @@ impl SemanticResponse {
         output
     }
 
-    pub(super) fn finish(&mut self) -> Vec<ModelStreamEventV1> {
+    pub(super) fn finish(&mut self) -> Vec<SemanticEvent> {
         let mut output = Vec::new();
         self.flush_into(&mut output);
         output

@@ -371,7 +371,7 @@ fn wrong_schema_digest_sequence_identity_and_terminal_state_are_durable_typed_na
     version.schema_version = "hiroute.observation.conversation-content-envelope/v999".into();
     assert!(matches!(nack(fixture.ingest(&version)).detail,
         ObservationNackDetailV1::UnsupportedSchema { ref rejected_schema_version, .. }
-            if rejected_schema_version.ends_with("/v3")));
+            if rejected_schema_version.ends_with("/v999")));
 
     let fixture = Fixture::new();
     let mut digest = fixture.begin(1);

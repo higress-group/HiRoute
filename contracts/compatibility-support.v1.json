@@ -417,6 +417,7 @@
     "hiroute.secret-entry/v1",
     "hiroute.secret-entry/v2",
     "hiroute.semantic-ledger/v1",
+    "hiroute.semantic-terminal/v1",
     "hiroute.service-recovery/v1",
     "hiroute.session-detail/v1",
     "hiroute.session-list-query/v1",

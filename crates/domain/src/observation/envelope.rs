@@ -13,10 +13,12 @@ use super::{
 pub const CONVERSATION_CONTENT_SCHEMA_V2: &str =
     "hiroute.observation.conversation-content-envelope/v3";
 pub const CONVERSATION_CONTENT_PORT_DIGEST_V2: &str =
-    "sha256:7e815c0626cda9fe43c5fbeb14c4b7d71f0e1af1f781d7810afe66cbe5995960";
+    "sha256:ca8be8c819ce5bac7178e79ebc91f2fcf69e75c9100ceffa664b4a1faa887afc";
 pub const OBSERVATION_GAP_HEARTBEAT_SCHEMA_V1: &str = "hiroute.observation.gap-heartbeat/v1";
 pub const CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1: &str =
     "application/vnd.hiroute.model-stream-event+json;version=1";
+pub const SEMANTIC_TERMINAL_CONTENT_MEDIA_TYPE_V1: &str =
+    "application/vnd.hiroute.semantic-terminal+json;version=1";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -260,8 +262,13 @@ impl ConversationContentEnvelopeV1 {
                     && self.downstream_delivery
                         == Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted)
                     && self.content_ref.is_some()
-                    && self.canonical_media_type.as_deref()
-                        == Some(CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1) =>
+                    && matches!(
+                        self.canonical_media_type.as_deref(),
+                        Some(
+                            CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1
+                                | SEMANTIC_TERMINAL_CONTENT_MEDIA_TYPE_V1
+                        )
+                    ) =>
             {
                 Ok(())
             }

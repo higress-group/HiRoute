@@ -50,7 +50,7 @@ fn thousands_of_frames_become_bounded_exact_unicode_segments_and_one_terminal_me
     output.extend(capture.finish());
     let actual = output
         .iter()
-        .filter_map(|event| match &event.event {
+        .filter_map(|event| match &event.event.event {
             ModelEvent::TextDelta { text, .. } => Some(text.as_str()),
             _ => None,
         })
@@ -58,11 +58,21 @@ fn thousands_of_frames_become_bounded_exact_unicode_segments_and_one_terminal_me
     assert_eq!(actual, expected);
     assert!(output.len() < 5, "no permanent per-delta projection");
     assert!(output.iter().all(|event| {
-        text(&event.event).is_none_or(|(text, _, _, _)| text.len() <= CONTENT_CHUNK_BYTES)
+        text(&event.event.event).is_none_or(|(text, _, _, _)| text.len() <= CONTENT_CHUNK_BYTES)
     }));
     assert!(
-        matches!(&output.last().unwrap().event,ModelEvent::TextFinished{text,..} if text.is_empty())
+        matches!(&output.last().unwrap().event.event,ModelEvent::TextFinished{text,..} if text.is_empty())
     );
+    assert!(output.last().unwrap().text_omitted);
+    let value: serde_json::Value = serde_json::from_slice(
+        &super::super::serialize_observed_response_event(&output.last().unwrap().event, true)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(value["schema_version"], "hiroute.semantic-terminal/v1");
+    assert_eq!(value["text_source"], "accepted_segments");
+    assert!(value["event"].get("text").is_none());
+    assert_eq!(value["event"]["status"], "completed");
     assert!(!capture.partial);
 }
 
@@ -92,7 +102,20 @@ fn interleaved_blocks_and_kinds_preserve_order_and_cancelled_prefix() {
         output.extend(capture.accept(event));
     }
     output.extend(capture.finish());
-    assert_eq!(output.iter().filter_map(|event|text(&event.event).map(|(text,_,kind,_)|(kind,text.to_owned()))).collect::<Vec<_>>(),vec![(0,"AB".into()),(1,"think".into()),(0,"C".into()),(2,"refuse".into())]);
+    assert_eq!(
+        output
+            .iter()
+            .filter_map(
+                |event| text(&event.event.event).map(|(text, _, kind, _)| (kind, text.to_owned()))
+            )
+            .collect::<Vec<_>>(),
+        vec![
+            (0, "AB".into()),
+            (1, "think".into()),
+            (0, "C".into()),
+            (2, "refuse".into())
+        ]
+    );
 }
 
 #[test]
@@ -110,8 +133,8 @@ fn conflicting_and_empty_final_snapshots_cannot_erase_accepted_output() {
                 final_phase: None,
             },
         ));
-        assert_eq!(text(&output[0].event).unwrap().0, "accepted");
-        assert_eq!(text(&output[1].event).unwrap().0, final_text);
+        assert_eq!(text(&output[0].event.event).unwrap().0, "accepted");
+        assert_eq!(text(&output[1].event.event).unwrap().0, final_text);
         assert!(capture.partial);
     }
 }
@@ -133,9 +156,9 @@ fn tool_arguments_with_reused_block_index_do_not_merge_different_logical_calls()
     output.extend(capture.finish());
     assert_eq!(output.len(), 2);
     assert!(
-        matches!(&output[0].event,ModelEvent::ToolArgumentsDelta{logical_id,delta,..} if logical_id=="first"&&delta=="{}")
+        matches!(&output[0].event.event,ModelEvent::ToolArgumentsDelta{logical_id,delta,..} if logical_id=="first"&&delta=="{}")
     );
     assert!(
-        matches!(&output[1].event,ModelEvent::ToolArgumentsDelta{logical_id,delta,..} if logical_id=="second"&&delta=="[]")
+        matches!(&output[1].event.event,ModelEvent::ToolArgumentsDelta{logical_id,delta,..} if logical_id=="second"&&delta=="[]")
     );
 }

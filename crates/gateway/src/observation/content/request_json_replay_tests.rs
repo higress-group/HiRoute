@@ -811,11 +811,12 @@ fn queued_archive_pressure_marks_optional_loss_without_synchronous_history_fallb
         receiver.try_recv().is_err(),
         "no archive traversal in the foreground"
     );
+    drop(_other);
     gate.release();
     observation.inner.channels.content_work.flush(&observation);
     assert_eq!(
         observation.inner.channels.content.work_state().unwrap().1,
-        other_bytes
+        0
     );
 }
 

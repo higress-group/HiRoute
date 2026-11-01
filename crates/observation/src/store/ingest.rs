@@ -53,24 +53,6 @@ impl ObservationCommitPort for LocalObservationStore {
                 },
             )));
         }
-        if let Some(outcome) = load_feedback(
-            &transaction,
-            "execution_fact",
-            stream,
-            envelope.sequence,
-            envelope.event_id.as_str(),
-            payload_digest.as_str(),
-        )? && !matches!(&outcome, IngestOutcome::Nack(value) if value.retryable)
-        {
-            let content_erased: bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM sessions WHERE workspace_id=?1 AND session_id=?2 AND content_completeness IN('deleted','expired'))",params![envelope.correlation.workspace_id.as_str(),envelope.correlation.conversation_id.as_str()],|row|row.get(0)).map_err(|_|ObservationStoreError::ActivityUnavailable)?;
-            if matches!(outcome, IngestOutcome::Ack(_)) && !content_erased {
-                super::fact_log::verify_retry(&transaction, envelope)?;
-            }
-            transaction
-                .commit()
-                .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-            return Ok(outcome);
-        }
         if let Err(error) = envelope.validate() {
             let expected = load_checkpoint(&transaction, ObservationChannel::Fact, stream)?
                 .accounted
@@ -85,6 +67,24 @@ impl ObservationCommitPort for LocalObservationStore {
                 &outcome,
                 envelope.occurred_at_unix_nanos,
             )?;
+            transaction
+                .commit()
+                .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
+            return Ok(outcome);
+        }
+        if let Some(outcome) = load_feedback(
+            &transaction,
+            "execution_fact",
+            stream,
+            envelope.sequence,
+            envelope.event_id.as_str(),
+            payload_digest.as_str(),
+        )? && !matches!(&outcome, IngestOutcome::Nack(value) if value.retryable)
+        {
+            let content_erased: bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM sessions WHERE workspace_id=?1 AND session_id=?2 AND content_completeness IN('deleted','expired'))",params![envelope.correlation.workspace_id.as_str(),envelope.correlation.conversation_id.as_str()],|row|row.get(0)).map_err(|_|ObservationStoreError::ActivityUnavailable)?;
+            if matches!(outcome, IngestOutcome::Ack(_)) && !content_erased {
+                super::fact_log::verify_retry(&transaction, envelope)?;
+            }
             transaction
                 .commit()
                 .map_err(|_| ObservationStoreError::ActivityUnavailable)?;

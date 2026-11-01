@@ -19,6 +19,8 @@ const CONTENT_CHUNK_BYTES: usize = 64 * 1024;
 const CANONICALIZATION_VERSION: &str = "hiroute.model-request-ir/v1";
 const CANONICAL_RESPONSE_EVENT_MEDIA_TYPE: &str =
     "application/vnd.hiroute.model-stream-event+json;version=1";
+const SEMANTIC_TERMINAL_MEDIA_TYPE: &str =
+    "application/vnd.hiroute.semantic-terminal+json;version=1";
 
 /// Finish an already admitted part if later optional work loses its queue slot.
 /// Otherwise a failure between two chunks would strand a complete accepted
@@ -762,16 +764,22 @@ impl RequestObservation {
         &self,
         attempt_id: &str,
         _frame_id: &str,
-        event: ModelStreamEventV1,
+        semantic: semantic::SemanticEvent,
     ) {
         let draining = self.lock_state().response_content_draining;
         if self.content_capture_failed() && !draining {
             return;
         }
+        let event = &semantic.event;
         let Some(kind) = canonical_response_content_kind(&event.event) else {
             return;
         };
-        let Ok(bytes) = serialize_observed_response_event(&event) else {
+        let media_type = if semantic.text_omitted {
+            SEMANTIC_TERMINAL_MEDIA_TYPE
+        } else {
+            CANONICAL_RESPONSE_EVENT_MEDIA_TYPE
+        };
+        let Ok(bytes) = serialize_observed_response_event(event, semantic.text_omitted) else {
             Box::pin(self.terminal_content_run(
                 "response_delivered",
                 "abort",
@@ -787,13 +795,13 @@ impl RequestObservation {
             state.response_part_ordinal = ordinal.saturating_add(1);
             ordinal
         };
-        let whole_digest = self.content_blob_digest(CANONICAL_RESPONSE_EVENT_MEDIA_TYPE, &bytes);
+        let whole_digest = self.content_blob_digest(media_type, &bytes);
         let message_instance_id = self.message_instance_id("response_delivered", 0, "assistant");
         let content_ref = ContentRefV1 {
             content_id: self.content_id(&message_instance_id, part_ordinal, &whole_digest),
             digest: whole_digest.clone(),
             byte_count: bytes.len() as u64,
-            media_type: CANONICAL_RESPONSE_EVENT_MEDIA_TYPE.into(),
+            media_type: media_type.into(),
         };
         emit_content_ref(self, "response_delivered", content_ref.clone());
         for (index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {
@@ -804,7 +812,7 @@ impl RequestObservation {
                 part_ordinal,
                 role: "assistant",
                 kind,
-                media_type: CANONICAL_RESPONSE_EVENT_MEDIA_TYPE,
+                media_type,
                 bytes: chunk,
                 public_ref: Some(content_ref.clone()),
                 whole_digest: &whole_digest,
@@ -824,8 +832,17 @@ impl RequestObservation {
 /// runtime ledger but never cross the conversation-content port.
 fn serialize_observed_response_event(
     event: &ModelStreamEventV1,
+    text_omitted: bool,
 ) -> Result<Vec<u8>, serde_json::Error> {
     let mut projected = serde_json::to_value(event)?;
+    if text_omitted {
+        projected["schema_version"] = "hiroute.semantic-terminal/v1".into();
+        projected["text_source"] = "accepted_segments".into();
+        projected["event"]
+            .as_object_mut()
+            .expect("serialized model event")
+            .remove("text");
+    }
     if matches!(
         event.event,
         ModelEvent::ToolCallStarted { .. } | ModelEvent::WebSearch { .. }
