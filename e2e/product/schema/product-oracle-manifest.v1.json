@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:9cc0651513ac62b99c12e9f8ea84362244d2de2a030f3aba4876bdd33057e36a",
+  "descriptor_digest": "sha256:8869b6c9460ddadec7c71213aae16ec9d7d3fcebc30fbcd9cd013e22a11ae04c",
   "expected_red_reasons": [],
   "planned_commands": [
     "console.open",
@@ -95,6 +95,8 @@
     "compute.network.apply",
     "compute.network.resolve",
     "compute.connection.preview-network",
+    "compute.budgets.get",
+    "compute.budgets.preview",
     "compute.defaults.get",
     "compute.defaults.preview",
     "models.metadata.list",
@@ -200,6 +202,8 @@
     "compute.network.apply",
     "compute.network.resolve",
     "compute.connection.preview-network",
+    "compute.budgets.get",
+    "compute.budgets.preview",
     "compute.defaults.get",
     "compute.defaults.preview",
     "models.metadata.list",
