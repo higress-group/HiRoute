@@ -158,6 +158,9 @@ pub trait RunRequestSafetyPort: Send + Sync {
         model_alias: &str,
         protocol: IngressProtocol,
     ) -> Result<(), RunRequestAuthorityError>;
+
+    /// Bounded in-memory diagnostics only; implementations must not perform blocking I/O.
+    fn request_failed(&self, _locator: &RunRequestLocator, _failure: super::RunRequestFailure) {}
 }
 
 /// The daemon resolves a run token to an immutable exact-plan handle.  Gateway never imports the
@@ -179,6 +182,10 @@ pub struct VerifiedRunRequestAuthority {
 }
 
 impl VerifiedRunRequestAuthority {
+    pub(super) fn note_request_failure(&self, failure: super::RunRequestFailure) {
+        self.safety.request_failed(&self.locator, failure);
+    }
+
     pub fn new(
         locator: RunRequestLocator,
         publication: Arc<RunPublicationHandle>,
@@ -328,6 +335,88 @@ mod tests {
         ) -> Result<VerifiedRunRequestAuthority, RunRequestAuthorityError> {
             Ok(self.0.clone())
         }
+    }
+
+    #[derive(Default)]
+    struct Rejections(std::sync::Mutex<Vec<(String, super::super::RunRequestFailure)>>);
+
+    impl RunRequestSafetyPort for Rejections {
+        fn authorize_request(
+            &self,
+            _: &str,
+            _: &RunRequestLocator,
+            _: &str,
+            _: IngressProtocol,
+        ) -> Result<(), RunRequestAuthorityError> {
+            Ok(())
+        }
+
+        fn request_failed(
+            &self,
+            locator: &RunRequestLocator,
+            failure: super::super::RunRequestFailure,
+        ) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((locator.run_id().to_owned(), failure));
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_run_rejections_are_scoped_and_ordinary_requests_do_not_inherit_them() {
+        use super::super::{note_run_request_failure, with_run_diagnostics};
+        let left = Arc::new(Rejections::default());
+        let right = Arc::new(Rejections::default());
+        let mut first = verified(Arc::new(Safety(AtomicUsize::new(0))));
+        first.safety = left.clone();
+        let mut second = first.clone();
+        second.locator.run_id = "run/two".into();
+        second.safety = right.clone();
+        let barrier = Arc::new(tokio::sync::Barrier::new(2));
+        let first_barrier = barrier.clone();
+        let first = tokio::spawn(with_run_diagnostics(Some(first), async move {
+            first_barrier.wait().await;
+            tokio::task::yield_now().await;
+            note_run_request_failure(400, "CLIENT_PROTOCOL_UNREPRESENTABLE");
+            with_run_diagnostics(None, async {
+                note_run_request_failure(503, "REPLAY_STORE_UNAVAILABLE");
+            })
+            .await;
+        }));
+        let second = tokio::spawn(with_run_diagnostics(Some(second), async move {
+            barrier.wait().await;
+            note_run_request_failure(502, "NO_ELIGIBLE_CANDIDATE");
+            note_run_request_failure(200, "NOT_A_REJECTION");
+        }));
+        first.await.unwrap();
+        second.await.unwrap();
+        note_run_request_failure(500, "OUTSIDE_REQUEST");
+        let left = left.0.lock().unwrap();
+        let right = right.0.lock().unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(right.len(), 1);
+        assert_eq!(left[0].0, "run/one");
+        assert_eq!(left[0].1.http_status, 400);
+        assert_eq!(left[0].1.code, Some("CLIENT_PROTOCOL_UNREPRESENTABLE"));
+        assert_eq!(right[0].0, "run/two");
+        assert_eq!(right[0].1.code, Some("NO_ELIGIBLE_CANDIDATE"));
+    }
+
+    #[tokio::test]
+    async fn response_status_without_a_typed_code_does_not_invent_provider_details() {
+        use super::super::{note_run_http_failure, with_run_diagnostics};
+        let rejected = Arc::new(Rejections::default());
+        let mut run = verified(Arc::new(Safety(AtomicUsize::new(0))));
+        run.safety = rejected.clone();
+        with_run_diagnostics(Some(run), async {
+            note_run_http_failure(403);
+        })
+        .await;
+        let rejected = rejected.0.lock().unwrap();
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(rejected[0].1.http_status, 403);
+        assert_eq!(rejected[0].1.code, None);
     }
 
     fn observation_metadata(harness: &str) -> RunObservationMetadata {

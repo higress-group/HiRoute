@@ -35,6 +35,79 @@ fn facts() -> Vec<u8> {
 }
 
 #[test]
+fn worker_dependency_input_details_explain_the_harness_tuple_without_echoing_paths() {
+    let root = tempfile::tempdir().unwrap();
+    let private_path = root
+        .path()
+        .join("PRIVATE_COMPONENT_MUST_NOT_APPEAR")
+        .display()
+        .to_string();
+    for (request, expected_path) in [
+        (
+            json!({"harness":"pi", "node_path":private_path, "expected_selection_revision":0}),
+            "$.cli_path",
+        ),
+        (
+            json!({"harness":"pi", "cli_path":private_path, "expected_selection_revision":0}),
+            "$.node_path",
+        ),
+        (
+            json!({"harness":"pi", "cli_path":private_path, "node_path":private_path, "adapter_path":private_path, "expected_selection_revision":0}),
+            "$.adapter_path",
+        ),
+        (
+            json!({"harness":"claude_code", "cli_path":private_path, "expected_selection_revision":0}),
+            "$.adapter_path",
+        ),
+        (
+            json!({"harness":"opencode", "cli_path":private_path, "node_path":private_path, "expected_selection_revision":0}),
+            "$.node_path",
+        ),
+    ] {
+        let bytes = serde_json::to_vec(&request).unwrap();
+        let (exit, envelope) = invoke(
+            root.path(),
+            &[
+                "worker",
+                "dependencies",
+                "select",
+                "--request-stdin",
+                "--error-details",
+                "--output",
+                "json",
+            ],
+            &bytes,
+        );
+        assert_eq!(exit, 2, "{envelope}");
+        assert_eq!(
+            envelope["data"]["schema"],
+            "hiroute.cli-input-diagnostic/v1"
+        );
+        assert_eq!(envelope["data"]["diagnostic"]["path"], expected_path);
+        assert!(
+            !envelope
+                .to_string()
+                .contains("PRIVATE_COMPONENT_MUST_NOT_APPEAR")
+        );
+        let (exit, legacy) = invoke(
+            root.path(),
+            &[
+                "worker",
+                "dependencies",
+                "select",
+                "--request-stdin",
+                "--output",
+                "json",
+            ],
+            &bytes,
+        );
+        assert_eq!(exit, 2);
+        assert!(legacy.get("data").is_none());
+        assert_eq!(legacy["error"]["code"], "INVALID_ARGUMENTS");
+    }
+}
+
+#[test]
 fn unknown_options_never_become_resource_ids_or_reach_transport() {
     let root = tempfile::tempdir().unwrap();
     for path in [

@@ -957,6 +957,29 @@ hiroute worker dependencies discover --harness codex_cli --output json \
 Copy `selection_revisions[].revision` for the same Harness and select complete absolute paths
 whose state is `found`:
 
+| Harness | Required selection fields | Other fields |
+| --- | --- | --- |
+| `codex_cli`, `claude_code` | `cli_path`, `adapter_path` | `node_path` is optional in the tuple; script/protected adapter launch may require it |
+| `qoder_cli`, `deepseek_harness`, `opencode` | `cli_path` | Omit `adapter_path` and `node_path` |
+| `pi` | `cli_path`, `node_path` | Omit `adapter_path`; Node alone is incomplete |
+
+Pi's CLI component is its installed official CLI/SDK entry, for example an absolute
+`dist/cli.js` path. It is separate from the Node executable. Claude's ordinary CLI
+is also separate from its ACP adapter. Missing components remain installation
+prerequisites; discovery never downloads them.
+
+Text discovery shows candidate reason codes and installation hints. For npm
+OpenCode, copy the canonical native candidate path. If multiple official platform
+variants are installed, choose explicitly from the listed paths; the ambiguous
+wrapper is marked `worker.dependencies.platform_selection_required`. Discovery
+does not select a variant, and an `.exe` suffix alone does not identify Windows
+code. Selection success still does not prove the native version/history format is
+supported for Worker execution.
+
+Use `--error-details --output json` on selection to inspect bounded invalid-input
+details such as a missing `cli_path` or an adapter field forbidden for that Harness.
+Submitted paths and other request values are not copied into those explanations.
+
 ```json
 {
   "harness": "codex_cli",

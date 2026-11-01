@@ -369,6 +369,152 @@ fn cancellation_fixture() -> (
     (temporary, runtime, journal)
 }
 
+fn start_fixture_prompt(journal: &PersistentWorkerRunJournal) {
+    journal.before_launch().unwrap();
+    journal
+        .process_spawned(&WorkerProcessIdentity {
+            launch_nonce: "launch/one".into(),
+            handle_id: "held-child".into(),
+            creation_identity: "creation".into(),
+        })
+        .unwrap();
+    journal
+        .session_bound(&DelegationSessionBindingV1 {
+            acp_session_id: "session/one".into(),
+            native_session_id: Some("native/one".into()),
+        })
+        .unwrap();
+    journal.before_prompt().unwrap();
+}
+
+#[test]
+fn native_failure_deadline_and_lost_connection_survive_cleanup_with_owned_progress() {
+    use hiroute_observation::managed_text::{ManagedTextProgressRead, ManagedTextProgressTarget};
+    for (error, expected, code) in [
+        (
+            DelegationErrorV1::PromptFailed,
+            RunStateV1::Failed,
+            "NATIVE_PROMPT_FAILED",
+        ),
+        (
+            DelegationErrorV1::DeadlineExceeded,
+            RunStateV1::Failed,
+            "RUN_DEADLINE_EXCEEDED",
+        ),
+        (
+            DelegationErrorV1::ProtocolFailed,
+            RunStateV1::Unknown,
+            "ACP_PROTOCOL_FAILED",
+        ),
+    ] {
+        let (temporary, _runtime, journal) = cancellation_fixture();
+        start_fixture_prompt(&journal);
+        journal.qoder_context(
+            "/native/second-account\n[HiRoute] forged",
+            now_ms().unwrap() as i64,
+        );
+        journal.verifier.record_request_failure(
+            hiroute_gateway::server::dispatch::RunRequestFailure {
+                http_status: 400,
+                code: Some("CLIENT_PROTOCOL_UNREPRESENTABLE"),
+            },
+        );
+        journal.execution_failed(error).unwrap();
+        journal.stop_intent().unwrap();
+        // A late native progress flush can reset an evicted segment. The final host
+        // explanation must follow that reset and retain the actual directory as well.
+        let current = journal.run().unwrap();
+        let writer = ObservationProgressWriter::new(
+            Arc::clone(&journal.observation),
+            ManagedTextProgressTarget {
+                scope: ManagedTextScope {
+                    workspace_id: current.workspace_id,
+                    task_id: current.task_id,
+                    run_id: current.run_id,
+                },
+                created_at_ms: current.accepted_at_ms.unwrap() as i64,
+            },
+        );
+        writer
+            .write_batch(
+                "late native buffered tail\n",
+                true,
+                now_ms().unwrap() as i64,
+            )
+            .unwrap();
+        journal.flush_diagnostics();
+        journal
+            .record_stop(Some(RunStopEvidenceV1 {
+                scope: RunStopScopeV1::ProcessGroup,
+                observation: RunProcessObservationV1::Exited { code: Some(0) },
+                scope_stopped: true,
+                residual_unknown: false,
+            }))
+            .unwrap();
+        let run = journal.run().unwrap();
+        assert_eq!(run.progress.state, expected);
+        assert!(
+            !run.progress.cancel_requested,
+            "cleanup cannot invent user intent"
+        );
+        assert!(run.progress.workspace_releasable());
+        assert!(
+            run.result_body.is_none(),
+            "host explanations are not model results"
+        );
+        let target = ManagedTextProgressTarget {
+            scope: ManagedTextScope {
+                workspace_id: run.workspace_id,
+                task_id: run.task_id,
+                run_id: run.run_id,
+            },
+            created_at_ms: run.accepted_at_ms.unwrap() as i64,
+        };
+        let reopened =
+            LocalObservationStore::open(temporary.path(), DigestAuthority::new([7; 32])).unwrap();
+        let ManagedTextProgressRead::Available(page) = reopened
+            .managed_text_progress_read(&target, None, 4096)
+            .unwrap()
+        else {
+            panic!("the ordinary Worker read path must retain the host diagnostic");
+        };
+        assert!(page.text.contains(code));
+        assert!(page.text.contains("late native buffered tail"));
+        assert!(
+            page.text
+                .contains("HTTP 400 CLIENT_PROTOCOL_UNREPRESENTABLE")
+        );
+        assert!(
+            page.text
+                .contains("/native/second-account\\n[HiRoute] forged")
+        );
+        assert!(!page.text.contains("\n[HiRoute] forged"));
+        assert!(page.text.contains("previous directory"));
+        assert!(
+            page.text
+                .contains("Existing tasks keep their original directory")
+        );
+    }
+}
+
+#[test]
+fn journal_rejects_unsolicited_cancel_without_publishing_a_result() {
+    let (_temporary, _runtime, journal) = cancellation_fixture();
+    start_fixture_prompt(&journal);
+    let result = journal.completed(&AcpRunOutcome {
+        session: AcpSessionBinding {
+            acp_session_id: "session/one".into(),
+            native_session_id: Some("native/one".into()),
+        },
+        stop_reason: "cancelled".into(),
+        text: "native terminal error".into(),
+        content_incomplete: false,
+    });
+    assert_eq!(result, Err(DelegationErrorV1::PromptFailed));
+    assert_eq!(journal.run().unwrap().progress.state, RunStateV1::Failed);
+    assert!(journal.run().unwrap().result_body.is_none());
+}
+
 #[test]
 fn prelaunch_dependency_failure_keeps_host_reason_in_progress_after_reopen() {
     use hiroute_domain::delegation::{

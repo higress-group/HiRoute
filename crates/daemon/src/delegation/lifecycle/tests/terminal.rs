@@ -79,6 +79,7 @@ enum Terminal {
     Cancelled,
     Error,
     Disconnect,
+    WaitForCancel,
     NoTail,
 }
 
@@ -190,6 +191,7 @@ impl WorkerPlatformPort for TailFixture {
         let task = tokio::spawn(async move {
             let (read, mut write) = tokio::io::split(server);
             let mut lines = BufReader::new(read).lines();
+            let mut pending_prompt = None;
             while let Some(line) = lines.next_line().await.unwrap() {
                 let request: Value = serde_json::from_str(&line).unwrap();
                 let method = request["method"].as_str().unwrap();
@@ -197,6 +199,10 @@ impl WorkerPlatformPort for TailFixture {
                     "initialize" => json!({"protocolVersion":1,"agentCapabilities":{}}),
                     "session/new" => json!({"sessionId":"native-session"}),
                     "session/prompt" => match terminal {
+                        Terminal::WaitForCancel => {
+                            pending_prompt = Some(request["id"].clone());
+                            continue;
+                        }
                         Terminal::Cancelled => json!({"stopReason":"cancelled"}),
                         Terminal::Error => {
                             write
@@ -214,6 +220,11 @@ impl WorkerPlatformPort for TailFixture {
                         }
                         _ => json!({"stopReason":"end_turn"}),
                     },
+                    "session/cancel" => {
+                        let id = pending_prompt.take().unwrap();
+                        write.write_all(format!("{}\n", json!({"jsonrpc":"2.0","id":id,"result":{"stopReason":"cancelled"}})).as_bytes()).await.unwrap();
+                        continue;
+                    }
                     other => panic!("unexpected fixture method {other}"),
                 };
                 write
@@ -385,7 +396,7 @@ async fn eof_before_claude_checkpoint_prevents_final_tail() {
 }
 
 #[tokio::test]
-async fn claude_cancel_and_protocol_error_do_not_wait_for_history() {
+async fn unsolicited_native_cancel_and_protocol_error_do_not_wait_for_history() {
     for terminal in [Terminal::Cancelled, Terminal::Error] {
         let (request, input, _directory) = claude_inputs();
         let journal = Arc::new(TerminalJournal::default());
@@ -400,10 +411,13 @@ async fn claude_cancel_and_protocol_error_do_not_wait_for_history() {
         fixture.joined().await;
         match terminal {
             Terminal::Cancelled => {
-                assert_eq!(result.execution.unwrap().stop_reason, "cancelled");
+                assert!(matches!(
+                    result.execution,
+                    Err(DelegationErrorV1::PromptFailed)
+                ));
                 assert_eq!(
                     *journal.events.lock().unwrap(),
-                    ["completed", "revoke", "stop"]
+                    ["failed", "revoke", "stop"]
                 );
             }
             Terminal::Error => {
@@ -418,6 +432,31 @@ async fn claude_cancel_and_protocol_error_do_not_wait_for_history() {
         assert!(!result.native_history_settled);
         assert!(!fixture.tail_written.load(Ordering::SeqCst));
     }
+}
+
+#[tokio::test]
+async fn execution_deadline_is_not_replaced_by_its_acp_shutdown_cancellation() {
+    let (request, mut input, _directory) = claude_inputs();
+    input.deadline = Instant::now() + Duration::from_millis(250);
+    let journal = Arc::new(TerminalJournal::default());
+    let fixture = TailFixture::new(
+        journal.clone(),
+        &request.profile.session_root,
+        Terminal::WaitForCancel,
+    );
+    let result = execute(&fixture, request, input, journal.clone())
+        .await
+        .unwrap();
+    fixture.joined().await;
+    assert!(matches!(
+        result.execution,
+        Err(DelegationErrorV1::DeadlineExceeded)
+    ));
+    let events = journal.events.lock().unwrap();
+    assert_eq!(events.first(), Some(&"failed"));
+    assert!(!events.contains(&"completed"));
+    assert_eq!(events.last(), Some(&"stop"));
+    assert!(result.stop.unwrap().scope_stopped);
 }
 
 #[tokio::test]

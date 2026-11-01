@@ -377,9 +377,7 @@ pub(super) fn render_erased(
                     selected.harness, selected.cli_path
                 ));
             } else {
-                let Some(adapter_path) = selected.adapter_path.as_deref() else {
-                    return invalid_response();
-                };
+                let adapter_path = selected.adapter_path.as_deref().unwrap_or("-");
                 lines.push(format!(
                     "selected\t{:?}\t{}\t{}\t{}",
                     selected.harness,
@@ -392,8 +390,22 @@ pub(super) fn render_erased(
         if output == OutputMode::Text {
             for candidate in dependencies.candidates {
                 lines.push(format!(
-                    "candidate\t{:?}\t{:?}\t{:?}\t{}",
-                    candidate.harness, candidate.component, candidate.state, candidate.path
+                    "candidate\t{:?}\t{:?}\t{:?}\t{}\treason={}",
+                    candidate.harness,
+                    candidate.component,
+                    candidate.state,
+                    display_text(&candidate.path),
+                    display_text(candidate.reason_code.as_deref().unwrap_or("-"))
+                ));
+            }
+            for hint in dependencies.install_hints {
+                lines.push(format!(
+                    "hint\t{:?}\t{:?}\t{}\t{}\t{}",
+                    hint.harness,
+                    hint.component,
+                    display_text(&hint.platform),
+                    display_text(&hint.reason_code),
+                    display_text(hint.command.as_deref().unwrap_or("-"))
                 ));
             }
         }
@@ -857,5 +869,86 @@ mod tests {
         assert_eq!(rendered.exit_code, 0);
         assert_eq!(rendered.stdout, expected);
         assert!(rendered.stderr.is_empty());
+    }
+
+    #[test]
+    fn dependency_text_accepts_all_native_tuples_and_shows_reasons_and_install_hints() {
+        use hiroute_application_api::{
+            WorkerDependencyCandidateSourceV1, WorkerDependencyCandidateStateV1,
+            WorkerDependencyCandidateV1, WorkerDependencyComponentV1,
+            WorkerDependencyInstallHintV1,
+        };
+        let root = std::env::current_dir().unwrap();
+        let mut view = dependency_view();
+        for harness in [
+            WorkerHarnessV1::Pi,
+            WorkerHarnessV1::DeepseekHarness,
+            WorkerHarnessV1::OpenCode,
+        ] {
+            view.selection_revisions
+                .push(WorkerDependencySelectionRevisionV1 {
+                    harness,
+                    revision: 1,
+                });
+            view.selected.push(WorkerDependencySelectionV1 {
+                harness,
+                adapter_path: None,
+                cli_path: root.join(format!("{harness:?}-cli")).display().to_string(),
+                node_path: (harness == WorkerHarnessV1::Pi)
+                    .then(|| root.join("node").display().to_string()),
+            });
+        }
+        view.candidates.push(WorkerDependencyCandidateV1 {
+            harness: WorkerHarnessV1::OpenCode,
+            component: WorkerDependencyComponentV1::Cli,
+            path: root.join("wrapper").display().to_string(),
+            source: WorkerDependencyCandidateSourceV1::Common,
+            state: WorkerDependencyCandidateStateV1::Invalid,
+            reason_code: Some("worker.dependencies.platform_selection_required".into()),
+        });
+        view.install_hints.push(WorkerDependencyInstallHintV1 {
+            harness: WorkerHarnessV1::Pi,
+            component: WorkerDependencyComponentV1::Cli,
+            platform: "linux".into(),
+            command: Some("npm install -g @earendil-works/pi-coding-agent".into()),
+            reason_code: "worker.dependencies.install_required".into(),
+        });
+        assert!(view.valid());
+        let rendered = render_transport(
+            Ok::<_, ClientFailure>(MachineEnvelopeV2::succeeded(view.clone(), None)),
+            OutputMode::Text,
+            "worker.dependencies.discover",
+            None,
+        );
+        assert_eq!(rendered.exit_code, 0);
+        for name in ["Pi", "DeepseekHarness", "OpenCode"] {
+            assert!(rendered.stdout.contains(&format!("selected\t{name}\t")));
+        }
+        assert!(
+            rendered
+                .stdout
+                .contains("reason=worker.dependencies.platform_selection_required")
+        );
+        assert!(
+            rendered
+                .stdout
+                .contains("worker.dependencies.install_required")
+        );
+        assert!(
+            rendered
+                .stdout
+                .contains("npm install -g @earendil-works/pi-coding-agent")
+        );
+        let quiet = render_transport(
+            Ok::<_, ClientFailure>(MachineEnvelopeV2::succeeded(view, None)),
+            OutputMode::Quiet,
+            "worker.dependencies.select",
+            None,
+        );
+        assert_eq!(quiet.exit_code, 0);
+        assert_eq!(
+            quiet.stdout,
+            "codex_cli\nclaude_code\nqoder_cli\npi\ndeepseek_harness\nopencode\n"
+        );
     }
 }

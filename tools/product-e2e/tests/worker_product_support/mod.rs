@@ -78,6 +78,7 @@ pub fn run_real_worker_scenario(mode: &str, expected_scenario: &str) {
     let qoder_script = match mode {
         "HIROUTE_PRODUCT_QODER_MAIN" => Some("qoder_collaboration_product.py"),
         "HIROUTE_PRODUCT_QODER_CORE" => Some("native_context_product.py"),
+        "HIROUTE_PRODUCT_QODER_FAILURES" => Some("qoder_failure_product.py"),
         "HIROUTE_PRODUCT_QODER_BOUNDARIES" => Some("native_context_boundaries.py"),
         "HIROUTE_PRODUCT_QODER_COMPACTION" => Some("qoder_compaction_product.py"),
         "HIROUTE_PRODUCT_QODER_MODELS" => Some("qoder_model_product.py"),
@@ -212,6 +213,10 @@ fn assert_scenario(output: Output, scenario: &str, harness: &str, candidate: &st
         .unwrap_or_else(|| panic!("missing {scenario} report for {harness}: {report}"));
     assert_eq!(report["state"], "green", "scenario report: {report}");
     let expected: &[&str] = match scenario {
+        "qoder-worker-failure-diagnostics" => &[
+            "worker.failure.native-rejection",
+            "worker.context.effective-qoder-directory",
+        ],
         "worker-native-context-core" => &[
             "worker.context.native-skills",
             "worker.context.exact-continue",

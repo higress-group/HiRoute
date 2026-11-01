@@ -81,6 +81,7 @@ mod model_feed;
 mod mutation;
 mod native_additional_model;
 mod native_claude_model;
+mod native_context_guidance;
 mod native_hermes;
 mod native_model;
 mod native_network;
@@ -659,7 +660,10 @@ impl ProductionControlRuntime {
                             .map_err(|e| e.to_string())?;
                         continue;
                     }
-                    return Err(error.to_string());
+                    return Err(native_context_guidance::managed_artifact_error(
+                        &error,
+                        &scanner.qoder_user_config_target(),
+                    ));
                 }
             }
         };
