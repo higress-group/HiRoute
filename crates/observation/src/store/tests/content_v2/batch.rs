@@ -5,7 +5,7 @@ fn rejection_commits_only_the_verified_prefix_and_keeps_later_records_unprocesse
     let fixture = Fixture::new();
     let begin = fixture.begin(1);
     let good = fixture.append(2, 0, "message-1", "content-1", 0, 0, b"first", b"first");
-    let bad = fixture.append(3, 1, "message-1", "content-2", 0, 1, b"second", b"wrong");
+    let bad = fixture.append(3, 1, "message-1", "content-2", 0, 1, b"second", b"other!");
     let later = fixture.append(4, 2, "message-1", "content-3", 0, 2, b"third", b"third");
     let outcomes = fixture
         .store
