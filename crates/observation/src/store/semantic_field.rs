@@ -149,10 +149,13 @@ fn current_writer_storage_and_reads_for_private_semantic_field_corpus() {
     let mut records = 0;
     for line in BufReader::new(fs::File::open(directory.join("capture.jsonl")).unwrap()).lines() {
         let event: ConversationContentEnvelopeV1 = serde_json::from_str(&line.unwrap()).unwrap();
-        assert!(matches!(
-            store.ingest_content(&event, &[]).unwrap(),
-            IngestOutcome::Ack(_)
-        ));
+        let outcome = store.ingest_content(&event, &[]).unwrap();
+        assert!(
+            matches!(outcome, IngestOutcome::Ack(_)),
+            "field record {records}, {:?}/{:?}: {outcome:?}",
+            event.direction,
+            event.phase
+        );
         records += 1;
     }
     assert!(records > 0);

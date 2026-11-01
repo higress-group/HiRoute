@@ -237,63 +237,71 @@ fn direction_stream_persists_semantic_parts_and_only_the_current_commit_proof() 
 
 #[test]
 fn accepted_response_abort_preserves_attempt_frame_ref_parent_and_query_coordinates() {
-    let fixture = Fixture::new();
-    let begin = fixture.begin(1);
-    let mut request = fixture.append(
-        2,
-        0,
-        "message-request",
-        "content-request",
-        0,
-        0,
-        b"prompt",
-        b"prompt",
-    );
-    request.content_ref = None;
-    let request_finish = fixture.finish(3, "66");
-    for event in [&begin, &request, &request_finish] {
-        assert!(matches!(fixture.ingest(event), IngestOutcome::Ack(_)));
-    }
-    let parent = request_finish.result_transcript_root.clone().unwrap();
+    for frame_id in [None, Some("frame-accepted-7")] {
+        let fixture = Fixture::new();
+        let begin = fixture.begin(1);
+        let mut request = fixture.append(
+            2,
+            0,
+            "message-request",
+            "content-request",
+            0,
+            0,
+            b"prompt",
+            b"prompt",
+        );
+        request.content_ref = None;
+        let request_finish = fixture.finish(3, "66");
+        for event in [&begin, &request, &request_finish] {
+            assert!(matches!(fixture.ingest(event), IngestOutcome::Ack(_)));
+        }
+        let parent = request_finish.result_transcript_root.clone().unwrap();
 
-    let mut response_begin = fixture.base(4, ConversationContentPhaseV2::Begin);
-    response_begin.direction = ConversationContentDirectionV2::ResponseDelivered;
-    response_begin.attempt_id = Some(AttemptId::parse("attempt-accepted").unwrap());
-    response_begin.fork_id = "fork-response".into();
-    response_begin.parent_transcript_root = Some(parent.clone());
-    let begin_ack = ack(fixture.ingest(&response_begin));
-    assert!(begin_ack.content_acknowledgement.is_none());
+        let mut response_begin = fixture.base(4, ConversationContentPhaseV2::Begin);
+        response_begin.direction = ConversationContentDirectionV2::ResponseDelivered;
+        response_begin.attempt_id = Some(AttemptId::parse("attempt-accepted").unwrap());
+        response_begin.fork_id = "fork-response".into();
+        response_begin.parent_transcript_root = Some(parent.clone());
+        let begin_ack = ack(fixture.ingest(&response_begin));
+        assert!(begin_ack.content_acknowledgement.is_none());
 
-    let bytes = br#"{"event":{"kind":"text_delta","delta":"answer"}}"#;
-    let digest = fixture
-        .authority
-        .content_blob_digest(CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1, bytes);
-    let mut response = fixture.base(5, ConversationContentPhaseV2::Append);
-    response.direction = ConversationContentDirectionV2::ResponseDelivered;
-    response.attempt_id = Some(AttemptId::parse("attempt-accepted").unwrap());
-    response.fork_id = "fork-response".into();
-    response.parent_transcript_root = Some(parent.clone());
-    response.message_instance_id = Some(MessageInstanceId::parse("message-response").unwrap());
-    response.message_role = Some("assistant".into());
-    response.content_kind = Some("text_delta".into());
-    response.content_id = Some(ContentId::parse("content-response").unwrap());
-    response.content_blob_digest = Some(digest.clone());
-    response.message_ordinal = Some(0);
-    response.part_ordinal = Some(7);
-    response.chunk_ordinal = Some(0);
-    response.transport_frame_id = Some("frame-accepted-7".into());
-    response.canonical_media_type = Some(CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1.into());
-    response.canonical_bytes_base64 = Some(base64(bytes));
-    response.content_ref = Some(ContentRefV2 {
-        content_id: ContentId::parse("content-response").unwrap(),
-        digest: digest.clone(),
-        byte_count: bytes.len() as u64,
-        media_type: CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1.into(),
-    });
-    response.downstream_delivery = Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted);
-    let response_ack = ack(fixture.ingest(&response));
-    assert!(response_ack.content_acknowledgement.is_none());
-    assert_eq!(
+        let bytes = br#"{"event":{"kind":"text_delta","delta":"answer"}}"#;
+        let digest = fixture
+            .authority
+            .content_blob_digest(CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1, bytes);
+        let mut response = fixture.base(5, ConversationContentPhaseV2::Append);
+        response.direction = ConversationContentDirectionV2::ResponseDelivered;
+        response.attempt_id = Some(AttemptId::parse("attempt-accepted").unwrap());
+        response.fork_id = "fork-response".into();
+        response.parent_transcript_root = Some(parent.clone());
+        response.message_instance_id = Some(MessageInstanceId::parse("message-response").unwrap());
+        response.message_role = Some("assistant".into());
+        response.content_kind = Some("text_delta".into());
+        response.content_id = Some(ContentId::parse("content-response").unwrap());
+        response.content_blob_digest = Some(digest.clone());
+        response.message_ordinal = Some(0);
+        response.part_ordinal = Some(7);
+        response.chunk_ordinal = Some(0);
+        response.transport_frame_id = frame_id.map(str::to_owned);
+        response.canonical_media_type = Some(CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1.into());
+        response.canonical_bytes_base64 = Some(base64(bytes));
+        response.content_ref = Some(ContentRefV2 {
+            content_id: ContentId::parse("content-response").unwrap(),
+            digest: digest.clone(),
+            byte_count: bytes.len() as u64,
+            media_type: CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1.into(),
+        });
+        response.downstream_delivery =
+            Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted);
+        let mut invalid = response.clone();
+        invalid.attempt_id = None;
+        assert!(invalid.validate().is_err());
+        invalid = response.clone();
+        invalid.downstream_delivery = None;
+        assert!(invalid.validate().is_err());
+        let response_ack = ack(fixture.ingest(&response));
+        assert!(response_ack.content_acknowledgement.is_none());
+        assert_eq!(
         fixture
             .store
             .connection
@@ -307,61 +315,59 @@ fn accepted_response_abort_preserves_attempt_frame_ref_parent_and_query_coordina
         "attempt-accepted"
     );
 
-    let mut abort = fixture.base(6, ConversationContentPhaseV2::Abort);
-    abort.direction = ConversationContentDirectionV2::ResponseDelivered;
-    abort.attempt_id = Some(AttemptId::parse("attempt-accepted").unwrap());
-    abort.fork_id = "fork-response".into();
-    abort.parent_transcript_root = Some(parent.clone());
-    abort.result_transcript_root =
-        Some(TranscriptRoot::parse(format!("transcript-{}", "77".repeat(32))).unwrap());
-    abort.downstream_delivery = Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted);
-    abort.abort_reason = Some("accepted_stream_ended_partial".into());
-    abort.completeness_delta = Some(ContentCompletenessDeltaV2::Partial);
-    let abort_ack = ack(fixture.ingest(&abort));
-    assert!(abort_ack.content_acknowledgement.is_none());
+        let mut abort = fixture.base(6, ConversationContentPhaseV2::Abort);
+        abort.direction = ConversationContentDirectionV2::ResponseDelivered;
+        abort.attempt_id = Some(AttemptId::parse("attempt-accepted").unwrap());
+        abort.fork_id = "fork-response".into();
+        abort.parent_transcript_root = Some(parent.clone());
+        abort.result_transcript_root =
+            Some(TranscriptRoot::parse(format!("transcript-{}", "77".repeat(32))).unwrap());
+        abort.downstream_delivery = Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted);
+        abort.abort_reason = Some("accepted_stream_ended_partial".into());
+        abort.completeness_delta = Some(ContentCompletenessDeltaV2::Partial);
+        let abort_ack = ack(fixture.ingest(&abort));
+        assert!(abort_ack.content_acknowledgement.is_none());
 
-    let detail = fixture
-        .store
-        .get_session(
-            &fixture.workspace,
-            &SessionId::parse("conversation-1").unwrap(),
-            hiroute_domain::ContentMode::MessagesAndTools,
-        )
-        .unwrap();
-    assert_eq!(
-        detail.summary.content_completeness,
-        ContentCompleteness::Partial
-    );
-    let response = detail.turns[0]
-        .messages
-        .iter()
-        .find(|message| message.direction == ConversationContentDirectionV2::ResponseDelivered)
-        .unwrap();
-    assert_eq!(
-        response.attempt_id.as_ref().map(AttemptId::as_str),
-        Some("attempt-accepted")
-    );
-    assert_eq!(response.fork_id, "fork-response");
-    assert_eq!(
-        response.transport_frame_id.as_deref(),
-        Some("frame-accepted-7")
-    );
-    assert_eq!(
-        response.content_ref.as_ref().unwrap().byte_count,
-        bytes.len() as u64
-    );
-    assert_eq!(
-        response.downstream_delivery,
-        Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted)
-    );
-    assert_eq!(response.bytes, bytes);
-    assert_eq!(
-        response
-            .parent_transcript_root
-            .as_ref()
-            .map(TranscriptRoot::as_str),
-        Some(parent.as_str())
-    );
+        let detail = fixture
+            .store
+            .get_session(
+                &fixture.workspace,
+                &SessionId::parse("conversation-1").unwrap(),
+                hiroute_domain::ContentMode::MessagesAndTools,
+            )
+            .unwrap();
+        assert_eq!(
+            detail.summary.content_completeness,
+            ContentCompleteness::Partial
+        );
+        let response = detail.turns[0]
+            .messages
+            .iter()
+            .find(|message| message.direction == ConversationContentDirectionV2::ResponseDelivered)
+            .unwrap();
+        assert_eq!(
+            response.attempt_id.as_ref().map(AttemptId::as_str),
+            Some("attempt-accepted")
+        );
+        assert_eq!(response.fork_id, "fork-response");
+        assert_eq!(response.transport_frame_id.as_deref(), frame_id);
+        assert_eq!(
+            response.content_ref.as_ref().unwrap().byte_count,
+            bytes.len() as u64
+        );
+        assert_eq!(
+            response.downstream_delivery,
+            Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted)
+        );
+        assert_eq!(response.bytes, bytes);
+        assert_eq!(
+            response
+                .parent_transcript_root
+                .as_ref()
+                .map(TranscriptRoot::as_str),
+            Some(parent.as_str())
+        );
+    }
 }
 
 #[test]

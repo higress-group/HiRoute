@@ -13,7 +13,7 @@ use super::{
 pub const CONVERSATION_CONTENT_SCHEMA_V2: &str =
     "hiroute.observation.conversation-content-envelope/v3";
 pub const CONVERSATION_CONTENT_PORT_DIGEST_V2: &str =
-    "sha256:ca8be8c819ce5bac7178e79ebc91f2fcf69e75c9100ceffa664b4a1faa887afc";
+    "sha256:f5fdbf151bca7289192fc64427dcacc313693837ddc926ec8d282193321852ff";
 pub const OBSERVATION_GAP_HEARTBEAT_SCHEMA_V1: &str = "hiroute.observation.gap-heartbeat/v1";
 pub const CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1: &str =
     "application/vnd.hiroute.model-stream-event+json;version=1";
@@ -258,7 +258,10 @@ impl ConversationContentEnvelopeV1 {
             }
             ConversationContentDirectionV2::ResponseDelivered
                 if self.attempt_id.is_some()
-                    && nonempty(self.transport_frame_id.as_deref())
+                    && self
+                        .transport_frame_id
+                        .as_deref()
+                        .is_none_or(|id| nonempty(Some(id)))
                     && self.downstream_delivery
                         == Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted)
                     && self.content_ref.is_some()

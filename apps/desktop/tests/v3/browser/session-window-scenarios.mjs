@@ -813,7 +813,8 @@ const scenarios = [
         };
       });
       c().showRequestExcerpt(id);
-      await until(() => document.querySelector('.routing-quote')?.textContent.includes(state === 'deleted' ? '正文已清理' : '这一轮的消息暂不可用'), `quote ${state} state`);
+      await until(() => document.querySelector('.routing-quote')?.textContent.includes(state === 'deleted' ? '正文已清理' : state === 'failed' ? '消息暂时无法读取' : '这一轮的消息暂不可用'), `quote ${state} state`);
+      if (state === 'failed') assert(document.querySelector('.routing-quote [data-content-state]')?.dataset.contentState === 'error', 'Failed read lost its explicit error state');
       if (state !== 'deleted') assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Unavailability claimed deletion');
     }
   }],
@@ -1187,6 +1188,27 @@ const scenarios = [
     assert(document.querySelector('.transcript-body').innerText.match(/SEMANTIC-ACCEPTED-FINAL/g)?.length === 1, 'Terminal metadata erased or duplicated accepted text');
     assert(!document.querySelector('.transcript-body').innerText.includes('accepted_segments'), 'Terminal metadata leaked as an answer');
     assert(reads('catalog').some(call => queryOf(call).include_semantic_metadata), 'Reader did not opt in to semantic provenance');
+  }],
+
+
+  ['continuation excerpt reads the proven one-hop input owner without guessing another user message', async () => {
+    let source;
+    const continuation = 'request/semantic-tool-continuation';
+    await fresh(control => {
+      seedSimple(control);
+      source = control.requests['observation-session/simple'][0].request_id;
+      seedUserText(control, control.requests['observation-session/simple'][0], 'The retained opening question');
+      control.views.catalog = query => query.request_id !== continuation ? control.defaultRead('catalog', query) : {
+        contents: [], roots_partial: false, next_cursor: null,
+        input_selection: { version: 1, evidence: 'native_matched', message_ordinal: 8, source_unverified: true },
+        input_anchor: { source_request_id: source, message_occurrence_id: '1' },
+      };
+    });
+    c().showRequestExcerpt(continuation);
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('The retained opening question'), 'one-hop retained opening excerpt');
+    const calls = reads('catalog').map(queryOf);
+    assert(calls.some(query => query.request_id === continuation && query.include_semantic_metadata), 'Continuation lookup omitted semantic metadata');
+    assert(calls.some(query => query.request_id === source && query.include_semantic_metadata), 'Source lookup did not follow the retained input owner');
   }],
 
 ];
