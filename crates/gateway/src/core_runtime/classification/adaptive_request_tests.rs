@@ -62,7 +62,7 @@ fn adaptive_replay_retains_cold_summaries_but_never_completes_a_partial_target()
         ]));
         let original = r.clone();
         let a = authority(codec, 32_000, 32_000);
-        for partial in [false, true] {
+        for (partial, captured_execution) in [(false, false), (true, false), (true, true)] {
             let mut h = if partial {
                 c_history(&a)
             } else {
@@ -70,6 +70,12 @@ fn adaptive_replay_retains_cold_summaries_but_never_completes_a_partial_target()
             };
             if partial {
                 h.assessment_target.as_mut().unwrap().target_partial = true;
+                if captured_execution {
+                    h.visible_conversation[0] = turn(
+                        "Previous work",
+                        vec!["A genuinely captured earlier execution step.".into()],
+                    );
+                }
             }
             let p = request_template(&a, &r, &h, true).unwrap();
             assert_wire_budgets(codec, &a, &p);
@@ -81,7 +87,10 @@ fn adaptive_replay_retains_cold_summaries_but_never_completes_a_partial_target()
             assert!(!s["assessment_stage"].to_string().contains(summary));
             assert!(!s["prior_context"].to_string().contains(summary));
             assert!(p.bindings.as_ref().unwrap().applicability.is_none());
-            assert_eq!(p.bindings.as_ref().unwrap().assessment.is_some(), partial);
+            assert_eq!(
+                p.bindings.as_ref().unwrap().assessment.is_some(),
+                captured_execution
+            );
             assert!(!p.routing_observation.as_ref().unwrap().target_complete);
             assert_eq!(r, original);
         }

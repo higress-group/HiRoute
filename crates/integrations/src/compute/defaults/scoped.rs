@@ -136,7 +136,9 @@ mod tests {
             .metadata_catalog
             .endpoint_bindings
             .iter()
-            .find(|b| b.product_key == "bailian-payg-cn")
+            .find(|b| {
+                b.product_key == "bailian-payg-cn" && b.upstream_model_id == cap.upstream_model_id
+            })
             .unwrap()
             .clone();
         let mut binding = template.clone();
