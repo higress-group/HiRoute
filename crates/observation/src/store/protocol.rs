@@ -13,7 +13,7 @@ use crate::content::lifecycle::{ContentProjectionAck, ContentProjectionError};
 use crate::receipt::FactProjectionError;
 use crate::writer::{IngestOutcome, ObservationStoreError};
 
-use super::{gap, increment_store_revision, records};
+use super::{gap, increment_store_revision, record_projection, records};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Checkpoint {
@@ -307,8 +307,9 @@ pub(super) fn insert_content_event(
             envelope.direction.as_str(),
             envelope.fork_id,
             envelope.phase.as_str(),
-            records::encode(
-                &serde_json::to_vec(&metadata).map_err(|_| ObservationStoreError::Corrupt)?
+            record_projection::encode(
+                metadata,
+                &record_projection::ContentColumns::from_envelope(envelope).shared(),
             )?,
             projection.chunk_object_ref,
             projection.chunk_byte_offset.map(i64_from_u64).transpose()?,
@@ -330,12 +331,10 @@ pub(super) fn persist_feedback(
     occurred_at_unix_nanos: u64,
 ) -> Result<(), ObservationStoreError> {
     let (channel, kind, json) = match outcome {
-        IngestOutcome::Ack(value) => (&value.identity.channel, "ack", serde_json::to_string(value)),
-        IngestOutcome::Nack(value) => (
-            &value.identity.channel,
-            "nack",
-            serde_json::to_string(value),
-        ),
+        IngestOutcome::Ack(value) => (&value.identity.channel, "ack", serde_json::to_value(value)),
+        IngestOutcome::Nack(value) => {
+            (&value.identity.channel, "nack", serde_json::to_value(value))
+        }
     };
     let stream_ref = records::stream_ref(transaction, channel, stream)?;
     cached_sql::execute(
@@ -350,7 +349,10 @@ pub(super) fn persist_feedback(
             event_id,
             envelope_digest,
             kind,
-            records::encode(json.map_err(|_| ObservationStoreError::Corrupt)?.as_bytes())?,
+            record_projection::encode(
+                json.map_err(|_| ObservationStoreError::Corrupt)?,
+                &record_projection::feedback_fields(kind, channel, stream)?,
+            )?,
             i64_from_u64(occurred_at_unix_nanos)?
         ],
     )
@@ -385,16 +387,22 @@ pub(super) fn load_feedback(
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
     match row {
         Some((kind, json)) if kind == "ack" => {
-            serde_json::from_slice::<ObservationAckV2>(&records::decode(&json)?)
-                .map(IngestOutcome::Ack)
-                .map(Some)
-                .map_err(|_| ObservationStoreError::Corrupt)
+            serde_json::from_value::<ObservationAckV2>(record_projection::decode(
+                &json,
+                &record_projection::feedback_fields(&kind, channel, stream)?,
+            )?)
+            .map(IngestOutcome::Ack)
+            .map(Some)
+            .map_err(|_| ObservationStoreError::Corrupt)
         }
         Some((kind, json)) if kind == "nack" => {
-            serde_json::from_slice::<ObservationNackV1>(&records::decode(&json)?)
-                .map(IngestOutcome::Nack)
-                .map(Some)
-                .map_err(|_| ObservationStoreError::Corrupt)
+            serde_json::from_value::<ObservationNackV1>(record_projection::decode(
+                &json,
+                &record_projection::feedback_fields(&kind, channel, stream)?,
+            )?)
+            .map(IngestOutcome::Nack)
+            .map(Some)
+            .map_err(|_| ObservationStoreError::Corrupt)
         }
         Some(_) => Err(ObservationStoreError::Corrupt),
         None => Ok(None),

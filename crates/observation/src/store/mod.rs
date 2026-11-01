@@ -17,6 +17,7 @@ mod ingest;
 #[cfg(test)]
 pub(crate) mod ingest_profile;
 mod protocol;
+pub(crate) mod record_projection;
 pub(crate) mod records;
 mod request_retention;
 mod retention;

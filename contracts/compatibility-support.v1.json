@@ -2553,6 +2553,20 @@
         "crates/gateway/src/context_hold/replay_json_tests.rs"
       ],
       "field": "canonical JSON Replay expansion, lexicographic object keys and string-escape byte semantics from the main 2e6ba55c1 walker"
+    },
+    {
+      "contract": "hiroute.observation.query/v2",
+      "field": "format-5 full-JSON content metadata and frozen ingestion-feedback records with codec tags 0 and 1",
+      "mode": "legacy_adapter",
+      "owner": "observation-storage",
+      "reason": "The current writer normalizes repeated immutable carrier fields with record tags 2 and 3. Current readers retain full-JSON identity/zstd records in mixed existing stores without scanning or rewriting history, reconstruct every projected field from its original carrier identity and authenticate the complete canonical value. This is not an in-place downgrade promise for old binaries.",
+      "removal_condition": "Remove only after an explicit supported-data decision establishes that no retained current-format stores or recoverable backups require the full-JSON record reader, with verified original feedback and content replay behavior.",
+      "allowed_paths": [
+        "crates/observation/src/store/records.rs",
+        "crates/observation/src/store/record_projection.rs",
+        "crates/observation/src/store/record_projection/tests.rs",
+        "crates/observation/src/store/tests/content_records.rs"
+      ]
     }
   ]
 }

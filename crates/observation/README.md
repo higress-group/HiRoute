@@ -80,9 +80,17 @@ Focused package checks use `cargo test -p hiroute-observation`.
 ## Compact storage and capacity retention
 
 The current physical layout is format 5. Only the three repeated protocol
-carriers share a stream descriptor; content metadata and frozen feedback use
-independent checksummed level-1 zstd records with an identity fallback. Content
-objects keep their existing digest and file representation. No segment-file
+carriers share a stream descriptor. Content metadata and frozen feedback omit
+only fields exactly recoverable from their existing immutable SQL columns,
+stream identity and fixed envelope schema. `store/record_projection` restores the
+complete canonical JSON value and authenticates its original length and SHA-256;
+changed source fields cannot silently change a replayed event or ACK/NACK.
+Each record still uses independent level-1 zstd with an identity fallback. Codec
+tags 2/3 identify projected records; current readers also accept the original full
+JSON tags 0/1. The SQL layout remains format 5. Reopening reads mixed records in
+place without an eager history rewrite, startup scan, copy or reset. Older programs
+are not promised to read newly written record codecs; use matching-version recovery.
+Content objects keep their existing digest and file representation. No segment-file
 format or small-object database is introduced.
 
 A Core-only upgrade keeps compatible current Observation in place. Its recovery

@@ -20,6 +20,9 @@ use crate::{DigestAuthority, LocalObservationStore};
 #[path = "content_record_profile.rs"]
 mod record_profile;
 
+#[path = "content_records.rs"]
+mod record_tests;
+
 mod batch;
 mod pressure;
 
@@ -222,8 +225,11 @@ fn direction_stream_persists_exact_metadata_and_returns_replay_stable_rich_ack()
             |row| row.get(0),
         )
         .unwrap();
-    let metadata: serde_json::Value =
-        serde_json::from_slice(&crate::store::records::decode(&metadata).unwrap()).unwrap();
+    let metadata = crate::store::record_projection::decode(
+        &metadata,
+        &crate::store::record_projection::ContentColumns::from_envelope(&append_one).shared(),
+    )
+    .unwrap();
     assert!(metadata.get("canonical_bytes_base64").is_none());
     assert!(
         metadata

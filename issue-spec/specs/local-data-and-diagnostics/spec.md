@@ -293,6 +293,12 @@ HiRoute SHALL store repeated retained content and common observation metadata th
 - **WHEN** an accepted retained event is replayed after representation changes and restart
 - **THEN** the receiver returns the same committed acknowledgement and checks its original digest/sequence identity; conflicting replays remain rejected and do not add usage or occurrences.
 
+#### Scenario: Restore shared metadata without changing its original meaning
+
+- **WHEN** repeated metadata fields are omitted because they are exactly reconstructible from retained immutable carrier identity and columns
+- **THEN** each record restores its complete original logical value and verifies integrity against that complete value, including the shared fields; changing a source identity or column cannot produce a valid changed acknowledgement or event.
+- **AND** compatible full-record and shared-record representations remain readable together after reopen and recovery without eagerly scanning, copying, rewriting or resetting retained history.
+
 #### Scenario: Do not merge equal content across authority
 
 - **WHEN** equal bytes appear in distinct logical conversations or authorization scopes

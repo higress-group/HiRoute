@@ -22,6 +22,7 @@ type StoredContentEventReplay = (
     Option<i64>,
     Option<i64>,
     String,
+    crate::store::record_projection::ContentColumns,
 );
 
 pub(crate) fn verify_content_replay(
@@ -32,7 +33,8 @@ pub(crate) fn verify_content_replay(
     acknowledgement: &ObservationAckV2,
 ) -> Result<(), ContentProjectionError> {
     let stored: Option<StoredContentEventReplay> = cached_sql::query_row(transaction, "SELECT event_id, metadata_json, canonical_chunk_object_ref,
-                    canonical_chunk_byte_offset, canonical_chunk_byte_count, envelope_digest
+                    canonical_chunk_byte_offset, canonical_chunk_byte_count, envelope_digest,
+                    sequence,workspace_id,request_id,direction,fork_id,phase
              FROM conversation_content_events_v2
              WHERE stream_ref=(SELECT stream_ref FROM observation_streams_v5 WHERE channel='conversation_content' AND producer_id=?1 AND producer_epoch=?2 AND stream_id=?3) AND sequence=?4",
             params![
@@ -49,12 +51,23 @@ pub(crate) fn verify_content_replay(
                     row.get(3)?,
                     row.get(4)?,
                     row.get(5)?,
+                    crate::store::record_projection::ContentColumns {
+                        stream: envelope.producer.stream.clone(),
+                        sequence: row.get(6)?,
+                        event_id: row.get(0)?,
+                        workspace_id: row.get(7)?,
+                        request_id: row.get(8)?,
+                        direction: row.get(9)?,
+                        fork_id: row.get(10)?,
+                        phase: row.get(11)?,
+                    },
                 ))
             },
         )
         .optional()
         .map_err(|_| ContentProjectionError::ActivityStorage)?;
-    let Some((event_id, metadata, object_ref, stored_offset, stored_count, stored_digest)) = stored
+    let Some((event_id, metadata, object_ref, stored_offset, stored_count, stored_digest, columns)) =
+        stored
     else {
         return Err(ContentProjectionError::ContentCorrupt);
     };
@@ -64,11 +77,8 @@ pub(crate) fn verify_content_replay(
         .as_object_mut()
         .ok_or(ContentProjectionError::ContentCorrupt)?
         .remove("canonical_bytes_base64");
-    let stored_metadata: serde_json::Value = serde_json::from_slice(
-        &crate::store::records::decode(&metadata)
-            .map_err(|_| ContentProjectionError::ContentCorrupt)?,
-    )
-    .map_err(|_| ContentProjectionError::ContentCorrupt)?;
+    let stored_metadata = crate::store::record_projection::decode(&metadata, &columns.shared())
+        .map_err(|_| ContentProjectionError::ContentCorrupt)?;
     if event_id != envelope.event_id.as_str()
         || stored_digest != digest.as_str()
         || stored_metadata != expected_metadata

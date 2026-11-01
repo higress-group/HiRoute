@@ -10,7 +10,15 @@ use std::{borrow::Cow, io::Read};
 pub(crate) const MAX_RECORD: usize = 4 * 1024 * 1024;
 
 pub(crate) fn encode(bytes: &[u8]) -> Result<Vec<u8>, Error> {
-    let length = u32::try_from(bytes.len()).map_err(|_| Error::Corrupt)?;
+    encode_payload(bytes, bytes, 0)
+}
+
+pub(super) fn encode_projected(bytes: &[u8], original: &[u8]) -> Result<Vec<u8>, Error> {
+    encode_payload(bytes, original, 2)
+}
+
+fn encode_payload(bytes: &[u8], original: &[u8], tag_offset: u8) -> Result<Vec<u8>, Error> {
+    let length = u32::try_from(original.len()).map_err(|_| Error::Corrupt)?;
     // Large pre-existing replies retain their original identity representation.
     // Only the bounded compressed form may expand during decoding.
     let compressed = if bytes.len() <= MAX_RECORD {
@@ -24,9 +32,9 @@ pub(crate) fn encode(bytes: &[u8]) -> Result<Vec<u8>, Error> {
         (0, bytes)
     };
     let mut result = Vec::with_capacity(payload.len() + 37);
-    result.push(tag);
+    result.push(tag + tag_offset);
     result.extend_from_slice(&length.to_le_bytes());
-    result.extend_from_slice(&Sha256::digest(bytes));
+    result.extend_from_slice(&Sha256::digest(original));
     result.extend_from_slice(payload);
     Ok(result)
 }
@@ -34,28 +42,40 @@ pub(crate) fn encode(bytes: &[u8]) -> Result<Vec<u8>, Error> {
 pub(crate) fn decode(bytes: &[u8]) -> Result<Cow<'_, [u8]>, Error> {
     let header = bytes.get(..37).ok_or(Error::Corrupt)?;
     let length = u32::from_le_bytes(header[1..5].try_into().map_err(|_| Error::Corrupt)?) as usize;
-    if header[0] == 1 && (length > MAX_RECORD || bytes.len() > MAX_RECORD + 37) {
-        return Err(Error::Corrupt);
-    }
-    let body = &bytes[37..];
-    let result = match header[0] {
-        0 => Cow::Borrowed(body),
-        1 => {
-            let mut decoder = zstd::stream::read::Decoder::new(body).map_err(|_| Error::Corrupt)?;
-            decoder.window_log_max(22).map_err(|_| Error::Corrupt)?;
-            let mut output = Vec::with_capacity(length.min(64 * 1024));
-            decoder
-                .take(length as u64 + 1)
-                .read_to_end(&mut output)
-                .map_err(|_| Error::Corrupt)?;
-            Cow::Owned(output)
-        }
+    let compressed = match header[0] {
+        0 => false,
+        1 => true,
         _ => return Err(Error::Corrupt),
     };
+    let result = payload(bytes, compressed, length)?;
     if result.len() != length || Sha256::digest(&result)[..] != header[5..37] {
         return Err(Error::Corrupt);
     }
     Ok(result)
+}
+
+/// Decode bytes only; the caller must authenticate its complete logical record.
+pub(super) fn payload(
+    bytes: &[u8],
+    compressed: bool,
+    length: usize,
+) -> Result<Cow<'_, [u8]>, Error> {
+    let body = bytes.get(37..).ok_or(Error::Corrupt)?;
+    if compressed {
+        if length > MAX_RECORD || bytes.len() > MAX_RECORD + 37 {
+            return Err(Error::Corrupt);
+        }
+        let mut decoder = zstd::stream::read::Decoder::new(body).map_err(|_| Error::Corrupt)?;
+        decoder.window_log_max(22).map_err(|_| Error::Corrupt)?;
+        let mut output = Vec::with_capacity(length.min(64 * 1024));
+        decoder
+            .take(length as u64 + 1)
+            .read_to_end(&mut output)
+            .map_err(|_| Error::Corrupt)?;
+        Ok(Cow::Owned(output))
+    } else {
+        Ok(Cow::Borrowed(body))
+    }
 }
 
 pub(crate) fn stream_ref(
