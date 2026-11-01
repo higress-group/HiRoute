@@ -475,12 +475,12 @@ impl RequestObservation {
                 },
             )
             .await;
-        if let Err(reason) = published {
-            if let Some(status) = self.inner.async_content.get() {
-                // Allocated sequence loss is already owned by the publisher.
-                // Queue only the dependent abort; never invent a finish root.
-                status.note_failure(reason);
-            }
+        if let Err(reason) = published
+            && let Some(status) = self.inner.async_content.get()
+        {
+            // Allocated sequence loss is already owned by the publisher.
+            // Queue only the dependent abort; never invent a finish root.
+            status.note_failure(reason);
         }
         self.content_checkpoint(credit_bytes, false).await;
     }

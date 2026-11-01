@@ -21,8 +21,7 @@ pub(crate) struct ContentQueueLimits {
 impl ContentQueueLimits {
     pub(crate) fn for_capacity(bytes: usize) -> Self {
         let control = (bytes / 16)
-            .min(MIB)
-            .max(CONTENT_RECORD_BYTES * 2)
+            .clamp(CONTENT_RECORD_BYTES * 2, MIB)
             .min(bytes);
         Self {
             bytes,

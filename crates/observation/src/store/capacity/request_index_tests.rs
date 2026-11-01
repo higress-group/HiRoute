@@ -229,7 +229,7 @@ fn cleanup_commits_exactly_128_members_before_a_later_failure_and_resumes_the_12
         let directory = tempfile::tempdir().unwrap();
         let store = open_store(directory.path());
         populated(&store);
-        let mut db = store.connection.lock();
+        let db = store.connection.lock();
         // These are lawful non-candidate payload IDs. A partial candidate-only
         // index or ID-prefix filter must not omit their retirement.
         db.execute_batch("WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<128) INSERT INTO observation_sensitive_payloads_v2 SELECT 'batch-payload-'||x,'selected-workspace','shared-session','selected-request',0,'{}' FROM n;
