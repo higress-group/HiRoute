@@ -324,6 +324,8 @@ pub(crate) fn finalize_content(
     envelope: &ConversationContentEnvelopeV1,
     content_id: &str,
 ) -> Result<ObservationBlobAcknowledgementV1, ContentProjectionError> {
+    #[cfg(test)]
+    let _finalizing = crate::store::ingest_profile::span("blob_finalize");
     let (media, expected_digest, expected_count, state): (String, String, Option<i64>, String) =
         cached_sql::query_row(
             transaction,
