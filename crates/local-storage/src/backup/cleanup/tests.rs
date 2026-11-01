@@ -247,6 +247,52 @@ fn empty_interrupted_wrapper_is_removed_and_unknown_material_is_preserved() {
 }
 
 #[test]
+fn interrupted_task_stage_is_discarded_before_original_data_moves() {
+    for bytes in [b"".as_slice(), b"{\"schema\":", b"{\"schema\":1}"] {
+        let f = Fixture::new();
+        f.file(&f.backups.join("original"), b"original backup");
+        let cleanup = f.controller();
+        crate::prepare_owner_directory(&cleanup.jobs().unwrap()).unwrap();
+        let wrapper = cleanup.jobs().unwrap().join("retire-unpublished");
+        crate::prepare_owner_directory(&wrapper).unwrap();
+        f.file(&wrapper.join("task.stage"), bytes);
+        assert!(cleanup.load(wrapper.clone()).unwrap().is_none());
+        assert!(!wrapper.exists());
+        assert_eq!(
+            fs::read(f.backups.join("original")).unwrap(),
+            b"original backup"
+        );
+        cleanup.service_ready();
+        drain(&cleanup);
+        assert!(!f.backups.exists());
+    }
+}
+
+#[test]
+fn missing_or_corrupt_task_never_discards_a_retired_payload() {
+    for task in [None, Some(b"".as_slice()), Some(b"{\"schema\":")] {
+        let f = Fixture::new();
+        let cleanup = f.controller();
+        crate::prepare_owner_directory(&cleanup.jobs().unwrap()).unwrap();
+        let wrapper = cleanup.jobs().unwrap().join("retire-uncertain");
+        crate::prepare_owner_directory(&wrapper).unwrap();
+        let payload = wrapper.join("data");
+        crate::prepare_owner_directory(&payload).unwrap();
+        f.file(&payload.join("original"), b"retain uncertain recovery");
+        f.file(&wrapper.join("task.stage"), b"partial unpublished task");
+        if let Some(bytes) = task {
+            f.file(&wrapper.join("task.json"), bytes);
+        }
+        assert!(cleanup.load(wrapper.clone()).is_err());
+        assert_eq!(
+            fs::read(payload.join("original")).unwrap(),
+            b"retain uncertain recovery"
+        );
+        assert!(wrapper.join("task.stage").exists());
+    }
+}
+
+#[test]
 fn replaced_installer_handoff_is_preserved_with_its_package() {
     let f = Fixture::new();
     let (package, bytes) = handoff(&f, b"new image", true);

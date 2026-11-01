@@ -6,7 +6,7 @@ use hiroute_host_runtime::RetainedRecoveryPackage;
 use hiroute_platform::private_fs::{DirectoryRemoval, directory_identity};
 use sha2::{Digest, Sha256};
 use std::{
-    io::Read,
+    io::{Read, Write},
     sync::{
         Mutex,
         atomic::{AtomicBool, Ordering},
@@ -279,10 +279,21 @@ impl UpgradeCleanup {
             payload_identity: identity,
             job_identity: directory_identity(&path)?,
         };
-        hiroute_platform::durable::write_private_new(
-            &path.join("task.json"),
-            &serde_json::to_vec(&record).map_err(|_| LocalStorageError::InvalidData)?,
-        )?;
+        // A visible task.json must always be complete. An interrupted write to
+        // the fixed unpublished stage can be discarded before any data move.
+        let bytes = serde_json::to_vec(&record).map_err(|_| LocalStorageError::InvalidData)?;
+        {
+            // Use the direct private-file primitive on both platforms. The
+            // Windows durable writer itself uses random temporary names, which
+            // would otherwise leave an unrecognized orphan after interruption.
+            let mut stage = hiroute_platform::private_fs::create_file(
+                &path.join("task.stage"),
+                hiroute_platform::private_fs::FileMode::Data,
+            )?;
+            stage.write_all(&bytes)?;
+            stage.sync_all()?;
+        }
+        hiroute_platform::durable::rename(path.join("task.stage"), path.join("task.json"))?;
         hiroute_platform::durable::directory_barrier(&path)?;
         hiroute_platform::durable::directory_barrier(&jobs)?;
         Ok(Some(Job {
@@ -295,10 +306,23 @@ impl UpgradeCleanup {
     fn load(&self, path: PathBuf) -> Result<Option<Job>, LocalStorageError> {
         let directory = PrivateDir::open_existing(&path).map_err(safety)?;
         let Some(mut file) = directory.open_read("task.json").map_err(safety)? else {
-            // Crash before task publication or after its final removal. Only an
-            // empty private wrapper can be removed without a persisted claim.
+            // Before task publication no source can have moved. Never discard
+            // a retired payload whose authoritative task is missing/corrupt.
+            if present(&path.join("data"))? {
+                return Err(LocalStorageError::InvalidData);
+            }
+            if let Some(stage) = directory.open_read("task.stage").map_err(safety)? {
+                directory
+                    .remove_verified("task.stage", stage.identity())
+                    .map_err(safety)?;
+            }
+            // Empty before publication or after the final task removal. Any
+            // unexpected additions keep the directory intact and pending.
             drop(directory);
             fs::remove_dir(&path)?;
+            hiroute_platform::durable::directory_barrier(
+                path.parent().ok_or(LocalStorageError::InvalidData)?,
+            )?;
             return Ok(None);
         };
         if file.len() > 2048 {
