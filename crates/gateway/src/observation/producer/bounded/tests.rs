@@ -13,6 +13,9 @@ use super::super::feedback::{
 };
 use super::*;
 
+#[path = "batch_tests.rs"]
+mod batch;
+
 #[derive(Default)]
 struct CapturingSink {
     records: Mutex<Vec<ObservationSequenceStamp>>,
@@ -825,8 +828,16 @@ fn slow_sink_never_blocks_publish_and_byte_overflow_becomes_gap() {
     let (released, wake) = &*gate;
     *released.lock().unwrap() = true;
     wake.notify_all();
-    wait_until(|| producer.stats().delivered == 1);
-    producer.try_publish(|_| vec![4; 32]);
+    // The delivered counter records the ACK before the batch drops its owner
+    // and returns byte credit. Wait for the completed prefix, including its
+    // gap heartbeat, before testing that a later record can use that credit.
+    producer.flush(Duration::from_secs(1)).unwrap();
+    assert_eq!(producer.stats().delivered, 1);
+    assert_eq!(producer.stats().queued_bytes, 0);
+    assert_eq!(
+        producer.try_publish(|_| vec![4; 32]),
+        ObservationPublishOutcome::Enqueued { sequence: 4 }
+    );
     producer.flush(Duration::from_secs(1)).unwrap();
 
     let records = sink.records.lock().unwrap();

@@ -1,9 +1,9 @@
-//! Request JSON is serialized through the same Replay-aware semantic owner as
-//! history comparison. No request-local locator is retained as observed content.
+//! The same borrowed semantic cursor drives history fingerprints and Content.
+//! Each pass validates backing; Content keeps only one admitted chunk in RAM.
 use std::io::{self, Write};
 
 use super::*;
-use crate::context_hold::write_canonical_json_with_replay;
+use crate::context_hold::{CanonicalJsonReplayCursor, JsonFuel, JsonPumpStatus};
 
 struct DigestWriter {
     mac: WorkspaceHmac,
@@ -17,7 +17,6 @@ impl DigestWriter {
         mac.update(b"application/json");
         Self { mac, bytes: 0 }
     }
-
     fn finish(self) -> String {
         format!("blob-{}", self.mac.finish().trim_start_matches("sha256:"))
     }
@@ -32,45 +31,6 @@ impl Write for DigestWriter {
         self.mac.update_stream(bytes);
         Ok(bytes.len())
     }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-struct ChunkWriter<F> {
-    bytes: [u8; CONTENT_CHUNK_BYTES],
-    used: usize,
-    emitted: bool,
-    digest: DigestWriter,
-    emit: F,
-}
-
-impl<F: FnMut(&[u8], bool)> ChunkWriter<F> {
-    fn emit_pending(&mut self) {
-        if self.used > 0 || !self.emitted {
-            (self.emit)(&self.bytes[..self.used], !self.emitted);
-            self.emitted = true;
-            self.used = 0;
-        }
-    }
-}
-
-impl<F: FnMut(&[u8], bool)> Write for ChunkWriter<F> {
-    fn write(&mut self, mut bytes: &[u8]) -> io::Result<usize> {
-        let length = self.digest.write(bytes)?;
-        while !bytes.is_empty() {
-            let take = bytes.len().min(self.bytes.len() - self.used);
-            self.bytes[self.used..self.used + take].copy_from_slice(&bytes[..take]);
-            self.used += take;
-            bytes = &bytes[take..];
-            if self.used == self.bytes.len() {
-                self.emit_pending();
-            }
-        }
-        Ok(length)
-    }
-
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
@@ -78,7 +38,7 @@ impl<F: FnMut(&[u8], bool)> Write for ChunkWriter<F> {
 
 impl RequestObservation {
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn append_replay_json(
+    pub(super) async fn append_replay_json_run(
         &self,
         replay: &ReplayStore,
         message_ordinal: u32,
@@ -87,10 +47,22 @@ impl RequestObservation {
         kind: &str,
         value: &Value,
     ) -> Result<(), ()> {
-        // Measure and authenticate before publishing a content reference. Both
-        // passes verify referenced backing and retain only one bounded chunk.
         let mut measured = DigestWriter::new(&self.inner.key);
-        write_canonical_json_with_replay(&mut measured, value, replay).ok_or(())?;
+        {
+            let mut cursor = CanonicalJsonReplayCursor::new(value, replay);
+            let mut bytes = vec![0; 16 * 1024];
+            loop {
+                let step = cursor
+                    .pump(&mut bytes, &mut JsonFuel::default())
+                    .map_err(|_| ())?;
+                measured.write_all(&bytes[..step.written]).map_err(|_| ())?;
+                self.content_checkpoint(step.written, step.status == JsonPumpStatus::Yield)
+                    .await;
+                if step.status == JsonPumpStatus::Done {
+                    break;
+                }
+            }
+        }
         let byte_count = measured.bytes;
         let whole_digest = measured.finish();
         let message_id = self.message_instance_id("request_input", message_ordinal, role);
@@ -101,34 +73,50 @@ impl RequestObservation {
             media_type: "application/json".into(),
         };
         emit_content_ref(self, "request_input", public_ref.clone());
-        let mut output = ChunkWriter {
-            bytes: [0; CONTENT_CHUNK_BYTES],
-            used: 0,
-            emitted: false,
-            digest: DigestWriter::new(&self.inner.key),
-            emit: |bytes: &[u8], starts_content| {
-                self.append_content_chunk(ContentChunk {
+        let mut cursor = CanonicalJsonReplayCursor::new(value, replay);
+        let mut bytes = vec![0; CONTENT_CHUNK_BYTES];
+        let mut used = 0;
+        let mut emitted = false;
+        let mut digest = DigestWriter::new(&self.inner.key);
+        loop {
+            let step = cursor
+                .pump(&mut bytes[used..], &mut JsonFuel::default())
+                .map_err(|_| ())?;
+            digest
+                .write_all(&bytes[used..used + step.written])
+                .map_err(|_| ())?;
+            used += step.written;
+            if used == bytes.len()
+                || (step.status == JsonPumpStatus::Done && (used != 0 || !emitted))
+            {
+                self.append_content_chunk_run(ContentChunk {
                     direction: "request_input",
-                    attempt: None,
+                    attempt_id: None,
                     message_ordinal,
                     part_ordinal,
                     role,
                     kind,
                     media_type: "application/json",
-                    bytes,
+                    bytes: &bytes[..used],
                     public_ref: Some(public_ref.clone()),
                     whole_digest: &whole_digest,
                     message_instance_id: &message_id,
                     content_id: &public_ref.content_id,
-                    starts_content,
+                    starts_content: !emitted,
                     transport_frame_id: None,
                     downstream_delivery: None,
-                });
-            },
-        };
-        write_canonical_json_with_replay(&mut output, value, replay).ok_or(())?;
-        output.emit_pending();
-        if output.digest.bytes != byte_count || output.digest.finish() != whole_digest {
+                })
+                .await;
+                emitted = true;
+                used = 0;
+            }
+            self.content_checkpoint(step.written, step.status == JsonPumpStatus::Yield)
+                .await;
+            if step.status == JsonPumpStatus::Done {
+                break;
+            }
+        }
+        if digest.bytes != byte_count || digest.finish() != whole_digest {
             return Err(());
         }
         Ok(())

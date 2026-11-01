@@ -317,7 +317,16 @@ mod tests {
             let locations = [&wrapper, &shell, &git, &root.join("usr/bin/msys-2.0.dll")];
             let images: Vec<_> = locations
                 .iter()
-                .map(|path| security::open_read_lease(path).unwrap())
+                .map(|path| {
+                    security::open_installed_image_lease(path).unwrap_or_else(|error| {
+                        let links = security::open_identity(path, false)
+                            .and_then(|file| security::file_link_count(&file));
+                        panic!(
+                            "fixed Git image {:?}: read lease failed: {error}; link count: {links:?}",
+                            path.file_name()
+                        )
+                    })
+                })
                 .collect();
             assert!(
                 security::file_identity(images[0].file()).unwrap()

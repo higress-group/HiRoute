@@ -797,6 +797,7 @@ mod tests {
             startup_recovery_complete: std::sync::atomic::AtomicBool::new(true),
             delegation_native_cleanup_cursor: Mutex::new(None),
             delegation_task_maintenance_cursor: Mutex::new(None),
+            delegation_text_reader: Mutex::new(None),
         };
         let plan = publication
             .published_agent_plans()

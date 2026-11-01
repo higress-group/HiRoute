@@ -55,7 +55,6 @@ mod upgrade_cleanup_tests;
 // A 272k-context agent sends its history in a burst, not at token generation
 // speed. Two such requests can exceed 4 MiB after per-part envelope overhead.
 // Keep a hard, lazy byte bound while allowing the local writer to drain them.
-const OBSERVATION_CHANNEL_BYTES: usize = 16 * 1024 * 1024;
 const LIFECYCLE_RECORD_CAPACITY: usize = 2_048;
 const COMPONENT_JOIN_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -532,9 +531,7 @@ fn start_role_all_with_runtime(
     // publication; this port supplies only the independent current generation.
     let price_source = GatewayRequestPriceSource::new(runtime.price_snapshot_slot());
     let observation = Arc::new(
-        GatewayObservation::with_sinks_and_policy_and_workspace_key(
-            true,
-            OBSERVATION_CHANNEL_BYTES,
+        GatewayObservation::with_runtime_sinks_and_workspace_key(
             GatewayObservationSinks {
                 lifecycle: Arc::clone(&lifecycle_sink) as _,
                 execution_fact: Arc::clone(&execution_sink) as _,

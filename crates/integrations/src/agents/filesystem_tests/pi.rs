@@ -83,7 +83,11 @@ fn native_point_identity_includes_root_and_selected_credential_origin_without_ex
                 root.as_ref(),
             ]
             .iter()
-            .all(|private| !serialized.contains(*private))
+            .all(|private| {
+                // Compare JSON spellings so Windows backslashes cannot hide a leak.
+                let encoded = serde_json::to_string(private).unwrap();
+                !serialized.contains(&encoded[1..encoded.len() - 1])
+            })
     };
     let public = serde_json::to_value(&after.sources[0]).unwrap();
     assert!(is_redacted(&public));

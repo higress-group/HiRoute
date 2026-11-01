@@ -39,6 +39,17 @@ pub(super) struct Invocation {
     key: Option<String>,
 }
 
+// Explicit, closed test diagnostics for the native debug harness. No request,
+// receipt path, key, Agent name, transport text or configuration is logged.
+fn diagnostic(stage: &'static str, facts: impl std::fmt::Display) {
+    #[cfg(all(windows, debug_assertions))]
+    if std::env::var_os("HIROUTE_TEST_COLLABORATION_DIAGNOSTICS").is_some() {
+        eprintln!("HiRoute collaboration diagnostic: {stage} {facts}");
+    }
+    #[cfg(not(all(windows, debug_assertions)))]
+    let _ = (stage, facts);
+}
+
 pub(crate) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExecution> {
     if arguments.get(..2)? != ["agents", "collaboration"] {
         return None;

@@ -10,6 +10,7 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::store::LocalObservationStore;
 
+use super::durability::ContentDurability;
 use super::projection::{
     accumulated_actual_str, accumulated_expected, accumulated_expected_str, acknowledged_blobs,
     content_digest, coordinate_params, ensure_scope, enum_json, event_file_key, i64_from_u64,
@@ -63,12 +64,15 @@ pub(crate) fn apply_content(
     store: &LocalObservationStore,
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
+    durability: &mut ContentDurability,
 ) -> Result<ContentProjectionAck, ContentProjectionError> {
     match envelope.phase {
         ConversationContentPhaseV2::Begin => apply_begin(transaction, envelope),
-        ConversationContentPhaseV2::Append => apply_append(store, transaction, envelope),
+        ConversationContentPhaseV2::Append => {
+            apply_append(store, transaction, envelope, durability)
+        }
         ConversationContentPhaseV2::Finish | ConversationContentPhaseV2::Abort => {
-            apply_terminal(store, transaction, envelope)
+            apply_terminal(store, transaction, envelope, durability)
         }
     }
 }
@@ -148,6 +152,7 @@ fn apply_append(
     store: &LocalObservationStore,
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
+    durability: &mut ContentDurability,
 ) -> Result<ContentProjectionAck, ContentProjectionError> {
     let mut stream = load_stream(transaction, envelope)?;
     if stream.state != "open" {
@@ -175,7 +180,7 @@ fn apply_append(
     if let Some(active) = stream.active_content_id.as_deref()
         && active != content_id.as_str()
     {
-        let acknowledgement = finalize_content(store, transaction, envelope, active)?;
+        let acknowledgement = finalize_content(store, transaction, envelope, active, durability)?;
         cleanup_content_ids.push(
             ContentId::parse(active.to_owned())
                 .map_err(|_| ContentProjectionError::ContentCorrupt)?,
@@ -219,11 +224,14 @@ fn apply_append(
         "{rejected:010}-{}.chunk",
         event_file_key(envelope.event_id.as_str())
     ));
+    #[cfg(test)]
+    let writing = crate::store::ingest_profile::span("staging_write_sync");
     match OpenOptions::new().write(true).create_new(true).open(&path) {
-        Ok(mut file) => file
-            .write_all(&bytes)
-            .and_then(|()| file.sync_all())
-            .map_err(|_| ContentProjectionError::ContentStorage)?,
+        Ok(mut file) => {
+            file.write_all(&bytes)
+                .map_err(|_| ContentProjectionError::ContentStorage)?;
+            durability.retain(file);
+        }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             let existing = fs::read(&path).map_err(|_| ContentProjectionError::ContentStorage)?;
             if existing != bytes {
@@ -232,9 +240,18 @@ fn apply_append(
                     rejected,
                 });
             }
+            durability.retain(
+                OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&path)
+                    .map_err(|_| ContentProjectionError::ContentStorage)?,
+            );
         }
         Err(_) => return Err(ContentProjectionError::ContentStorage),
     }
+    #[cfg(test)]
+    drop(writing);
     store.note_object_path(&path);
     cached_sql::execute(
         transaction,
@@ -307,6 +324,7 @@ fn apply_append(
             transaction,
             envelope,
             content_id.as_str(),
+            durability,
         )?);
         cleanup_content_ids.push(content_id.clone());
         cached_sql::execute(
@@ -339,6 +357,7 @@ fn apply_terminal(
     store: &LocalObservationStore,
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
+    durability: &mut ContentDurability,
 ) -> Result<ContentProjectionAck, ContentProjectionError> {
     let stream = load_stream(transaction, envelope)?;
     if stream.state != "open" {
@@ -361,7 +380,7 @@ fn apply_terminal(
                 },
             ]));
         }
-        finalize_content(store, transaction, envelope, active)?;
+        finalize_content(store, transaction, envelope, active, durability)?;
         cleanup_content_ids.push(
             ContentId::parse(active.to_owned())
                 .map_err(|_| ContentProjectionError::ContentCorrupt)?,

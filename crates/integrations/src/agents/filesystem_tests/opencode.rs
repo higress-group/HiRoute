@@ -165,9 +165,22 @@ fn opencode_discovers_the_official_home_entry_without_executing_or_replacing_a_s
     scanner.layout.opencode_executable = "opencode".into();
     let primary =
         crate::agents::opencode_native_executable(std::path::Path::new("opencode")).unwrap();
+    let expected = primary.unwrap_or_else(|| entry.clone());
+    let observed = scanner.opencode_executable_target().unwrap();
     assert_eq!(
-        scanner.opencode_executable_target(),
-        primary.or_else(|| Some(std::fs::canonicalize(&entry).unwrap()))
+        std::fs::canonicalize(&observed).unwrap(),
+        std::fs::canonicalize(&expected).unwrap()
+    );
+    #[cfg(windows)]
+    assert_eq!(
+        hiroute_platform::windows::security::file_identity(
+            &hiroute_platform::windows::security::open_identity(&observed, false).unwrap()
+        )
+        .unwrap(),
+        hiroute_platform::windows::security::file_identity(
+            &hiroute_platform::windows::security::open_identity(&expected, false).unwrap()
+        )
+        .unwrap()
     );
     assert!(matches!(
         scanner.opencode_settings_discovery().outcome,

@@ -5,7 +5,7 @@ use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 use std::ptr::{addr_of, null, null_mut};
 
-pub use super::read_lease::{ReadLease, open_read_lease};
+pub use super::read_lease::{ReadLease, open_installed_image_lease, open_read_lease};
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, GENERIC_ALL, GENERIC_READ, GENERIC_WRITE, HANDLE, LocalFree,

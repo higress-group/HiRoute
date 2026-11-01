@@ -133,10 +133,31 @@ impl LocalControlAdapter {
     ) -> Result<bool, DelegationErrorV1> {
         let scope = body_scope(task, body);
         let reference = managed_reference(&scope, body);
-        match self
-            .delegation_observation
-            .managed_text_resolve(&scope, &reference, now_ms)
-        {
+        let result = {
+            let mut reader = self
+                .delegation_text_reader
+                .lock()
+                .map_err(|_| DelegationErrorV1::StorageUnavailable)?;
+            if reader.is_none() {
+                *reader = Some(
+                    self.delegation_observation
+                        .managed_text_reader()
+                        .map_err(|_| DelegationErrorV1::StorageUnavailable)?,
+                );
+            }
+            let result = reader
+                .as_mut()
+                .expect("managed-text reader initialized")
+                .resolve(&scope, &reference, now_ms);
+            if matches!(result, Err(ManagedTextError::Storage)) {
+                // A later ordinary maintenance tick may reopen the reader. No
+                // extra retry or stale visibility cache is introduced here.
+                *reader = None;
+            }
+            result
+        };
+        // Release the query lock before any finalization, Plan gate or CAS.
+        match result {
             Ok(current) => Ok(matches!(
                 current.state,
                 ManagedTextState::Pending | ManagedTextState::Complete

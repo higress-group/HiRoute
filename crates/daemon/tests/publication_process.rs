@@ -27,6 +27,11 @@ fn real_process_content_sink_failure_is_consumed_once_and_recovers() {
     run_script("observation_content_fault_product.py");
 }
 
+#[test]
+fn real_process_streamed_content_pressure_preserves_every_accepted_delta() {
+    run_script("content_pressure_product.py");
+}
+
 /// Current released CLI point scan/preparation shares the native multi-model exact-save boundary.
 #[test]
 fn released_cli_connection_points_prepare_and_save_exact_models() {
