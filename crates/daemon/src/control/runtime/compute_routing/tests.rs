@@ -499,6 +499,7 @@ fn current_catalog_drift_excludes_only_stale_projection_from_routing_snapshot() 
     );
     delegation_safety.finish_startup_recovery();
     let adapter = LocalControlAdapter {
+        upgrade_cleanup: hiroute_local_storage::backup::UpgradeCleanup::new(&storage_root),
         native_network: Arc::new(hiroute_domain::NativeNetworkRegistryV1::new(
             hiroute_domain::NativeProxyEnvironmentV1::from_variables(
                 "test-network".into(),

@@ -1,7 +1,7 @@
 //! Upgrade recovery material expires only after the complete service is ready.
 //! Retire namespaces atomically, then reuse the product maintenance lifecycle.
 use super::*;
-use hiroute_diagnostics::files::{FileIdentity, PrivateDir};
+use hiroute_diagnostics::files::{PrivateDir, VerifiedFile};
 use hiroute_host_runtime::RetainedRecoveryPackage;
 use hiroute_platform::private_fs::{DirectoryRemoval, directory_identity};
 use sha2::{Digest, Sha256};
@@ -42,7 +42,7 @@ struct Job {
 
 struct Package {
     record: RetainedRecoveryPackage,
-    identity: FileIdentity,
+    handoff: VerifiedFile,
     image: fs::File,
     digest: Sha256,
 }
@@ -208,7 +208,7 @@ impl UpgradeCleanup {
                         let unchanged = directory
                             .open_read(hiroute_host_runtime::RETAINED_PACKAGE_FILE)
                             .map_err(safety)?
-                            .is_some_and(|file| file.identity() == package.identity);
+                            .is_some_and(|file| file.identity() == package.handoff.identity());
                         if !unchanged {
                             state.package = None;
                             return Ok(());
@@ -231,7 +231,7 @@ impl UpgradeCleanup {
                         directory
                             .remove_verified(
                                 hiroute_host_runtime::RETAINED_PACKAGE_FILE,
-                                package.identity,
+                                package.handoff.identity(),
                             )
                             .map_err(safety)?;
                         hiroute_platform::durable::directory_barrier(self.parent()?)?;
@@ -408,7 +408,7 @@ impl UpgradeCleanup {
         if let Some(image) = _state.image.take() {
             return Ok(Some(Package {
                 record,
-                identity: file.identity(),
+                handoff: file,
                 image,
                 digest: Sha256::new(),
             }));
@@ -419,7 +419,7 @@ impl UpgradeCleanup {
         let image = hiroute_platform::private_fs::open_regular_file(&std::env::current_exe()?)?;
         Ok(Some(Package {
             record,
-            identity: file.identity(),
+            handoff: file,
             image,
             digest: Sha256::new(),
         }))

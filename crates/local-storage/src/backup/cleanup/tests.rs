@@ -1,14 +1,17 @@
 use super::*;
 
 struct Fixture {
-    temp: tempfile::TempDir,
+    _temp: tempfile::TempDir,
+    state: PathBuf,
     storage: PathBuf,
     backups: PathBuf,
 }
 impl Fixture {
     fn new() -> Self {
         let temp = tempfile::tempdir().unwrap();
-        let storage = temp.path().join("storage");
+        let state = temp.path().join("state");
+        crate::prepare_owner_directory(&state).unwrap();
+        let storage = state.join("storage");
         crate::prepare_owner_directory(&storage).unwrap();
         let backups = crate::upgrade_backup_root(&storage)
             .unwrap()
@@ -17,7 +20,8 @@ impl Fixture {
             .to_owned();
         crate::prepare_owner_directory(&backups).unwrap();
         Self {
-            temp,
+            _temp: temp,
+            state,
             storage,
             backups,
         }
@@ -115,7 +119,7 @@ fn old_claim_does_not_remove_a_replacement_source() {
     f.file(&f.backups.join("old"), b"old");
     let cleanup = f.controller();
     let mut job = cleanup.submit(Source::Backups).unwrap().unwrap();
-    fs::rename(&f.backups, f.temp.path().join("kept")).unwrap();
+    fs::rename(&f.backups, f.state.as_path().join("kept")).unwrap();
     crate::prepare_owner_directory(&f.backups).unwrap();
     f.file(&f.backups.join("new"), b"new");
     assert!(cleanup.advance(&mut job).unwrap());
@@ -152,7 +156,7 @@ fn batches_back_off_and_resume_without_full_rescans() {
 }
 
 fn handoff(f: &Fixture, target: &[u8], owned: bool) -> (PathBuf, Vec<u8>) {
-    let parent = f.temp.path().join(if owned {
+    let parent = f.state.as_path().join(if owned {
         "upgrade-packages"
     } else {
         "external"
@@ -183,7 +187,7 @@ fn matching_private_package_expires_but_external_and_future_images_do_not() {
     for (owned, matches) in [(true, true), (false, true), (true, false)] {
         let f = Fixture::new();
         let (package, _) = handoff(&f, b"new image", owned);
-        let image = f.temp.path().join("running-image");
+        let image = f.state.as_path().join("running-image");
         f.file(
             &image,
             if matches {
@@ -226,7 +230,7 @@ fn empty_interrupted_wrapper_is_removed_and_unknown_material_is_preserved() {
 fn replaced_installer_handoff_is_preserved_with_its_package() {
     let f = Fixture::new();
     let (package, bytes) = handoff(&f, b"new image", true);
-    let image = f.temp.path().join("running-image");
+    let image = f.state.as_path().join("running-image");
     f.file(&image, b"new image");
     let cleanup = f.controller();
     cleanup.state.lock().unwrap().image = Some(fs::File::open(image).unwrap());
@@ -236,7 +240,7 @@ fn replaced_installer_handoff_is_preserved_with_its_package() {
         .temp
         .path()
         .join(hiroute_host_runtime::RETAINED_PACKAGE_FILE);
-    fs::rename(&record, f.temp.path().join("old-handoff")).unwrap();
+    fs::rename(&record, f.state.as_path().join("old-handoff")).unwrap();
     f.file(&record, &bytes); // even identical bytes cannot adopt a newer identity
     drain(&cleanup);
     assert!(package.join("hirouted").exists());
