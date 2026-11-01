@@ -206,5 +206,5 @@ try {
   await writeFile(path.join(output, 'subscription-api-setup-report.json'), JSON.stringify({ tests: results.length, failed: results.filter(x => x.state === 'failed').length, results }, null, 2));
   for (const item of results) process.stdout.write(`${item.state}: ${item.name}${item.error ? ` ${item.error.split('\n')[0]}` : ''}\n`);
   client.close();
-  if (results.length !== 26 || results.some(x => x.state === 'failed')) process.exitCode = 1;
+  if (results.length !== 28 || results.some(x => x.state === 'failed')) process.exitCode = 1;
 }
