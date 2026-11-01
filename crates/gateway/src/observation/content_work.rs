@@ -13,6 +13,7 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
+#[path = "content_work/queue.rs"]
 mod queue;
 #[cfg(test)]
 pub(super) use queue::ContentGate;

@@ -371,7 +371,7 @@ impl ByteBoundedObservationProducer {
         })
     }
 
-    pub(super) async fn publish_content<F>(
+    pub(in super::super) async fn publish_content<F>(
         &self,
         timing: Option<super::super::super::latency::RequestLatency>,
         estimate: usize,

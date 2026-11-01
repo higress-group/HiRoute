@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use serde_json::Value;
 
 use super::write_canonical_json_with_replay;

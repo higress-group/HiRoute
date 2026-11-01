@@ -949,4 +949,5 @@ fn restore_worker_loss(shared: &ProducerShared, sequence: u64, reason: Observati
 mod tests;
 
 #[cfg(test)]
+#[path = "bounded/content_tests.rs"]
 mod content_tests;
