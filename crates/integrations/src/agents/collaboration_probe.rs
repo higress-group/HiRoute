@@ -4,6 +4,11 @@
 use serde_json::{Value, json};
 use std::{io::Write, path::Path, process::Command};
 
+// The challenge requires the complete current CLI contract. Its native tool
+// allowance must fit that contract; the independent 64 KiB retained-output
+// bound below still rejects unbounded or unrelated output.
+const TOOL_OUTPUT_TOKENS: usize = 16 * 1024;
+
 #[cfg(test)]
 mod launch_diagnostic;
 #[cfg(any(windows, test))]
@@ -335,7 +340,7 @@ impl CollaborationChallenge {
                 json!([{"type":"function_call", "id":format!("fc_probe_poll_{}", self.poll_count),
                 "call_id":id, "name":"write_stdin", "status":"completed",
                 "arguments":json!({"session_id":session, "chars":"", "yield_time_ms":10000,
-                    "max_output_tokens":2000}).to_string()}]),
+                    "max_output_tokens":TOOL_OUTPUT_TOKENS}).to_string()}]),
             );
         }
         let complete_output = format!("{}{payload}", self.collected);
@@ -414,7 +419,8 @@ impl CollaborationChallenge {
 
 fn shell_call(name: &str, command: &str) -> Value {
     let args = if name == "exec_command" {
-        let args = json!({"cmd":command, "max_output_tokens":2000, "yield_time_ms":1000});
+        let args =
+            json!({"cmd":command, "max_output_tokens":TOOL_OUTPUT_TOKENS, "yield_time_ms":1000});
         #[cfg(windows)]
         let args = {
             let mut args = args;
