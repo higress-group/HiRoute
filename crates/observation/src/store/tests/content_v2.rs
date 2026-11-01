@@ -17,6 +17,9 @@ use tempfile::TempDir;
 use crate::writer::{IngestOutcome, ObservationCommitPort, ObservationStoreError};
 use crate::{DigestAuthority, LocalObservationStore};
 
+#[path = "content_record_profile.rs"]
+mod record_profile;
+
 mod batch;
 mod pressure;
 
