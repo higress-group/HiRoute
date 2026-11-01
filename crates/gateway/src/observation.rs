@@ -317,12 +317,14 @@ impl GatewayObservation {
 
     pub fn from_environment() -> Self {
         let environment = EnvironmentObservation::load();
-        Self::with_sinks_and_policy(
+        let observation = Self::with_sinks_and_policy(
             environment.enabled,
             environment.queue_bytes,
             environment.sinks,
             OtelContentPolicy::Disabled,
-        )
+        );
+        observation.prepare_content_worker();
+        observation
     }
 
     pub fn with_sinks(queue_bytes: usize, sinks: GatewayObservationSinks) -> Self {
@@ -365,7 +367,7 @@ impl GatewayObservation {
         content_policy: OtelContentPolicy,
         workspace_hmac_key: [u8; 32],
     ) -> Self {
-        Self::build_with_capacities(
+        let observation = Self::build_with_capacities(
             true,
             16 * 1024 * 1024,
             128 * 1024 * 1024,
@@ -373,7 +375,15 @@ impl GatewayObservation {
             sinks,
             content_policy,
             Some(workspace_hmac_key),
-        )
+        );
+        observation.prepare_content_worker();
+        observation
+    }
+
+    fn prepare_content_worker(&self) {
+        if self.enabled {
+            self.channels.content_work.prepare(&self.channels.content);
+        }
     }
 
     fn build(

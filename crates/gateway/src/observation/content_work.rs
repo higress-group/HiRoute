@@ -362,6 +362,10 @@ impl RequestObservation {
 }
 
 impl ContentWorkProducer {
+    pub(super) fn prepare(&self, content: &ChannelProducer) {
+        let _ = self.queue(content);
+    }
+
     #[cfg(test)]
     pub(super) fn paused() -> (Self, ContentGate) {
         let (gate, control) = ContentGate::new();
@@ -391,7 +395,9 @@ impl ContentWorkProducer {
         if let Some(queue) = self.shared.get() {
             return Some(Arc::clone(queue));
         }
-        let _initializing = self.initialize.try_lock().ok()?;
+        // Another caller initializing this one shared worker is not resource
+        // exhaustion. Product constructors prepare it before serving traffic.
+        let _initializing = self.initialize.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(queue) = self.shared.get() {
             return Some(Arc::clone(queue));
         }
