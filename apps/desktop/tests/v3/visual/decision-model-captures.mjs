@@ -37,6 +37,36 @@ const driver = `(() => {
     return state;
   }
   const setInput = (element, value) => { Object.getOwnPropertyDescriptor(element.constructor.prototype, 'value').set.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })); };
+  async function contextForm(kind) {
+    store([], []);
+    if (kind === 'error') c.handlers.preview_decision_context = () => { throw { code: 'MODEL_METADATA_UNAVAILABLE' }; };
+    if (kind === 'loading') c.handlers.preview_decision_context = () => new Promise(() => {});
+    c.remount(); await open(); await click(label('添加决策模型', 'Add decision model'));
+    await until(() => all('.decision-mode')[1]?.getAttribute('aria-pressed') === 'true', 'independent context form');
+    const provider = all('.decision-provider').find(item => item.lastElementChild?.textContent === (kind === 'typesafe' ? 'TypeSafe' : 'OpenAI'));
+    provider.click(); await until(() => provider.getAttribute('aria-pressed') === 'true', 'context provider');
+    const box = () => document.querySelector('.decision-context');
+    const contextControl = name => [...box().querySelectorAll('button,summary')].find(item => (item.querySelector('.disclosure-label')?.textContent ?? item.textContent).trim() === name);
+    if (kind === 'typesafe') {
+      setInput(field('model'), 'jev-1.14.0'); await until(() => box().textContent.includes('262,144'), 'TypeSafe long context');
+      box().querySelector('input[type="checkbox"]').click(); await until(() => box().textContent.includes('64,000'), 'TypeSafe smaller cap');
+    } else if (kind === 'custom' || kind === 'invalid') {
+      contextControl(label('自定义', 'Custom')).click(); await pause(40);
+      setInput(field('context_window'), kind === 'invalid' ? '4294967296' : '4294967295');
+      contextControl(label('高级：单个问题上限', 'Advanced: per-question limit')).click(); await pause(40);
+      setInput(field('context_question'), '32000');
+      await until(() => kind === 'invalid' ? box().querySelector('[role="alert"]') : box().textContent.includes('4,294,967,295'), 'custom context state');
+    } else if (kind === 'unknown') {
+      document.querySelector('.decision-address-value button').click(); await pause(40);
+      setInput(field('endpoint'), 'https://proxy.example.test/v1/decisions');
+      await until(() => box().textContent.includes('32,000'), 'unknown context fallback');
+    } else {
+      await until(() => box().textContent.includes(kind === 'loading' ? label('正在解析', 'Resolving') : kind === 'error' ? label('无法解析', 'could not be resolved') : '1,050,000'), 'context status');
+    }
+    box().scrollIntoView({ block: 'center' });
+    if (kind === 'custom' || kind === 'invalid') field('context_question').scrollIntoView({ block: 'center' });
+    return '.decision-context';
+  }
   // Route -> decision model -> API connection -> decision model -> route, stopping at the requested step.
   async function nested(step) {
     store([], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
@@ -69,6 +99,13 @@ const driver = `(() => {
     await click(label('决策模型', 'Decision models'));
   };
   return {
+    'context-known': () => contextForm('known'),
+    'context-unknown': () => contextForm('unknown'),
+    'context-custom': () => contextForm('custom'),
+    'context-invalid': () => contextForm('invalid'),
+    'context-typesafe': () => contextForm('typesafe'),
+    'context-error': () => contextForm('error'),
+    'context-loading': () => contextForm('loading'),
     async shared() {
       store([], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
       await open(); await click(label('添加决策模型', 'Add decision model'));
@@ -130,7 +167,7 @@ const driver = `(() => {
 
 export async function decisionModelCaptures(client, baseUrl, output) {
   const results = [];
-  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) for (const state of ['shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent']) {
+  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) for (const state of ['shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-invalid', 'context-typesafe', 'context-error', 'context-loading']) {
     await navigate(client, new URL('product-shell.html', baseUrl).href, viewport);
     await waitFor(client, 'Boolean(window.productShell)');
     await evaluate(client, `(() => { const c = window.productShell; c.reset(); localStorage.setItem('hiroute.language', ${JSON.stringify(language)}); localStorage.setItem('hiroute.theme', ${JSON.stringify(theme)}); })()`);

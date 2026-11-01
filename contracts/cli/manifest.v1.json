@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:55a43b8777f982a5e9c1c1122edd21e17e075d27ab13c7ba0344620ae2e8e746",
+  "descriptor_digest": "sha256:dc43cd321b0c2c0597801020c63b6d4fd702687a984b4718748b4066f474921d",
   "visibility": "release",
   "commands": [
     {
@@ -2422,13 +2422,13 @@
         "connections",
         "list"
       ],
-      "operation_id": "ListDecisionServicesV2",
+      "operation_id": "ListDecisionServicesV3",
       "trace_ids": [],
       "scope": "p0",
       "lifecycle": "released",
       "kind": "query",
       "request_schema": "hiroute.empty-request/v1",
-      "response_schema": "hiroute.decision-services/v2",
+      "response_schema": "hiroute.decision-services/v3",
       "effect": "none",
       "network": "local_control_only",
       "model_call": "never",
@@ -2468,7 +2468,7 @@
         "connections",
         "apply"
       ],
-      "operation_id": "ApplyDecisionServiceV2",
+      "operation_id": "ApplyDecisionServiceV3",
       "trace_ids": [],
       "scope": "p0",
       "lifecycle": "released",
@@ -2485,11 +2485,11 @@
       "idempotency": "required",
       "help": {
         "purpose": "Save a versioned decision connection with exact source and credential revisions.",
-        "usage": "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]",
+        "usage": "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] [--context-window-tokens N | --context-window-auto] [--context-question-tokens N] [--typesafe-long-context auto|off] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]",
         "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
         "effects": "Same-UID Application-owned journaled operation after exact spec, digest, revision, and idempotency checks.",
         "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
-        "automation": "Use decision connections options for the current presets and decision sources list for reusable managed sources. Choose --source ID or register an independent credential with protected-input and pass --candidate REF. Native presets carry an explicit wire protocol; --wire-protocol can select system_one or openai_decisions. Preview first; --apply-file creates a private exact request without saving. Save does not contact a provider. Test the saved ID@REVISION explicitly after reading it back.",
+        "automation": "Use decision connections options for current presets and decision sources list for reusable managed sources. Choose --source ID or protected-input --candidate REF. --wire-protocol selects system_one or openai_decisions. Native context defaults to automatic metadata resolution, otherwise 32000 tokens. --context-window-tokens N selects a positive u32 custom request window; --context-question-tokens N overrides the independent question cap and requires custom mode. --context-window-auto clears both custom caps. --typesafe-long-context auto|off controls only the exact official TypeSafe System One endpoint. Omitted edit flags preserve saved intent. Preview displays the resolved snapshot; --apply-file seals a private exact Apply request. Save never contacts a provider; explicit route publication adopts the saved revision. Test the saved ID@REVISION after readback; a pass does not certify maximum capacity.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
         "examples": [
@@ -2506,6 +2506,52 @@
       },
       "negative": {
         "scenario_id": "p0.decision.connections.apply.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.context.preview",
+      "path": [
+        "decision",
+        "context",
+        "preview"
+      ],
+      "operation_id": "PreviewDecisionContextV1",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.decision-context-preview-request/v1",
+      "response_schema": "hiroute.resolved-decision-context/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Resolve a native decision context draft locally without saving or contacting a provider.",
+        "usage": "hiroute decision context preview [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision context preview --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.context.preview"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.context.preview.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.context.preview.negative",
         "polarity": "negative",
         "state": "executable"
       }

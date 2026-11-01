@@ -863,7 +863,7 @@ const scenarios = [
     assert(input('credential').value === 'synthetic-test-key', 'Disclosure lost the credential');
     await click('保存并测试'); await until(() => text().includes('配置已保存，测试失败'), 'saved failure feedback');
     const saved = calls('save_decision_service_v3').at(-1).payload.input;
-    assert(saved.change.expected_revision === 0 && saved.change.service.revision === 1 && saved.change.service.schema === 'hiroute.decision-service/v2', 'New connection did not use the V2 revision transaction');
+    assert(saved.change.expected_revision === 0 && saved.change.service.revision === 1 && saved.change.service.schema === 'hiroute.decision-service/v3', 'New connection did not use the V3 revision transaction');
     assert(saved.secret === 'synthetic-test-key' && saved.change.service.connection.authentication.kind === 'independent', 'Independent key was not sent once as the save secret');
     assert(decisionOrder().slice(-4).join() === 'save_decision_service_v3,decision_services_v3,test_decision_service_v3,decision_services_v3', 'Test did not follow readback of the saved revision or skipped the post-test readback');
     const tested = calls('test_decision_service_v3').at(-1).payload.input;
