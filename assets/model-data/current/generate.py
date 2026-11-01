@@ -140,6 +140,9 @@ def project_metadata_catalog(catalog, client_runs):
         "capability_overrides": value.get("capability_overrides", {}),
         "evidence_refs": value["evidence_refs"],
     } for value in catalog["endpoint_bindings"]]
+    for projected, value in zip(endpoint_bindings, catalog["endpoint_bindings"]):
+        if value.get("decision_constraints"):
+            projected["decision_constraints"] = copy.deepcopy(value["decision_constraints"])
     dynamic_routes = [copy.deepcopy(value) for value in catalog["dynamic_routes"]]
     provider_records = []
     for value in catalog["provider_metadata_records"]:

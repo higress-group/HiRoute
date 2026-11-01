@@ -436,6 +436,19 @@
       "refresh_days": 30
     },
     {
+      "authority_key": "typesafe",
+      "allowed_https_prefixes": [
+        "https://docs.typesafe.ai/"
+      ],
+      "scope": [
+        "interfaces",
+        "limits",
+        "models",
+        "products"
+      ],
+      "refresh_days": 14
+    },
+    {
       "authority_key": "upstage",
       "description": "Primary provider documentation for upstage",
       "allowed_https_prefixes": [

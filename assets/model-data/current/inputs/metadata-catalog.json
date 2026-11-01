@@ -1979,6 +1979,69 @@
       "collected_on": "2026-10-14",
       "bytes_digest": "sha256:e40b0d3e5da233ddf46fae1ecd5823b693cb83e6cfbb8af489dc4b34f9d347be",
       "digest_state": "captured"
+    },
+    {
+      "source_key": "source-194",
+      "authority": "docs.typesafe.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.typesafe.ai/models",
+      "collected_on": "2026-11-02",
+      "bytes_digest": "sha256:59b6c17b12d3cb8ac781abdf5f9b52888ce336d840d35c49cc9c1f9ec9286e60",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-195",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/decision-model-preview/",
+      "collected_on": "2026-11-02",
+      "bytes_digest": "sha256:c5ae5803945eaabb05f4b1902ff19bc9d9bddd80b718b071f9360ac71065fa80",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-196",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/decision-model-api",
+      "collected_on": "2026-11-02",
+      "bytes_digest": "sha256:abb7b227d3360576525b16a71d3aa8b2a5364063bc0a881333ad8e5be85d78ed",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-197",
+      "authority": "openrouter.ai",
+      "source_kind": "provider-public-metadata",
+      "locator": "https://openrouter.ai/api/v1/models/typesafe/jev-1.13/endpoints",
+      "collected_on": "2026-11-02",
+      "bytes_digest": "sha256:dbfc5c2adb571a5af0bc7ba627683a4d6060683bf568a2e5784e36e332fcfaa5",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-198",
+      "authority": "openrouter.ai",
+      "source_kind": "provider-public-metadata",
+      "locator": "https://openrouter.ai/api/v1/models/typesafe/jev-1.14/endpoints",
+      "collected_on": "2026-11-02",
+      "bytes_digest": "sha256:e95ee387c4bb60e207c04553675cccf44bdacce35d75d3dfbb7de9eefa7f2705",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-199",
+      "authority": "developers.openai.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://developers.openai.com/api/docs/guides/decisions",
+      "collected_on": "2026-11-02",
+      "bytes_digest": "sha256:fd700010b8108d24092492da19d60adb217af8955d2c4b82ab51129c5b9f5ab8",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-200",
+      "authority": "openrouter.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://openrouter.ai/blog/tutorials/jev-vs-llm-when-to-use-each/",
+      "collected_on": "2026-11-02",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -2090,6 +2153,33 @@
       ]
     },
     {
+      "product_key": "bailian-decisions-sg",
+      "provider": "Alibaba Cloud Model Studio",
+      "product": "Decision API",
+      "product_kind": "api-payg",
+      "region_scope": "Singapore business-space System One API",
+      "billing": "provider decision input billing",
+      "restriction": "Current account and endpoint eligibility required",
+      "credential": "bearer API key",
+      "interfaces": [
+        {
+          "interface_key": "bailian-decisions-sg/system-one",
+          "protocol": "system-one",
+          "request_path": "/compatible-mode/v1/systemone",
+          "base_url_template": "https://{WorkspaceId}.ap-southeast-1.maas.aliyuncs.com"
+        }
+      ],
+      "evidence_status": "conditional",
+      "evidence_refs": [
+        "source-195",
+        "source-196"
+      ],
+      "disposition": [
+        "catalog-representable",
+        "needs-runtime-qualification"
+      ]
+    },
+    {
       "product_key": "bailian-payg-cn",
       "provider": "Alibaba Cloud Model Studio",
       "product": "PAYG",
@@ -2116,6 +2206,12 @@
           "protocol": "openai-responses",
           "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
           "request_path": "/responses"
+        },
+        {
+          "interface_key": "bailian-payg-cn/system-one",
+          "protocol": "system-one",
+          "request_path": "/compatible-mode/v1/systemone",
+          "base_url_template": "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com"
         }
       ],
       "evidence_status": "conditional",
@@ -2124,7 +2220,9 @@
         "source-039",
         "source-040",
         "source-138",
-        "source-139"
+        "source-139",
+        "source-195",
+        "source-196"
       ],
       "disposition": [
         "catalog-representable",
@@ -2776,6 +2874,12 @@
           "request_path": "/chat/completions"
         },
         {
+          "interface_key": "openai-platform-global/openai-decisions",
+          "protocol": "openai-decisions",
+          "request_path": "/decisions",
+          "base_url": "https://api.openai.com/v1"
+        },
+        {
           "interface_key": "openai-platform-global/openai-responses",
           "protocol": "openai-responses",
           "base_url": "https://api.openai.com/v1",
@@ -2785,7 +2889,8 @@
       "evidence_status": "verified-primary",
       "evidence_refs": [
         "source-022",
-        "source-023"
+        "source-023",
+        "source-199"
       ],
       "disposition": [
         "catalog-representable",
@@ -2819,6 +2924,12 @@
           "protocol": "openai-responses",
           "base_url": "https://openrouter.ai/api/v1",
           "request_path": "/responses"
+        },
+        {
+          "interface_key": "openrouter-credits-byok/system-one",
+          "protocol": "system-one",
+          "request_path": "/decisions",
+          "base_url": "https://openrouter.ai/api/alpha"
         }
       ],
       "evidence_status": "verified-primary",
@@ -2826,7 +2937,10 @@
         "source-051",
         "source-052",
         "source-053",
-        "source-054"
+        "source-054",
+        "source-197",
+        "source-198",
+        "source-200"
       ],
       "disposition": [
         "needs-schema-or-adapter",
@@ -2925,6 +3039,32 @@
       ],
       "disposition": [
         "excluded-first-release"
+      ]
+    },
+    {
+      "product_key": "typesafe-direct-global",
+      "provider": "TypeSafe",
+      "product": "Decision API",
+      "product_kind": "api-payg",
+      "region_scope": "Official direct System One API",
+      "billing": "provider decision input billing",
+      "restriction": "Current account and endpoint eligibility required",
+      "credential": "bearer API key",
+      "interfaces": [
+        {
+          "interface_key": "typesafe-direct-global/system-one",
+          "protocol": "system-one",
+          "request_path": "/v1/systemone",
+          "base_url": "https://api.typesafe.ai"
+        }
+      ],
+      "evidence_status": "conditional",
+      "evidence_refs": [
+        "source-194"
+      ],
+      "disposition": [
+        "catalog-representable",
+        "needs-runtime-qualification"
       ]
     },
     {
@@ -3470,6 +3610,43 @@
         "source-188",
         "source-189"
       ]
+    },
+    {
+      "model_key": "decision-model-preview",
+      "publisher": "Alibaba Cloud Model Studio",
+      "display_name": "Decision Model Preview",
+      "canonical_identity": "decision-model-preview",
+      "upstream_ids": [
+        "decision-model-preview"
+      ],
+      "context_tokens": null,
+      "context_state": "not-applicable",
+      "max_output_tokens": null,
+      "max_output_state": "not-applicable",
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "unknown",
+        "text_output": "not-applicable"
+      },
+      "capabilities": {
+        "tool": "not-applicable",
+        "streaming": "not-applicable",
+        "web": "not-applicable",
+        "file": "not-applicable",
+        "computer": "not-applicable"
+      },
+      "reasoning": {
+        "kind": "unknown-per-protocol",
+        "note": "Decision-only model; no ordinary generation or reasoning contract is inferred."
+      },
+      "identity_stability": "unknown",
+      "lifecycle": "preview",
+      "source_stability_note": "Decision input constraints belong exclusively to exact endpoint bindings.",
+      "evidence_refs": [
+        "source-195",
+        "source-196"
+      ],
+      "data_note": "Decision-only identity; no ordinary inference eligibility."
     },
     {
       "model_key": "deepseek-v3-2",
@@ -4436,6 +4613,82 @@
       ]
     },
     {
+      "model_key": "jev-1.13",
+      "publisher": "TypeSafe",
+      "display_name": "Jev 1.13",
+      "canonical_identity": "jev-1.13",
+      "upstream_ids": [
+        "jev-1.13.0",
+        "typesafe/jev-1.13"
+      ],
+      "context_tokens": null,
+      "context_state": "not-applicable",
+      "max_output_tokens": null,
+      "max_output_state": "not-applicable",
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "unknown",
+        "text_output": "not-applicable"
+      },
+      "capabilities": {
+        "tool": "not-applicable",
+        "streaming": "not-applicable",
+        "web": "not-applicable",
+        "file": "not-applicable",
+        "computer": "not-applicable"
+      },
+      "reasoning": {
+        "kind": "unknown-per-protocol",
+        "note": "Decision-only model; no ordinary generation or reasoning contract is inferred."
+      },
+      "identity_stability": "unknown",
+      "lifecycle": "active",
+      "source_stability_note": "Decision input constraints belong exclusively to exact endpoint bindings.",
+      "evidence_refs": [
+        "source-194",
+        "source-197"
+      ],
+      "data_note": "Decision-only identity; no ordinary inference eligibility."
+    },
+    {
+      "model_key": "jev-1.14",
+      "publisher": "TypeSafe",
+      "display_name": "Jev 1.14",
+      "canonical_identity": "jev-1.14",
+      "upstream_ids": [
+        "jev-1.14.0",
+        "typesafe/jev-1.14"
+      ],
+      "context_tokens": null,
+      "context_state": "not-applicable",
+      "max_output_tokens": null,
+      "max_output_state": "not-applicable",
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "unknown",
+        "text_output": "not-applicable"
+      },
+      "capabilities": {
+        "tool": "not-applicable",
+        "streaming": "not-applicable",
+        "web": "not-applicable",
+        "file": "not-applicable",
+        "computer": "not-applicable"
+      },
+      "reasoning": {
+        "kind": "unknown-per-protocol",
+        "note": "Decision-only model; no ordinary generation or reasoning contract is inferred."
+      },
+      "identity_stability": "unknown",
+      "lifecycle": "active",
+      "source_stability_note": "Decision input constraints belong exclusively to exact endpoint bindings.",
+      "evidence_refs": [
+        "source-194",
+        "source-198"
+      ],
+      "data_note": "Decision-only identity; no ordinary inference eligibility."
+    },
+    {
       "model_key": "kimi-k2-5",
       "publisher": "Moonshot AI",
       "display_name": "Kimi K2.5",
@@ -5359,6 +5612,76 @@
       "evidence_refs": [
         "source-043",
         "source-167"
+      ]
+    },
+    {
+      "binding_key": "bailian-decisions-sg/decision-model-preview/decision-model-preview/decision",
+      "product_key": "bailian-decisions-sg",
+      "model_key": "decision-model-preview",
+      "upstream_model_id": "decision-model-preview",
+      "upstream_identity_role": "canonical-callable-id",
+      "lifecycle": "preview",
+      "interface_candidates": [
+        "bailian-decisions-sg/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "bailian-decisions-sg/system-one/always",
+          "interface_key": "bailian-decisions-sg/system-one",
+          "condition": "always",
+          "request_tokens": 65536,
+          "per_question_tokens": null,
+          "basis": "documented",
+          "note": "Documented System One input/context limit; no separate question cap published.",
+          "evidence_refs": [
+            "source-195",
+            "source-196"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-195",
+        "source-196"
+      ]
+    },
+    {
+      "binding_key": "bailian-payg-cn/decision-model-preview/decision-model-preview/decision",
+      "product_key": "bailian-payg-cn",
+      "model_key": "decision-model-preview",
+      "upstream_model_id": "decision-model-preview",
+      "upstream_identity_role": "canonical-callable-id",
+      "lifecycle": "preview",
+      "interface_candidates": [
+        "bailian-payg-cn/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "bailian-payg-cn/system-one/always",
+          "interface_key": "bailian-payg-cn/system-one",
+          "condition": "always",
+          "request_tokens": 65536,
+          "per_question_tokens": null,
+          "basis": "documented",
+          "note": "Documented System One input/context limit; no separate question cap published.",
+          "evidence_refs": [
+            "source-195",
+            "source-196"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-195",
+        "source-196"
       ]
     },
     {
@@ -7101,6 +7424,41 @@
       ]
     },
     {
+      "binding_key": "openai-platform-global/gpt-6-luna/gpt-6-luna/decision",
+      "product_key": "openai-platform-global",
+      "model_key": "gpt-6-luna",
+      "upstream_model_id": "gpt-6-luna",
+      "upstream_identity_role": "canonical-callable-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "openai-platform-global/openai-decisions"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "openai-platform-global/openai-decisions/always",
+          "interface_key": "openai-platform-global/openai-decisions",
+          "condition": "always",
+          "request_tokens": 1050000,
+          "per_question_tokens": null,
+          "basis": "maintainer_policy",
+          "note": "Explicitly approved HiRoute policy in Proposal #319. Model documentation informs the value; Decisions documentation establishes the binding, not measured maximum endpoint capacity.",
+          "evidence_refs": [
+            "source-127",
+            "source-199"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-127",
+        "source-199"
+      ]
+    },
+    {
       "binding_key": "openai-platform-global/gpt-6-sol/gpt-6-sol",
       "product_key": "openai-platform-global",
       "model_key": "gpt-6-sol",
@@ -7158,6 +7516,76 @@
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-175"
+      ]
+    },
+    {
+      "binding_key": "openrouter-credits-byok/jev-1.13/typesafe/jev-1.13/decision",
+      "product_key": "openrouter-credits-byok",
+      "model_key": "jev-1.13",
+      "upstream_model_id": "typesafe/jev-1.13",
+      "upstream_identity_role": "canonical-callable-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "openrouter-credits-byok/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "openrouter-credits-byok/system-one/always",
+          "interface_key": "openrouter-credits-byok/system-one",
+          "condition": "always",
+          "request_tokens": 262144,
+          "per_question_tokens": null,
+          "basis": "documented",
+          "note": "Exact public endpoint context_length/max_prompt_tokens. No separate question cap or direct-provider header is inferred.",
+          "evidence_refs": [
+            "source-197",
+            "source-200"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-197",
+        "source-200"
+      ]
+    },
+    {
+      "binding_key": "openrouter-credits-byok/jev-1.14/typesafe/jev-1.14/decision",
+      "product_key": "openrouter-credits-byok",
+      "model_key": "jev-1.14",
+      "upstream_model_id": "typesafe/jev-1.14",
+      "upstream_identity_role": "canonical-callable-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "openrouter-credits-byok/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "openrouter-credits-byok/system-one/always",
+          "interface_key": "openrouter-credits-byok/system-one",
+          "condition": "always",
+          "request_tokens": 262144,
+          "per_question_tokens": null,
+          "basis": "documented",
+          "note": "Exact public endpoint context_length/max_prompt_tokens. No separate question cap or direct-provider header is inferred.",
+          "evidence_refs": [
+            "source-198",
+            "source-200"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-198",
+        "source-200"
       ]
     },
     {
@@ -7291,6 +7719,100 @@
         "source-015",
         "source-016",
         "source-017"
+      ]
+    },
+    {
+      "binding_key": "typesafe-direct-global/jev-1.13/jev-1.13.0/decision",
+      "product_key": "typesafe-direct-global",
+      "model_key": "jev-1.13",
+      "upstream_model_id": "jev-1.13.0",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "typesafe-direct-global/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "typesafe-direct-global/system-one/typesafe_default",
+          "interface_key": "typesafe-direct-global/system-one",
+          "condition": "typesafe_default",
+          "request_tokens": 64000,
+          "per_question_tokens": 32000,
+          "basis": "inferred",
+          "note": "Conservative decimal normalization of documented 64k request / 32k question without the long-context header.",
+          "evidence_refs": [
+            "source-194"
+          ]
+        },
+        {
+          "constraint_key": "typesafe-direct-global/system-one/typesafe_long_context",
+          "interface_key": "typesafe-direct-global/system-one",
+          "condition": "typesafe_long_context",
+          "request_tokens": 262144,
+          "per_question_tokens": 262144,
+          "basis": "inferred",
+          "note": "HiRoute normalization of documented rounded 262k for both dimensions with the official header; corroborated by exact OpenRouter metadata, not a direct capacity measurement.",
+          "evidence_refs": [
+            "source-194",
+            "source-197"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-194",
+        "source-197"
+      ]
+    },
+    {
+      "binding_key": "typesafe-direct-global/jev-1.14/jev-1.14.0/decision",
+      "product_key": "typesafe-direct-global",
+      "model_key": "jev-1.14",
+      "upstream_model_id": "jev-1.14.0",
+      "upstream_identity_role": "versioned-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "typesafe-direct-global/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "typesafe-direct-global/system-one/typesafe_default",
+          "interface_key": "typesafe-direct-global/system-one",
+          "condition": "typesafe_default",
+          "request_tokens": 64000,
+          "per_question_tokens": 32000,
+          "basis": "inferred",
+          "note": "Conservative decimal normalization of documented 64k request / 32k question without the long-context header.",
+          "evidence_refs": [
+            "source-194"
+          ]
+        },
+        {
+          "constraint_key": "typesafe-direct-global/system-one/typesafe_long_context",
+          "interface_key": "typesafe-direct-global/system-one",
+          "condition": "typesafe_long_context",
+          "request_tokens": 262144,
+          "per_question_tokens": 262144,
+          "basis": "inferred",
+          "note": "HiRoute normalization of documented rounded 262k for both dimensions with the official header; corroborated by exact OpenRouter metadata, not a direct capacity measurement.",
+          "evidence_refs": [
+            "source-194",
+            "source-198"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-194",
+        "source-198"
       ]
     },
     {
@@ -7918,6 +8440,12 @@
       "status": "runtime_required",
       "subject": "Azure, Vertex, and Bedrock resource, project, region, deployment, and model availability are account-specific",
       "decision": "Store product and endpoint templates statically, but create no executable binding until authenticated inventory resolves the target environment."
+    },
+    {
+      "decision_key": "decision-input-constraints",
+      "status": "resolved_metadata_shape",
+      "subject": "Exact native decision bindings and conditional context policy",
+      "decision": "Decision constraints do not promote ordinary inference eligibility. TypeSafe rounded limits are labeled normalization; OpenAI 1,050,000 is maintainer policy approved in Proposal #319. Unmatched bindings resolve locally to the product fallback, never an inferred model fact."
     },
     {
       "decision_key": "deepseek-model-identity-and-pricing",

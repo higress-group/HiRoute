@@ -8,6 +8,8 @@ mod native_reasoning;
 pub use native_reasoning::{ApiReasoningDefault, missing_api_reasoning_default};
 mod scoped;
 pub use scoped::*;
+pub(crate) mod decision_context;
+pub use decision_context::DecisionContextResolutionError;
 use std::collections::BTreeMap;
 
 pub fn resolve_managed_defaults(
