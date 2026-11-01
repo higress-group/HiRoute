@@ -31,6 +31,15 @@ pub(crate) fn input_failure(code: ErrorCode, globals: Globals) -> CliExecution {
 }
 
 fn failure(code: ErrorCode, output: OutputMode, request_id: Option<String>) -> CliExecution {
+    if code == ErrorCode::InvalidArguments {
+        let diagnostic = crate::request_input::diagnostics::failure(code, request_id.clone());
+        if output == OutputMode::Json {
+            return diagnostic;
+        }
+        let mut result = failure_error(ErrorV1::new(code), output, request_id);
+        result.stderr.push_str(&diagnostic.stderr);
+        return result;
+    }
     failure_error(ErrorV1::new(code), output, request_id)
 }
 
@@ -44,6 +53,8 @@ fn failure_error(error: ErrorV1, output: OutputMode, request_id: Option<String>)
 }
 
 pub(crate) fn execute(command: &str, options: &[String], globals: Globals) -> CliExecution {
+    let _diagnostics =
+        crate::request_input::diagnostics::Scope::enter(command, globals.error_details);
     if matches!(command, "worker.exec" | "worker.continue")
         && input::has_permission_policy_option(options)
     {

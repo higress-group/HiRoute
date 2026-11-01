@@ -19,6 +19,7 @@ const CLAUDE_HISTORY_FLUSH_WAIT: Duration = Duration::from_secs(2);
 const CLAUDE_HISTORY_QUIET: Duration = Duration::from_millis(200);
 const CLAUDE_HISTORY_POLL: Duration = Duration::from_millis(25);
 
+mod diagnostics;
 mod startup;
 mod terminal;
 use terminal::LiveTerminalCheckpoint;
@@ -139,6 +140,10 @@ impl WorkerProgressWriter {
 }
 
 pub(crate) trait WorkerRunJournal: AcpRunJournal {
+    /// Append host explanations after the native progress buffer has drained, so a late
+    /// segment reset or buffered tail cannot evict the failure being explained.
+    fn flush_diagnostics(&self) {}
+
     /// Production accepted runs expose an independent bounded progress writer. The default keeps
     /// protocol-only journal fixtures free of persistence concerns.
     fn progress_writer(&self) -> Option<WorkerProgressWriter> {
@@ -314,12 +319,18 @@ pub(crate) async fn execute(
                     future.await
                 },
                 _ = tokio::time::sleep_until(deadline) => {
+                    // An already published terminal receipt wins while its history drains.
+                    // Otherwise record the deadline before ACP shutdown/owned cleanup.
+                    if !terminal_checkpoint.as_ref().is_some_and(|checkpoint| checkpoint.has_receipt()) {
+                        let _ = journal.execution_failed(DelegationErrorV1::DeadlineExceeded);
+                    }
                     early_stop_error = terminal_checkpoint.as_ref().map_or_else(
                         || journal.stop_intent().err(),
                         |checkpoint| checkpoint.revoke(),
                     );
                     acp_cancel.cancel();
-                    future.await
+                    let _ = future.await;
+                    Err(DelegationErrorV1::DeadlineExceeded)
                 },
                 result = &mut future => result,
             }
@@ -360,6 +371,7 @@ pub(crate) async fn execute(
     if let Some(capture) = progress_capture {
         capture.stop_and_flush().await;
     }
+    journal.flush_diagnostics();
     Ok(WorkerRunResult {
         execution,
         identity: worker.identity,

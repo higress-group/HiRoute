@@ -40,6 +40,8 @@ struct JournalState {
     output_incomplete: bool,
     completed: bool,
     failed: bool,
+    pending_failure: Option<DelegationErrorV1>,
+    qoder_config_dir: Option<String>,
 }
 
 /// One journal is constructed only from an accepted run and its matching in-memory verifier.
@@ -115,6 +117,8 @@ impl PersistentWorkerRunJournal {
                 output_incomplete: false,
                 completed: false,
                 failed: false,
+                pending_failure: None,
+                qoder_config_dir: None,
             }),
         })
     }
@@ -177,6 +181,13 @@ impl PersistentWorkerRunJournal {
 
     pub fn run(&self) -> Result<DelegationRunV1, DelegationErrorV1> {
         Ok(self.lock_state()?.run.clone())
+    }
+
+    pub(crate) fn qoder_context(&self, config_dir: &str, now_ms: i64) {
+        if let Ok(mut state) = self.lock_state() {
+            state.qoder_config_dir = Some(config_dir.to_owned());
+        }
+        self.progress_writer.qoder_context(config_dir, now_ms);
     }
 
     fn lock_state(&self) -> Result<std::sync::MutexGuard<'_, JournalState>, DelegationErrorV1> {
@@ -277,6 +288,10 @@ impl PersistentWorkerRunJournal {
         if state.completed {
             return Ok(());
         }
+        if outcome.stop_reason == "cancelled" && !state.run.progress.cancel_requested {
+            self.record_failure(state, DelegationErrorV1::PromptFailed)?;
+            return Err(DelegationErrorV1::PromptFailed);
+        }
         if !matches!(
             state.run.progress.state,
             RunStateV1::Running | RunStateV1::Cancelling
@@ -343,7 +358,16 @@ impl PersistentWorkerRunJournal {
         if state.failed || state.completed {
             return Ok(());
         }
-        let (stage, event) = if error == DelegationErrorV1::PromptFailed {
+        let error = if state.run.progress.cancel_requested {
+            DelegationErrorV1::Cancelled
+        } else {
+            error
+        };
+        let (stage, event) = if matches!(
+            error,
+            DelegationErrorV1::PromptFailed | DelegationErrorV1::DeadlineExceeded
+        ) && state.run.progress.state == RunStateV1::Running
+        {
             (
                 "prompt-failed",
                 DelegationCheckpointV1::Progress {
@@ -373,9 +397,18 @@ impl PersistentWorkerRunJournal {
             && let Ok(now) = now_ms().and_then(to_i64)
         {
             self.progress_writer.dependency_failure(failure, now);
+        } else if state.run.process.is_some() {
+            state.pending_failure = Some(error);
+        } else if let Ok(now) = now_ms().and_then(to_i64) {
+            self.progress_writer.execution_failure(
+                error,
+                self.verifier.last_request_failure(),
+                state.qoder_config_dir.as_deref(),
+                now,
+            );
         }
-        // The end state is the product run state this checkpoint actually produced; a
-        // cancel-after-prompt becomes Unknown rather than being reported as failed.
+        // Uncertain connections remain Unknown until actual process cleanup is observed.
+        // Cleanup must not manufacture a user cancel for a failed/unknown execution.
         let end_state = task_state(state.run.progress.state);
         self.emit(DiagnosticEvent::TaskLifecycle(TaskLifecycle {
             phase: TaskLifecyclePhase::End,
@@ -450,6 +483,25 @@ impl AcpRunJournal for PersistentWorkerRunJournal {
 }
 
 impl WorkerRunJournal for PersistentWorkerRunJournal {
+    fn flush_diagnostics(&self) {
+        let Ok(mut state) = self.lock_state() else {
+            return;
+        };
+        let Some(error) = state.pending_failure.take() else {
+            return;
+        };
+        let config_dir = state.qoder_config_dir.clone();
+        drop(state);
+        if let Ok(now) = now_ms().and_then(to_i64) {
+            self.progress_writer.execution_failure(
+                error,
+                self.verifier.last_request_failure(),
+                config_dir.as_deref(),
+                now,
+            );
+        }
+    }
+
     fn progress_writer(&self) -> Option<WorkerProgressWriter> {
         Some(self.progress_writer.clone())
     }
@@ -503,13 +555,16 @@ impl WorkerRunJournal for PersistentWorkerRunJournal {
     fn stop_intent(&self) -> Result<(), DelegationErrorV1> {
         self.verifier.revoke();
         let mut state = self.lock_state()?;
-        if matches!(
-            state.run.progress.state,
-            RunStateV1::Accepted
-                | RunStateV1::Preparing
-                | RunStateV1::Running
-                | RunStateV1::Unknown
-        ) {
+        if !state.failed
+            && !state.completed
+            && matches!(
+                state.run.progress.state,
+                RunStateV1::Accepted
+                    | RunStateV1::Preparing
+                    | RunStateV1::Running
+                    | RunStateV1::Unknown
+            )
+        {
             let task_state = task_state(state.run.progress.state);
             self.checkpoint(
                 &mut state,

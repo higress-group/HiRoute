@@ -1,6 +1,11 @@
 # Qoder model and task routing acceptance
 
 The [Qoder target](qoder_delegation.rs) exercises five distinct product journeys.
+The Worker core journey first uses a controlled model rejection to verify a real
+Qoder prompt failure, its run-scoped Gateway error and actual configuration
+directory in public `worker read`, unchanged user settings, and complete owned
+cleanup. Host explanations must not appear as a model Result. Its successful
+Skill/Continue phase then uses an independent private product namespace.
 It is explicitly opt-in; the existing Codex/Claude target keeps its original
 installation requirements. A missing CLI, login, case or result is a failed or
 not-executed prerequisite, never a passing skipped case.

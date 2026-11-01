@@ -52,6 +52,14 @@ impl LiveTerminalCheckpoint {
             .receipt
             .take()
     }
+
+    pub fn has_receipt(&self) -> bool {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .receipt
+            .is_some()
+    }
 }
 
 impl AcpTerminalCheckpoint for LiveTerminalCheckpoint {

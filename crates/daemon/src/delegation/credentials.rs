@@ -6,7 +6,7 @@ use hiroute_domain::{
     AgentAccessGrantMaterial, AgentIngressProtocolV1, CanonicalDigest, ProtectedSecret,
 };
 use std::sync::{
-    Arc,
+    Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 use zeroize::Zeroizing;
@@ -69,6 +69,7 @@ pub struct RunCredentialVerifier {
     record: RunCredentialRecord,
     safety: Arc<RunSafetyProjection>,
     revoked: AtomicBool,
+    last_request_failure: Mutex<Option<hiroute_gateway::server::dispatch::RunRequestFailure>>,
 }
 
 impl hiroute_application::delegation::control::DelegationRunDenial for RunCredentialVerifier {
@@ -111,6 +112,7 @@ impl RunCredentialVerifier {
             record,
             safety,
             revoked: AtomicBool::new(false),
+            last_request_failure: Mutex::new(None),
         })
     }
 
@@ -159,6 +161,24 @@ impl RunCredentialVerifier {
 
     pub(crate) fn model_fingerprint(&self) -> CanonicalDigest {
         self.record.fingerprints.model.clone()
+    }
+
+    pub(crate) fn record_request_failure(
+        &self,
+        failure: hiroute_gateway::server::dispatch::RunRequestFailure,
+    ) {
+        if let Ok(mut latest) = self.last_request_failure.lock() {
+            *latest = Some(failure);
+        }
+    }
+
+    pub(crate) fn last_request_failure(
+        &self,
+    ) -> Option<hiroute_gateway::server::dispatch::RunRequestFailure> {
+        self.last_request_failure
+            .lock()
+            .ok()
+            .and_then(|latest| *latest)
     }
 
     fn check(&self, now_ms: u64) -> Result<(), DelegationErrorV1> {

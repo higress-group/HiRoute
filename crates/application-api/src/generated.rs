@@ -21,6 +21,14 @@ pub struct GeneratedContractFile {
     pub contents: String,
 }
 
+impl crate::WorkerDependenciesSelectRequestV1 {
+    /// The same bounded producer used by the installed CLI contract. Input diagnostics
+    /// need only this schema, not generation of every unrelated command contract.
+    pub fn input_schema() -> Value {
+        worker::dependencies_select()
+    }
+}
+
 fn pretty<T: Serialize>(value: &T) -> String {
     let mut rendered =
         serde_json::to_string_pretty(value).expect("static contract data is serializable");
