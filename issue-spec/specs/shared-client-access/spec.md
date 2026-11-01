@@ -457,6 +457,10 @@ Source SPEC comments:
 HiRoute SHALL ship one canonical management Skill for all supported management Agent families, with the core Quickstart and bounded references for important branches: absent service/target/source, ambiguous scope, unavailable models or decision service, existing/partial setup, adjustment, effective-state diagnosis, observation and owned restoration. The Skill SHALL separate the caller from the managed target and consume installed public CLI capabilities, generated defaults and machine results rather than assuming Hermes, a particular filesystem layout or repository access. It SHALL explain how to obtain prerequisite CLI/Skill availability without coupling management to model routing or delegation. Instructions SHALL capture stdout, stderr and the CLI exit status separately when the native terminal merges them, inspect business/Operation results, preserve submission identity and avoid first-line JSON parsing or treating accepted as complete. Generated configuration and personal experience notes SHALL NOT be written into the product-managed Skill. Existing independent facet ownership, user-authorized effects, protected credentials and collaboration trigger policy remain authoritative. Before a restoration, reconnect or credential replacement that may revoke the current caller's own HiRoute access, the Skill SHALL establish an independent continuation path or leave that effect pending for an external operator. Verification SHALL distinguish saved state, native loading, request outcomes and actual classifier/group selection; manual model substitution or missing observations cannot establish a semantic decision branch or native activation. Before changing an existing Plan, the Skill SHALL retain its complete prior effective configuration and provide fully resolved recovery commands to the user, usable from an independent terminal if the caller fails. Plan restoration SHALL be distinguished from owned Agent-facet restoration. Restoring candidate names alone is not full configuration recovery; compare all effective settings after restoration.
  The same Skill SHALL guide a complete read-only analysis path for transition explanations, linked conversations, session/request spending ranking and recent savings using installed public commands. It SHALL resolve an unambiguous requested scope, reference and saved rates from current public facts, ask only for genuinely ambiguous/missing choices, and show basis/coverage with the answer. It SHALL distinguish retrying uncertain delivery from a new later restoration: after a completed restoration and subsequent edits, recovery uses a fresh current-head Preview and new Apply identity; replaying the old completed operation is not a new restore. The canonical Skill SHALL remain installable within the existing managed Skill resource limit and ownership contract; detailed options, enums, units and examples SHALL come from installed command help and schemas rather than an enlarged, copied or second Skill resource.
 
+The common Skill SHALL expose model competence reports, threshold replay and optional backend routing suggestions through installed public commands for every supported Agent. It SHALL keep the active published revision, branch/model/reasoning, effective interval and announcement cohort explicit; complete, partial, unscored, awaiting and unavailable evidence SHALL remain distinct. Request acceptance, absence of retries and cost SHALL NOT substitute for competence scores. Suggestions SHALL retain the backend's complete retained population, eligibility rules and missing-evidence explanations rather than a Skill-side policy derived from samples or display-window rows.
+
+For user-requested ongoing follow-up, the Skill SHALL guide reuse of the Agent or host's existing scheduler without requiring a particular Agent or adding a HiRoute scheduler. Scheduled checks SHALL be self-contained, retain exact target/Plan identities and the installed CLI path, use a modest user-selected cadence, and preserve minimal comparison state outside the managed Skill. They SHALL disclose scope changes and pending/unavailable reads, honor requested periodic reports or otherwise notify meaningful changes without repeating unchanged results. Unverified job creation SHALL remain unconfigured. Monitoring and suggestions SHALL NOT grant additional routing mutation authority; authorized changes retain complete baseline, Preview/Apply and recovery requirements.
+
 #### Scenario: Use the same Skill across callers
 
 - **WHEN** any supported Agent invokes management for itself or another supported local target
@@ -506,6 +510,21 @@ HiRoute SHALL ship one canonical management Skill for all supported management A
 
 - **WHEN** the requested Plan has one primary model and applicable saved rates in one currency
 - **THEN** the Skill resolves and discloses the exact reference and basis without repeated technical-ID entry; ambiguous choices or missing rates lead to bounded choices or the existing price-completion branch.
+
+#### Scenario: Interpret sparse model scores without inventing confidence
+
+- **WHEN** a competence report has a high rate but few complete scores or missing coverage/session evidence
+- **THEN** the Agent reports the counts, coverage and backend keep/missing reasons, without inventing a routing adjustment from request success or a sampled rate.
+
+#### Scenario: Follow up through the available host scheduler
+
+- **WHEN** the user asks any supported management Agent to keep tracking a selected model or route
+- **THEN** it can reuse a verified host job with self-contained public read commands, exact target/Plan IDs, cadence/timezone and the authorized destination; unchanged healthy or insufficient evidence stays quiet unless the user requested regular reports, and no routing settings change automatically.
+
+#### Scenario: Preserve unknown monitoring results
+
+- **WHEN** a suggestion read is pending, unavailable or failed, or the Agent has no usable scheduling facility
+- **THEN** the Agent distinguishes that state from a healthy empty suggestion result or active monitoring, retains bounded read continuation, and reports actionable remaining setup or evidence gaps.
 
 #### Scenario: Restore again after a later change
 
