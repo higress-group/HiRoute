@@ -174,8 +174,8 @@ fn handoff(f: &Fixture, target: &[u8], owned: bool) -> (PathBuf, Vec<u8>) {
     };
     let bytes = serde_json::to_vec(&record).unwrap();
     f.file(
-        &f.temp
-            .path()
+        &f.state
+            .as_path()
             .join(hiroute_host_runtime::RETAINED_PACKAGE_FILE),
         &bytes,
     );
@@ -202,8 +202,8 @@ fn matching_private_package_expires_but_external_and_future_images_do_not() {
         drain(&cleanup);
         assert_eq!(package.exists(), !(owned && matches));
         assert_eq!(
-            f.temp
-                .path()
+            f.state
+                .as_path()
                 .join(hiroute_host_runtime::RETAINED_PACKAGE_FILE)
                 .exists(),
             !matches
@@ -237,8 +237,8 @@ fn replaced_installer_handoff_is_preserved_with_its_package() {
     cleanup.service_ready();
     cleanup.cycle().unwrap(); // capture this generation's handoff
     let record = f
-        .temp
-        .path()
+        .state
+        .as_path()
         .join(hiroute_host_runtime::RETAINED_PACKAGE_FILE);
     fs::rename(&record, f.state.as_path().join("old-handoff")).unwrap();
     f.file(&record, &bytes); // even identical bytes cannot adopt a newer identity
