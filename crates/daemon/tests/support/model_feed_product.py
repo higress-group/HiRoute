@@ -130,7 +130,8 @@ def publication(product, sequence, present=True):
         offer['model_configuration_ids'].sort()
         data['price_rates'].append({'price_rate_id': 'price.feed.regression.usd', 'revision': 1, 'offer_ref': offer['offer_id'], 'model_configuration_id': MODEL, 'currency': 'USD', 'input_micros_per_million': 1234567, 'output_micros_per_million': 2345678})
         binding = copy.deepcopy(next(x for x in data['metadata_catalog']['endpoint_bindings']
-            if x['product_key'] == 'bailian-payg-cn' and x['upstream_model_id'] == 'qwen3-max-2026-01-23'))
+            if x['product_key'] == 'bailian-payg-cn' and not x.get('decision_constraints')
+            and 'bailian-payg-cn/openai-chat' in x['interface_candidates']))
         binding.update(binding_key='bailian-payg-cn/' + UPSTREAM, model_key=UPSTREAM, upstream_model_id=UPSTREAM, interface_candidates=['bailian-payg-cn/openai-chat'])
         data['metadata_catalog']['endpoint_bindings'].append(binding)
         data['pricing_facts'].append({'pricing_key': 'bailian-payg-cn/' + UPSTREAM, 'product_key': 'bailian-payg-cn', 'model_key': UPSTREAM, 'upstream_model_id': UPSTREAM, 'currency': 'USD', 'unit': 'per-1m-tokens', 'price_state': 'exact', 'evidence_refs': canonical['evidence_refs'], 'schedules': [{'schedule_key': 'standard', 'condition': {'kind': 'unconditional'}, 'application': 'whole-request', 'rates': {'input': '1.234567', 'output': '2.345678', 'cache-read': '0', 'cache-write': '0.125'}}]})

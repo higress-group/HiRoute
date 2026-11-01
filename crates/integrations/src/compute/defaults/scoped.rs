@@ -137,7 +137,11 @@ mod tests {
             .endpoint_bindings
             .iter()
             .find(|b| {
-                b.product_key == "bailian-payg-cn" && b.upstream_model_id == cap.upstream_model_id
+                b.product_key == "bailian-payg-cn"
+                    && b.decision_constraints.is_empty()
+                    && b.interface_candidates
+                        .iter()
+                        .any(|i| i == "bailian-payg-cn/openai-chat")
             })
             .unwrap()
             .clone();
