@@ -222,6 +222,7 @@ function Invoke-LibraryTests {
     if ($Package -eq 'hiroute-cpa-bridge') {
       $optIn = @(
         'accounts::stock::pin_tests::live_managed_cpa_pin_reads',
+        'accounts::stock::pin_tests::diagnostic_tests::live_managed_cpa_discovery_diagnostics',
         'runtime::tests::borrowed_stock::stock_cpa_v7_2_140_accepts_managed_auth_ready_and_shutdown_contract',
         'runtime::tests::borrowed_stock::stock_cpa_v7_2_140_real_borrowed_codex_responses_smoke')
       foreach ($case in @(

@@ -192,7 +192,7 @@ persist query diagnostics as execution facts or mutate mode/Binding/revisions.
 The common usable context upper bound MUST account for every active group's main
 and fallback candidates, exact protocol limits, output, and reasoning reservation.
 Without `limits.context_window_tokens`, the client window is
-`min(272000, common_usable_upper_bound)`; explicit values are positive integers no
+`min(400000, common_usable_upper_bound)`; explicit values are positive integers no
 larger than that bound. This is a client window, not a rewrite of model capability.
 Editor and generated Codex catalog MUST use the same aggregation and identify which
 candidate narrows context/vision. Serial-tool limitations are separate product

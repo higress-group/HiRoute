@@ -36,6 +36,7 @@ const scenarios = [
     details.querySelector('summary').click();
     await tick();
     assert(details.textContent.includes('当前编辑内容') && details.textContent.includes('Codex Responses 入口'), 'The capability preview claims published or upstream protocol support');
+    assert(details.textContent.includes('默认最多使用 400,000 tokens'), 'The default context window explanation is stale');
     const context = document.querySelector('[data-codex-capability-limit="context_window"]');
     const image = document.querySelector('[data-codex-capability-limit="image_input"]');
     assert(visible(context) && context?.textContent.includes('Qwen3-Coder-Plus'), 'The context narrowing candidate is not identified');

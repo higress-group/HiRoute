@@ -215,6 +215,27 @@ def unicode_case(product, upstream):
             'invalid_ids_rejected_before_network': len(invalid_ids), 'reopened': True}
 
 
+def default_context_case(product, upstream):
+    saved = native.save_native_source(product, upstream, native.NATIVE_TOKEN,
+        upstream_model_id=MODEL, variant='default-context', context_tokens=1_050_000)
+    native.publish_plan_and_agent(product, saved['binding_id'], native_model_mode='hiroute_only')
+    edited = native.control(product, 'GetPlanEditorOptions', {'editor': product.editor})['data']
+    assert edited['context_window']['default_tokens'] == 400_000, edited
+    assert edited['codex_capabilities']['context_window'] == 400_000, edited
+    reference = {'plan_id': product.plan_id, 'revision': 1}
+    published = native.control(product, 'GetPlanEditorOptions', {'published_plan': reference})['data']
+    assert published['context_window'] == edited['context_window'], published
+    assert published['codex_capabilities']['context_window'] == 400_000, published
+    native.gateway_request(product)
+    product.stop()
+    product.start()
+    reopened = native.control(product, 'GetPlanEditorOptions', {'published_plan': reference})['data']
+    assert reopened['context_window'] == published['context_window'], reopened
+    assert reopened['codex_capabilities']['context_window'] == 400_000, reopened
+    return {'state': 'green', 'default_context_tokens': 400_000,
+            'publication_and_gateway_succeeded': True, 'reopened': True}
+
+
 def feff_egress_case(product, upstream):
     saved = native.save_native_source(product, upstream, native.NATIVE_TOKEN,
         upstream_model_id=FEFF_MODEL, variant='feff-egress', model_display_name='格式字符与 Emoji 模型')
@@ -280,7 +301,8 @@ def many_unavailable_case(product, upstream):
             'valid_candidates': 1, 'publication_and_gateway_succeeded': True}
 
 
-CASES = {'ascii-control': ascii_case, 'unicode': unicode_case, 'feff-egress': feff_egress_case,
+CASES = {'ascii-control': ascii_case, 'unicode': unicode_case, 'default-context': default_context_case,
+         'feff-egress': feff_egress_case,
          'empty': empty_case, 'many-unavailable': many_unavailable_case}
 
 

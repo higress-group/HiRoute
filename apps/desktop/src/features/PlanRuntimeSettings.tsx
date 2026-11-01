@@ -33,7 +33,7 @@ export function PlanRuntimeSettings({ limits, options, previewAgent: fixedPrevie
       editingMemory.customWindowTokens = limits.context_window_tokens;
       onChange({ ...limits, context_window_tokens: undefined });
     } else {
-      onChange({ ...limits, context_window_tokens: editingMemory.customWindowTokens ?? bounds?.default_tokens ?? 272000 });
+      onChange({ ...limits, context_window_tokens: editingMemory.customWindowTokens ?? bounds?.default_tokens ?? 400000 });
     }
   }
   function capabilityIssue(issue: CapabilityIssue) {
@@ -124,7 +124,7 @@ export function PlanRuntimeSettings({ limits, options, previewAgent: fixedPrevie
           : <p className="field-help" role="status">{text('正在核实当前组合的能力。', 'Checking the current combination.')}</p>)}
       {previewAgent === 'other' && <p className="field-help">{text('此 Agent 暂无能力预览；映射时会核实兼容性。', 'A capability preview is not available for this Agent; compatibility is checked when mapping.')}</p>}
       <Disclosure className="native-details plan-capability-details" label={text('能力依据与生效方式', 'Capability details and applying changes')} language={language}>
-        <p className="field-help">{text('默认最多使用 272,000 tokens，受候选共同上界约束。较大的窗口可能增加上下文与缓存费用。', 'The default is at most 272,000 tokens, bounded by the shared candidate limit. Larger windows may increase context and cache costs.')}</p>
+        <p className="field-help">{text('默认最多使用 400,000 tokens，受候选共同上界约束。较大的窗口可能增加上下文与缓存费用。', 'The default is at most 400,000 tokens, bounded by the shared candidate limit. Larger windows may increase context and cache costs.')}</p>
         <p className="field-help">{text('已接入的 Agent 需重新保存模型设置并重新启动，才能加载更新后的窗口；进行中的会话不会立即改变。', 'Save the Agent model settings again and restart the client to load the updated window. Running sessions do not change immediately.')}</p>
         {previewAgent === 'codex' ? <>
           <p className="field-help">{text('依据当前编辑内容及候选的 Codex Responses 入口能力计算。上游使用其他协议时仍可能通过 HiRoute 适配；发布和接入时会重新核对，预览不代表真实客户端验证。', 'Calculated from the current edit and candidate Codex Responses ingress capabilities. HiRoute may adapt another upstream protocol; publication and connection recheck compatibility, and this preview is not a live client verification.')}</p>
