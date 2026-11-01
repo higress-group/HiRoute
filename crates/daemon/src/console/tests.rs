@@ -43,7 +43,7 @@ pub(super) fn http(
     (
         code,
         serde_json::from_str(&content).unwrap_or(Value::Null),
-        status.into(),
+        status,
     )
 }
 // KnownFolders cannot be redirected on Windows; its installed composition uses
