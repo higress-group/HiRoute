@@ -1,6 +1,7 @@
 //! Rejected proxy attempts from the pinned, account-free packaged CPA journey.
 //! No upstream connection or TLS tunnel is created. CONNECT identifies an origin,
 //! not its encrypted path, request body, OAuth success or model authorization.
+use sha2::{Digest, Sha256};
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -84,6 +85,9 @@ fn destination(value: &str) -> Destination {
 struct HeaderFacts {
     method: Method,
     destination: Destination,
+    // Test-only equality evidence for a previously unknown CONNECT authority.
+    // No origin text, URL path, authentication or raw header is retained.
+    unknown_destination_digest: Option<[u8; 32]>,
     valid: bool,
     authentication: bool,
     body: bool,
@@ -93,6 +97,7 @@ fn classify(bytes: &[u8]) -> HeaderFacts {
     let mut facts = HeaderFacts {
         method: Method::Other,
         destination: Destination::Other,
+        unknown_destination_digest: None,
         valid: false,
         authentication: false,
         body: false,
@@ -117,6 +122,9 @@ fn classify(bytes: &[u8]) -> HeaderFacts {
         _ => Method::Other,
     };
     facts.destination = destination(fields[1]);
+    if facts.destination == Destination::Other {
+        facts.unknown_destination_digest = Some(Sha256::digest(fields[1].as_bytes()).into());
+    }
     let mut hosts = 0;
     let mut agents = 0;
     for line in lines {

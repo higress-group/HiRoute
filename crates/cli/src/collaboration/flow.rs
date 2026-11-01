@@ -98,11 +98,13 @@ fn workflow(
         )
     };
     if let Some(key) = key.as_deref() {
+        super::diagnostic("receipt_load", "begin");
         // Replay the immutable original request before discovery/check/preview can change its
         // accepted digest. A key reused for a different intent fails before any native check.
-        if let Some(saved) =
-            receipt::load(receipts, key, selection).map_err(|code| fail(code, request_id))?
-        {
+        if let Some(saved) = receipt::load(receipts, key, selection).map_err(|code| {
+            super::diagnostic("receipt_load_failed", format_args!("{code:?}"));
+            fail(code, request_id)
+        })? {
             return Ok(submit(client, saved, selection, request_id));
         }
     }
@@ -241,8 +243,11 @@ fn workflow(
         idempotency_key: key.expect("a save has a submission key"),
         login_item: None,
     };
-    let saved =
-        receipt::freeze(receipts, selection, apply).map_err(|code| fail(code, request_id))?;
+    super::diagnostic("receipt_freeze", "begin");
+    let saved = receipt::freeze(receipts, selection, apply).map_err(|code| {
+        super::diagnostic("receipt_freeze_failed", format_args!("{code:?}"));
+        fail(code, request_id)
+    })?;
     Ok(submit(client, saved, selection, request_id))
 }
 
@@ -266,6 +271,15 @@ fn decode_preview(
         || &intent != spec
         || preview.applicable != preview.blockers.is_empty()
     {
+        super::diagnostic(
+            "preview_contract_failed",
+            format_args!(
+                "schema={} intent={} blockers={}",
+                preview.schema == "hiroute.agent-settings-preview/v2",
+                &intent == spec,
+                preview.applicable == preview.blockers.is_empty()
+            ),
+        );
         return Err(fail(ErrorCode::DaemonUnavailable, request_id));
     }
     Ok(preview)
@@ -299,9 +313,11 @@ fn submit(
     } else {
         "ApplyAgentConnectionChange"
     };
+    super::diagnostic("submit", operation_stage(operation));
     let mut response = match client.call(wire(operation, json!(apply), request_id)) {
         Ok(response) => response,
         Err(error) => {
+            super::diagnostic("submit_transport_failed", error);
             let mut response = *fail(ErrorCode::DaemonUnavailable, request_id);
             response.next_actions.push(NextActionV1 {
                 command_id: if apply.spec.is_restore_only() {
@@ -343,9 +359,22 @@ fn call(
     payload: Value,
     request_id: &str,
 ) -> FlowResult<MachineEnvelopeV2<Value>> {
+    super::diagnostic("control_begin", operation_stage(operation));
     let response = client
         .call(wire(operation, payload, request_id))
-        .map_err(|_| fail(ErrorCode::DaemonUnavailable, request_id))?;
+        .map_err(|error| {
+            super::diagnostic("control_transport_failed", error);
+            fail(ErrorCode::DaemonUnavailable, request_id)
+        })?;
+    super::diagnostic(
+        "control_end",
+        format_args!(
+            "{} {:?} {:?}",
+            operation_stage(operation),
+            response.status,
+            response.error.as_ref().map(|error| error.code)
+        ),
+    );
     if response.status == MachineStatus::Succeeded {
         Ok(response)
     } else {
@@ -364,7 +393,21 @@ fn query<T: serde::de::DeserializeOwned>(
             .data
             .ok_or_else(|| fail(ErrorCode::DaemonUnavailable, request_id))?,
     )
-    .map_err(|_| fail(ErrorCode::DaemonUnavailable, request_id))
+    .map_err(|_| {
+        super::diagnostic("query_decode_failed", operation_stage(operation));
+        fail(ErrorCode::DaemonUnavailable, request_id)
+    })
+}
+
+fn operation_stage(operation: &str) -> &'static str {
+    match operation {
+        "ScanAgents" => "scan",
+        "GetAgentConnectionStatus" => "status",
+        "PreviewAgentConnectionChange" | "PreviewAgentConnectionRestore" => "preview",
+        "CheckAgentConnection" => "check",
+        "ApplyAgentConnectionChange" | "ApplyAgentConnectionRestore" => "apply",
+        _ => "other",
+    }
 }
 fn fail(code: ErrorCode, request_id: &str) -> Box<MachineEnvelopeV2<Value>> {
     Box::new(MachineEnvelopeV2::failed(

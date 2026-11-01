@@ -10,6 +10,7 @@ pub(super) enum SelectedTool {
     Unknown,
     ExecCommand,
     ShellCommand,
+    Bash,
 }
 
 impl SelectedTool {
@@ -17,6 +18,7 @@ impl SelectedTool {
         match name {
             "exec_command" => Self::ExecCommand,
             "shell_command" => Self::ShellCommand,
+            "Bash" => Self::Bash,
             _ => Self::Unknown,
         }
     }
@@ -175,6 +177,7 @@ fn wall_time_micros(text: &str) -> Option<u64> {
 pub(super) struct ToolResultDiagnostic {
     pub(super) selected_tool: SelectedTool,
     pub(super) correlated: bool,
+    pub(super) tool_error: bool,
     pub(super) output_shape: OutputShape,
     pub(super) content_items: usize,
     pub(super) text_items: usize,
@@ -209,6 +212,7 @@ impl ToolResultDiagnostic {
         Self {
             selected_tool,
             correlated: result.is_some(),
+            tool_error: result.is_some_and(|result| result["is_error"] == true),
             output_shape: match value {
                 None => OutputShape::Missing,
                 Some(Value::Null) => OutputShape::Null,

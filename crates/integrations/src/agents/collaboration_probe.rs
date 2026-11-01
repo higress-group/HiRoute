@@ -382,6 +382,40 @@ impl CollaborationChallenge {
                 "tool_use",
             ));
         }
+        #[cfg(test)]
+        {
+            let result = body["messages"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|message| message["content"].as_array())
+                .flatten()
+                .find(|block| {
+                    block["type"] == "tool_result" && block["tool_use_id"] == "toolu_hiroute_probe"
+                });
+            let output = result.and_then(|block| {
+                block["content"].as_str().map(str::to_owned).or_else(|| {
+                    block["content"].as_array().map(|parts| {
+                        parts
+                            .iter()
+                            .filter_map(|part| part["text"].as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                })
+            });
+            let observed =
+                result.map(|block| json!({"output":block["content"],"is_error":block["is_error"]}));
+            ToolResultDiagnostic::capture(
+                SelectedTool::Bash,
+                observed.as_ref(),
+                output.as_deref(),
+                &self.contents,
+                &self.expected_cli,
+                None,
+            )
+            .emit();
+        }
         let proved = body["messages"].as_array().is_some_and(|messages| {
             messages.iter().any(|message| {
                 message["content"].as_array().is_some_and(|blocks| {
