@@ -97,6 +97,15 @@ requires each follow-up assessment to name its own actual predecessor, with no
 partial capture. Negative controls reject cross-session, self, duplicate and
 missing identities even when the number of assessment members is correct.
 
+For adaptive decision windows, the [real process regression](../../crates/daemon/tests/support/decision_context_product.py)
+covers saved snapshots, both decision codecs, large inputs, zero-attempt local fallback and retained diagnostics.
+The [resource driver](../../crates/daemon/tests/support/decision_context_resources.py) runs against exact built
+daemon/CLI binaries: pass the repository checkout and `--output PATH`, adding `--legacy` only for the
+pre-adaptive baseline. Run baseline and candidate sequentially on the same idle host. It measures cold/warm
+foreground time including fallback, CPU through capture drain, sampled daemon RSS, tool-heavy/concurrent
+requests and unrelated-state growth. Its numeric evidence records revisions and binary hashes; the sample
+does not certify provider capacity, allocator bounds or performance on other hosts.
+
 | Layer | Appropriate assertion | Evidence limit |
 | --- | --- | --- |
 | Pure state / policy | Intent, thresholds, branch isolation and request construction | No service dispatch or production wiring |
