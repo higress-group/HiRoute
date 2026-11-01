@@ -718,12 +718,21 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
             && event.get("parent_transcript_root").and_then(Value::as_str)
                 == Some(request_transcript_root)
     }));
-    let committed_frame = facts
+    let committed = facts
         .iter()
         .find(|fact| fact.pointer("/fact/kind").and_then(Value::as_str) == Some("semantic_commit"))
-        .and_then(|fact| fact.pointer("/fact/frame_id"))
+        .expect("semantic commit fact");
+    assert!(
+        !committed
+            .pointer("/fact/frame_id")
+            .and_then(Value::as_str)
+            .unwrap()
+            .is_empty()
+    );
+    let committed_attempt = committed
+        .get("attempt_id")
         .and_then(Value::as_str)
-        .expect("semantic commit frame identity");
+        .expect("actual accepted Attempt identity");
     assert!(
         content
             .iter()
@@ -732,8 +741,11 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
                     && event.get("phase").and_then(Value::as_str) == Some("append")
             })
             .all(|event| {
-                event.get("transport_frame_id").and_then(Value::as_str) == Some(committed_frame)
+                event.get("transport_frame_id").is_none_or(Value::is_null)
                     && event.get("message_ordinal").and_then(Value::as_u64) == Some(0)
+                    && event.get("attempt_id").and_then(Value::as_str) == Some(committed_attempt)
+                    && event.get("downstream_delivery").and_then(Value::as_str)
+                        == Some("full_frame_transport_accepted")
             })
     );
 
