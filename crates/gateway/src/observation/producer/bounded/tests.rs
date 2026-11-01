@@ -16,6 +16,9 @@ use super::*;
 #[path = "batch_tests.rs"]
 mod batch;
 
+#[path = "credit_tests.rs"]
+mod credit;
+
 #[derive(Default)]
 struct CapturingSink {
     records: Mutex<Vec<ObservationSequenceStamp>>,
