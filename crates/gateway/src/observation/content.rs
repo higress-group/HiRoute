@@ -48,10 +48,29 @@ impl CanonicalFrameDelivery {
 }
 
 impl RequestObservation {
+    pub(super) fn terminal_content(
+        &self,
+        direction: &'static str,
+        phase: &'static str,
+        reason: Option<&str>,
+    ) {
+        super::content_work::inline(self.terminal_content_run(direction, phase, reason));
+    }
+
     pub(super) fn begin_content(
         &self,
         direction: &'static str,
         attempt: Option<&AttemptObservation>,
+    ) {
+        super::content_work::inline(
+            self.begin_content_at_run(direction, attempt.map(|value| value.attempt_id.as_str())),
+        );
+    }
+
+    pub(super) async fn begin_content_at_run(
+        &self,
+        direction: &'static str,
+        attempt_id: Option<&str>,
     ) {
         if !self.captures_content() {
             return;
@@ -66,7 +85,7 @@ impl RequestObservation {
                 return;
             }
             *started = true;
-            let fork_id = self.fork_id(direction, attempt);
+            let fork_id = self.fork_id(direction, attempt_id);
             match direction {
                 "request_input" => state.request_content_fork = Some(fork_id.clone()),
                 _ => state.response_content_fork = Some(fork_id.clone()),
@@ -93,10 +112,10 @@ impl RequestObservation {
             (true, fork_id, parent_transcript_root)
         };
         if should_emit {
-            self.emit_content(ContentEvent {
+            self.emit_content_run(ContentEvent {
                 direction,
                 phase: "begin",
-                attempt_id: attempt.map(|value| value.attempt_id.clone()),
+                attempt_id: attempt_id.map(str::to_owned),
                 fork_id,
                 parent_transcript_root,
                 result_transcript_root: None,
@@ -115,11 +134,12 @@ impl RequestObservation {
                 downstream_delivery: None,
                 abort_reason: None,
                 completeness_delta: None,
-            });
+            })
+            .await;
         }
     }
 
-    fn append_content_chunk(&self, chunk: ContentChunk<'_>) {
+    async fn append_content_chunk_run(&self, chunk: ContentChunk<'_>) {
         if !self.captures_content() {
             return;
         }
@@ -163,7 +183,7 @@ impl RequestObservation {
             stats.note_chunk(chunk.bytes.len());
             (
                 current,
-                chunk.attempt.map(|attempt| attempt.attempt_id.clone()),
+                chunk.attempt_id.map(str::to_owned),
                 if chunk.direction == "request_input" {
                     state.request_content_fork.clone()
                 } else {
@@ -172,7 +192,7 @@ impl RequestObservation {
                 .expect("content capture begins before appending"),
             )
         };
-        self.emit_content(ContentEvent {
+        self.emit_content_run(ContentEvent {
             direction: chunk.direction,
             phase: "append",
             attempt_id,
@@ -194,10 +214,11 @@ impl RequestObservation {
             downstream_delivery: chunk.downstream_delivery.map(Into::into),
             abort_reason: None,
             completeness_delta: None,
-        });
+        })
+        .await;
     }
 
-    pub(super) fn terminal_content(
+    pub(super) async fn terminal_content_run(
         &self,
         direction: &'static str,
         phase: &'static str,
@@ -227,7 +248,10 @@ impl RequestObservation {
                         started,
                         terminal,
                         state.response_transcript.take(),
-                        state.accepted_attempt.clone(),
+                        state
+                            .accepted_attempt
+                            .as_ref()
+                            .map(|attempt| attempt.attempt_id.clone()),
                     )
                 }
             }
@@ -262,11 +286,11 @@ impl RequestObservation {
         if direction == "request_input" {
             self.lock_state().request_result_transcript_root = result_transcript_root.clone();
         }
-        self.emit_content(ContentEvent {
+        self.emit_content_run(ContentEvent {
             direction,
             phase,
-            attempt_id: attempt.as_ref().map(|value| value.attempt_id.clone()),
-            fork_id: self.fork_id(direction, attempt.as_ref()),
+            attempt_id: attempt.clone(),
+            fork_id: self.fork_id(direction, attempt.as_deref()),
             parent_transcript_root: self.content_parent_root(direction),
             result_transcript_root,
             message_instance_id: None,
@@ -289,7 +313,8 @@ impl RequestObservation {
             } else {
                 "partial".into()
             }),
-        });
+        })
+        .await;
     }
 
     fn content_blob_digest(&self, media_type: &str, bytes: &[u8]) -> String {
@@ -359,7 +384,7 @@ impl RequestObservation {
         }
     }
 
-    fn fork_id(&self, direction: &str, attempt: Option<&AttemptObservation>) -> String {
+    fn fork_id(&self, direction: &str, attempt_id: Option<&str>) -> String {
         stable_id(
             "fork",
             &self.inner.key,
@@ -367,13 +392,14 @@ impl RequestObservation {
             &[
                 self.metadata().request_id.as_bytes(),
                 direction.as_bytes(),
-                attempt.map_or(b"request".as_slice(), |value| value.attempt_id.as_bytes()),
+                attempt_id.map_or(b"request".as_slice(), str::as_bytes),
             ],
         )
     }
 
-    fn emit_content(&self, event: ContentEvent) {
-        if self.content_credit_wait.is_some()
+    async fn emit_content_run(&self, event: ContentEvent) {
+        if self.content_background
+            && event.phase != "abort"
             && self
                 .inner
                 .async_content
@@ -387,71 +413,76 @@ impl RequestObservation {
         let key = self.inner.key;
         let event_kind = event.phase;
         let occurred_at_unix_nanos = self.content_occurred_at.unwrap_or_else(unix_nanos);
-        let credit_bytes = self
-            .content_credit_wait
-            .map_or(0, |_| event.record_credit_bytes(&correlation));
-        let published = self.inner.channels.content.publish_with_credit(
-            self.inner.latency.clone(),
-            self.content_credit_wait
-                .map(|limit| std::time::Instant::now() + limit),
-            credit_bytes,
-            move |producer, sequence, loss| {
-                let sequence_bytes = sequence.to_be_bytes();
-                ConversationContentEnvelopeV1 {
-                    schema_version: CONVERSATION_CONTENT_SCHEMA.into(),
-                    schema_digest: CONVERSATION_CONTENT_PORT_DIGEST.into(),
-                    channel: "conversation_content".into(),
-                    producer,
-                    sequence,
-                    event_id: stable_id(
-                        "content-event",
-                        &key,
-                        b"conversation-content-event",
-                        &[
-                            request_id.as_bytes(),
-                            event.direction.as_bytes(),
-                            event_kind.as_bytes(),
-                            &sequence_bytes,
-                        ],
-                    ),
-                    correlation,
-                    direction: event.direction.into(),
-                    phase: event.phase.into(),
-                    attempt_id: event.attempt_id,
-                    fork_id: event.fork_id,
-                    parent_transcript_root: event.parent_transcript_root,
-                    result_transcript_root: event.result_transcript_root,
-                    message_instance_id: event.message_instance_id,
-                    message_role: event.message_role,
-                    content_kind: event.content_kind,
-                    content_id: event.content_id,
-                    content_blob_digest: event.content_blob_digest,
-                    message_ordinal: event.message_ordinal,
-                    part_ordinal: event.part_ordinal,
-                    chunk_ordinal: event.chunk_ordinal,
-                    transport_frame_id: event.transport_frame_id,
-                    canonical_media_type: event.canonical_media_type,
-                    canonical_bytes_base64: event.canonical_bytes_base64,
-                    content_ref: event.content_ref,
-                    downstream_delivery: event.downstream_delivery,
-                    abort_reason: event.abort_reason,
-                    occurred_at_unix_nanos,
-                    completeness_delta: loss
-                        .as_ref()
-                        .map(|_| "partial".into())
-                        .or(event.completeness_delta),
-                    loss_watermark: loss,
-                }
-            },
-        );
-        if !published
-            && self.content_credit_wait.is_some()
-            && let Some(status) = self.inner.async_content.get()
-        {
-            // The producer has already declared the exact lost sequence.
-            // Suppress dependent terminal roots after this failed command.
-            status.stop();
+        let credit_bytes = event.record_credit_bytes(&correlation);
+        let control = event.phase != "append";
+        let published = self
+            .inner
+            .channels
+            .content
+            .publish_content(
+                self.inner.latency.clone(),
+                credit_bytes,
+                self.content_background,
+                control,
+                &self.inner.content_spool,
+                move |producer, sequence, loss| {
+                    let sequence_bytes = sequence.to_be_bytes();
+                    ConversationContentEnvelopeV1 {
+                        schema_version: CONVERSATION_CONTENT_SCHEMA.into(),
+                        schema_digest: CONVERSATION_CONTENT_PORT_DIGEST.into(),
+                        channel: "conversation_content".into(),
+                        producer,
+                        sequence,
+                        event_id: stable_id(
+                            "content-event",
+                            &key,
+                            b"conversation-content-event",
+                            &[
+                                request_id.as_bytes(),
+                                event.direction.as_bytes(),
+                                event_kind.as_bytes(),
+                                &sequence_bytes,
+                            ],
+                        ),
+                        correlation,
+                        direction: event.direction.into(),
+                        phase: event.phase.into(),
+                        attempt_id: event.attempt_id,
+                        fork_id: event.fork_id,
+                        parent_transcript_root: event.parent_transcript_root,
+                        result_transcript_root: event.result_transcript_root,
+                        message_instance_id: event.message_instance_id,
+                        message_role: event.message_role,
+                        content_kind: event.content_kind,
+                        content_id: event.content_id,
+                        content_blob_digest: event.content_blob_digest,
+                        message_ordinal: event.message_ordinal,
+                        part_ordinal: event.part_ordinal,
+                        chunk_ordinal: event.chunk_ordinal,
+                        transport_frame_id: event.transport_frame_id,
+                        canonical_media_type: event.canonical_media_type,
+                        canonical_bytes_base64: event.canonical_bytes_base64,
+                        content_ref: event.content_ref,
+                        downstream_delivery: event.downstream_delivery,
+                        abort_reason: event.abort_reason,
+                        occurred_at_unix_nanos,
+                        completeness_delta: loss
+                            .as_ref()
+                            .map(|_| "partial".into())
+                            .or(event.completeness_delta),
+                        loss_watermark: loss,
+                    }
+                },
+            )
+            .await;
+        if let Err(reason) = published {
+            if let Some(status) = self.inner.async_content.get() {
+                // Allocated sequence loss is already owned by the publisher.
+                // Queue only the dependent abort; never invent a finish root.
+                status.note_failure(reason);
+            }
         }
+        self.content_checkpoint(credit_bytes, false).await;
     }
 }
 
@@ -536,10 +567,17 @@ impl RequestObservation {
         if let Some((store, ticket)) = self.inner.agent_turn_output.get() {
             store.accept_output(ticket, &delivery.events);
         }
-        let usage = delivery.usage.take();
-        self.defer_response_content(attempt, frame_id, delivery);
-        if let Some(usage) = usage {
+        if let Some(usage) = delivery.usage.take() {
             self.usage_model(&usage);
+        }
+        // Accepted history and usage belong to the critical capture lane.
+        // Empty or metadata-only delivery has no optional Content work to do.
+        if delivery
+            .events
+            .iter()
+            .any(|event| canonical_response_content_kind(&event.event).is_some())
+        {
+            self.defer_response_content(attempt, frame_id, delivery);
         }
     }
 
@@ -549,17 +587,31 @@ impl RequestObservation {
         frame_id: &str,
         delivery: CanonicalFrameDelivery,
     ) {
+        super::content_work::inline(self.emit_response_content_at_run(
+            &attempt.attempt_id,
+            frame_id,
+            delivery,
+        ));
+    }
+
+    pub(super) async fn emit_response_content_at_run(
+        &self,
+        attempt_id: &str,
+        frame_id: &str,
+        delivery: CanonicalFrameDelivery,
+    ) {
         if self.captures_content() {
             for event in delivery.events {
                 let Some(kind) = canonical_response_content_kind(&event.event) else {
                     continue;
                 };
                 let Ok(bytes) = serialize_observed_response_event(&event) else {
-                    self.terminal_content(
+                    self.terminal_content_run(
                         "response_delivered",
                         "abort",
                         Some("canonical_response_serialization_failed"),
-                    );
+                    )
+                    .await;
                     return;
                 };
                 let part_ordinal = {
@@ -580,9 +632,9 @@ impl RequestObservation {
                 };
                 emit_content_ref(self, "response_delivered", content_ref.clone());
                 for (index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {
-                    self.append_content_chunk(ContentChunk {
+                    self.append_content_chunk_run(ContentChunk {
                         direction: "response_delivered",
-                        attempt: Some(attempt),
+                        attempt_id: Some(attempt_id),
                         message_ordinal: 0,
                         part_ordinal,
                         role: "assistant",
@@ -596,7 +648,8 @@ impl RequestObservation {
                         starts_content: index == 0,
                         transport_frame_id: Some(frame_id),
                         downstream_delivery: Some("full_frame_transport_accepted"),
-                    });
+                    })
+                    .await;
                 }
             }
         }
@@ -666,7 +719,7 @@ impl Drop for AcceptedResponseCapture {
 
 struct ContentChunk<'a> {
     direction: &'static str,
-    attempt: Option<&'a AttemptObservation>,
+    attempt_id: Option<&'a str>,
     message_ordinal: u32,
     part_ordinal: u32,
     role: &'a str,

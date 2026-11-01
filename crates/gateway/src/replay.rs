@@ -16,6 +16,7 @@ use thiserror::Error;
 
 use crate::content_ref::ContentRef;
 
+mod overflow;
 mod secure_path;
 mod stream;
 #[cfg(windows)]
@@ -25,6 +26,9 @@ mod stream;
 #[allow(unsafe_code)]
 mod windows_acl;
 
+pub(crate) use overflow::{
+    OverflowFactory, OverflowQuota, OverflowRange, OverflowStats, OverflowWriter,
+};
 pub use stream::ReplayReader;
 use stream::{ReplayStream, ReplayStreamBuilder};
 pub(crate) use stream::{write_canonical_json, write_canonical_object};

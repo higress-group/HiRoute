@@ -1,7 +1,8 @@
-use std::io::{Read, Write};
+use std::io::Write;
 
 use serde_json::Value;
 
+use super::write_canonical_json_with_replay;
 use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt};
 use crate::replay::{ReplayStore, write_canonical_json};
 use crate::runtime_fingerprint::{DigestWriter, RuntimeHash};
@@ -834,96 +835,6 @@ fn frame_header(mac: &mut RuntimeHash, kind: &[u8], length: u64) {
     mac.update((kind.len() as u64).to_be_bytes());
     mac.update(kind);
     mac.update(length.to_be_bytes());
-}
-
-pub(crate) fn write_canonical_json_with_replay(
-    writer: &mut impl Write,
-    value: &Value,
-    replay: &ReplayStore,
-) -> Option<()> {
-    if let Some(reference) = value.content_ref() {
-        if !replay.is_canonical_json(&reference) {
-            return None;
-        }
-        let mut reader = replay.reader(&reference).ok()?;
-        std::io::copy(&mut reader, writer).ok()?;
-        reader.verify_terminal().ok()?;
-        return Some(());
-    }
-    match value {
-        Value::String(value) if value.content_ref().is_some() => {
-            let reference = value.content_ref()?;
-            let mut reader = replay.reader(&reference).ok()?;
-            writer.write_all(b"\"").ok()?;
-            let mut buffer = [0_u8; 16 * 1024];
-            loop {
-                let count = reader.read(&mut buffer).ok()?;
-                if count == 0 {
-                    break;
-                }
-                let mut start = 0;
-                for (index, &byte) in buffer[..count].iter().enumerate() {
-                    let escape = match byte {
-                        b'"' => Some(b"\\\"".as_slice()),
-                        b'\\' => Some(b"\\\\".as_slice()),
-                        b'\x08' => Some(b"\\b".as_slice()),
-                        b'\x0c' => Some(b"\\f".as_slice()),
-                        b'\n' => Some(b"\\n".as_slice()),
-                        b'\r' => Some(b"\\r".as_slice()),
-                        b'\t' => Some(b"\\t".as_slice()),
-                        0x00..=0x1f => None,
-                        _ => continue,
-                    };
-                    writer.write_all(&buffer[start..index]).ok()?;
-                    if let Some(escape) = escape {
-                        writer.write_all(escape).ok()?;
-                    } else {
-                        const HEX: &[u8; 16] = b"0123456789abcdef";
-                        writer
-                            .write_all(&[
-                                b'\\',
-                                b'u',
-                                b'0',
-                                b'0',
-                                HEX[(byte >> 4) as usize],
-                                HEX[(byte & 0xf) as usize],
-                            ])
-                            .ok()?;
-                    }
-                    start = index + 1;
-                }
-                writer.write_all(&buffer[start..count]).ok()?;
-            }
-            reader.verify_terminal().ok()?;
-            writer.write_all(b"\"").ok()?;
-        }
-        Value::Array(values) => {
-            writer.write_all(b"[").ok()?;
-            for (index, value) in values.iter().enumerate() {
-                if index > 0 {
-                    writer.write_all(b",").ok()?;
-                }
-                write_canonical_json_with_replay(writer, value, replay)?;
-            }
-            writer.write_all(b"]").ok()?;
-        }
-        Value::Object(values) => {
-            writer.write_all(b"{").ok()?;
-            let mut keys = values.keys().collect::<Vec<_>>();
-            keys.sort_unstable();
-            for (index, key) in keys.into_iter().enumerate() {
-                if index > 0 {
-                    writer.write_all(b",").ok()?;
-                }
-                serde_json::to_writer(&mut *writer, key).ok()?;
-                writer.write_all(b":").ok()?;
-                write_canonical_json_with_replay(writer, &values[key], replay)?;
-            }
-            writer.write_all(b"}").ok()?;
-        }
-        _ => write_canonical_json(writer, value).ok()?,
-    }
-    Some(())
 }
 
 #[cfg(test)]

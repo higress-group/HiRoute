@@ -576,9 +576,62 @@ fn async_content_keeps_the_request_root_before_fast_response_after_foreground_dr
 }
 
 #[test]
+fn empty_and_metadata_delivery_preserve_content_work_capacity() {
+    use super::super::content::CanonicalFrameDelivery;
+    use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
+
+    let fixture = ReplayFixture::new(1024 * 1024);
+    let input = state_request([json!({"text":"real input"})]);
+    let (observation, receiver, gate) = asynchronous_observation();
+    observation.capture_request_async(&input, &fixture.store);
+    let attempt = content_attempt();
+    observation.begin_response_content(&attempt);
+    observation.lock_state().accepted_attempt = Some(attempt.clone());
+    let before = observation.inner.channels.content.work_state();
+    for sequence in 0..4096 {
+        observation.emit_canonical_response_delivery(
+            &attempt,
+            "empty-accepted-frame",
+            CanonicalFrameDelivery::default(),
+        );
+        observation.emit_canonical_response_delivery(
+            &attempt,
+            "metadata-accepted-frame",
+            CanonicalFrameDelivery {
+                events: vec![ModelStreamEventV1::new(
+                    sequence,
+                    ModelEvent::ResponsesMetadata {
+                        metadata: BTreeMap::new(),
+                    },
+                )],
+                ..CanonicalFrameDelivery::default()
+            },
+        );
+    }
+    assert_eq!(observation.inner.channels.content.work_state(), before);
+    assert!(!observation.inner.async_content.get().unwrap().failed());
+    observation.finish_response_content("finish", None);
+    gate.release();
+    observation.inner.channels.content_work.flush(&observation);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let mut finished = 0;
+    while finished < 2 {
+        let record = receiver
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap();
+        assert_ne!(
+            record["schema_version"],
+            "hiroute.observation.gap-heartbeat/v1"
+        );
+        finished += usize::from(record["phase"] == "finish");
+    }
+}
+
+#[test]
 fn full_content_work_queue_declares_loss_without_waiting_and_next_request_recovers() {
     use super::super::content::CanonicalFrameDelivery;
     use crate::content_ref::model_content_refs;
+    use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
     let fixture = ReplayFixture::new(1024 * 1024);
     let mut input = state_request([json!({"text":"bounded captured input"})]);
     externalize_model_request(&mut input, &fixture.store, 0).unwrap();
@@ -590,11 +643,20 @@ fn full_content_work_queue_declares_loss_without_waiting_and_next_request_recove
     observation.capture_request_async(&input, &fixture.store);
     let attempt = content_attempt();
     observation.begin_response_content(&attempt);
-    for _ in 0..512 {
+    for index in 0..512 {
         observation.emit_canonical_response_delivery(
             &attempt,
             "accepted-frame",
-            CanonicalFrameDelivery::default(),
+            CanonicalFrameDelivery {
+                events: vec![ModelStreamEventV1::new(
+                    index,
+                    ModelEvent::TextDelta {
+                        index: 0,
+                        text: "real captured text".repeat(1024),
+                    },
+                )],
+                ..CanonicalFrameDelivery::default()
+            },
         );
     }
     // The independent producer must report loss while the encoder is still
