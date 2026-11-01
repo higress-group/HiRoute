@@ -109,6 +109,136 @@ fn opencode_discovers_the_official_home_entry_without_selecting_or_executing_it(
 }
 
 #[test]
+#[cfg(all(target_os = "linux", target_arch = "x86_64", not(target_env = "musl")))]
+fn opencode_npm_discovery_offers_canonical_choices_and_keeps_ambiguous_selection_explicit() {
+    for count in [1, 2] {
+        let root = tempfile::tempdir().unwrap();
+        let prefix = fs::canonicalize(root.path()).unwrap();
+        let modules = prefix.join("lib/node_modules");
+        let package = modules.join("opencode-ai");
+        let wrapper = package.join("bin/opencode.exe");
+        make_file(&wrapper, 0o700);
+        let names = ["opencode-linux-x64", "opencode-linux-x64-baseline"];
+        let mut dependencies = serde_json::Map::new();
+        let mut expected = Vec::new();
+        for name in names.iter().take(count) {
+            let package = modules.join(name);
+            let native = package.join("bin/opencode");
+            make_file(&native, 0o700);
+            fs::write(
+                package.join("package.json"),
+                serde_json::to_vec(&serde_json::json!({
+                    "name":name, "version":"1.19.5", "os":["linux"], "cpu":["x64"], "libc":["glibc"]
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+            dependencies.insert((*name).into(), "1.19.5".into());
+            expected.push(native);
+        }
+        fs::write(
+            package.join("package.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "name":"opencode-ai", "version":"1.19.5", "bin":{"opencode":"./bin/opencode.exe"},
+                "optionalDependencies":dependencies,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let view = discover_with_environment(
+            &StaticSelection(None),
+            &WorkerDependenciesDiscoverRequestV1 {
+                harness: Some(WorkerHarnessV1::OpenCode),
+            },
+            &ScanEnvironment {
+                path: Some(OsString::new()),
+                npm_prefix: Some(prefix),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(
+            view.selected.is_empty(),
+            "discovery cannot choose a variant"
+        );
+        for native in expected {
+            let candidate = view
+                .candidates
+                .iter()
+                .find(|item| item.path == native.to_string_lossy())
+                .unwrap();
+            assert_eq!(candidate.state, WorkerDependencyCandidateStateV1::Found);
+            let request = WorkerDependenciesSelectRequestV1 {
+                harness: WorkerHarnessV1::OpenCode,
+                adapter_path: None,
+                cli_path: candidate.path.clone(),
+                node_path: None,
+                expected_selection_revision: 0,
+            };
+            assert_eq!(
+                validate_selection(&request).unwrap(),
+                request,
+                "discovered paths must survive exact tuple admission"
+            );
+            assert!(
+                hiroute_integrations::opencode_native_format(&native).is_err(),
+                "selection does not waive the version/format gate"
+            );
+        }
+        if count == 2 {
+            let original = view
+                .candidates
+                .iter()
+                .find(|item| item.path == wrapper.to_string_lossy())
+                .unwrap();
+            assert_eq!(
+                original.reason_code.as_deref(),
+                Some("worker.dependencies.platform_selection_required")
+            );
+            assert_eq!(original.state, WorkerDependencyCandidateStateV1::Invalid);
+            assert!(hiroute_integrations::opencode_native_executable(&wrapper).is_err());
+        } else {
+            assert!(
+                view.candidates
+                    .iter()
+                    .all(|item| item.path != wrapper.to_string_lossy()),
+                "offer the selectable native path rather than its wrapper"
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn claude_discovery_preserves_an_executable_with_an_exe_suffix() {
+    let root = tempfile::tempdir().unwrap();
+    let cli = root.path().join("package/bin/claude.exe");
+    let bin = root.path().join("bin");
+    make_file(&cli, 0o700);
+    fs::write(&cli, b"\x7fELFfixture-not-executed").unwrap();
+    fs::create_dir(&bin).unwrap();
+    std::os::unix::fs::symlink(&cli, bin.join("claude")).unwrap();
+    let view = discover_with_environment(
+        &StaticSelection(None),
+        &WorkerDependenciesDiscoverRequestV1 {
+            harness: Some(WorkerHarnessV1::ClaudeCode),
+        },
+        &ScanEnvironment {
+            path: Some(std::env::join_paths([bin]).unwrap()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        view.candidates
+            .iter()
+            .any(|item| item.component == WorkerDependencyComponentV1::Cli
+                && item.path == cli.to_string_lossy()
+                && item.state == WorkerDependencyCandidateStateV1::Found)
+    );
+}
+
+#[test]
 #[cfg(unix)]
 fn pi_resume_checks_its_own_capability_instead_of_new_session_admission() {
     let root = tempfile::tempdir().unwrap();

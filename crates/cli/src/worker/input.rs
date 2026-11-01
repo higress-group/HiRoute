@@ -49,6 +49,48 @@ pub(super) fn parse_dependency_selection(
     let request: WorkerDependenciesSelectRequestV1 = crate::request_input::deserialize(
         crate::request_input::read(options, MAX_DEPENDENCY_SELECTION_BYTES)?,
     )?;
+    if !request.valid() {
+        let (path, expected) = match request.harness {
+            WorkerHarnessV1::CodexCli | WorkerHarnessV1::ClaudeCode
+                if request.adapter_path.is_none() =>
+            {
+                (
+                    "$.adapter_path",
+                    "cli_path and adapter_path; node_path is optional for adapter-based harnesses",
+                )
+            }
+            WorkerHarnessV1::Pi if request.adapter_path.is_some() => (
+                "$.adapter_path",
+                "omit adapter_path; Pi requires cli_path plus node_path",
+            ),
+            WorkerHarnessV1::Pi if request.node_path.is_none() => (
+                "$.node_path",
+                "Pi requires its CLI entry in cli_path plus an absolute node_path",
+            ),
+            WorkerHarnessV1::QoderCli
+            | WorkerHarnessV1::DeepseekHarness
+            | WorkerHarnessV1::OpenCode
+                if request.adapter_path.is_some() =>
+            {
+                (
+                    "$.adapter_path",
+                    "omit adapter_path for this native ACP CLI",
+                )
+            }
+            WorkerHarnessV1::QoderCli
+            | WorkerHarnessV1::DeepseekHarness
+            | WorkerHarnessV1::OpenCode
+                if request.node_path.is_some() =>
+            {
+                ("$.node_path", "omit node_path for this native ACP CLI")
+            }
+            _ => (
+                "$",
+                "the harness's declared tuple with absolute component paths",
+            ),
+        };
+        crate::request_input::diagnostics::record("invalid_dependency_tuple", path, expected);
+    }
     request
         .valid()
         .then_some(request)

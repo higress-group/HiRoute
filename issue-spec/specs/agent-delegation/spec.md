@@ -381,6 +381,30 @@ Passive discovery reads bounded directories/file/package metadata from the actua
 service environment, including supported global/npm prefix/cache locations. Multiple
 candidates require explicit choice, including one candidate; disappearance retains
 the saved choice and reports absence without auto-switch/download/change monitoring.
+
+For a known npm OpenCode wrapper, discovery MUST offer canonical native platform
+paths that survive exact tuple validation. Multiple matching official variants MUST
+remain explicit choices, with an actionable reason on the ambiguous wrapper; the
+selection transaction MUST NOT silently normalize to a different candidate. An
+executable suffix alone MUST NOT reject a valid native installation. Current native
+version/history-format requirements remain independent of discovery and selection.
+
+Public CLI text MUST render valid native ACP and Pi SDK selections without assuming
+an adapter. Candidate reason codes and installation hints MUST remain visible.
+Selection input diagnostics MUST explain required/forbidden tuple components and
+support the existing opt-in rich error envelope without exposing submitted values.
+Pi requires its CLI entry plus Node; an adapter-based Harness requires both its
+ordinary CLI and its ACP adapter. Native ACP Harnesses omit adapter and Node.
+
+#### Scenario: OpenCode has two matching native packages
+
+- **WHEN** discovery sees a wrapper with two matching official platform variants
+- **THEN** both canonical native paths are offered, the wrapper explains that explicit selection is required, and neither saved selection nor runtime format support changes automatically.
+
+#### Scenario: A Pi selection supplies only Node
+
+- **WHEN** the public CLI receives a Pi selection without `cli_path`
+- **THEN** it rejects the request with the existing invalid-arguments code and a bounded missing-field explanation; rich diagnostics are included only when requested.
 Partial scan/permission/budget limits are not a complete no-install result. Selection
 is instance+Harness shared and affects later launches, not running tasks. Installation
 UI belongs to plan editing; other pages navigate there. Core ready never runs Worker
