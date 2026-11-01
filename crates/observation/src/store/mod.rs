@@ -7,6 +7,7 @@ pub(crate) mod capacity;
 mod extensions;
 mod unified_retention;
 
+mod current_commit;
 pub(crate) mod fact_log;
 #[cfg(test)]
 mod field_replay_tests;
@@ -17,8 +18,8 @@ mod ingest;
 #[cfg(test)]
 pub(crate) mod ingest_profile;
 mod protocol;
-pub(crate) mod records;
 mod request_retention;
+mod reset;
 mod retention;
 mod safe_facts;
 mod schema;
@@ -54,15 +55,16 @@ pub struct LocalObservationStore {
     pub(crate) authority: DigestAuthority,
     pub(crate) retention: RetentionPolicyV1,
     pub(crate) capacity: Mutex<capacity::State>,
+    reset_cleanup: Mutex<reset::Cleanup>,
     #[cfg(test)]
     pub(crate) session_read_test_hook: Mutex<Option<SessionReadTestHook>>,
 }
 
 impl LocalObservationStore {
-    pub fn legacy_history_requires_seal(
-        root: impl AsRef<Path>,
-    ) -> Result<bool, ObservationStoreError> {
-        upgrade::required(root.as_ref())
+    /// Format admission remains read-only during installer preflight. A known
+    /// old observation format is disposable and requires no sealed copy.
+    pub fn validate_startup_format(root: impl AsRef<Path>) -> Result<(), ObservationStoreError> {
+        upgrade::required(root.as_ref()).map(|_| ())
     }
 
     /// Called only after the startup coordinator has published the complete
@@ -147,6 +149,7 @@ impl LocalObservationStore {
             authority,
             retention: RetentionPolicyV1::default(),
             capacity: Mutex::default(),
+            reset_cleanup: Mutex::default(),
             #[cfg(test)]
             session_read_test_hook: Mutex::default(),
         })

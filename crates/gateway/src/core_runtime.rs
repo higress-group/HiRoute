@@ -745,7 +745,6 @@ impl ProductionGatewayRuntime {
             request_observation.record_input_selection(
                 routing_view.excerpt_selection(&canonical_request, current_input_origin_unverified),
             );
-            request_observation.capture_request_async(&canonical_request, &replay);
             let mut hold_ticket;
             let mut agent_turn_guard = None;
             let mut correlated_branch = None;
@@ -908,6 +907,27 @@ impl ProductionGatewayRuntime {
                     .map(Box::new);
                 None
             };
+            let current_input_index = match routing_view.current_input_position() {
+                Some(crate::agent_turn_history::CurrentInputPosition::Event(index)) => Some(index),
+                Some(crate::agent_turn_history::CurrentInputPosition::Window { first, .. }) => {
+                    Some(first)
+                }
+                None => canonical_request
+                    .messages
+                    .iter()
+                    .rposition(|m| m.role == model_ir::MessageRole::User),
+            };
+            request_observation.select_input_capture(
+                &canonical_request,
+                agent_turn_guard
+                    .as_ref()
+                    .and_then(|guard| guard.ticket().capture_input_start),
+                current_input_index,
+                agent_turn_guard
+                    .as_ref()
+                    .map(|guard| guard.ticket().agent_turn_id.clone()),
+            );
+            request_observation.capture_request_async(&canonical_request, &replay);
             drop(routing_view);
             set_phase(LocalPhase::Prepare);
             let prepared_planner_input =

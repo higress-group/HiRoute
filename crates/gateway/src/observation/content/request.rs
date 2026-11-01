@@ -5,8 +5,8 @@ use serde_json::Value;
 use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt};
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
-    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource,
-    InstructionRole, MessageRole, ModelRequestIRV1, ToolOutput, ToolResultStatusV1,
+    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource, MessageRole,
+    ModelRequestIRV1, ToolOutput, ToolResultStatusV1,
 };
 
 use super::super::crypto::WorkspaceHmac;
@@ -76,10 +76,22 @@ impl RequestObservation {
             return;
         }
         self.inner.content_spool.bind(replay.overflow_factory());
+        if self.inner.input_capture.get().is_none() {
+            self.select_input_capture(
+                request,
+                None,
+                request
+                    .messages
+                    .iter()
+                    .rposition(|m| m.role == MessageRole::User),
+                None,
+            );
+        }
+        let start = self.inner.input_capture.get().map_or(0, |s| s.start);
         super::super::content_work::inline(self.capture_request_payload_run(
-            &request.instructions,
-            &request.messages,
-            &request.tools,
+            &[],
+            &request.messages[start..],
+            &[],
             replay,
         ));
     }
@@ -137,22 +149,22 @@ impl RequestObservation {
 
     async fn capture_request_fields_run(
         &self,
-        instructions: &[CanonicalInstruction],
+        _instructions: &[CanonicalInstruction],
         messages: &[CanonicalMessage],
-        tools: &[CanonicalTool],
+        _tools: &[CanonicalTool],
         replay: &ReplayStore,
     ) -> Result<(), ()> {
-        let mut message_ordinal = 0_u32;
-        for instruction in instructions {
-            let role = match instruction.role {
-                InstructionRole::System => "system",
-                InstructionRole::Developer => "developer",
-            };
-            self.capture_parts_run(replay, message_ordinal, role, &instruction.content)
-                .await?;
-            message_ordinal = message_ordinal.saturating_add(1);
-        }
+        let mut message_ordinal = self
+            .inner
+            .input_capture
+            .get()
+            .and_then(|s| u32::try_from(s.ordinal_base).ok())
+            .unwrap_or(0);
         for message in messages {
+            if matches!(message.role, MessageRole::System | MessageRole::Developer) {
+                message_ordinal = message_ordinal.saturating_add(1);
+                continue;
+            }
             let role = match message.role {
                 MessageRole::User => "user",
                 MessageRole::Assistant => "assistant",
@@ -181,45 +193,6 @@ impl RequestObservation {
                 &message.content,
             )
             .await?;
-            message_ordinal = message_ordinal.saturating_add(1);
-        }
-        for tool in tools {
-            let mut part_ordinal = 0_u32;
-            self.append_value_run(
-                replay,
-                message_ordinal,
-                part_ordinal,
-                "tool_definition",
-                "tool_name",
-                "text/plain; charset=utf-8",
-                &tool.name,
-            )
-            .await?;
-            part_ordinal = part_ordinal.saturating_add(1);
-            if let Some(description) = &tool.description {
-                self.append_value_run(
-                    replay,
-                    message_ordinal,
-                    part_ordinal,
-                    "tool_definition",
-                    "tool_description",
-                    "text/plain; charset=utf-8",
-                    description,
-                )
-                .await?;
-                part_ordinal = part_ordinal.saturating_add(1);
-            }
-            if let Some(schema) = &tool.input_schema {
-                self.append_json_run(
-                    replay,
-                    message_ordinal,
-                    part_ordinal,
-                    "tool_definition",
-                    "tool_schema",
-                    schema,
-                )
-                .await?;
-            }
             message_ordinal = message_ordinal.saturating_add(1);
         }
         Ok(())
@@ -406,15 +379,31 @@ impl RequestObservation {
                     }
                 }
                 ContentPart::ProviderState { state } => {
-                    self.append_json_run(
-                        replay,
-                        message_ordinal,
-                        part_ordinal,
-                        role,
-                        "provider_state",
-                        &state.value,
-                    )
-                    .await?
+                    if state.kind == "reasoning_content" {
+                        self.append_json_run(
+                            replay,
+                            message_ordinal,
+                            part_ordinal,
+                            role,
+                            "reasoning",
+                            &state.value,
+                        )
+                        .await?;
+                    } else if let Some(text) =
+                        crate::content_ref::unsigned_messages_thinking_text(state)
+                    {
+                        self.append_value_run(
+                            replay,
+                            message_ordinal,
+                            part_ordinal,
+                            role,
+                            "reasoning",
+                            "text/plain; charset=utf-8",
+                            text,
+                        )
+                        .await?;
+                    }
+                    // Opaque provider state is forwarding material, not history.
                 }
             }
             part_ordinal = part_ordinal.saturating_add(1);

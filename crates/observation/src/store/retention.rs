@@ -549,8 +549,6 @@ fn delete_content_rows(
 ) -> Result<(), ObservationQueryError> {
     let workspace = spec.workspace_id.as_str();
     let session = spec.session_id.as_str();
-    super::records::retire_session_feedback(transaction, workspace, session)
-        .map_err(|_| ObservationQueryError::Unavailable)?;
     transaction
         .execute(
             "DELETE FROM observation_sensitive_payloads_v2 WHERE workspace_id=?1 AND session_id=?2",
@@ -571,13 +569,6 @@ fn delete_content_rows(
         .map_err(|_| ObservationQueryError::Unavailable)?;
     transaction
         .execute(
-            "DELETE FROM conversation_content_events_v2 WHERE workspace_id=?1 AND request_id IN
-         (SELECT request_id FROM logical_requests WHERE workspace_id=?1 AND session_id=?2)",
-            params![workspace, session],
-        )
-        .map_err(|_| ObservationQueryError::Unavailable)?;
-    transaction
-        .execute(
             "DELETE FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id IN
          (SELECT content_id FROM content_instances_v2 WHERE workspace_id=?1 AND request_id IN
           (SELECT request_id FROM logical_requests WHERE workspace_id=?1 AND session_id=?2))",
@@ -586,7 +577,7 @@ fn delete_content_rows(
         .map_err(|_| ObservationQueryError::Unavailable)?;
     transaction
         .execute(
-            "DELETE FROM request_content_refs_v2 WHERE workspace_id=?1 AND request_id IN
+            "DELETE FROM observation_input_anchors_v6 WHERE workspace_id=?1 AND request_id IN
          (SELECT request_id FROM logical_requests WHERE workspace_id=?1 AND session_id=?2)",
             params![workspace, session],
         )

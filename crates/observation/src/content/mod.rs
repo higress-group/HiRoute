@@ -1,5 +1,6 @@
 //! Exact Gateway v2 content-blob verification and streaming installation helpers.
 
+mod capture;
 pub(crate) mod completeness;
 pub(crate) mod durability;
 pub(crate) mod lifecycle;

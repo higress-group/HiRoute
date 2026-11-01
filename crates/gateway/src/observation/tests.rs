@@ -337,7 +337,7 @@ fn assert_pre_attempt_failure_diagnostic(terminal: bool) {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-fn request_with_sinks_capacity(
+pub(super) fn request_with_sinks_capacity(
     policy: OtelContentPolicy,
     diagnostics: DiagnosticsPort,
     enabled: bool,

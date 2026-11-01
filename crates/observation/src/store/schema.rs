@@ -1,479 +1,66 @@
-use hiroute_domain::{CanonicalDigest, ValueLedgerEntryV1};
-use rusqlite::{Connection, Transaction, params};
-
+//! One current archive format. Older observations are reset by startup, never converted here.
 use crate::writer::ObservationStoreError;
+use rusqlite::Connection;
 
-pub(super) const STORE_SCHEMA_VERSION: &str = "5";
-const LEGACY_AGENT_PLAN_ID: &str = "legacy/unknown";
+pub(super) const STORE_SCHEMA_VERSION: &str = "6";
 
 pub(super) fn migrate(connection: &mut Connection) -> Result<(), ObservationStoreError> {
-    migrate_inner(connection, true)
-}
-#[cfg(test)]
-pub(super) fn migrate_legacy(connection: &mut Connection) -> Result<(), ObservationStoreError> {
-    migrate_inner(connection, false)
-}
-fn migrate_inner(connection: &mut Connection, compact: bool) -> Result<(), ObservationStoreError> {
-    if connection
-        .query_row(
-            "SELECT value FROM observation_meta WHERE key='schema_version'",
-            [],
-            |r| r.get::<_, String>(0),
-        )
-        .ok()
-        .as_deref()
-        == Some("5")
-    {
-        let tables:u64=connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name IN('logical_requests','observation_streams_v5','observation_events','observation_checkpoints','observation_feedback_v2','conversation_content_events_v2','content_blobs_v2','content_instances_v2')",[],|r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
-        if tables != 8 {
+    let exists: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='observation_meta' AND type='table')",
+        [], |r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
+    if exists {
+        let version: String = connection
+            .query_row(
+                "SELECT value FROM observation_meta WHERE key='schema_version'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| ObservationStoreError::Corrupt)?;
+        if version != STORE_SCHEMA_VERSION {
             return Err(ObservationStoreError::Corrupt);
         }
-        connection
-            .execute_batch(
-                "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
-            )
-            .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-        return create_schema_v5(connection);
-    }
-    connection
-        .execute_batch(
-            r#"
-            PRAGMA journal_mode = WAL;
-            PRAGMA synchronous = FULL;
-            PRAGMA foreign_keys = ON;
-
-            CREATE TABLE IF NOT EXISTS observation_meta (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-            INSERT OR IGNORE INTO observation_meta(key, value) VALUES
-                ('schema_version', '4'),
-                ('store_revision', '0');
-            "#,
-        )
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-
-    let version: String = connection
-        .query_row(
-            "SELECT value FROM observation_meta WHERE key='schema_version'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|_| ObservationStoreError::Corrupt)?;
-    let result = match version.as_str() {
-        "1" => {
-            migrate_v1_to_v2(connection)?;
-            migrate_v2_to_v3(connection)?;
-            migrate_v3_to_v4(connection)
+        let count:u64=connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name IN('logical_requests','observation_checkpoints','observation_current_commits_v6','conversation_content_streams_v2','content_message_instances_v2','content_instances_v2','content_blobs_v2','transcript_roots_v2')",[],|r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
+        if count != 8 {
+            return Err(ObservationStoreError::Corrupt);
         }
-        "2" => {
-            migrate_v2_to_v3(connection)?;
-            migrate_v3_to_v4(connection)
+    } else {
+        let populated:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%')",[],|r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
+        if populated {
+            return Err(ObservationStoreError::Corrupt);
         }
-        "3" => migrate_v3_to_v4(connection),
-        "4" => create_schema_v4(connection),
-        STORE_SCHEMA_VERSION => Ok(()),
-        _ => Err(ObservationStoreError::Corrupt),
-    };
-    result?;
-    if !compact || version == "5" {
-        return Ok(());
     }
-    let populated: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM observation_events) OR EXISTS(SELECT 1 FROM conversation_content_events_v2) OR EXISTS(SELECT 1 FROM observation_feedback_v2)",[],|r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
-    if populated {
-        return Err(ObservationStoreError::Corrupt);
-    }
-    connection.execute_batch("DROP TABLE observation_events; DROP TABLE conversation_content_events_v2; DROP TABLE observation_feedback_v2;").map_err(|_|ObservationStoreError::ActivityUnavailable)?;
     connection
-        .execute_batch(super::records::SCHEMA)
+        .execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;")
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    super::records::install_reference_triggers(connection)
+    let tx = connection
+        .transaction()
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    connection
-        .execute(
-            "UPDATE observation_meta SET value='5' WHERE key='schema_version'",
-            [],
-        )
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    Ok(())
-}
-
-fn create_schema_v5(connection: &Connection) -> Result<(), ObservationStoreError> {
-    fn omit(mut sql: String, header: &str) -> String {
-        let start = sql.find(header).expect("known legacy definition");
-        let end = start + sql[start..].find(';').expect("known complete definition") + 1;
-        sql.replace_range(start..end, "");
-        sql
-    }
-    let auxiliary = omit(
-        AUXILIARY_SCHEMA_V2.to_owned(),
-        "CREATE TABLE IF NOT EXISTS observation_events",
-    );
-    let content = omit(
-        CONVERSATION_CONTENT_SCHEMA_V4.to_owned(),
-        "CREATE TABLE IF NOT EXISTS conversation_content_events_v2",
-    );
-    let content = omit(
-        content,
-        "CREATE TABLE IF NOT EXISTS observation_feedback_v2",
-    );
-    let content = omit(
-        content,
-        "CREATE INDEX IF NOT EXISTS observation_feedback_v2_lookup",
-    );
+    tx.execute_batch("CREATE TABLE IF NOT EXISTS observation_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+        INSERT OR IGNORE INTO observation_meta(key,value) VALUES('schema_version','6'),('store_revision','0');")
+        .map_err(|_|ObservationStoreError::ActivityUnavailable)?;
     for ddl in [
         BASE_SCHEMA_V2,
         super::agent_attribution::SCHEMA,
         VALUE_SCHEMA_V2,
-        auxiliary.as_str(),
+        AUXILIARY_SCHEMA_V2,
         EXECUTION_FACT_SCHEMA_V3,
-        super::records::SCHEMA,
-        content.as_str(),
+        CONVERSATION_CONTENT_SCHEMA_V4,
+        super::current_commit::SCHEMA,
     ] {
-        connection
-            .execute_batch(ddl)
+        tx.execute_batch(ddl)
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
     }
-    super::records::install_reference_triggers(connection)
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS observation_capture_scopes_v6(
+        workspace_id TEXT NOT NULL,session_id TEXT NOT NULL,seed_request_id TEXT NOT NULL,
+        seed_state TEXT NOT NULL,PRIMARY KEY(workspace_id,session_id));
+        CREATE TABLE IF NOT EXISTS observation_input_anchors_v6(
+        workspace_id TEXT NOT NULL,request_id TEXT NOT NULL,source_message_id TEXT,
+        PRIMARY KEY(workspace_id,request_id));",
+    )
+    .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
+    tx.commit()
         .map_err(|_| ObservationStoreError::ActivityUnavailable)
-}
-
-fn create_schema_v2(connection: &Connection) -> Result<(), ObservationStoreError> {
-    connection
-        .execute_batch(BASE_SCHEMA_V2)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    connection
-        .execute_batch(super::agent_attribution::SCHEMA)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    connection
-        .execute_batch(VALUE_SCHEMA_V2)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    connection
-        .execute_batch(AUXILIARY_SCHEMA_V2)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)
-}
-
-fn create_schema_v3(connection: &Connection) -> Result<(), ObservationStoreError> {
-    create_schema_v2(connection)?;
-    connection
-        .execute_batch(EXECUTION_FACT_SCHEMA_V3)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)
-}
-
-fn create_schema_v4(connection: &Connection) -> Result<(), ObservationStoreError> {
-    create_schema_v3(connection)?;
-    ensure_gap_reason_column(connection)?;
-    connection
-        .execute_batch(CONVERSATION_CONTENT_SCHEMA_V4)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)
-}
-
-fn migrate_v3_to_v4(connection: &mut Connection) -> Result<(), ObservationStoreError> {
-    let transaction = connection
-        .transaction()
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    retire_empty_legacy_content_contract(&transaction)?;
-    ensure_gap_reason_column(&transaction)?;
-    transaction
-        .execute_batch(CONVERSATION_CONTENT_SCHEMA_V4)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    transaction
-        .execute(
-            "UPDATE observation_meta SET value='4' WHERE key='schema_version'",
-            [],
-        )
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    transaction
-        .commit()
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    create_schema_v4(connection)
-}
-
-fn retire_empty_legacy_content_contract(
-    transaction: &Transaction<'_>,
-) -> Result<(), ObservationStoreError> {
-    const LEGACY_TABLES: &[&str] = &[
-        "content_streams",
-        "content_blobs",
-        "message_instances",
-        "transcript_roots",
-    ];
-    for table in LEGACY_TABLES {
-        if table_exists(transaction, table)?
-            && transaction
-                .query_row(
-                    &format!("SELECT EXISTS(SELECT 1 FROM {table} LIMIT 1)"),
-                    [],
-                    |row| row.get::<_, bool>(0),
-                )
-                .map_err(|_| ObservationStoreError::Corrupt)?
-        {
-            // The fake per-content contract has no direction/fork stream, Gateway digest, or
-            // rich-feedback coordinates. Rewriting populated rows would invent frozen v2 facts;
-            // keep the v3 database untouched and require an explicit data disposition instead.
-            return Err(ObservationStoreError::Corrupt);
-        }
-    }
-    for table in [
-        "observation_events",
-        "observation_checkpoints",
-        "observation_gaps",
-    ] {
-        if table_exists(transaction, table)?
-            && transaction
-                .query_row(
-                    &format!(
-                        "SELECT EXISTS(SELECT 1 FROM {table} WHERE channel='content' LIMIT 1)"
-                    ),
-                    [],
-                    |row| row.get::<_, bool>(0),
-                )
-                .map_err(|_| ObservationStoreError::Corrupt)?
-        {
-            return Err(ObservationStoreError::Corrupt);
-        }
-    }
-    transaction
-        .execute_batch(
-            "DROP TABLE IF EXISTS content_streams;
-             DROP TABLE IF EXISTS content_blobs;
-             DROP TABLE IF EXISTS message_instances;
-             DROP TABLE IF EXISTS transcript_roots;",
-        )
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)
-}
-
-fn table_exists(transaction: &Transaction<'_>, table: &str) -> Result<bool, ObservationStoreError> {
-    transaction
-        .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
-            [table],
-            |row| row.get(0),
-        )
-        .map_err(|_| ObservationStoreError::Corrupt)
-}
-
-fn ensure_gap_reason_column(connection: &Connection) -> Result<(), ObservationStoreError> {
-    let has_reason = {
-        let mut statement = connection
-            .prepare("PRAGMA table_info(observation_gaps)")
-            .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-        let columns = statement
-            .query_map([], |row| row.get::<_, String>(1))
-            .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-        let columns = columns
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-        columns.iter().any(|column| column == "reason")
-    };
-    if !has_reason {
-        connection
-            .execute("ALTER TABLE observation_gaps ADD COLUMN reason TEXT", [])
-            .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    }
-    Ok(())
-}
-
-fn migrate_v2_to_v3(connection: &mut Connection) -> Result<(), ObservationStoreError> {
-    let transaction = connection
-        .transaction()
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    transaction
-        .execute_batch(EXECUTION_FACT_SCHEMA_V3)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    transaction
-        .execute(
-            "UPDATE observation_meta SET value='3' WHERE key='schema_version'",
-            [],
-        )
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    transaction
-        .commit()
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    create_schema_v3(connection)
-}
-
-fn migrate_v1_to_v2(connection: &mut Connection) -> Result<(), ObservationStoreError> {
-    let transaction = connection
-        .transaction()
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    transaction
-        .execute_batch(
-            r#"
-            ALTER TABLE value_ledger_entries RENAME TO value_ledger_entries_v1;
-            ALTER TABLE daily_value_rollups RENAME TO daily_value_rollups_v1;
-            "#,
-        )
-        .map_err(|_| ObservationStoreError::Corrupt)?;
-    transaction
-        .execute_batch(VALUE_SCHEMA_V2)
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-
-    let legacy_entries = {
-        let mut statement = transaction
-            .prepare(
-                "SELECT body_json FROM value_ledger_entries_v1 ORDER BY workspace_id, request_id",
-            )
-            .map_err(|_| ObservationStoreError::Corrupt)?;
-        statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|_| ObservationStoreError::Corrupt)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| ObservationStoreError::Corrupt)?
-    };
-    for body in legacy_entries {
-        let entry = migrate_legacy_entry(&body)?;
-        insert_migrated_entry(&transaction, &entry)?;
-    }
-
-    // V1 rollups irreversibly mixed plans and currencies and have no per-session provenance.
-    // Keeping or guessing those axes would expose a false authoritative ledger and would make
-    // exact session deletion impossible. Detail entries above retain every attributable fact;
-    // only the already-conflated derived rows are retired during the upgrade.
-    transaction
-        .execute_batch(
-            r#"
-            DROP TABLE value_ledger_entries_v1;
-            DROP TABLE daily_value_rollups_v1;
-            CREATE INDEX IF NOT EXISTS value_time
-                ON value_ledger_entries(workspace_id, agent_plan_id, currency, frozen_at_ms);
-            UPDATE observation_meta SET value='2' WHERE key='schema_version';
-            "#,
-        )
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    transaction
-        .commit()
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    create_schema_v2(connection)
-}
-
-fn migrate_legacy_entry(body: &str) -> Result<ValueLedgerEntryV1, ObservationStoreError> {
-    let mut body: serde_json::Value =
-        serde_json::from_str(body).map_err(|_| ObservationStoreError::Corrupt)?;
-    let frozen = body
-        .get_mut("frozen")
-        .and_then(serde_json::Value::as_object_mut)
-        .ok_or(ObservationStoreError::Corrupt)?;
-    let chosen = take_legacy_u64(frozen, "api_equivalent_micros")?;
-    let actual = take_legacy_u64(frozen, "incremental_cost_micros")?;
-    let legacy_savings = take_legacy_u64(frozen, "savings_micros")?;
-    let entitlement = signed_difference(chosen, actual)?;
-    if i64::try_from(legacy_savings).map_err(|_| ObservationStoreError::Corrupt)? != entitlement {
-        return Err(ObservationStoreError::Corrupt);
-    }
-    frozen.insert(
-        "agent_plan_id".to_owned(),
-        serde_json::Value::String(LEGACY_AGENT_PLAN_ID.to_owned()),
-    );
-    frozen.insert(
-        "baseline_api_equivalent_cost_micros".to_owned(),
-        serde_json::Value::Null,
-    );
-    frozen.insert(
-        "chosen_api_equivalent_cost_micros".to_owned(),
-        serde_json::Value::from(chosen),
-    );
-    frozen.insert(
-        "actual_incremental_cost_micros".to_owned(),
-        serde_json::Value::from(actual),
-    );
-    frozen.insert("routing_savings_micros".to_owned(), serde_json::Value::Null);
-    frozen.insert(
-        "entitlement_savings_micros".to_owned(),
-        serde_json::Value::from(entitlement),
-    );
-    frozen.insert(
-        "estimated_total_savings_micros".to_owned(),
-        serde_json::Value::Null,
-    );
-    let entry: ValueLedgerEntryV1 =
-        serde_json::from_value(body).map_err(|_| ObservationStoreError::Corrupt)?;
-    entry
-        .validate()
-        .map_err(|_| ObservationStoreError::Corrupt)?;
-    Ok(entry)
-}
-
-fn take_legacy_u64(
-    object: &mut serde_json::Map<String, serde_json::Value>,
-    key: &str,
-) -> Result<u64, ObservationStoreError> {
-    object
-        .remove(key)
-        .and_then(|value| value.as_u64())
-        .ok_or(ObservationStoreError::Corrupt)
-}
-
-fn signed_difference(left: u64, right: u64) -> Result<i64, ObservationStoreError> {
-    let left = i64::try_from(left).map_err(|_| ObservationStoreError::Corrupt)?;
-    let right = i64::try_from(right).map_err(|_| ObservationStoreError::Corrupt)?;
-    left.checked_sub(right)
-        .ok_or(ObservationStoreError::Corrupt)
-}
-
-fn insert_migrated_entry(
-    transaction: &Transaction<'_>,
-    entry: &ValueLedgerEntryV1,
-) -> Result<(), ObservationStoreError> {
-    let body = serde_json::to_string(entry).map_err(|_| ObservationStoreError::Corrupt)?;
-    let digest = CanonicalDigest::of(entry).map_err(|_| ObservationStoreError::Corrupt)?;
-    let frozen = &entry.frozen;
-    transaction
-        .execute(
-            "INSERT INTO value_ledger_entries
-             (workspace_id, request_id, session_id, receipt_id, body_json, body_digest,
-              agent_plan_id, currency, billing_unit, price_version, price_override_revision,
-              input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens,
-              baseline_api_equivalent_cost_micros, chosen_api_equivalent_cost_micros,
-              actual_incremental_cost_micros, routing_savings_micros,
-              entitlement_savings_micros, estimated_total_savings_micros,
-              facts_completeness, frozen_at_ms)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                     ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
-            params![
-                entry.workspace_id.as_str(),
-                entry.request_id.as_str(),
-                entry.session_id.as_str(),
-                entry.receipt_id.as_str(),
-                body,
-                digest.as_str(),
-                frozen.agent_plan_id.as_str(),
-                frozen.currency,
-                frozen.billing_unit,
-                frozen.price_version,
-                frozen.price_override_revision,
-                to_sql_u64(entry.usage.input_tokens)?,
-                to_sql_u64(entry.usage.output_tokens)?,
-                to_sql_u64(entry.usage.cache_read_tokens)?,
-                to_sql_u64(entry.usage.cache_write_tokens)?,
-                to_sql_u64(entry.usage.reasoning_tokens)?,
-                optional_sql_u64(frozen.baseline_api_equivalent_cost_micros)?,
-                optional_sql_u64(frozen.chosen_api_equivalent_cost_micros)?,
-                optional_sql_u64(frozen.actual_incremental_cost_micros)?,
-                frozen.routing_savings_micros,
-                frozen.entitlement_savings_micros,
-                frozen.estimated_total_savings_micros,
-                enum_name(entry.facts_completeness)?,
-                entry.frozen_at_ms,
-            ],
-        )
-        .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-    Ok(())
-}
-
-fn to_sql_u64(value: u64) -> Result<i64, ObservationStoreError> {
-    value.try_into().map_err(|_| ObservationStoreError::Corrupt)
-}
-
-fn optional_sql_u64(value: Option<u64>) -> Result<Option<i64>, ObservationStoreError> {
-    value.map(to_sql_u64).transpose()
-}
-
-fn enum_name<T: serde::Serialize>(value: T) -> Result<String, ObservationStoreError> {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|value| value.as_str().map(str::to_owned))
-        .ok_or(ObservationStoreError::Corrupt)
 }
 
 const BASE_SCHEMA_V2: &str = r#"
@@ -546,17 +133,6 @@ const BASE_SCHEMA_V2: &str = r#"
     "#;
 
 const AUXILIARY_SCHEMA_V2: &str = r#"
-    CREATE TABLE IF NOT EXISTS observation_events (
-        channel TEXT NOT NULL,
-        producer_id TEXT NOT NULL,
-        producer_epoch TEXT NOT NULL,
-        stream_id TEXT NOT NULL,
-        sequence INTEGER NOT NULL,
-        event_id TEXT NOT NULL,
-        payload_digest TEXT NOT NULL,
-        PRIMARY KEY(channel, producer_id, producer_epoch, stream_id, sequence),
-        UNIQUE(channel, producer_id, producer_epoch, stream_id, event_id)
-    );
 
     CREATE TABLE IF NOT EXISTS observation_checkpoints (
         channel TEXT NOT NULL,
@@ -651,27 +227,6 @@ const CONVERSATION_CONTENT_SCHEMA_V4: &str = r#"
     CREATE INDEX IF NOT EXISTS content_stream_v2_request
         ON conversation_content_streams_v2(workspace_id, request_id, direction, fork_id);
 
-    CREATE TABLE IF NOT EXISTS conversation_content_events_v2 (
-        producer_id TEXT NOT NULL,
-        producer_epoch TEXT NOT NULL,
-        stream_id TEXT NOT NULL,
-        sequence INTEGER NOT NULL,
-        event_id TEXT NOT NULL,
-        workspace_id TEXT NOT NULL,
-        request_id TEXT NOT NULL,
-        direction TEXT NOT NULL,
-        fork_id TEXT NOT NULL,
-        phase TEXT NOT NULL,
-        metadata_json TEXT NOT NULL,
-        canonical_chunk_object_ref TEXT,
-        canonical_chunk_byte_offset INTEGER,
-        canonical_chunk_byte_count INTEGER,
-        envelope_digest TEXT NOT NULL,
-        PRIMARY KEY(producer_id, producer_epoch, stream_id, sequence),
-        UNIQUE(producer_id, producer_epoch, stream_id, event_id)
-    );
-    CREATE INDEX IF NOT EXISTS content_events_v2_request
-        ON conversation_content_events_v2(workspace_id, request_id, direction, fork_id, sequence);
 
     CREATE TABLE IF NOT EXISTS content_message_instances_v2 (
         workspace_id TEXT NOT NULL,
@@ -698,6 +253,8 @@ const CONVERSATION_CONTENT_SCHEMA_V4: &str = r#"
         content_kind TEXT NOT NULL,
         canonical_media_type TEXT NOT NULL,
         content_blob_digest TEXT NOT NULL,
+        attempt_id TEXT,
+        semantic_metadata_json TEXT,
         expected_byte_count INTEGER,
         has_content_ref INTEGER NOT NULL,
         transport_frame_id TEXT,
@@ -743,18 +300,6 @@ const CONVERSATION_CONTENT_SCHEMA_V4: &str = r#"
     CREATE INDEX IF NOT EXISTS content_blobs_v2_workspace_bytes
         ON content_blobs_v2(workspace_id, byte_count);
 
-    CREATE TABLE IF NOT EXISTS request_content_refs_v2 (
-        workspace_id TEXT NOT NULL,
-        request_id TEXT NOT NULL,
-        direction TEXT NOT NULL,
-        fork_id TEXT NOT NULL,
-        message_instance_id TEXT NOT NULL,
-        content_id TEXT NOT NULL,
-        message_ordinal INTEGER NOT NULL,
-        part_ordinal INTEGER NOT NULL,
-        blob_digest TEXT NOT NULL,
-        PRIMARY KEY(workspace_id, request_id, direction, fork_id, message_ordinal, part_ordinal)
-    );
 
     CREATE TABLE IF NOT EXISTS transcript_roots_v2 (
         workspace_id TEXT NOT NULL,
@@ -769,37 +314,9 @@ const CONVERSATION_CONTENT_SCHEMA_V4: &str = r#"
         PRIMARY KEY(workspace_id, transcript_root)
     );
 
-    CREATE TABLE IF NOT EXISTS observation_feedback_v2 (
-        feedback_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        channel TEXT NOT NULL,
-        producer_id TEXT NOT NULL,
-        producer_epoch TEXT NOT NULL,
-        stream_id TEXT NOT NULL,
-        rejected_or_acked_sequence INTEGER NOT NULL,
-        event_id TEXT NOT NULL,
-        envelope_digest TEXT NOT NULL,
-        feedback_kind TEXT NOT NULL,
-        feedback_json TEXT NOT NULL,
-        created_at_unix_nanos INTEGER NOT NULL
-    );
     CREATE INDEX IF NOT EXISTS transcript_roots_v2_request
         ON transcript_roots_v2(workspace_id, request_id, direction, state);
-    CREATE INDEX IF NOT EXISTS observation_feedback_v2_lookup
-        ON observation_feedback_v2(channel, producer_id, producer_epoch, stream_id,
-                                   rejected_or_acked_sequence, event_id, envelope_digest,
-                                   feedback_id DESC);
 
-    CREATE TABLE IF NOT EXISTS observation_gap_heartbeats_v1 (
-        channel TEXT NOT NULL,
-        producer_id TEXT NOT NULL,
-        producer_epoch TEXT NOT NULL,
-        stream_id TEXT NOT NULL,
-        sequence INTEGER NOT NULL,
-        event_id TEXT NOT NULL,
-        heartbeat_json TEXT NOT NULL,
-        PRIMARY KEY(channel, producer_id, producer_epoch, stream_id, sequence),
-        UNIQUE(channel, producer_id, producer_epoch, stream_id, event_id)
-    );
 "#;
 
 const VALUE_SCHEMA_V2: &str = r#"

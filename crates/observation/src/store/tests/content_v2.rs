@@ -112,6 +112,7 @@ impl Fixture {
             message_ordinal: None,
             part_ordinal: None,
             chunk_ordinal: None,
+            capture: None,
             transport_frame_id: None,
             canonical_media_type: None,
             canonical_bytes_base64: None,
@@ -177,79 +178,44 @@ impl Fixture {
 }
 
 #[test]
-fn direction_stream_persists_exact_metadata_and_returns_replay_stable_rich_ack() {
+fn direction_stream_persists_semantic_parts_and_only_the_current_commit_proof() {
     let fixture = Fixture::new();
     let begin = fixture.begin(1);
     let append_one = fixture.append(2, 0, "message-1", "content-1", 0, 0, b"hello", b"hello");
     let append_two = fixture.append(3, 1, "message-2", "content-2", 1, 0, b"world", b"world");
     let finish = fixture.finish(4, "11");
 
-    let begin_ack = ack(fixture.ingest(&begin));
-    assert_content_ack(&begin_ack.content_acknowledgement.unwrap(), 0, 0, None);
-    let first_ack = ack(fixture.ingest(&append_one));
-    assert_content_ack(&first_ack.content_acknowledgement.unwrap(), 1, 1, None);
-    let second_ack = ack(fixture.ingest(&append_two));
-    assert_content_ack(&second_ack.content_acknowledgement.unwrap(), 2, 1, None);
+    for event in [&begin, &append_one, &append_two, &finish] {
+        assert!(ack(fixture.ingest(event)).content_acknowledgement.is_none());
+    }
     let finish_ack = ack(fixture.ingest(&finish));
-    let content = finish_ack.content_acknowledgement.as_ref().unwrap();
-    assert_content_ack(
-        content,
-        2,
-        2,
-        finish
-            .result_transcript_root
-            .as_ref()
-            .map(ToString::to_string)
-            .as_deref(),
-    );
     assert_eq!(finish_ack.highest_contiguous_sequence, 4);
-    assert_eq!(finish_ack, ack(fixture.ingest(&finish)));
     let reopened =
         LocalObservationStore::open(fixture._root.path(), fixture.authority.clone()).unwrap();
     assert_eq!(
         finish_ack,
         ack(reopened.ingest_content(&finish, &[]).unwrap())
     );
-
     let connection = fixture.store.connection.lock();
-    let metadata: Vec<u8> = connection
-        .query_row(
-            "SELECT metadata_json FROM conversation_content_events_v2 WHERE sequence=2",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    let metadata: serde_json::Value =
-        serde_json::from_slice(&crate::store::records::decode(&metadata).unwrap()).unwrap();
-    assert!(metadata.get("canonical_bytes_base64").is_none());
-    assert!(
-        metadata
-            .get("attempt_id")
-            .is_some_and(serde_json::Value::is_null)
-    );
-    assert_eq!(metadata["message_instance_id"], "message-1");
+    assert_eq!(connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE name IN('observation_events','conversation_content_events_v2','observation_feedback_v2','request_content_refs_v2')",[],|r|r.get::<_,u64>(0)).unwrap(),0);
     assert_eq!(
-        metadata["content_blob_digest"],
-        append_one.content_blob_digest.as_ref().unwrap().as_str()
+        connection
+            .query_row("SELECT COUNT(*) FROM content_chunks_v2", [], |r| r
+                .get::<_, u64>(0))
+            .unwrap(),
+        0
     );
-    assert_eq!(metadata["message_ordinal"], 0);
-    assert_eq!(metadata["part_ordinal"], 0);
-    assert_eq!(metadata["chunk_ordinal"], 0);
-    let chunk: (String, i64, i64) = connection
-        .query_row(
-            "SELECT object_path, byte_offset, byte_count FROM content_chunks_v2
-         WHERE event_id='event-2'",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .unwrap();
-    assert_eq!((chunk.1, chunk.2), (0, 5));
     assert_eq!(
-        &std::fs::read(fixture.store.object_path(&chunk.0).unwrap()).unwrap()[0..5],
-        b"hello"
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM observation_current_commits_v6",
+                [],
+                |r| r.get::<_, u64>(0)
+            )
+            .unwrap(),
+        1
     );
     drop(connection);
-
     let detail = fixture
         .store
         .get_session(
@@ -542,7 +508,7 @@ fn replay_revalidates_durable_chunk_bytes_instead_of_trusting_feedback_alone() {
 }
 
 #[test]
-fn legacy_schema_three_component_normalization_keeps_the_single_v2_content_schema() {
+fn legacy_schema_is_not_converted_by_the_current_store() {
     let root = tempfile::tempdir().unwrap();
     let connection = Connection::open(root.path().join("activity.db")).unwrap();
     connection
@@ -570,64 +536,19 @@ fn legacy_schema_three_component_normalization_keeps_the_single_v2_content_schem
         .unwrap();
     drop(connection);
 
-    // Component coverage for the retained historical schema normalizer. Real
-    // startup seals this old store unchanged instead of invoking conversion.
     let mut historical = Connection::open(root.path().join("activity.db")).unwrap();
-    super::super::schema::migrate_legacy(&mut historical).unwrap();
-    super::super::schema::migrate(&mut historical).unwrap();
-    drop(historical);
-    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([7; 32])).unwrap();
-    let connection = store.connection.lock();
-    let version: String = connection
-        .query_row(
-            "SELECT value FROM observation_meta WHERE key='schema_version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(version, "5");
-    let v2_tables: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'
-         AND name IN ('conversation_content_streams_v2', 'conversation_content_events_v2',
-                      'content_instances_v2', 'content_blobs_v2', 'observation_feedback_v2')",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(v2_tables, 5);
-    let legacy_tables: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'
-         AND name IN ('content_streams', 'content_blobs', 'message_instances', 'transcript_roots')",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(legacy_tables, 0);
-    let gap_columns: Vec<String> = connection
-        .prepare("PRAGMA table_info(observation_gaps)")
-        .unwrap()
-        .query_map([], |row| row.get(1))
-        .unwrap()
-        .collect::<Result<_, _>>()
-        .unwrap();
-    assert!(gap_columns.iter().any(|column| column == "reason"));
-    drop(connection);
-    drop(store);
-    let reopened = LocalObservationStore::open(root.path(), DigestAuthority::new([7; 32])).unwrap();
+    assert!(super::super::schema::migrate(&mut historical).is_err());
     assert_eq!(
-        reopened
-            .connection
-            .lock()
+        historical
             .query_row(
                 "SELECT value FROM observation_meta WHERE key='schema_version'",
                 [],
-                |row| row.get::<_, String>(0),
+                |r| r.get::<_, String>(0)
             )
             .unwrap(),
-        "5",
+        "3"
     );
+    assert!(LocalObservationStore::open(root.path(), DigestAuthority::new([7; 32])).is_err());
 }
 
 #[test]

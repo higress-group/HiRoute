@@ -27,7 +27,7 @@ fn current_history_and_real_maintenance() {
     let authority = DigestAuthority::new(key.as_slice().try_into().expect("32-byte original key"));
     assert_eq!(
         super::upgrade::version(&root).unwrap().as_deref(),
-        Some("5"),
+        Some("6"),
         "archive old history through production startup before running current-store maintenance"
     );
     let start = Instant::now();
@@ -181,8 +181,7 @@ fn counts(store: &LocalObservationStore, full: bool) -> serde_json::Value {
         &[
             "logical_requests",
             "observation_events",
-            "conversation_content_events_v2",
-            "observation_feedback_v2",
+            "observation_current_commits_v6",
             "content_blobs_v2",
             "observation_capacity_pending_v5",
             "observation_capacity_blobs_v5",

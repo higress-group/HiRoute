@@ -32,6 +32,15 @@ pub(super) struct ContentWorkProducer {
     gate: queue::Gate,
 }
 
+#[derive(Clone, Debug, Default)]
+pub(crate) struct InputCaptureSelection {
+    pub(crate) start: usize,
+    pub(crate) ordinal_base: usize,
+    pub(crate) current_ordinal: Option<u32>,
+    pub(crate) boundary_verified: bool,
+    pub(crate) turn_anchor: Option<String>,
+}
+
 struct RequestSnapshot {
     instructions: Vec<CanonicalInstruction>,
     messages: Vec<CanonicalMessage>,
@@ -81,6 +90,24 @@ impl RequestObservation {
         }
     }
 
+    pub(crate) fn select_input_capture(
+        &self,
+        request: &ModelRequestIRV1,
+        start: Option<usize>,
+        current: Option<usize>,
+        turn_anchor: Option<String>,
+    ) {
+        let start = start.unwrap_or(0).min(request.messages.len());
+        let _ = self.inner.input_capture.set(InputCaptureSelection {
+            start,
+            ordinal_base: request.instructions.len().saturating_add(start),
+            current_ordinal: current
+                .and_then(|n| u32::try_from(request.instructions.len().checked_add(n)?).ok()),
+            boundary_verified: start > 0,
+            turn_anchor,
+        });
+    }
+
     pub(crate) fn capture_request_async(&self, request: &ModelRequestIRV1, replay: &ReplayStore) {
         if !self.is_enabled() {
             return;
@@ -92,10 +119,23 @@ impl RequestObservation {
             return;
         }
         self.inner.content_spool.bind(replay.overflow_factory());
-        let bytes = snapshot_bytes(request);
+        if self.inner.input_capture.get().is_none() {
+            self.select_input_capture(
+                request,
+                None,
+                request
+                    .messages
+                    .iter()
+                    .rposition(|m| m.role == crate::model_ir::MessageRole::User),
+                None,
+            );
+        }
+        let start = self.inner.input_capture.get().map_or(0, |s| s.start);
+        let messages = &request.messages[start..];
+        let bytes = snapshot_bytes(messages);
         let retained = bytes
             .saturating_add(replay.content_lease_memory_bytes())
-            .saturating_add(snapshot_cursor_bytes(request));
+            .saturating_add(snapshot_cursor_bytes(messages));
         if bytes > SNAPSHOT_LIMIT
             || !self
                 .inner
@@ -138,9 +178,9 @@ impl RequestObservation {
             return;
         };
         let snapshot = Box::new(RequestSnapshot {
-            instructions: request.instructions.clone(),
-            messages: request.messages.clone(),
-            tools: request.tools.clone(),
+            instructions: Vec::new(),
+            messages: messages.to_vec(),
+            tools: Vec::new(),
         });
         if !queue.push_data(
             self,
@@ -155,19 +195,14 @@ impl RequestObservation {
         }
     }
 
-    fn capture_request_fallback(&self, request: &ModelRequestIRV1, replay: &ReplayStore) {
+    fn capture_request_fallback(&self, _request: &ModelRequestIRV1, _replay: &ReplayStore) {
         let status = self
             .inner
             .async_content
             .get_or_init(|| Arc::new(ContentStatus::default()));
-        if !self.capture_request_payload(
-            &request.instructions,
-            &request.messages,
-            &request.tools,
-            replay,
-        ) {
-            self.fail_content_work(status, "content_capture_unavailable");
-        }
+        // Optional archive pressure cannot run a full history traversal in the
+        // forwarding lane. The accepted request remains serviceable.
+        self.fail_content_work(status, "content_capture_queue_unavailable");
     }
 
     pub(super) fn begin_response_content(&self, attempt: &AttemptObservation) {
@@ -368,29 +403,14 @@ impl std::io::Write for SerializedSize {
     }
 }
 
-fn snapshot_bytes(request: &ModelRequestIRV1) -> usize {
-    request
-        .instructions
+fn snapshot_bytes(messages: &[CanonicalMessage]) -> usize {
+    messages
         .iter()
-        .fold(
-            std::mem::size_of::<RequestSnapshot>(),
-            |size, instruction| {
-                size.saturating_add(std::mem::size_of::<CanonicalInstruction>())
-                    .saturating_add(parts_bytes(&instruction.content))
-            },
-        )
-        .saturating_add(request.messages.iter().fold(0usize, |size, message| {
+        .fold(std::mem::size_of::<RequestSnapshot>(), |size, message| {
             size.saturating_add(std::mem::size_of::<CanonicalMessage>())
                 .saturating_add(message.name.as_ref().map_or(0, String::len))
                 .saturating_add(parts_bytes(&message.content))
-        }))
-        .saturating_add(request.tools.iter().fold(0usize, |size, tool| {
-            size.saturating_add(std::mem::size_of::<CanonicalTool>())
-                .saturating_add(tool.name.len())
-                .saturating_add(tool.description.as_ref().map_or(0, String::len))
-                .saturating_add(tool.input_schema.as_ref().map_or(0, json_bytes))
-                .saturating_add(tool.format.as_ref().map_or(0, json_bytes))
-        }))
+        })
 }
 
 fn parts_bytes(parts: &[ContentPart]) -> usize {
@@ -465,7 +485,7 @@ fn json_bytes(value: &Value) -> usize {
 
 // Only one part is traversed at a time. Reserve its maximum borrowed stack and
 // sorted object index in addition to the immutable source, before cloning it.
-fn snapshot_cursor_bytes(request: &ModelRequestIRV1) -> usize {
+fn snapshot_cursor_bytes(messages: &[CanonicalMessage]) -> usize {
     fn value_bytes(value: &Value) -> usize {
         let frame = crate::context_hold::CanonicalJsonReplayCursor::frame_bytes();
         match value {
@@ -495,22 +515,9 @@ fn snapshot_cursor_bytes(request: &ModelRequestIRV1) -> usize {
             .max()
             .unwrap_or(0)
     }
-    request
-        .instructions
+    messages
         .iter()
         .map(|item| parts_bytes(&item.content))
-        .chain(
-            request
-                .messages
-                .iter()
-                .map(|item| parts_bytes(&item.content)),
-        )
-        .chain(
-            request
-                .tools
-                .iter()
-                .filter_map(|item| item.input_schema.as_ref().map(value_bytes)),
-        )
         .max()
         .unwrap_or(0)
 }

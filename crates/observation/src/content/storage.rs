@@ -2,12 +2,11 @@
 
 use crate::store::cached_sql;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 
 use hiroute_domain::{
     CanonicalDigest, ContentId, ConversationContentEnvelopeV1, ConversationContentPhaseV2,
-    OBSERVATION_ACK_SCHEMA_V2, ObservationAckV2, ObservationBlobAcknowledgementV1,
-    ObservationDigestSubjectV1,
+    ObservationAckV2, ObservationBlobAcknowledgementV1, ObservationDigestSubjectV1,
 };
 use rusqlite::{OptionalExtension, Transaction, params};
 
@@ -15,79 +14,45 @@ use crate::store::LocalObservationStore;
 
 use super::lifecycle::ContentProjectionError;
 
-type StoredContentEventReplay = (
-    String,
-    Vec<u8>,
-    Option<String>,
-    Option<i64>,
-    Option<i64>,
-    String,
-);
-
+/// Only the latest committed operation can be retried. Its immutable digest
+/// was checked by the commit head; an append also checks the surviving bytes.
+/// A small commit ACK makes no claim about historical body availability.
 pub(crate) fn verify_content_replay(
     store: &LocalObservationStore,
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
-    digest: &CanonicalDigest,
-    acknowledgement: &ObservationAckV2,
+    _digest: &CanonicalDigest,
+    _acknowledgement: &ObservationAckV2,
 ) -> Result<(), ContentProjectionError> {
-    let stored: Option<StoredContentEventReplay> = cached_sql::query_row(transaction, "SELECT event_id, metadata_json, canonical_chunk_object_ref,
-                    canonical_chunk_byte_offset, canonical_chunk_byte_count, envelope_digest
-             FROM conversation_content_events_v2
-             WHERE stream_ref=(SELECT stream_ref FROM observation_streams_v5 WHERE channel='conversation_content' AND producer_id=?1 AND producer_epoch=?2 AND stream_id=?3) AND sequence=?4",
-            params![
-                envelope.producer.stream.producer_id.as_str(),
-                envelope.producer.stream.producer_epoch.as_str(),
-                envelope.producer.stream.stream_id.as_str(),
-                i64_from_u64(envelope.sequence)?,
-            ],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
-    let Some((event_id, metadata, object_ref, stored_offset, stored_count, stored_digest)) = stored
-    else {
-        return Err(ContentProjectionError::ContentCorrupt);
-    };
-    let mut expected_metadata =
-        serde_json::to_value(envelope).map_err(|_| ContentProjectionError::ContentCorrupt)?;
-    expected_metadata
-        .as_object_mut()
-        .ok_or(ContentProjectionError::ContentCorrupt)?
-        .remove("canonical_bytes_base64");
-    let stored_metadata: serde_json::Value = serde_json::from_slice(
-        &crate::store::records::decode(&metadata)
-            .map_err(|_| ContentProjectionError::ContentCorrupt)?,
-    )
-    .map_err(|_| ContentProjectionError::ContentCorrupt)?;
-    if event_id != envelope.event_id.as_str()
-        || stored_digest != digest.as_str()
-        || stored_metadata != expected_metadata
-    {
-        return Err(ContentProjectionError::ContentCorrupt);
-    }
-    verify_replayed_acknowledgement(store, transaction, envelope, acknowledgement)?;
     if envelope.phase != ConversationContentPhaseV2::Append {
-        return if object_ref.is_none() && stored_offset.is_none() && stored_count.is_none() {
-            Ok(())
-        } else {
-            Err(ContentProjectionError::ContentCorrupt)
-        };
+        return Ok(());
     }
-
+    if super::capture::skip_context(transaction, envelope)? {
+        return Ok(());
+    }
     let content_id = envelope
         .content_id
         .as_ref()
         .ok_or(ContentProjectionError::ContentCorrupt)?;
+    let (state, digest): (String, String) = cached_sql::query_row(transaction,
+        "SELECT state,content_blob_digest FROM content_instances_v2 WHERE workspace_id=?1 AND content_id=?2",
+        params![envelope.correlation.workspace_id.as_str(),content_id.as_str()],
+        |row| Ok((row.get(0)?,row.get(1)?)))
+        .map_err(|_| ContentProjectionError::ContentCorrupt)?;
+    if state == "complete" {
+        return verify_acknowledged_blob(
+            store,
+            transaction,
+            envelope,
+            &ObservationBlobAcknowledgementV1 {
+                content_id: content_id.to_string(),
+                digest,
+            },
+        );
+    }
+    if state != "installing" {
+        return Err(ContentProjectionError::ContentCorrupt);
+    }
     let ordinal = envelope
         .chunk_ordinal
         .ok_or(ContentProjectionError::ContentCorrupt)?;
@@ -97,166 +62,37 @@ pub(crate) fn verify_content_replay(
             .as_deref()
             .ok_or(ContentProjectionError::ContentCorrupt)?,
     )?;
-    let expected_ref = format!("content-chunk:{content_id}:{ordinal}");
-    let (path, offset, count, chunk_event_id): (String, i64, i64, String) = cached_sql::query_row(
-        transaction,
-        "SELECT object_path, byte_offset, byte_count, event_id FROM content_chunks_v2
-         WHERE workspace_id=?1 AND content_id=?2 AND chunk_ordinal=?3",
-        params![
-            envelope.correlation.workspace_id.as_str(),
-            content_id.as_str(),
-            i64::from(ordinal),
-        ],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-    )
-    .map_err(|_| ContentProjectionError::ContentCorrupt)?;
-    if object_ref.as_deref() != Some(expected_ref.as_str())
-        || stored_offset != Some(offset)
-        || stored_count != Some(count)
-        || count != i64_from_u64(bytes.len() as u64)?
-        || chunk_event_id != envelope.event_id.as_str()
-        || offset < 0
-    {
+    let (path,count,event): (String,i64,String) = cached_sql::query_row(transaction,
+        "SELECT object_path,byte_count,event_id FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id=?2 AND chunk_ordinal=?3",
+        params![envelope.correlation.workspace_id.as_str(),content_id.as_str(),i64::from(ordinal)],
+        |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)))
+        .map_err(|_| ContentProjectionError::ContentCorrupt)?;
+    if count != i64_from_u64(bytes.len() as u64)? || event != envelope.event_id.as_str() {
         return Err(ContentProjectionError::ContentCorrupt);
     }
-    let state: String = cached_sql::query_row(
-        transaction,
-        "SELECT state FROM content_instances_v2 WHERE workspace_id=?1 AND content_id=?2",
-        params![
-            envelope.correlation.workspace_id.as_str(),
-            content_id.as_str()
-        ],
-        |row| row.get(0),
-    )
-    .map_err(|_| ContentProjectionError::ContentCorrupt)?;
-    let mut file = File::open(
+    let mut input = File::open(
         store
             .object_path(&path)
             .map_err(|_| ContentProjectionError::ContentCorrupt)?,
     )
     .map_err(|_| ContentProjectionError::ContentStorage)?;
-    let object_offset = if state == "complete" {
-        u64::try_from(offset).map_err(|_| ContentProjectionError::ContentCorrupt)?
-    } else if state == "installing" {
-        0
-    } else {
-        return Err(ContentProjectionError::ContentCorrupt);
-    };
-    file.seek(SeekFrom::Start(object_offset))
-        .map_err(|_| ContentProjectionError::ContentStorage)?;
-    let mut stored_bytes = vec![0; bytes.len()];
-    file.read_exact(&mut stored_bytes)
-        .map_err(|_| ContentProjectionError::ContentStorage)?;
-    if stored_bytes != bytes {
-        return Err(ContentProjectionError::ContentCorrupt);
-    }
-    Ok(())
-}
-
-fn verify_replayed_acknowledgement(
-    store: &LocalObservationStore,
-    transaction: &Transaction<'_>,
-    envelope: &ConversationContentEnvelopeV1,
-    acknowledgement: &ObservationAckV2,
-) -> Result<(), ContentProjectionError> {
-    let stream = &envelope.producer.stream;
-    let content = acknowledgement
-        .content_acknowledgement
-        .as_ref()
-        .ok_or(ContentProjectionError::ContentCorrupt)?;
-    let expected_next = match envelope.phase {
-        ConversationContentPhaseV2::Begin => 0,
-        ConversationContentPhaseV2::Append => envelope
-            .chunk_ordinal
-            .and_then(|ordinal| ordinal.checked_add(1))
-            .ok_or(ContentProjectionError::ContentCorrupt)?,
-        ConversationContentPhaseV2::Finish | ConversationContentPhaseV2::Abort => {
-            cached_sql::query_row(
-                transaction,
-                "SELECT next_chunk_ordinal FROM conversation_content_streams_v2
-                 WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND request_id=?4
-                   AND direction=?5 AND fork_id=?6",
-                params![
-                    stream.producer_id.as_str(),
-                    stream.producer_epoch.as_str(),
-                    stream.stream_id.as_str(),
-                    envelope.correlation.request_id.as_str(),
-                    envelope.direction.as_str(),
-                    envelope.fork_id,
-                ],
-                |row| row.get::<_, i64>(0),
-            )
-            .map_err(|_| ContentProjectionError::ContentCorrupt)?
-            .try_into()
-            .map_err(|_| ContentProjectionError::ContentCorrupt)?
+    // Active chunk files contain exactly one append; no permanent offset ledger.
+    let mut buffer = [0_u8; 16 * 1024];
+    let mut offset = 0;
+    loop {
+        let read = input
+            .read(&mut buffer)
+            .map_err(|_| ContentProjectionError::ContentStorage)?;
+        if read == 0 {
+            break;
         }
-    };
-    let expected_root = matches!(
-        envelope.phase,
-        ConversationContentPhaseV2::Finish | ConversationContentPhaseV2::Abort
-    )
-    .then(|| {
-        envelope
-            .result_transcript_root
-            .as_ref()
-            .map(ToString::to_string)
-    })
-    .flatten();
-    if acknowledgement.schema_version != OBSERVATION_ACK_SCHEMA_V2
-        || acknowledgement.identity.channel != "conversation_content"
-        || acknowledgement.identity.producer_id != stream.producer_id.as_str()
-        || acknowledgement.identity.producer_epoch != stream.producer_epoch.as_str()
-        || acknowledgement.identity.stream_id != stream.stream_id.as_str()
-        || acknowledgement.highest_contiguous_sequence > acknowledgement.highest_accounted_sequence
-        || acknowledgement.highest_accounted_sequence != envelope.sequence
-        || content.request_id != envelope.correlation.request_id.as_str()
-        || content.direction != envelope.direction
-        || content.fork_id != envelope.fork_id
-        || content.next_chunk_ordinal != expected_next
-        || content.transcript_root != expected_root
-        || content.delta_parent_transcript_root
-            != envelope
-                .parent_transcript_root
-                .as_ref()
-                .map(ToString::to_string)
-    {
-        return Err(ContentProjectionError::ContentCorrupt);
-    }
-    for blob in &content.acknowledged_blobs {
-        verify_acknowledged_blob(store, transaction, envelope, blob)?;
-    }
-    if matches!(
-        envelope.phase,
-        ConversationContentPhaseV2::Finish | ConversationContentPhaseV2::Abort
-    ) {
-        let mut statement = transaction
-            .prepare_cached(
-                "SELECT content_id, content_blob_digest FROM content_instances_v2
-                 WHERE workspace_id=?1 AND request_id=?2 AND direction=?3 AND fork_id=?4
-                   AND state='complete' ORDER BY content_id",
-            )
-            .map_err(|_| ContentProjectionError::ContentCorrupt)?;
-        let durable = statement
-            .query_map(
-                params![
-                    envelope.correlation.workspace_id.as_str(),
-                    envelope.correlation.request_id.as_str(),
-                    envelope.direction.as_str(),
-                    envelope.fork_id,
-                ],
-                |row| {
-                    Ok(ObservationBlobAcknowledgementV1 {
-                        content_id: row.get(0)?,
-                        digest: row.get(1)?,
-                    })
-                },
-            )
-            .map_err(|_| ContentProjectionError::ContentCorrupt)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| ContentProjectionError::ContentCorrupt)?;
-        if durable != content.acknowledged_blobs {
+        if bytes.get(offset..offset + read) != Some(&buffer[..read]) {
             return Err(ContentProjectionError::ContentCorrupt);
         }
+        offset += read;
+    }
+    if offset != bytes.len() {
+        return Err(ContentProjectionError::ContentCorrupt);
     }
     Ok(())
 }
@@ -466,15 +302,8 @@ pub(crate) fn finalize_content(
     .map_err(|_| ContentProjectionError::ActivityStorage)?;
     cached_sql::execute(
         transaction,
-        "UPDATE content_chunks_v2 SET object_path=?3
-         WHERE workspace_id=?1 AND content_id=?2",
-        params![
-            envelope.correlation.workspace_id.as_str(),
-            content_id,
-            store
-                .object_locator(&blob_path)
-                .map_err(|_| ContentProjectionError::ContentCorrupt)?,
-        ],
+        "DELETE FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id=?2",
+        params![envelope.correlation.workspace_id.as_str(), content_id,],
     )
     .map_err(|_| ContentProjectionError::ActivityStorage)?;
     Ok(ObservationBlobAcknowledgementV1 {

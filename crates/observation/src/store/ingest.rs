@@ -1,8 +1,7 @@
 use hiroute_domain::{
     CanonicalDigest, ConversationContentEnvelopeV1, ExecutionFactEnvelopeV1, LossNoticeV1,
-    ObservationChannel, ObservationContentAcknowledgementV1, ObservationEnvelopeViolationV1,
-    ObservationGapHeartbeatV1, ObservationNackDetailV1, ObservationStreamV1,
-    SequencedObservationEnvelope,
+    ObservationChannel, ObservationEnvelopeViolationV1, ObservationGapHeartbeatV1,
+    ObservationNackDetailV1, ObservationStreamV1, SequencedObservationEnvelope,
 };
 use rusqlite::{OptionalExtension, params};
 
@@ -14,8 +13,8 @@ use crate::writer::{IngestOutcome, ObservationCommitPort, ObservationStoreError}
 use super::protocol::{
     Preflight, ack, advance_checkpoint, content_projection_nack, content_validation_nack,
     fact_projection_nack, fact_validation_nack, heartbeat_validation_detail, i64_from_u64,
-    insert_content_event, insert_event, insert_gap_event, load_checkpoint, load_feedback, nack,
-    persist_feedback, preflight, release_projection, rollback_projection, write_checkpoint,
+    load_checkpoint, load_feedback, nack, persist_feedback, preflight, release_projection,
+    rollback_projection, write_checkpoint,
 };
 use super::{LocalObservationStore, gap, increment_store_revision};
 
@@ -181,14 +180,6 @@ impl ObservationCommitPort for LocalObservationStore {
         super::agent_attribution::project(&transaction, envelope)
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
         release_projection(&transaction, "fact_projection")?;
-        insert_event(
-            &transaction,
-            ObservationChannel::Fact,
-            stream,
-            envelope.sequence,
-            envelope.event_id.as_str(),
-            payload_digest.as_str(),
-        )?;
         let next = advance_checkpoint(
             &transaction,
             ObservationChannel::Fact,
@@ -303,33 +294,31 @@ impl ObservationCommitPort for LocalObservationStore {
         let last = heartbeat.loss_watermark.last_sequence;
         let expected = checkpoint.accounted.saturating_add(1);
         if heartbeat.sequence <= checkpoint.accounted {
-            let existing: Option<String> = transaction
-                .query_row(
-                    "SELECT event_id FROM observation_events
-                     WHERE stream_ref=(SELECT stream_ref FROM observation_streams_v5 WHERE channel=?1 AND producer_id=?2 AND producer_epoch=?3 AND stream_id=?4)
-                       AND sequence=?5",
-                    params![
-                        channel.as_str(),
-                        stream.producer_id.as_str(),
-                        stream.producer_epoch.as_str(),
-                        stream.stream_id.as_str(),
-                        i64_from_u64(heartbeat.sequence)?,
-                    ],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-            let detail = existing.map_or_else(
-                || ObservationNackDetailV1::MissingPrerequisite {
-                    prerequisite_sequence: expected,
-                    prerequisite_event_id: None,
-                },
-                |expected_event_id| ObservationNackDetailV1::SequenceEventConflict {
-                    sequence: heartbeat.sequence,
-                    expected_event_id,
-                    rejected_event_id: heartbeat.event_id.to_string(),
-                },
-            );
+            let detail =
+                match super::current_commit::load(&transaction, &heartbeat.channel, stream)? {
+                    Some(current)
+                        if current.sequence == heartbeat.sequence
+                            && current.event_id != heartbeat.event_id.as_str() =>
+                    {
+                        ObservationNackDetailV1::SequenceEventConflict {
+                            sequence: heartbeat.sequence,
+                            expected_event_id: current.event_id,
+                            rejected_event_id: heartbeat.event_id.to_string(),
+                        }
+                    }
+                    Some(current) if current.sequence == heartbeat.sequence => {
+                        ObservationNackDetailV1::ImmutableProjectionConflict {
+                            projection_key: format!("current_commit:{}", heartbeat.sequence),
+                            existing_digest: current.digest,
+                            rejected_digest: digest.to_string(),
+                        }
+                    }
+                    _ => ObservationNackDetailV1::ImmutableProjectionConflict {
+                        projection_key: format!("obsolete_sequence:{}", heartbeat.sequence),
+                        existing_digest: format!("accounted:{}", checkpoint.accounted),
+                        rejected_digest: digest.to_string(),
+                    },
+                };
             let outcome = IngestOutcome::Nack(nack(
                 &heartbeat.channel,
                 stream,
@@ -411,32 +400,8 @@ impl ObservationCommitPort for LocalObservationStore {
                 ],
             )
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
-        transaction
-            .execute(
-                "INSERT INTO observation_gap_heartbeats_v1
-             (channel, producer_id, producer_epoch, stream_id, sequence, event_id, heartbeat_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    heartbeat.channel,
-                    stream.producer_id.as_str(),
-                    stream.producer_epoch.as_str(),
-                    stream.stream_id.as_str(),
-                    i64_from_u64(heartbeat.sequence)?,
-                    heartbeat.event_id.as_str(),
-                    serde_json::to_string(heartbeat).map_err(|_| ObservationStoreError::Corrupt)?
-                ],
-            )
-            .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
         checkpoint.accounted = heartbeat.sequence;
         write_checkpoint(&transaction, channel, stream, checkpoint)?;
-        insert_gap_event(
-            &transaction,
-            channel,
-            stream,
-            heartbeat.sequence,
-            heartbeat.event_id.as_str(),
-            digest.as_str(),
-        )?;
         let outcome = IngestOutcome::Ack(ack(channel, stream, checkpoint, None));
         persist_feedback(
             &transaction,

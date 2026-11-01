@@ -11,9 +11,9 @@ use super::{
 };
 
 pub const CONVERSATION_CONTENT_SCHEMA_V2: &str =
-    "hiroute.observation.conversation-content-envelope/v2";
+    "hiroute.observation.conversation-content-envelope/v3";
 pub const CONVERSATION_CONTENT_PORT_DIGEST_V2: &str =
-    "sha256:6f17cd772a0fb322d25dd31dc95e34325cbabbd68912b32f5bb9bed526adfe44";
+    "sha256:7e815c0626cda9fe43c5fbeb14c4b7d71f0e1af1f781d7810afe66cbe5995960";
 pub const OBSERVATION_GAP_HEARTBEAT_SCHEMA_V1: &str = "hiroute.observation.gap-heartbeat/v1";
 pub const CANONICAL_RESPONSE_CONTENT_MEDIA_TYPE_V1: &str =
     "application/vnd.hiroute.model-stream-event+json;version=1";
@@ -112,6 +112,15 @@ pub struct ContentRefV2 {
     pub media_type: String,
 }
 
+/// Archive provenance, separate from routing/scoring authority.
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationCaptureMetadataV1 {
+    pub context_only: bool,
+    pub boundary_verified: bool,
+    pub input_anchor_id: Option<MessageInstanceId>,
+}
+
 /// First Product representation of the frozen Gateway conversation-content/v2 wire contract.
 /// Optional fields mirror the sender one-for-one so an adapter never joins events.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -138,6 +147,8 @@ pub struct ConversationContentEnvelopeV1 {
     pub message_ordinal: Option<u32>,
     pub part_ordinal: Option<u32>,
     pub chunk_ordinal: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture: Option<ObservationCaptureMetadataV1>,
     pub transport_frame_id: Option<String>,
     pub canonical_media_type: Option<String>,
     pub canonical_bytes_base64: Option<String>,
@@ -486,6 +497,7 @@ mod tests {
             message_ordinal: None,
             part_ordinal: None,
             chunk_ordinal: None,
+            capture: None,
             transport_frame_id: None,
             canonical_media_type: None,
             canonical_bytes_base64: None,

@@ -49,24 +49,13 @@ impl LocalObservationStore {
             crate::valuation::archive_request(&transaction, workspace, session, request)
                 .map_err(|_| Error::Unavailable)?;
             cached_sql::execute(&transaction, "INSERT OR IGNORE INTO observation_request_tombstones_v2(workspace_id,request_id,deleted_ms) VALUES(?1,?2,?3)",params![workspace,request,now_ms]).map_err(|_|Error::Unavailable)?;
-            for table in ["conversation_content_events_v2", "execution_fact_events"] {
-                super::records::retire_request_feedback(
-                    &transaction,
-                    workspace,
-                    request,
-                    table,
-                    false,
-                )
-                .map_err(|_| Error::Unavailable)?;
-            }
             cached_sql::execute(&transaction, "DELETE FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id IN(SELECT content_id FROM content_instances_v2 WHERE workspace_id=?1 AND request_id=?2)",params![workspace,request]).map_err(|_|Error::Unavailable)?;
             for table in [
                 "observation_sensitive_payloads_v2",
                 "content_instances_v2",
                 "content_message_instances_v2",
-                "request_content_refs_v2",
+                "observation_input_anchors_v6",
                 "conversation_content_streams_v2",
-                "conversation_content_events_v2",
                 "transcript_roots_v2",
                 "observation_run_links",
                 "observation_link_events",
