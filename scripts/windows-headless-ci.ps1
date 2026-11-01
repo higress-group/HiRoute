@@ -295,6 +295,7 @@ if ($Scope -eq 'components') {
     'private_fs::tests::private_materials_are_exclusive_and_read_without_permission_adoption',
     'private_fs::tests::storage_preparation_reopens_without_adopting_a_file',
     'private_fs::tests::windows_owned_root_stays_pinned_and_private_read_does_not_repair_borrowed_acl',
+    'windows::read_lease::tests::admitted_installed_hardlinks_keep_identity_and_write_delete_fences',
     'windows::background::tests::native_argv_quotes_spaces_quotes_and_trailing_slashes_without_shell',
     'windows::background::tests::profile_is_absolute_and_definition_rejects_unknown_or_foreign_owner',
     'windows::lifecycle::tests::lifecycle_payload_is_closed_and_does_not_accept_extra_authority',
