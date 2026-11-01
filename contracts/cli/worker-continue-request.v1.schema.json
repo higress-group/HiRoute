@@ -41,14 +41,6 @@
       ],
       "type": "object"
     },
-    "permission_policy": {
-      "default": "approve_all",
-      "enum": [
-        "approve_all",
-        "approve_reads",
-        "deny_all"
-      ]
-    },
     "run_timeout_secs": {
       "maximum": 86400,
       "minimum": 1,
