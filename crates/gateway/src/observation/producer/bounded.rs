@@ -155,7 +155,29 @@ pub type ObservationNack = Box<ObservationNackV1>;
 
 pub trait ObservationRecordSink: Send + Sync {
     fn deliver(&self, record: &ObservationRecord) -> Result<ObservationAck, ObservationNack>;
+
+    /// Return an ordered processed prefix, ending at its first rejection.
+    /// Unprocessed records remain owned by the producer. An ACK has the same
+    /// durability and exact-record authority as an individual delivery.
+    fn deliver_batch(
+        &self,
+        records: &[ObservationRecord],
+    ) -> Vec<Result<ObservationAck, ObservationNack>> {
+        let mut results = Vec::with_capacity(records.len());
+        for record in records {
+            let result = self.deliver(record);
+            let rejected = result.is_err();
+            results.push(result);
+            if rejected {
+                break;
+            }
+        }
+        results
+    }
 }
+
+#[path = "bounded/delivery.rs"]
+mod delivery;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObservationPublishOutcome {
@@ -679,6 +701,16 @@ fn producer_worker(
             Err(RecvTimeoutError::Disconnected) => disconnected = true,
         }
 
+        // Do not wait for a batch: amortize a backlog already admitted under
+        // the unchanged byte ceiling. Keep controls and out-of-order records.
+        delivery::drain_ready(
+            &receiver,
+            &shared,
+            expected_sequence,
+            &mut records,
+            &mut flushes,
+        );
+
         loop {
             if retry_at.is_some_and(|deadline| Instant::now() < deadline) {
                 break;
@@ -729,39 +761,16 @@ fn producer_worker(
                 break;
             }
 
-            let Some(record) = records.remove(&expected_sequence) else {
+            if !records.contains_key(&expected_sequence) {
                 break;
-            };
-            let sequence = record.stamp.sequence;
-            let delivery_started = record.timing.as_ref().map(|timing| timing.begin_delivery());
-            let result = catch_unwind(AssertUnwindSafe(|| sink.deliver(&record)));
-            release_bytes(&shared, record.accounted_bytes);
-            // Reuse the authoritative feedback result: content ACK validation
-            // decodes the envelope and must not run a second time for timing.
-            let delivered = matches!(&result, Ok(Ok(ack)) if acknowledgement_covers_record(&record, ack, contiguous_ceiling));
-            if let (Some(timing), Some(started)) = (&record.timing, delivery_started) {
-                timing.end_delivery(started, delivered);
             }
-            match result {
-                Ok(Ok(_)) if delivered => {
-                    shared.delivered.fetch_add(1, Ordering::Relaxed);
-                    expected_sequence = sequence.saturating_add(1);
-                }
-                Ok(Err(nack)) if nack_matches_record(&record, &nack) => {
-                    shared.sink_nacks.fetch_add(1, Ordering::Relaxed);
-                    shared.sink_failures.fetch_add(1, Ordering::Relaxed);
-                    restore_worker_loss(&shared, sequence, ObservationLossReason::SinkNack);
-                }
-                Ok(Ok(_)) | Ok(Err(_)) => {
-                    shared.sink_failures.fetch_add(1, Ordering::Relaxed);
-                    restore_worker_loss(&shared, sequence, ObservationLossReason::SinkFailed);
-                }
-                Err(_) => {
-                    shared.sink_panics.fetch_add(1, Ordering::Relaxed);
-                    shared.sink_failures.fetch_add(1, Ordering::Relaxed);
-                    restore_worker_loss(&shared, sequence, ObservationLossReason::SinkPanicked);
-                }
-            }
+            delivery::deliver_ready(
+                &*sink,
+                &shared,
+                &mut records,
+                &mut expected_sequence,
+                contiguous_ceiling,
+            );
         }
 
         flushes.retain(|(through_sequence, acknowledge)| {
