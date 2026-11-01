@@ -5,9 +5,15 @@ import { preferredCodexShell } from './codex-launch';
 export type { CodexAccess } from './types';
 import type { CodexAccess } from './types';
 
-export function CodexHistoryNotice({ language, mode }: { language: 'zh' | 'en'; mode: 'profile' | 'root' }) {
+export function CodexHistoryNotice({ language, mode, compact = false }: { language: 'zh' | 'en'; mode: 'profile' | 'root'; compact?: boolean }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const root = mode === 'root';
+  const recovery = <>
+    <p>{root
+      ? text('找回步骤：在 HiRoute 的“模型路由”点击“停用”，等待原配置恢复完成，再使用原 CODEX_HOME 和原 profile 运行 ', 'To recover: turn off Model routing in HiRoute and wait for configuration restoration to finish. Then use your original CODEX_HOME and profile to run ')
+      : text('无需停用 HiRoute。退出 HiRoute profile，用原 CODEX_HOME 和原 profile 运行 ', 'No need to disable HiRoute. Exit the HiRoute profile and use your original CODEX_HOME and profile to run ')}<code>codex resume --all</code>{text('，选择原有会话。', ' and select the earlier session.')}</p>
+    <p>{text('原入口使用原服务商，绕过 HiRoute，需要原账号或 API 凭据。', 'The original entry uses the original provider, bypasses HiRoute, and needs its original account or API credentials.')}</p>
+  </>;
   return <div className={`callout${root ? ' warn' : ''}`} role="note" data-codex-history-guidance data-codex-history-mode={mode}>
     <UiIcon name={root ? 'warning' : 'info'} /><div>
       <strong>{root
@@ -16,10 +22,7 @@ export function CodexHistoryNotice({ language, mode }: { language: 'zh' | 'en'; 
       <p>{root
         ? text('设为默认后，Codex 按模型服务商筛选 /resume。原有会话可能不再显示，即使选择全部目录；会话文件仍然保留。', 'After using HiRoute by default, Codex filters /resume by model provider. Earlier sessions may disappear, even with all directories selected; their files remain.')
         : text('按需使用只影响 HiRoute profile，普通 Codex 的配置和会话历史不变。HiRoute profile 内的 /resume 可能不显示原服务商的会话。', 'On-demand access only affects the HiRoute profile. Ordinary Codex configuration and session history stay unchanged. Inside the HiRoute profile, /resume may hide sessions from the original provider.')}</p>
-      <p>{root
-        ? text('找回步骤：在 HiRoute 的“模型路由”点击“停用”，等待原配置恢复完成，再使用原 CODEX_HOME 和原 profile 运行 ', 'To recover: turn off Model routing in HiRoute and wait for configuration restoration to finish. Then use your original CODEX_HOME and profile to run ')
-        : text('无需停用 HiRoute。退出 HiRoute profile，用原 CODEX_HOME 和原 profile 运行 ', 'No need to disable HiRoute. Exit the HiRoute profile and use your original CODEX_HOME and profile to run ')}<code>codex resume --all</code>{text('，选择原有会话。', ' and select the earlier session.')}</p>
-      <p>{text('原入口使用原服务商，绕过 HiRoute，需要原账号或 API 凭据。', 'The original entry uses the original provider, bypasses HiRoute, and needs its original account or API credentials.')}</p>
+      {compact ? <Disclosure language={language} label={text('查找原有会话', 'Find earlier sessions')}>{recovery}</Disclosure> : recovery}
     </div>
   </div>;
 }

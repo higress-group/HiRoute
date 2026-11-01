@@ -421,10 +421,14 @@ const scenarios = [
     assert(dialog().querySelector('[data-agent-service-responsibility]')?.textContent.includes('启用不会自动设置开机启动'), 'Enabling routing promises automatic startup');
     const route = dialog().querySelector('[data-agent-plan-id] input');
     assert(route?.checked && !submit().disabled, 'Sole route is not ready to submit');
-    assert(!dialog().querySelector('details').open, 'Advanced settings are open on first enable');
+    assert([...dialog().querySelectorAll('details')].filter(n=>!n.closest('[data-codex-history-guidance]')).every(n=>!n.open), 'Advanced settings are open on first enable');
     const history = dialog().querySelector('[data-codex-history-guidance]');
     assert(visible(history) && !history.closest('details'), 'Session-history guidance is hidden before enabling');
     assert(history.dataset.codexHistoryMode === 'profile' && !history.classList.contains('warn'), 'Default profile is presented as a root takeover warning');
+    const recovery=history.querySelector('details');
+    assert(recovery&&!recovery.open,'Recovery steps displace route choices on first opening');
+    recovery.querySelector('summary').click();await tick();
+    assert(recovery.open&&visible(recovery.querySelector('code')),'Earlier-session instructions cannot be opened');
     assert(history.textContent.includes('普通 Codex 的配置和会话历史不变')
       && history.textContent.includes('HiRoute profile 内的 /resume'), 'Default guidance does not limit provider filtering to the HiRoute profile');
     assert(history.textContent.includes('无需停用 HiRoute') && !history.textContent.includes('恢复完成')

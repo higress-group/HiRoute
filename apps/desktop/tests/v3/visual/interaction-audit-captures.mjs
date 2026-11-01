@@ -81,6 +81,10 @@ export async function interactionAuditCaptures(client, baseUrl, output, { baseli
       const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       await writeFile(path.join(output, screenshot), Buffer.from(shot.data, 'base64'));
       if (!baseline && (geometry.pageOverflow || geometry.overflow)) throw Error('Horizontal overflow: ' + JSON.stringify(geometry));
+      if (['decision-editor','decision-extension-editor'].includes(state) && viewport.height <= 700) {
+        geometry.editingHeight = await evaluate(client, 'document.querySelector(".decision-connection-form .decision-form-fields").getBoundingClientRect().height');
+        if (!baseline && geometry.editingHeight < 190) throw Error('Short-window fields are displaced by fixed chrome: '+geometry.editingHeight);
+      }
       if (state === 'trial-readonly') {
         const exit = await evaluate(client, `(() => {const buttons=[...document.querySelectorAll('.trial-footer button')];return {cancel:buttons.find(b=>/^(取消|Cancel)$/.test(b.textContent.trim()))?.matches(':disabled'),continue:buttons.find(b=>/^(检查改动|Review changes)$/.test(b.textContent.trim()))?.matches(':disabled')};})()`);
         geometry.exit = exit;

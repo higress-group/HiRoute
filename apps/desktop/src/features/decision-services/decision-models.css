@@ -195,3 +195,13 @@
   .decision-form-actions { padding: 14px 20px; }
 }
 .decision-form-actions .field-actions > .btn:first-child { margin-right:auto; }
+
+/* Keep short-window editing focused on fields without shrinking controls. */
+@media (max-height: 700px) {
+  .decision-models-page .oc-model-back { padding-block: 2px; }
+  .decision-models-page .decision-connection-form { margin-block: 8px; }
+  .decision-models-page .decision-connection-form > .detail-fieldset > .decision-heading { padding-block: 12px; }
+  .decision-models-page .decision-connection-form .decision-form-fields { padding-block: 16px; }
+  .decision-models-page .decision-connection-form .decision-form-actions { padding-block: 10px; }
+  .decision-models-page .decision-connection-form .decision-form-actions > .field-help { margin-bottom: 8px; }
+}
