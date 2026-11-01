@@ -158,7 +158,7 @@ fn local_observation_boundary_golden_records_product_completion() {
     assert_eq!(golden.activity_store, "activity.db");
     assert_eq!(golden.content_store, "conversation-content");
     assert_eq!(golden.retention_schema, OBSERVATION_RETENTION_SCHEMA_V1);
-    assert_eq!(golden.activity_schema_version, "4");
+    assert_eq!(golden.activity_schema_version, "6");
     assert_eq!(
         golden.value_calculation_basis,
         hiroute_domain::VALUE_CALCULATION_BASIS_V1
