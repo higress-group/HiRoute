@@ -20,6 +20,7 @@ mod retained;
 use retained::QueuedRecord;
 #[path = "bounded/content.rs"]
 mod content;
+pub use content::ContentResourceSnapshot;
 pub(crate) use content::{ContentQueueLimits, ContentSpool};
 use content::{ContentResources, ContentSlotClass};
 
@@ -233,7 +234,7 @@ impl ByteBoundedObservationProducer {
         }
     }
 
-    #[cfg(any(test, feature = "e2e-test-control"))]
+    #[cfg(test)]
     pub(super) fn work_state(&self) -> (usize, usize, usize) {
         (
             self.shared.queued_bytes.load(Ordering::Acquire),

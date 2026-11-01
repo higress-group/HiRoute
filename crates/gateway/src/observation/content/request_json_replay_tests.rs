@@ -1011,7 +1011,7 @@ fn dense_async_history_waits_for_record_credit_and_keeps_every_original_byte() {
         .inner
         .channels
         .content
-        .wait_until_credit_blocked();
+        .wait_until_content_pressure();
     assert!(receiver.try_recv().is_err());
     drop(input);
     drop(gate);

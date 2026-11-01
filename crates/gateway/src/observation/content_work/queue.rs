@@ -111,10 +111,6 @@ impl ContentStatus {
         self.failed.store(true, Ordering::Release);
         true
     }
-
-    pub(in super::super) fn stop(&self) {
-        self.note_failure("content_capture_unavailable");
-    }
 }
 
 impl RequestWork {
@@ -328,16 +324,21 @@ impl WorkQueue {
     }
 }
 
-async fn caught<F: Future>(future: F) -> Result<F::Output, ()> {
+async fn caught<F: Future>(future: F) -> (Result<F::Output, ()>, std::time::Duration) {
     let mut future = std::pin::pin!(future);
-    std::future::poll_fn(|context| {
-        match catch_unwind(AssertUnwindSafe(|| future.as_mut().poll(context))) {
+    let mut work = std::time::Duration::ZERO;
+    let result = std::future::poll_fn(|context| {
+        let started = Instant::now();
+        let result = catch_unwind(AssertUnwindSafe(|| future.as_mut().poll(context)));
+        work += started.elapsed();
+        match result {
             Ok(Poll::Ready(value)) => Poll::Ready(Ok(value)),
             Ok(Poll::Pending) => Poll::Pending,
             Err(_) => Poll::Ready(Err(())),
         }
     })
-    .await
+    .await;
+    (result, work)
 }
 
 async fn process(request: &RequestObservation, command: Command) -> bool {
@@ -423,7 +424,7 @@ async fn run_ready(ready: Option<Box<ReadyRequest>>) {
         request.content_run = Some(Arc::new(super::CaptureRun::new()));
         request.content_occurred_at = Some(job.occurred_at);
         let started = Instant::now();
-        let result = caught(process(&request, job.command)).await;
+        let (result, work) = caught(process(&request, job.command)).await;
         match result {
             Ok(true) => {}
             Ok(false) => request.fail_content_work(&ready.status, "content_capture_unavailable"),
@@ -432,7 +433,7 @@ async fn run_ready(ready: Option<Box<ReadyRequest>>) {
         // Source and cursor ownership outlives the whole traversal future.
         drop(job.retained);
         if let Some(latency) = &request.inner.latency {
-            latency.capture_completed(job.queued, started, ready.status.failed());
+            latency.capture_completed(job.queued, started, work, ready.status.failed());
         }
         tokio::task::yield_now().await;
     }
@@ -459,7 +460,7 @@ impl ContentGate {
         let gate = Arc::new((Mutex::new(false), Condvar::new()));
         (Some(Arc::clone(&gate)), Self(gate))
     }
-    pub(super) fn release(&self) {
+    pub(in super::super) fn release(&self) {
         *lock(&self.0.0) = true;
         self.0.1.notify_all();
     }

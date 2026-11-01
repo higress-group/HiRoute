@@ -129,7 +129,7 @@ impl RequestObservation {
                 chunk_ordinal: None,
                 transport_frame_id: None,
                 canonical_media_type: None,
-                canonical_bytes_base64: None,
+                canonical_bytes: None,
                 content_ref: None,
                 downstream_delivery: None,
                 abort_reason: None,
@@ -209,7 +209,7 @@ impl RequestObservation {
             chunk_ordinal: Some(chunk_ordinal),
             transport_frame_id: chunk.transport_frame_id.map(Into::into),
             canonical_media_type: Some(chunk.media_type.into()),
-            canonical_bytes_base64: Some(base64_encode(chunk.bytes)),
+            canonical_bytes: Some(chunk.bytes),
             content_ref: chunk.public_ref,
             downstream_delivery: chunk.downstream_delivery.map(Into::into),
             abort_reason: None,
@@ -303,7 +303,7 @@ impl RequestObservation {
             chunk_ordinal: None,
             transport_frame_id: None,
             canonical_media_type: None,
-            canonical_bytes_base64: None,
+            canonical_bytes: None,
             content_ref: None,
             downstream_delivery: (direction == "response_delivered")
                 .then(|| "full_frame_transport_accepted".into()),
@@ -397,7 +397,7 @@ impl RequestObservation {
         )
     }
 
-    async fn emit_content_run(&self, event: ContentEvent) {
+    async fn emit_content_run(&self, event: ContentEvent<'_>) {
         if self.content_background
             && event.phase != "abort"
             && self
@@ -461,7 +461,7 @@ impl RequestObservation {
                         chunk_ordinal: event.chunk_ordinal,
                         transport_frame_id: event.transport_frame_id,
                         canonical_media_type: event.canonical_media_type,
-                        canonical_bytes_base64: event.canonical_bytes_base64,
+                        canonical_bytes_base64: event.canonical_bytes.map(base64_encode),
                         content_ref: event.content_ref,
                         downstream_delivery: event.downstream_delivery,
                         abort_reason: event.abort_reason,
@@ -735,7 +735,7 @@ struct ContentChunk<'a> {
     downstream_delivery: Option<&'a str>,
 }
 
-struct ContentEvent {
+struct ContentEvent<'a> {
     direction: &'static str,
     phase: &'static str,
     attempt_id: Option<String>,
@@ -752,14 +752,14 @@ struct ContentEvent {
     chunk_ordinal: Option<u32>,
     transport_frame_id: Option<String>,
     canonical_media_type: Option<String>,
-    canonical_bytes_base64: Option<String>,
+    canonical_bytes: Option<&'a [u8]>,
     content_ref: Option<ContentRefV1>,
     downstream_delivery: Option<String>,
     abort_reason: Option<String>,
     completeness_delta: Option<String>,
 }
 
-impl ContentEvent {
+impl ContentEvent<'_> {
     fn record_credit_bytes(&self, correlation: &super::schema::CorrelationV1) -> usize {
         // Fixed keys, producer IDs, event ID, numbers and accounting fit 4 KiB.
         // Variable metadata gets JSON's worst-case six bytes per input byte;
@@ -807,7 +807,10 @@ impl ContentEvent {
                 bytes.saturating_add(text.len().saturating_mul(6))
             })
         });
-        metadata.saturating_add(self.canonical_bytes_base64.as_ref().map_or(0, String::len))
+        metadata.saturating_add(
+            self.canonical_bytes
+                .map_or(0, |bytes| bytes.len().div_ceil(3).saturating_mul(4)),
+        )
     }
 }
 

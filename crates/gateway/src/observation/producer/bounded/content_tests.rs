@@ -51,9 +51,7 @@ impl ObservationRecordSink for BytesSink {
             "healthy pressure must not declare a gap"
         );
         lock(&self.records).push((record.stamp().sequence, record.payload.to_vec()));
-        Ok(super::super::super::feedback::accounted_acknowledgement(
-            record,
-        ))
+        Ok(super::super::feedback::accounted_acknowledgement(record))
     }
 }
 fn runtime() -> tokio::runtime::Runtime {

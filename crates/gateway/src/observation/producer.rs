@@ -26,7 +26,10 @@ use bounded::{
     ObservationSequenceStamp, RECORD_ACCOUNTING_BYTES,
 };
 pub(super) use bounded::{ContentQueueLimits, ContentSpool};
-pub use bounded::{ObservationAck, ObservationNack, ObservationRecord, ObservationRecordSink};
+pub use bounded::{
+    ContentResourceSnapshot, ObservationAck, ObservationNack, ObservationRecord,
+    ObservationRecordSink,
+};
 pub use feedback::accounted_acknowledgement;
 use feedback::receiver_unavailable_nack;
 
@@ -41,19 +44,23 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
-    #[cfg(any(test, feature = "e2e-test-control"))]
+    #[cfg(test)]
     pub(super) fn work_state(&self) -> Option<(usize, usize, usize)> {
         self.inner.as_ref().map(|producer| producer.work_state())
     }
 
     #[cfg(test)]
-    pub(super) fn wait_until_credit_blocked(&self) {
+    pub(super) fn wait_until_content_pressure(&self) {
         self.inner.as_ref().unwrap().wait_until_credit_blocked();
     }
     pub(super) fn work_can_fit(&self, bytes: usize) -> bool {
         self.inner
             .as_ref()
             .is_some_and(|producer| producer.work_can_fit(bytes))
+    }
+
+    pub(super) fn content_resource_snapshot(&self) -> Option<ContentResourceSnapshot> {
+        self.inner.as_ref()?.content_resource_snapshot()
     }
 
     pub(super) fn content_capacity(&self) -> Option<usize> {

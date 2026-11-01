@@ -41,6 +41,32 @@ impl ContentQueueLimits {
     }
 }
 
+/// Instantaneous accounting counters; neither an RSS estimate nor a persisted DTO.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ContentResourceSnapshot {
+    pub queued_bytes: usize,
+    pub queue_peak_bytes: usize,
+    pub queued_source_bytes: usize,
+    pub active_source_bytes: usize,
+    pub record_slots: usize,
+    pub encode_bytes: usize,
+    pub encode_peak_bytes: usize,
+    pub foreground_encode_bytes: usize,
+    pub foreground_encode_peak_bytes: usize,
+    pub drain_bytes: usize,
+    pub drain_peak_bytes: usize,
+    pub overflow_reserved_bytes: usize,
+    pub overflow_file_bytes: u64,
+    pub overflow_written_bytes: u64,
+    pub overflow_read_bytes: u64,
+    pub overflow_peak_bytes: usize,
+    pub overflow_live_segments: usize,
+    pub overflow_created_segments: usize,
+    pub overflow_cleanup_failures: usize,
+    pub io_failures: usize,
+    pub integrity_failures: usize,
+}
+
 pub(crate) struct ContentResources {
     pub(super) limits: ContentQueueLimits,
     pub(super) quota: Arc<OverflowQuota>,
@@ -314,6 +340,34 @@ impl Drop for SequenceOwner {
 }
 
 impl ByteBoundedObservationProducer {
+    pub(in super::super) fn content_resource_snapshot(&self) -> Option<ContentResourceSnapshot> {
+        let resources = self.shared.content.as_ref()?;
+        let disk = resources.disk_snapshot();
+        Some(ContentResourceSnapshot {
+            queued_bytes: self.shared.queued_bytes.load(Ordering::Acquire),
+            queue_peak_bytes: self.shared.queue_high_water_bytes.load(Ordering::Relaxed),
+            queued_source_bytes: self.shared.work_bytes.load(Ordering::Acquire),
+            active_source_bytes: resources.active_source_bytes.load(Ordering::Acquire),
+            record_slots: resources.slots.load(Ordering::Acquire),
+            encode_bytes: resources.encode_bytes.load(Ordering::Acquire),
+            encode_peak_bytes: resources.encode_peak.load(Ordering::Relaxed),
+            foreground_encode_bytes: resources.foreground_encode_bytes.load(Ordering::Acquire),
+            foreground_encode_peak_bytes: resources.foreground_encode_peak.load(Ordering::Relaxed),
+            drain_bytes: resources.drain_bytes.load(Ordering::Acquire),
+            drain_peak_bytes: resources.drain_peak.load(Ordering::Relaxed),
+            overflow_reserved_bytes: disk.reserved_disk_bytes,
+            overflow_file_bytes: disk.retained_file_bytes,
+            overflow_written_bytes: disk.written_bytes,
+            overflow_read_bytes: disk.read_bytes,
+            overflow_peak_bytes: disk.peak_reserved_bytes,
+            overflow_live_segments: disk.live_segments,
+            overflow_created_segments: disk.created_segments,
+            overflow_cleanup_failures: disk.cleanup_failures,
+            io_failures: resources.io_failures.load(Ordering::Relaxed),
+            integrity_failures: resources.integrity_failures.load(Ordering::Relaxed),
+        })
+    }
+
     fn content_ticket(&self, bytes: usize, class: ContentSlotClass) -> Option<RecordCredit> {
         let content = self.shared.content.as_ref()?;
         let _gate = lock(&self.shared.credit_gate);
@@ -399,13 +453,22 @@ impl ByteBoundedObservationProducer {
             let notified = self.shared.credit_changed.notified();
             tokio::pin!(notified);
             notified.as_mut().enable();
-            let scratch = resources.encode(background, estimate).await;
+            let scratch = resources
+                .encode(background, estimate.saturating_mul(2))
+                .await;
             let mut spill = spool.can_spill()
                 && spool.wants_spill(
                     resources,
                     self.shared.queued_bytes.load(Ordering::Acquire),
                     estimate,
                 );
+            #[cfg(test)]
+            if spill {
+                // Test synchronization observes actual RAM pressure even when
+                // segmented overflow prevents a producer from blocking.
+                self.shared.credit_waits.fetch_add(1, Ordering::Relaxed);
+                self.shared.credit_available.notify_all();
+            }
             let mut credit =
                 self.content_ticket(if spill { descriptor_bytes } else { estimate }, class);
             if credit.is_none() && !spill && spool.can_spill() {

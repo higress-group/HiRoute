@@ -63,8 +63,8 @@ pub use otel::{
 pub use ports::{ObservedCredentialResolver, ObservedRuntimeStateStore};
 pub use pricing::{RequestPriceSnapshot, RequestPriceSource};
 pub use producer::{
-    GatewayObservationSinks, ObservationAck, ObservationNack, ObservationRecord,
-    ObservationRecordSink, accounted_acknowledgement,
+    ContentResourceSnapshot, GatewayObservationSinks, ObservationAck, ObservationNack,
+    ObservationRecord, ObservationRecordSink, accounted_acknowledgement,
 };
 pub use provider::ObservedProductionProvider;
 pub use request::{RequestObservation, RequestObservationMetadata};
@@ -309,6 +309,12 @@ impl GatewayObservation {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = diagnostics;
     }
+    /// Read current resource accounting without inspecting content or taking a
+    /// database snapshot. Callers measure RSS/CPU independently.
+    pub fn content_resource_snapshot(&self) -> Option<ContentResourceSnapshot> {
+        self.channels.content.content_resource_snapshot()
+    }
+
     pub fn from_environment() -> Self {
         let environment = EnvironmentObservation::load();
         Self::with_sinks_and_policy(
