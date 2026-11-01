@@ -66,11 +66,13 @@ pub struct RequestObservation {
     // A worker-local view freezes the enqueue boundary without mutating shared
     // request state or changing lifecycle/execution timestamps.
     pub(super) content_occurred_at: Option<u64>,
-    pub(super) content_credit_wait: Option<std::time::Duration>,
+    pub(super) content_background: bool,
+    pub(super) content_run: Option<Arc<super::content_work::CaptureRun>>,
 }
 
 pub(super) struct RequestObservationInner {
     pub(super) async_content: OnceLock<Arc<super::content_work::ContentStatus>>,
+    pub(super) content_spool: Arc<super::producer::ContentSpool>,
     pub(super) agent_turn_output: OnceLock<(
         Arc<crate::agent_turn_history::AgentTurnHistoryStore>,
         crate::agent_turn_history::AgentTurnTicket,
@@ -226,9 +228,11 @@ impl RequestObservation {
         }
         let value = Self {
             content_occurred_at: None,
-            content_credit_wait: None,
+            content_background: false,
+            content_run: None,
             inner: Arc::new(RequestObservationInner {
                 async_content: OnceLock::new(),
+                content_spool: Arc::new(super::producer::ContentSpool::default()),
                 agent_turn_output: OnceLock::new(),
                 prices,
                 enabled: capture.enabled,

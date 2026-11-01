@@ -51,21 +51,35 @@ their transcript roots remain related. Accepted-output history and usage update
 at delivery; neither waits for content encoding or SQLite. Capacity or capture
 failure reports a gap and stops dependent capture for that request. The final
 Replay owner releases files and reservations on all paths.
-The existing content queue admits snapshots, lease metadata and retained shared
-RAM within its byte ceiling; disk payload length is not RAM. Queued jobs share
-that ceiling with encoded records. The single active source was admitted under
-the same ceiling, bounding source plus queue residency by twice that ceiling.
-Model-proxy allocation counters record ownership and peaks without rejecting an
-admitted request at stream, worker or process accounting targets. The input
-read quantum remains independent of these targets. Fixed slots hold pointers; each admitted job's existing charge
-covers its allocated header, rather than preallocating 256 maximum-size tasks.
-Only the content worker can park on record credit, with a
-bounded stalled-record wait; foreground producers remain nonblocking. Encoded
-records use the reserved 3/16 record allowance rather than borrowing the 13/16
-allowance for future foreground jobs. Queued work still leaves room for one complete
-chunk record. Both use the same unchanged total byte ceiling. Delivery
-releases credit through a condition variable, and a stalled job reports loss
-without publishing dependent completion roots.
+Product composition gives Content a 128 MiB queue allowance, independent of
+32 MiB canonical capture and the other five channels' unchanged 16 MiB allowances.
+Explicit-capacity test/library constructors keep their caller-provided ceilings.
+Queue admission counts retained sources, record metadata and resident encoded
+payloads; active source/cursor ownership is charged separately before traversal.
+A single Content thread cooperatively resumes per-request serial futures. A
+borrowed JSON cursor preserves canonical key order, Replay provenance, escaping,
+chunk boundaries and HMAC bytes without copying the semantic tree. The borrowed
+foreground fallback runs that same traversal synchronously and never waits for
+background credit, encoded-overflow IO or SQLite; include its full local
+encoding/Replay-read cost in performance measurements.
+
+Content prefers RAM. Above its 96 MiB high watermark it can retain already encoded
+records in private segmented temporary backing; below 64 MiB it resumes RAM after
+outstanding spilled ownership drains. That overflow has independent 512 MiB
+unreclaimed-disk admission, held-handle range verification and consumed-segment
+cleanup. It retains no raw ingress owner and never acknowledges durability.
+The existing Replay threshold/TTL, final file barriers, transaction commit,
+per-record ACK/NACK and exact loss-prefix behavior are unchanged.
+
+Queue credit and encoder/drain workspaces are independent. Before a sequence is
+allocated, publication acquires its metadata slot and encoding workspace. A
+reserved progress record can advance even when queued sources occupy all ordinary
+data credit; durable delivery needs no second queue admission. Background waits
+are reactive suspension, not a one-second loss deadline or polling. Normal
+cancellation fences accepted canonical data without competing for a payload slot.
+Fixed channel slots retain pointers; source, scratch, temporary disk and actual
+process RSS are separate measurements. Accounting targets do not reject a legal
+model request, and a healthy HTTP finish alone never proves capture completeness.
 
 Ordinary Responses, Chat Completions, Messages and model-catalog clients may carry
 their HiRoute connection token as `Authorization: Bearer <token>`. The current

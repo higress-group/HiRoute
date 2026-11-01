@@ -15,6 +15,15 @@ use super::super::schema::{
 };
 use super::feedback::{acknowledgement_covers_record, nack_matches_record};
 
+#[path = "bounded/retained.rs"]
+mod retained;
+use retained::QueuedRecord;
+#[path = "bounded/content.rs"]
+mod content;
+pub use content::ContentResourceSnapshot;
+pub(crate) use content::{ContentQueueLimits, ContentSpool};
+use content::{ContentResources, ContentSlotClass};
+
 #[derive(Debug, Error, Eq, PartialEq)]
 pub enum ObservationError {
     #[error("observation sink is full or unavailable")]
@@ -81,52 +90,10 @@ pub struct ObservationRecord {
     timing: Option<super::super::latency::AsyncRecordTiming>,
 }
 
-/// Retained input and typed capture work share the content channel's existing
-/// byte ceiling with encoded records. This owner allocates no sequence number.
-pub struct ObservationWorkReservation {
-    shared: Arc<ProducerShared>,
-    bytes: usize,
-}
-
-/// Reserved before assigning a sequence to background encoding. Until transfer,
-/// early return or unwinding returns the unused record credit.
-struct RecordCredit {
-    shared: Arc<ProducerShared>,
-    bytes: usize,
-}
-
-impl Drop for RecordCredit {
-    fn drop(&mut self) {
-        if self.bytes != 0 {
-            release_bytes(&self.shared, self.bytes);
-        }
-    }
-}
-
-impl RecordCredit {
-    fn shrink_to(&mut self, bytes: usize) {
-        release_bytes(&self.shared, self.bytes - bytes);
-        self.bytes = bytes;
-    }
-
-    fn transfer(mut self) {
-        self.bytes = 0;
-    }
-}
-
-impl Drop for ObservationWorkReservation {
-    fn drop(&mut self) {
-        release_work_bytes(&self.shared, self.bytes);
-    }
-}
-
-impl ObservationWorkReservation {
-    pub(in super::super) fn shrink_to(&mut self, bytes: usize) {
-        let retained = bytes.min(self.bytes);
-        release_work_bytes(&self.shared, self.bytes - retained);
-        self.bytes = retained;
-    }
-}
+#[path = "bounded/credit.rs"]
+mod credit;
+pub use credit::ObservationWorkReservation;
+use credit::RecordCredit;
 
 impl ObservationRecord {
     pub fn stamp(&self) -> &ObservationSequenceStamp {
@@ -198,7 +165,7 @@ pub struct ObservationProducerStats {
 #[derive(Clone)]
 pub struct ByteBoundedObservationProducer {
     identity: ObservationProducerIdentity,
-    sender: SyncSender<ProducerMessage>,
+    sender: SyncSender<Box<ProducerMessage>>,
     shared: Arc<ProducerShared>,
 }
 
@@ -215,8 +182,10 @@ impl fmt::Debug for ByteBoundedObservationProducer {
 
 struct ProducerShared {
     capacity_bytes: usize,
+    content: Option<Arc<ContentResources>>,
     credit_gate: Mutex<()>,
     credit_available: Condvar,
+    credit_changed: tokio::sync::Notify,
     #[cfg(test)]
     credit_waits: AtomicUsize,
     next_sequence: AtomicU64,
@@ -235,7 +204,7 @@ struct ProducerShared {
 }
 
 enum ProducerMessage {
-    Record(ObservationRecord),
+    Record(QueuedRecord),
     GapHeartbeat,
     #[cfg(test)]
     Flush {
@@ -245,7 +214,27 @@ enum ProducerMessage {
 }
 
 impl ByteBoundedObservationProducer {
-    #[cfg(any(test, feature = "e2e-test-control"))]
+    pub(super) fn capacity_bytes(&self) -> usize {
+        self.shared.capacity_bytes
+    }
+
+    pub(super) async fn activate_content_work(
+        &self,
+        retained: &mut ObservationWorkReservation,
+        workspace: usize,
+    ) {
+        loop {
+            let notified = self.shared.credit_changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if retained.activate_with(workspace) {
+                return;
+            }
+            notified.await;
+        }
+    }
+
+    #[cfg(test)]
     pub(super) fn work_state(&self) -> (usize, usize, usize) {
         (
             self.shared.queued_bytes.load(Ordering::Acquire),
@@ -255,6 +244,9 @@ impl ByteBoundedObservationProducer {
     }
 
     fn work_capacity(&self) -> usize {
+        if let Some(content) = &self.shared.content {
+            return content.limits.bytes.saturating_sub(content.limits.control);
+        }
         // At the default 512 KiB, 96 KiB covers a canonical 64 KiB chunk's
         // base64 plus envelope. Keep that record headroom, while admitting
         // concurrent snapshot and response jobs within the same total ceiling.
@@ -275,13 +267,37 @@ impl ByteBoundedObservationProducer {
         if next_work > self.work_capacity() {
             return None;
         }
+        if let Some(content) = &self.shared.content {
+            let control = content.control_bytes.load(Ordering::Relaxed);
+            let progress = usize::from(content.progress_busy.load(Ordering::Relaxed))
+                * content.limits.progress;
+            let data = self
+                .shared
+                .queued_bytes
+                .load(Ordering::Relaxed)
+                .saturating_sub(control)
+                .saturating_sub(progress);
+            if data.saturating_add(bytes) > self.work_capacity() {
+                return None;
+            }
+        }
         reserve_bytes(&self.shared, bytes).then(|| {
             self.shared.work_bytes.store(next_work, Ordering::Release);
-            ObservationWorkReservation {
-                shared: Arc::clone(&self.shared),
-                bytes,
-            }
+            ObservationWorkReservation::queued(Arc::clone(&self.shared), bytes)
         })
+    }
+
+    pub(super) fn reserve_control_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
+        let content = self.shared.content.as_ref()?;
+        let _gate = lock(&self.shared.credit_gate);
+        if !reserve_bytes(&self.shared, bytes) {
+            return None;
+        }
+        content.control_bytes.fetch_add(bytes, Ordering::AcqRel);
+        Some(ObservationWorkReservation::control(
+            Arc::clone(&self.shared),
+            bytes,
+        ))
     }
 
     pub(super) fn declare_work_loss(&self) {
@@ -295,14 +311,40 @@ impl ByteBoundedObservationProducer {
         capacity_events: usize,
         sink: Arc<dyn ObservationRecordSink>,
     ) -> Result<Self, ObservationError> {
+        Self::new_inner(identity, capacity_bytes, capacity_events, sink, None)
+    }
+
+    pub(super) fn new_content(
+        identity: ObservationProducerIdentity,
+        limits: ContentQueueLimits,
+        sink: Arc<dyn ObservationRecordSink>,
+    ) -> Result<Self, ObservationError> {
+        Self::new_inner(
+            identity,
+            limits.bytes,
+            limits.slots() + 3,
+            sink,
+            Some(ContentResources::new(limits)),
+        )
+    }
+
+    fn new_inner(
+        identity: ObservationProducerIdentity,
+        capacity_bytes: usize,
+        capacity_events: usize,
+        sink: Arc<dyn ObservationRecordSink>,
+        content: Option<Arc<ContentResources>>,
+    ) -> Result<Self, ObservationError> {
         if capacity_bytes == 0 || capacity_events == 0 {
             return Err(ObservationError::InvalidCapacity);
         }
         let (sender, receiver) = sync_channel(capacity_events);
         let shared = Arc::new(ProducerShared {
             capacity_bytes,
+            content,
             credit_gate: Mutex::new(()),
             credit_available: Condvar::new(),
+            credit_changed: tokio::sync::Notify::new(),
             #[cfg(test)]
             credit_waits: AtomicUsize::new(0),
             next_sequence: AtomicU64::new(1),
@@ -426,32 +468,26 @@ impl ByteBoundedObservationProducer {
             gap_heartbeat: false,
             timing,
         };
-        match self.sender.try_send(ProducerMessage::Record(record)) {
+        let record = QueuedRecord::resident(record, credit);
+        // Keep the bounded channel's preallocated slots pointer-sized. The
+        // actual record remains owned and byte-accounted until delivery.
+        match self
+            .sender
+            .try_send(Box::new(ProducerMessage::Record(record)))
+        {
             Ok(()) => {
-                credit.transfer();
                 self.shared.enqueued.fetch_add(1, Ordering::Relaxed);
                 ObservationPublishOutcome::Enqueued { sequence }
             }
-            Err(TrySendError::Full(ProducerMessage::Record(record))) => {
+            Err(TrySendError::Full(record)) => {
                 drop(record);
-                drop(credit);
                 self.restore_and_drop(sequence, ObservationLossReason::QueueEventsExceeded);
                 ObservationPublishOutcome::Dropped { sequence }
             }
-            Err(TrySendError::Disconnected(ProducerMessage::Record(record))) => {
+            Err(TrySendError::Disconnected(record)) => {
                 drop(record);
-                drop(credit);
                 self.restore_and_drop(sequence, ObservationLossReason::WorkerDisconnected);
                 ObservationPublishOutcome::Dropped { sequence }
-            }
-            Err(TrySendError::Full(ProducerMessage::GapHeartbeat))
-            | Err(TrySendError::Disconnected(ProducerMessage::GapHeartbeat)) => {
-                unreachable!("try_publish sends only records")
-            }
-            #[cfg(test)]
-            Err(TrySendError::Full(ProducerMessage::Flush { .. }))
-            | Err(TrySendError::Disconnected(ProducerMessage::Flush { .. })) => {
-                unreachable!("try_publish sends only records")
             }
         }
     }
@@ -460,22 +496,21 @@ impl ByteBoundedObservationProducer {
         self.reserve_record(bytes, deadline).then(|| RecordCredit {
             shared: Arc::clone(&self.shared),
             bytes,
+            content_slot: None,
         })
     }
 
     fn reserve_record(&self, bytes: usize, deadline: Option<Instant>) -> bool {
         let mut gate = lock(&self.shared.credit_gate);
-        // Work and encoded records have complementary allowances. Count the
-        // current work plus the record window, rather than letting records
-        // consume the work allowance before the next foreground source arrives.
-        // One canonical chunk always fits the reserved record window, even
-        // when queued work fills its own allowance.
+        // Keep room for concurrent foreground jobs. Borrow enough of that
+        // window for one record when queued work is large, so the sole encoder
+        // can still progress without waiting for itself to consume another job.
         let record_window = self.shared.capacity_bytes - self.work_capacity();
         let can_wait = deadline.is_some() && bytes <= record_window;
         loop {
             let total = self.shared.queued_bytes.load(Ordering::Relaxed);
             let work = self.shared.work_bytes.load(Ordering::Relaxed);
-            let ceiling = work.saturating_add(record_window);
+            let ceiling = self.work_capacity().max(work.saturating_add(bytes));
             if (!can_wait || total.saturating_add(bytes) <= ceiling)
                 && reserve_bytes(&self.shared, bytes)
             {
@@ -533,10 +568,10 @@ impl ByteBoundedObservationProducer {
             .load(Ordering::Acquire)
             .saturating_sub(1);
         self.sender
-            .try_send(ProducerMessage::Flush {
+            .try_send(Box::new(ProducerMessage::Flush {
                 through_sequence,
                 acknowledge: sender,
-            })
+            }))
             .map_err(|_| ObservationError::Unavailable)?;
         receiver
             .recv_timeout(timeout)
@@ -571,12 +606,38 @@ impl ByteBoundedObservationProducer {
         // This control pulse has its own event-capacity slot and no byte
         // reservation. If the event queue is already full, the worker checks
         // pending loss after draining every queued record.
-        let _ = self.sender.try_send(ProducerMessage::GapHeartbeat);
+        if self
+            .shared
+            .content
+            .as_ref()
+            .is_some_and(|content| content.loss_wake_queued.swap(true, Ordering::AcqRel))
+        {
+            return;
+        }
+        if self
+            .sender
+            .try_send(Box::new(ProducerMessage::GapHeartbeat))
+            .is_err()
+            && let Some(content) = &self.shared.content
+        {
+            content.loss_wake_queued.store(false, Ordering::Release);
+        }
     }
 }
 
 fn reserve_bytes(shared: &ProducerShared, bytes: usize) -> bool {
-    reserve_bytes_up_to(shared, bytes, shared.capacity_bytes)
+    let reserved = shared.content.as_ref().map_or(0, |content| {
+        if content.progress_busy.load(Ordering::Relaxed) {
+            0
+        } else {
+            content.limits.progress
+        }
+    });
+    reserve_bytes_up_to(
+        shared,
+        bytes,
+        shared.capacity_bytes.saturating_sub(reserved),
+    )
 }
 
 fn reserve_bytes_up_to(shared: &ProducerShared, bytes: usize, ceiling: usize) -> bool {
@@ -603,22 +664,6 @@ fn reserve_bytes_up_to(shared: &ProducerShared, bytes: usize, ceiling: usize) ->
             Err(observed) => current = observed,
         }
     }
-}
-
-fn release_bytes(shared: &ProducerShared, bytes: usize) {
-    let _gate = lock(&shared.credit_gate);
-    let previous = shared.queued_bytes.fetch_sub(bytes, Ordering::AcqRel);
-    debug_assert!(previous >= bytes);
-    // Pair with the waiter's final capacity check to avoid a missed wakeup.
-    shared.credit_available.notify_all();
-}
-
-fn release_work_bytes(shared: &ProducerShared, bytes: usize) {
-    let _gate = lock(&shared.credit_gate);
-    let previous_work = shared.work_bytes.fetch_sub(bytes, Ordering::AcqRel);
-    let previous = shared.queued_bytes.fetch_sub(bytes, Ordering::AcqRel);
-    debug_assert!(previous_work >= bytes && previous >= bytes);
-    shared.credit_available.notify_all();
 }
 
 fn record_loss(shared: &ProducerShared, loss: ObservationLossWatermark) {
@@ -659,13 +704,13 @@ fn record_loss(shared: &ProducerShared, loss: ObservationLossWatermark) {
 }
 
 fn producer_worker(
-    receiver: Receiver<ProducerMessage>,
+    receiver: Receiver<Box<ProducerMessage>>,
     sink: Arc<dyn ObservationRecordSink>,
     shared: Arc<ProducerShared>,
     identity: ObservationProducerIdentity,
 ) {
     let mut expected_sequence = 1_u64;
-    let mut records = BTreeMap::<u64, ObservationRecord>::new();
+    let mut records = BTreeMap::<u64, QueuedRecord>::new();
     let mut flushes = Vec::<(u64, SyncSender<()>)>::new();
     let mut retry_at = None;
     let mut retry_backoff = GAP_RETRY_INITIAL_BACKOFF;
@@ -676,20 +721,24 @@ fn producer_worker(
         let timeout = retry_at.map_or(LOSS_POLL_INTERVAL, |deadline: Instant| {
             deadline.saturating_duration_since(Instant::now())
         });
-        match receiver.recv_timeout(timeout) {
+        match receiver.recv_timeout(timeout).map(|message| *message) {
             Ok(ProducerMessage::Record(record)) => {
-                if record.stamp.sequence < expected_sequence {
+                if record.sequence() < expected_sequence {
                     // A compacted loss declaration may conservatively cover
                     // a record that was still waiting in the event queue.
                     // Its sequence is already terminally declared as a gap.
-                    release_bytes(&shared, record.accounted_bytes);
+                    drop(record);
                     shared.dropped.fetch_add(1, Ordering::Relaxed);
-                } else if let Some(replaced) = records.insert(record.stamp.sequence, record) {
-                    release_bytes(&shared, replaced.accounted_bytes);
+                } else if let Some(replaced) = records.insert(record.sequence(), record) {
+                    drop(replaced);
                     shared.dropped.fetch_add(1, Ordering::Relaxed);
                 }
             }
-            Ok(ProducerMessage::GapHeartbeat) => {}
+            Ok(ProducerMessage::GapHeartbeat) => {
+                if let Some(content) = &shared.content {
+                    content.loss_wake_queued.store(false, Ordering::Release);
+                }
+            }
             #[cfg(test)]
             Ok(ProducerMessage::Flush {
                 through_sequence,
@@ -780,9 +829,7 @@ fn producer_worker(
             }
         });
         if disconnected {
-            for (_, record) in records {
-                release_bytes(&shared, record.accounted_bytes);
-            }
+            drop(records);
             return;
         }
     }
@@ -810,7 +857,7 @@ fn pending_loss_at(
 
 fn discard_covered_records(
     shared: &ProducerShared,
-    records: &mut BTreeMap<u64, ObservationRecord>,
+    records: &mut BTreeMap<u64, QueuedRecord>,
     through_sequence: u64,
 ) {
     let covered = records
@@ -819,7 +866,7 @@ fn discard_covered_records(
         .collect::<Vec<_>>();
     for sequence in covered {
         if let Some(record) = records.remove(&sequence) {
-            release_bytes(shared, record.accounted_bytes);
+            drop(record);
             shared.dropped.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -901,3 +948,7 @@ fn restore_worker_loss(shared: &ProducerShared, sequence: u64, reason: Observati
 #[cfg(test)]
 #[path = "bounded/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "bounded/content_tests.rs"]
+mod content_tests;

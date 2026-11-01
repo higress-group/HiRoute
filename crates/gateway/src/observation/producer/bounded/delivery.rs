@@ -5,24 +5,28 @@ const RECORDS: usize = 32;
 const BYTES: usize = 256 * 1024;
 
 pub(super) fn drain_ready(
-    receiver: &Receiver<ProducerMessage>,
+    receiver: &Receiver<Box<ProducerMessage>>,
     shared: &ProducerShared,
     expected: u64,
-    records: &mut BTreeMap<u64, ObservationRecord>,
+    records: &mut BTreeMap<u64, QueuedRecord>,
     flushes: &mut Vec<(u64, SyncSender<()>)>,
 ) {
     for message in receiver.try_iter().take(RECORDS - 1) {
-        match message {
+        match *message {
             ProducerMessage::Record(record) => {
-                if record.stamp.sequence < expected {
-                    release_bytes(shared, record.accounted_bytes);
+                if record.sequence() < expected {
+                    drop(record);
                     shared.dropped.fetch_add(1, Ordering::Relaxed);
-                } else if let Some(replaced) = records.insert(record.stamp.sequence, record) {
-                    release_bytes(shared, replaced.accounted_bytes);
+                } else if let Some(replaced) = records.insert(record.sequence(), record) {
+                    drop(replaced);
                     shared.dropped.fetch_add(1, Ordering::Relaxed);
                 }
             }
-            ProducerMessage::GapHeartbeat => {}
+            ProducerMessage::GapHeartbeat => {
+                if let Some(content) = &shared.content {
+                    content.loss_wake_queued.store(false, Ordering::Release);
+                }
+            }
             #[cfg(test)]
             ProducerMessage::Flush {
                 through_sequence,
@@ -37,11 +41,13 @@ pub(super) fn drain_ready(
 pub(super) fn deliver_ready(
     sink: &dyn ObservationRecordSink,
     shared: &ProducerShared,
-    pending: &mut BTreeMap<u64, ObservationRecord>,
+    pending: &mut BTreeMap<u64, QueuedRecord>,
     expected: &mut u64,
     contiguous_ceiling: Option<u64>,
 ) {
     let mut batch = Vec::with_capacity(RECORDS);
+    let mut owners = Vec::with_capacity(RECORDS);
+    let mut scratch = Vec::with_capacity(RECORDS);
     let mut bytes = 0usize;
     for offset in 0..RECORDS {
         let sequence = expected.saturating_add(offset as u64);
@@ -54,11 +60,34 @@ pub(super) fn deliver_ready(
         let Some(record) = pending.get(&sequence) else {
             break;
         };
-        if !batch.is_empty() && bytes.saturating_add(record.accounted_bytes) > BYTES {
+        if !batch.is_empty() && bytes.saturating_add(record.accounted_bytes()) > BYTES {
             break;
         }
-        bytes = bytes.saturating_add(record.accounted_bytes);
-        batch.push(pending.remove(&sequence).unwrap());
+        bytes = bytes.saturating_add(record.accounted_bytes());
+        let queued = pending.remove(&sequence).unwrap();
+        match queued.materialize() {
+            Ok((record, workspace)) => {
+                batch.push(record);
+                owners.push(queued);
+                scratch.push(workspace);
+            }
+            Err(error) => {
+                if let Some(content) = &shared.content {
+                    match error {
+                        crate::replay::ReplayError::Integrity => {
+                            content.integrity_failures.fetch_add(1, Ordering::Relaxed);
+                        }
+                        _ => {
+                            content.io_failures.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                }
+                shared.sink_failures.fetch_add(1, Ordering::Relaxed);
+                restore_worker_loss(shared, sequence, ObservationLossReason::SinkFailed);
+                drop(queued);
+                break;
+            }
+        }
     }
     if batch.is_empty() {
         return;
@@ -81,14 +110,21 @@ pub(super) fn deliver_ready(
     }
     .into_iter();
     let mut stopped = false;
-    for (index, (record, started)) in batch.into_iter().zip(started).enumerate() {
+    for (index, (((record, started), owner), workspace)) in batch
+        .into_iter()
+        .zip(started)
+        .zip(owners)
+        .zip(scratch)
+        .enumerate()
+    {
         if stopped {
-            pending.insert(record.stamp.sequence, record);
+            drop(record);
+            drop(workspace);
+            pending.insert(owner.sequence(), owner);
             continue;
         }
         let result = results.next();
         let delivered = matches!(&result, Some(Ok(ack)) if acknowledgement_covers_record(&record, ack, contiguous_ceiling));
-        release_bytes(shared, record.accounted_bytes);
         if let (Some(timing), Some(_)) = (&record.timing, started) {
             timing.end_delivery_work(
                 work_us / processed + u64::from((index as u64) < work_us % processed),
@@ -114,6 +150,10 @@ pub(super) fn deliver_ready(
             restore_worker_loss(shared, record.stamp.sequence, reason);
             stopped = true;
         }
+        // Drop the temporary materialization before returning its queue credit.
+        drop(record);
+        drop(workspace);
+        drop(owner);
         // A valid short prefix did not attempt later records. Retain them,
         // without manufacturing a loss or consuming their reserved credit.
         if results.len() == 0 {

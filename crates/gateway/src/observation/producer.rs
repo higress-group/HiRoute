@@ -25,7 +25,11 @@ use bounded::{
     ByteBoundedObservationProducer, ObservationLossReason, ObservationLossWatermark,
     ObservationSequenceStamp, RECORD_ACCOUNTING_BYTES,
 };
-pub use bounded::{ObservationAck, ObservationNack, ObservationRecord, ObservationRecordSink};
+pub(super) use bounded::{ContentQueueLimits, ContentSpool};
+pub use bounded::{
+    ContentResourceSnapshot, ObservationAck, ObservationNack, ObservationRecord,
+    ObservationRecordSink,
+};
 pub use feedback::accounted_acknowledgement;
 use feedback::receiver_unavailable_nack;
 
@@ -40,13 +44,13 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
-    #[cfg(any(test, feature = "e2e-test-control"))]
+    #[cfg(test)]
     pub(super) fn work_state(&self) -> Option<(usize, usize, usize)> {
         self.inner.as_ref().map(|producer| producer.work_state())
     }
 
     #[cfg(test)]
-    pub(super) fn wait_until_credit_blocked(&self) {
+    pub(super) fn wait_until_content_pressure(&self) {
         self.inner.as_ref().unwrap().wait_until_credit_blocked();
     }
     pub(super) fn work_can_fit(&self, bytes: usize) -> bool {
@@ -55,8 +59,58 @@ impl ChannelProducer {
             .is_some_and(|producer| producer.work_can_fit(bytes))
     }
 
+    pub(super) fn content_resource_snapshot(&self) -> Option<ContentResourceSnapshot> {
+        self.inner.as_ref()?.content_resource_snapshot()
+    }
+
+    pub(super) fn content_capacity(&self) -> Option<usize> {
+        self.inner.as_ref().map(|inner| inner.capacity_bytes())
+    }
+
+    pub(super) async fn activate_content_work(
+        &self,
+        retained: &mut ObservationWorkReservation,
+        workspace: usize,
+    ) {
+        if let Some(inner) = &self.inner {
+            inner.activate_content_work(retained, workspace).await;
+        }
+    }
+
     pub(super) fn reserve_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
         self.inner.as_ref()?.reserve_work(bytes)
+    }
+
+    pub(super) fn reserve_control_work(&self, bytes: usize) -> Option<ObservationWorkReservation> {
+        self.inner.as_ref()?.reserve_control_work(bytes)
+    }
+
+    pub(super) async fn publish_content<T, F>(
+        &self,
+        timing: Option<super::latency::RequestLatency>,
+        estimate: usize,
+        background: bool,
+        control: bool,
+        spool: &Arc<ContentSpool>,
+        build: F,
+    ) -> Result<(), &'static str>
+    where
+        T: Serialize,
+        F: FnOnce(ProducerDescriptorV1, u64, Option<LossWatermarkV1>) -> T,
+    {
+        let component = Arc::clone(&self.component);
+        let revision = Arc::clone(&self.revision);
+        let Some(inner) = &self.inner else {
+            return Err("content_capture_unavailable");
+        };
+        inner
+            .publish_content(timing, estimate, background, control, spool, move |stamp| {
+                let producer = descriptor(&stamp, &component, &revision);
+                let loss = stamp.loss_watermark.map(loss_watermark);
+                serde_json::to_vec(&build(producer, stamp.sequence, loss))
+            })
+            .await
+            .map_err(|error| error.reason())
     }
 
     pub(super) fn declare_work_loss(&self) {
@@ -93,8 +147,16 @@ impl ChannelProducer {
         // execution facts before the byte budget was reached, making later
         // request receipts incomplete even though the sink was healthy.
         let queue_events = (queue_bytes / RECORD_ACCOUNTING_BYTES).max(1);
-        let inner =
-            ByteBoundedObservationProducer::new(identity, queue_bytes, queue_events, sink).ok();
+        let inner = if channel == ObservationChannel::Content {
+            ByteBoundedObservationProducer::new_content(
+                identity,
+                ContentQueueLimits::for_capacity(queue_bytes),
+                sink,
+            )
+            .ok()
+        } else {
+            ByteBoundedObservationProducer::new(identity, queue_bytes, queue_events, sink).ok()
+        };
         Self {
             component,
             revision,

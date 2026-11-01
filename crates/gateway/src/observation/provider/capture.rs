@@ -19,7 +19,6 @@ mod tracker;
 
 use tracker::CanonicalResponseTracker;
 
-const CAPTURE_EVENT_SLOTS: usize = 256;
 const CAPTURE_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const CAPTURE_METADATA_BYTES: usize = 512;
 const CAPTURE_BEGIN_BYTES: usize = 4 * 1024;
@@ -38,7 +37,8 @@ pub(in crate::server::core_runtime::observation) struct CanonicalCaptureProducer
 }
 
 struct CaptureShared {
-    sender: SyncSender<CaptureJob>,
+    sender: SyncSender<Box<CaptureJob>>,
+    wake_queued: Arc<AtomicBool>,
     budget: StreamBudget,
     next_id: AtomicU64,
 }
@@ -51,6 +51,10 @@ struct CaptureStatus {
     failed: AtomicBool,
     terminal_enqueued: AtomicBool,
     reason: Mutex<Option<&'static str>>,
+    // A normal cancellation terminates only after the admitted data prefix.
+    admitted: AtomicU64,
+    processed: AtomicU64,
+    cancel: Mutex<Option<(u64, &'static str)>>,
 }
 
 #[derive(Clone)]
@@ -96,11 +100,6 @@ enum CaptureJob {
         reservation: CaptureReservation,
     },
     Wake,
-    Cancel {
-        id: u64,
-        status: Arc<CaptureStatus>,
-        reason: &'static str,
-    },
 }
 
 enum CapturedNativeEvent {
@@ -149,21 +148,24 @@ impl CanonicalCaptureProducer {
         if capacity_bytes == 0 {
             return None;
         }
-        let slots = (capacity_bytes / CAPTURE_METADATA_BYTES).clamp(1, CAPTURE_EVENT_SLOTS);
+        let slots = (capacity_bytes / CAPTURE_METADATA_BYTES).max(1) + 1;
         let (sender, receiver) = sync_channel(slots);
         let budget = BudgetTree::new(capacity_bytes, capacity_bytes)
             .ok()?
             .stream(capacity_bytes)
             .ok()?;
         let worker_budget = budget.clone();
+        let wake_queued = Arc::new(AtomicBool::new(false));
+        let worker_wake = Arc::clone(&wake_queued);
         let shared = Arc::new(CaptureShared {
             sender,
+            wake_queued,
             budget,
             next_id: AtomicU64::new(1),
         });
         if thread::Builder::new()
             .name("hiroute-canonical-capture".into())
-            .spawn(move || capture_worker(receiver, worker_budget))
+            .spawn(move || capture_worker(receiver, worker_budget, worker_wake))
             .is_err()
         {
             return None;
@@ -197,6 +199,9 @@ impl CanonicalCaptureProducer {
                 failed: AtomicBool::new(false),
                 terminal_enqueued: AtomicBool::new(false),
                 reason: Mutex::new(None),
+                admitted: AtomicU64::new(0),
+                processed: AtomicU64::new(0),
+                cancel: Mutex::new(None),
             }),
         };
         let alias = request.metadata().served_model_id.clone();
@@ -309,12 +314,14 @@ impl CanonicalCaptureHandle {
         reason: &'static str,
     ) {
         if !self.status.terminal_enqueued.load(Ordering::Acquire) {
-            // Drain already accepted frames before terminating a partial stream.
-            let _ = self.try_send(CaptureJob::Cancel {
-                id: self.id,
-                status: Arc::clone(&self.status),
-                reason,
-            });
+            let mut cancel = self
+                .status
+                .cancel
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            cancel.get_or_insert((self.status.admitted.load(Ordering::Acquire), reason));
+            drop(cancel);
+            self.wake();
         }
     }
 
@@ -339,11 +346,24 @@ impl CanonicalCaptureHandle {
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(reason);
         }
-        let _ = self.shared.sender.try_send(CaptureJob::Wake);
+        self.wake();
+    }
+
+    fn wake(&self) {
+        if !self.shared.wake_queued.swap(true, Ordering::AcqRel)
+            && self
+                .shared
+                .sender
+                .try_send(Box::new(CaptureJob::Wake))
+                .is_err()
+        {
+            self.shared.wake_queued.store(false, Ordering::Release);
+        }
     }
 
     fn try_send(&self, job: CaptureJob) -> Result<(), &'static str> {
-        match self.shared.sender.try_send(job) {
+        self.status.admitted.fetch_add(1, Ordering::AcqRel);
+        match self.shared.sender.try_send(Box::new(job)) {
             Ok(()) => Ok(()),
             Err(TrySendError::Full(_)) => {
                 self.fail("canonical_capture_queue_full");
@@ -382,11 +402,19 @@ fn reserve(budget: &StreamBudget, bytes: usize) -> Option<CaptureReservation> {
     budget.reserve(MemoryRole::OutputQueue, bytes).ok()
 }
 
-fn capture_worker(receiver: Receiver<CaptureJob>, budget: StreamBudget) {
+fn capture_worker(
+    receiver: Receiver<Box<CaptureJob>>,
+    budget: StreamBudget,
+    wake_queued: Arc<AtomicBool>,
+) {
     let mut states = BTreeMap::<u64, CaptureWorkerState>::new();
     loop {
         match receiver.recv_timeout(CAPTURE_POLL_INTERVAL) {
             Ok(job) => {
+                let job = *job;
+                if matches!(job, CaptureJob::Wake) {
+                    wake_queued.store(false, Ordering::Release);
+                }
                 let id = job_id(&job);
                 if catch_unwind(AssertUnwindSafe(|| process_job(job, &mut states, &budget)))
                     .is_err()
@@ -395,10 +423,16 @@ fn capture_worker(receiver: Receiver<CaptureJob>, budget: StreamBudget) {
                 {
                     mark_failed(&state.status, "canonical_capture_worker_panicked");
                 }
+                if let Some(id) = id
+                    && let Some(state) = states.get(&id)
+                {
+                    state.status.processed.fetch_add(1, Ordering::AcqRel);
+                }
             }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return,
         }
+        cleanup_cancelled(&mut states);
         cleanup_failed(&mut states);
     }
 }
@@ -407,8 +441,7 @@ fn job_id(job: &CaptureJob) -> Option<u64> {
     match job {
         CaptureJob::Begin { id, .. }
         | CaptureJob::Native { id, .. }
-        | CaptureJob::Accepted { id, .. }
-        | CaptureJob::Cancel { id, .. } => Some(*id),
+        | CaptureJob::Accepted { id, .. } => Some(*id),
         CaptureJob::Wake => None,
     }
 }
@@ -501,14 +534,29 @@ fn process_job(
             }
         }
         CaptureJob::Wake => {}
-        CaptureJob::Cancel { id, status, reason } => {
-            mark_failed(&status, reason);
-            if let Some(state) = states.remove(&id)
-                && state.accepted_started
-            {
+    }
+}
+
+fn cleanup_cancelled(states: &mut BTreeMap<u64, CaptureWorkerState>) {
+    let finished = states
+        .iter()
+        .filter_map(|(id, state)| {
+            let cancel = *state
+                .status
+                .cancel
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            cancel
+                .filter(|(fence, _)| state.status.processed.load(Ordering::Acquire) >= *fence)
+                .map(|(_, reason)| (*id, reason))
+        })
+        .collect::<Vec<_>>();
+    for (id, reason) in finished {
+        if let Some(state) = states.remove(&id) {
+            mark_failed(&state.status, reason);
+            if state.accepted_started {
                 state.request.finish_response_content("abort", Some(reason));
             }
-            status.finish();
         }
     }
 }

@@ -2542,6 +2542,17 @@
         "crates/daemon/tests/support/delegation_product.py",
         "crates/daemon/tests/support/qoder_native_context.py"
       ]
+    },
+    {
+      "contract": "hiroute.model-request-ir/v1",
+      "mode": "frozen_fixture",
+      "owner": "gateway-content",
+      "reason": "Retain the canonical Replay-aware JSON walker from main 2e6ba55c10c7ef0557ca7759bb5db38a955c5b96 as an independent test-only byte oracle while production uses one resumable borrowed cursor. This is algorithm regression evidence, not an additional production reader or a new release-support promise. Preserve original sorted keys, string escaping and canonical-range provenance.",
+      "removal_condition": "Retire only when equivalent independent sealed semantic-byte cases replace this oracle; never regenerate it from the current cursor or add it to production.",
+      "allowed_paths": [
+        "crates/gateway/src/context_hold/replay_json_tests.rs"
+      ],
+      "field": "canonical JSON Replay expansion, lexicographic object keys and string-escape byte semantics from the main 2e6ba55c1 walker"
     }
   ]
 }

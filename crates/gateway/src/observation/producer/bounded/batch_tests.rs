@@ -122,3 +122,113 @@ fn exercise(short: bool, reject: bool) {
         assert!(sink.captured.gaps.lock().unwrap().is_empty());
     }
 }
+
+#[test]
+fn spilled_short_prefix_keeps_unprocessed_ranges_until_their_original_ack() {
+    exercise_spilled(true, false);
+}
+
+#[test]
+fn spilled_rejected_prefix_delivers_its_gap_before_the_next_original_range() {
+    exercise_spilled(false, true);
+}
+
+fn exercise_spilled(short: bool, reject: bool) {
+    use crate::replay::{ReplayConfig, ReplayManager};
+    use hiroute_gateway_core::runtime::body::BudgetTree;
+    let root = std::fs::canonicalize(std::env::temp_dir())
+        .unwrap()
+        .join(format!(
+            "hiroute-spilled-prefix-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+    let manager = ReplayManager::open(ReplayConfig {
+        root: root.clone(),
+        memory_threshold_bytes: 1024,
+        record_bytes: 31,
+        orphan_ttl: Duration::from_secs(60),
+    })
+    .unwrap();
+    let budget = BudgetTree::new(1024 * 1024, 1024 * 1024).unwrap();
+    let replay = manager
+        .begin_request(budget.stream(1024 * 1024).unwrap())
+        .unwrap();
+    let spool = Arc::new(ContentSpool::default());
+    spool.bind(replay.overflow_factory());
+    drop(replay);
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let guard = OpenOnDrop(gate.clone());
+    let sink = Arc::new(BatchSink {
+        gate,
+        first: AtomicBool::new(true),
+        short,
+        reject,
+        largest: AtomicUsize::new(0),
+        captured: CapturingSink::default(),
+    });
+    let mut limits = ContentQueueLimits::for_capacity(1024 * 1024);
+    limits.soft = 0;
+    let producer =
+        ByteBoundedObservationProducer::new_content(identity("spill-prefix"), limits, sink.clone())
+            .unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        for index in 0..200 {
+            producer
+                .publish_content(None, 1024, true, false, &spool, |_| {
+                    Ok(format!("original range {index:04}").into_bytes())
+                })
+                .await
+                .unwrap();
+        }
+    });
+    drop(guard);
+    producer.flush(Duration::from_secs(5)).unwrap();
+    assert!(sink.largest.load(Ordering::Relaxed) > 1);
+    let expected: Vec<_> = (1..=200)
+        .filter(|sequence| !reject || *sequence != 17)
+        .collect();
+    assert_eq!(
+        sink.captured
+            .records
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|record| record.sequence)
+            .collect::<Vec<_>>(),
+        expected
+    );
+    let snapshot = producer.content_resource_snapshot().unwrap();
+    assert!(snapshot.overflow_created_segments > 0);
+    assert_eq!(snapshot.overflow_reserved_bytes, 0);
+    assert_eq!(snapshot.overflow_live_segments, 0);
+    assert_eq!(snapshot.queued_bytes, 0);
+    assert_eq!(snapshot.drain_bytes, 0);
+    assert_eq!(snapshot.overflow_cleanup_failures, 0);
+    assert_eq!(producer.stats().sink_nacks, usize::from(reject));
+    let deliveries = sink.captured.deliveries.lock().unwrap();
+    if reject {
+        let gap = deliveries
+            .iter()
+            .position(|entry| *entry == (17, true))
+            .unwrap();
+        let next = deliveries
+            .iter()
+            .position(|entry| *entry == (18, false))
+            .unwrap();
+        assert!(gap < next);
+    } else {
+        assert!(sink.captured.gaps.lock().unwrap().is_empty());
+    }
+    drop(deliveries);
+    drop(producer);
+    drop(spool);
+    drop(manager);
+    std::fs::remove_dir_all(root).unwrap();
+}
