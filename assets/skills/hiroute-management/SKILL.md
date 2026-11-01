@@ -258,6 +258,15 @@ coordination/status/result-summary delegation. Readiness proves no success.
 
 ## Listener and service changes
 
+Publish Plan changes and apply runtime settings through their normal CLI/Operation flow; the
+running service applies them. Verify completion and effective readback, without manually restarting
+HiRoute. Native Agent selection/reload is separate; follow the returned native actions.
+
 Read gateway show before set; remote/wildcard needs explicit risk acknowledgement. Distinguish applied/
-ready from firewall/TLS. gateway recover restores the safe listener. Verify Local Control readiness
-after start/restart; start is not autostart.
+ready from firewall/TLS. gateway set/recover owns its listener restart; add no manual restart.
+
+Binary upgrades and process-environment changes can require a HiRoute restart. If the caller uses
+HiRoute for model access, arrange independent operator continuation before interrupting that shared
+service. After a necessary start/restart, require service status local_control_ready=true, system
+status daemon=role_all/gateway=ready and gateway show ready=true before model verification. Process
+manager active/exit zero or a fixed sleep is insufficient. Start is not autostart.
