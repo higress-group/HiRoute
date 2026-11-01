@@ -294,6 +294,8 @@ if ($Scope -eq 'components') {
     'windows::background::tests::profile_is_absolute_and_definition_rejects_unknown_or_foreign_owner',
     'windows::lifecycle::tests::lifecycle_payload_is_closed_and_does_not_accept_extra_authority',
     'windows::service::token::tests::restricted_business_child_runs_with_owner_medium_token',
+    'windows::shell_login::tests::fixed_login_command_is_quoted_even_for_paths_without_spaces',
+    'windows::shell_registration::tests::inherited_export_is_published_privately_and_changed_material_is_not_overwritten',
     'windows::task::tests::registration_preserves_demand_start_and_logon_policy_across_reopen') @('--nocapture')
   Invoke-RequiredTests 'jobs' @('-p','hiroute-platform','--test','job_windows') @(
     'job_stops_surviving_tool_after_leader_exit_and_preserves_neighbor',
