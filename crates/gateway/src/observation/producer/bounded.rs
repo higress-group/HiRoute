@@ -180,7 +180,7 @@ pub struct ObservationProducerStats {
 #[derive(Clone)]
 pub struct ByteBoundedObservationProducer {
     identity: ObservationProducerIdentity,
-    sender: SyncSender<ProducerMessage>,
+    sender: SyncSender<Box<ProducerMessage>>,
     shared: Arc<ProducerShared>,
 }
 
@@ -408,32 +408,28 @@ impl ByteBoundedObservationProducer {
             gap_heartbeat: false,
             timing,
         };
-        match self.sender.try_send(ProducerMessage::Record(record)) {
+        // Keep the bounded channel's preallocated slots pointer-sized. The
+        // actual record remains owned and byte-accounted until delivery.
+        match self
+            .sender
+            .try_send(Box::new(ProducerMessage::Record(record)))
+        {
             Ok(()) => {
                 credit.transfer();
                 self.shared.enqueued.fetch_add(1, Ordering::Relaxed);
                 ObservationPublishOutcome::Enqueued { sequence }
             }
-            Err(TrySendError::Full(ProducerMessage::Record(record))) => {
+            Err(TrySendError::Full(record)) => {
                 drop(record);
                 drop(credit);
                 self.restore_and_drop(sequence, ObservationLossReason::QueueEventsExceeded);
                 ObservationPublishOutcome::Dropped { sequence }
             }
-            Err(TrySendError::Disconnected(ProducerMessage::Record(record))) => {
+            Err(TrySendError::Disconnected(record)) => {
                 drop(record);
                 drop(credit);
                 self.restore_and_drop(sequence, ObservationLossReason::WorkerDisconnected);
                 ObservationPublishOutcome::Dropped { sequence }
-            }
-            Err(TrySendError::Full(ProducerMessage::GapHeartbeat))
-            | Err(TrySendError::Disconnected(ProducerMessage::GapHeartbeat)) => {
-                unreachable!("try_publish sends only records")
-            }
-            #[cfg(test)]
-            Err(TrySendError::Full(ProducerMessage::Flush { .. }))
-            | Err(TrySendError::Disconnected(ProducerMessage::Flush { .. })) => {
-                unreachable!("try_publish sends only records")
             }
         }
     }
@@ -513,10 +509,10 @@ impl ByteBoundedObservationProducer {
             .load(Ordering::Acquire)
             .saturating_sub(1);
         self.sender
-            .try_send(ProducerMessage::Flush {
+            .try_send(Box::new(ProducerMessage::Flush {
                 through_sequence,
                 acknowledge: sender,
-            })
+            }))
             .map_err(|_| ObservationError::Unavailable)?;
         receiver
             .recv_timeout(timeout)
@@ -551,7 +547,9 @@ impl ByteBoundedObservationProducer {
         // This control pulse has its own event-capacity slot and no byte
         // reservation. If the event queue is already full, the worker checks
         // pending loss after draining every queued record.
-        let _ = self.sender.try_send(ProducerMessage::GapHeartbeat);
+        let _ = self
+            .sender
+            .try_send(Box::new(ProducerMessage::GapHeartbeat));
     }
 }
 
@@ -639,7 +637,7 @@ fn record_loss(shared: &ProducerShared, loss: ObservationLossWatermark) {
 }
 
 fn producer_worker(
-    receiver: Receiver<ProducerMessage>,
+    receiver: Receiver<Box<ProducerMessage>>,
     sink: Arc<dyn ObservationRecordSink>,
     shared: Arc<ProducerShared>,
     identity: ObservationProducerIdentity,
@@ -656,7 +654,7 @@ fn producer_worker(
         let timeout = retry_at.map_or(LOSS_POLL_INTERVAL, |deadline: Instant| {
             deadline.saturating_duration_since(Instant::now())
         });
-        match receiver.recv_timeout(timeout) {
+        match receiver.recv_timeout(timeout).map(|message| *message) {
             Ok(ProducerMessage::Record(record)) => {
                 if record.stamp.sequence < expected_sequence {
                     // A compacted loss declaration may conservatively cover

@@ -7,7 +7,32 @@ use sha2::{Digest, Sha256};
 use super::*;
 use crate::LocalObservationStore;
 
+/// Worker-owned query environment. Each resolve observes current committed
+/// visibility; no active rows, transaction, or result survives the call.
+pub struct ManagedTextReader {
+    pub(super) connection: Connection,
+}
+
+impl ManagedTextReader {
+    pub fn resolve(
+        &mut self,
+        scope: &ManagedTextScope,
+        reference: &ManagedTextRef,
+        now_ms: i64,
+    ) -> Result<ManagedTextRef, ManagedTextError> {
+        resolve(&self.connection, scope, reference, now_ms)
+    }
+}
+
 impl LocalObservationStore {
+    /// Reuse only the connection and statement cache within one trusted worker.
+    /// The reader is tied to this store, not a process-wide path cache.
+    pub fn managed_text_reader(&self) -> Result<ManagedTextReader, ManagedTextError> {
+        Ok(ManagedTextReader {
+            connection: self.managed_reader()?,
+        })
+    }
+
     /// Register an event before appending chunks. Stable event retries return the
     /// same reference; changing its timestamp or purpose is a conflict.
     pub fn managed_text_put(
@@ -223,7 +248,7 @@ impl LocalObservationStore {
             return Err(ManagedTextError::ScopeMismatch);
         }
         let connection = self.managed_reader()?;
-        load(&connection, scope, &reference.opaque_id, now_ms)?.ok_or(ManagedTextError::Unavailable)
+        resolve(&connection, scope, reference, now_ms)
     }
 
     /// Bounded external-file I/O without the writer mutex. A second visibility
@@ -292,6 +317,18 @@ impl LocalObservationStore {
     }
 }
 
+fn resolve(
+    connection: &Connection,
+    scope: &ManagedTextScope,
+    reference: &ManagedTextRef,
+    now_ms: i64,
+) -> Result<ManagedTextRef, ManagedTextError> {
+    if scope != &reference.scope {
+        return Err(ManagedTextError::ScopeMismatch);
+    }
+    load(connection, scope, &reference.opaque_id, now_ms)?.ok_or(ManagedTextError::Unavailable)
+}
+
 pub(super) fn barrier(
     connection: &Connection,
     scope: &str,
@@ -313,13 +350,14 @@ fn load(
         return Err(ManagedTextError::Invalid);
     }
     let key = scope.key()?;
-    let row: Option<(String, i64, u64)> = connection
-        .query_row(
-            "SELECT r.state,r.deadline_ms,s.generation FROM managed_text_refs r
+    let mut statement = connection.prepare_cached(
+        "SELECT r.state,r.deadline_ms,s.generation FROM managed_text_refs r
          JOIN managed_text_scopes s ON s.scope=r.scope WHERE r.id=?1 AND r.scope=?2",
-            params![id, key],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
+    )?;
+    let row: Option<(String, i64, u64)> = statement
+        .query_row(params![id, key], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
         .optional()?;
     row.map(|(state, deadline, generation)| {
         let state = match state.as_str() {

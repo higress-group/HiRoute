@@ -753,6 +753,7 @@ impl ProductionControlRuntime {
             startup_recovery_complete: AtomicBool::new(false),
             delegation_native_cleanup_cursor: Mutex::new(None),
             delegation_task_maintenance_cursor: Mutex::new(None),
+            delegation_text_reader: Mutex::new(None),
         });
         let worker_platform = Arc::new(LocalWorkerPlatform::default());
         let delegation_executor = Arc::new(DelegationRunExecutor::new(
@@ -1082,6 +1083,7 @@ struct LocalControlAdapter {
         Mutex<Option<hiroute_observation::managed_text::ManagedTextNativeCleanupCursor>>,
     delegation_task_maintenance_cursor:
         Mutex<Option<hiroute_domain::delegation::DelegationTaskMaintenanceCursorV1>>,
+    delegation_text_reader: Mutex<Option<hiroute_observation::managed_text::ManagedTextReader>>,
 }
 
 impl LocalControlAdapter {

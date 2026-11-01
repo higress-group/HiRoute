@@ -11,6 +11,8 @@ mod storage;
 #[cfg(test)]
 mod tests;
 
+pub use storage::ManagedTextReader;
+
 use hiroute_domain::WorkspaceId;
 use serde::{Deserialize, Serialize};
 
