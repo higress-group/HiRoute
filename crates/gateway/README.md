@@ -432,7 +432,11 @@ independently, so this does not promise lossless capture under every resource fa
 Same-scope actual completed stages remain contextual candidates with disclosed
 association uncertainty when no unique predecessor is established. Unknown association
 never grants provider-prefix affinity. Unsupported response shapes may lose an exact
-edge while retaining capture and evaluation.
+edge while retaining capture and evaluation. Matching complete text is represented by explicit
+`hiroute.semantic-terminal/v1` metadata (`text_source=accepted_segments`, with no
+`event.text`), never an empty canonical final answer. Full transport acceptance and
+the actual Attempt remain required; semantic segments do not require a single
+transport frame ID.
 
 The store retains a 500 MB total budget and a one-hour idle lifetime, with 32 live
 requests/heads and 128 retained terminal records per scope. Snapshot pins and indexes
