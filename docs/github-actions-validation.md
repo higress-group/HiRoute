@@ -90,8 +90,8 @@ Most Windows jobs use the standard hosted `windows-2025` image. Native inventori
 required case; zero, ignored or missing required cases fail. The shared library
 scope executes the complete ordinary native test inventory. Explicitly registered
 installation-input gates and child fixtures have their own execution entries;
-source-declared Release timing, large-history and private stopped-source tests
-are explicit opt-ins in `Invoke-LibraryTests` and run with their declared inputs
+source-declared Release timing, large-history, private stopped-source and live CPA
+diagnostic tests are explicit opt-ins in `Invoke-LibraryTests` and run with their declared inputs
 outside ordinary core CI. Ordinary core success does not assess those gates;
 unregistered ignored cases still fail the ordinary inventory. Fixed Agent gates
 explicitly select their opt-in real client tests. Their npm versions and all
