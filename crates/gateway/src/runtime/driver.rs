@@ -39,6 +39,7 @@ use super::state::{
 };
 
 mod context_overflow;
+mod key_spending;
 mod materialization;
 pub(crate) mod network;
 mod response;
@@ -84,6 +85,19 @@ pub struct ProductionLogicalRequest {
     frozen_candidates: Arc<[DecisionCandidateAuthority]>,
     runtime_state_authority: RuntimeStateAuthoritySignal,
     route_context: Option<ProductionRouteContext>,
+}
+
+impl ProductionLogicalRequest {
+    pub(crate) fn diagnostic_request_shape(
+        &self,
+    ) -> hiroute_diagnostics::event::ExecutionRequestShape {
+        hiroute_diagnostics::event::ExecutionRequestShape {
+            raw_body_bytes: self.raw_body.byte_len(),
+            canonical_messages: self.ir.as_ref().map_or(0, |ir| ir.messages.len()) as u64,
+            tools: self.ir.as_ref().map_or(0, |ir| ir.tools.len()) as u64,
+            replay_disk_backed: self.replay.snapshot().disk_backed,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -175,6 +189,7 @@ impl ProductionReplaySeedEnvelope {
 }
 
 pub struct ProductionAttemptState {
+    spending: Option<crate::ports::KeySpendGuard>,
     managed_cpa: bool,
     request_reasoning_projection: Option<RequestReasoningProjection>,
     request_projection_loss: adapters::RequestProjectionLoss,

@@ -207,6 +207,30 @@ try {
     assert.deepEqual(request.action, { kind: 'set', input_uncached: '0.8', output: '2', cache_read: cacheRead, cache_write: cacheWrite });
     results.push({ scenario: `manual-editor-preserves-${scenario}-cache`, status: 'passed' });
   }
+  for (const lang of ['en', 'zh']) for (const theme of ['light', 'dark']) for (const width of [755, 1200]) {
+    await open(`lang=${lang}&theme=${theme}&rates=unknown&stateful=1&budget=1`, width, width === 755 ? 600 : 813);
+    await edit(lang); await manual(lang, '0.8', '2');
+    const fillCache = async (name, value) => evaluate(client, `(()=>{const e=document.querySelector('[name="${name}"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+    await fillCache('cache_read_rate', '0'); await fillCache('cache_write_rate', 'invalid'); await save(lang);
+    await waitFor(client, `!!document.querySelector('[data-error-code="INVALID_PRICE_DECIMAL"]')`);
+    assert.equal(await evaluate(client, `window.modelPriceFixture.requests.some(r=>r.command==='preview_price_change')`), false, 'invalid cache rate must not be submitted');
+    await fillCache('cache_write_rate', '0.4');
+    const geometry = await evaluate(client, `(()=>{const d=document.querySelector('[role="dialog"]'),body=d.querySelector('.modal-body'),last=d.querySelector('[name="cache_write_rate"]');last.scrollIntoView({block:'nearest'});const foot=d.querySelector('.modal-foot').getBoundingClientRect();return {overflow:body.scrollWidth-body.clientWidth,footer:foot.bottom,height:innerHeight,fields:[...d.querySelectorAll('.price-rate-fields input')].map(e=>({width:e.getBoundingClientRect().width,label:e.closest('label').innerText})),lastBottom:last.getBoundingClientRect().bottom,footerTop:foot.top};})()`);
+    assert.ok(geometry.overflow <= 1 && geometry.footer <= geometry.height && geometry.lastBottom <= geometry.footerTop + 1 && geometry.fields.length === 4 && geometry.fields.every(e=>e.width >= 150), JSON.stringify(geometry));
+    const shot = await client.send('Page.captureScreenshot', { format: 'png' });
+    await writeFile(path.join(output, `four-rate-editor-${lang}-${theme}-${width}.png`), Buffer.from(shot.data, 'base64'));
+    await evaluate(client, `window.modelPriceFixture.outcome='hold'`); await save(lang);
+    await waitFor(client, `typeof window.modelPriceFixture.releaseSave==='function'`);
+    assert.equal(await evaluate(client, `[...document.querySelectorAll('.price-rate-fields input')].every(e=>e.disabled)`), true, 'pending price save freezes all four rates');
+    await evaluate(client, `window.modelPriceFixture.releaseSave();true`); await waitFor(client, `!document.querySelector('[role="dialog"]')`);
+    const request = await evaluate(client, `window.modelPriceFixture.requests.find(r=>r.command==='preview_price_change').payload.input`);
+    assert.equal(request.valuation_kind, 'usage_estimate');
+    assert.deepEqual(request.action, { kind: 'set', input_uncached: '0.8', output: '2', cache_read: '0', cache_write: '0.4' });
+    await edit(lang);
+    await waitFor(client, `document.querySelector('[name="cache_write_rate"]')?.value==='0.4'`);
+    assert.equal(await evaluate(client, `document.querySelector('[name="cache_read_rate"]').value`), '0');
+    results.push({ scenario: 'complete-four-rates-for-key-allowance', lang, theme, width, status: 'passed' });
+  }
   await open('lang=en&rates=unknown&fail=1', 1200, 813);
   assert.ok((await evaluate(client, `document.querySelector('.v3-price').innerText`)).includes('temporarily unavailable'));
   await click('.v3-price button', 'Retry');

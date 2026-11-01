@@ -37,6 +37,14 @@ loading every execution, diagnosis and retention guide.
   comparisons and an observable assertion for a reproduced defect. Shared controls
   need representative consumer coverage; an unrelated backend change does not
   acquire a full UI matrix. Use the UI-quality owner for the current interaction rules.
+- For resource/performance changes, apply the [serviceability rule](../../../AGENTS.md).
+  Select real production-entry cases for the affected pressure, long/concurrent request,
+  fallback, cancellation and cleanup paths. Verify valid requests beyond internal memory
+  targets complete with exact content and affected history/attribution/recovery intact.
+  Compare exact-revision before/after resident memory, CPU through asynchronous drain,
+  and complete local foreground time including fallback; separate external waiting.
+  Preserve configured request limits, timeouts and retries. Report cold/warm workloads
+  and sample limits; an admission-accounting bound is not a whole-process RSS bound.
 - Run selected Python/Node checks directly. Use `scripts/validation.py` and the
   caller's configured host for Cargo and Desktop/Pilot execution. Final evidence
   uses an exact committed candidate locally and a pushed candidate remotely.

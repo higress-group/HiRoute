@@ -1,3 +1,4 @@
+import { budgetAssignment, type BudgetDraft, type KeyBudgetEdit } from '../key-budgets/types.ts';
 import { randomId } from '../../random-id.ts';
 import type { KeyEdit, ManagedSource, PreparedKeyInput, ProtectedKeyInput } from './types';
 
@@ -9,6 +10,7 @@ export type DraftKey = {
   enabled: boolean;
   removed: boolean;
   replacement: string;
+  budget?: BudgetDraft;
 };
 
 export type ModelDraft = {
@@ -125,4 +127,18 @@ export async function buildCredentialEdits(
     edits.push({ action: 'set_order', key_ids: orderedIds });
   }
   return edits;
+}
+
+export function validateDraftBudgets(draft: ModelDraft) {
+  draft.keys.filter(key => !key.removed && key.budget).forEach(key => budgetAssignment(key.budget!));
+}
+export function buildKeyBudgetEdits(draft: ModelDraft, edits: KeyEdit[]): KeyBudgetEdit[] {
+  const added = edits.filter((edit): edit is Extract<KeyEdit, { action: 'add' }> => edit.action === 'add');
+  let next = 0;
+  return draft.keys.filter(key => !key.removed).flatMap(key => {
+    const input = !key.keyId ? added[next++]?.input_candidate : undefined;
+    if (!key.budget) return [];
+    if (!key.keyId && !input) throw new Error('KEY_BUDGET_INVALID');
+    return [{ key: key.keyId ? { kind: 'saved' as const, key_id: key.keyId } : { kind: 'input' as const, candidate_ref: input!.candidate_ref }, assignment: budgetAssignment(key.budget) }];
+  });
 }

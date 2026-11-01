@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-compute-key-budgets"
+description = "Enables the preview_compute_key_budgets command without any pre-configured scope."
+commands.allow = ["preview_compute_key_budgets"]
+
+[[permission]]
+identifier = "deny-preview-compute-key-budgets"
+description = "Denies the preview_compute_key_budgets command without any pre-configured scope."
+commands.deny = ["preview_compute_key_budgets"]

@@ -31,6 +31,8 @@ pub struct ComputeManagementSnapshotV3 {
     pub runtime_state: ComputeManagementRuntimeReadStateV2,
     pub sources: Vec<ComputeManagedSourceViewV2>,
     pub subscription_modes: Vec<ComputeSubscriptionModeViewV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscription_api_links: Option<Vec<hiroute_domain::ComputeSubscriptionApiLinkV1>>,
 }
 
 impl ComputeManagementSnapshotV3 {

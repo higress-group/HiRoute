@@ -154,7 +154,7 @@ export async function openInteractionAudit(state, language = 'zh') {
   const row = all('.models-feature .master-list .list-row').find(node => node.textContent.includes('Qwen'));
   if (row) row.click();
   await until(() => all('.models-feature .detail-hero').length, 'model detail');
-  if (state === 'models-credentials' || state === 'models-credentials-discard') await click(t('管理凭据', 'Manage credentials'));
+  if (state === 'models-credentials' || state === 'models-credentials-discard') await click(t('管理 Key 与额度', 'Manage keys and allowances'));
   if (state === 'models-credentials-discard') {
     await click(t('移除', 'Remove'));
     await click(t('取消', 'Cancel'));

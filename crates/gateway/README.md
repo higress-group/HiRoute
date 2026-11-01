@@ -51,8 +51,13 @@ their transcript roots remain related. Accepted-output history and usage update
 at delivery; neither waits for content encoding or SQLite. Capacity or capture
 failure reports a gap and stops dependent capture for that request. The final
 Replay owner releases files and reservations on all paths.
-The existing content queue splits its byte ceiling between optional jobs and
-encoded records. Fixed slots hold pointers; each admitted job's existing charge
+The existing content queue admits snapshots, lease metadata and retained shared
+RAM within its byte ceiling; disk payload length is not RAM. Queued jobs share
+that ceiling with encoded records. The single active source was admitted under
+the same ceiling, bounding source plus queue residency by twice that ceiling.
+Model-proxy allocation counters record ownership and peaks without rejecting an
+admitted request at stream, worker or process accounting targets. The input
+read quantum remains independent of these targets. Fixed slots hold pointers; each admitted job's existing charge
 covers its allocated header, rather than preallocating 256 maximum-size tasks.
 Only the content worker can park on record credit, with a
 bounded stalled-record wait; foreground producers remain nonblocking. Encoded
@@ -92,6 +97,17 @@ The standalone `hirouted` entry can attach the same typed diagnostics using
 `--diagnostic-level-override`. These diagnostics do not enable session content
 capture or execution-fact storage. At Info, failed attempts retain the safe
 actual model and reasoning controls, HTTP protocol/status and body commit state.
+
+Local execution errors also emit `request_execution_failure` at Warn, including
+failures before `attempt_begin`. The original typed Core error is classified before
+transport conversion. The same request token relates the error to request shape,
+attempt/response admission and the last refused memory reservation's role, requested
+bytes and stream/worker/process limits. This snapshot survives owner cleanup;
+an optional-work refusal alone is not proof of the terminal failure's cause.
+These records contain no raw errors, conversation content or credentials.
+`attempt_preparation_failure` retains the same evidence when provider request
+materialization fails and the Core handles it with a local reply or candidate
+advance. Its presence alone does not establish the final request outcome.
 
 For operational lifecycle telemetry, [accepted response capture](src/observation/content.rs)
 reports transport writes only after they succeed, including an empty end-stream write.

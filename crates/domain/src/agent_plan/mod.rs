@@ -78,7 +78,7 @@ pub struct AgentPlanPurpose(String);
 impl AgentPlanPurpose {
     pub fn parse(value: impl Into<String>) -> Result<Self, AgentPlanIdentityError> {
         let value = value.into();
-        if (1..=512).contains(&value.chars().count())
+        if value.chars().count() <= 512
             && value.trim() == value
             && !value.chars().any(char::is_control)
             && !looks_like_sensitive_material(&value)
@@ -298,7 +298,7 @@ pub enum AgentPlanIdentityError {
     InvalidPlanId,
     #[error("model alias is not an Application-assigned hiroute alias")]
     InvalidAlias,
-    #[error("AgentPlan purpose is empty, unbounded, or contains unsafe material")]
+    #[error("AgentPlan purpose is unbounded or contains unsafe material")]
     InvalidPurpose,
     #[error("AgentPlan display name is empty, unbounded, or contains unsafe material")]
     InvalidDisplayName,

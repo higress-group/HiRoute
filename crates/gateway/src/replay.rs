@@ -209,24 +209,14 @@ impl ReplayStore {
             return Err(ReplayError::Integrity);
         }
         let source = lock(&self.inner.streams);
-        let bytes = std::mem::size_of::<StoreInner>()
-            .saturating_add(512)
-            .saturating_add(source.len().saturating_mul(128))
-            .saturating_add(
-                lock(&self.inner.metadata)
-                    .len()
-                    .saturating_add(1)
-                    .saturating_mul(2)
-                    .saturating_mul(std::mem::size_of::<Arc<Reservation>>()),
-            );
-        let reservation = self.budget().reserve(MemoryRole::ModelIrBacking, bytes)?;
         let streams = source
             .iter()
             .filter(|(_, stream)| !stream.is_raw())
             .map(|(id, stream)| (*id, Arc::clone(stream)))
             .collect();
-        let mut metadata = lock(&self.inner.metadata).clone();
-        metadata.push(Arc::new(reservation));
+        // The capture job admits its view allocation through the Content
+        // channel. Shared backing keeps its original reservations alive.
+        let metadata = lock(&self.inner.metadata).clone();
         Ok(Self {
             inner: Arc::new(StoreInner {
                 manager: Arc::clone(&self.inner.manager),
@@ -246,7 +236,9 @@ impl ReplayStore {
         })
     }
 
-    pub(crate) fn content_retention_bytes(&self) -> usize {
+    /// Queue-admission footprint of a semantic lease. Disk payload length is
+    /// not resident memory; shared RAM remains charged by its original owner.
+    pub(crate) fn content_lease_memory_bytes(&self) -> usize {
         let charges = lock(&self.inner.metadata);
         let metadata = charges
             .iter()
@@ -264,9 +256,9 @@ impl ReplayStore {
             .values()
             .filter(|stream| !stream.is_raw())
             .fold(metadata, |bytes, stream| {
-                bytes.saturating_add(128).saturating_add(
-                    usize::try_from(stream.reference.byte_len()).unwrap_or(usize::MAX),
-                )
+                bytes
+                    .saturating_add(128)
+                    .saturating_add(stream.retained_memory_bytes())
             })
     }
 

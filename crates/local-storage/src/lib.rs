@@ -344,13 +344,12 @@ impl LocalStorageSet {
             progress.report(hiroute_host_runtime::StorageUpgradePhase::Validation);
         }
         let integrity = if migration.durable_set_prepared() {
-            if migration.is_admitted_locator_only_batch()
-                || migration.is_admitted_decision_index_only_batch()
+            if migration.is_admitted_additive_batch()
                 || migration.is_admitted_native_network_batch()
             {
-                // These complete sources were already admitted. The index and source-policy
-                // derivations validate structure and current dependencies without a
-                // full semantic audit of unrelated history.
+                // These complete sources were already admitted. The reviewed additive
+                // steps validate structure and current dependencies without a full
+                // semantic audit of unrelated history.
                 migrations::validate_sqlite_structure(&control, &runtime, &secrets).and_then(|_| {
                     migrations::validate_current_storage(&control, &runtime, &secrets)
                 })
@@ -367,7 +366,7 @@ impl LocalStorageSet {
             if target_schema_version >= 33 {
                 control
                     .validate_agent_locator(migration.durable_set_prepared())
-                    .map_err(|_| LocalStorageError::InvalidData)
+                    .map_err(|_| LocalStorageError::InvalidData.at_upgrade_stage("agent locator"))
             } else {
                 Ok(())
             }

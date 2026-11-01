@@ -301,11 +301,13 @@ pub const RECEIPTS: &[FrozenReceipt] = &[
     receipt!(
         "replay.request_capacity",
         "p0_gateway_replay",
-        "real_hirouted_rejects_unavailable_request_workspace_before_provider_call",
+        "real_hirouted_serves_large_requests_beyond_memory_accounting_targets",
         "tools/e2e-harness/tests/p0_gateway_replay.rs",
         [
-            "replay.request_capacity_limit",
-            "replay.zero_provider_on_capacity"
+            "replay.beyond_memory_target",
+            "replay.complete_provider_input",
+            "replay.one_provider_attempt",
+            "replay.cleanup_after_large_request"
         ]
     ),
     receipt!(
@@ -559,7 +561,7 @@ pub const REQUIRED_ROWS: &[FrozenScenarioRow] = &[
     row!(
         "replay.storage_and_capacity",
         "SPEC-20006",
-        "replay honors OS access, uses one private plaintext backing and preserves request capacity gates",
+        "replay honors OS access, uses one private plaintext backing and serves valid requests beyond accounting targets",
         [
             "replay.accessible_root",
             "replay.request_capacity",

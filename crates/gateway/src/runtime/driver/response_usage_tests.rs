@@ -78,6 +78,7 @@ async fn attempt_state(ingress: IngressProtocol) -> ProductionAttemptState {
     let prefix =
         ChargedBodyQueue::new(&budget, MemoryRole::ResponsePrefix, &plan, 256 * 1024, 64).unwrap();
     ProductionAttemptState {
+        spending: None,
         managed_cpa: false,
         request_reasoning_projection: None,
         request_projection_loss: Default::default(),

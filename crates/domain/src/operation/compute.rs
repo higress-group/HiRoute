@@ -628,6 +628,8 @@ pub(super) fn validate_connection_plan(
         Some(
             crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2
                 | crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3
+                | crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6
+                | crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
                 | crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
         )
     ) {

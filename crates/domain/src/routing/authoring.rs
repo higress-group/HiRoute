@@ -58,6 +58,8 @@ pub struct PlanEditorStateV2 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_alias: Option<String>,
     pub mode: PlanEditorMode,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follow_request_reasoning: bool,
     pub candidates: Vec<CandidateSelectionV1>,
     pub smart: SmartEditorV2,
     pub free: FreeEditorV2,
@@ -245,12 +247,17 @@ impl PlanEditorStateV2 {
             },
         };
         let value = AgentPlanAuthoringV2 {
+            follow_request_reasoning: self.follow_request_reasoning,
             schema: PLAN_AUTHORING_SCHEMA_V2.into(),
             mode: self.mode,
             display_name: AgentPlanDisplayName::parse(&self.display_name)
                 .map_err(|_| PlanAuthoringError::InvalidMetadata)?,
-            purpose: AgentPlanPurpose::parse(&self.purpose)
-                .map_err(|_| PlanAuthoringError::InvalidMetadata)?,
+            purpose: AgentPlanPurpose::parse(if self.purpose.trim().is_empty() {
+                ""
+            } else {
+                &self.purpose
+            })
+            .map_err(|_| PlanAuthoringError::InvalidMetadata)?,
             requirements: self.requirements.clone(),
             limits: self.limits.clone(),
             strategy,
@@ -269,6 +276,8 @@ pub struct AgentPlanAuthoringV2 {
     pub display_name: AgentPlanDisplayName,
     pub purpose: AgentPlanPurpose,
     pub mode: PlanEditorMode,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follow_request_reasoning: bool,
     pub requirements: CapabilityRequirementsV1,
     pub limits: RoutingLimitsV1,
     pub strategy: AgentPlanStrategyV2,
@@ -341,6 +350,9 @@ impl AgentPlanAuthoringV2 {
         self.purpose
             .validate()
             .map_err(|_| PlanAuthoringError::InvalidMetadata)?;
+        if self.delegation_enabled && self.purpose.as_str().is_empty() {
+            return Err(PlanAuthoringError::InvalidMetadata);
+        }
         self.requirements
             .validate()
             .map_err(|_| PlanAuthoringError::InvalidStrategy)?;

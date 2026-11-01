@@ -1,3 +1,4 @@
+mod key_spending;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1102,6 +1103,12 @@ pub(crate) struct ControlNativeCredentialAuthority {
 }
 
 impl NativeCredentialAuthorityV1 for ControlNativeCredentialAuthority {
+    fn key_spend_authority(&self) -> Option<Arc<dyn hiroute_domain::KeySpendAuthorityV1>> {
+        Some(Arc::new(key_spending::ControlKeySpendAuthority {
+            adapter: Arc::clone(&self.adapter),
+        }))
+    }
+
     fn admit_decision_credentials(
         &self,
         binding: &hiroute_domain::DecisionCredentialBindingV1,

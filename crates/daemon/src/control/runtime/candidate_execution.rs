@@ -302,16 +302,29 @@ pub(super) fn materialize_management_candidate(
         }
         _ => return None,
     };
-    let tool = fact.capabilities.tool.value.unwrap_or(true);
-    let vision = fact.capabilities.vision.value.unwrap_or(false);
-    let streaming = fact.capabilities.streaming.value.unwrap_or(true);
-    let context_tokens = fact
-        .capabilities
+    let capabilities = catalog.map_or_else(
+        || fact.capabilities.clone(),
+        |catalog| {
+            hiroute_integrations::compute::complete_missing_api_capabilities(
+                catalog,
+                &fact.provenance,
+                &fact.target,
+                &fact.authentication,
+                &fact.upstream_model_id,
+                &fact.capabilities,
+                &fact.default_preferences,
+            )
+            .capabilities
+        },
+    );
+    let tool = capabilities.tool.value.unwrap_or(true);
+    let vision = capabilities.vision.value.unwrap_or(false);
+    let streaming = capabilities.streaming.value.unwrap_or(true);
+    let context_tokens = capabilities
         .context_tokens
         .value
         .unwrap_or(UNKNOWN_TEXT_CONTEXT_TOKENS);
-    let max_output_tokens = fact
-        .capabilities
+    let max_output_tokens = capabilities
         .max_output_tokens
         .value
         .unwrap_or(UNKNOWN_TEXT_OUTPUT_TOKENS)
@@ -437,11 +450,51 @@ pub(super) fn materialize_management_candidate(
         required_adapter_revision: protocol_endpoint.adapter_revision,
         evidence_digest: fact.capability_evidence_digest.clone(),
     };
+    let metadata_reasoning = catalog.and_then(|catalog| {
+        hiroute_integrations::compute::missing_api_reasoning_default(
+            catalog,
+            &fact.provenance,
+            &fact.target,
+            &fact.authentication,
+            &fact.upstream_model_id,
+            &fact.capabilities.native_reasoning,
+            fact.default_preferences
+                .get(&hiroute_domain::ModelDefaultFieldV1::NativeReasoning),
+        )
+    });
     let reasoning = ModelNativeReasoningV1 {
         model_configuration_id: model_configuration_id.clone(),
-        capability: fact.native_reasoning.clone(),
-        native_render_convention: qualified_native_render_convention(fact, catalog),
+        capability: metadata_reasoning.as_ref().map_or_else(
+            || {
+                capabilities
+                    .native_reasoning
+                    .value
+                    .clone()
+                    .unwrap_or_else(|| {
+                        if matches!(
+                            fact.default_preferences
+                                .get(&hiroute_domain::ModelDefaultFieldV1::NativeReasoning),
+                            Some(
+                                hiroute_domain::ModelDefaultPreferenceV1::Custom { .. }
+                                    | hiroute_domain::ModelDefaultPreferenceV1::FollowMetadata
+                            )
+                        ) {
+                            hiroute_domain::NativeReasoningCapabilityV1::Fixed {
+                                profile: "provider-default".into(),
+                            }
+                        } else {
+                            fact.native_reasoning.clone()
+                        }
+                    })
+            },
+            |value| value.capability.clone(),
+        ),
+        native_render_convention: metadata_reasoning
+            .and_then(|value| value.render_convention)
+            .or_else(|| qualified_native_render_convention(fact, catalog)),
     };
+    let native_capability = reasoning.capability.clone();
+    let reasoning = reasoning.with_source_capability(native_capability);
     let mut protocol_faces = vec![ProtocolFace {
         protocol: protocol_endpoint.protocol,
         request_path: protocol_endpoint.request_path.clone(),
@@ -543,7 +596,7 @@ pub(super) fn materialize_management_candidate(
         credential_destination_ref: Some(fact.target.credential_destination().ok()?),
         source_state: hiroute_domain::MaterializationState::Ready,
         inventory_model_matched: false,
-        reasoning: fact.native_reasoning.clone(),
+        reasoning: reasoning.capability.clone(),
         rating: None,
         ordering_price: None,
         free_evidence: None,
@@ -655,7 +708,7 @@ pub(super) fn materialize_connector_management_candidate(
     model.capabilities.streaming = effective.streaming.value?;
     model.capabilities.context_tokens = effective.context_tokens.value?;
     model.capabilities.max_output_tokens = effective.max_output_tokens.value?;
-    reasoning.capability = effective.native_reasoning.value?;
+    reasoning = reasoning.with_source_capability(effective.native_reasoning.value?);
     let pool = catalog
         .transient_cpa_credential_pool(registered, &desired.source, &desired.binding)
         .ok()?;

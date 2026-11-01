@@ -38,6 +38,7 @@ pub(super) fn dispatch(
             .get("schema")
             .and_then(Value::as_str)
             != Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+            || hiroute_domain::is_legacy_subscription_api_change(&apply.spec.desired_state)
         {
             return failed(ErrorCode::InvalidArguments, request.request_id);
         }

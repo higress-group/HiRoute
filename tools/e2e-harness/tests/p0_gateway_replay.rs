@@ -515,33 +515,32 @@ fn real_hirouted_accepts_accessible_replay_root_without_chmod() {
 }
 
 #[test]
-fn real_hirouted_rejects_unavailable_request_workspace_before_provider_call() {
+fn real_hirouted_serves_large_requests_beyond_memory_accounting_targets() {
     hiroute_e2e::p0_execution_receipt!(
         "replay.request_capacity",
         [
-            "replay.request_capacity_limit",
-            "replay.zero_provider_on_capacity"
+            "replay.beyond_memory_target",
+            "replay.complete_provider_input",
+            "replay.one_provider_attempt",
+            "replay.cleanup_after_large_request"
         ]
     );
-    let forbidden = NativeProvider::start(vec![success()]);
-    let fixture = RuntimeFixture::launch_with_replay(&[&forbidden], 1, 4_096, 1_024);
-    let body = request_document("capacity boundary ".repeat(500_000));
-    assert!(
-        body.len() > 8 * 1024 * 1024,
-        "parsed JSON workspace must exceed the actual stream memory budget"
-    );
+    let provider = NativeProvider::start(vec![success()]);
+    let fixture = RuntimeFixture::launch_with_replay(&[&provider], 1, 4_096, 1_024);
+    let text = "capacity boundary ".repeat(500_000);
+    let body = request_document(text.clone());
+    assert!(body.len() > 8 * 1024 * 1024);
 
     let response = fixture.request_body(&body);
-    assert_eq!(response.status, 503);
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&response.body).unwrap(),
-        serde_json::json!({
-            "schema_version": "hiroute.gateway.error/v1",
-            "code": "REPLAY_BUDGET_UNAVAILABLE",
-            "phase": "canonical_request"
-        })
+    assert_eq!(response.status, 200);
+    assert_eq!(provider.calls(), 1);
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 1);
+    let forwarded: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
+    assert!(
+        forwarded["input"].as_str().unwrap() == text,
+        "large input must reach the provider without truncation"
     );
-    assert_eq!(forbidden.calls(), 0);
     wait_replay_empty(&fixture.replay_root);
 }
 

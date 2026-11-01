@@ -81,6 +81,13 @@ export function sortRegisteredOptions(options: ComputeConnectionOption[]): Compu
   return [...options].sort((left, right) => rank(left.connection_option_id) - rank(right.connection_option_id));
 }
 
+/** An unavailable preferred service never silently selects another provider. */
+export function initialRegisteredOption(options: ComputeConnectionOption[], preferredId?: string, singleProductShortcut = false): ComputeConnectionOption | null {
+  const executable = options.filter(option => option.registered_check_available && option.origin !== 'agent_subscription');
+  if (preferredId) return executable.find(option => option.connection_option_id === preferredId) ?? null;
+  return singleProductShortcut && executable.length === 1 ? executable[0] : null;
+}
+
 export function sortMetadataProviders(providers: ProviderMetadataRecord[]): ProviderMetadataRecord[] {
   const rank = (key: string): number => key === 'hermes-agent/alibaba-token-plan-cn' ? 0
     : key === 'hermes-agent/alibaba-coding-plan-cn' ? 1

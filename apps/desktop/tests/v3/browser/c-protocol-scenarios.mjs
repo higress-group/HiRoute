@@ -70,6 +70,7 @@ export function cProtocolScenarios({ fresh, routing, click, until, all, text, ca
   }
   async function publish(t){
     const before=calls('preview_plan_editor').length;
+    await until(()=>all('button').some(button=>!button.disabled && button.textContent.includes(t('发布更改','Publish changes'))),'current publication options');
     await click(t('发布更改','Publish changes'));
     await until(()=>calls('preview_plan_editor').length>before,'ordinary publication dispatch');
     const input=calls('preview_plan_editor').at(-1).payload.input;

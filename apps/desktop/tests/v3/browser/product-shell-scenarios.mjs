@@ -311,8 +311,8 @@ const scenarios = [
     await click('检查并选择模型');
     assert(all('[role="dialog"] h2').some(item => item.textContent === '连接订阅') && !document.querySelector('[data-hermes-source-scope]'), 'Independent subscription check leaked the device-scan title or Hermes controls');
     await click('检查订阅');
-    await until(() => button('保存接入'), 'new account checked');
-    await click('保存接入');
+    await until(() => button('保存并接入'), 'new account checked');
+    await click('保存并接入');
     await until(() => calls('preview_compute_save').length || document.querySelector('[data-error-code]'), 'save outcome');
     assert(calls('preview_compute_save').length === 1, 'New independent account kept the previous append target and cannot save');
     const change = calls('preview_compute_save')[0].payload.change;
@@ -711,7 +711,7 @@ const scenarios = [
     await click('通用模型');
     await until(() => all('.oc-models .master-list button').some(item => item.textContent.includes('Qwen3-Coder-Plus')), 'Bailian model');
     all('.oc-models .master-list button').find(item => item.textContent.includes('Qwen3-Coder-Plus')).click(); await pause(40);
-    await click('管理凭据'); await click('保存凭据');
+    await click('管理 Key 与额度'); await click('保存设置');
     await until(() => calls('preview_compute_save').length > 0, 'credential preview');
     assert(calls('preview_compute_save').at(-1).payload.change.expected_revisions.target === c().management.revisions.target, 'Credential change reused the revision from before the decision save');
     await until(() => text().includes('接入凭据已保存'), 'credential save completed');

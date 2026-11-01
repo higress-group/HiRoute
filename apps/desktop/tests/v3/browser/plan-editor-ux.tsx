@@ -227,8 +227,9 @@ const availabilityCases: [string, () => Promise<void>][] = [
     try {
       await until(() => Boolean(releaseInitialOptions && releaseInitialSources && document.querySelector('.route-candidate')), 'blocked initial metadata reads');
       const text = [...document.querySelectorAll('.route-candidate')].map(row => row.textContent).join(' ');
-      assert(text.includes('正在读取来源') && text.includes('正在读取价格') && text.includes('正在读取思考设置'), 'Initial reads were not identified as loading');
-      assert(!text.includes('来源暂不可得') && !text.includes('价格未记录') && !text.includes('思考设置未取得'), 'Loading metadata was presented as a failed configuration');
+      const reasoning = [...document.querySelectorAll('.route-candidate .route-reasoning-value')];
+      assert(text.includes('正在读取来源') && text.includes('正在读取价格') && reasoning.length > 0 && reasoning.every(value => value.textContent === '正在读取…'), 'Initial reads were not identified as loading');
+      assert(!text.includes('来源暂不可得') && !text.includes('价格未记录') && !text.includes('思考设置未取得') && !text.includes('暂不可用'), 'Loading metadata was presented as a failed configuration');
     } finally { releaseInitialOptions?.(); releaseInitialSources?.(); }
   }],
   ['routing.options.id-safety: ASCII manual entry preserves exact existing and observed Unicode IDs', async () => {

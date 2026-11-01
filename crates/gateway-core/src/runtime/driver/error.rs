@@ -101,7 +101,7 @@ impl GatewayExecutionError {
     /// Keep the request's termination cause across the transport boundary.
     /// Cancellation tokens also stop deadline and cleanup work, so their
     /// final state cannot recover this information after execution finishes.
-    pub(super) fn into_transport_error(self) -> TransportError {
+    pub fn into_transport_error(self) -> TransportError {
         if self.is_cancelled() {
             TransportError::Cancelled
         } else {

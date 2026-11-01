@@ -97,6 +97,9 @@ impl CpaLifecycleError {
     pub fn subscription_failure(&self) -> Option<hiroute_domain::PortError> {
         use hiroute_domain::{PortError, PortErrorCode};
         let (code, context) = match self {
+            Self::BorrowedCodexAuthAlreadyLeased => {
+                (PortErrorCode::Conflict, "subscription.login.in-use")
+            }
             Self::BorrowedCodexStoreUnsupported => (
                 PortErrorCode::InvalidData,
                 "subscription.native.store-unsupported",

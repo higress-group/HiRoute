@@ -2416,6 +2416,7 @@ version = "0.1.0"
 dependencies = [
  "http",
  "ipnet",
+ "jiff",
  "percent-encoding",
  "pinyin",
  "schemars 1.2.2",
@@ -2582,6 +2583,7 @@ dependencies = [
  "hiroute-platform",
  "hiroute-platform-test-support",
  "hmac",
+ "jiff",
  "rusqlite",
  "rustix",
  "serde",

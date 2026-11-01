@@ -5,6 +5,44 @@ use std::collections::BTreeMap;
 use super::*;
 
 impl TransactionPlanV1 {
+    pub fn with_key_budgets(
+        mut self,
+        edits: Vec<crate::KeyBudgetEditV1>,
+        budgets: crate::KeyBudgetMutationV1,
+    ) -> Result<Self, OperationValidationError> {
+        let invalid = || OperationValidationError::UnregisteredEffectPlan;
+        validate_management_plan(
+            &self.spec,
+            &self.control,
+            &self.secrets,
+            &self.runtime,
+            &self.external,
+        )?;
+        let source_mutation: crate::ComputeManagementMutation = serde_json::from_value(
+            self.control
+                .get("compute_management_mutation")
+                .cloned()
+                .ok_or_else(invalid)?,
+        )
+        .map_err(|_| invalid())?;
+        self.spec.desired_state = json!({"schema":crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6,"change":self.spec.desired_state,"key_budget_edits":edits});
+        let mutation = crate::ComputeManagementMutationV6 {
+            schema: crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V6.into(),
+            source_mutation: Box::new(source_mutation),
+            budgets,
+            change_spec_digest: CanonicalDigest::of(&self.spec).map_err(|_| invalid())?,
+        };
+        mutation.validate(&self.spec).map_err(|_| invalid())?;
+        self.control = json!({"compute_management_mutation":mutation});
+        validate_management_plan(
+            &self.spec,
+            &self.control,
+            &self.secrets,
+            &self.runtime,
+            &self.external,
+        )?;
+        Ok(self)
+    }
     pub fn with_source_network(
         mut self,
         network: crate::NativeNetworkMutationV1,
@@ -81,6 +119,74 @@ impl TransactionPlanV1 {
             external: Vec::new(),
         })
     }
+    pub fn with_subscription_api_link(
+        self,
+        before: Option<crate::ComputeSubscriptionApiLinkV1>,
+        intent: crate::ComputeSubscriptionApiLinkIntentV1,
+    ) -> Result<Self, OperationValidationError> {
+        self.with_subscription_api_link_format(before, intent, false)
+    }
+
+    /// Reproduce retained pre-integration previews; normal producers always use V5.
+    pub fn with_legacy_subscription_api_link_v4(
+        self,
+        before: Option<crate::ComputeSubscriptionApiLinkV1>,
+        intent: crate::ComputeSubscriptionApiLinkIntentV1,
+    ) -> Result<Self, OperationValidationError> {
+        self.with_subscription_api_link_format(before, intent, true)
+    }
+
+    fn with_subscription_api_link_format(
+        mut self,
+        before: Option<crate::ComputeSubscriptionApiLinkV1>,
+        intent: crate::ComputeSubscriptionApiLinkIntentV1,
+        legacy: bool,
+    ) -> Result<Self, OperationValidationError> {
+        validate_management_plan(&self.spec, &self.control, &self.secrets, &[], &[])?;
+        let source_mutation: crate::ComputeManagementMutation = serde_json::from_value(
+            self.control
+                .get("compute_management_mutation")
+                .cloned()
+                .ok_or(OperationValidationError::UnregisteredEffectPlan)?,
+        )
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+        let after = match &intent {
+            crate::ComputeSubscriptionApiLinkIntentV1::Associate { api_source_id } => {
+                Some(crate::ComputeSubscriptionApiLinkV1 {
+                    source_id: source_mutation.source_id().to_owned(),
+                    api_source_id: api_source_id.clone(),
+                })
+            }
+            crate::ComputeSubscriptionApiLinkIntentV1::Remove => None,
+        };
+        let schema = if legacy {
+            crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4
+        } else {
+            crate::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V5
+        };
+        self.spec.desired_state =
+            json!({"schema": schema, "change": self.spec.desired_state, "api_link": intent});
+        let mutation = crate::ComputeManagementMutationV5 {
+            schema: if legacy {
+                crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V4
+            } else {
+                crate::COMPUTE_MANAGEMENT_MUTATION_SCHEMA_V5
+            }
+            .into(),
+            source_mutation: Box::new(source_mutation),
+            api_link_before: before,
+            api_link_after: after,
+            change_spec_digest: CanonicalDigest::of(&self.spec)
+                .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?,
+        };
+        mutation
+            .validate(&self.spec)
+            .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+        self.control = json!({"compute_management_mutation": mutation});
+        validate_management_plan(&self.spec, &self.control, &self.secrets, &[], &[])?;
+        Ok(self)
+    }
+
     pub fn with_source_defaults(
         mut self,
         preferences_before: crate::SourceDefaultPreferencesV1,
@@ -145,12 +251,9 @@ pub(super) fn validate_management_plan(
     let envelope: Envelope = serde_json::from_value(control.clone())
         .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
     let mutation = envelope.compute_management_mutation;
-    match &mutation {
-        crate::ComputeManagementMutation::V4(value) => value.validate(spec),
-        crate::ComputeManagementMutation::V2(value) => value.validate_shape(spec),
-        crate::ComputeManagementMutation::V3(value) => value.validate(spec),
-    }
-    .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
+    mutation
+        .validate_for_spec(spec)
+        .map_err(|_| OperationValidationError::UnregisteredEffectPlan)?;
     if control != &json!({"compute_management_mutation": &mutation}) {
         return Err(OperationValidationError::UnregisteredEffectPlan);
     }

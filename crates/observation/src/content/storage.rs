@@ -1,5 +1,6 @@
 //! Streaming content-object installation and durable append replay verification.
 
+use crate::store::cached_sql;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 
@@ -30,9 +31,7 @@ pub(crate) fn verify_content_replay(
     digest: &CanonicalDigest,
     acknowledgement: &ObservationAckV2,
 ) -> Result<(), ContentProjectionError> {
-    let stored: Option<StoredContentEventReplay> = transaction
-        .query_row(
-            "SELECT event_id, metadata_json, canonical_chunk_object_ref,
+    let stored: Option<StoredContentEventReplay> = cached_sql::query_row(transaction, "SELECT event_id, metadata_json, canonical_chunk_object_ref,
                     canonical_chunk_byte_offset, canonical_chunk_byte_count, envelope_digest
              FROM conversation_content_events_v2
              WHERE stream_ref=(SELECT stream_ref FROM observation_streams_v5 WHERE channel='conversation_content' AND producer_id=?1 AND producer_epoch=?2 AND stream_id=?3) AND sequence=?4",
@@ -99,18 +98,18 @@ pub(crate) fn verify_content_replay(
             .ok_or(ContentProjectionError::ContentCorrupt)?,
     )?;
     let expected_ref = format!("content-chunk:{content_id}:{ordinal}");
-    let (path, offset, count, chunk_event_id): (String, i64, i64, String) = transaction
-        .query_row(
-            "SELECT object_path, byte_offset, byte_count, event_id FROM content_chunks_v2
+    let (path, offset, count, chunk_event_id): (String, i64, i64, String) = cached_sql::query_row(
+        transaction,
+        "SELECT object_path, byte_offset, byte_count, event_id FROM content_chunks_v2
          WHERE workspace_id=?1 AND content_id=?2 AND chunk_ordinal=?3",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                content_id.as_str(),
-                i64::from(ordinal),
-            ],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )
-        .map_err(|_| ContentProjectionError::ContentCorrupt)?;
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            content_id.as_str(),
+            i64::from(ordinal),
+        ],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )
+    .map_err(|_| ContentProjectionError::ContentCorrupt)?;
     if object_ref.as_deref() != Some(expected_ref.as_str())
         || stored_offset != Some(offset)
         || stored_count != Some(count)
@@ -120,16 +119,16 @@ pub(crate) fn verify_content_replay(
     {
         return Err(ContentProjectionError::ContentCorrupt);
     }
-    let state: String = transaction
-        .query_row(
-            "SELECT state FROM content_instances_v2 WHERE workspace_id=?1 AND content_id=?2",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                content_id.as_str()
-            ],
-            |row| row.get(0),
-        )
-        .map_err(|_| ContentProjectionError::ContentCorrupt)?;
+    let state: String = cached_sql::query_row(
+        transaction,
+        "SELECT state FROM content_instances_v2 WHERE workspace_id=?1 AND content_id=?2",
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            content_id.as_str()
+        ],
+        |row| row.get(0),
+    )
+    .map_err(|_| ContentProjectionError::ContentCorrupt)?;
     let mut file = File::open(
         store
             .object_path(&path)
@@ -171,8 +170,9 @@ fn verify_replayed_acknowledgement(
             .chunk_ordinal
             .and_then(|ordinal| ordinal.checked_add(1))
             .ok_or(ContentProjectionError::ContentCorrupt)?,
-        ConversationContentPhaseV2::Finish | ConversationContentPhaseV2::Abort => transaction
-            .query_row(
+        ConversationContentPhaseV2::Finish | ConversationContentPhaseV2::Abort => {
+            cached_sql::query_row(
+                transaction,
                 "SELECT next_chunk_ordinal FROM conversation_content_streams_v2
                  WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND request_id=?4
                    AND direction=?5 AND fork_id=?6",
@@ -188,7 +188,8 @@ fn verify_replayed_acknowledgement(
             )
             .map_err(|_| ContentProjectionError::ContentCorrupt)?
             .try_into()
-            .map_err(|_| ContentProjectionError::ContentCorrupt)?,
+            .map_err(|_| ContentProjectionError::ContentCorrupt)?
+        }
     };
     let expected_root = matches!(
         envelope.phase,
@@ -229,7 +230,7 @@ fn verify_replayed_acknowledgement(
         ConversationContentPhaseV2::Finish | ConversationContentPhaseV2::Abort
     ) {
         let mut statement = transaction
-            .prepare(
+            .prepare_cached(
                 "SELECT content_id, content_blob_digest FROM content_instances_v2
                  WHERE workspace_id=?1 AND request_id=?2 AND direction=?3 AND fork_id=?4
                    AND state='complete' ORDER BY content_id",
@@ -266,23 +267,23 @@ fn verify_acknowledged_blob(
     envelope: &ConversationContentEnvelopeV1,
     acknowledgement: &ObservationBlobAcknowledgementV1,
 ) -> Result<(), ContentProjectionError> {
-    let (digest, path, byte_count, media): (String, String, i64, String) = transaction
-        .query_row(
-            "SELECT c.content_blob_digest, b.object_path, b.byte_count, b.media_type
+    let (digest, path, byte_count, media): (String, String, i64, String) = cached_sql::query_row(
+        transaction,
+        "SELECT c.content_blob_digest, b.object_path, b.byte_count, b.media_type
              FROM content_instances_v2 c JOIN content_blobs_v2 b
                ON b.workspace_id=c.workspace_id AND b.blob_digest=c.content_blob_digest
              WHERE c.workspace_id=?1 AND c.request_id=?2 AND c.direction=?3 AND c.fork_id=?4
                AND c.content_id=?5 AND c.state='complete' AND b.state='complete'",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                envelope.correlation.request_id.as_str(),
-                envelope.direction.as_str(),
-                envelope.fork_id,
-                acknowledgement.content_id,
-            ],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )
-        .map_err(|_| ContentProjectionError::ContentCorrupt)?;
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            envelope.correlation.request_id.as_str(),
+            envelope.direction.as_str(),
+            envelope.fork_id,
+            acknowledgement.content_id,
+        ],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )
+    .map_err(|_| ContentProjectionError::ContentCorrupt)?;
     if digest != acknowledgement.digest || byte_count < 0 {
         return Err(ContentProjectionError::ContentCorrupt);
     }
@@ -324,14 +325,14 @@ pub(crate) fn finalize_content(
     content_id: &str,
 ) -> Result<ObservationBlobAcknowledgementV1, ContentProjectionError> {
     let (media, expected_digest, expected_count, state): (String, String, Option<i64>, String) =
-        transaction
-            .query_row(
-                "SELECT canonical_media_type, content_blob_digest, expected_byte_count, state
+        cached_sql::query_row(
+            transaction,
+            "SELECT canonical_media_type, content_blob_digest, expected_byte_count, state
          FROM content_instances_v2 WHERE workspace_id=?1 AND content_id=?2",
-                params![envelope.correlation.workspace_id.as_str(), content_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .map_err(|_| ContentProjectionError::ActivityStorage)?;
+            params![envelope.correlation.workspace_id.as_str(), content_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .map_err(|_| ContentProjectionError::ActivityStorage)?;
     if state == "complete" {
         return Ok(ObservationBlobAcknowledgementV1 {
             content_id: content_id.into(),
@@ -339,7 +340,7 @@ pub(crate) fn finalize_content(
         });
     }
     let mut statement = transaction
-        .prepare(
+        .prepare_cached(
             "SELECT object_path FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id=?2
          ORDER BY chunk_ordinal",
         )
@@ -434,38 +435,37 @@ pub(crate) fn finalize_content(
     }
     store.note_object_path(&install_path);
     store.note_object_path(&blob_path);
-    transaction.execute(
-        "INSERT INTO content_blobs_v2
+    cached_sql::execute(transaction, "INSERT INTO content_blobs_v2
          (workspace_id, blob_digest, object_path, byte_count, media_type, state, created_at_unix_nanos)
          VALUES (?1, ?2, ?3, ?4, ?5, 'complete', ?6)
          ON CONFLICT(workspace_id, blob_digest) DO NOTHING",
         params![envelope.correlation.workspace_id.as_str(), actual_digest.as_str(), store.object_locator(&blob_path).map_err(|_|ContentProjectionError::ContentCorrupt)?,
             i64_from_u64(byte_count)?, media, i64_from_u64(envelope.occurred_at_unix_nanos)?],
     ).map_err(|_| ContentProjectionError::ActivityStorage)?;
-    transaction
-        .execute(
-            "UPDATE content_instances_v2 SET state='complete', accumulated_byte_count=?3
+    cached_sql::execute(
+        transaction,
+        "UPDATE content_instances_v2 SET state='complete', accumulated_byte_count=?3
          WHERE workspace_id=?1 AND content_id=?2",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                content_id,
-                i64_from_u64(byte_count)?
-            ],
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
-    transaction
-        .execute(
-            "UPDATE content_chunks_v2 SET object_path=?3
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            content_id,
+            i64_from_u64(byte_count)?
+        ],
+    )
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
+    cached_sql::execute(
+        transaction,
+        "UPDATE content_chunks_v2 SET object_path=?3
          WHERE workspace_id=?1 AND content_id=?2",
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                content_id,
-                store
-                    .object_locator(&blob_path)
-                    .map_err(|_| ContentProjectionError::ContentCorrupt)?,
-            ],
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
+        params![
+            envelope.correlation.workspace_id.as_str(),
+            content_id,
+            store
+                .object_locator(&blob_path)
+                .map_err(|_| ContentProjectionError::ContentCorrupt)?,
+        ],
+    )
+    .map_err(|_| ContentProjectionError::ActivityStorage)?;
     Ok(ObservationBlobAcknowledgementV1 {
         content_id: content_id.into(),
         digest: actual_digest.to_string(),

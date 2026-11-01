@@ -15,6 +15,7 @@ fn version() -> PlanVersionV1 {
     PlanVersionV1::new(
         WorkspaceId::default(),
         AgentPlanAuthoringV2 {
+            follow_request_reasoning: false,
             schema: PLAN_AUTHORING_SCHEMA_V2.into(),
             display_name: desired.display_name,
             purpose: desired.purpose,

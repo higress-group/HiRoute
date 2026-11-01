@@ -17,6 +17,9 @@ pub(crate) fn prepare_authoring(
     let before = editor.clone();
     if let Some(mode) = input.mode {
         editor.mode = mode;
+        if current.is_none() {
+            editor.follow_request_reasoning = mode == PlanEditorMode::FixedModel;
+        }
     }
     if let Some(name) = &input.display_name {
         editor.display_name = name.clone();
@@ -69,7 +72,21 @@ pub(crate) fn prepare_authoring(
                                 candidates
                                     .iter()
                                     .find(|v| v.binding_id == selection.binding_id)
-                                    .and_then(|v| default_reasoning(&v.reasoning, economy))
+                                    .and_then(|v| {
+                                        if editor.follow_request_reasoning
+                                            && let NativeReasoningCapabilityV1::Discrete {
+                                                profiles,
+                                                default_profile: Some(default),
+                                                ..
+                                            } = &v.reasoning
+                                            && profiles.contains(default)
+                                        {
+                                            return Some(ReasoningSelectionV1::Profile {
+                                                profile: default.clone(),
+                                            });
+                                        }
+                                        default_reasoning(&v.reasoning, economy)
+                                    })
                             });
                     }
                     selection
@@ -91,7 +108,7 @@ pub(crate) fn prepare_authoring(
             PlanAuthoringChoiceReasonV1::Required,
         );
     }
-    if editor.purpose.trim().is_empty() {
+    if editor.delegation_enabled && editor.purpose.trim().is_empty() {
         required(
             &mut choices,
             "purpose",
@@ -126,6 +143,7 @@ pub(crate) fn prepare_authoring(
 
 fn initial_editor() -> PlanEditorStateV2 {
     PlanEditorStateV2 {
+        follow_request_reasoning: true,
         schema: PLAN_EDITOR_SCHEMA_V2.into(),
         display_name: String::new(),
         purpose: String::new(),

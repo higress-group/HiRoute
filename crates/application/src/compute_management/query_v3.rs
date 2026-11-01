@@ -68,5 +68,10 @@ pub fn query_compute_management_v3<
         runtime_state: view.runtime_state,
         sources: view.sources,
         subscription_modes: modes,
+        subscription_api_links: if query.include_subscription_api_links {
+            Some(repository.compute_subscription_api_links(workspace, query.source_id.as_deref())?)
+        } else {
+            None
+        },
     })
 }

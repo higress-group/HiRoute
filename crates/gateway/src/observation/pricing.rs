@@ -9,6 +9,22 @@ use std::sync::Arc;
 use crate::server::request_plan::RequestPriceBindingV1;
 
 pub trait RequestPriceSnapshot: Send + Sync {
+    fn freeze_spending_attempt(
+        &self,
+        binding: &str,
+        model: &str,
+        profile: &str,
+        at_ms: i64,
+        currency: &str,
+    ) -> Option<ExecutionPricingEvidenceV1> {
+        let result = self.freeze_attempt(binding, model, profile, at_ms);
+        result
+            .quote
+            .as_ref()
+            .filter(|q| q.currency == currency)
+            .map(|_| result.clone())
+    }
+
     fn freeze_attempt(
         &self,
         stable_binding_id: &str,
