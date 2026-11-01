@@ -20,6 +20,11 @@ export function decisionContextScenarios({ fresh, click, until, all, text, calls
       await independent();
       await until(() => setting().textContent.includes('1,050,000'), 'maintained OpenAI context');
       assert(setting().textContent.includes('产品策略值'), 'Policy value was presented as measured capacity');
+      await choose('自定义'); setInput(nativeField('context_window'), '100000');
+      await until(() => setting().textContent.includes('100,000'), 'custom limits on the known endpoint');
+      assert(!setting().textContent.includes('产品策略值'), 'User overrides were mislabeled as the automatic policy');
+      await choose('自动');
+      await until(() => setting().textContent.includes('1,050,000'), 'automatic limits restored');
       await click('更改'); setInput(nativeField('endpoint'), 'https://proxy.example.test/v1/decisions');
       await until(() => setting().textContent.includes('32,000') && setting().textContent.includes('保守默认'), 'unknown endpoint fallback');
       setInput(nativeField('credential'), 'context-browser-fixture');

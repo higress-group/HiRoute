@@ -36,6 +36,7 @@ export function typesafeDestination(bundle: Binding): boolean {
   try {
     const url = new URL(bundle.endpoint.trim());
     return bundle.wire_protocol === 'system_one' && url.protocol === 'https:' && url.hostname === 'api.typesafe.ai'
-      && (!url.port || url.port === '443') && url.pathname === '/v1/systemone' && !url.username && !url.password && !url.search && !url.hash;
+      && (!url.port || url.port === '443') && url.pathname === '/v1/systemone' && !url.username && !url.password
+      && !url.href.includes('?') && !url.href.includes('#');
   } catch { return false; }
 }

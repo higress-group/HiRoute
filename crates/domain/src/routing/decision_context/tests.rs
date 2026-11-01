@@ -58,7 +58,9 @@ fn provider_header_requires_exact_canonical_https_destination_and_codec() {
         "https://api.typesafe.ai/v1/systemone/",
         "https://user@api.typesafe.ai/v1/systemone",
         "https://api.typesafe.ai/v1/systemone?proxy=1",
+        "https://api.typesafe.ai/v1/systemone?",
         "https://api.typesafe.ai/v1/systemone#fragment",
+        "https://api.typesafe.ai/v1/systemone#",
         "https://openrouter.ai/api/v1/decisions",
     ] {
         assert!(!official_typesafe_long_context_destination(

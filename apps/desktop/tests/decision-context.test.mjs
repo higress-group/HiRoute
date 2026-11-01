@@ -27,6 +27,6 @@ test('window drafts belong to their selected source or independent connection', 
 });
 test('TypeSafe toggle is shown only for the exact official codec and URL', () => {
   assert.equal(typesafeDestination(base), true);
-  for (const endpoint of ['https://api.typesafe.ai.evil.test/v1/systemone', 'http://api.typesafe.ai/v1/systemone', 'https://api.typesafe.ai:444/v1/systemone', 'https://api.typesafe.ai/v1/systemone?q=1', 'https://api.typesafe.ai/v1/systemone#x', 'https://user@api.typesafe.ai/v1/systemone', 'https://proxy.test/v1/systemone']) assert.equal(typesafeDestination({ ...base, endpoint }), false, endpoint);
+  for (const endpoint of ['https://api.typesafe.ai.evil.test/v1/systemone', 'http://api.typesafe.ai/v1/systemone', 'https://api.typesafe.ai:444/v1/systemone', 'https://api.typesafe.ai/v1/systemone?q=1', 'https://api.typesafe.ai/v1/systemone?', 'https://api.typesafe.ai/v1/systemone#', 'https://api.typesafe.ai/v1/systemone#x', 'https://user@api.typesafe.ai/v1/systemone', 'https://proxy.test/v1/systemone']) assert.equal(typesafeDestination({ ...base, endpoint }), false, endpoint);
   assert.equal(typesafeDestination({ ...base, wire_protocol: 'openai_decisions' }), false);
 });

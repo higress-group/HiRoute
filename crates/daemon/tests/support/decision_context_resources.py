@@ -28,6 +28,7 @@ from publication_product import Product, V1, encoded
 class Usage:
     def __init__(self, pid):
         self.pid, self.samples = pid, []
+        self.error = None
         self.stop = threading.Event()
         self.sample()
         self.thread = threading.Thread(target=self.watch, daemon=True)
@@ -42,11 +43,16 @@ class Usage:
 
     def watch(self):
         while not self.stop.wait(.02):
-            self.sample()
+            try:
+                self.sample()
+            except Exception as error:
+                self.error = error
+                return
 
     def finish(self):
         self.stop.set(); self.thread.join(timeout=3)
         assert not self.thread.is_alive()
+        assert self.error is None, 'process resource sampler failed'
         self.sample()
         return {'sample_period_ms': 20, 'samples': len(self.samples),
             'rss_initial_kib': self.samples[0][0], 'rss_sampled_peak_kib': max(v[0] for v in self.samples),
@@ -87,7 +93,9 @@ def run(repository, legacy, output):
                     'source_lineage_digest': source['lineage_digest']}}}
         if not legacy:
             policy = {'mode': 'custom', 'window_tokens': window, 'typesafe_long_context': 'automatic'}
-            resolved = data('decision context preview', {k: service['connection'][k] for k in ['endpoint', 'model', 'wire_protocol']} | {'policy': policy})
+            preview_input = {k: service['connection'][k] for k in ['endpoint', 'model', 'wire_protocol']}
+            preview_input['policy'] = policy
+            resolved = data('decision context preview', preview_input)
             service['context'] = {'policy': policy, 'resolved': resolved}
         desired = {'change': {'id': id, 'expected_revision': 0, 'service': service,
             'expected_source_revisions': [{'source_id': source['source_id'], 'revision': source['revision']}]}}

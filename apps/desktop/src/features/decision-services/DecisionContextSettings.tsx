@@ -52,7 +52,8 @@ export function DecisionContextSettings({ bundle, view, language, refreshKey, on
       {current ? <>
         <dl className="decision-context-summary"><div><dt>{t('有效总窗口', 'Effective request window')}</dt><dd>{current.request_window_tokens.toLocaleString()} <small>{source(current.request_source)}</small></dd></div>
           <div><dt>{t('每个问题上限', 'Per-question limit')}</dt><dd>{current.per_question_window_tokens.toLocaleString()} <small>{source(current.per_question_source)}</small></dd></div></dl>
-        {current.metadata?.basis === 'maintainer_policy' && <span className="field-help">{t('此窗口采用已维护的产品策略值。', 'This window uses a maintained product policy value.')}</span>}
+        {(current.request_source === 'metadata' || current.per_question_source === 'metadata') && current.metadata?.basis === 'maintainer_policy' && <span className="field-help">{t('自动窗口采用已维护的产品策略值。', 'Automatic limits use a maintained product policy value.')}</span>}
+        {(current.request_source === 'metadata' || current.per_question_source === 'metadata') && current.metadata?.basis === 'inferred' && <span className="field-help">{t('元信息窗口采用有来源记录的折算值。', 'Metadata limits use a source-backed normalization.')}</span>}
       </> : <span className="field-help">{preview.state === 'error' ? t('窗口暂时无法解析，请重试后保存。', 'The window could not be resolved. Retry before saving.')
         : preview.state === 'invalid' ? t('填写有效的模型、地址和窗口后显示解析结果。', 'Enter a valid model, URL and window to see the resolved limits.') : t('正在解析窗口…', 'Resolving window…')}</span>}
       <button className="btn btn-quiet" type="button" onClick={() => setRetry(value => value + 1)}>{t('刷新窗口', 'Refresh window')}</button>
