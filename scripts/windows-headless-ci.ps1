@@ -201,6 +201,8 @@ function Invoke-LibraryTests {
         'query_v2::session_search_tests::live_search_450k_occurrences_and_100k_sources_under_real_deadline',
         'store::field_replay_tests::captured_native_suffix_uses_the_real_writer',
         'store::field_tests::current_history_and_real_maintenance',
+        'store::tests::content_v2::pressure::thousands_of_small_items_remain_durable_and_replay_exactly',
+        'store::tests::content_v2::pressure::bounded_batches_keep_the_same_small_item_bytes_and_feedback',
         'store::tests::plan_quality::routing_timeline::timeline_long_session_read_cost',
         'store::tests::plan_quality::trust::trust_suggestion_population_read_cost')
     }
