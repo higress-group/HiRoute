@@ -219,6 +219,8 @@ fn apply_append(
         "{rejected:010}-{}.chunk",
         event_file_key(envelope.event_id.as_str())
     ));
+    #[cfg(test)]
+    let writing = crate::store::ingest_profile::span("staging_write_sync");
     match OpenOptions::new().write(true).create_new(true).open(&path) {
         Ok(mut file) => file
             .write_all(&bytes)
@@ -235,6 +237,8 @@ fn apply_append(
         }
         Err(_) => return Err(ContentProjectionError::ContentStorage),
     }
+    #[cfg(test)]
+    drop(writing);
     store.note_object_path(&path);
     cached_sql::execute(
         transaction,

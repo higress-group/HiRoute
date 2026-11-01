@@ -217,10 +217,16 @@ impl ObservationCommitPort for LocalObservationStore {
         envelope: &ConversationContentEnvelopeV1,
         channel_losses: &[LossNoticeV1],
     ) -> Result<IngestOutcome, ObservationStoreError> {
+        #[cfg(test)]
+        let _total = super::ingest_profile::span("total");
         let payload_digest =
             CanonicalDigest::of(envelope).map_err(|_| ObservationStoreError::Corrupt)?;
         let stream = &envelope.producer.stream;
+        #[cfg(test)]
+        let waiting = super::ingest_profile::span("connection_wait");
         let mut connection = self.connection.lock();
+        #[cfg(test)]
+        drop(waiting);
         let transaction = connection
             .transaction()
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
@@ -347,7 +353,12 @@ impl ObservationCommitPort for LocalObservationStore {
             &envelope.correlation.conversation_id,
             &envelope.correlation.request_id,
         )?;
-        let projection = match apply_content(self, &transaction, envelope) {
+        #[cfg(test)]
+        let projecting = super::ingest_profile::span("content_projection");
+        let applied = apply_content(self, &transaction, envelope);
+        #[cfg(test)]
+        drop(projecting);
+        let projection = match applied {
             Ok(projection) => projection,
             Err(ContentProjectionError::ActivityStorage) => {
                 return Err(ObservationStoreError::ActivityUnavailable);
@@ -420,9 +431,13 @@ impl ObservationCommitPort for LocalObservationStore {
         )?;
         increment_store_revision(&transaction)?;
         let cleanup = projection.cleanup_content_ids;
+        #[cfg(test)]
+        let committing = super::ingest_profile::span("transaction_commit");
         transaction
             .commit()
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
+        #[cfg(test)]
+        drop(committing);
         for content_id in cleanup {
             let directory = self.staging_directory(&envelope.correlation.workspace_id, &content_id);
             if std::fs::remove_dir_all(&directory).is_ok() {

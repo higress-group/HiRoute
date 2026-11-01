@@ -14,6 +14,8 @@ mod field_replay_tests;
 mod field_tests;
 mod gap;
 mod ingest;
+#[cfg(test)]
+pub(crate) mod ingest_profile;
 mod protocol;
 pub(crate) mod records;
 mod request_retention;
