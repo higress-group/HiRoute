@@ -18,10 +18,11 @@ Provider names alone do not define another protocol. Token Plan cannot be split
 into individual/team eligibility paths. Known values are editable suggestions;
 required business-space/custom endpoint/model fields remain visible.
 
-Current native connections use `hiroute.decision-service/v2` with an explicit
-`system_one` or `openai_decisions` wire protocol. The latter adapts OpenAI
+Current native connections use `hiroute.decision-service/v3`, reusing the explicit
+`system_one` or `openai_decisions` wire protocol and carrying the immutable context
+intent and resolved budget snapshot. The latter adapts OpenAI
 Decisions; it does not select a different logical routing protocol. Supported
-untagged V1 revisions retain their exact content and digests. Preparing an old
+untagged V1 and tagged V2 revisions retain their exact content, digests and original context policy. Preparing an old
 connection for editing does not write or republish it. Custom extensions retain
 their own protocol and optional independent header; they cannot reuse a model
 source's credentials.
@@ -43,10 +44,10 @@ a current public alternative.
 #### Scenario: Existing publication retains its service
 
 - **WHEN** a newer immutable service revision is saved
-- **THEN** the existing publication retains its exact selected revision and authentication until an explicit new selection and publication.
+- **THEN** the existing publication retains its exact selected revision, context budget and authentication until an explicit new selection and publication
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/266#issuecomment-6488573916
+- https://github.com/higress-group/HiRoute/issues/319#issuecomment-6558828337
 
 ### Requirement: Testing is explicit, version-specific, and uses production transport
 
@@ -424,42 +425,55 @@ Source SPEC comments:
 
 ### Requirement: C context allocation protects the complete assessed stage
 
-C MUST partition safe supplied content into prior_context, assessment_stage and
-latest_user. Background is the newest contiguous whole-turn suffix before the actual assessment
-target, capped at eight with no setting.
-Preserve bounded interrupted/unknown turns and their recorded status; execution
-status alone MUST NOT erase earlier user requirements or cut off older background.
-This admission does not certify assessment-target completeness or score eligibility. The complete actual target
-stage is not limited by that turn cap. Latest user input remains separately
-represented; tool-result bodies, goal parsing, semantic extraction and invented
-provider-only history are excluded.
+C SHALL keep captured prior_context and assessment_stage separate from latest_user and the C v4 request_context established by prerequisite #321. Captured background is the newest contiguous whole-turn suffix before the actual assessment target, capped at eight without another setting. Interrupted or unknown execution status alone does not erase user requirements. The complete actual target has no eight-turn cap. Replayed User/Assistant text may resolve current requirements and references but never reconstruct captured execution, establish task completion or make a partial target complete. Use the validated native current-input event/window boundary, otherwise the observed User; disclose a missing boundary rather than relabeling current input. Retain the existing bounded text-only replay admission and its source/role/position, truncated and boundary_unavailable meaning. Tool-result bodies, opaque provider state, instruction-role content, generated semantic summaries and invented provider history are excluded. Old sealed C v1-v4 publications retain their original question/input identities and 262,144 escaped-byte allocation; replayed context is absent under v1-v3. Publications with an explicit context snapshot SHALL fit request and every applicable per-question budget using the frozen local accounting strategy and reserve, counting complete questions/criteria, current input, captured history, replayed request context and encoded framing. Required current user input and retained questions must never be truncated. Allocate the target before optional captured background, reserving initially eligible historical questions including applicability first. Prefer a contiguous suffix of whole target turns; a boundary turn may retain its whole user/status and newest whole steps with explicit omission disclosure. Never split a text part or step or fill a gap with unrelated older content. No captured background is admitted after target loss. Admit optional replayed request background only from the remaining original reservation after captured-history allocation, retaining its separate provenance and omission flags even when capture is partial or absent. Missing target turns/steps or existing incompleteness makes assessment partial: omit applicability and prohibit historical protection from that partial score. If no execution evidence remains, omit historical Score and applicability together. Freed question budget never triggers another evidence admission pass, including replayed context. A final mandatory-core no-fit makes zero provider attempts and follows existing classified decision failure/fallback; cancellation, source deadline and Replay integrity retain their terminating behavior. Equal inputs and frozen policy yield equal prepared requests. Same-turn tool continuation retains existing decision inheritance, custom extensions own their protocol, and ordinary forwarding/stored history remain unchanged.
 
-The native request MUST fit 262144 actual escaped wire bytes. Initially complete
-targets reserve all required question bytes, including applicability, before
-admitting a suffix of the target and then optional background. Remove background
-before losing target content. If that reserved allocation makes the target
-partial, omit applicability and never refill target or background with the freed
-bytes. Initially partial targets omit applicability from the start. When no target is admitted, omit historical Score and applicability together. Latest user content and
-question text cannot be truncated; reject a final over-budget request. Repeated
-equal inputs and frozen content MUST yield identical prepared requests.
+#### Scenario: Different saved windows
+
+- **WHEN** the same large history is classified with a small-window and a larger-window native connection
+- **THEN** each request fits its own reserved request/question budgets, preserves identical complete current input/questions, and the larger budget can retain additional eligible evidence
 
 #### Scenario: Reserved boundary
 
-- **WHEN** a complete target fits only if applicability bytes are reclaimed
-- **THEN** Preparation MUST mark the target partial, omit applicability and retain the original allocation without a refill pass.
+- **WHEN** a complete target fits only if applicability space is reclaimed
+- **THEN** the target is partial, applicability is omitted, and freed space does not refill target or background
 
 #### Scenario: Interrupted or unknown background
 
-- **WHEN** an already-bounded safe background turn has interrupted or unknown status
-- **THEN** Its user content and recorded status MUST remain in the contiguous admitted suffix when within the cap and byte budget; earlier background MUST NOT be removed solely because of that execution status.
+- **WHEN** a safe background suffix includes interrupted or unknown turns that fit
+- **THEN** the user content and recorded statuses remain in chronological order instead of being dropped solely due to status
 
 #### Scenario: Background cap
 
-- **WHEN** a ten-turn actual target follows earlier completed turns and the cap is eight
-- **THEN** All ten target turns MUST be retained when the byte budget allows, with at most eight background turns.
+- **WHEN** a ten-turn actual target follows earlier background and fits its budget
+- **THEN** all ten target turns are retained with at most eight background turns
+
+#### Scenario: Tool-heavy boundary
+
+- **WHEN** whole target turns exceed the budget but a boundary turn's full user/status and newest whole steps fit
+- **THEN** only that contiguous step suffix is retained with explicit partial disclosure; no text is sliced and its score cannot trigger historical protection
+
+#### Scenario: Protected core too large
+
+- **WHEN** current user content plus mandatory current judgment questions exceed usable input budget even with all history omitted
+- **THEN** no decision call is sent, the user/questions stay intact, and the existing routing fallback receives a safe local no-fit reason
+
+#### Scenario: Above the former byte ceiling
+
+- **WHEN** an encoded request exceeds 256 KiB but fits its new frozen accounting budget and provider shape constraints
+- **THEN** the legacy fixed ceiling does not reject it and the actual wire bytes remain accounted
+
+#### Scenario: Per-question constraint
+
+- **WHEN** a request fits the total window but its shared state plus one question exceeds a separate question budget
+- **THEN** optional evidence is further reduced or the mandatory core is rejected locally; the total-only check cannot authorize dispatch
+
+#### Scenario: Replayed summary with cold or partial capture
+
+- **WHEN** a short current input refers to earlier replayed assistant text while captured history is absent or partial
+- **THEN** the bounded replayed text participates in the actual encoded request/question budget with its source and omission flags, while no assessment target or complete execution is invented and no retained question/current input is shortened
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/139#issuecomment-6235109346
+- https://github.com/higress-group/HiRoute/issues/319#issuecomment-6558829177
 
 ### Requirement: C capability evidence is explicit and session scoped
 
@@ -789,6 +803,97 @@ Shared decision repair SHALL use the collapsed source-owned editor in place, ret
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/274#issuecomment-6499636922
+
+### Requirement: Native context policies are explicit immutable configuration
+
+Native decision authoring SHALL provide Automatic and Custom context settings through Desktop, the shared console and current CLI. It SHALL show the effective request window, separate question cap when present and their sources, retain per-source/per-mode draft edits, and support restoring Automatic. Saving a current connection SHALL freeze the resolved limits, metadata identity, effective header policy and budget algorithm into a new immutable revision. Publication SHALL use that exact revision and context digest. Metadata updates, editor reads, previews and shared source state refreshes SHALL NOT rewrite saved revisions, republish routes or re-resolve an active budget. Adopting newer automatic metadata requires explicit saving and publication. Old V1/V2 connections, sealed publications, Operations and observations retain their original bytes/identities and original execution policy until explicit replacement; old C publications retain the fixed 262,144-byte allocator. Current credentials and admitted shared-source network policy keep their existing independent authority. Custom extensions retain their existing own protocol and do not acquire native window controls.
+
+#### Scenario: Refresh after publication
+
+- **WHEN** automatic metadata changes after a saved connection was published
+- **THEN** the active route retains its frozen context budget; the editor may disclose a newer available value but adopts it only through explicit save and publication
+
+#### Scenario: Return to edited source
+
+- **WHEN** a user edits source A's custom window, selects B and returns to A
+- **THEN** A's full pending bundle and custom window are restored without copying B's values or issuing a provider call
+
+#### Scenario: Upgrade a retained publication
+
+- **WHEN** supported old connection/publication and unfinished Operation bytes are read by the new version
+- **THEN** their identities, authority and original budget/header behavior remain intact; opening an editor alone performs no conversion write
+
+#### Scenario: CLI and product parity
+
+- **WHEN** the same automatic or custom intent is saved through current CLI, Desktop or console
+- **THEN** the resulting saved policy, validation and effective source agree and the exact saved revision is selected
+
+#### Scenario: Restore automatic
+
+- **WHEN** a custom setting is explicitly replaced by Automatic and saved
+- **THEN** a new revision records the then-effective automatic snapshot while already published revisions remain unchanged
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/319#issuecomment-6558828337
+
+### Requirement: Official TypeSafe long context is enabled explicitly and safely
+
+Newly saved automatic native connections to the exact official TypeSafe System One HTTPS endpoint SHALL enable TypeSafe-Danger-Zone-Long-Context: true by default and resolve the matching long-context request/question limits. Users may explicitly disable it, producing a new saved revision with the smaller conditional limits. Independent and shared-source authentication use the same policy. The header policy is typed, non-secret and frozen with the connection/publication; it does not replace Authorization or broaden credential destination authority. OpenRouter, OpenAI, Bailian, arbitrary compatible endpoints and lookalike hosts SHALL NOT receive the header. Tests and production calls for the same saved revision use the same policy, without automatic probing, retry or header toggling after rejection. Old publications retain their previous behavior.
+
+#### Scenario: Official direct default
+
+- **WHEN** a native connection to https://api.typesafe.ai/v1/systemone is newly saved in automatic mode
+- **THEN** its exact saved tests and production calls send the long-context header and use the frozen expanded limits
+
+#### Scenario: Explicit off
+
+- **WHEN** the user disables TypeSafe long context and saves
+- **THEN** a new revision omits the header and uses the smaller request/question limits; existing publications remain unchanged
+
+#### Scenario: Destination changes
+
+- **WHEN** a draft changes from the official TypeSafe URL to OpenRouter or a compatible/lookalike endpoint
+- **THEN** its preview no longer enables the TypeSafe header or borrows its conditional capacity
+
+#### Scenario: Shared credentials
+
+- **WHEN** the official TypeSafe decision connection reuses an authorized Native API source
+- **THEN** the header is applied without modifying the source Key/network authority or adding a second secret
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/319#issuecomment-6558830000
+
+### Requirement: Decision context diagnostics disclose estimates and omissions
+
+Safe connection/test views and routing diagnostics SHALL expose the frozen effective request/question windows, source/context identity, usable budget, accounting strategy, estimated or exact count classification, actual encoded bytes, retained/removed background and target turns/steps, target completeness and the limiting/no-fit reason when applicable. Report replayed request-context retention/removal and boundary/truncation separately from captured prior/target counts, so empty capture cannot be confused with a missing replayed summary or a failed lineage association. The initial escaped-UTF8 accounting method SHALL be labeled conservative estimation rather than exact provider tokens. A local preparation failure SHALL remain observable with zero provider attempts; a connectivity pass SHALL NOT claim maximum context-capacity certification. Diagnostics must not include prompt/user/tool body text, credentials or secret header values. Historical observation identities remain readable and native partial assessment remains separate from complete historical protection evidence.
+
+#### Scenario: Visible truncation
+
+- **WHEN** a decision request omits background and target steps
+- **THEN** the observation distinguishes those counts, records the actual context/estimate method and target partial status, and does not imply complete evidence
+
+#### Scenario: Local failure
+
+- **WHEN** a native request cannot fit before dispatch
+- **THEN** a safe local reason and frozen budget identity are available with zero provider attempts and without raw content
+
+#### Scenario: Conservative estimate
+
+- **WHEN** escaped-UTF8 accounting prepares a request
+- **THEN** the UI/machine diagnostics label its value as estimated and report actual wire bytes separately
+
+#### Scenario: Stale test evidence
+
+- **WHEN** a new saved context/header revision replaces the configuration displayed with a prior pass
+- **THEN** that pass is not shown as testing the new configuration or its maximum capacity
+
+#### Scenario: Distinct replay and capture diagnostics
+
+- **WHEN** a request retains replayed assistant context while captured history is empty, or optional replay is omitted by the budget
+- **THEN** safe diagnostics distinguish replay retention/omission and boundary availability from captured-stage counts without logging any summary text or claiming actual execution
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/319#issuecomment-6558830788
 
 ## Implementation references
 

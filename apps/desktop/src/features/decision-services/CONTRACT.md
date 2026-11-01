@@ -1,7 +1,8 @@
 # Decision connection product calls
 
 The backend owns `contracts.ts`, its Rust Domain and Application API DTOs, and
-the deterministic [host examples](../../../tests/decision-services-v2-contract.json).
+the deterministic [current host examples](../../../tests/decision-services-v3-contract.json)
+and unchanged [V2 examples](../../../tests/decision-services-v2-contract.json).
 The examples describe Product Session arguments and returned values; they do
 not implement a provider or replace a production-path test. Both native Tauri
 and the web console use the same argument wrappers. Empty reads pass `{}`;
@@ -10,7 +11,7 @@ payload, not a daemon machine envelope. Host failures retain the existing
 `DesktopFailure` native, transport or backend-envelope representation.
 
 `services` contains the latest saved revision of each service. Each entry keeps
-the exact untagged V1 or tagged V2 service and its canonical configuration
+the exact untagged V1 or tagged V2/V3 service and its canonical configuration
 digest. `source` is the current shared source or null for independent/custom
 services. `related_sources` contains the safe current summaries for sources
 referenced by retained revisions, including the current source; it supplies
@@ -64,3 +65,28 @@ current pass. A failed current read makes that pass unverified, never current.
 source save refreshes metadata while preserving decision/parent drafts and never
 starts another test. Collapsing retains the mounted editor and original pending
 Operation. Proxy-authentication repair leaves provider-Key management untouched.
+
+Current hosts use `decision_services_v3`, `preview_decision_context` and
+`save_decision_service_v3`. The preview takes the exact endpoint, model, codec
+and context policy and returns the server-resolved request and per-question
+windows, independent sources, metadata provenance and digest. It performs local
+metadata work only. A native V3 save contains that exact policy and resolved
+snapshot; a custom extension omits context. Metadata changing before acceptance
+causes a refresh conflict, never an unseen replacement snapshot. Execution and
+recovery consume accepted content without re-resolution.
+
+Automatic uses exact maintained endpoint/model metadata or the conservative
+32,000-token fallback. Custom requires a positive u32 request window, with an
+optional positive question cap no greater than it. A request override preserves
+an independent provider question cap. Automatic clears applied overrides while
+the editor retains parked custom values per source/mode. TypeSafe automatic/off
+is scoped to its exact official HTTPS System One destination; destination or
+provider labels never authorize arbitrary headers. Preview responses are tied to
+the exact draft signature and superseded reads cannot enable a different save.
+
+Saving an old revision explicitly produces V3. Passive reads and opening an
+editor preserve the old budget; active/prepared publications remain frozen until
+explicit route selection and publication. Test freshness compares the entire
+saved configuration digest, including context. The fixed connection test does
+not certify maximum capacity. The old V1/V2 command entrypoints keep their shapes;
+the V2 list excludes unrepresentable V3 latest records rather than stripping policy.

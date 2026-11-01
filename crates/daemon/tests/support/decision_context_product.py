@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import sys
 import threading
+import time
 
 from publication_product import Product, SENTINEL, V1, encoded
 from publication_process import bootstrap, plan_change
@@ -107,6 +108,28 @@ def run(repository):
         finally:
             client.close()
 
+    def assert_retained_budget_diagnostics():
+        deadline = time.monotonic() + 30
+        while True:
+            result = product.control('GetPlanQualitySamples', {'schema': 'hiroute.observation.query/v2',
+                'intent': {'view': 'plan_quality', 'query': {'plan_id': product.plan_id,
+                    'include_routing_observations': True, 'limit': 100}}}, success=False)
+            error = result.get('error')
+            if error is not None:
+                assert error['code'] == 'CHANGE_PREVIEW_STALE', result
+                budgets = []
+            else:
+                budgets = [sample.get('selection', {}).get('routing_observation', {}).get('context_budget')
+                    for sample in result['data']['samples'] if sample.get('selection') and sample['selection'].get('routing_observation')]
+                budgets = [budget for budget in budgets if budget]
+            if any(b['encoded_bytes'] is None and b['no_fit_reason'] == 'mandatory_core' for b in budgets):
+                assert any((b['encoded_bytes'] or 0) > 262144 for b in budgets), 'large wire count missing from retained query'
+                assert all(b['estimator'] == 'escaped-utf8-v1' for b in budgets)
+                assert all(not any(word in json.dumps(b) for word in ['quoted', 'fixture complete', 'Bearer']) for b in budgets), 'raw content in safe diagnostic'
+                return
+            assert time.monotonic() < deadline, 'local no-fit was not observable through the real retained query'
+            time.sleep(.05)
+
     try:
         bootstrap(product)
         product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
@@ -127,6 +150,15 @@ def run(repository):
                 auth = ' --candidate candidate/adaptive-independent'
             before = len(Endpoint.requests)
             preview = data(command + auth + ' --context-window-tokens 1050000')
+            stale_spec = copy.deepcopy(preview['normalized_spec'])
+            stale_context = stale_spec['desired_state']['change']['service']['context']['resolved']
+            stale_context['catalog_revision'] += 1
+            stale_context.pop('context_digest')
+            stale_context['context_digest'] = 'sha256:' + hashlib.sha256(encoded(stale_context)).hexdigest()
+            code, conflict = product.public_cli('decision connections apply',
+                {'schema_version': V1, 'spec': stale_spec}, success=False)
+            assert code != 0 and conflict['error']['code'] == 'REVISION_CONFLICT', conflict
+            assert all(v['service']['id'] != id for v in data('decision connections list')['services'])
             service = save_preview(preview, codec + '-create')
             assert len(Endpoint.requests) == before, 'save called provider'
             assert service['schema'] == 'hiroute.decision-service/v3'
@@ -174,11 +206,13 @@ def run(repository):
             request(continuation, codec + '-tools', tools=True)
             assert len(Endpoint.requests) == before + 1, 'tool continuation reclassified the same user turn'
             upstream.function_tools = False
+            assert_retained_budget_diagnostics()
         print(json.dumps({'scenario': 'adaptive-decision-context-real-cli-gateway', 'state': 'green',
             'cases': ['both-codecs', 'shared-and-independent', 'save-without-provider', 'exact-readback',
                       'test-saved-digest', 'restart', 'large-window-beyond-256KiB', 'current-input-exact',
                       'immutable-publication', 'mandatory-no-fit-zero-attempts', 'fallback-exact-input',
-                      'same-turn-tool-reuse', 'no-header-on-compatible-endpoint']}), flush=True)
+                      'same-turn-tool-reuse', 'no-header-on-compatible-endpoint',
+                      'retained-safe-large-and-no-fit-diagnostics', 'stale-context-conflict-without-write']}), flush=True)
     finally:
         upstream.close()
         server.shutdown(); server.server_close(); worker.join(timeout=5)

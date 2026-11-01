@@ -49,6 +49,137 @@ fn turn(user: &str, steps: Vec<String>) -> Arc<VisibleAgentTurn> {
     })
 }
 
+#[test]
+fn adaptive_replay_retains_cold_summaries_but_never_completes_a_partial_target() {
+    for codec in [
+        DecisionWireProtocolV2::SystemOne,
+        DecisionWireProtocolV2::OpenaiDecisions,
+    ] {
+        let summary = "Ready: publish artifact A, then update manifest B.";
+        let r = request(json!([
+            {"role":"assistant","content":summary},
+            {"role":"user","content":"Proceed."}
+        ]));
+        let original = r.clone();
+        let a = authority(codec, 32_000, 32_000);
+        for partial in [false, true] {
+            let mut h = if partial {
+                c_history(&a)
+            } else {
+                AgentTurnHistorySnapshot::empty(true)
+            };
+            if partial {
+                h.assessment_target.as_mut().unwrap().target_partial = true;
+            }
+            let p = request_template(&a, &r, &h, true).unwrap();
+            assert_wire_budgets(codec, &a, &p);
+            let s = state(codec, &p);
+            assert_eq!(
+                s["request_context"]["messages"][0]["content"][0]["text"],
+                summary
+            );
+            assert!(!s["assessment_stage"].to_string().contains(summary));
+            assert!(!s["prior_context"].to_string().contains(summary));
+            assert!(p.bindings.as_ref().unwrap().applicability.is_none());
+            assert_eq!(p.bindings.as_ref().unwrap().assessment.is_some(), partial);
+            assert!(!p.routing_observation.as_ref().unwrap().target_complete);
+            assert_eq!(r, original);
+        }
+    }
+}
+
+#[test]
+fn adaptive_replay_uses_real_reference_lengths_and_never_slices_a_large_summary() {
+    use crate::content_ref::ContentRef;
+    for codec in [
+        DecisionWireProtocolV2::SystemOne,
+        DecisionWireProtocolV2::OpenaiDecisions,
+    ] {
+        let mut r = request(json!([
+            {"role":"assistant","content":"placeholder"},
+            {"role":"user","content":"Proceed."}
+        ]));
+        r.messages[0].content = vec![ContentPart::Text {
+            text: ContentRef::new(1, 0, 100_000, 300_000).wire_marker(),
+        }];
+        for window in [32_000, 1_050_000] {
+            let a = authority(codec, window, window);
+            let p = request_template(&a, &r, &AgentTurnHistorySnapshot::empty(true), true).unwrap();
+            let s = state(codec, &p);
+            let large = window > 300_000;
+            assert_eq!(
+                s["request_context"]["messages"].as_array().unwrap().len(),
+                usize::from(large)
+            );
+            assert_eq!(s["request_context"]["truncated"], !large);
+            assert!(
+                p.template.wire_len
+                    <= a.context_budget.as_ref().unwrap().request_usable_tokens() as usize
+            );
+            assert!(
+                p.template.bytes.len() < 16 * 1024,
+                "preparation must not load replay text"
+            );
+            if large {
+                assert!(p.template.wire_len > 300_000);
+            }
+            let observation = p.routing_observation.unwrap();
+            assert!(observation.validate());
+            assert_eq!(
+                observation.context_budget.unwrap().replay_budget_omitted,
+                !large
+            );
+        }
+    }
+}
+
+#[test]
+fn adaptive_native_input_window_excludes_current_and_trailing_context() {
+    use crate::agent_turn_history::CurrentInputPosition::{Event, Window};
+    use crate::server::core_runtime::classification::DecisionInput;
+    for codec in [
+        DecisionWireProtocolV2::SystemOne,
+        DecisionWireProtocolV2::OpenaiDecisions,
+    ] {
+        let a = authority(codec, 32_000, 32_000);
+        let r = request(json!([
+            {"role":"assistant","content":"PRIOR_SUMMARY"},
+            {"role":"user","content":"CURRENT_NATIVE_INPUT"},
+            {"role":"assistant","content":"TRAILING_ASSISTANT"},
+            {"role":"user","content":"TRAILING_SYNTHETIC_USER"}
+        ]));
+        for position in [None, Some(Event(1)), Some(Window { first: 1, last: 1 })] {
+            let p = request_template(
+                &a,
+                DecisionInput {
+                    request: &r,
+                    current: Some(&r.messages[1].content),
+                    position,
+                },
+                &AgentTurnHistorySnapshot::empty(true),
+                true,
+            )
+            .unwrap();
+            assert_wire_budgets(codec, &a, &p);
+            let s = state(codec, &p);
+            assert_eq!(s["latest_user"][0]["text"], "CURRENT_NATIVE_INPUT");
+            let replay = &s["request_context"];
+            assert_eq!(replay["boundary_unavailable"], position.is_none());
+            assert_eq!(
+                replay.to_string().contains("PRIOR_SUMMARY"),
+                position.is_some()
+            );
+            for excluded in [
+                "CURRENT_NATIVE_INPUT",
+                "TRAILING_ASSISTANT",
+                "TRAILING_SYNTHETIC_USER",
+            ] {
+                assert!(!replay.to_string().contains(excluded));
+            }
+        }
+    }
+}
+
 fn assert_wire_budgets(
     codec: DecisionWireProtocolV2,
     a: &RestBranchClassifierAuthorityV1,
