@@ -1,11 +1,26 @@
 use serde_json::Value;
 use std::process::Command;
 
+#[cfg(windows)]
+#[path = "support/windows_version_console.rs"]
+mod windows_version_console;
+#[cfg(windows)]
+#[path = "support/windows_version_output.rs"]
+mod windows_version_output;
+
+fn daemon_binary() -> std::path::PathBuf {
+    #[cfg(windows)]
+    if let Some(directory) = std::env::var_os("HIROUTE_VALIDATION_PRODUCT_BIN_DIR") {
+        return std::path::PathBuf::from(directory).join("hirouted.exe");
+    }
+    env!("CARGO_BIN_EXE_hirouted").into()
+}
+
 #[test]
 fn daemon_version_reports_its_own_build_before_any_service_initialization() {
     let root = tempfile::tempdir().unwrap();
     for flag in ["--version", "-V"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_hirouted"))
+        let output = Command::new(daemon_binary())
             .arg(flag)
             .current_dir(root.path())
             .env("HOME", root.path().join("missing-home"))

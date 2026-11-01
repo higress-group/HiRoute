@@ -41,8 +41,6 @@ mod windows_subscription_authorization;
 mod windows_user_model_receipts;
 #[path = "support/windows_user_models.rs"]
 mod windows_user_models;
-#[path = "support/windows_version_output.rs"]
-mod windows_version_output;
 #[path = "support/windows_worker_business.rs"]
 mod windows_worker_business;
 

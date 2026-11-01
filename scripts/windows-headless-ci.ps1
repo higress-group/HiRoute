@@ -351,8 +351,8 @@ if ($Scope -eq 'components') {
   $foregroundBreak = 'windows_foreground_console::actual_windows_service_run_ctrl_break_drains_the_gui_daemon_and_preserves_pipes'
   Invoke-RequiredTests 'foreground-ctrl-c' @('-p','hiroute-daemon','--test','windows_headless',$foregroundC) @($foregroundC) @('--exact','--nocapture')
   Invoke-RequiredTests 'foreground-ctrl-break' @('-p','hiroute-daemon','--test','windows_headless',$foregroundBreak) @($foregroundBreak) @('--exact','--nocapture')
-  $version = 'windows_foreground_console::actual_windows_daemon_version_uses_parent_console_and_preserves_pipes'
-  Invoke-RequiredTests 'daemon-version' @('-p','hiroute-daemon','--test','windows_headless',$version) @($version) @('--exact','--nocapture')
+  $version = 'windows_version_console::actual_windows_daemon_version_uses_parent_console_and_preserves_pipes'
+  Invoke-RequiredTests 'daemon-version' @('-p','hiroute-daemon','--test','build_identity',$version) @($version) @('--exact','--nocapture')
   Invoke-RequiredTests 'credential-options' @('-p','hiroute-cli','--lib','windows_handle_carrier_') @(
     'args::tests::windows_handle_carrier_rejects_missing_invalid_and_conflicting_authority',
     'args::tests::windows_handle_carrier_is_separate_from_a_typed_request_source')

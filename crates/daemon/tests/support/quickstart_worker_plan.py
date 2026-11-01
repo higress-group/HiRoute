@@ -63,7 +63,8 @@ def run(product, plan, binding, submit):
     restored = product.cli('routing', 'preview', '--plan', plan, '--restore-from', str(saved),
                            '--apply-file', str(product.project / 'worker-plan-purpose-restore.json'))['data']
     submit(product, restored)
-    assert product.cli('routing', 'show', plan)['data']['desired'] == desired
+    baseline = product.cli('routing', 'show', plan)
+    assert baseline['data']['desired'] == desired
 
     # A new Plan has explicit work without copying a complete editor template.
     path = product.project / 'worker-plan-new-preview.json'
