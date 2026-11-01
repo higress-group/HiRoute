@@ -62,6 +62,20 @@ pub(crate) fn accepts_capability(command_id: &str) -> bool {
     )
 }
 
+/// Retained request files keep the strict reader that originally accepted their content.
+pub(crate) fn operation_id<'a>(command: &str, declared: &'a str, payload: &Value) -> &'a str {
+    if command == "decision.connections.apply"
+        && payload
+            .get("spec")
+            .and_then(|spec| spec.get("desired_state"))
+            .is_some_and(|desired| desired.get("schema").is_none())
+    {
+        "ApplyDecisionServiceV2"
+    } else {
+        declared
+    }
+}
+
 pub(crate) fn command_payload(
     command_id: &str,
     options: &[String],
@@ -499,6 +513,36 @@ mod tests {
         assert_eq!(
             command_payload("decision.context.preview", &options),
             Some(Err(ErrorCode::InvalidArguments))
+        );
+    }
+
+    #[test]
+    fn retained_decision_request_files_select_the_original_reader() {
+        use serde_json::json;
+        let old = json!({"spec":{"desired_state":{"change":{"service":{"schema":"hiroute.decision-service/v2"}}}}});
+        assert_eq!(
+            operation_id("decision.connections.apply", "ApplyDecisionServiceV3", &old),
+            "ApplyDecisionServiceV2"
+        );
+        for schema in [
+            json!("hiroute.decision-service-operation-input/v3"),
+            json!("unknown"),
+            Value::Null,
+        ] {
+            let mut current = old.clone();
+            current["spec"]["desired_state"]["schema"] = schema;
+            assert_eq!(
+                operation_id(
+                    "decision.connections.apply",
+                    "ApplyDecisionServiceV3",
+                    &current
+                ),
+                "ApplyDecisionServiceV3"
+            );
+        }
+        assert_eq!(
+            operation_id("decision.services.apply", "ApplyDecisionServiceV1", &old),
+            "ApplyDecisionServiceV1"
         );
     }
 

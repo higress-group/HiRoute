@@ -109,16 +109,8 @@ pub(crate) fn preview_command(
             ));
         }
         let descriptor = command_by_id(command).ok_or_else(|| error(ErrorCode::UnknownCommand))?;
-        let operation = if command == "decision.connections.apply"
-            && payload
-                .get("spec")
-                .and_then(|spec| spec.get("desired_state"))
-                .is_some_and(|desired| desired.get("schema").is_none())
-        {
-            "ApplyDecisionServiceV2"
-        } else {
-            &descriptor.operation_id
-        };
+        let operation =
+            crate::control_plane::operation_id(command, &descriptor.operation_id, &payload);
         let mut response = call_with_id(
             &client,
             operation,

@@ -344,7 +344,12 @@ fn execute_control(
     let request = LocalControlWireRequestV2 {
         schema_version: LOCAL_CONTROL_SCHEMA_V2,
         request_id: request_id.clone(),
-        operation_id: descriptor.operation_id,
+        operation_id: control_plane::operation_id(
+            &descriptor.command_id,
+            &descriptor.operation_id,
+            &payload,
+        )
+        .to_owned(),
         payload,
         protected_grant: mutation_capability.map(|capability| ProtectedClientGrantV2 {
             principal_kind,
