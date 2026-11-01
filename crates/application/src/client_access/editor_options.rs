@@ -498,7 +498,7 @@ mod tests {
         value.limits.context_window_tokens = Some(1_050_000);
         let bounds = context_window_preview(Some(&value), &compilation_facts()).unwrap();
         assert!(bounds.maximum_tokens < 1_050_000);
-        assert_eq!(bounds.default_tokens, bounds.maximum_tokens.min(272_000));
+        assert_eq!(bounds.default_tokens, bounds.maximum_tokens.min(400_000));
         assert!(matches!(
             codex_capabilities(Some(&value), &compilation_facts(), &PreviewPort::default())
                 .unwrap(),
