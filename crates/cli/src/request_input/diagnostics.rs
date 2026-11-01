@@ -151,7 +151,17 @@ pub(crate) fn failure(code: ErrorCode, request_id: Option<String>) -> crate::Cli
             "schema":"hiroute.cli-input-diagnostic/v1", "command_id":state.command, "diagnostic":diagnostic,
         }), request_id) } else { MachineEnvelopeV2::failed(ErrorV1::new(code), request_id) };
         let mut result = crate::render(envelope);
-        result.stderr = format!("Invalid input at {} ({}): expected {}.\nRun: hiroute schema show --command-id {} --include-schema\n", diagnostic.path, diagnostic.category, diagnostic.expected, state.command);
+        let hint = if state.command.starts_with("worker.") {
+            // Worker contracts are installed as files but are not exposed by schema show.
+            // Recommend the callable leaf help instead of another failing command.
+            let path = hiroute_application_api::command_by_id(&state.command)
+                .map(|command| command.path.join(" "))
+                .unwrap_or_else(|| "worker".into());
+            format!("hiroute {path} --help")
+        } else {
+            format!("hiroute schema show --command-id {} --include-schema", state.command)
+        };
+        result.stderr = format!("Invalid input at {} ({}): expected {}.\nRun: {}\n", diagnostic.path, diagnostic.category, diagnostic.expected, hint);
         result
     })
 }
