@@ -71,6 +71,9 @@ pub(crate) fn command_payload(
             empty::<hiroute_application_api::ClientEmptyRequestV1>(options),
         ),
         "decision.services.apply" | "decision.connections.apply" => Some(preview_or_apply(options)),
+        "decision.context.preview" => Some(request::<
+            hiroute_application_api::DecisionContextPreviewRequestV1,
+        >(options)),
         "decision.services.test" => Some(classifier_request(options)),
         "decision.connections.test" | "decision.network.test" => Some(request::<
             hiroute_application_api::DecisionServiceTestRequestV2,
@@ -473,6 +476,29 @@ mod tests {
             )
             .unwrap_err(),
             ErrorCode::InvalidArguments
+        );
+    }
+
+    #[test]
+    fn decision_context_preview_has_an_executable_strict_request_codec() {
+        use serde_json::json;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("context.json");
+        let value = json!({"endpoint":"https://example.test/v1/decisions",
+            "wire_protocol":"openai_decisions","model":"custom",
+            "policy":{"mode":"automatic","typesafe_long_context":"automatic"}});
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let options = vec!["--request-file".into(), path.to_str().unwrap().into()];
+        assert_eq!(
+            command_payload("decision.context.preview", &options),
+            Some(Ok(value.clone()))
+        );
+        let mut injected = value;
+        injected["secret"] = json!("not-a-request-field");
+        std::fs::write(&path, serde_json::to_vec(&injected).unwrap()).unwrap();
+        assert_eq!(
+            command_payload("decision.context.preview", &options),
+            Some(Err(ErrorCode::InvalidArguments))
         );
     }
 
