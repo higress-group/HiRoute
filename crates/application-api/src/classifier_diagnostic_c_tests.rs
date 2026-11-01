@@ -50,6 +50,7 @@ fn diagnostic_accepts_supported_sealed_versions_and_rejects_mismatches() {
         NativeProtocolV1::c_v1(),
         NativeProtocolV1::c_v2(),
         NativeProtocolV1::c_v3(),
+        NativeProtocolV1::c_v4(),
     ] {
         for shape in [
             CCapabilityShapeV1::Standard,

@@ -25,6 +25,8 @@ use diagnostic::{CallDiagnostic, classifier_response_failure, diagnostic_request
 mod c_capability;
 #[path = "classification/c_request.rs"]
 mod c_request;
+#[path = "classification/request_context.rs"]
+mod request_context;
 pub use c_capability::CClassifierDiagnosticOutcome;
 #[path = "classification/extension.rs"]
 mod extension;
@@ -128,6 +130,7 @@ pub(super) struct ClassificationRequest<'a> {
     pub(super) admitted_network: Option<&'a mut Option<ClassifierNetworkDiagnostic>>,
     pub(super) request: &'a ModelRequestIRV1,
     pub(super) current_input: Option<&'a [ContentPart]>,
+    pub(super) current_input_position: Option<crate::agent_turn_history::CurrentInputPosition>,
     /// A recognized auxiliary call or continuation has no independent current input.
     pub(super) native_user_unavailable: bool,
     /// Missing source evidence is disclosed to judgment; usable input stays enabled.
@@ -150,6 +153,7 @@ pub(super) struct ClassificationRequest<'a> {
 pub(super) struct DecisionInput<'a> {
     request: &'a ModelRequestIRV1,
     current: Option<&'a [ContentPart]>,
+    position: Option<crate::agent_turn_history::CurrentInputPosition>,
 }
 
 impl<'a> From<&'a ModelRequestIRV1> for DecisionInput<'a> {
@@ -157,6 +161,7 @@ impl<'a> From<&'a ModelRequestIRV1> for DecisionInput<'a> {
         Self {
             request,
             current: None,
+            position: None,
         }
     }
 }
@@ -366,6 +371,7 @@ impl ProductionGatewayRuntime {
                     admitted_network: Some(network),
                     request: &request,
                     current_input: None,
+                    current_input_position: None,
                     native_user_unavailable: false,
                     current_input_origin_unverified: false,
                     replay: &replay,
@@ -441,6 +447,7 @@ impl ProductionGatewayRuntime {
                 DecisionInput {
                     request: request.request,
                     current: request.current_input,
+                    position: request.current_input_position,
                 },
                 request.replay,
             ) {
@@ -486,6 +493,7 @@ impl ProductionGatewayRuntime {
                             DecisionInput {
                                 request: request.request,
                                 current: request.current_input,
+                                position: request.current_input_position,
                             },
                             request.history,
                             request.current_input_origin_unverified,
@@ -495,6 +503,7 @@ impl ProductionGatewayRuntime {
                             DecisionInput {
                                 request: request.request,
                                 current: request.current_input,
+                                position: request.current_input_position,
                             },
                             request.history,
                             classifier,

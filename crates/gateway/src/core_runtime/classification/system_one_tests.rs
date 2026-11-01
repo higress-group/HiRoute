@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 #[path = "openai_isolation_tests.rs"]
 mod openai_isolation_tests;
+#[path = "request_context_tests.rs"]
+mod request_context_tests;
 
 fn authority() -> RestBranchClassifierAuthorityV1 {
     let mode = hiroute_domain::ComplexityClassifierModeV1::DecisionService {
