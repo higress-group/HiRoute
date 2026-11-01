@@ -449,7 +449,9 @@ impl UpgradeCleanup {
         }
         #[cfg(target_os = "linux")]
         let image = fs::File::open("/proc/self/exe")?;
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(target_os = "macos")]
+        let image = hiroute_platform::private_fs::open_running_executable()?;
+        #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
         let image = hiroute_platform::private_fs::open_regular_file(&std::env::current_exe()?)?;
         Ok(Some(Package {
             record,

@@ -314,6 +314,28 @@ fn replaced_installer_handoff_is_preserved_with_its_package() {
 }
 
 #[test]
+fn an_old_running_image_cannot_expire_a_hot_installed_successor() {
+    let f = Fixture::new();
+    let executable = f.state.join("daemon-image");
+    f.file(&executable, b"running old image");
+    let mapped = fs::File::open(&executable).unwrap();
+    // A same-version install replaces the pathname without restarting this
+    // instance. Its retained running-image handle must still identify the old bytes.
+    fs::rename(&executable, f.state.join("old-image")).unwrap();
+    f.file(&executable, b"not-yet-started successor");
+    let (package, bytes) = handoff(&f, b"not-yet-started successor", true);
+    let cleanup = f.controller();
+    cleanup.state.lock().unwrap().image = Some(mapped);
+    cleanup.service_ready();
+    drain(&cleanup);
+    assert!(package.join("hirouted").exists());
+    assert_eq!(
+        fs::read(f.state.join(hiroute_host_runtime::RETAINED_PACKAGE_FILE)).unwrap(),
+        bytes,
+    );
+}
+
+#[test]
 fn failed_cleanup_stays_pending_and_backs_off_until_repaired() {
     let f = Fixture::new();
     let cleanup = f.controller();

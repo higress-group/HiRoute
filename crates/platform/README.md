@@ -6,6 +6,9 @@ not select an Agent, authorize a business command, or own business state.
 directory with retained iterators, native identity checks and entry/time budgets.
 It does not select expired data. Unix unlink and Windows handle deletion remain
 separate; links/mounts cannot redirect recursive cleanup into another tree.
+On macOS, `private_fs::open_running_executable` compares a no-follow file handle
+against the kernel vnode for the main Mach-O mapping. An executable pathname
+replaced by hot installation cannot establish that the new image has started.
 `file_security::macos` provides safe, read-only descriptor calls for native ACL/flags
 and extended attributes, including compression attributes. Callers supply bounded
 buffers and own snapshot validation, hashing and diagnostic policy; these opaque

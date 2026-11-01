@@ -16,6 +16,11 @@ pub use native::{OwnedDirectory, create_directory, create_file, open_regular_fil
 mod removal;
 pub use removal::{DirectoryRemoval, RemovalProgress, directory_identity};
 
+#[cfg(target_os = "macos")]
+mod running_image;
+#[cfg(target_os = "macos")]
+pub use running_image::open_running_executable;
+
 /// A rejected existing entry is distinct from an OS failure. Storage callers keep
 /// their released Permission versus Io error mapping on both platforms.
 #[derive(Debug)]
