@@ -247,12 +247,14 @@ scope/cancellation/quotas. Quickstart/status never call models.
 
 ## Worker
 
-Use worker help: worker dependencies discover --harness codex_cli, then worker dependencies select
---request-stdin. Select a complete tuple using selection_revisions[].revision as
-expected_selection_revision, not a CLI/package version. Selection installs nothing. Read executors/plans.
-worker exec needs a published delegation-enabled Plan, absolute cwd, text source and stable key.
-Retain submission/run ID for status/wait/result/list; wait timeout is pending. Replay the identical request/key after uncertainty; cancel only on request. Management grants no recursive or coordination/
-status/result-summary delegation. Readiness proves no success.
+Run worker dependencies discover --harness codex_cli, then worker dependencies select --request-stdin.
+Use a complete tuple: expected_selection_revision = selection_revisions[].revision, not a CLI/package version.
+Installs nothing. Read executors/plans.
+worker exec needs a published delegation-enabled Plan, absolute cwd, text and stable key.
+Exec/continue use approve-all; omit permission options.
+Keep submission/run IDs for status/wait/result/list; wait timeout is pending.
+Replay the identical request/key after uncertainty; cancel only on request. No recursive or
+coordination/status/result-summary delegation. Readiness proves no success.
 
 ## Listener and service changes
 

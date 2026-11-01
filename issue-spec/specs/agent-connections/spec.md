@@ -570,7 +570,7 @@ Source SPEC comments:
 ### Requirement: Skill and reference maintenance never becomes Worker authority
 
 The shared Skill queries published purposes and public task CLI, explains local trust,
-approve-all default/optional policies, preserves original submission identity, and
+the CLI's approve-all execution without permission options, preserves original submission identity, and
 hands off results. Trigger description/body update together. explicit is default;
 delegate_by_default guides execution tasks but cannot technically intercept every
 request or recursively delegate coordination/Workers. Installing model access does

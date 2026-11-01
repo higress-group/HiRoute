@@ -683,11 +683,10 @@ fn render_action(action: &NextActionV1) -> (String, bool) {
             required("reason", "<REASON>")
         ),
         "worker.continue" => format!(
-            "hiroute worker continue --task {} --expected-latest-run {} --submission-key {} --permission-policy {} -- {}",
+            "hiroute worker continue --task {} --expected-latest-run {} --submission-key {} -- {}",
             required("task_id", "<TASK_ID>"),
             required("expected_latest_run_id", "<LATEST_RUN_ID>"),
             required("submission_key", "<NEW_KEY>"),
-            required("permission_policy", "<CHOSEN_POLICY>"),
             required("input", "<NEW_INSTRUCTION>")
         ),
         _ => {

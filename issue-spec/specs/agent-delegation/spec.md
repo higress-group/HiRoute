@@ -189,11 +189,20 @@ changes need their own real evidence, not an acceptance-pin allowlist.
 
 ### Requirement: Permission policy is native, explicit, and scoped to one run
 
+The public `worker exec` and `worker continue` CLI uses `approve-all` and MUST NOT
+advertise a permission-policy option in help, CLI request schemas, collaboration
+Skills or generated next actions. An explicitly supplied `--permission-policy`,
+including `approve-all`, MUST fail as a usage error before task submission, with
+an actionable message that the option is temporarily unsupported and must be
+removed. It MUST NOT silently ignore an explicit restriction or admit a failed
+Worker run. Literal option text in task input is ordinary task content.
+
 Default `approve-all` uses each supported Harness's autonomous/no-per-tool-approval
 mode. HiRoute is not a normal tool-permission manager and creates no directory/tool
 capability. An unexpected ACP request may choose AllowOnce only while run is live,
 uncancelled/unexpired and the option is offered; never AllowAlways or persisted
-permission. `approve-reads`/`deny-all` require explicit choice and actual corresponding
+permission. Existing Local Control and persisted run policies remain unchanged;
+`approve-reads`/`deny-all` require explicit choice and actual corresponding
 native tool/sandbox constraints. A mode name alone is not proof: unsupported mapping
 fails before prompt, never upgrades to approve-all. Read-only permits only native
 read AllowOnce when applicable, rejects write/execute/unknown; deny-all rejects

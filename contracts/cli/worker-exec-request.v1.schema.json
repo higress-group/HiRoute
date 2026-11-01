@@ -41,14 +41,6 @@
       "pattern": "^[A-Za-z0-9_./:-]+$",
       "type": "string"
     },
-    "permission_policy": {
-      "default": "approve_all",
-      "enum": [
-        "approve_all",
-        "approve_reads",
-        "deny_all"
-      ]
-    },
     "plan_id": {
       "maxLength": 256,
       "minLength": 1,

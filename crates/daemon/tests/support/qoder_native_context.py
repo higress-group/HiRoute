@@ -170,7 +170,7 @@ def cancelled_history(fixture, run_id):
 
 def assert_restricted_modes_unavailable(product, upstream):
     """Unsupported native policies must fail before any real model/tool action."""
-    from delegation_product import worker_cli, wait_for_worker_result
+    from delegation_product import worker_cli
     events = upstream.controls / 'native-context-events.jsonl'
     before = events.read_bytes() if events.exists() else b''
     root = product.root / 'qoder-restricted-workspace'
@@ -181,12 +181,11 @@ def assert_restricted_modes_unavailable(product, upstream):
                    ' --permission-policy ' + policy + ' --run-timeout 30 --no-wait' +
                    ' --submission-key qoder-restricted-' + policy + ' --file - --output json')
         status, response = worker_cli(product, command, 'Write must-not-exist then return done.', success=False)
-        if status == 0:
-            accepted = response['data']
-            result = wait_for_worker_result(product, accepted['run_id'], expected='failed', timeout=30)
-            assert not result.get('result'), 'unsupported Qoder policy returned a result'
-        else:
-            assert response.get('error', {}).get('code') == 'CAPABILITY_UNAVAILABLE', response
+        assert status == 2, response
+        assert response.get('error', {}).get('code') == 'INVALID_ARGUMENTS', response
+        assert response['error']['message_key'] == \
+            'worker.error.permission_policy_unsupported_remove_argument', response
+        assert 'data' not in response, 'unsupported option admitted a Worker run'
         assert not marker.exists(), 'unsupported Qoder policy executed a tool'
         assert (events.read_bytes() if events.exists() else b'') == before, \
             'unsupported Qoder policy sent a model prompt'

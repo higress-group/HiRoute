@@ -148,6 +148,41 @@ fn released_worker_dependency_selection_declares_both_json_sources() {
 }
 
 #[test]
+fn worker_submission_discovery_uses_autonomous_execution_without_permission_options() {
+    for command_id in ["worker.exec", "worker.continue"] {
+        let command = release_manifest()
+            .commands
+            .into_iter()
+            .find(|command| command.command_id == command_id)
+            .unwrap();
+        let help = command.help_document();
+        assert!(help.contains("approve-all"));
+        for hidden in ["--permission-policy", "approve-reads", "deny-all"] {
+            assert!(!help.contains(hidden), "{command_id} advertises {hidden}");
+        }
+        let output = Command::new(env!("CARGO_BIN_EXE_hiroute"))
+            .args(["schema", "show", "--command-id", command_id])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(
+            !String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("--permission-policy")
+        );
+    }
+    for file in generated_contract_files().into_iter().filter(|file| {
+        matches!(
+            file.relative_path,
+            "worker-exec-request.v1.schema.json" | "worker-continue-request.v1.schema.json"
+        )
+    }) {
+        let schema: serde_json::Value = serde_json::from_str(&file.contents).unwrap();
+        assert!(schema["properties"].get("permission_policy").is_none());
+    }
+}
+
+#[test]
 fn packaged_management_skill_explains_discovery_dependency_selection_and_recovery() {
     let skill = include_str!("../../../assets/skills/hiroute-management/SKILL.md");
     assert!(
