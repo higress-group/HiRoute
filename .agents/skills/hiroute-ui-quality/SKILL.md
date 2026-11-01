@@ -32,6 +32,9 @@ Record the affected entry, user job, analogous pattern and relevant state
 transitions. Include Cancel/Back, busy, read-only, error and uncertain-result
 behavior when affected. Check that non-mutating exits remain usable and that a
 confirmation keeps its captured object/revision. No new approval gate is added.
+Select functional regressions from the behavior actually changed and reuse the
+owning automated scenarios. Detailed failure cases belong in those tests, not a
+mandatory manual checklist for every UI change.
 
 Read the [Desktop test map](../../../apps/desktop/tests/README.md) and use
 [HiRoute validation](../hiroute-validation/SKILL.md) to select and execute checks.

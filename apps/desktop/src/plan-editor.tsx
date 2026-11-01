@@ -26,7 +26,7 @@ import { PlanQuality, type PlanQualityModel } from './features/PlanQuality';
 import { PlanRuntimeSettings } from './features/PlanRuntimeSettings';
 import { agentEcosystem } from './features/agents/ecosystems';
 import { trialSelection } from './features/trial/model';
-import { confirmDiscard, confirmSaveDraftOrDiscard, useDiscardGuard } from './ui/discard-guard';
+import { confirmDiscard, confirmSaveDraftOrDiscard, useDiscardGuard, type DraftSaveAvailability } from './ui/discard-guard';
 import { resolvePersistedEditor, type PersistedEditor, type PersistenceIdentity, type PlanOperation } from './plan-editor-persistence';
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { invoke } from './host';
@@ -174,13 +174,33 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const [sourceOptions, setSourceOptions] = useState<Record<string, string | null>>({});
   const dirty = JSON.stringify(editor) !== baseline;
   const timeoutValidationError = requestTimeoutError(editor.limits.request_timeout_ms, editor.limits.attempt_timeout_ms, language);
-  const confirmLeave = () => mutable ? confirmSaveDraftOrDiscard(language, () => act('save_draft')) : confirmDiscard(language);
-  const confirmReplacement = async () => {
-    const accepted = await confirmLeave();
-    if (accepted) onClose();
-    return accepted;
+  const activity = useRef({ mutable, busy, trialBusy }).current;
+  Object.assign(activity, { mutable, busy, trialBusy });
+  const saveListeners = useRef(new Set<() => void>()).current;
+  const saveAvailability = useRef<DraftSaveAvailability>({ allowed: false, subscribe: listener => { saveListeners.add(listener); return () => { saveListeners.delete(listener); }; } }).current;
+  const canEdit = mutable && !busy && !trialBusy;
+  saveAvailability.allowed = canEdit;
+  const refreshAvailability = () => {
+    saveAvailability.allowed = activity.mutable && !activity.busy && !activity.trialBusy;
+    saveListeners.forEach(listener => listener());
   };
-  useDiscardGuard('routing', dirty, language, confirmReplacement);
+  useEffect(refreshAvailability, [mutable, busy, trialBusy]);
+  useEffect(() => {
+    activity.mutable = mutable;
+    return () => { activity.mutable = false; refreshAvailability(); };
+  }, []);
+  const setWorking = (value: boolean) => { activity.busy = value; refreshAvailability(); setBusy(value); };
+  const latestSave = useRef<() => Promise<boolean>>(async () => false);
+  latestSave.current = () => saveAvailability.allowed ? act('save_draft') : Promise.resolve(false);
+  const confirmLeave = () => activity.mutable ? confirmSaveDraftOrDiscard(language, () => latestSave.current(), saveAvailability) : confirmDiscard(language);
+  const confirmReplacement = async () => {
+    if (activity.busy || activity.trialBusy) return false;
+    const accepted = await confirmLeave();
+    if (!accepted || activity.busy || activity.trialBusy) return false;
+    onClose();
+    return true;
+  };
+  useDiscardGuard('routing', dirty || busy || trialBusy, language, confirmReplacement);
   useEffect(() => { onDirty?.(dirty); }, [dirty, onDirty]);
   useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   useEffect(() => { onPublicationReady?.(!!options && !optionsError && !busy && !nameError); }, [options, optionsError, busy, nameError, onPublicationReady]);
@@ -188,7 +208,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     saveDraft: () => act('save_draft'),
     publish: () => act('publish'),
     cancel: () => {
-      if (busy || trialBusy) return;
+      if (activity.busy || activity.trialBusy) return;
       if (dirty) void confirmReplacement();
       else onClose();
     },
@@ -251,7 +271,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     element?.focus();
   }
   function reportError(cause: unknown) { setError(planErrorMessage(cause, language)); setDiagnostic(planErrorCode(cause)); }
-  function update(patch: Partial<Editor>) { onEdit?.(); setEditor(e => ({ ...e, ...patch })); setError(''); setNotice(''); setDiagnostic(''); setValidationIssue(null); }
+  function update(patch: Partial<Editor>) { if (!saveAvailability.allowed) return; onEdit?.(); setEditor(e => ({ ...e, ...patch })); setError(''); setNotice(''); setDiagnostic(''); setValidationIssue(null); }
   function validateRoute(): ValidationIssue | null {
     if (editor.custom_alias !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test(editor.custom_alias)) {
       return { field: 'alias', message: text('接入模型名只能使用小写字母、数字和连字符。', 'The connection model name may contain lowercase letters, numbers, and hyphens only.') };
@@ -299,7 +319,9 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
     return null;
   }
   async function act(action: string): Promise<boolean> {
-    if (busy || !mutable) return false;
+    // TrialReview owns its save-then-publish phase; that phase locks editing but
+    // must still be able to submit its next authorized operation.
+    if (activity.busy || !activity.mutable) return false;
     if (action === 'publish' || action === 'save_draft') {
       setInvalidFields(true);
       if (nameError || !editor.purpose.trim()) {
@@ -334,7 +356,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
         : { targetDraftRevision: (base.expected_draft_revision ?? 0) + 1 }),
     };
     if (action === 'save_draft' || action === 'publish') onPersistenceStarted?.(action, identity);
-    setBusy(true); setError(''); setNotice(''); setDiagnostic('');
+    setWorking(true); setError(''); setNotice(''); setDiagnostic('');
     try {
       const input = { action, plan_id: plan?.agent_plan_id ?? draft?.plan_id ?? null, draft_id: draftId, ...base, editor, language };
       const outcome = await invoke<{ state: string; operation: PlanOperation | null }>('preview_plan_editor', { input });
@@ -376,14 +398,17 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
       if (['REVISION_CONFLICT', 'PLAN_HEAD_STALE', 'DRAFT_REVISION_STALE'].includes(code)) await onDone();
       if (code === 'PLAN_UNCHANGED') setNotice(planErrorMessage(e, language)); else reportError(e);
     }
-    finally { setBusy(false); }
+    finally { setWorking(false); }
     return false;
   }
   async function useAllFree() {
-    setBusy(true); setError('');
+    if (!saveAvailability.allowed) return;
+    setWorking(true); setError('');
     try {
       const native_selections = Object.fromEntries(editor.free.candidates.filter(s => s.reasoning).map(s => [s.binding_id, s.reasoning]));
       const response = await invoke<Options>('plan_editor_options', { input: { requirements: editor.requirements, native_selections, suggest_free: true } });
+      if (!activity.mutable || activity.trialBusy) return;
+      setWorking(false);
       const candidates = response.free_suggestions?.candidates.map(c => c.selection) ?? [];
       if (candidates.length) {
         update({ free: { ...editor.free, candidates } });
@@ -391,7 +416,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
       } else {
         setNotice(text('当前没有符合能力和价格条件的免费模型。', 'No free model currently satisfies the capability and pricing requirements.'));
       }
-    } catch (e) { reportError(e); } finally { setBusy(false); }
+    } catch (e) { reportError(e); } finally { setWorking(false); }
   }
   const billing = (value?: string) => value === 'free' ? text('免费', 'Free') : value === 'subscription' ? text('订阅', 'Subscription') : value === 'paid' ? text('按量付费', 'Usage priced') : text('价格未记录', 'Price not recorded');
   function reasoningControl(selection: Selection, candidate: Candidate | undefined, apply: (reasoning: Selection['reasoning']) => void, labeled = false) {
@@ -500,7 +525,8 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
 
     {(base.expected_draft_revision !== null || plan) && !(trialOnly && trialBusy) && <div className="editor-actions editor-footer">{base.expected_draft_revision !== null && <button className="btn" type="button" onClick={() => void act('discard_draft')}>{text('丢弃草稿', 'Discard draft')}</button>}{plan && <Disclosure className="native-details" label={text('更多操作', 'More actions')} language={language}><button className="btn" type="button" onClick={() => void act(plan.head.status === 'disabled' ? 'enable' : 'disable')}>{plan.head.status === 'disabled' ? text('恢复调用', 'Enable') : text('停用路由', 'Disable')}</button><button className="btn btn-danger" type="button" onClick={() => void act('delete')}>{text('删除路由', 'Delete')}</button></Disclosure>}</div>}
     </div></fieldset>
-    {plan && <section className="editor-section quality-performance-panel" hidden={view !== 'performance'} role="tabpanel" aria-label={text('模型表现', 'Model performance')}><PlanQuality planId={plan.agent_plan_id} planRevision={plan.agent_plan_revision} currentModels={activePlanQualityModels(plan, options?.candidates ?? [])} language={language} active={active && view === 'performance'} refreshVersion={refreshVersion} onOpenEvidence={onOpenSession} onOpenAgent={onOpenAgent} onDivision={mutable && onCreateDraft ? setDivisionBranch : undefined} divisionBranches={divisionBranches} onThreshold={mutable ? (branch, threshold) => {
+    {plan && <section className="editor-section quality-performance-panel" hidden={view !== 'performance'} role="tabpanel" aria-label={text('模型表现', 'Model performance')}><PlanQuality planId={plan.agent_plan_id} planRevision={plan.agent_plan_revision} currentModels={activePlanQualityModels(plan, options?.candidates ?? [])} language={language} active={active && view === 'performance'} refreshVersion={refreshVersion} onOpenEvidence={onOpenSession} onOpenAgent={onOpenAgent} onDivision={canEdit && onCreateDraft ? branch => { if (saveAvailability.allowed) setDivisionBranch(branch); } : undefined} divisionBranches={divisionBranches} onThreshold={canEdit ? (branch, threshold) => {
+      if (!saveAvailability.allowed) return;
       if (editor.mode === 'smart_saving' && branch === 'smart_saving') update({ smart: { ...editor.smart, judgment: { ...editor.smart.judgment, degree: { ...editor.smart.judgment.degree, simple_threshold_millis: threshold } } } });
       else if (editor.branch_routing) update({ branch_routing: { ...editor.branch_routing, branches: editor.branch_routing.branches.map(item => {
         if (item.id !== branch) return item;
@@ -509,7 +535,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
       }) } });
       setView('configuration');
     } : undefined} /></section>}
-    {plan && divisionBranch && onCreateDraft && <DivisionDraftDialog plan={plan} editor={initialEditor} branch={divisionBranch} options={options} language={language} onClose={() => setDivisionBranch(null)} onDraft={onCreateDraft} />}
+    {plan && divisionBranch && onCreateDraft && <DivisionDraftDialog plan={plan} editor={initialEditor} branch={divisionBranch} options={options} language={language} onClose={() => setDivisionBranch(null)} onDraft={content => saveAvailability.allowed ? onCreateDraft(content) : Promise.resolve(false)} />}
     {effort && <ReasoningDialog
       name={effort.name}
       native={effort.native}

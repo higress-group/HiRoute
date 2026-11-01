@@ -66,6 +66,8 @@ export const productShellRequired = [
   'desktop.interactions.tab-focus-return',
   'desktop.interactions.update-download-cancel',
   'desktop.interactions.route-dirty-cancel',
+  'desktop.interactions.route-save-isolation',
+  'desktop.interactions.guard-owner-unmount',
   'desktop.interactions.credential-cancel',
   'desktop.interactions.read-only-exit',
   'desktop.interactions.tab-navigation',

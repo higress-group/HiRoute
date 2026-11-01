@@ -14,6 +14,63 @@ async function fresh(state, language = 'zh') {
 const writes = () => window.productShell.commands.filter(({command}) => /save_decision|test_decision|cli_entry_(install|remove)|apply_compute|preview_plan_editor/.test(command));
 
 export const interactionConsistencyScenarios = [
+  scenario('desktop.interactions.route-save-isolation', ['interaction-consistency'], 'A pending route save locks draft replacement but retains read-only performance navigation', async () => {
+    const c=window.productShell;
+    await seedInteractionAudit(c,{state:'routing',language:'en'});
+    c.desktop.catalog.plans[0].desired.strategy.classifier={kind:'decision_service',service:structuredClone(c.handlers.decision_services_v2().services[0].service)};
+    await openInteractionAudit('routing','en');
+    all('.quality-view-tabs button').find(n=>n.textContent==='Model performance').click();
+    await until(()=>all('.quality-footer-links button').length,'Division entry before save');
+    all('.quality-view-tabs button')[0].click();
+    const field=()=>all('.plan-identity-fields input')[0];
+    await until(()=>field(),'Configuration fields');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(field(),'Route saving first');
+    field().dispatchEvent(new Event('input',{bubbles:true}));await pause();
+    let release,submitted;
+    c.handlers.preview_plan_editor=async({input})=>{
+      submitted=input;await new Promise(resolve=>{release=resolve;});
+      c.desktop.catalog.drafts.push({draft_id:input.draft_id,plan_id:input.plan_id,base_head_revision:input.expected_head_revision,revision:1,editor:structuredClone(input.editor)});
+      return {state:'succeeded',operation:{operation_id:'operation/isolated-save',state:'succeeded',sequence:1,cancellable:false,safe_error_code:null}};
+    };
+    all('.plan-editor .editor-header button').find(n=>n.textContent==='Save draft').click();await until(()=>release,'Pending save');
+    all('.quality-view-tabs button').find(n=>n.textContent==='Model performance').click();
+    await until(()=>all('.quality-performance-panel').length,'Read-only performance during save');
+    assert(!all('.quality-footer-links button').some(n=>!n.matches(':disabled')),'Pending save allows division replacement');
+    const replacement=await (await import('../../../src/ui/discard-guard.ts')).requestEditorReplacement('routing');
+    assert(!replacement&&!all('dialog[open]').length,'Pending save allowed editor replacement through a navigation guard');
+    assert(!all('.new-plan-workspace').length,'Pending save switched to another editor');
+    release();await until(()=>all('.plan-editor .editor-header button').some(n=>!n.disabled),'Save completion');
+    all('.quality-view-tabs button')[0].click();
+    await until(()=>field(),'Saved configuration fields');
+    assert(field().value==='Route saving first'&&submitted.editor.display_name===field().value,'Save readback changed the owned draft');
+    assert(writes().length===1,'Viewing performance submitted another mutation');
+  }),
+  scenario('desktop.interactions.guard-owner-unmount', ['interaction-consistency'], 'Removing a dialog owner releases only its pending confirmation so a new editor can still leave', async () => {
+    for(const readonly of [false,true]) {
+      await fresh('routing-new');
+      const c=window.productShell;
+      const name=all('.plan-identity-fields input')[0];
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(name,'Unmounted route draft');
+      name.dispatchEvent(new Event('input',{bubbles:true}));await pause();
+      const helper=await import('../../../src/ui/discard-guard.ts');
+      const readonlyDecision=readonly?helper.confirmDiscard('zh'):null;
+      if(!readonly) all('.routing-page .toolbar-actions button').find(n=>n.textContent==='取消').click();
+      await until(()=>all('dialog[open]').length,'First owner confirmation');
+      c.remount();
+      await until(()=>!all('dialog[open]').length,'Removed owner dialog');
+      if(readonlyDecision) assert(await readonlyDecision===false,'Unmount accepted the old discard');
+      await openInteractionAudit('routing-new');
+      const next=all('.plan-identity-fields input')[0];
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(next,'New owner draft');
+      next.dispatchEvent(new Event('input',{bubbles:true}));await pause();
+      all('.routing-page .toolbar-actions button').find(n=>n.textContent==='取消').click();
+      await until(()=>all('dialog[open]').length,'Previous owner left the shared guard pending');
+      all('dialog[open] button').find(n=>n.textContent==='继续编辑').click();await until(()=>!all('dialog[open]').length,'New owner keep');
+      assert(next.value==='New owner draft'&&writes().length===0,'Previous owner changed or saved the new draft');
+      all('.routing-page .toolbar-actions button').find(n=>n.textContent==='取消').click();await until(()=>all('dialog[open]').length,'New owner discard');
+      all('dialog[open] button').find(n=>n.textContent==='不保存').click();await until(()=>!all('dialog[open]').length,'Discard');
+    }
+  }),
   scenario('desktop.interactions.update-download-cancel', ['interaction-consistency'], 'A pending macOS download permits cancellation while duplicate download and cancel requests are blocked', async () => {
     for (const phase of ['downloading','verifying']) {
       await fresh('settings-general');
@@ -68,8 +125,13 @@ export const interactionConsistencyScenarios = [
       releaseSave();await until(()=>!dialog()&&!all('.new-plan-workspace').length,'Confirmed draft did not close');
       assert(c.desktop.catalog.drafts.some(d=>d.editor.display_name==='Saved on leave'),'Leaving lost the saved draft');
       await openInteractionAudit('routing-new',language);edit(field(),'Read-only draft');await pause();
-      const before=writes().length;await loseInteractionAuthority(c);
-      await until(()=>field().matches(':disabled'),'Lost write authority');cancel().click();await until(()=>dialog(),'Read-only Cancel guard');
+      const before=writes().length;cancel().click();await until(()=>dialog(),'Confirmation before authority loss');
+      const staleSave=[...dialog().querySelectorAll('button')].find(n=>n.textContent===t('保存草稿并离开','Save draft and leave'));
+      await loseInteractionAuthority(c);
+      await until(()=>field().matches(':disabled')&&staleSave.disabled,'Open confirmation did not follow authority loss');
+      staleSave.click();await pause();assert(writes().length===before,'Open confirmation used stale write authority');
+      choose(t('继续编辑','Keep editing'));await until(()=>!dialog(),'Keep after authority loss');
+      cancel().click();await until(()=>dialog(),'Read-only Cancel guard');
       assert(![...dialog().querySelectorAll('button')].some(n=>n.textContent===t('保存草稿并离开','Save draft and leave')),'Read-only exit offers a write');
       choose(t('继续编辑','Keep editing'));await until(()=>!dialog(),'Read-only keep');assert(field().value==='Read-only draft','Read-only keep lost input');
       cancel().click();await until(()=>dialog(),'Read-only discard');choose(t('放弃修改','Discard changes'));

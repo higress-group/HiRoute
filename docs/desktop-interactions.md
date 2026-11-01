@@ -59,6 +59,9 @@ to the document and restart the user's navigation from the sidebar.
 - Prevent duplicate submission while an operation is in flight. Keep failed input
   editable and retain the original operation identity when its outcome is unknown.
   Changing a selection must not silently replace a confirmation's captured target.
+- Use current authority and operation state when executing an action. Preserve
+  appropriate cancellation, draft ownership and recovery as that state changes.
+  Keep detailed timing regressions in the owning automated scenarios.
 - Treat secrets according to their existing protected-input owner. Do not copy a
   Key to another provider, serialize it into UI state/evidence, or expose it in
   diagnostics. Preserving a draft does not authorize changing credential ownership.
@@ -107,6 +110,9 @@ an empty screen look active.
 3. Exercise opening, editing, Cancel/Back, submission and the relevant error,
    pending, read-only and recovery states. Use real keyboard input for focus,
    tab order and disclosure/navigation acceptance where those behaviors change.
+   Select cases by the changed behavior and reuse existing regression coverage;
+   this is not a per-change manual checklist. A presentation-only adjustment does
+   not require unrelated persistence, authorization or lifecycle acceptance.
 4. Capture before/after for each changed interaction using the same data, state,
    locale, theme and viewport. Keep full original screenshots and their actual
    revisions. Explain the practical change and its tradeoff; use geometry or

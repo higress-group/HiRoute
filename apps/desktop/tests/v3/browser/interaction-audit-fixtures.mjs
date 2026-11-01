@@ -12,6 +12,11 @@ export async function seedInteractionAudit(c, { language = 'zh', theme = 'light'
   localStorage.setItem('hiroute.language', language);
   localStorage.setItem('hiroute.theme', theme);
   consistencySettingsReads(c);
+  if (state === 'settings-download-cancel') {
+    const update = { current_version: '0.5.0', phase: 'available', available: { version: '0.5.1', notes: { zh: '更新说明', en: 'Release notes' }, size: 1000 }, downloaded_bytes: 0, active_calls: 0, active_tasks: 0, error: null, can_install: true, package_ready: false, recovery: null };
+    c.handlers.update_status = () => structuredClone(update);
+    c.handlers.update_download = async () => { update.phase = 'downloading'; await new Promise(() => {}); };
+  }
   const sourceId = c.management.sources.find(source => source.provenance === 'registered').source_id;
   const source = c.decisionSource(sourceId, { display_name: 'Team API' });
   const service = { schema: 'hiroute.decision-service/v2', id: 'decision/review', revision: 1,
@@ -57,9 +62,10 @@ export async function openInteractionAudit(state, language = 'zh') {
   if (state.startsWith('home')) return '.home-wrap';
   if (state.startsWith('settings')) {
     await click(t('设置', 'Settings'));
-    await click(state === 'settings-records' ? t('记录与诊断', 'Records & diagnostics') : state === 'settings-general' ? t('通用', 'General') : t('服务与接入', 'Service & access'));
+    await click(state === 'settings-records' ? t('记录与诊断', 'Records & diagnostics') : ['settings-general','settings-download-cancel'].includes(state) ? t('通用', 'General') : t('服务与接入', 'Service & access'));
     await until(() => document.querySelector('input[aria-label="' + t('并发任务上限', 'Concurrent task limit') + '"]')?.value === '10', 'Settings replies');
     if (state === 'settings-error') await until(() => document.body.textContent.includes('CLI_ENTRY_UNAVAILABLE'), 'CLI read error');
+    if (state === 'settings-download-cancel') { await click(t('下载更新','Download update')); await until(() => button(t('取消升级','Cancel update')), 'download cancellation'); }
     return '.settings-wrap';
   }
   if (state.startsWith('routing')) {
@@ -68,7 +74,15 @@ export async function openInteractionAudit(state, language = 'zh') {
     const row = all('.routing-page .master-list .list-row')[0];
     if (!all('.plan-editor').length) { row.click(); await pause(); }
     await until(() => all('.plan-editor').length, 'routing editor');
-    if (state === 'routing-new') await click(t('新建智能路由', 'New smart routing'));
+    if (state === 'routing-new' || state === 'routing-new-discard') await click(t('新建智能路由', 'New smart routing'));
+    if (state === 'routing-new-discard') {
+      await until(() => all('.plan-identity-fields input').length, 'new route fields');
+      const name = all('.plan-identity-fields input')[0];
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(name, t('保留这份路由草稿','Keep this route draft'));
+      name.dispatchEvent(new Event('input', { bubbles: true })); await pause();
+      await click(t('取消','Cancel'));
+      await until(() => all('dialog[open]').length || !all('.new-plan-workspace').length, 'route cancellation result');
+    }
     if (state === 'routing-quality') await click(t('模型表现', 'Model performance'));
     if (state === 'routing-mapping') await click(t('映射 Agent', 'Map an Agent'));
     if (state === 'routing-worker') {

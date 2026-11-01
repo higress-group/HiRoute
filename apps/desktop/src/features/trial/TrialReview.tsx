@@ -64,7 +64,7 @@ export const TrialReview = forwardRef<TrialReviewHandle, {
     if (current) onOperation(current);
   }
   return <section className="trial-review">
-    <fieldset disabled={!mutable || !!pending}><PlanEditor ref={handle} draft={draft} trialOnly trialBusy={busy || ['saving', 'publishing', 'confirming'].includes(phase)} previewAgentId={previewAgentId} creating initialContent={draft ? undefined : editor} language={language} onClose={onClose} onDone={onRefresh} onBusyChange={setBusy} onPublicationReady={setReady} onOpenServices={onOpenServices} onOperation={onOperation}
+    <fieldset disabled={!mutable || !!pending}><PlanEditor ref={handle} mutable={mutable} draft={draft} trialOnly trialBusy={busy || ['saving', 'publishing', 'confirming'].includes(phase)} previewAgentId={previewAgentId} creating initialContent={draft ? undefined : editor} language={language} onClose={onClose} onDone={onRefresh} onBusyChange={setBusy} onPublicationReady={setReady} onOpenServices={onOpenServices} onOperation={onOperation}
       onPersistenceStarted={(action, identity) => { setPhase(action === 'save_draft' ? 'saving' : 'publishing'); setPending({ action, identity, operationId: null, priorOperations: [operation?.operation_id, snapshot?.pending?.operation_id].filter((id): id is string => !!id) }); }}
       onPersistenceCancelled={() => { autoPublish.current = false; setPending(null); setPhase('idle'); }}
       onPersisted={(value, action, identity, submitted) => {
