@@ -18,6 +18,18 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current_wire = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_pre_context = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:9e6d31fead103a6203f3bd4c6464b5a63c0ddd5ea0e2cad6674be31f2cc03c38";
+        let reasoning_wire = current_wire || persisted_pre_context;
+        if !current_wire
+            && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
+                if route.complexity.as_ref().and_then(|d| d.routing_observation.as_ref())
+                    .is_some_and(|observation| observation.context_budget.is_some()))
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
         let persisted_pre_stage = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
@@ -26,8 +38,8 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
                 == "sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295";
-        let current = current_wire || persisted_pre_stage || persisted_pre_reasoning;
-        if !current_wire {
+        let current = reasoning_wire || persisted_pre_stage || persisted_pre_reasoning;
+        if !reasoning_wire {
             let added_reasoning = match &self.fact {
                 ExecutionFactV1::CandidateDecision(fact) => fact.reasoning_resolution.is_some(),
                 ExecutionFactV1::RouteDecision(fact) => matches!(
@@ -95,7 +107,7 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::UnsupportedSchema);
         }
-        if !(current_wire || persisted_pre_reasoning)
+        if !(reasoning_wire || persisted_pre_reasoning)
             && matches!(
                 self.fact,
                 ExecutionFactV1::RequestInputSelection(_)
