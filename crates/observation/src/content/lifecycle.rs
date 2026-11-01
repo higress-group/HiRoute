@@ -189,7 +189,7 @@ fn apply_append(
         acknowledged_blobs.push(acknowledgement);
         stream.active_content_id = None;
     }
-    if super::capture::skip_context(transaction, envelope)? {
+    if super::capture::skip_context(transaction, envelope, false)? {
         let next = rejected
             .checked_add(1)
             .ok_or(ContentProjectionError::Invalid("chunk_ordinal"))?;
@@ -560,6 +560,18 @@ fn ensure_message_and_content(
         )
         },
     )?;
+    let coordinate:Option<(String,String)>=cached_sql::query_row(transaction,
+        "SELECT content_id,content_blob_digest FROM content_instances_v2 WHERE workspace_id=?1 AND message_instance_id=?2 AND part_ordinal=?3",
+        params![envelope.correlation.workspace_id.as_str(),message.as_str(),i64::from(part_ordinal)],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(|_|ContentProjectionError::ActivityStorage)?;
+    if let Some((existing_id, existing_digest)) = coordinate
+        && (existing_id != content.as_str() || existing_digest != digest.as_str())
+    {
+        return Err(ContentProjectionError::ImmutableConflict {
+            key: format!("message_part:{message}:{part_ordinal}"),
+            existing: existing_digest,
+            rejected: digest.to_string(),
+        });
+    }
     let expected_count = envelope.content_ref.as_ref().map(|value| value.byte_count);
     let expected_count_sql = expected_count.map(i64_from_u64).transpose()?;
     let has_content_ref = envelope.content_ref.is_some();

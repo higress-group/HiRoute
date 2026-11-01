@@ -6,10 +6,10 @@ use hiroute_domain::{
     ContentCorrelationV2, ContentDownstreamDeliveryV2, ContentId, ContentRefV2,
     ConversationContentChannelV2, ConversationContentDirectionV2, ConversationContentEnvelopeV1,
     ConversationContentPhaseV2, CorrelationProvenance, EventId, LogicalRequestId,
-    MessageInstanceId, OBSERVATION_GAP_HEARTBEAT_SCHEMA_V1, ObservationContentAcknowledgementV1,
-    ObservationGapHeartbeatV1, ObservationNackDetailV1, ObservationProducerV2,
-    ObservationQueryPort, ObservationStreamV1, ProducerEpoch, ProducerId, SessionId,
-    SessionScopeV1, StreamId, TranscriptRoot, TurnId, WorkspaceId,
+    MessageInstanceId, OBSERVATION_GAP_HEARTBEAT_SCHEMA_V1, ObservationGapHeartbeatV1,
+    ObservationNackDetailV1, ObservationProducerV2, ObservationQueryPort, ObservationStreamV1,
+    ProducerEpoch, ProducerId, SessionId, SessionScopeV1, StreamId, TranscriptRoot, TurnId,
+    WorkspaceId,
 };
 use rusqlite::Connection;
 use tempfile::TempDir;
@@ -19,6 +19,7 @@ use crate::{DigestAuthority, LocalObservationStore};
 
 mod batch;
 mod pressure;
+mod semantic_capture;
 
 struct Fixture {
     _root: TempDir,
@@ -261,11 +262,7 @@ fn accepted_response_abort_preserves_attempt_frame_ref_parent_and_query_coordina
     response_begin.fork_id = "fork-response".into();
     response_begin.parent_transcript_root = Some(parent.clone());
     let begin_ack = ack(fixture.ingest(&response_begin));
-    let begin_content = begin_ack.content_acknowledgement.unwrap();
-    assert_eq!(
-        begin_content.delta_parent_transcript_root.as_deref(),
-        Some(parent.as_str())
-    );
+    assert!(begin_ack.content_acknowledgement.is_none());
 
     let bytes = br#"{"event":{"kind":"text_delta","delta":"answer"}}"#;
     let digest = fixture
@@ -295,21 +292,19 @@ fn accepted_response_abort_preserves_attempt_frame_ref_parent_and_query_coordina
     });
     response.downstream_delivery = Some(ContentDownstreamDeliveryV2::FullFrameTransportAccepted);
     let response_ack = ack(fixture.ingest(&response));
-    let response_content = response_ack.content_acknowledgement.unwrap();
-    assert_eq!(response_content.request_id, "request-1");
+    assert!(response_ack.content_acknowledgement.is_none());
     assert_eq!(
-        response_content.direction,
-        ConversationContentDirectionV2::ResponseDelivered
-    );
-    assert_eq!(response_content.fork_id, "fork-response");
-    assert_eq!(response_content.next_chunk_ordinal, 1);
-    assert_eq!(
-        response_content.acknowledged_blobs[0].content_id,
-        "content-response"
-    );
-    assert_eq!(
-        response_content.acknowledged_blobs[0].digest,
-        digest.as_str()
+        fixture
+            .store
+            .connection
+            .lock()
+            .query_row(
+                "SELECT attempt_id FROM content_instances_v2 WHERE content_id='content-response'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+        "attempt-accepted"
     );
 
     let mut abort = fixture.base(6, ConversationContentPhaseV2::Abort);
@@ -323,18 +318,7 @@ fn accepted_response_abort_preserves_attempt_frame_ref_parent_and_query_coordina
     abort.abort_reason = Some("accepted_stream_ended_partial".into());
     abort.completeness_delta = Some(ContentCompletenessDeltaV2::Partial);
     let abort_ack = ack(fixture.ingest(&abort));
-    let abort_content = abort_ack.content_acknowledgement.unwrap();
-    assert_eq!(
-        abort_content.transcript_root.as_deref(),
-        abort
-            .result_transcript_root
-            .as_ref()
-            .map(TranscriptRoot::as_str)
-    );
-    assert_eq!(
-        abort_content.delta_parent_transcript_root.as_deref(),
-        Some(parent.as_str())
-    );
+    assert!(abort_ack.content_acknowledgement.is_none());
 
     let detail = fixture
         .store
@@ -431,7 +415,7 @@ fn wrong_schema_digest_sequence_identity_and_terminal_state_are_durable_typed_na
         fixture.append(3, 1, "message-1", "content-conflict", 0, 0, b"y", b"y");
     assert!(matches!(nack(fixture.ingest(&conflicting_content)).detail,
         ObservationNackDetailV1::ImmutableProjectionConflict { ref projection_key, .. }
-            if projection_key.contains("request_content_refs_v2")));
+            if projection_key.contains("message_part")));
     assert!(matches!(
         fixture.ingest(&fixture.finish(3, "88")),
         IngestOutcome::Ack(_)
@@ -457,13 +441,7 @@ fn empty_canonical_chunk_is_persisted_as_an_exact_zero_byte_blob() {
     ));
     let append = fixture.append(2, 0, "message-empty", "content-empty", 0, 0, b"", b"");
     let ack = ack(fixture.ingest(&append));
-    assert_eq!(
-        ack.content_acknowledgement
-            .unwrap()
-            .acknowledged_blobs
-            .len(),
-        1
-    );
+    assert!(ack.content_acknowledgement.is_none());
     assert!(matches!(
         fixture.ingest(&fixture.finish(3, "99")),
         IngestOutcome::Ack(_)
@@ -480,30 +458,42 @@ fn empty_canonical_chunk_is_persisted_as_an_exact_zero_byte_blob() {
 }
 
 #[test]
-fn replay_revalidates_durable_chunk_bytes_instead_of_trusting_feedback_alone() {
+fn current_append_retry_checks_bytes_but_terminal_commit_ack_is_not_a_body_availability_claim() {
     let fixture = Fixture::new();
     let begin = fixture.begin(1);
     let append = fixture.append(2, 0, "message-1", "content-1", 0, 0, b"x", b"x");
     let finish = fixture.finish(3, "aa");
-    for event in [&begin, &append, &finish] {
-        assert!(matches!(fixture.ingest(event), IngestOutcome::Ack(_)));
-    }
+    ack(fixture.ingest(&begin));
+    ack(fixture.ingest(&append));
     let path: String = fixture
         .store
         .connection
         .lock()
-        .query_row("SELECT object_path FROM content_blobs_v2", [], |row| {
-            row.get(0)
-        })
+        .query_row("SELECT object_path FROM content_blobs_v2", [], |r| r.get(0))
         .unwrap();
-    std::fs::write(fixture.store.object_path(&path).unwrap(), b"z").unwrap();
+    let path = fixture.store.object_path(&path).unwrap();
+    std::fs::write(&path, b"z").unwrap();
     assert_eq!(
         fixture.store.ingest_content(&append, &[]).unwrap_err(),
-        ObservationStoreError::Corrupt,
+        ObservationStoreError::Corrupt
     );
+    std::fs::write(&path, b"x").unwrap();
+    let committed = ack(fixture.ingest(&finish));
+    std::fs::write(&path, b"z").unwrap();
+    assert_eq!(ack(fixture.ingest(&finish)), committed);
     assert_eq!(
-        fixture.store.ingest_content(&finish, &[]).unwrap_err(),
-        ObservationStoreError::Corrupt,
+        fixture.store.ingest_content(&append, &[]).unwrap_err(),
+        ObservationStoreError::Corrupt
+    );
+    assert!(
+        fixture
+            .store
+            .get_session(
+                &fixture.workspace,
+                &SessionId::parse("conversation-1").unwrap(),
+                hiroute_domain::ContentMode::MessagesAndTools
+            )
+            .is_err()
     );
 }
 
@@ -826,14 +816,7 @@ fn many_chunks_install_without_a_whole_stream_buffer() {
     let finish_sequence = whole.chunks(8 * 1024).count() as u64 + 2;
     let finish = fixture.finish(finish_sequence, "55");
     let acknowledgement = ack(fixture.ingest(&finish));
-    assert_eq!(
-        acknowledgement
-            .content_acknowledgement
-            .unwrap()
-            .acknowledged_blobs
-            .len(),
-        1
-    );
+    assert!(acknowledgement.content_acknowledgement.is_none());
     let connection = fixture.store.connection.lock();
     let byte_count: i64 = connection
         .query_row("SELECT byte_count FROM content_blobs_v2", [], |row| {

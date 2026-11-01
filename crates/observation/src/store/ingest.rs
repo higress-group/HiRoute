@@ -294,31 +294,35 @@ impl ObservationCommitPort for LocalObservationStore {
         let last = heartbeat.loss_watermark.last_sequence;
         let expected = checkpoint.accounted.saturating_add(1);
         if heartbeat.sequence <= checkpoint.accounted {
-            let detail =
-                match super::current_commit::load(&transaction, &heartbeat.channel, stream)? {
-                    Some(current)
-                        if current.sequence == heartbeat.sequence
-                            && current.event_id != heartbeat.event_id.as_str() =>
-                    {
-                        ObservationNackDetailV1::SequenceEventConflict {
-                            sequence: heartbeat.sequence,
-                            expected_event_id: current.event_id,
-                            rejected_event_id: heartbeat.event_id.to_string(),
-                        }
+            let detail = match super::current_commit::load_at(
+                &transaction,
+                &heartbeat.channel,
+                stream,
+                heartbeat.sequence,
+            )? {
+                Some(current)
+                    if current.sequence == heartbeat.sequence
+                        && current.event_id != heartbeat.event_id.as_str() =>
+                {
+                    ObservationNackDetailV1::SequenceEventConflict {
+                        sequence: heartbeat.sequence,
+                        expected_event_id: current.event_id,
+                        rejected_event_id: heartbeat.event_id.to_string(),
                     }
-                    Some(current) if current.sequence == heartbeat.sequence => {
-                        ObservationNackDetailV1::ImmutableProjectionConflict {
-                            projection_key: format!("current_commit:{}", heartbeat.sequence),
-                            existing_digest: current.digest,
-                            rejected_digest: digest.to_string(),
-                        }
-                    }
-                    _ => ObservationNackDetailV1::ImmutableProjectionConflict {
-                        projection_key: format!("obsolete_sequence:{}", heartbeat.sequence),
-                        existing_digest: format!("accounted:{}", checkpoint.accounted),
+                }
+                Some(current) if current.sequence == heartbeat.sequence => {
+                    ObservationNackDetailV1::ImmutableProjectionConflict {
+                        projection_key: format!("current_commit:{}", heartbeat.sequence),
+                        existing_digest: current.digest,
                         rejected_digest: digest.to_string(),
-                    },
-                };
+                    }
+                }
+                _ => ObservationNackDetailV1::ImmutableProjectionConflict {
+                    projection_key: format!("obsolete_sequence:{}", heartbeat.sequence),
+                    existing_digest: format!("accounted:{}", checkpoint.accounted),
+                    rejected_digest: digest.to_string(),
+                },
+            };
             let outcome = IngestOutcome::Nack(nack(
                 &heartbeat.channel,
                 stream,

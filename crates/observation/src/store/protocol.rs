@@ -50,7 +50,8 @@ pub(super) fn preflight(
 ) -> Result<Preflight, ObservationStoreError> {
     let mut checkpoint = load_checkpoint(transaction, channel, stream)?;
     if sequence <= checkpoint.accounted {
-        let current = super::current_commit::load(transaction, channel.as_str(), stream)?;
+        let current =
+            super::current_commit::load_at(transaction, channel.as_str(), stream, sequence)?;
         let detail = match current {
             Some(current) if current.sequence == sequence && current.event_id != event_id => {
                 ObservationNackDetailV1::SequenceEventConflict {
@@ -285,7 +286,8 @@ pub(super) fn load_feedback(
     event_id: &str,
     digest: &str,
 ) -> Result<Option<IngestOutcome>, ObservationStoreError> {
-    let Some(current) = super::current_commit::load(transaction, channel, stream)? else {
+    let Some(current) = super::current_commit::load_at(transaction, channel, stream, sequence)?
+    else {
         return Ok(None);
     };
     if current.sequence != sequence || current.event_id != event_id || current.digest != digest {

@@ -18,6 +18,8 @@ pub(super) fn read(
          WHERE a.workspace_id=?1 AND a.request_id=?2 AND m.message_role='user'
            AND m.direction='request_input' AND r.session_id=s.session_id
            AND r.started_at_ms>?3 AND s.started_at_ms>?3
+           AND NOT EXISTS(SELECT 1 FROM observation_capacity_pending_v5 p WHERE p.workspace=r.workspace_id AND p.request=r.request_id)
+           AND NOT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 t WHERE t.workspace_id=r.workspace_id AND t.request_id=r.request_id)
            AND NOT EXISTS(SELECT 1 FROM observation_capacity_pending_v5 p WHERE p.workspace=s.workspace_id AND p.request=s.request_id)
            AND NOT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 t WHERE t.workspace_id=s.workspace_id AND t.request_id=s.request_id)
            AND EXISTS(SELECT 1 FROM content_instances_v2 c WHERE c.workspace_id=m.workspace_id AND c.message_instance_id=m.message_instance_id AND c.state='complete')",

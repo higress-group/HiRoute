@@ -180,7 +180,6 @@ fn counts(store: &LocalObservationStore, full: bool) -> serde_json::Value {
     let tables: &[&str] = if full {
         &[
             "logical_requests",
-            "observation_events",
             "observation_current_commits_v6",
             "content_blobs_v2",
             "observation_capacity_pending_v5",

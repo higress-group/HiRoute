@@ -257,5 +257,5 @@ fn existing_format_five_store_adds_provenance_tables_without_rewriting_sessions(
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(schema, "5");
+    assert_eq!(schema, "6");
 }

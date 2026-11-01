@@ -28,14 +28,18 @@ pub(super) fn begin(tx: &Transaction<'_>, event: &Envelope) -> Result<(), Error>
     Ok(())
 }
 
-pub(super) fn skip_context(tx: &Transaction<'_>, event: &Envelope) -> Result<bool, Error> {
+pub(super) fn skip_context(
+    tx: &Transaction<'_>,
+    event: &Envelope,
+    retry: bool,
+) -> Result<bool, Error> {
     if event.direction != Direction::RequestInput
         || !event.capture.as_ref().is_some_and(|c| c.context_only)
     {
         return Ok(false);
     }
-    let owns:bool=cached_sql::query_row(tx,"SELECT EXISTS(SELECT 1 FROM observation_capture_scopes_v6 WHERE workspace_id=?1 AND session_id=?2 AND seed_request_id=?3 AND seed_state='started')",
-        params![event.correlation.workspace_id.as_str(),event.correlation.conversation_id.as_str(),event.correlation.request_id.as_str()],|r|r.get(0)).map_err(|_|Error::ActivityStorage)?;
+    let owns:bool=cached_sql::query_row(tx,"SELECT EXISTS(SELECT 1 FROM observation_capture_scopes_v6 WHERE workspace_id=?1 AND session_id=?2 AND seed_request_id=?3 AND (?4 OR seed_state='started'))",
+        params![event.correlation.workspace_id.as_str(),event.correlation.conversation_id.as_str(),event.correlation.request_id.as_str(),retry],|r|r.get(0)).map_err(|_|Error::ActivityStorage)?;
     Ok(!owns)
 }
 

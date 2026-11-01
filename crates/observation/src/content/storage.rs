@@ -27,7 +27,7 @@ pub(crate) fn verify_content_replay(
     if envelope.phase != ConversationContentPhaseV2::Append {
         return Ok(());
     }
-    if super::capture::skip_context(transaction, envelope)? {
+    if super::capture::skip_context(transaction, envelope, true)? {
         return Ok(());
     }
     let content_id = envelope

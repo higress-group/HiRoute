@@ -27,11 +27,13 @@ test('canonical kinds keep provider state and reasoning private while classifyin
  assert.equal(isTechnicalContentKind('message_name'), true);
  assert.equal(isTechnicalContentKind('text'), false);
 });
-test('delta fragments are contiguous and a finished snapshot replaces them once', () => {
+test('semantic segments retain accepted text, empty finals and conflicting versions', () => {
  const parse = (sequence, kind, text, index = 0) => readableEvent(JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence, event: { kind, index, text } }), media, 'response_delivered');
  const fragments = [parse(3, 'text_delta', 'R-'), parse(1, 'text_delta', 'HI'), parse(4, 'text_delta', 'OK'), parse(2, 'text_delta', '-')];
  assert.deepEqual(coalesceResponseText(fragments), [{ kind: 'text', index: 0, text: 'HI-R-OK' }]);
- assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', 'HIR-TOOL-OK-SEP21')]), [{ kind: 'text', index: 0, text: 'HIR-TOOL-OK-SEP21' }]);
+ assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', '')]), [{ kind: 'text', index: 0, text: 'HI-R-OK' }]);
+ assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', 'HI-R-OK')]), [{ kind: 'text', index: 0, text: 'HI-R-OK' }]);
+ assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', 'different')]), [{ kind: 'text', index: 0, text: 'HI-R-OK', version: 'accepted' }, { kind: 'text', index: 0, text: 'different', version: 'final' }]);
  assert.deepEqual(coalesceResponseText([parse(5, 'text_finished', 'Only final')]), [{ kind: 'text', index: 0, text: 'Only final' }]);
  assert.deepEqual(coalesceResponseText([parse(1, 'reasoning_finished', 'private'), parse(2, 'refusal_finished', 'Cannot do that')]), [{ kind: 'refusal', index: 0, text: 'Cannot do that' }]);
 });

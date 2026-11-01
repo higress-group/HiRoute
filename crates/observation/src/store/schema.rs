@@ -264,6 +264,7 @@ const CONVERSATION_CONTENT_SCHEMA_V4: &str = r#"
         created_at_unix_nanos INTEGER NOT NULL,
         PRIMARY KEY(workspace_id, content_id)
     );
+    CREATE UNIQUE INDEX IF NOT EXISTS content_instances_v2_message_part ON content_instances_v2(workspace_id,message_instance_id,part_ordinal);
     CREATE INDEX IF NOT EXISTS content_instances_v2_request
         ON content_instances_v2(workspace_id, request_id, direction, fork_id, part_ordinal);
 
