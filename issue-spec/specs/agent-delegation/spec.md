@@ -321,6 +321,13 @@ They MUST NOT infer account entitlement from
 assistant text, expose provider bodies/credentials, cross run boundaries, or become
 model Result. Missing diagnostic capture MUST NOT invent a cause or authorize replay.
 
+Negotiated error-severity terminal sessionFailure in ACP PromptResponse is an
+authoritative failed run even when RPC returned successfully; warning alone is not
+failure. Invalid extension kind/version fails closed. Codex adapter must advertise
+required AIR sessionFailure at initialize before New/Load/prompt; absence gives a
+fixed marked `[HiRoute]` actionable explanation in progress, without native text/
+paths/secrets, and normal owned cleanup rather than a software-version allowlist.
+
 #### Scenario: Qoder reports a protocol failure as cancellation
 
 - **WHEN** an authenticated Qoder model request receives a typed Gateway protocol rejection and the native client ends its prompt as `cancelled` without a HiRoute cancel request
@@ -335,13 +342,6 @@ model Result. Missing diagnostic capture MUST NOT invent a cause or authorize re
 
 - **WHEN** a Qoder task continues after the daemon's configuration-directory selector changes
 - **THEN** progress reports the original frozen task directory, a new task may use the newly selected directory, and guidance does not claim that installation readiness proves model access.
-
-Negotiated error-severity terminal sessionFailure in ACP PromptResponse is an
-authoritative failed run even when RPC returned successfully; warning alone is not
-failure. Invalid extension kind/version fails closed. Codex adapter must advertise
-required AIR sessionFailure at initialize before New/Load/prompt; absence gives a
-fixed marked `[HiRoute]` actionable explanation in progress, without native text/
-paths/secrets, and normal owned cleanup rather than a software-version allowlist.
 
 ### Requirement: Progress is a bounded best-effort public-text stream
 
@@ -396,15 +396,6 @@ support the existing opt-in rich error envelope without exposing submitted value
 Pi requires its CLI entry plus Node; an adapter-based Harness requires both its
 ordinary CLI and its ACP adapter. Native ACP Harnesses omit adapter and Node.
 
-#### Scenario: OpenCode has two matching native packages
-
-- **WHEN** discovery sees a wrapper with two matching official platform variants
-- **THEN** both canonical native paths are offered, the wrapper explains that explicit selection is required, and neither saved selection nor runtime format support changes automatically.
-
-#### Scenario: A Pi selection supplies only Node
-
-- **WHEN** the public CLI receives a Pi selection without `cli_path`
-- **THEN** it rejects the request with the existing invalid-arguments code and a bounded missing-field explanation; rich diagnostics are included only when requested.
 Partial scan/permission/budget limits are not a complete no-install result. Selection
 is instance+Harness shared and affects later launches, not running tasks. Installation
 UI belongs to plan editing; other pages navigate there. Core ready never runs Worker
@@ -421,6 +412,16 @@ initial supported producer is the official npm platform package for 1.19.3, iden
 through adjacent package/layout/platform metadata without launching a shim or
 fingerprinting a binary. Standalone, unknown or ambiguous installations remain
 unavailable for this action without disabling independent model/Skill configuration.
+
+#### Scenario: OpenCode has two matching native packages
+
+- **WHEN** discovery sees a wrapper with two matching official platform variants
+- **THEN** both canonical native paths are offered, the wrapper explains that explicit selection is required, and neither saved selection nor runtime format support changes automatically.
+
+#### Scenario: A Pi selection supplies only Node
+
+- **WHEN** the public CLI receives a Pi selection without `cli_path`
+- **THEN** it rejects the request with the existing invalid-arguments code and a bounded missing-field explanation; rich diagnostics are included only when requested.
 
 #### Scenario: Separate capabilities
 

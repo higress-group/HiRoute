@@ -63,10 +63,16 @@ fn fields(schema: &Value, names: &mut BTreeSet<String>) {
 pub(crate) fn typed(error: &serde_path_to_error::Error<serde_json::Error>) {
     let mut names = BTreeSet::new();
     CURRENT.with(|current| {
-        if let Some(state) = current.borrow().as_ref()
-            && let Some(schemas) = hiroute_application_api::command_schemas(&state.command)
-        {
-            fields(&schemas.request, &mut names);
+        if let Some(state) = current.borrow().as_ref() {
+            let request = if state.command == "worker.dependencies.select" {
+                Some(hiroute_application_api::WorkerDependenciesSelectRequestV1::input_schema())
+            } else {
+                hiroute_application_api::command_schemas(&state.command)
+                    .map(|schemas| schemas.request)
+            };
+            if let Some(request) = request {
+                fields(&request, &mut names);
+            }
         }
     });
     let mut path = String::from("$");
