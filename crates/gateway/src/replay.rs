@@ -223,25 +223,16 @@ impl ReplayStore {
             streams.insert(reference.stream_ordinal(), Arc::clone(stream));
         }
         // The original IR owns its structure charges; retaining those would
-        // pin unrelated setup metadata. Charge this view and retained range
-        // indexes independently. Payload segments keep their original owners.
-        let metadata_bytes = streams
-            .values()
-            .fold(std::mem::size_of::<StoreInner>() + 512, |bytes, stream| {
-                bytes.saturating_add(stream.metadata_bytes())
-            });
-        let metadata = vec![Arc::new(
-            self.inner
-                .budget
-                .reserve(MemoryRole::ModelIrBacking, metadata_bytes)?,
-        )];
+        // pin unrelated setup metadata. The caller's Content reservation covers
+        // this view and retained indexes, never the forwarding stream budget.
+        // Payload segments keep their original charged owners.
         Ok(Self {
             inner: Arc::new(StoreInner {
                 manager: Arc::clone(&self.inner.manager),
                 directory: Arc::clone(&self.inner.directory),
                 budget: self.inner.budget.clone(),
                 streams: Mutex::new(streams),
-                metadata: Mutex::new(metadata),
+                metadata: Mutex::new(Vec::new()),
                 cleanup: Arc::clone(&self.inner.cleanup),
                 next_stream: AtomicU64::new(0),
                 memory_live: Arc::clone(&self.inner.memory_live),
