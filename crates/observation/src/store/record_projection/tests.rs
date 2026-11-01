@@ -1,5 +1,34 @@
 use super::*;
 
+#[test]
+fn frozen_projected_records_keep_their_original_field_mapping() {
+    let fixture: Value = serde_json::from_str(include_str!("fixtures/projected-v1.json")).unwrap();
+    let source = &fixture["content"]["columns"];
+    let text = |key: &str| source[key].as_str().unwrap().to_owned();
+    let columns = ContentColumns {
+        stream: serde_json::from_value(source["stream"].clone()).unwrap(),
+        sequence: source["sequence"].as_u64().unwrap(),
+        event_id: text("event_id"),
+        workspace_id: text("workspace_id"),
+        request_id: text("request_id"),
+        direction: text("direction"),
+        fork_id: text("fork_id"),
+        phase: text("phase"),
+    };
+    let identity = &fixture["ack"]["identity"];
+    let feedback = feedback_fields(identity["channel"].as_str().unwrap(), &columns.stream);
+    for (kind, shared) in [("content", columns.shared()), ("ack", feedback)] {
+        let frame: Vec<u8> = fixture[kind]["frame_hex"]
+            .as_str()
+            .unwrap()
+            .as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect();
+        assert_eq!(decode(&frame, &shared).unwrap(), fixture[kind]["original"]);
+    }
+}
+
 fn values() -> (Value, Value) {
     (
         json!({"schema_version":"original", "identity":{"stream":"fixed", "extension":null},

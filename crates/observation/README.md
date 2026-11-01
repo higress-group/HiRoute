@@ -87,7 +87,9 @@ complete canonical JSON value and authenticates its original length and SHA-256;
 changed source fields cannot silently change a replayed event or ACK/NACK.
 Each record still uses independent level-1 zstd with an identity fallback. Codec
 tags 2/3 identify projected records; current readers also accept the original full
-JSON tags 0/1. The SQL layout remains format 5. Reopening reads mixed records in
+JSON tags 0/1. The projected field list is part of its record-codec version;
+changing it requires a new tag or an explicit retained-reader path. Frozen
+reference records protect the existing field list. The SQL layout remains format 5. Reopening reads mixed records in
 place without an eager history rewrite, startup scan, copy or reset. Older programs
 are not promised to read newly written record codecs; use matching-version recovery.
 Content objects keep their existing digest and file representation. No segment-file

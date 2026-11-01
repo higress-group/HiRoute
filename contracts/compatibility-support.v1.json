@@ -2565,7 +2565,8 @@
         "crates/observation/src/store/records.rs",
         "crates/observation/src/store/record_projection.rs",
         "crates/observation/src/store/record_projection/tests.rs",
-        "crates/observation/src/store/tests/content_records.rs"
+        "crates/observation/src/store/tests/content_records.rs",
+        "crates/observation/src/store/record_projection/fixtures/projected-v1.json"
       ]
     }
   ]

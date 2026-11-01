@@ -1,0 +1,72 @@
+{
+  "provenance": "Independent reference identity-frame bytes frozen when projected tags 2/3 were introduced. Not historical Gateway traffic; never regenerate with the encoder under test.",
+  "content": {
+    "columns": {
+      "stream": {
+        "producer_id": "fixture-producer",
+        "producer_epoch": "fixture-epoch",
+        "stream_id": "fixture-stream"
+      },
+      "sequence": 17,
+      "event_id": "fixture-event",
+      "workspace_id": "fixture-workspace",
+      "request_id": "fixture-request",
+      "direction": "request_input",
+      "fork_id": "fixture-fork",
+      "phase": "append"
+    },
+    "original": {
+      "schema_version": "retained-schema-marker",
+      "schema_digest": "retained-schema-digest",
+      "channel": "conversation_content",
+      "producer": {
+        "component": "fixture-component",
+        "revision": "fixture-revision",
+        "producer_id": "fixture-producer",
+        "producer_epoch": "fixture-epoch",
+        "stream_id": "fixture-stream"
+      },
+      "sequence": 17,
+      "event_id": "fixture-event",
+      "correlation": {
+        "workspace_id": "fixture-workspace",
+        "request_id": "fixture-request",
+        "conversation_id": "fixture-conversation",
+        "turn_id": "fixture-turn"
+      },
+      "direction": "request_input",
+      "fork_id": "fixture-fork",
+      "phase": "append",
+      "unknown": {
+        "ordered": [
+          null,
+          17,
+          false,
+          "原始值"
+        ]
+      }
+    },
+    "frame_hex": "025402000029aad53ddfe5ee0f9272582f297a01c7018b1dd8069ba9d200b4fade6a5879fc7b226368616e6e656c223a22636f6e766572736174696f6e5f636f6e74656e74222c22636f7272656c6174696f6e223a7b22636f6e766572736174696f6e5f6964223a22666978747572652d636f6e766572736174696f6e222c227475726e5f6964223a22666978747572652d7475726e227d2c2270726f6475636572223a7b22636f6d706f6e656e74223a22666978747572652d636f6d706f6e656e74222c227265766973696f6e223a22666978747572652d7265766973696f6e227d2c22736368656d615f646967657374223a2272657461696e65642d736368656d612d646967657374222c22736368656d615f76657273696f6e223a2272657461696e65642d736368656d612d6d61726b6572222c22756e6b6e6f776e223a7b226f726465726564223a5b6e756c6c2c31372c66616c73652c22e58e9fe5a78be580bc225d7d7d"
+  },
+  "ack": {
+    "identity": {
+      "channel": "conversation_content",
+      "producer_id": "fixture-producer",
+      "producer_epoch": "fixture-epoch",
+      "stream_id": "fixture-stream"
+    },
+    "original": {
+      "schema_version": "hiroute.observation.ack/v2",
+      "identity": {
+        "channel": "conversation_content",
+        "producer_id": "fixture-producer",
+        "producer_epoch": "fixture-epoch",
+        "stream_id": "fixture-stream"
+      },
+      "highest_contiguous_sequence": 17,
+      "highest_accounted_sequence": 19,
+      "content_acknowledgement": null
+    },
+    "frame_hex": "021c0100005c64007e091c6154f54af7ba6703bb33d7bc591f3d34ea0ce2e85f866d0bdce37b22636f6e74656e745f61636b6e6f776c656467656d656e74223a6e756c6c2c22686967686573745f6163636f756e7465645f73657175656e6365223a31392c22686967686573745f636f6e746967756f75735f73657175656e6365223a31372c226964656e74697479223a7b7d2c22736368656d615f76657273696f6e223a226869726f7574652e6f62736572766174696f6e2e61636b2f7632227d"
+  }
+}
