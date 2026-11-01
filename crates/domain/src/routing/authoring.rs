@@ -28,6 +28,19 @@ pub struct WorkerPlanV1 {
     pub protocol: crate::AgentIngressProtocolV1,
 }
 
+impl WorkerPlanV1 {
+    pub fn invalid_field(enabled: bool, work: Option<&Self>) -> Option<&'static str> {
+        if work.is_some_and(|work| work.protocol == crate::AgentIngressProtocolV1::ChatCompletions)
+        {
+            Some("work.protocol")
+        } else if enabled && work.is_none() {
+            Some("work")
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct SmartEditorV2 {
@@ -73,6 +86,18 @@ pub struct PlanEditorStateV2 {
 }
 
 impl PlanEditorStateV2 {
+    /// Publication-only checks: incomplete drafts remain legal. These closed field names
+    /// share the effective validator's rules and contain no user-supplied path or value.
+    pub fn invalid_publication_field(&self) -> Option<&'static str> {
+        match self.smart.judgment.invalid_millis_field() {
+            Some("degree.simple_threshold_millis") => {
+                Some("smart.judgment.degree.simple_threshold_millis")
+            }
+            Some("competence.floor_millis") => Some("smart.judgment.competence.floor_millis"),
+            _ => WorkerPlanV1::invalid_field(self.delegation_enabled, self.work.as_ref()),
+        }
+    }
+
     /// An unfinished row is legal. Strict candidate/native/protocol validation runs only on
     /// the effective configuration at Preview; all draft modes remain bounded and non-secret.
     pub fn validate_draft(&self) -> Result<(), PlanAuthoringError> {
@@ -359,12 +384,7 @@ impl AgentPlanAuthoringV2 {
         self.limits
             .validate()
             .map_err(|_| PlanAuthoringError::InvalidStrategy)?;
-        if self
-            .work
-            .as_ref()
-            .is_some_and(|work| work.protocol == crate::AgentIngressProtocolV1::ChatCompletions)
-            || (self.delegation_enabled && self.work.is_none())
-        {
+        if WorkerPlanV1::invalid_field(self.delegation_enabled, self.work.as_ref()).is_some() {
             return Err(PlanAuthoringError::InvalidStrategy);
         }
         let validate = |items: &[CandidateSelectionV1]| {

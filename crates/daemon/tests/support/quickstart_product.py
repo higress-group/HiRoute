@@ -9,6 +9,7 @@ from standalone_headless_product import InstalledProduct, native_draft, NATIVE_T
 from quickstart_fixture import support_local_skill_challenge
 from quickstart_decision import run as decision_onboarding
 from quickstart_plan_recovery import run as plan_recovery
+from quickstart_worker_plan import run as worker_plan_setup
 from quickstart_analysis import run as management_analysis
 
 
@@ -132,6 +133,9 @@ def run(repository):
         product.cli(*stale['submission']['arguments'], expected=3)
         assert len(product.cli('routing', 'list')['data']['plans']) == 1
 
+        stage = 'worker-plan-setup'
+        worker_plan_report = worker_plan_setup(product, plan, binding, submit)
+
         stage = 'complete-plan-recovery'
         plan_recovery(product, plan, alternate_binding, submit)
 
@@ -193,7 +197,8 @@ exit "$code"
         assert json.loads((capture / 'stdout.json').read_text())['error']['code'] == 'INVALID_ARGUMENTS'
         assert (capture / 'stderr.txt').read_text()
         print(json.dumps({'scenario': 'installed-cli-quickstart', 'state': 'green',
-                          'native_loading': 'not_claimed', 'stories': ['US1', 'US2', 'US3', 'US4', 'US5', 'US6']}), flush=True)
+                          'native_loading': 'not_claimed', 'stories': ['US1', 'US2', 'US3', 'US4', 'US5', 'US6'],
+                          'worker_plan_setup': worker_plan_report}), flush=True)
     except Exception:
         print(json.dumps({'scenario': 'installed-cli-quickstart', 'state': 'red', 'stage': stage}), flush=True)
         raise

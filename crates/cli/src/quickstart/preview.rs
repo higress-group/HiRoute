@@ -30,6 +30,9 @@ fn routing(client: &LocalControlClient, options: &[String]) -> Result<Value> {
             "--decision",
             "--decision-service",
             "--restore-from",
+            "--delegation",
+            "--worker-harness",
+            "--worker-protocol",
         ],
         &["--model", "--economy", "--primary"],
         &[],
@@ -118,13 +121,14 @@ fn routing(client: &LocalControlClient, options: &[String]) -> Result<Value> {
         "GetPlanEditorOptions",
         json!({"authoring":authoring}),
     )?;
-    let prepared: PlanAuthoringOptionsV1 = serde_json::from_value(options["authoring"].clone())
+    let mut prepared: PlanAuthoringOptionsV1 = serde_json::from_value(options["authoring"].clone())
         .map_err(|_| {
             choices(
                 &["server_supporting_shared_authoring"],
                 json!({"action":"update_hiroute"}),
             )
         })?;
+    configure_worker(&flags, &mut prepared)?;
     if !prepared.required_choices.is_empty() {
         return Err(choices(&["authoring_choices"], json!(prepared)));
     }
@@ -154,14 +158,75 @@ fn routing(client: &LocalControlClient, options: &[String]) -> Result<Value> {
             creation_key: fresh_key()?,
         },
     };
-    Ok(json!(PlanContentPreviewRequestV2 {
-        change: PlanContentChangeV2 {
-            schema: PLAN_CONTENT_CHANGE_SCHEMA_V2.into(),
-            target,
-            editor: prepared.editor,
-            consumed_draft: None,
+    let change = PlanContentChangeV2 {
+        schema: PLAN_CONTENT_CHANGE_SCHEMA_V2.into(),
+        target,
+        editor: prepared.editor,
+        consumed_draft: None,
+    };
+    crate::request_input::semantics::plan(&change).map_err(error)?;
+    Ok(json!(PlanContentPreviewRequestV2 { change }))
+}
+
+fn configure_worker(flags: &Flags, prepared: &mut PlanAuthoringOptionsV1) -> Result<()> {
+    let editor = &mut prepared.editor;
+    if let Some(value) = flags.get("--delegation") {
+        editor.delegation_enabled = match value {
+            "enable" => true,
+            "disable" => false,
+            _ => {
+                return Err(choices(
+                    &["--delegation"],
+                    json!({"allowed":["enable","disable"]}),
+                ));
+            }
+        };
+    }
+    match (
+        flags.get("--worker-harness"),
+        flags.get("--worker-protocol"),
+    ) {
+        (Some(harness), Some(protocol)) => {
+            // Only map explicit choices into the existing editor. Preview still owns
+            // publication/capability admission; no installation or launch happens here.
+            serde_json::from_value::<WorkerHarnessV1>(json!(harness)).map_err(|_| {
+                choices(&["--worker-harness"], json!({"hint":"Read hiroute worker executors --output json for supported Harness names."}))
+            })?;
+            if !matches!(protocol, "responses" | "messages") {
+                return Err(choices(
+                    &["--worker-protocol"],
+                    json!({"allowed":["responses","messages"]}),
+                ));
+            }
+            editor.work = Some(
+                serde_json::from_value(json!({"harness":harness,"protocol":protocol}))
+                    .map_err(|_| error(ErrorCode::InvalidArguments))?,
+            );
         }
-    }))
+        (Some(_), None) => {
+            return Err(choices(
+                &["--worker-protocol"],
+                json!({"allowed":["responses","messages"]}),
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(choices(
+                &["--worker-harness"],
+                json!({"hint":"Select the Harness explicitly with its protocol."}),
+            ));
+        }
+        (None, None) => {}
+    }
+    if editor.delegation_enabled && editor.work.is_none() {
+        return Err(choices(
+            &["--worker-harness", "--worker-protocol"],
+            json!({
+                "hint":"Enabling delegation requires a complete Worker selection; an existing selection is preserved when both flags are omitted.",
+                "protocols":["responses","messages"]
+            }),
+        ));
+    }
+    Ok(())
 }
 
 fn compute(client: &LocalControlClient, options: &[String]) -> Result<Value> {

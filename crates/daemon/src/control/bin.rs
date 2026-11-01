@@ -66,6 +66,25 @@ struct Arguments {
 }
 
 fn main() {
+    let mut identity_args = std::env::args_os().skip(1);
+    if identity_args
+        .next()
+        .is_some_and(|argument| argument == "--version" || argument == "-V")
+    {
+        if identity_args.next().is_some() {
+            exit_usage();
+        }
+        let identity = hiroute_host_runtime::BuildIdentityV1::compiled(
+            "daemon",
+            env!("CARGO_PKG_VERSION"),
+            option_env!("HIROUTE_BUILD_SOURCE_SHA"),
+        );
+        println!(
+            "{}",
+            serde_json::to_string(&identity).expect("compiled identity serializes")
+        );
+        return;
+    }
     if let Some(code) = upgrade_preflight::run_if_requested() {
         std::process::exit(code);
     }

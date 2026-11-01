@@ -278,9 +278,15 @@ fn routing_request(options: &[String], apply: bool) -> Result<Value, ErrorCode> 
         return Err(ErrorCode::InvalidArguments);
     }
     if apply {
-        typed_value::<hiroute_application_api::PlanContentApplyRequestV2>(value)
+        let request: hiroute_application_api::PlanContentApplyRequestV2 =
+            request_input::deserialize(value)?;
+        request_input::semantics::plan(&request.change)?;
+        serde_json::to_value(request).map_err(|_| ErrorCode::Internal)
     } else {
-        typed_value::<hiroute_application_api::PlanContentPreviewRequestV2>(value)
+        let request: hiroute_application_api::PlanContentPreviewRequestV2 =
+            request_input::deserialize(value)?;
+        request_input::semantics::plan(&request.change)?;
+        serde_json::to_value(request).map_err(|_| ErrorCode::Internal)
     }
 }
 
@@ -324,6 +330,11 @@ fn validate_agent_request(value: Value, apply: bool) -> Result<Value, ErrorCode>
             }
         };
     if valid {
+        if v2 {
+            let spec: hiroute_application_api::AgentSettingsSpecV2 =
+                request_input::deserialize(value["spec"].clone())?;
+            request_input::semantics::agent(&spec)?;
+        }
         Ok(value)
     } else {
         Err(ErrorCode::InvalidArguments)

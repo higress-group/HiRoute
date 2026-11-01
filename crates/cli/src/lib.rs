@@ -20,6 +20,7 @@ mod request_input;
 mod routing_timeline;
 mod service;
 mod trust;
+mod version;
 mod worker;
 
 use std::ffi::OsString;
@@ -108,6 +109,9 @@ where
         } else {
             failure(ErrorCode::InvalidArguments, globals.request_id)
         };
+    }
+    if let Some(execution) = version::execute(&path_and_options, &globals) {
+        return execution;
     }
     if let Some(execution) = host_commands::execute(&path_and_options, &globals) {
         return execution;
@@ -765,7 +769,7 @@ pub fn root_help() -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "HiRoute headless product CLI\n\nUsage\n  hiroute <command> [options]\n\nPublic command families\n{commands}\n\nStart or resume: run 'hiroute quickstart --help'.\nDecision connections: run 'hiroute decision services options --help' for installed presets and reusable saved connections.\nHost management: run 'hiroute service --help', 'hiroute gateway --help', 'hiroute protected-input --help', 'hiroute subscription-proxy --help', or 'hiroute console --help'.\nAgent collaboration workflow: run 'hiroute agents collaboration --help' to enable, edit, disable or inspect collaboration independently of model settings.\nApplication/Local Control: run 'hiroute schema list --output json' and 'hiroute schema show --command-id <ID> --output json', then append '--help' to a complete command path, for example 'hiroute worker dependencies discover --help'.\n"
+        "HiRoute headless product CLI\n\nUsage\n  hiroute <command> [options]\n\nPublic command families\n{commands}\n\nBuild identity (offline): run 'hiroute version --output json' or 'hiroute --version'.\nStart or resume: run 'hiroute quickstart --help'.\nDecision connections: run 'hiroute decision services options --help' for installed presets and reusable saved connections.\nHost management: run 'hiroute service --help', 'hiroute gateway --help', 'hiroute protected-input --help', 'hiroute subscription-proxy --help', or 'hiroute console --help'.\nAgent collaboration workflow: run 'hiroute agents collaboration --help' to enable, edit, disable or inspect collaboration independently of model settings.\nApplication/Local Control: run 'hiroute schema list --output json' and 'hiroute schema show --command-id <ID> --output json', then append '--help' to a complete command path, for example 'hiroute worker dependencies discover --help'.\n"
     )
 }
 
