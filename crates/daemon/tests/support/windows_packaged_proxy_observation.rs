@@ -57,6 +57,10 @@ enum Method {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Destination {
     StockVersionUpdaterOrigin,
+    // Diagnostic distinctions only: the managed config disables this updater,
+    // and neither management origin is an approved account-free attempt.
+    ManagementReleaseOrigin,
+    ManagementFallbackOrigin,
     CodexOAuth,
     ClaudeOAuth,
     CodexModelOrigin,
@@ -66,6 +70,8 @@ enum Destination {
 fn destination(value: &str) -> Destination {
     match value {
         UPDATER => Destination::StockVersionUpdaterOrigin,
+        "api.github.com:443" => Destination::ManagementReleaseOrigin,
+        "cpamc.router-for.me:443" => Destination::ManagementFallbackOrigin,
         "auth.openai.com:443" => Destination::CodexOAuth,
         "claude.ai:443" | "console.anthropic.com:443" => Destination::ClaudeOAuth,
         "chatgpt.com:443" => Destination::CodexModelOrigin,
@@ -445,6 +451,8 @@ mod tests {
     fn only_exact_pinned_updater_origin_is_an_approved_rejected_connect() {
         assert!(approved(&request(UPDATER, "")));
         for target in [
+            "api.github.com:443",
+            "cpamc.router-for.me:443",
             "auth.openai.com:443",
             "claude.ai:443",
             "chatgpt.com:443",
