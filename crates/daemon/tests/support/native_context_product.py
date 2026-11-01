@@ -318,7 +318,7 @@ def run(repository, candidate):
             result = wait_for_worker_result(product, continued['run_id'], timeout=150)
             if harness == 'qoder':
                 _, progress = worker_cli(product, 'worker read --run ' + continued['run_id']
-                                         + ' --max-bytes 65536 --output json')
+                                         + ' --max-bytes 32768 --output json')
                 expected_directory = json.dumps(fixture['config'], ensure_ascii=False)
                 assert expected_directory in progress['data']['text'], \
                     'Continue must report the original Qoder directory'

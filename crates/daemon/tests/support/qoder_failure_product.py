@@ -58,7 +58,7 @@ def run(repository, candidate):
             assert time.monotonic() < deadline, 'owned cleanup did not complete'
             time.sleep(.25)
         stage = 'public-failure-explanation'
-        _, progress = worker_cli(product, 'worker read --run ' + run_id + ' --max-bytes 65536 --output json')
+        _, progress = worker_cli(product, 'worker read --run ' + run_id + ' --max-bytes 32768 --output json')
         text = progress['data']['text']
         assert 'NATIVE_PROMPT_FAILED' in text, 'native error must not be classified as a user cancel'
         assert re.search(r'Last Gateway rejection observed for this run: HTTP [45][0-9]{2} ', text), \
