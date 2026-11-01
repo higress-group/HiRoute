@@ -531,7 +531,12 @@ fn async_content_keeps_the_request_root_before_fast_response_after_foreground_dr
         // handoff have completed. The original IR/backing can now disappear.
         assert!(receiver.try_recv().is_err());
         drop((input, store));
-        assert!(budget.snapshot().unwrap().live > 0);
+        assert!(observation.inner.channels.content.work_state().unwrap().1 > 0);
+        assert_eq!(
+            budget.snapshot().unwrap().live > 0,
+            threshold == 1024 * 1024,
+            "disk-backed capture must not retain unrelated forwarding metadata"
+        );
         gate.release();
         let mut records = Vec::new();
         loop {

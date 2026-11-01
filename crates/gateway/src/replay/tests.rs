@@ -94,7 +94,11 @@ fn content_lease_releases_raw_and_keeps_charged_semantics_until_last_reader() {
         assert!(lease.begin_raw().is_err());
         drop(store);
         assert!(directory.exists());
-        assert!(budget.snapshot().unwrap().live > 0);
+        assert_eq!(
+            budget.snapshot().unwrap().live > 0,
+            threshold == 1024 * 1024,
+            "only resident payload keeps forwarding credit; disk/view metadata belongs to Content"
+        );
         assert_eq!(
             read_all(&lease, &content),
             b"exact canonical content".repeat(1024)
