@@ -207,21 +207,34 @@ impl ReplayManager {
 
 impl ReplayStore {
     /// A read-only view for asynchronous content capture. It shares charged
-    /// semantic streams and metadata, never the raw request stream. Only the
+    /// selected semantic streams, never raw ingress or unrelated IR metadata. Only the
     /// final owning view removes the request directory on every platform.
-    pub(crate) fn content_lease(&self) -> Result<Self, ReplayError> {
+    pub(crate) fn content_lease(&self, references: &[ContentRef]) -> Result<Self, ReplayError> {
         if !self.is_prevalidated() {
             return Err(ReplayError::Integrity);
         }
         let source = lock(&self.inner.streams);
-        let streams = source
-            .iter()
-            .filter(|(_, stream)| !stream.is_raw())
-            .map(|(id, stream)| (*id, Arc::clone(stream)))
-            .collect();
-        // The capture job admits its view allocation through the Content
-        // channel. Shared backing keeps its original reservations alive.
-        let metadata = lock(&self.inner.metadata).clone();
+        let mut streams = BTreeMap::new();
+        for reference in references {
+            let stream = source
+                .get(&reference.stream_ordinal())
+                .filter(|stream| !stream.is_raw() && stream.contains(reference))
+                .ok_or(ReplayError::UnknownContentRef)?;
+            streams.insert(reference.stream_ordinal(), Arc::clone(stream));
+        }
+        // The original IR owns its structure charges; retaining those would
+        // pin unrelated setup metadata. Charge this view and retained range
+        // indexes independently. Payload segments keep their original owners.
+        let metadata_bytes = streams
+            .values()
+            .fold(std::mem::size_of::<StoreInner>() + 512, |bytes, stream| {
+                bytes.saturating_add(stream.metadata_bytes())
+            });
+        let metadata = vec![Arc::new(
+            self.inner
+                .budget
+                .reserve(MemoryRole::ModelIrBacking, metadata_bytes)?,
+        )];
         Ok(Self {
             inner: Arc::new(StoreInner {
                 manager: Arc::clone(&self.inner.manager),
@@ -243,28 +256,26 @@ impl ReplayStore {
 
     /// Queue-admission footprint of a semantic lease. Disk payload length is
     /// not resident memory; shared RAM remains charged by its original owner.
-    pub(crate) fn content_lease_memory_bytes(&self) -> usize {
-        let charges = lock(&self.inner.metadata);
-        let metadata = charges
-            .iter()
-            .map(|charge| charge.bytes())
-            .sum::<usize>()
-            .saturating_add(std::mem::size_of::<StoreInner>() + 512)
-            .saturating_add(
-                charges
-                    .len()
-                    .saturating_add(1)
-                    .saturating_mul(2 * std::mem::size_of::<Arc<Reservation>>()),
-            );
-        drop(charges);
-        lock(&self.inner.streams)
-            .values()
-            .filter(|stream| !stream.is_raw())
-            .fold(metadata, |bytes, stream| {
-                bytes
-                    .saturating_add(128)
-                    .saturating_add(stream.retained_memory_bytes())
-            })
+    pub(crate) fn content_lease_memory_bytes(&self, references: &[ContentRef]) -> usize {
+        let streams = lock(&self.inner.streams);
+        let mut previous = None;
+        references.iter().fold(
+            std::mem::size_of::<StoreInner>() + 512,
+            |bytes, reference| {
+                let id = reference.stream_ordinal();
+                // message_content_refs supplies sorted references, including when
+                // several selected fields share the same backing pool.
+                if previous == Some(id) {
+                    return bytes;
+                }
+                previous = Some(id);
+                streams.get(&id).map_or(bytes, |stream| {
+                    bytes
+                        .saturating_add(stream.metadata_bytes())
+                        .saturating_add(stream.retained_memory_bytes())
+                })
+            },
+        )
     }
 
     pub(crate) fn runtime_fingerprint(

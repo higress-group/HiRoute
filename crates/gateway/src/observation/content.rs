@@ -393,24 +393,23 @@ impl RequestObservation {
     }
 
     fn message_instance_id(&self, direction: &str, message_ordinal: u32, role: &str) -> String {
-        if direction == "request_input" {
-            if let Some(selection) = self.inner.input_capture.get()
-                && let Some(current) = selection.current_ordinal
-                && message_ordinal >= current
-                && let Some(turn) = &selection.turn_anchor
-            {
-                return stable_id(
-                    "message",
-                    &self.inner.key,
-                    b"semantic-input-instance",
-                    &[
-                        self.metadata().conversation_id.as_bytes(),
-                        turn.as_bytes(),
-                        &(message_ordinal - current).to_be_bytes(),
-                        role.as_bytes(),
-                    ],
-                );
-            }
+        if direction == "request_input"
+            && let Some(selection) = self.inner.input_capture.get()
+            && let Some(current) = selection.current_ordinal
+            && message_ordinal >= current
+            && let Some(turn) = &selection.turn_anchor
+        {
+            return stable_id(
+                "message",
+                &self.inner.key,
+                b"semantic-input-instance",
+                &[
+                    self.metadata().conversation_id.as_bytes(),
+                    turn.as_bytes(),
+                    &(message_ordinal - current).to_be_bytes(),
+                    role.as_bytes(),
+                ],
+            );
         }
         let parent_transcript_root = self.content_parent_root(direction);
         stable_id(
@@ -720,7 +719,7 @@ impl RequestObservation {
         let mut semantic = match existing_semantic {
             Some(value) => value,
             None => {
-                let Some(reservation) = self
+                let Some(mut reservation) = self
                     .inner
                     .channels
                     .content
@@ -734,6 +733,13 @@ impl RequestObservation {
                     .await;
                     return;
                 };
+                // This is active coalescing state, not another queued source.
+                // Keep it charged without consuming the pending job credits.
+                self.inner
+                    .channels
+                    .content
+                    .activate_content_work(&mut reservation, 0)
+                    .await;
                 semantic::SemanticResponse::new(attempt_id, self.inner.key, reservation)
             }
         };

@@ -144,15 +144,19 @@ impl RequestObservation {
         let start = self.inner.input_capture.get().map_or(0, |s| s.start);
         let messages = &request.messages[start..];
         let bytes = snapshot_bytes(messages);
+        if bytes > SNAPSHOT_LIMIT {
+            self.capture_request_fallback(request, replay);
+            return;
+        }
+        let references = crate::content_ref::message_content_refs(messages);
         let retained = bytes
-            .saturating_add(replay.content_lease_memory_bytes())
+            .saturating_add(replay.content_lease_memory_bytes(&references))
             .saturating_add(snapshot_cursor_bytes(messages));
-        if bytes > SNAPSHOT_LIMIT
-            || !self
-                .inner
-                .channels
-                .content
-                .work_can_fit(retained.saturating_add(JOB_OVERHEAD))
+        if !self
+            .inner
+            .channels
+            .content
+            .work_can_fit(retained.saturating_add(JOB_OVERHEAD))
         {
             self.capture_request_fallback(request, replay);
             return;
@@ -183,7 +187,7 @@ impl RequestObservation {
             self.capture_request_fallback(request, replay);
             return;
         };
-        let Ok(lease) = replay.content_lease() else {
+        let Ok(lease) = replay.content_lease(&references) else {
             drop(reservation);
             self.capture_request_fallback(request, replay);
             return;

@@ -59,6 +59,14 @@ pub(super) struct ReplayStream {
 }
 
 impl ReplayStream {
+    pub(super) fn metadata_bytes(&self) -> usize {
+        super::STREAM_METADATA_BYTES.saturating_add(
+            self.ranges
+                .len()
+                .saturating_mul(super::RANGE_METADATA_BYTES),
+        )
+    }
+
     pub(super) fn retained_memory_bytes(&self) -> usize {
         match &self.backing {
             StreamBacking::Memory {

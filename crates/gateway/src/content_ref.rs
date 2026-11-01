@@ -5,7 +5,7 @@ use serde_json::{Map, Value};
 
 use crate::replay::{ReplayContentWriter, ReplayError, ReplayStore};
 use crate::server::core_runtime::model_ir::{
-    ContentPart, ImageSource, ModelRequestIRV1, OpaqueProviderState, ToolOutput,
+    CanonicalMessage, ContentPart, ImageSource, ModelRequestIRV1, OpaqueProviderState, ToolOutput,
 };
 
 pub(crate) const MARKER_PREFIX: &str = "__hiroute_content_ref_v2_";
@@ -343,16 +343,7 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
     for instruction in &request.instructions {
         collect_part_content_refs(&instruction.content, &mut refs);
     }
-    for message in &request.messages {
-        if let Some(content) = message
-            .name
-            .as_deref()
-            .and_then(ContentValueExt::content_ref)
-        {
-            refs.push(content);
-        }
-        collect_part_content_refs(&message.content, &mut refs);
-    }
+    collect_message_content_refs(&request.messages, &mut refs);
     for history in request.responses_reasoning_history.values() {
         for value in history.native_fields.values() {
             collect_nested_content_refs(value, &mut refs);
@@ -392,6 +383,27 @@ pub fn model_content_refs(request: &ModelRequestIRV1) -> Vec<ContentRef> {
         collect_nested_content_refs(&state.value, &mut refs);
     }
     refs
+}
+
+pub(crate) fn message_content_refs(messages: &[CanonicalMessage]) -> Vec<ContentRef> {
+    let mut refs = Vec::new();
+    collect_message_content_refs(messages, &mut refs);
+    refs.sort_unstable();
+    refs.dedup();
+    refs
+}
+
+fn collect_message_content_refs(messages: &[CanonicalMessage], refs: &mut Vec<ContentRef>) {
+    for message in messages {
+        if let Some(content) = message
+            .name
+            .as_deref()
+            .and_then(ContentValueExt::content_ref)
+        {
+            refs.push(content);
+        }
+        collect_part_content_refs(&message.content, refs);
+    }
 }
 
 // Keep native structure editable for bounded prefix cleanup, while sharing all

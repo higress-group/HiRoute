@@ -19,7 +19,7 @@ fn next(event: &mut ConversationContentEnvelopeV1) {
 #[test]
 fn first_context_seed_survives_reopen_and_only_new_activity_is_retained_afterwards() {
     let mut fixture = Fixture::new();
-    let mut events = vec![
+    let mut events = [
         fixture.begin(1),
         fixture.append(2, 0, "context-1", "context-part-1", 0, 0, b"same", b"same"),
         fixture.append(3, 1, "context-2", "context-part-2", 1, 0, b"same", b"same"),
@@ -52,7 +52,7 @@ fn first_context_seed_survives_reopen_and_only_new_activity_is_retained_afterwar
     fixture.store = Arc::new(
         LocalObservationStore::open(fixture._root.path(), fixture.authority.clone()).unwrap(),
     );
-    let mut events = vec![
+    let mut events = [
         fixture.begin(6),
         fixture.append(
             7,

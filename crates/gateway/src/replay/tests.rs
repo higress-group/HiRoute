@@ -89,7 +89,7 @@ fn content_lease_releases_raw_and_keeps_charged_semantics_until_last_reader() {
             .map(|entry| entry.unwrap().path())
             .find(|path| path.is_dir())
             .unwrap();
-        let lease = store.content_lease().unwrap();
+        let lease = store.content_lease(std::slice::from_ref(&content)).unwrap();
         assert!(lease.reader(&raw).is_err());
         assert!(lease.begin_raw().is_err());
         drop(store);
@@ -103,6 +103,33 @@ fn content_lease_releases_raw_and_keeps_charged_semantics_until_last_reader() {
         assert!(!directory.exists());
         assert_eq!(budget.snapshot().unwrap().live, 0);
     }
+}
+
+#[test]
+fn content_lease_retains_only_selected_backing_and_not_request_structure() {
+    let root = TestRoot::new("selected-capture-lease");
+    let manager = ReplayManager::open(config(&root.0, 1024 * 1024, 1024)).unwrap();
+    let budget = budget();
+    let store = manager.begin_request(budget.clone()).unwrap();
+    // A dense tool schema and source IR are unrelated to selected user text.
+    let setup = store.store_content(&vec![b'x'; 400 * 1024]).unwrap();
+    store.charge_metadata(2 * 1024 * 1024).unwrap();
+    let text = store.store_content(b"selected user text").unwrap();
+    store.prevalidate(&[setup.clone(), text.clone()]).unwrap();
+    let references = std::slice::from_ref(&text);
+    let admitted = store.content_lease_memory_bytes(references);
+    assert!(
+        admitted < 32 * 1024,
+        "unrelated setup must not enter capture admission"
+    );
+    let lease = store.content_lease(references).unwrap();
+    assert!(lease.reader(&setup).is_err());
+    assert_eq!(read_all(&lease, &text), b"selected user text");
+    drop(store);
+    assert!(budget.snapshot().unwrap().live < 32 * 1024);
+    assert_eq!(read_all(&lease, &text), b"selected user text");
+    drop(lease);
+    assert_eq!(budget.snapshot().unwrap().live, 0);
 }
 
 #[cfg(unix)]
