@@ -587,13 +587,15 @@ Each valid RequestFinished closes its [immutable request receipt](../session-his
 without waiting for AgentTurnFinished.
 
 Content encoding MAY run on a shared bounded worker before the existing storage
-producers. Additional snapshot/job memory and encoded records share the Content
-channel's byte ceiling. When a snapshot becomes the single active encoding job,
-its snapshot charge transfers to its existing request/process reservation;
-queued job metadata and encoded records retain their Content charges. The
-optional extended lifetime of shared semantic Replay
-backing, including disk bytes, is charged to the existing request/process budget;
-it is not a second payload in the Content queue. If this retention cannot be
+producers. Queue admission accounts for snapshot/view allocation and the resident
+shared semantic backing retained by that job. Disk payload length is not RAM.
+Original shared backing reservations remain alive until their last consumer;
+observation MUST NOT reserve the same backing again from forwarding memory.
+Queued jobs and encoded records share the Content channel's byte ceiling. Its
+single active encoding source was admitted under that same ceiling, so active
+source plus queued work/records remain bounded by twice the existing ceiling.
+Releasing a source's queue credit for encoded output does not admit another
+active encoder or an unbounded allocation. If this retention cannot be
 reserved, request capture uses its original synchronous path without introducing
 a capture gap solely for that optimization. The optional encoder SHALL reserve
 record capacity before assigning its sequence; waiting for capacity with an earlier
@@ -662,3 +664,19 @@ blanket unmeasured performance/native/Windows result.
 - [Real runtime listener corpus](../../../tools/e2e-harness/tests/p0_gateway_runtime.rs),
   [protocol corpus](../../../tools/e2e-harness/tests/p0_gateway_protocol/production_matrix.rs), and
   [strict product fact projection](../../../crates/integrations/src/gateway/tests.rs).
+
+### Requirement: Memory optimization preserves admitted model-request service
+
+Memory optimization SHALL preserve serviceability before reducing residency and
+local processing overhead. A legitimate model request MUST NOT fail solely
+because an internal stream, worker or process accounting target is exceeded.
+Production model-proxy counters retain ownership, peaks and exact release, with
+accounting-only admission rather than hard quota rejection. Explicit bounded
+Core-library consumers keep their selected enforcement contract. Arithmetic,
+identity, protocol and actual allocation or I/O failures remain real failures.
+
+Large payloads continue through the existing Replay spill and sequential reader.
+Transport read/write quanta MUST remain bounded independently of accounting
+targets. Optional observation work retains its own bounded channel admission and
+cannot displace required forwarding memory. Existing timeout/retry, content
+identity, historical reads, attribution and recovery contracts remain unchanged.

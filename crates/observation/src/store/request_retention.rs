@@ -1,4 +1,5 @@
 use super::*;
+use crate::store::cached_sql;
 use hiroute_domain::{
     DeletionDataClass, ObservationQueryError as Error, SessionDeletionSpecV1, SessionId,
 };
@@ -16,7 +17,7 @@ impl LocalObservationStore {
         let transaction = connection.transaction().map_err(|_| Error::Unavailable)?;
         let quality_changed = expire_plan_quality_details(&transaction, cutoff)?;
         let requests = {
-            let mut statement=transaction.prepare("SELECT workspace_id,session_id,request_id FROM logical_requests WHERE started_at_ms<=?1 ORDER BY started_at_ms,request_id LIMIT ?2").map_err(|_|Error::Unavailable)?;
+            let mut statement=transaction.prepare_cached("SELECT workspace_id,session_id,request_id FROM logical_requests WHERE started_at_ms<=?1 ORDER BY started_at_ms,request_id LIMIT ?2").map_err(|_|Error::Unavailable)?;
             statement
                 .query_map(params![cutoff, limit], |row| {
                     Ok((
@@ -47,7 +48,7 @@ impl LocalObservationStore {
             super::value_rollup::archive_request_value(&transaction, &spec, request, archive_id)?;
             crate::valuation::archive_request(&transaction, workspace, session, request)
                 .map_err(|_| Error::Unavailable)?;
-            transaction.execute("INSERT OR IGNORE INTO observation_request_tombstones_v2(workspace_id,request_id,deleted_ms) VALUES(?1,?2,?3)",params![workspace,request,now_ms]).map_err(|_|Error::Unavailable)?;
+            cached_sql::execute(&transaction, "INSERT OR IGNORE INTO observation_request_tombstones_v2(workspace_id,request_id,deleted_ms) VALUES(?1,?2,?3)",params![workspace,request,now_ms]).map_err(|_|Error::Unavailable)?;
             for table in ["conversation_content_events_v2", "execution_fact_events"] {
                 super::records::retire_request_feedback(
                     &transaction,
@@ -58,7 +59,7 @@ impl LocalObservationStore {
                 )
                 .map_err(|_| Error::Unavailable)?;
             }
-            transaction.execute("DELETE FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id IN(SELECT content_id FROM content_instances_v2 WHERE workspace_id=?1 AND request_id=?2)",params![workspace,request]).map_err(|_|Error::Unavailable)?;
+            cached_sql::execute(&transaction, "DELETE FROM content_chunks_v2 WHERE workspace_id=?1 AND content_id IN(SELECT content_id FROM content_instances_v2 WHERE workspace_id=?1 AND request_id=?2)",params![workspace,request]).map_err(|_|Error::Unavailable)?;
             for table in [
                 "observation_sensitive_payloads_v2",
                 "content_instances_v2",
@@ -84,8 +85,8 @@ impl LocalObservationStore {
                     )
                     .map_err(|_| Error::Unavailable)?;
             }
-            transaction.execute("DELETE FROM turns WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests r WHERE r.workspace_id=?1 AND r.turn_id=turns.turn_id)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
-            transaction.execute("UPDATE sessions SET content_completeness='expired',facts_completeness='unknown',tombstone_reason='retention_expired',agent_id='',correlation='unproven' WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests WHERE workspace_id=?1 AND session_id=?2)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
+            cached_sql::execute(&transaction, "DELETE FROM turns WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests r WHERE r.workspace_id=?1 AND r.turn_id=turns.turn_id)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
+            cached_sql::execute(&transaction, "UPDATE sessions SET content_completeness='expired',facts_completeness='unknown',tombstone_reason='retention_expired',agent_id='',correlation='unproven' WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests WHERE workspace_id=?1 AND session_id=?2)",params![workspace,session]).map_err(|_|Error::Unavailable)?;
         }
         // Removing the only Partial/Unknown request may improve completeness.
         // Rebuild once per affected session, never once per newly ingested fact.
@@ -105,8 +106,12 @@ impl LocalObservationStore {
                 hiroute_domain::FactsCompleteness::Partial => "partial",
                 hiroute_domain::FactsCompleteness::Unknown => "unknown",
             };
-            transaction.execute("UPDATE sessions SET facts_completeness=?3 WHERE workspace_id=?1 AND session_id=?2",
-                params![workspace, session, value]).map_err(|_| Error::Unavailable)?;
+            cached_sql::execute(
+                &transaction,
+                "UPDATE sessions SET facts_completeness=?3 WHERE workspace_id=?1 AND session_id=?2",
+                params![workspace, session, value],
+            )
+            .map_err(|_| Error::Unavailable)?;
         }
         if !requests.is_empty() || quality_changed {
             // Index cleanup is part of the same visibility barrier. Physical
@@ -124,16 +129,16 @@ fn expire_plan_quality_details(
     transaction: &rusqlite::Transaction<'_>,
     cutoff: i64,
 ) -> Result<bool, Error> {
-    let mut changed = transaction
-        .execute(
-            "DELETE FROM plan_quality_segments
+    let mut changed = cached_sql::execute(
+        transaction,
+        "DELETE FROM plan_quality_segments
              WHERE last_at_ms IS NOT NULL AND last_at_ms<=?1",
-            [cutoff],
-        )
-        .map_err(|_| Error::Unavailable)?;
-    changed += transaction
-        .execute(
-            "UPDATE plan_quality_segments SET
+        [cutoff],
+    )
+    .map_err(|_| Error::Unavailable)?;
+    changed += cached_sql::execute(
+        transaction,
+        "UPDATE plan_quality_segments SET
                 assessment_event_id=NULL,assessment_sequence=NULL,
                 assessment_trigger_request_id=NULL,assessed_at_ms=NULL,
                 target_from_turn_id=NULL,target_through_turn_id=NULL,
@@ -143,34 +148,34 @@ fn expire_plan_quality_details(
                 SELECT request_id FROM logical_requests
                  WHERE workspace_id=plan_quality_segments.workspace_id
                    AND started_at_ms<=?1)",
-            [cutoff],
-        )
-        .map_err(|_| Error::Unavailable)?;
-    changed += transaction
-        .execute(
-            "UPDATE plan_quality_segments SET first_request_id=NULL,history_partial=1
+        [cutoff],
+    )
+    .map_err(|_| Error::Unavailable)?;
+    changed += cached_sql::execute(
+        transaction,
+        "UPDATE plan_quality_segments SET first_request_id=NULL,history_partial=1
              WHERE first_request_id IN (
                 SELECT request_id FROM logical_requests
                  WHERE workspace_id=plan_quality_segments.workspace_id
                    AND started_at_ms<=?1)",
-            [cutoff],
-        )
-        .map_err(|_| Error::Unavailable)?;
-    changed += transaction
-        .execute(
-            "DELETE FROM plan_quality_segments
+        [cutoff],
+    )
+    .map_err(|_| Error::Unavailable)?;
+    changed += cached_sql::execute(
+        transaction,
+        "DELETE FROM plan_quality_segments
              WHERE selected_branch_id IS NULL AND assessment_event_id IS NULL",
+        [],
+    )
+    .map_err(|_| Error::Unavailable)?;
+    if changed > 0 {
+        cached_sql::execute(
+            transaction,
+            "UPDATE observation_meta SET value=CAST(value AS INTEGER)+1
+                 WHERE key='plan_quality_generation'",
             [],
         )
         .map_err(|_| Error::Unavailable)?;
-    if changed > 0 {
-        transaction
-            .execute(
-                "UPDATE observation_meta SET value=CAST(value AS INTEGER)+1
-                 WHERE key='plan_quality_generation'",
-                [],
-            )
-            .map_err(|_| Error::Unavailable)?;
     }
     Ok(changed > 0)
 }
@@ -180,7 +185,7 @@ pub(super) fn retired(
     workspace: &WorkspaceId,
     request: &hiroute_domain::LogicalRequestId,
 ) -> Result<bool, crate::writer::ObservationStoreError> {
-    connection.query_row("SELECT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 WHERE workspace_id=?1 AND request_id=?2)",params![workspace.as_str(),request.as_str()],|row|row.get(0)).map_err(|_|crate::writer::ObservationStoreError::ActivityUnavailable)
+    cached_sql::query_row(connection, "SELECT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 WHERE workspace_id=?1 AND request_id=?2)",params![workspace.as_str(),request.as_str()],|row|row.get(0)).map_err(|_|crate::writer::ObservationStoreError::ActivityUnavailable)
 }
 
 /// Called only after validated preflight and inside the projection savepoint.
@@ -191,6 +196,6 @@ pub(super) fn revive_for_new_request(
     session: &SessionId,
     request: &hiroute_domain::LogicalRequestId,
 ) -> Result<(), crate::writer::ObservationStoreError> {
-    connection.execute("UPDATE sessions SET tombstone_reason=NULL,content_completeness=CASE WHEN content_completeness IN('deleted','expired') THEN 'unknown' ELSE content_completeness END WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests WHERE workspace_id=?1 AND request_id=?3)",params![workspace.as_str(),session.as_str(),request.as_str()]).map_err(|_|crate::writer::ObservationStoreError::ActivityUnavailable)?;
+    cached_sql::execute(connection, "UPDATE sessions SET tombstone_reason=NULL,content_completeness=CASE WHEN content_completeness IN('deleted','expired') THEN 'unknown' ELSE content_completeness END WHERE workspace_id=?1 AND session_id=?2 AND NOT EXISTS(SELECT 1 FROM logical_requests WHERE workspace_id=?1 AND request_id=?3)",params![workspace.as_str(),session.as_str(),request.as_str()]).map_err(|_|crate::writer::ObservationStoreError::ActivityUnavailable)?;
     Ok(())
 }

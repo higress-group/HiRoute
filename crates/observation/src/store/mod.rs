@@ -2,6 +2,7 @@
 pub(crate) mod agent_attribution;
 mod backfill;
 pub(crate) mod blob_gc;
+pub(crate) mod cached_sql;
 pub(crate) mod capacity;
 mod extensions;
 mod unified_retention;
@@ -128,6 +129,9 @@ impl LocalObservationStore {
         connection
             .execute_batch(capacity::SCHEMA)
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
+        // Cover the fixed content/protocol SQL working set without retaining
+        // an unbounded collection of programs. Read workers keep their defaults.
+        connection.set_prepared_statement_cache_capacity(64);
         Ok(Self {
             timeline_cache: Default::default(),
             maintenance_running: Default::default(),

@@ -12,6 +12,13 @@
 
 Observation gaps must remain visible without changing the model request's execution result. Historical identity and price facts must not be inferred from current configuration. Deleted content remains unavailable through search, old references, and replay.
 
+The writer reuses SQLite's connection-local statement cache for measured content
+projection/completion, protocol and retention SQL. Its fixed 64-entry ceiling
+covers this working set without an unbounded cache; read workers keep their
+defaults. Bindings are supplied on every execution. Parameter evaluation, error
+classification, validation, transaction commits, durable ACKs and recovery remain
+unchanged. No queue, content cache or storage format is introduced.
+
 `store/gap` resolves an arriving sequence within its exact channel, producer,
 epoch and stream. The stream/end-sequence index skips unrelated streams and
 already-ended gaps; every overlapping gap still retains its scope, loss status

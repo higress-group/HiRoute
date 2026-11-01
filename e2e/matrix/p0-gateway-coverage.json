@@ -215,13 +215,15 @@
     {
       "assertion_binding": "declaration",
       "assertion_ids": [
-        "replay.request_capacity_limit",
-        "replay.zero_provider_on_capacity"
+        "replay.beyond_memory_target",
+        "replay.complete_provider_input",
+        "replay.one_provider_attempt",
+        "replay.cleanup_after_large_request"
       ],
       "execution": "real_hirouted_native_provider",
       "id": "replay.request_capacity",
       "source": "tools/e2e-harness/tests/p0_gateway_replay.rs",
-      "symbol": "real_hirouted_rejects_unavailable_request_workspace_before_provider_call",
+      "symbol": "real_hirouted_serves_large_requests_beyond_memory_accounting_targets",
       "test_target": "p0_gateway_replay"
     },
     {
@@ -302,7 +304,7 @@
       "test_target": "p0_gateway_privacy"
     }
   ],
-  "registry_digest": "sha256:740c86272080c8c807a88cc6322056a3eb579138645d17ef07596d4f5f9cc0e0",
+  "registry_digest": "sha256:5fca7e5202b0b5d5d66f9e8ec3156b1f616548bf4a3826e4855b1d4a6dd192c6",
   "rows": [
     {
       "id": "publication.incompatible_or_gap",
@@ -559,7 +561,7 @@
         "replay.request_capacity",
         "replay.local_plaintext"
       ],
-      "scenario": "replay honors OS access, uses one private plaintext backing and preserves request capacity gates",
+      "scenario": "replay honors OS access, uses one private plaintext backing and serves valid requests beyond accounting targets",
       "spec_id": "SPEC-20006"
     },
     {

@@ -11,6 +11,9 @@ use crate::replay::{ReplayConfig, ReplayManager, ReplayStore};
 use crate::server::core_runtime::model_ir::{ContentPart, ModelRequestIRV1};
 use hiroute_gateway_core::runtime::body::BudgetTree;
 
+#[path = "forwarding_budget_tests.rs"]
+mod forwarding_budget;
+
 struct ReplayFixture {
     store: ReplayStore,
     _root: TemporaryRoot,
@@ -26,6 +29,10 @@ impl Drop for TemporaryRoot {
 
 impl ReplayFixture {
     fn new(threshold: usize) -> Self {
+        Self::with_record_bytes(threshold, 31)
+    }
+
+    fn with_record_bytes(threshold: usize, record_bytes: usize) -> Self {
         let root = std::fs::canonicalize(std::env::temp_dir())
             .unwrap()
             .join(format!(
@@ -36,7 +43,7 @@ impl ReplayFixture {
         let manager = ReplayManager::open(ReplayConfig {
             root: root.clone(),
             memory_threshold_bytes: threshold,
-            record_bytes: 31,
+            record_bytes,
             orphan_ttl: Duration::from_secs(60),
         })
         .unwrap();
@@ -677,41 +684,6 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
 }
 
 #[test]
-fn optional_retention_pressure_preserves_the_original_synchronous_capture() {
-    use crate::server::core_runtime::adapters::decode_ingress_request;
-    use hiroute_gateway_core::runtime::body::MemoryRole;
-    let fixture = ReplayFixture::new(1024 * 1024);
-    let input = decode_ingress_request(
-        IngressProtocol::Responses,
-        &json!({"model":"route","input":"already owned inline content"}),
-    )
-    .unwrap();
-    fixture.store.prevalidate(&[]).unwrap();
-    let budget = fixture.store.budget();
-    let guard = budget
-        .reserve(
-            MemoryRole::ModelIrBacking,
-            budget.available_bytes().unwrap() - 64,
-        )
-        .unwrap();
-    let (observation, receiver, _gate) = asynchronous_observation();
-    observation.capture_request_async(&input, &fixture.store);
-    assert!(
-        observation.inner.async_content.get().is_none(),
-        "no async ownership was admitted"
-    );
-    loop {
-        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert!(record["loss_watermark"].is_null(), "{record}");
-        assert_ne!(record["phase"], "abort");
-        if record["phase"] == "finish" {
-            break;
-        }
-    }
-    drop(guard);
-}
-
-#[test]
 fn queued_snapshot_pressure_falls_back_before_async_content_ownership() {
     use crate::server::core_runtime::adapters::decode_ingress_request;
     let fixture = ReplayFixture::new(1024 * 1024);
@@ -884,7 +856,7 @@ fn active_snapshot_does_not_reduce_encoded_capacity_while_the_sink_is_blocked() 
     assert!(observation.inner.async_content.get().is_some());
     observation.inner.channels.content_work.flush(&observation);
     // All encoding completes while the existing sink is still blocked. The
-    // snapshot remains charged by the request budget until its job is done.
+    // snapshot remains admitted by Content ownership until its job is done.
     assert!(receiver.try_recv().is_err());
     drop(gate);
     let mut captured = Vec::new();
@@ -928,7 +900,9 @@ fn dense_async_history_waits_for_record_credit_and_keeps_every_original_byte() {
             Ok(accounted_acknowledgement(record))
         }
     }
-    let fixture = ReplayFixture::new(1024 * 1024);
+    // Keep the source disk-backed under this deliberately small Content
+    // allowance, so this scenario exercises encoded-record backpressure.
+    let fixture = ReplayFixture::with_record_bytes(16 * 1024, 16 * 1024);
     let messages: Vec<_> = (0..256)
         .map(|index| {
             json!({

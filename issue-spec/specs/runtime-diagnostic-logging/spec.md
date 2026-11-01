@@ -36,6 +36,21 @@ Redundant native endpoint aliases cannot fabricate separate credential failures.
 Observation being disabled does not make the diagnostic model outcome automatically
 successful or unknown if the runtime has an authoritative result.
 
+Terminal local Core execution errors MUST remain typed until diagnostic
+classification. At Info, a failed request MUST retain its closed error source and
+reason, content-free request scale and whether an Attempt or response began.
+Memory admission refusal evidence MUST retain role, requested bytes and current
+stream/worker/process usage and limits at refusal, surviving later owner cleanup.
+An optional-work refusal MUST NOT by itself be labeled the terminal cause.
+
+#### Scenario: A long request disconnects before any model Attempt
+
+- **WHEN** locally admitted execution fails before an upstream Attempt begins
+- **THEN** the same request's diagnostic identity MUST relate the terminal local
+  error to request scale and available allocation-refusal evidence at Info,
+  without raw errors, prompts, headers or credentials; diagnostics MUST preserve
+  the existing failure, cancellation and cleanup behavior.
+
 #### Scenario: A Home read is rejected after successful Local Control calls
 
 - **WHEN** Desktop snapshot or observation transport succeeds but the final product
@@ -210,3 +225,11 @@ A blocked sink allows the model request to finish. Later queue/sink work changes
 only the separate asynchronous counters. Queue overflow, invalid ACK, NACK and
 panic retain explicit loss accounting, while cancellation freezes the request
 clock once and still releases its summary through the existing logger.
+
+#### Scenario: Handled candidate preparation failure retains its cause
+
+Provider materialization failure MUST emit `attempt_preparation_failure` at Warn
+with the same request correlation, closed failure classification, numeric request
+shape and pre-cleanup memory refusal evidence. This event is emitted before the
+Core handles the failure with a local HTTP reply or advances selection. It MUST
+NOT claim an upstream attempt began or decide the final request outcome.
