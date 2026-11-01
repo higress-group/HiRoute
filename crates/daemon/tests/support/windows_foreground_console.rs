@@ -75,10 +75,15 @@ fn natural_case(event: &str) {
         "the actual public CLI keeps its console image"
     );
     let host = std::env::current_exe().unwrap();
+    let entry = if event == "version" {
+        "windows_foreground_console::daemon_version_console_host"
+    } else {
+        ENTRY
+    };
     let arguments = [
         "--ignored",
         "--exact",
-        ENTRY,
+        entry,
         "--nocapture",
         "--test-threads=1",
     ]
@@ -149,9 +154,11 @@ fn natural_case(event: &str) {
         );
     }
     ready.expect("actual foreground readiness through preserved inherited pipes");
-    let status = product.cli(&["system", "status"]);
-    assert_eq!(status["status"], "succeeded");
-    child.stdin.take().unwrap().write_all(b"signal\n").unwrap();
+    if event != "version" {
+        let status = product.cli(&["system", "status"]);
+        assert_eq!(status["status"], "succeeded");
+        child.stdin.take().unwrap().write_all(b"signal\n").unwrap();
+    }
     let deadline = Instant::now() + Duration::from_secs(35);
     loop {
         if let Some(code) = child.exit_code().unwrap() {
@@ -206,6 +213,40 @@ fn actual_windows_service_run_ctrl_c_drains_the_gui_daemon_and_preserves_pipes()
 #[test]
 fn actual_windows_service_run_ctrl_break_drains_the_gui_daemon_and_preserves_pipes() {
     natural_case("ctrl-break");
+}
+
+#[test]
+fn actual_windows_daemon_version_uses_parent_console_and_preserves_pipes() {
+    natural_case("version");
+}
+
+#[test]
+#[ignore = "a child fixture used only inside a fresh held native test console"]
+fn daemon_version_console_host() {
+    assert_eq!(std::env::var(MODE).unwrap(), "version");
+    assert!(console::is_attached().unwrap());
+    let layout = hiroute_host_runtime::StandaloneLayout::from_environment().unwrap();
+    let record = hiroute_host_runtime::read_standalone_install_record(&layout.marker_path).unwrap();
+    let daemon = hiroute_host_runtime::standalone_daemon_binary(&record.install_root);
+    assert_eq!(subsystem(&daemon), 2);
+    println!("{READY}");
+    std::io::stdout().flush().unwrap();
+    for flag in ["--version", "-V"] {
+        let visible = super::windows_version_output::without_inherited_stdio(&daemon, flag);
+        assert_eq!(visible["schema"], "hiroute.build-identity/v1");
+        assert_eq!(visible["component"], "daemon");
+        assert_eq!(visible["version"], env!("CARGO_PKG_VERSION"));
+        // The same attached parent also verifies that inherited pipes survive.
+        let redirected = Command::new(&daemon).arg(flag).output().unwrap();
+        assert!(redirected.status.success());
+        assert!(redirected.stderr.is_empty());
+        assert_eq!(
+            serde_json::from_slice::<Value>(&redirected.stdout).unwrap(),
+            visible
+        );
+    }
+    println!("{DONE}");
+    std::io::stdout().flush().unwrap();
 }
 
 #[test]

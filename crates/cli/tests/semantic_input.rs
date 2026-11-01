@@ -167,3 +167,111 @@ fn incomplete_drafts_remain_legal_while_publication_reports_missing_work() {
     assert_eq!(exit, 2);
     assert_eq!(error["data"]["diagnostic"]["path"], "$.change.editor.work");
 }
+
+#[test]
+fn delegation_purpose_is_required_only_for_publication_with_delegation() {
+    let mut request = plan();
+    request["change"]["editor"]["purpose"] = json!("");
+    request["change"]["editor"]["work"] = json!({"harness":"codex_cli","protocol":"responses"});
+    let (exit, reply, _) = invoke(&["routing", "preview"], &request, true);
+    assert_eq!(exit, 6, "a routing-only Plan may omit purpose: {reply}");
+    request["change"]["editor"]["delegation_enabled"] = json!(true);
+    let editor: hiroute_domain::PlanEditorStateV2 =
+        serde_json::from_value(request["change"]["editor"].clone()).unwrap();
+    assert!(editor.validate_draft().is_ok());
+    assert!(editor.effective().is_err());
+    let (exit, reply, stderr) = invoke(&["routing", "preview"], &request, true);
+    assert_eq!(exit, 2);
+    assert_eq!(
+        reply["data"]["diagnostic"]["path"],
+        "$.change.editor.purpose"
+    );
+    assert_eq!(
+        reply["data"]["diagnostic"]["category"],
+        "semantic_requirement"
+    );
+    assert!(stderr.contains("nonempty Plan purpose"));
+    let (exit, legacy, _) = invoke(&["routing", "preview"], &request, false);
+    assert_eq!(exit, 2);
+    assert_eq!(legacy["error"], reply["error"]);
+    assert!(legacy.get("data").is_none());
+}
+
+fn custom_plan() -> Value {
+    let mut request = plan();
+    let editor = &mut request["change"]["editor"];
+    editor["mode"] = json!("custom_branches");
+    editor["branch_routing"] = json!({
+        "classifier":{"kind":"decision_service","service":{
+            "id":"decision/semantic-input","revision":1,"name":"Branch fixture",
+            "connection":{"kind":"system_one","provider":"compatible","model":"fixture",
+                "endpoint":"https://decision.example/systemone","timeout_ms":3000,
+                "auth_header":{"name":"Authorization","value_secret_ref":"fixture"}}
+        }},
+        "default_branch_id":"routine",
+        "judgment":editor["smart"]["judgment"],
+        "branches":[
+            {"id":"routine","name":"Routine","condition":"Handle routine work",
+             "candidates":editor["candidates"],"primary_candidates":[],"judgment":null},
+            {"id":"private_branch_marker","name":"Independent branch","condition":"Handle other work",
+             "candidates":editor["candidates"],"primary_candidates":[],
+             "judgment":editor["smart"]["judgment"]}
+        ]
+    });
+    let typed: hiroute_domain::PlanEditorStateV2 = serde_json::from_value(editor.clone()).unwrap();
+    typed
+        .effective()
+        .expect("custom fixture must be publishable");
+    request
+}
+
+#[test]
+fn custom_judgment_ranges_report_closed_paths_without_branch_identities() {
+    let fields = [
+        (
+            "/branch_routing/judgment/degree/simple_threshold_millis",
+            "branch_routing.judgment.degree.simple_threshold_millis",
+        ),
+        (
+            "/branch_routing/judgment/competence/floor_millis",
+            "branch_routing.judgment.competence.floor_millis",
+        ),
+        (
+            "/branch_routing/branches/1/judgment/degree/simple_threshold_millis",
+            "branch_routing.branches[*].judgment.degree.simple_threshold_millis",
+        ),
+        (
+            "/branch_routing/branches/1/judgment/competence/floor_millis",
+            "branch_routing.branches[*].judgment.competence.floor_millis",
+        ),
+    ];
+    for (pointer, expected) in fields {
+        let mut request = custom_plan();
+        *request["change"]["editor"].pointer_mut(pointer).unwrap() = json!(1001);
+        let (exit, reply, stderr) = invoke(&["routing", "preview"], &request, true);
+        assert_eq!(exit, 2, "{reply}");
+        assert_eq!(reply["data"]["diagnostic"]["category"], "out_of_range");
+        assert_eq!(
+            reply["data"]["diagnostic"]["path"],
+            format!("$.change.editor.{expected}")
+        );
+        assert!(!format!("{reply}{stderr}").contains("private_branch_marker"));
+        let (exit, legacy, stderr) = invoke(&["routing", "preview"], &request, false);
+        assert_eq!(exit, 2);
+        assert_eq!(legacy["error"], reply["error"]);
+        assert!(legacy.get("data").is_none());
+        assert!(stderr.contains(expected));
+    }
+    for boundary in [0, 1000] {
+        let mut request = custom_plan();
+        for (pointer, _) in fields {
+            *request["change"]["editor"].pointer_mut(pointer).unwrap() = json!(boundary);
+        }
+        let (exit, reply, _) = invoke(&["routing", "preview"], &request, true);
+        assert_eq!(
+            exit, 6,
+            "valid custom boundaries must reach transport: {reply}"
+        );
+        assert_eq!(reply["error"]["code"], "DAEMON_UNAVAILABLE");
+    }
+}

@@ -27,6 +27,44 @@ def run(product, plan, binding, submit):
         assert not path.exists(), 'invalid choices produced a submission file'
     assert product.cli('routing', 'show', plan)['data'] == baseline['data']
 
+    # A routing-only Plan can legitimately have no purpose. The new delegation
+    # choices must surface --purpose before any exact Apply file is emitted.
+    template_path = product.project / 'worker-plan-purpose-template.json'
+    product.cli('routing', 'preview', '--plan', plan, '--name', 'Purpose setup',
+                '--apply-file', str(template_path))
+    change = json.loads(template_path.read_text())['change']
+    change['editor']['purpose'] = ''
+    empty = product.cli('routing', 'preview', '--request-stdin',
+                        '--apply-file', str(product.project / 'worker-plan-empty-purpose.json'),
+                        payload={'change': change})['data']
+    submit(product, empty)
+    empty_state = product.cli('routing', 'show', plan)['data']
+    assert empty_state['desired']['purpose'] == ''
+    missing_path = product.project / 'worker-plan-missing-purpose.json'
+    missing = product.cli('routing', 'preview', '--plan', plan, '--delegation', 'enable',
+                          '--worker-harness', 'codex_cli', '--worker-protocol', 'responses',
+                          '--apply-file', str(missing_path), expected=2)
+    assert missing['data']['required_choices'] == ['--purpose'], missing
+    assert not missing_path.exists()
+    assert product.cli('routing', 'show', plan)['data'] == empty_state
+    complete = product.cli('routing', 'preview', '--plan', plan, '--delegation', 'enable',
+                           '--worker-harness', 'codex_cli', '--worker-protocol', 'responses',
+                           '--purpose', 'Delegate bounded work',
+                           '--apply-file', str(product.project / 'worker-plan-with-purpose.json'))['data']
+    submit(product, complete)
+    assert product.cli('routing', 'show', plan)['data']['desired']['purpose'] == 'Delegate bounded work'
+    disabled = product.cli('routing', 'preview', '--plan', plan, '--delegation', 'disable',
+                           '--purpose', ' ',
+                           '--apply-file', str(product.project / 'worker-plan-clear-purpose.json'))['data']
+    submit(product, disabled)
+    assert product.cli('routing', 'show', plan)['data']['desired']['purpose'] == ''
+    missing_again = product.cli('routing', 'preview', '--plan', plan, '--delegation', 'enable', expected=2)
+    assert missing_again['data']['required_choices'] == ['--purpose'], missing_again
+    restored = product.cli('routing', 'preview', '--plan', plan, '--restore-from', str(saved),
+                           '--apply-file', str(product.project / 'worker-plan-purpose-restore.json'))['data']
+    submit(product, restored)
+    assert product.cli('routing', 'show', plan)['data']['desired'] == desired
+
     # A new Plan has explicit work without copying a complete editor template.
     path = product.project / 'worker-plan-new-preview.json'
     product.cli('routing', 'preview', '--name', 'Delegation preview', '--purpose', 'Bounded work',
@@ -73,4 +111,5 @@ def run(product, plan, binding, submit):
     assert len(product.upstream.requests) == source_calls, 'Plan setup made an implicit model call'
     return {'scenario': 'installed-cli-worker-plan-setup', 'state': 'green',
             'explicit_choices': True, 'preview_did_not_publish': True,
-            'omitted_work_preserved': True, 'complete_restore': True}
+            'omitted_work_preserved': True, 'complete_restore': True,
+            'empty_purpose_required_before_delegation': True}
