@@ -11,10 +11,12 @@ export function fixtureDecisionContext(input: DecisionContextPreviewInput): Reso
   const known = knownTypeSafe || openai;
   const maintained = openai ? 1050000 : knownTypeSafe ? enabled ? 262144 : 64000 : 32000;
   const request = input.policy.window_tokens ?? maintained;
-  const question = input.policy.per_question_tokens ?? Math.min(request, knownTypeSafe && !enabled ? 32000 : request);
+  const providerQuestion = knownTypeSafe ? enabled ? 262144 : 32000 : null;
+  const question = input.policy.per_question_tokens ?? Math.min(request, providerQuestion ?? request);
+  const requestSource = input.policy.mode === 'custom' ? 'user' : known ? 'metadata' : 'fallback';
   const resolved: ResolvedDecisionContext = { ...fallback, request_window_tokens: request, per_question_window_tokens: question,
-    request_source: input.policy.mode === 'custom' ? 'user' : known ? 'metadata' : 'fallback',
-    per_question_source: input.policy.per_question_tokens ? 'user' : known ? 'metadata' : input.policy.mode === 'custom' ? 'user' : 'fallback',
+    request_source: requestSource,
+    per_question_source: input.policy.per_question_tokens ? 'user' : providerQuestion !== null ? 'metadata' : requestSource,
     typesafe_long_context_header: enabled,
     metadata: known ? { binding_key: 'fixture/decision', interface_key: 'fixture/interface', constraint_key: enabled ? 'fixture/long' : 'fixture/default', basis: openai ? 'maintainer_policy' : 'inferred', evidence_refs: ['fixture/public-source'], note: 'Synthetic metadata for browser presentation.' } : null };
   // Synthetic identity varies with every input. This is not a runtime snapshot digest oracle.

@@ -33,6 +33,7 @@ use crate::{LocalSecretStore, LocalStorageSet, RuntimeStore};
 
 mod compensation_guards;
 mod decision;
+mod decision_context;
 mod defaults;
 mod key_budget_replay;
 mod key_budgets;
@@ -158,6 +159,15 @@ fn unexpected(context: &'static str) -> PortError {
 }
 
 impl ConnectionOptionAuthorizationPort for ControlStore {
+    fn resolve_decision_context(
+        &self,
+        endpoint: &str,
+        protocol: hiroute_domain::DecisionWireProtocolV2,
+        model: &str,
+        policy: &hiroute_domain::DecisionContextPolicyV1,
+    ) -> PortResult<hiroute_domain::ResolvedDecisionContextV1> {
+        decision_context::resolve(endpoint, protocol, model, policy)
+    }
     fn decision_source(
         &self,
         source_id: &str,

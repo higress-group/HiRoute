@@ -23,7 +23,7 @@ async function until(predicate, label, timeout = 6000) {
   while (!predicate()) { if (Date.now() > deadline) throw new Error(`Timed out: ${label}; ${text().slice(-500)}`); await pause(25); }
   await pause(30);
 }
-async function click(label) { await until(() => button(label), label); button(label).click(); await pause(40); }
+async function click(label) { await until(() => button(label) && !button(label).matches(':disabled'), label); button(label).click(); await pause(40); }
 async function deviceScan() {
   await click('模型'); await click('添加模型');
   await until(() => all('.add-choice').some(item => item.textContent.includes('扫描本机')), 'scan choice');
@@ -935,7 +935,7 @@ const scenarios = [
     await until(() => all('.decision-test-state.stale').length === 1, 'key rotation marks the earlier pass stale');
     assert(calls('test_decision_service_v3').length === 1, 'Returning from the detour retested implicitly');
     await click('取消'); await click('放弃修改');
-    await until(() => text().includes('上次测试通过 — 凭据或配置已变化'), 'stale detail state');
+    await until(() => text().includes('上次测试通过 — 凭据、网络或配置已变化'), 'stale detail state');
     store.test = () => ({ outcome: 'failed', failure_code: 'DECISION_AUTHENTICATION_REJECTED' });
     await click('重新测试'); await until(() => text().includes('连接测试失败'), 'shared authentication failure');
     assert(button('管理 API 接入') && button('编辑决策模型') && !text().includes('DECISION_AUTHENTICATION_REJECTED'), 'Shared authentication failure lacks repairs or exposes raw codes');
@@ -980,7 +980,7 @@ const scenarios = [
     const tests = () => calls('test_decision_service_v3').length;
     store.test = () => { rotate(8); return { outcome: 'passed' }; };
     await click('测试连接'); await until(() => state() && state() !== 'testing', 'test with rotation');
-    assert(state() === 'stale' && text().includes('凭据或配置已变化') && !text().includes('连接测试通过'), `Key rotation during the test still showed a current pass: ${state()}`);
+    assert(state() === 'stale' && text().includes('凭据、网络或配置已变化') && !text().includes('连接测试通过'), `Key rotation during the test still showed a current pass: ${state()}`);
     store.test = () => ({ outcome: 'passed' });
     await click('重新测试'); await until(() => state() === 'passed', 'test on unchanged state');
     const detour = async () => { await click('编辑'); await click('管理 API 接入'); await until(() => button('返回决策模型 — 草稿已保留'), 'detour'); };
@@ -990,7 +990,7 @@ const scenarios = [
     const read = c().handlers.decision_services_v3;
     await detour(); c().handlers.decision_services_v3 = () => { throw { code: 'DAEMON_UNAVAILABLE' }; }; await back();
     await until(() => state() === 'unverified', 'failed readback leaves the pass unverified');
-    assert(text().includes('未能读取当前凭据状态') && !text().includes('连接测试通过') && all('.decision-test-state.stale').length === 1, 'Failed readback still presented a current pass');
+    assert(text().includes('未能读取当前凭据或网络状态') && !text().includes('连接测试通过') && all('.decision-test-state.stale').length === 1, 'Failed readback still presented a current pass');
     assert(tests() === 2, 'Returning from management retested implicitly');
     c().handlers.decision_services_v3 = read;
     await click('刷新'); await until(() => state() === 'passed', 'successful readback confirms the admitted state');

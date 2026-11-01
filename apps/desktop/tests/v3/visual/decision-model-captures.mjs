@@ -50,7 +50,7 @@ const driver = `(() => {
     if (kind === 'typesafe') {
       setInput(field('model'), 'jev-1.14.0'); await until(() => box().textContent.includes('262,144'), 'TypeSafe long context');
       box().querySelector('input[type="checkbox"]').click(); await until(() => box().textContent.includes('64,000'), 'TypeSafe smaller cap');
-    } else if (kind === 'custom' || kind === 'invalid') {
+    } else if (kind === 'custom' || kind === 'question' || kind === 'invalid') {
       contextControl(label('自定义', 'Custom')).click(); await pause(40);
       setInput(field('context_window'), kind === 'invalid' ? '4294967296' : '4294967295');
       contextControl(label('高级：单个问题上限', 'Advanced: per-question limit')).click(); await pause(40);
@@ -64,7 +64,9 @@ const driver = `(() => {
       await until(() => box().textContent.includes(kind === 'loading' ? label('正在解析', 'Resolving') : kind === 'error' ? label('无法解析', 'could not be resolved') : '1,050,000'), 'context status');
     }
     box().scrollIntoView({ block: 'center' });
-    if (kind === 'custom' || kind === 'invalid') field('context_question').scrollIntoView({ block: 'center' });
+    if (kind === 'question') field('context_question').scrollIntoView({ block: 'center' });
+    if (kind === 'custom' || kind === 'invalid') field('context_window').scrollIntoView({ block: 'center' });
+    if (kind === 'typesafe') box().querySelector('input[type="checkbox"]').scrollIntoView({ block: 'center' });
     return '.decision-context';
   }
   // Route -> decision model -> API connection -> decision model -> route, stopping at the requested step.
@@ -102,6 +104,7 @@ const driver = `(() => {
     'context-known': () => contextForm('known'),
     'context-unknown': () => contextForm('unknown'),
     'context-custom': () => contextForm('custom'),
+    'context-question': () => contextForm('question'),
     'context-invalid': () => contextForm('invalid'),
     'context-typesafe': () => contextForm('typesafe'),
     'context-error': () => contextForm('error'),
@@ -167,7 +170,7 @@ const driver = `(() => {
 
 export async function decisionModelCaptures(client, baseUrl, output) {
   const results = [];
-  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) for (const state of ['shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-invalid', 'context-typesafe', 'context-error', 'context-loading']) {
+  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) for (const state of ['shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-question', 'context-invalid', 'context-typesafe', 'context-error', 'context-loading']) {
     await navigate(client, new URL('product-shell.html', baseUrl).href, viewport);
     await waitFor(client, 'Boolean(window.productShell)');
     await evaluate(client, `(() => { const c = window.productShell; c.reset(); localStorage.setItem('hiroute.language', ${JSON.stringify(language)}); localStorage.setItem('hiroute.theme', ${JSON.stringify(theme)}); })()`);
@@ -177,6 +180,7 @@ export async function decisionModelCaptures(client, baseUrl, output) {
       await writeFile(path.join(output, `failed-${state}.txt`), await evaluate(client, `document.body.innerText`));
       throw new Error(`Decision model capture ${state} (${language}/${theme}/${viewport.width}): ${cause.message}`);
     });
+    await waitFor(client, `Boolean(document.querySelector(${JSON.stringify(anchor)}))`, { timeout: 7000 });
     // Test results and the route selector sit below the fold; centring keeps it clear of the sticky list header.
     if (['stale', 'unverified', 'nested-parent'].includes(state)) await evaluate(client, `document.querySelector(${JSON.stringify(anchor)}).scrollIntoView({ block: 'center' })`);
     await new Promise(resolve => setTimeout(resolve, 120));
