@@ -3,7 +3,9 @@ import { SecretTransportWarning } from '../../host/ConsoleUi';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Disclosure, UiIcon } from '../../ui';
 import { confirmDiscard, requestEditorReplacement, useDiscardGuard } from '../../ui/discard-guard';
-import type { DecisionServiceV2, DecisionServiceView, DecisionWireProtocol } from './contracts';
+import type { DecisionServiceV3, DecisionServiceView, DecisionWireProtocol } from './contracts';
+import { DecisionContextSettings, type ContextPreview } from './DecisionContextSettings';
+import { contextSignature } from './context-state';
 import {
   applySourceDefault, chooseMode, chooseProvider, chooseSource, comparable, currentBundle, displayName, editBundle, endpointHost,
   independentPresets, knownSources, lineageChanged, nativeIssues, nativeService, presetName, retainedIndependentAuth, sameBundle,
@@ -20,7 +22,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   initial: NativeDraft; saved: boolean; view: DecisionServiceView | null; revision: number; sources: SourceRead;
   language: 'zh' | 'en'; mutable: boolean; onRetrySources(): void | Promise<void>; onManageSource?(sourceId: string): void;
   onNetworkDirty?(dirty: boolean): void;
-  onSave(service: DecisionServiceV2, secret: string | null, test: boolean, sourceIds: string[]): Promise<NativeSaveOutcome>;
+  onSave(service: DecisionServiceV3, secret: string | null, test: boolean, sourceIds: string[]): Promise<NativeSaveOutcome>;
   onCancel(): void;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
@@ -32,10 +34,15 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   const networkChanged = useCallback((dirty: boolean) => { setNetworkDirty(dirty); onNetworkDirty?.(dirty); }, [onNetworkDirty]);
   const [issues, setIssues] = useState<Partial<Record<NativeIssueKey, string>>>({});
   const [credentialNotice, setCredentialNotice] = useState('');
+  const [contextPreview, setContextPreview] = useState<ContextPreview | null>(null);
+  const [contextRefresh, setContextRefresh] = useState(0);
   const [urlOpen, setUrlOpen] = useState(false), [protocolOpen, setProtocolOpen] = useState(false);
   const secret = useRef<HTMLInputElement>(null), form = useRef<HTMLFormElement>(null);
   const source = sourceFor(draft, sources, view);
   const bundle = currentBundle(draft, source);
+  const resolved = bundle && contextPreview?.state === 'ready' && contextPreview.signature === contextSignature(bundle) ? contextPreview.resolved : null;
+  const savedContext = view?.service && 'context' in view.service ? view.service.context?.resolved : null;
+  const contextAdoption = saved && !!resolved && (!savedContext || savedContext.context_digest !== resolved.context_digest);
   const listed = knownSources(sources);
   const retained = retainedIndependentAuth(draft, source);
   const dirty = !saved || comparable(draft, source, language) !== baseline || hasSecret;
@@ -91,14 +98,15 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
       });
       return;
     }
-    const service = nativeService(draft, source, revision + 1, replacing, language);
+    if (!resolved) return;
+    const service = nativeService(draft, source, revision + 1, replacing, language, resolved);
     const independentSecret = draft.mode === 'independent' && (replacing || !retained) ? secret.current?.value ?? null : null;
     setBusy(true);
     try {
       // Only the newly selected source is registered; a previously used source stays retained untouched.
       const outcome = await onSave(service, independentSecret || null, test, draft.mode === 'shared' && draft.sourceId ? [draft.sourceId] : []);
       // Conflicts and uncertain outcomes keep non-secret edits; a Key is never resubmitted implicitly.
-      if (outcome !== 'committed') clearSecret(t('未保存的 Key 已清除，请核对后重新填写。', 'The unsaved key was cleared. Review and enter it again.'));
+      if (outcome !== 'committed') { clearSecret(t('未保存的 Key 已清除，请核对后重新填写。', 'The unsaved key was cleared. Review and enter it again.')); setContextRefresh(value => value + 1); }
     } finally { setBusy(false); }
   }
 
@@ -178,6 +186,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
           </div>
           {draft.mode === 'shared' && source && !rebind && <InheritedSourceNetwork key={source.source_id} sourceId={source.source_id} target={{ kind: 'draft', endpoint_url: bundle.endpoint }} refreshKey={source.revision ?? 0} language={language} mutable={mutable && !busy && source.state !== 'missing'} onDirty={networkChanged} onSaved={onRetrySources} />}
           {suggestion && !sameBundle(bundle, suggestion) && (suggestion.model || suggestion.endpoint) && <button className="btn btn-quiet decision-suggested" type="button" onClick={() => update(resetToSuggested(draft, source))}><UiIcon name="refresh" />{t('使用建议设置', 'Use suggested settings')}</button>}
+          <DecisionContextSettings bundle={bundle} view={view} language={language} refreshKey={contextRefresh} onChange={context => { setDraft(editBundle(draft, source, { context })); setIssues({}); }} onPreview={setContextPreview} />
           <label className="field"><span className="field-label">{t('名称', 'Name')}</span><input className="input" data-native-field="name" maxLength={128} aria-invalid={!!issues.name} value={displayName(draft, source, language)} onChange={event => { setDraft({ ...draft, name: event.target.value, nameEdited: true }); setIssues({}); }} />{fieldError('name')}<span className="field-help">{t('在路由中用这个名称选择决策模型。', 'Use this name to select the decision model in routes.')}</span></label>
           <Disclosure label={t(`高级设置 · 超时 ${draft.timeout_ms / 1000} 秒`, `Advanced settings · ${draft.timeout_ms / 1000}s timeout`)} language={language}><label className="field"><span className="field-label">{t('决策超时（秒）', 'Decision timeout (seconds)')}</span><input className="input" data-native-field="timeout" type="number" min={0.001} max={3600} step={0.001} aria-invalid={!!issues.timeout} value={draft.timeout_ms / 1000} onChange={event => { setDraft({ ...draft, timeout_ms: Math.round(Number(event.target.value) * 1000) }); setIssues({}); }} />{fieldError('timeout')}</label></Disclosure>
           <p className="field-help decision-publish-note">{draft.mode === 'shared'
@@ -185,7 +194,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
             : t('更改模型、地址、协议或 Key 会生成新配置，需在路由中选用并发布。', 'Changing the model, URL, protocol or key creates a new configuration that must be selected and published in the route.')}</p>
         </>}
       </section>
-      <footer className="decision-form-actions">{networkDirty && <p className="field-help" role="status">{t('请先保存或放弃网络修改，再继续或离开；保存结果未确认时，请刷新原操作。', 'Save or discard the network changes before continuing or leaving. If a save is unconfirmed, refresh its original operation.')}</p>}<p className="field-help">{t('测试发送固定示例，可能消耗配额；不读取真实会话，也不能证明所有 Key 可用或路由质量。', 'Testing sends a fixed example and may use quota. It does not read real conversations and does not prove every key works or routing quality.')}</p><div className="field-actions"><button type="submit" className="btn btn-primary" disabled={!dirty || networkDirty}>{busy ? t('正在保存…', 'Saving…') : t('保存并测试', 'Save and test')}</button><button className="btn" type="button" disabled={!dirty || networkDirty} onClick={() => void submit(false)}>{t('仅保存', 'Save only')}</button><button className="btn btn-quiet" type="button" disabled={busy || networkDirty} onClick={() => void requestEditorReplacement('decisions').then(accepted => { if (accepted) onCancel(); })}>{t('取消', 'Cancel')}</button></div></footer>
+      <footer className="decision-form-actions">{networkDirty && <p className="field-help" role="status">{t('请先保存或放弃网络修改，再继续或离开；保存结果未确认时，请刷新原操作。', 'Save or discard the network changes before continuing or leaving. If a save is unconfirmed, refresh its original operation.')}</p>}<p className="field-help">{t('测试发送固定示例，可能消耗配额；不读取真实会话，也不能证明所有 Key 可用或路由质量。', 'Testing sends a fixed example and may use quota. It does not read real conversations and does not prove every key works or routing quality.')}</p><div className="field-actions"><button type="submit" className="btn btn-primary" disabled={!resolved || (!dirty && !contextAdoption) || networkDirty}>{busy ? t('正在保存…', 'Saving…') : t('保存并测试', 'Save and test')}</button><button className="btn" type="button" disabled={!resolved || (!dirty && !contextAdoption) || networkDirty} onClick={() => void submit(false)}>{t('仅保存', 'Save only')}</button><button className="btn btn-quiet" type="button" disabled={busy || networkDirty} onClick={() => void requestEditorReplacement('decisions').then(accepted => { if (accepted) onCancel(); })}>{t('取消', 'Cancel')}</button></div></footer>
     </fieldset>
   </form>;
 }

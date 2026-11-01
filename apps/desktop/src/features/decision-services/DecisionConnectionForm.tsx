@@ -3,22 +3,22 @@ import { useRef, useState } from 'react';
 import { Disclosure, UiIcon } from '../../ui';
 import { confirmDiscard, requestEditorReplacement, useDiscardGuard } from '../../ui/discard-guard';
 import type { DecisionService } from './types';
-import type { DecisionServiceV2 } from './contracts';
+import type { DecisionServiceV3 } from './contracts';
 import { initialAuthMode, protectedInput, sameEndpointOrigin, type AuthMode } from './presentation';
 import { DecisionIcon } from './DecisionIcon';
 
-type CustomService = DecisionServiceV2 & { connection: { kind: 'custom' } };
+type CustomService = DecisionServiceV3 & { connection: { kind: 'custom' } };
 /** Saved V1 custom content is edited as its V2 equivalent; an untouched record is not dirty. */
 function customDraft(service: DecisionService): CustomService {
   if (service.connection.kind !== 'custom') throw new Error('native decision models use DecisionModelForm');
   const { endpoint, timeout_ms, auth_header } = service.connection;
-  return { schema: 'hiroute.decision-service/v2', id: service.id, revision: service.revision, name: service.name, connection: { kind: 'custom', endpoint, timeout_ms, auth_header: auth_header ?? null } };
+  return { schema: 'hiroute.decision-service/v3', id: service.id, revision: service.revision, name: service.name, connection: { kind: 'custom', endpoint, timeout_ms, auth_header: auth_header ?? null } };
 }
 
 /** Custom extensions own their decision logic and stay separate from decision models. */
 export function DecisionConnectionForm({ initial: record, saved, language, mutable, onSave, onCancel, onProtocol }: {
   initial: DecisionService; saved: boolean; language: 'zh' | 'en'; mutable: boolean;
-  onSave(service: DecisionServiceV2, secret: string | null, test: boolean): Promise<unknown>;
+  onSave(service: DecisionServiceV3, secret: string | null, test: boolean): Promise<unknown>;
   onCancel(): void; onProtocol(): void;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;

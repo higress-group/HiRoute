@@ -165,6 +165,44 @@ mod tests {
     use serde_json::Value;
 
     #[test]
+    fn current_product_contract_retains_exact_context_and_configuration_identity() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../apps/desktop/tests/decision-services-v3-contract.json"
+        ))
+        .unwrap();
+        let services: crate::DecisionServicesV3 =
+            serde_json::from_value(fixture["decision_services_v3"]["result"].clone()).unwrap();
+        let change: hiroute_domain::DecisionServiceChangeV3 = serde_json::from_value(
+            fixture["save_decision_service_v3"]["args"]["input"]["change"].clone(),
+        )
+        .unwrap();
+        let preview: crate::DecisionContextPreviewRequestV1 =
+            serde_json::from_value(fixture["preview_decision_context"]["args"]["input"].clone())
+                .unwrap();
+        let context: hiroute_domain::ResolvedDecisionContextV1 =
+            serde_json::from_value(fixture["preview_decision_context"]["result"].clone()).unwrap();
+        assert!(context.validate());
+        assert!(preview.policy.validate());
+        assert!(change.validate());
+        let saved = change.service.unwrap();
+        assert_eq!(saved.context.as_ref().unwrap().resolved, context);
+        assert_eq!(
+            CanonicalDigest::of(&saved).unwrap(),
+            services.services[0].configuration_digest
+        );
+        assert_eq!(
+            services.services[0].service,
+            hiroute_domain::DecisionServiceRecord::V3(saved)
+        );
+        let _: ComplexityClassifierModeV1 =
+            serde_json::from_value(fixture["classifier_v3"].clone()).unwrap();
+        // A context-stripped V3 never becomes a legacy record.
+        let mut stripped = fixture["classifier_v3"]["service"].clone();
+        stripped.as_object_mut().unwrap().remove("context");
+        assert!(serde_json::from_value::<DecisionServiceRecord>(stripped).is_err());
+    }
+
+    #[test]
     fn product_contract_examples_deserialize_and_keep_exact_identity() {
         let fixture: Value = serde_json::from_str(include_str!(
             "../../../apps/desktop/tests/decision-services-v2-contract.json"

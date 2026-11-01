@@ -72,6 +72,7 @@ import { classifierFor, isCustomExtension, isNativeDecision } from '../src/featu
 
 const contract = JSON.parse(readFileSync(new URL('./decision-services-v2-contract.json', import.meta.url), 'utf8'));
 const [legacyView, sharedView] = contract.decision_services_v2.result.services;
+const contextContract = JSON.parse(readFileSync(new URL('./decision-services-v3-contract.json', import.meta.url), 'utf8'));
 const exampleSource = contract.decision_connection_sources.result.sources[0];
 
 test('host warnings compare the same hostname projection as source summaries without relaxing credential origins', () => {
@@ -144,8 +145,10 @@ test('an untouched V1 or V2 record opened in the V2 form is not dirty', () => {
 
 test('shared services bind the current lineage, and replaced or missing sources need an explicit choice', () => {
   const draft = draftFromRecord(sharedView.service);
-  const service = nativeService(draft, exampleSource, 3, false, 'en');
-  assert.equal(service.schema, 'hiroute.decision-service/v2');
+  const resolved = contextContract.preview_decision_context.result;
+  const service = nativeService(draft, exampleSource, 3, false, 'en', resolved);
+  assert.equal(service.schema, 'hiroute.decision-service/v3');
+  assert.deepEqual(service.context.resolved, resolved);
   assert.deepEqual(service.connection.authentication, sharedView.service.connection.authentication);
   assert.equal(service.connection.provider, 'openai');
   const replaced = { ...exampleSource, lineage_digest: 'sha256:replaced' };

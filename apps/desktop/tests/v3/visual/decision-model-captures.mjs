@@ -26,14 +26,14 @@ const driver = `(() => {
       keys: native.keys.map((key, index) => ({ ...key, key_id: source.source_id + '/key/' + index, model_statuses: [] })),
         target: { ...native.target, authority: source.endpoint_host } });
     }
-    c.handlers.decision_services_v2 = () => ({ services: state.services.map(service => c.decisionView(service, state.sources)) });
+    c.handlers.decision_services_v3 = () => ({ services: state.services.map(service => c.decisionView(service, state.sources)) });
     c.handlers.decision_connection_sources = () => ({ sources: structuredClone(state.sources) });
-    c.handlers.save_decision_service_v2 = ({ input }) => {
+    c.handlers.save_decision_service_v3 = ({ input }) => {
       state.services = state.services.filter(item => item.id !== input.change.id);
       if (input.change.service) state.services.push(structuredClone(input.change.service));
       return { operation_id: 'operation/decision', accepted_digest: 'sha256:' + '5'.repeat(64), state: 'succeeded' };
     };
-    c.handlers.test_decision_service_v2 = ({ input }) => ({ schema: 'hiroute.decision-service-test-result/v2', outcome: 'passed', failure_code: null, duration_millis: 412, tested_configuration_digest: input.expected_configuration_digest, tested_credential_state_revision: c.decisionView(state.services[0], state.sources).credential_state_revision });
+    c.handlers.test_decision_service_v3 = ({ input }) => ({ schema: 'hiroute.decision-service-test-result/v3', check: { schema: 'hiroute.decision-service-test-result/v2', outcome: 'passed', failure_code: null, duration_millis: 412, tested_configuration_digest: input.expected_configuration_digest, tested_credential_state_revision: c.decisionView(state.services[0], state.sources).credential_state_revision }, network: state.services[0].connection.authentication?.kind === 'shared_source' ? { policy: { mode: 'direct' }, expected_network_revision: 0, route: c.fixtureResponse('preview_native_network_route', { input: { target: { kind: 'decision' } } }) } : null, failure: null });
     return state;
   }
   const setInput = (element, value) => { Object.getOwnPropertyDescriptor(element.constructor.prototype, 'value').set.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })); };
@@ -106,7 +106,7 @@ const driver = `(() => {
       await until(() => document.querySelector('.decision-test-result.passed'), 'passed');
       await click(label('编辑', 'Edit')); await click(label('管理 API 接入', 'Manage API connection'));
       await until(() => document.querySelector('.decision-detour button'), 'detour');
-      c.handlers.decision_services_v2 = () => { throw { code: 'DAEMON_UNAVAILABLE' }; };
+      c.handlers.decision_services_v3 = () => { throw { code: 'DAEMON_UNAVAILABLE' }; };
       document.querySelector('.decision-detour button').click(); await pause(120);
       await click(label('取消', 'Cancel'));
       await until(() => document.querySelector('.decision-test-result[data-test-state="unverified"]'), 'unverified detail');

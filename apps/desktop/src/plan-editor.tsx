@@ -157,7 +157,7 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const [view, setView] = useState<'configuration' | 'performance'>(initialView);
   const trustEvidence = useTrustEvidence(plan?.agent_plan_id, active && view === 'configuration', refreshVersion);
   const [services, setServices] = useState<DecisionServiceView[]>([]);
-  useEffect(() => { if (active) void invoke<DecisionServices>('decision_services_v2', {}).then(value => setServices(value.services)).catch(() => {}); }, [active]);
+  useEffect(() => { if (active) void invoke<DecisionServices>('decision_services_v3', {}).then(value => setServices(value.services)).catch(() => {}); }, [active]);
   const [invalidFields, setInvalidFields] = useState(false);
   const [nameTouched, setNameTouched] = useState(false);
   const [validationIssue, setValidationIssue] = useState<ValidationIssue | null>(null);

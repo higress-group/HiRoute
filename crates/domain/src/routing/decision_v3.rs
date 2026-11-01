@@ -49,7 +49,7 @@ impl<'de> Deserialize<'de> for DecisionServiceV3 {
             connection: wire.connection,
             context: wire.context,
         };
-        if !service.validate() {
+        if !service.valid_context() {
             return Err(serde::de::Error::custom(
                 "V3 native connections require a valid context snapshot; custom extensions must omit it",
             ));
@@ -71,6 +71,10 @@ impl DecisionServiceV3 {
         {
             return false;
         }
+        self.valid_context()
+    }
+
+    fn valid_context(&self) -> bool {
         match (&self.connection, &self.context) {
             (DecisionConnectionV2::Custom { .. }, None) => true,
             (

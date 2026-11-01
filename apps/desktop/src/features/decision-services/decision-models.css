@@ -22,6 +22,18 @@
 .decision-heading .model-avatar { width: 42px; height: 42px; flex-shrink: 0; }
 .decision-neutral-icon { color: var(--accent); background: var(--accent-soft); }
 .decision-form-fields { display: flex; flex-direction: column; gap: 20px; }
+.decision-context { display: flex; flex-direction: column; gap: 12px; min-width: 0; border-top: 1px solid var(--divider); padding-top: 18px; }
+.decision-context > .field { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.decision-context .field-label { flex: none; width: auto; white-space: normal; }
+.decision-context-effective { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.decision-context-summary { display: grid; gap: 10px; margin: 0; width: 100%; }
+.decision-context-summary > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; align-items: baseline; }
+.decision-context-summary dt { color: var(--text-muted); font-size: calc(12px * var(--hr-text-scale)); overflow-wrap: break-word; }
+.decision-context-summary dd { margin: 0; color: var(--text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.decision-context-summary small { display: block; color: var(--text-muted); margin-top: 3px; }
+.decision-context-toggle { display: flex; align-items: flex-start; gap: 10px; min-width: 0; cursor: pointer; }
+.decision-context-toggle > input { flex: none; margin-top: 3px; }
+.decision-context-toggle .field-help { display: block; margin-top: 5px; }
 .decision-form-fields .field, .decision-selector .field { margin: 0; }
 .decision-form-fields .disclosure-body > .field + .field { margin-top: 16px; }
 .decision-providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }

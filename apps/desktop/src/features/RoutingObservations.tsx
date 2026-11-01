@@ -1,6 +1,17 @@
 import React, { useState } from 'react';
 import { Disclosure } from '../ui';
 
+export type DecisionContextObservation = {
+  schema: 'hiroute.decision-context-observation/v1'; context_digest: string;
+  request_source: 'user' | 'metadata' | 'fallback'; question_source: 'user' | 'metadata' | 'fallback';
+  request_window_tokens: number; question_window_tokens: number; request_usable_tokens: number; question_usable_tokens: number;
+  estimator: string; estimated_request_tokens: number | null; estimated_largest_question_tokens: number | null; encoded_bytes: number | null;
+  target_turns_retained: number; target_turns_removed: number; target_steps_retained: number; target_steps_removed: number | null;
+  prior_turns_retained: number; prior_turns_removed: number; prior_steps_retained: number; prior_steps_removed: number | null;
+  replay_messages_retained: number; replay_messages_omitted: number | null; replay_envelopes_scanned: number; replay_envelopes_unscanned: number | null;
+  replay_truncated: boolean; replay_boundary_unavailable: boolean; replay_budget_omitted: boolean; target_partial: boolean;
+  limiting_constraint: 'request' | 'question' | 'json_shape'; no_fit_reason: 'mandatory_core' | 'mandatory_shape' | 'accounting' | null;
+};
 export type RoutingObservation = {
   protocol: string; content_digest: string; bundle_digest: string; provider: string; model: string; standard: string;
   target_segment: string | null; target_complete: boolean; eligibility: string;
@@ -8,6 +19,7 @@ export type RoutingObservation = {
   protection_action: string; simple_probability: number | null; simple_threshold_millis: number;
   score: number | null; competence_floor_millis: number; applicability_boundary_millis: number;
   request_bytes: number; prior_retained: number; prior_removed: number; stage_retained: number; stage_removed: number;
+  context_budget?: DecisionContextObservation | null;
 };
 type Counts = {
   c_decisions: number; requested: number; unavailable: number; no_target_omissions: number; partial_target_omissions: number;
@@ -61,6 +73,23 @@ export function RoutingDecisionDetail({ observation: o, language }: { observatio
     <p>{text('目标阶段 ', 'Target stage ')}{o.target_segment ?? '—'} · {o.target_complete ? text('完整', 'complete') : text('不可用或不完整', 'unavailable or partial')} · {o.eligibility}</p>
     <p>{text('原始评分 ', 'Raw score ')}{o.score ?? '—'} · {text('当时胜任下限 ', 'Competence floor ')}{o.competence_floor_millis / 1000}</p>
     <p>{text('背景保留 / 移除 ', 'Prior turns retained / removed ')}{o.prior_retained} / {o.prior_removed} · {text('目标保留 / 移除 ', 'Target turns retained / removed ')}{o.stage_retained} / {o.stage_removed} · {o.request_bytes} B</p>
+    {o.context_budget && <DecisionContextDetail budget={o.context_budget} language={language} />}
     <p>{o.provider} / {o.model} · {o.standard === 'default' ? text('默认评分', 'Default assessment') : text('自定义评分', 'Custom assessment')}</p>
   </section>;
+}
+
+function DecisionContextDetail({ budget: b, language }: { budget: DecisionContextObservation; language: 'zh' | 'en' }) {
+  const text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  const number = (value: number | null) => value == null ? text('未知', 'Unknown') : value.toLocaleString();
+  const source = (value: DecisionContextObservation['request_source']) => value === 'user' ? text('自定义', 'Custom') : value === 'metadata' ? text('模型元信息', 'Model metadata') : text('保守默认', 'Conservative default');
+  const limit = b.limiting_constraint === 'question' ? text('单个问题上限', 'Per-question limit') : b.limiting_constraint === 'json_shape' ? text('接口结构上限', 'Interface shape limit') : text('总窗口', 'Request window');
+  return <Disclosure label={text('上下文分配', 'Context allocation')} language={language}>
+    {b.no_fit_reason && <p className="quality-coverage">{text('本地预算无法容纳完整当前输入与决策问题，已进入回退，未调用决策模型。', 'The complete current input and decision questions did not fit the local budget. Routing fell back without calling the decision model.')}</p>}
+    <p>{text('总窗口', 'Request window')} {number(b.request_window_tokens)} ({source(b.request_source)}) · {text('每个问题', 'Per question')} {number(b.question_window_tokens)} ({source(b.question_source)})</p>
+    <p>{text('扣除预留后可用', 'Usable after reserve')} {number(b.request_usable_tokens)} / {number(b.question_usable_tokens)} · {text('估算总量 / 最大问题', 'Estimated request / largest question')} {number(b.estimated_request_tokens)} / {number(b.estimated_largest_question_tokens)} · {limit}</p>
+    <p>{text('目标步骤保留 / 移除', 'Target steps retained / removed')} {number(b.target_steps_retained)} / {number(b.target_steps_removed)} · {text('背景步骤保留 / 移除', 'Prior steps retained / removed')} {number(b.prior_steps_retained)} / {number(b.prior_steps_removed)}</p>
+    <p>{text('重放文本保留 / 省略', 'Replay texts retained / omitted')} {number(b.replay_messages_retained)} / {number(b.replay_messages_omitted)} · {text('已扫描 / 未扫描消息', 'Scanned / unscanned envelopes')} {number(b.replay_envelopes_scanned)} / {number(b.replay_envelopes_unscanned)}</p>
+    {(b.target_partial || b.replay_truncated || b.replay_boundary_unavailable || b.replay_budget_omitted) && <p className="quality-coverage">{[b.target_partial && text('目标不完整', 'Partial target'), b.replay_truncated && text('重放内容已截取', 'Replay truncated'), b.replay_boundary_unavailable && text('重放边界不可用', 'Replay boundary unavailable'), b.replay_budget_omitted && text('重放内容因预算省略', 'Replay omitted by budget')].filter(Boolean).join(' · ')}</p>}
+    <p className="oc-meta">{text('采用转义后 UTF-8 字节的保守估算，预留仅计算一次。未扫描内容的总量显示为未知。', 'Uses conservative escaped UTF-8 byte accounting with one reserve. Totals for unscanned content remain unknown.')}</p>
+  </Disclosure>;
 }

@@ -7,7 +7,7 @@ import { randomId } from '../../random-id.ts';
 import type { DecisionService } from './types';
 import type {
   DecisionConnectionSources, DecisionServiceApplyResult, DecisionServiceChange, DecisionServices, DecisionServiceNetworkTestResult,
-  DecisionServiceV2, DecisionServiceView,
+  DecisionServiceV3, DecisionServiceView,
 } from './contracts';
 import type { Draft, Plan } from '../../plan-editor';
 import { planErrorCode } from '../../plan-editor-errors';
@@ -86,7 +86,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     const generation = ++serviceGeneration.current;
     setFactsCurrent(false);
     try {
-      const value = await invoke<DecisionServices>('decision_services_v2', {});
+      const value = await invoke<DecisionServices>('decision_services_v3', {});
       // A slower earlier read must not replace state confirmed after a Key change or a test.
       if (generation !== serviceGeneration.current) return null;
       const next = accept(value.services);
@@ -201,7 +201,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     setEditing(current => current && current.key === id ? { ...current, expected, isNew: !view } : current);
     return rebased;
   }
-  async function save(service: DecisionServiceV2, secret: string | null, runTest: boolean, sourceIds: string[]): Promise<NativeSaveOutcome> {
+  async function save(service: DecisionServiceV3, secret: string | null, runTest: boolean, sourceIds: string[]): Promise<NativeSaveOutcome> {
     if (!editing || busy) return 'failed';
     const useAtStart = useGeneration.current;
     const expected = editing.isNew ? 0 : editing.expected;
@@ -217,7 +217,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     let committed = false;
     setBusy(true); setError(null); setNotice('');
     try {
-      const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v2', { input: { change, secret } });
+      const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v3', { input: { change, secret } });
       if (value.state !== 'succeeded') throw { code: 'DECISION_SERVICE_' + value.state.toUpperCase() };
       committed = true;
       // An acknowledged write never leaves a resubmittable credential draft, even when readback fails.
@@ -259,7 +259,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     try {
       const change: DecisionServiceChange = { id: selected.service.id, expected_revision: selected.service.revision, service: null,
         expected_source_revisions: expectedSourceRevisions(selected.related_sources.map(source => source.source_id), sources, selected) };
-      const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v2', { input: { change, secret: null } });
+      const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v3', { input: { change, secret: null } });
       if (value.state !== 'succeeded') throw { code: 'DECISION_SERVICE_' + value.state.toUpperCase() };
       const remaining = await refresh(); if (remaining) setSelectedId(remaining[0]?.service.id ?? null); onChanged?.();
       setNotice(t('已删除。', 'Deleted.'));

@@ -95,7 +95,8 @@ fn routing(client: &LocalControlClient, options: &[String]) -> Result<Value> {
         let revision = revision
             .parse::<u64>()
             .map_err(|_| error(ErrorCode::InvalidArguments))?;
-        let services = data(client, "ListDecisionServicesV2", json!({}))
+        let services = data(client, "ListDecisionServicesV3", json!({}))
+            .or_else(|_| data(client, "ListDecisionServicesV2", json!({})))
             .or_else(|_| data(client, "ListDecisionServices", json!({})))?;
         let matches = services["services"]
             .as_array()
@@ -107,7 +108,9 @@ fn routing(client: &LocalControlClient, options: &[String]) -> Result<Value> {
         let [service] = matches.as_slice() else {
             return Err(choices(&["--decision-service"], services));
         };
-        let kind = if service["schema"] == "hiroute.decision-service/v2" {
+        let kind = if service["schema"] == "hiroute.decision-service/v3" {
+            "decision_service_v3"
+        } else if service["schema"] == "hiroute.decision-service/v2" {
             "decision_service_v2"
         } else {
             "decision_service"

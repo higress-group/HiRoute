@@ -58,6 +58,7 @@ fn request(
             if !result.blockers.is_empty() {
                 return Err(choices(&["resolve_preview_blockers"], preview.clone()));
             }
+            let current = result.normalized_spec.desired_state.get("schema").is_some();
             Ok((
                 json!(ApplyRequestV1 {
                     schema_version: CHANGE_SPEC_SCHEMA_V1,
@@ -74,6 +75,8 @@ fn request(
                 },
                 if command == "decision.services.apply" {
                     "ApplyDecisionService"
+                } else if current {
+                    "ApplyDecisionServiceV3"
                 } else {
                     "ApplyDecisionServiceV2"
                 },

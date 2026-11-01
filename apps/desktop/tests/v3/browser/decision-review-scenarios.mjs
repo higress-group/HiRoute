@@ -20,17 +20,17 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       assert(nativeField('credential').value === '', 'Suggested settings carried a pending key across origins');
       await click('仅保存');
       await until(() => text().includes('请填写 API Key'), 'credential required after an origin reset');
-      assert(calls('save_decision_service_v2').length === 0, 'An origin reset persisted the old pending key');
+      assert(calls('save_decision_service_v3').length === 0, 'An origin reset persisted the old pending key');
 
       setInput(nativeField('credential'), 'official-fixture-key');
       setInput(nativeField('model'), 'model-edited-within-the-same-origin'); await pause(40);
       await click('使用建议设置');
       assert(nativeField('credential').value === 'official-fixture-key', 'A same-origin suggestion reset discarded its key');
       await click('仅保存');
-      await until(() => calls('save_decision_service_v2').length === 1, 'explicit same-origin save');
-      const input = calls('save_decision_service_v2')[0].payload.input;
+      await until(() => calls('save_decision_service_v3').length === 1, 'explicit same-origin save');
+      const input = calls('save_decision_service_v3')[0].payload.input;
       assert(input.secret === 'official-fixture-key' && input.change.service.connection.endpoint === 'https://api.openai.com/v1/decisions', 'The new key was not paired with the intended origin');
-      assert(calls('test_decision_service_v2').length === 0, 'Save-only tested implicitly');
+      assert(calls('test_decision_service_v3').length === 0, 'Save-only tested implicitly');
     }),
     ...['route', 'trial'].map(context => scenario(`desktop.decisions.pending-use-${context}`, ['decision-services', 'routing-editor'], `A late save-and-test result cannot replace a newer decision draft in ${context}`, async () => {
       let store, releaseTest;
@@ -66,8 +66,8 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       await until(() => nativeField('source'), 'first decision draft');
       choose(nativeField('source'), sourceId); await pause(40);
       setInput(nativeField('name'), 'First saved decision'); await pause(40);
-      const originalTest = c().handlers.test_decision_service_v2;
-      c().handlers.test_decision_service_v2 = payload => new Promise(resolve => {
+      const originalTest = c().handlers.test_decision_service_v3;
+      c().handlers.test_decision_service_v3 = payload => new Promise(resolve => {
         const response = originalTest(payload); releaseTest = () => resolve(response);
       });
       await click('保存并测试');
@@ -76,9 +76,9 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       await until(() => nativeField('source'), 'second decision draft');
       choose(nativeField('source'), sourceId); await pause(40);
       setInput(nativeField('name'), 'Second unsaved decision'); await pause(40);
-      const reads = calls('decision_services_v2').length;
+      const reads = calls('decision_services_v3').length;
       releaseTest();
-      await until(() => calls('decision_services_v2').length > reads, 'late test readback');
+      await until(() => calls('decision_services_v3').length > reads, 'late test readback');
       await pause(120);
       assert(nativeField('name')?.value === 'Second unsaved decision', 'A late test selected the old service or closed the new draft');
       assert(!all('dialog.discard-dialog[open]').length, 'A stale completion tried to navigate through the new draft');
@@ -88,12 +88,12 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       await until(() => all('dialog.discard-dialog[open]').length, 'caller return honors the newer draft guard');
       await click('继续编辑');
       assert(nativeField('name')?.value === 'Second unsaved decision', 'Cancelling return lost the newer draft');
-      c().handlers.test_decision_service_v2 = originalTest;
+      c().handlers.test_decision_service_v3 = originalTest;
       await click('仅保存');
       await until(() => parentName()?.value === `Retained ${context} name`, 'explicit use returns to the retained caller');
       const second = store.services.find(service => service.name === 'Second unsaved decision');
       assert(second && all('.decision-selector select').some(select => select.value === second.id), 'Explicit use did not choose the newer service');
-      assert(calls('test_decision_service_v2').length === 1 && calls('preview_plan_editor').length === 0, 'The return implicitly tested or published');
+      assert(calls('test_decision_service_v3').length === 1 && calls('preview_plan_editor').length === 0, 'The return implicitly tested or published');
       await click('添加决策模型');
       await until(() => nativeField('source'), 'another unsaved decision');
       choose(nativeField('source'), sourceId); await pause(40);
