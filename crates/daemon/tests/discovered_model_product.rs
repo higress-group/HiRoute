@@ -472,6 +472,7 @@ async fn hirouted_client_core_discovery_save_and_restart_are_closed_and_network_
                 "happy-saved-source",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id.clone()),
+                    ..Default::default()
                 },
             )
             .await
@@ -507,6 +508,7 @@ async fn hirouted_client_core_discovery_save_and_restart_are_closed_and_network_
                 "restart-source",
                 ComputeManagementQueryV2 {
                     source_id: Some(source_id.clone()),
+                    ..Default::default()
                 },
             )
             .await

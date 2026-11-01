@@ -39,6 +39,7 @@ impl crate::LocalStorageSet {
                         .native_credential_unavailable(Stage::LeaseSourceMissing);
                     return Ok(false);
                 };
+                self.control().validate_current_key_budgets(source_id)?;
                 if source.state == MaterializationState::Disabled {
                     return Err(NativeCredentialLeaseErrorV1::Denied(
                         NativeCredentialAccessDeniedV1::SourceDisabled,

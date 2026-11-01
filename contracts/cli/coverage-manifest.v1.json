@@ -1303,6 +1303,34 @@
       }
     },
     {
+      "command_id": "compute.budgets.get",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.budgets.get.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.budgets.get.positive",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "compute.budgets.preview",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.compute.budgets.preview.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.compute.budgets.preview.positive",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "compute.defaults.get",
       "lifecycle": "released",
       "negative": {
@@ -1681,7 +1709,7 @@
       }
     }
   ],
-  "descriptor_digest": "sha256:9cc0651513ac62b99c12e9f8ea84362244d2de2a030f3aba4876bdd33057e36a",
+  "descriptor_digest": "sha256:8869b6c9460ddadec7c71213aae16ec9d7d3fcebc30fbcd9cd013e22a11ae04c",
   "schema_version": {
     "major": 1,
     "minor": 0

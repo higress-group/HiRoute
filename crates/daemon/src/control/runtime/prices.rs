@@ -140,6 +140,7 @@ impl LocalControlAdapter {
         }];
         check()?;
         let mut source_bindings = Vec::new();
+        let mut budget_currencies = std::collections::BTreeMap::new();
         let mut identities = BTreeSet::new();
         for source in &management.sources {
             check()?;
@@ -186,6 +187,27 @@ impl LocalControlAdapter {
                     (SourceOrigin::Cpa, BillingClass::Subscription, None)
                 }
             };
+            if source_origin == SourceOrigin::NativeApi
+                && matches!(billing_class, BillingClass::Paid | BillingClass::Unknown)
+            {
+                control
+                    .validate_current_key_budgets(&source.source_id)
+                    .map_err(map_port)?;
+                let ids = control
+                    .key_budget_bindings(&source.source_id)
+                    .map_err(map_port)?
+                    .into_values()
+                    .collect::<BTreeSet<_>>();
+                let mut currencies = BTreeSet::new();
+                for id in ids {
+                    let definition = control
+                        .key_budget_definition(&id)
+                        .map_err(map_port)?
+                        .ok_or(ControlReadError::Corrupt)?;
+                    currencies.insert(definition.policy.currency);
+                }
+                budget_currencies.insert(source.source_id.clone(), currencies);
+            }
             let execution_models =
                 hiroute_application::compute_management::compile_compute_management_source(source)
                     .unwrap_or_default()
@@ -291,6 +313,9 @@ impl LocalControlAdapter {
                 .collect::<BTreeSet<_>>();
             currencies.extend(documented.iter().map(|p| p.currency.clone()));
             currencies.insert("USD".into());
+            if let Some(budget) = budget_currencies.get(&binding.source_id) {
+                currencies.extend(budget.iter().cloned());
+            }
             currencies.extend(
                 overrides
                     .iter()

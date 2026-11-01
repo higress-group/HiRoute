@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-10-14",
+  "as_of": "2026-10-31",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -4222,6 +4222,49 @@
       "data_note": "Tool calling requires Responses; Chat Completions is supported without tool calling."
     },
     {
+      "model_key": "gpt-6.1-terra",
+      "publisher": "OpenAI",
+      "display_name": "GPT-6.1 Terra",
+      "canonical_identity": "gpt-6.1-terra",
+      "upstream_ids": [
+        "gpt-6.1-terra"
+      ],
+      "context_tokens": null,
+      "context_state": "unknown",
+      "max_output_tokens": null,
+      "max_output_state": "unknown",
+      "modalities": {
+        "text_input": "unknown",
+        "image_input": "unknown",
+        "text_output": "unknown"
+      },
+      "capabilities": {
+        "tool": "unknown",
+        "streaming": "unknown",
+        "web": "unknown",
+        "file": "unknown",
+        "computer": "unknown"
+      },
+      "reasoning": {
+        "kind": "discrete",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "note": "Reviewed family inference (2026-10-31): GPT-6.1 Terra uses the same five effort levels as GPT-6.1 Sol, following explicit user confirmation. source-175 documents Sol only, not Terra directly. No Terra provider default is asserted."
+      },
+      "identity_stability": "unknown",
+      "lifecycle": "unknown",
+      "source_stability_note": "Reasoning-only reviewed family inference; lifetime and other model properties remain unknown.",
+      "evidence_refs": [
+        "source-175"
+      ],
+      "data_note": "Reviewed family inference (2026-10-31): GPT-6.1 Terra uses the same five effort levels as GPT-6.1 Sol, following explicit user confirmation. source-175 documents Sol only, not Terra directly. No Terra provider default is asserted. Model identity is independent of Sol. Limits, modalities, other capabilities, pricing, account availability and protocol qualification are not inherited."
+    },
+    {
       "model_key": "grok-4-6",
       "publisher": "xAI",
       "display_name": "Grok 4.6",
@@ -7099,6 +7142,25 @@
       ]
     },
     {
+      "binding_key": "openai-platform-global/gpt-6.1-terra/gpt-6.1-terra",
+      "product_key": "openai-platform-global",
+      "model_key": "gpt-6.1-terra",
+      "upstream_model_id": "gpt-6.1-terra",
+      "lifecycle": "unknown",
+      "interface_candidates": [
+        "openai-platform-global/openai-chat",
+        "openai-platform-global/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Reasoning-only reviewed family inference from GPT-6.1 Sol. Terra account availability and each protocol require their own runtime qualification; tool, streaming, error and usage behavior are not inherited."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-175"
+      ]
+    },
+    {
       "binding_key": "tencent-hy-token-plan/hunyuan-hy3/hy3",
       "product_key": "tencent-hy-token-plan",
       "model_key": "hunyuan-hy3",
@@ -7922,6 +7984,12 @@
       "status": "runtime_required",
       "subject": "GPT-6 Sol/Luna Batch, Flex, Fast, and regional pricing and Claude Opus 5.5 cache-write duration, Batch, and Fast pricing are outside the recorded standard price schedules",
       "decision": "Treat absent components and schedules as unpriced, never free. Require matching product, service tier, region, prompt length, and cache duration before calculating a bill."
+    },
+    {
+      "decision_key": "openai-gpt-6-1-terra-efforts",
+      "status": "resolved_metadata_shape",
+      "subject": "GPT-6.1 Terra effort levels independently of its model identity and other properties",
+      "decision": "Reviewed family inference (2026-10-31): GPT-6.1 Terra uses the same five effort levels as GPT-6.1 Sol, following explicit user confirmation. source-175 documents Sol only, not Terra directly. No Terra provider default is asserted. Expose only low/medium/high/xhigh/max as a derived default for admitted official API models. Preserve manual settings and keep all remaining facts unknown/runtime-required."
     },
     {
       "decision_key": "openrouter-router-identity",

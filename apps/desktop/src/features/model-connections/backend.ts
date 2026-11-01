@@ -12,8 +12,9 @@ export function modelConnectionBackend(language: 'zh' | 'en'): ModelConnectionBa
     checkModelConnection: async (request, edit = networkEdit()) => flattenNetworkCheck(await invoke<NetworkCheckResponse>('check_model_connection_v2', { request: { request, network_edit: edit } })),
     checkRegisteredModelConnection: async (request, edit = networkEdit()) => flattenNetworkCheck(await invoke<NetworkCheckResponse>('check_registered_model_connection_v2', { request: { request, network_edit: edit } })),
     cancelModelConnectionCheck: checkId => invoke('cancel_model_connection_check', { checkId }),
-    previewComputeSave: async (change, edit) => {
+    previewComputeSave: async (change, edit, keyBudgetEdits) => {
       const current = await invoke<ManagementSnapshot>('compute_management_snapshot');
+      if (keyBudgetEdits?.length) return invoke('preview_compute_key_budgets', { change: { ...change, expected_revisions: current.revisions }, defaultPreferences: {}, networkEdit: edit ?? null, keyBudgetEdits });
       if (edit) return invoke('preview_compute_save_v4', { change: { ...change, expected_revisions: current.revisions }, defaultPreferences: {}, networkEdit: edit });
       return invoke('preview_compute_save_v3', { change: { ...change, expected_revisions: current.revisions }, defaultPreferences: {} });
     },

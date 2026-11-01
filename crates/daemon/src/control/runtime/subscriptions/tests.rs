@@ -4,6 +4,15 @@ use hiroute_domain::{ChangeSpecV1, SubscriptionCheckIntentV2, TransactionPlanV1}
 use serde_json::json;
 
 #[test]
+fn subscription_login_lease_conflict_is_unavailable_with_its_original_reason() {
+    let code = "SUBSCRIPTION_LOGIN_IN_USE";
+    assert_eq!(
+        subscription_error_status(Some(code)),
+        ComputeSubscriptionCheckStatusV2::Unavailable
+    );
+}
+
+#[test]
 fn rehydration_uses_approved_source_evidence_not_verified_account_evidence() {
     let source_evidence = CanonicalDigest::of_bytes(b"native-source-metadata");
     let verified_account_evidence = CanonicalDigest::of_bytes(b"checked-account-and-token");

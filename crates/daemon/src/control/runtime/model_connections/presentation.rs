@@ -24,7 +24,7 @@ use hiroute_domain::{
     ComputeManagementFactBasisV2, ComputeManagementMembershipV2, ComputeManagementProvenanceV2,
     ComputeManagementRepositoryPort, ComputeManagementSourceV2, ConnectionOrigin,
     ConnectorRuntimeKind, InventoryDisposition, MaterializationState, PriceBillingContextV1,
-    PriceModelIdentityV1, TokenRateV1, WorkspaceId,
+    PriceModelIdentityV1, PriceValuationKindV1, SourceOrigin, TokenRateV1, WorkspaceId,
 };
 use hiroute_integrations::{CpaRegisteredSourceV1, TrustedReleaseCatalog};
 
@@ -283,10 +283,17 @@ impl LocalControlAdapter {
                             PriceBillingContextV1::StandardTokens,
                         )
                         .ok()?;
-                    // An existing source-specific setting identifies an editable target even
-                    // when its current catalog quote has unknown rates. Entries without one
-                    // still need known rates so generated currencies do not become edit targets.
-                    if entry.source_override.is_none()
+                    // Paid/custom Native APIs need an entry to supply missing rates.
+                    // The currency set comes from documented prices, explicit settings
+                    // and bound budgets; this does not invent a price or entitlement.
+                    let native_usage = binding.source_origin == SourceOrigin::NativeApi
+                        && matches!(
+                            binding.billing_class,
+                            BillingClass::Paid | BillingClass::Unknown
+                        )
+                        && entry.target.valuation_kind == PriceValuationKindV1::UsageEstimate;
+                    if !native_usage
+                        && entry.source_override.is_none()
                         && (!matches!(quote.rates.input_uncached, TokenRateV1::Known { .. })
                             || !matches!(quote.rates.output, TokenRateV1::Known { .. }))
                     {

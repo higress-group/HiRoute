@@ -359,6 +359,7 @@ pub(crate) fn route_decision(plan_id: &str) -> ExecutionFactV1 {
 
 pub(crate) fn candidate(model: &str) -> ExecutionFactV1 {
     ExecutionFactV1::CandidateDecision(Box::new(CandidateDecisionFactV1 {
+        reasoning_resolution: None,
         candidate_id: "candidate-a".to_owned(),
         stable_binding_id: "binding-a".to_owned(),
         group_id: "group-primary".to_owned(),

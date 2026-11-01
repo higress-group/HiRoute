@@ -38,6 +38,21 @@ impl Client {
         .await
     }
 
+    pub async fn native_subscription_candidates(
+        &self,
+        request_id: &str,
+    ) -> Result<MachineEnvelopeV2<ComputeSubscriptionCandidatesV2>, ClientFailure> {
+        self.query(
+            LIST_COMPUTE_SUBSCRIPTIONS_OPERATION_V2,
+            request_id,
+            &ComputeSubscriptionCandidatesQueryV1 {
+                source: None,
+                native_only: true,
+            },
+        )
+        .await
+    }
+
     pub async fn compute_save_result(
         &self,
         request_id: &str,

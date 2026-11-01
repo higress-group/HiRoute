@@ -10,6 +10,8 @@ pub const STABLE_ROUTE_SCHEMA: &str = "hiroute.stable-route/v1";
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredProtocolChoiceV1 {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follow_request_reasoning: bool,
     pub ingress_protocol: UpstreamProtocol,
     /// Frozen model/transport guarantees required by the confirmed plan.
     pub capability: StoredModelCapabilitiesV1,
@@ -50,6 +52,7 @@ impl StoredProtocolChoiceV1 {
             .exact()
             .ok_or(CompiledPlanError::InvalidCandidate)?;
         Ok(Self {
+            follow_request_reasoning: profile.follow_request_reasoning,
             ingress_protocol: profile.ingress_protocol,
             capability: StoredModelCapabilitiesV1::freeze(&profile.capability),
             connector: StoredConnectorFactsV1 {
@@ -103,6 +106,7 @@ impl StoredProtocolChoiceV1 {
             forbidden.push(header.clone());
         }
         Ok(GatewayCandidateProtocolProfileV1 {
+            follow_request_reasoning: self.follow_request_reasoning,
             schema_version: "hiroute.candidate-protocol-profile/v1".into(),
             path_id: format!(
                 "{}-to-{}",

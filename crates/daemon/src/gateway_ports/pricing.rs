@@ -115,6 +115,28 @@ impl RequestPriceSnapshot for CapturedPrice {
         profile: &str,
         at_ms: i64,
     ) -> ExecutionPricingEvidenceV1 {
+        self.freeze_currency(binding, model, profile, at_ms, "USD")
+    }
+    fn freeze_spending_attempt(
+        &self,
+        binding: &str,
+        model: &str,
+        profile: &str,
+        at_ms: i64,
+        currency: &str,
+    ) -> Option<ExecutionPricingEvidenceV1> {
+        Some(self.freeze_currency(binding, model, profile, at_ms, currency))
+    }
+}
+impl CapturedPrice {
+    fn freeze_currency(
+        &self,
+        binding: &str,
+        model: &str,
+        profile: &str,
+        at_ms: i64,
+        currency: &str,
+    ) -> ExecutionPricingEvidenceV1 {
         let mut result = ExecutionPricingEvidenceV1 {
             usage_semantics: Default::default(),
             schema_version: EXECUTION_PRICING_SCHEMA_V1.into(),
@@ -129,10 +151,15 @@ impl RequestPriceSnapshot for CapturedPrice {
         let Some(target) = self.targets.get(&key).filter(|_| self.bindings_valid) else {
             return result;
         };
+        if currency.len() != 3 || !currency.bytes().all(|b| b.is_ascii_uppercase()) {
+            return result;
+        }
+        let mut priced_target = target.target.clone();
+        priced_target.currency = currency.into();
         result.usage_semantics = target.usage_semantics;
         // The snapshot API uses Unix seconds; execution evidence preserves ms.
         match self.snapshot.freeze_execution_price(
-            &target.target,
+            &priced_target,
             binding,
             at_ms / 1000,
             target.billing_context.clone(),
@@ -155,7 +182,7 @@ impl RequestPriceSnapshot for CapturedPrice {
                 // so a later explicit current-price comparison can use source-specific prices.
                 if let Ok(mut unknown) =
                     PriceSnapshotHandle::Unavailable(PriceUnknownReasonV1::UnverifiedOfferMapping)
-                        .freeze_price(&target.target, at_ms / 1000, target.billing_context.clone())
+                        .freeze_price(&priced_target, at_ms / 1000, target.billing_context.clone())
                 {
                     unknown.generation_ref = result.request_generation.clone();
                     if let Ok(digest) = unknown.computed_digest() {
@@ -173,7 +200,7 @@ impl RequestPriceSnapshot for CapturedPrice {
                 && matches!(quote.rates.output, TokenRateV1::Known { .. })
         };
         if result.quote.as_ref().is_none_or(|quote| !usable(quote)) {
-            let mut reference = target.target.clone();
+            let mut reference = priced_target.clone();
             reference.valuation_kind = PriceValuationKindV1::ApiEquivalent;
             if let Ok(quote) = self.snapshot.freeze_execution_price(
                 &reference,

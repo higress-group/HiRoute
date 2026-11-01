@@ -206,6 +206,7 @@ fn frozen_plan_version() -> hiroute_domain::PlanVersionV1 {
     hiroute_domain::PlanVersionV1::new(
         WorkspaceId::default(),
         AgentPlanAuthoringV2 {
+            follow_request_reasoning: false,
             schema: PLAN_AUTHORING_SCHEMA_V2.into(),
             display_name: compiled.body.identity.display_name.clone(),
             purpose: compiled.body.identity.purpose.clone(),

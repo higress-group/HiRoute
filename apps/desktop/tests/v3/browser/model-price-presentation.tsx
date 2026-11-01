@@ -15,7 +15,7 @@ const kind = params.get('kind');
 const source = management.sources[kind === 'subscription' ? 0 : kind === 'free' ? 2 : 1];
 source.models = [source.models[0]];
 if (kind !== 'subscription' && kind !== 'free') {
-  source.models[0].presentation!.price_contexts = [{ currency: 'USD', valuation_kind: 'api_equivalent' }];
+  source.models[0].presentation!.price_contexts = [{ currency: 'USD', valuation_kind: params.has('budget') ? 'usage_estimate' : 'api_equivalent' }];
 }
 management.sources = [source];
 if (params.has('two')) {

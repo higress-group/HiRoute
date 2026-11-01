@@ -90,6 +90,8 @@ pub struct CandidateCapabilityProfile {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CandidateProtocolProfile {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follow_request_reasoning: bool,
     pub schema_version: String,
     pub path_id: String,
     pub ingress_protocol: IngressProtocol,
@@ -138,6 +140,7 @@ impl CandidateProtocolProfile {
             upstream_protocol,
         );
         Self {
+            follow_request_reasoning: false,
             schema_version: "hiroute.candidate-protocol-profile/v1".into(),
             path_id: format!("{}-to-{protocol_name}", protocol_label(ingress_protocol)),
             ingress_protocol,

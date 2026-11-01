@@ -50,6 +50,7 @@ impl LocalControlAdapter {
                         matches!(
                             p,
                             hiroute_domain::ModelDefaultPreferenceV1::FollowOfficial { .. }
+                                | hiroute_domain::ModelDefaultPreferenceV1::FollowMetadata
                         )
                     })
                 });

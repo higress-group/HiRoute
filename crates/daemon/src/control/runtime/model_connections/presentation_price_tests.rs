@@ -7,8 +7,30 @@ use hiroute_domain::{
     PriceOriginV1, PriceUnknownReasonV1, PriceValuationKindV1, ProtectedSecret,
     SourcePriceSettingV1, TokenRatesV1,
 };
+use hiroute_integrations::{
+    ModelConnectionProbeCredentialV1, ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1,
+    ModelDirectoryTransportV1, NormalizedModelConnectionTargetV1,
+};
 use serde::de::DeserializeOwned;
 use serde_json::json;
+
+struct Directory(String);
+impl ModelDirectoryTransportV1 for Directory {
+    fn get(
+        &self,
+        _: &NormalizedModelConnectionTargetV1,
+        _: Option<&str>,
+        _: Option<ModelConnectionProbeCredentialV1<'_>>,
+        _: std::time::Duration,
+        _: usize,
+    ) -> Result<ModelDirectoryHttpResponseV1, ModelDirectoryTransportErrorV1> {
+        Ok(ModelDirectoryHttpResponseV1 {
+            status: 200,
+            body: serde_json::to_vec(&json!({"data":[{"id":self.0}]})).unwrap(),
+            truncated: false,
+        })
+    }
+}
 
 fn user<T>(value: T) -> NativeUserFactValueV1<T> {
     NativeUserFactValueV1 {
@@ -30,7 +52,7 @@ fn dispatch<T: DeserializeOwned>(
         payload: serde_json::to_value(payload).unwrap(),
         protected_grant: None,
     });
-    assert!(response.error.is_none(), "{response:?}");
+    assert!(response.error.is_none(), "{operation}: {response:?}");
     serde_json::from_value(response.data.unwrap()).unwrap()
 }
 
@@ -87,24 +109,27 @@ fn apply_setting(
     assert_eq!(result["state"], "succeeded");
 }
 
-#[test]
-fn explicit_unpriced_paid_target_is_presented_and_remains_editable() {
-    const TEST: &str = "control::runtime::model_connections::presentation::price_tests::explicit_unpriced_paid_target_is_presented_and_remains_editable";
-    if crate::test_support::isolated_agent_home(TEST) {
-        return;
-    }
+fn saved_api(
+    option: &str,
+    model_id: &str,
+) -> (
+    crate::test_support::PrivateTempDir,
+    crate::control::runtime::ProductionControlRuntime,
+    String,
+) {
     let catalog = crate::release_catalog::current_fixture_catalog();
     let root = crate::test_support::private_tempdir();
     let provenance = catalog.compute_catalog_provenance().unwrap();
-    let runtime = crate::control::runtime::ProductionControlRuntime::open_with_release_catalog(
+    let runtime = crate::control::runtime::ProductionControlRuntime::open_with_release_catalog_and_model_transport(
         root.path(),
         catalog,
+        std::sync::Arc::new(Directory(model_id.into())),
     )
     .unwrap();
     let request = RegisteredModelConnectionCheckRequestV1 {
         inference_model_id: None,
         models: vec![NativeUserModelDeclarationV1 {
-            upstream_model_id: "fixture-model".into(),
+            upstream_model_id: model_id.into(),
             display_name: "Fixture model".into(),
             catalog_configuration_id: None,
             membership: ComputeModelMembershipV2::UserDeclared,
@@ -119,7 +144,7 @@ fn explicit_unpriced_paid_target_is_presented_and_remains_editable() {
                 }),
             },
         }],
-        connection_option_id: "zhipu.general.cn.v1".into(),
+        connection_option_id: option.into(),
         display_name: Some("Fixture paid API".into()),
         expected_catalog: ComputeCatalogProvenanceViewV1 {
             product_release: provenance.product_release,
@@ -142,8 +167,8 @@ fn explicit_unpriced_paid_target_is_presented_and_remains_editable() {
     };
     let draft = runtime.adapter.trusted_registered_draft(&request).unwrap();
     assert!(
-        draft.inference_model_id.is_none() && draft.inventory_path_override.is_none(),
-        "this regression must not contact a provider"
+        draft.inference_model_id.is_none(),
+        "only the synthetic directory may be consulted; no inference"
     );
     runtime
         .register_manual_protected_input(
@@ -159,7 +184,7 @@ fn explicit_unpriced_paid_target_is_presented_and_remains_editable() {
         .candidate
         .models
         .iter()
-        .find(|model| model.upstream_model_id == "fixture-model")
+        .find(|model| model.upstream_model_id == model_id)
         .unwrap();
     assert!(candidate.selectable);
     let snapshot = runtime
@@ -206,6 +231,24 @@ fn explicit_unpriced_paid_target_is_presented_and_remains_editable() {
         .release_manual_protected_input(&request.input_candidate.candidate_ref)
         .unwrap();
 
+    let binding_id = runtime
+        .adapter
+        .compute_management_snapshot_v3(&ComputeManagementQueryV2::default())
+        .unwrap()
+        .sources[0]
+        .models[0]
+        .binding_id
+        .clone();
+    (root, runtime, binding_id)
+}
+
+#[test]
+fn explicit_unpriced_paid_target_is_presented_and_remains_editable() {
+    const TEST: &str = "control::runtime::model_connections::presentation::price_tests::explicit_unpriced_paid_target_is_presented_and_remains_editable";
+    if crate::test_support::isolated_agent_home(TEST) {
+        return;
+    }
+    let (_root, runtime, _) = saved_api("zhipu.general.cn.v1", "fixture-model");
     let management = || {
         runtime
             .adapter
@@ -337,4 +380,125 @@ fn explicit_unpriced_paid_target_is_presented_and_remains_editable() {
         protected_grant: None,
     });
     assert_eq!(missing.error.unwrap().code, ErrorCode::ResourceNotFound);
+}
+
+#[test]
+fn fresh_registered_api_prices_are_editable_in_the_key_budget_currency() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::model_connections::presentation::price_tests::fresh_registered_api_prices_are_editable_in_the_key_budget_currency",
+    ) {
+        return;
+    }
+    for (option, model_id) in [
+        ("openai.platform.global.v1", "gpt-6.1-sol"),
+        ("anthropic.platform.global.v1", "claude-opus-5-5"),
+    ] {
+        let (_root, runtime, binding_id) = saved_api(option, model_id);
+        let app = ApplicationService::new(runtime.application_ports());
+        let management = || {
+            runtime
+                .adapter
+                .compute_management_snapshot_v3(&ComputeManagementQueryV2::default())
+                .unwrap()
+        };
+        let initial = management();
+        let source = &initial.sources[0];
+        assert_eq!(
+            source.models[0].presentation.billing_class,
+            BillingClass::Paid
+        );
+        let context = |currency: &str| ComputePriceContextV1 {
+            currency: currency.into(),
+            valuation_kind: PriceValuationKindV1::UsageEstimate,
+        };
+        assert!(
+            source.models[0]
+                .presentation
+                .price_contexts
+                .contains(&context("USD"))
+        );
+        let quote = |currency: &str| -> EffectivePricesResultV2 {
+            dispatch(
+                &app,
+                "GetEffectivePrices",
+                json!({"targets":[{"query_id":"budget","target_locator":{"kind":"binding","binding_id":binding_id},"currency":currency,"valuation_kind":"usage_estimate"}]}),
+            )
+        };
+        let unknown = quote("USD");
+        assert!(matches!(
+            unknown.items[0].quote.rates.input_uncached,
+            TokenRateV1::Unknown { .. }
+        ));
+        assert_eq!(
+            unknown.items[0]
+                .edit_context
+                .as_ref()
+                .unwrap()
+                .expected_override_revision,
+            0
+        );
+
+        let preview: ComputeSavePreviewV2 = dispatch(
+            &app,
+            "PreviewComputeKeyBudgets",
+            json!({
+                "change":{"schema":"hiroute.compute-management-change/v3","default_preferences":{},"change":{
+                    "schema":"hiroute.compute-management-change/v2","subject":{"kind":"saved_source","source_id":source.source_id},
+                    "expected_revisions":initial.revisions,"selected_model_refs":[source.models[0].model_ref],"intent":"save_ready","key_edits":[]}},
+                "network_edit":null,"key_budget_edits":[{"key":{"kind":"saved","key_id":source.keys[0].key_id},"assignment":{
+                    "intent":"configure","budget_id":null,"expected_revision":0,"display_name":"CNY allowance",
+                    "policy":{"currency":"CNY","amount_micros":1000000,"renewal":null},"initial_remaining_micros":null}}]
+            }),
+        );
+        let result: serde_json::Value = dispatch(
+            &app,
+            "ApplyComputeConnectionChange",
+            ComputeConnectionApplyRequestV1 {
+                spec: preview.spec,
+                accept_digest: preview.accept_digest,
+                expected_revisions: preview.expected_revisions,
+                idempotency_key: "budget-price-context".into(),
+            },
+        );
+        assert_eq!(result["state"], "succeeded");
+        assert!(
+            management().sources[0].models[0]
+                .presentation
+                .price_contexts
+                .contains(&context("CNY"))
+        );
+        let before = quote("CNY");
+        let edit = before.items[0].edit_context.as_ref().unwrap();
+        assert_eq!(edit.expected_override_revision, 0);
+        let preview: PriceOverridePreviewV2 = dispatch(
+            &app,
+            "PreviewPriceOverrideChange",
+            json!({
+                "target_locator":edit.target_locator,"expected_source_revision":edit.expected_source_revision,
+                "expected_binding_revision":edit.expected_binding_revision,"expected_override_revision":0,
+                "currency":"CNY","valuation_kind":"usage_estimate","action":{"kind":"set","rates":{
+                    "input_uncached":{"state":"known","micros_per_million_tokens":1000000},"output":{"state":"known","micros_per_million_tokens":2000000},
+                    "cache_read":{"state":"known","micros_per_million_tokens":0},"cache_write":{"state":"known","micros_per_million_tokens":1250000}}}
+            }),
+        );
+        let result: serde_json::Value = dispatch(
+            &app,
+            "ApplyPriceOverrideChange",
+            ApplyPriceOverrideChangeV2 {
+                spec: preview.spec,
+                accept_digest: preview.change_digest,
+                expected_revisions: preview.expected_revisions,
+                idempotency_key: "complete-budget-price".into(),
+            },
+        );
+        assert_eq!(result["state"], "succeeded");
+        let after = quote("CNY");
+        assert_eq!(after.items[0].quote.origin, PriceOriginV1::Manual);
+        assert_eq!(after.items[0].quote.rates.cache_read, TokenRateV1::known(0));
+        assert_eq!(
+            after.items[0].quote.rates.cache_write,
+            TokenRateV1::known(1_250_000)
+        );
+        assert!(after.items[0].quote.unknown_reasons.is_empty());
+    }
 }

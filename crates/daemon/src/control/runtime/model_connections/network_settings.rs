@@ -369,8 +369,19 @@ impl LocalControlAdapter {
         desired: &serde_json::Value,
         change: &ComputeManagementChangeV2,
     ) -> Result<(), ComputeManagementControlError> {
+        if desired.get("schema").and_then(serde_json::Value::as_str)
+            == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V6)
+        {
+            return self.validate_saved_network_state(
+                desired
+                    .get("change")
+                    .ok_or(ComputeManagementControlError::Invalid)?,
+                change,
+            );
+        }
         let edit = if desired.get("schema").and_then(serde_json::Value::as_str)
             == Some(hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V4)
+            && !hiroute_domain::is_legacy_subscription_api_change(desired)
         {
             let network: NativeNetworkMutationV1 = serde_json::from_value(
                 desired

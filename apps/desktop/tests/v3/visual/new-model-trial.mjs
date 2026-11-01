@@ -70,6 +70,8 @@ try {
   await new Promise((resolve, reject) => { chrome.once('spawn', resolve); chrome.once('error', reject); });
   await waitFor(`http://127.0.0.1:${cdpPort}/json/version`);
   const selectedRunner = [
+    ['--model-route', 'model-route-active.mjs'],
+    ['--subscription-api', 'subscription-api-setup-active.mjs'],
     ['--trial-reuse', 'trial-reuse-connection-active.mjs'],
     ['--setup-followup', 'trial-setup-followup-active.mjs'],
 
@@ -83,7 +85,7 @@ try {
     ['--protection', 'new-model-trial-protection-active.mjs'],
     ['--polish', 'new-model-trial-polish-active.mjs'],
   ].find(([flag]) => process.argv.includes(flag))?.[1] ?? 'new-model-trial-active.mjs';
-  const runner = spawn(process.execPath, [path.join(here, selectedRunner), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...['--timeline-pricing','--trial-agent-reads','--trial-identity'].filter(flag=>process.argv.includes(flag))], { cwd: desktopRoot, stdio: 'inherit' });
+  const runner = spawn(process.execPath, [path.join(here, selectedRunner), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot, ...['--timeline-pricing','--trial-agent-reads','--trial-identity','--reasoning-controls'].filter(flag=>process.argv.includes(flag))], { cwd: desktopRoot, stdio: 'inherit' });
   const outcome = await waitForExit(runner);
   if (outcome.code !== 0) process.exitCode = outcome.code ?? 1;
 } finally {

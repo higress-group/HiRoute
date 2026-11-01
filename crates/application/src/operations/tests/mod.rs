@@ -1049,6 +1049,20 @@ mod classifier_secret_tests;
 mod compute_tests;
 
 #[test]
+fn subscription_login_lease_conflict_keeps_its_terminal_recovery_reason() {
+    let conflict = TransactionError::Port(PortError::new(
+        PortErrorCode::Conflict,
+        "subscription.login.in-use",
+    ));
+    assert_eq!(conflict.safe_code(), "SUBSCRIPTION_LOGIN_IN_USE");
+    let runtime = TransactionError::Port(PortError::new(
+        PortErrorCode::Unavailable,
+        "cpa-subscription-runtime",
+    ));
+    assert_eq!(runtime.safe_code(), "SUBSCRIPTION_RUNTIME_UNAVAILABLE");
+}
+
+#[test]
 fn decision_source_revision_conflict_does_not_change_legacy_identity_errors() {
     let stale =
         TransactionError::Preparation(ChangePreparationError::DecisionSourceRevisionConflict);

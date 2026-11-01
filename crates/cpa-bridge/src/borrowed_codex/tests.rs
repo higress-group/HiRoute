@@ -309,13 +309,20 @@ fn canonical_source_and_auth_directory_are_exclusive_across_instances() {
     ));
 
     let second_auth = ensure_private_dir(&temp.path().join("second-cpa-auth")).unwrap();
+    let conflict = match ManagedAuthLease::acquire(
+        &second_auth,
+        Some(&BorrowedCodexAuthSpec::new(source.clone())),
+    ) {
+        Err(error) => error,
+        Ok(_) => panic!("another instance must not borrow an already leased native sign-in"),
+    };
     assert!(matches!(
-        ManagedAuthLease::acquire(
-            &second_auth,
-            Some(&BorrowedCodexAuthSpec::new(source.clone()))
-        ),
-        Err(CpaLifecycleError::BorrowedCodexAuthAlreadyLeased)
+        conflict,
+        CpaLifecycleError::BorrowedCodexAuthAlreadyLeased
     ));
+    let failure = conflict.subscription_failure().unwrap();
+    assert_eq!(failure.code, hiroute_domain::PortErrorCode::Conflict);
+    assert_eq!(failure.context, "subscription.login.in-use");
     let inherited_source = first
         .codex
         .as_ref()

@@ -59,6 +59,7 @@ async fn model_defaults_v3_confirmation_preserves_exact_request_and_needs_no_sec
         };
         let desired = if version == 3 {
             serde_json::to_value(ComputeManagementChangeV3 {
+                api_link: None,
                 schema: hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3.into(),
                 change,
                 default_preferences: std::collections::BTreeMap::from([(

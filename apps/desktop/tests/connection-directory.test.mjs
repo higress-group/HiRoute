@@ -5,12 +5,25 @@ import { connectionDirectory, filterConnectionDirectory } from '../src/features/
 import { ConnectionEditingSession } from '../src/features/model-connections/connection-session.ts';
 import { newModelConnectionDraft } from '../src/features/model-connections/new-draft.ts';
 import { blankModel } from '../src/features/model-connections/state.ts';
+import { initialRegisteredOption } from '../src/features/model-connections/registered-metadata.ts';
 
 const read = path => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const registry = read('../../../assets/release-facts/current/bundle/connector-registry.json');
 const templates = read('../../../assets/model-data/current/runtime-projection.json').connection_templates;
 const lookup = id => templates.find(item => item.connection_option_id === id);
 const directory = connectionDirectory(registry.connection_options, 'zh', lookup);
+
+test('Codex association prefers the exact available OpenAI API without changing ordinary entry defaults', () => {
+  const options = registry.connection_options.map(option => ({ ...option, registered_check_available: true }));
+  const openai = initialRegisteredOption(options, 'openai.platform.global.v1');
+  assert.equal(openai.connection_option_id, 'openai.platform.global.v1');
+  assert.equal(openai.origin, 'native_api');
+  assert.equal(initialRegisteredOption(options), null);
+  const other = options.find(option => option.origin === 'native_api' && option !== openai);
+  assert.equal(initialRegisteredOption([other], 'openai.platform.global.v1', true), null);
+  assert.equal(initialRegisteredOption([{ ...openai, registered_check_available: false }], openai.connection_option_id), null);
+  assert.equal(initialRegisteredOption([other], undefined, true), other);
+});
 
 test('the directory contains every current API option and excludes subscription login', () => {
   const native = registry.connection_options.filter(item => item.origin !== 'agent_subscription');

@@ -443,7 +443,7 @@
                               "type": "string"
                             },
                             "revision": {
-                              "minimum": 1,
+                              "minimum": 0,
                               "type": "integer"
                             }
                           },
@@ -500,6 +500,10 @@
         "display_name": {
           "maxLength": 128,
           "type": "string"
+        },
+        "follow_request_reasoning": {
+          "default": false,
+          "type": "boolean"
         },
         "free": {
           "additionalProperties": false,
@@ -736,7 +740,7 @@
                           "type": "string"
                         },
                         "revision": {
-                          "minimum": 1,
+                          "minimum": 0,
                           "type": "integer"
                         }
                       },

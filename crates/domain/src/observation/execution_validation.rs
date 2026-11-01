@@ -22,7 +22,24 @@ impl ExecutionFactEnvelopeV1 {
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
                 == "sha256:2babb083d6f0005ded11c5712f7b8183117b6ce06f87aa1892c6ad1aa891a481";
-        let current = current_wire || persisted_pre_stage;
+        let persisted_pre_reasoning = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:c876778b088a7cd9bae7d2fa0b867e29c9f4f32a34226b388eb7d0b9d9a20295";
+        let current = current_wire || persisted_pre_stage || persisted_pre_reasoning;
+        if !current_wire {
+            let added_reasoning = match &self.fact {
+                ExecutionFactV1::CandidateDecision(fact) => fact.reasoning_resolution.is_some(),
+                ExecutionFactV1::RouteDecision(fact) => matches!(
+                    fact.requested_reasoning_disposition,
+                    RequestedReasoningDispositionV1::FollowRequestWithDefault
+                ),
+                _ => false,
+            };
+            if added_reasoning {
+                return Err(ExecutionFactError::InvalidFact);
+            }
+        }
         let persisted_history = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
@@ -78,7 +95,7 @@ impl ExecutionFactEnvelopeV1 {
         {
             return Err(ExecutionFactError::UnsupportedSchema);
         }
-        if !current_wire
+        if !(current_wire || persisted_pre_reasoning)
             && matches!(
                 self.fact,
                 ExecutionFactV1::RequestInputSelection(_)

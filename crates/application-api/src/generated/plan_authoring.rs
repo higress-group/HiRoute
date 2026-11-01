@@ -16,7 +16,7 @@ pub(super) fn classifier_definition() -> Value {
     let service = object(
         &["id", "revision", "name", "connection"],
         json!({
-            "id":{"type":"string","maxLength":128},"revision":{"type":"integer","minimum":1},"name":{"type":"string","maxLength":128},
+            "id":{"type":"string","maxLength":128},"revision":{"type":"integer","minimum":0},"name":{"type":"string","maxLength":128},
             "connection":{"oneOf":[
                 object(&["kind","provider","model","endpoint","timeout_ms","auth_header"],json!({"kind":{"const":"system_one"},"provider":{"type":"string","maxLength":128},"model":{"type":"string","maxLength":256},"endpoint":endpoint,"timeout_ms":timeout,"auth_header":auth})),
                 object(&["kind","endpoint","timeout_ms"],json!({"kind":{"const":"custom"},"endpoint":endpoint,"timeout_ms":timeout,"auth_header":{"oneOf":[{"type":"null"},auth]}}))
@@ -112,6 +112,7 @@ fn definitions() -> Value {
         ],
         json!({
             "schema":{"const":"hiroute.plan-editor/v2"},"display_name":{"type":"string","maxLength":128},"purpose":{"type":"string","maxLength":512},
+            "follow_request_reasoning":{"type":"boolean","default":false},
             "custom_alias":{"type":"string","maxLength":64},"mode":{"enum":["fixed_model","smart_saving","custom_branches","free_first"]},"branch_routing":{"oneOf":[{"type":"null"},routing]},
             "candidates":reference("candidates"),"smart":smart,"free":free,"delegation_enabled":{"type":"boolean"},"requirements":requirements,"limits":limits,
             "work":object(&["harness","protocol"],json!({"harness":{"enum":["codex_cli","claude_code","qoder_cli","pi","deepseek_harness","opencode"]},"protocol":{"enum":["responses","messages"]}}))
@@ -160,4 +161,79 @@ pub(super) fn files() -> Vec<(&'static str, String)> {
         "$schema":"https://json-schema.org/draft/2020-12/schema", "$id":format!("hiroute://contracts/cli/{path}"),
         "$ref":format!("#/$defs/{name}"), "$defs": definitions(),
     })))).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn published_editor_schema_admits_current_and_legacy_policy_fields() {
+        let released: Value = serde_json::from_str(include_str!(
+            "../../../domain/src/routing/authoring/fixtures/released-plan-editor.v2.json"
+        ))
+        .unwrap();
+        for policy in [None, Some(false), Some(true)] {
+            let mut wire = released["editor"].clone();
+            if let Some(policy) = policy {
+                wire["follow_request_reasoning"] = policy.into();
+            }
+            let editor: hiroute_domain::PlanEditorStateV2 =
+                serde_json::from_value(wire.clone()).unwrap();
+            assert_eq!(editor.follow_request_reasoning, policy.unwrap_or(false));
+            let current = serde_json::to_value(editor).unwrap();
+            for (_, source) in files() {
+                let schema: Value = serde_json::from_str(&source).unwrap();
+                let editor = &schema["$defs"]["editor"];
+                let properties = editor["properties"].as_object().unwrap();
+                assert!(
+                    current
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .all(|key| properties.contains_key(key))
+                );
+                assert!(
+                    wire.as_object()
+                        .unwrap()
+                        .keys()
+                        .all(|key| properties.contains_key(key))
+                );
+                assert_eq!(properties["follow_request_reasoning"]["type"], "boolean");
+                assert_eq!(properties["follow_request_reasoning"]["default"], false);
+                assert!(
+                    !editor["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&json!("follow_request_reasoning"))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn editor_schema_accepts_parked_service_without_authorizing_active_execution() {
+        let released: Value = serde_json::from_str(include_str!(
+            "../../../domain/src/routing/authoring/fixtures/released-plan-editor.v2.json"
+        ))
+        .unwrap();
+        let mut wire = released["editor"].clone();
+        wire["follow_request_reasoning"] = true.into();
+        wire["smart"]["classifier"] = json!({"kind":"decision_service","service":{
+            "id":"","revision":0,"name":"","connection":{
+                "kind":"custom","endpoint":"","timeout_ms":10000,"auth_header":null
+            }
+        }});
+        let mut editor: hiroute_domain::PlanEditorStateV2 = serde_json::from_value(wire).unwrap();
+        editor.validate_draft().unwrap();
+        editor.effective().unwrap();
+        let service = &definitions()["editor"]["properties"]["smart"]["properties"]["classifier"]["oneOf"]
+            [1]["properties"]["service"];
+        assert_eq!(service["properties"]["revision"]["minimum"], 0);
+        editor.mode = hiroute_domain::PlanEditorMode::SmartSaving;
+        editor.smart.economy = editor.candidates.clone();
+        editor.smart.primary = editor.candidates.clone();
+        assert!(editor.smart.classifier.validate().is_err());
+        assert!(editor.effective().is_err());
+    }
 }

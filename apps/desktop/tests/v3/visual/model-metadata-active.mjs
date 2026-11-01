@@ -30,19 +30,70 @@ try {
     await click('.list-row','Qwen3-Coder-Plus');
     await waitFor(client,`document.querySelectorAll('.model-default-field').length===6`);
     await evaluate(client,`document.querySelector('.model-defaults-editor').scrollIntoView({block:'center'});true`);
-    assert.equal(await evaluate(client,`document.querySelector('#model-default-vision').value`),'preserve_saved');
-    await select('#model-default-context_tokens','preserve_saved');
-    await click('.model-defaults-editor button',lang==='zh'?'预览修改':'Preview changes');
-    await waitFor(client,`[...document.querySelectorAll('.model-defaults-editor button')].some(e=>e.textContent.includes(${JSON.stringify(lang==='zh'?'保存默认值选择':'Save default choices')}))`);
-    assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='preview_compute_save_v3').payload.defaultPreferences['binding/bailian/qwen-coder'].context_tokens.intent`),'preserve_saved');
+    assert.equal(await evaluate(client,`document.querySelector('#model-default-vision').value`),'custom');
+    // Retained saved/exact-locator choices map to exactly two visible modes.
+    assert.deepEqual(await evaluate(client,`[...document.querySelector('#model-default-native_reasoning').options].map(o=>o.value)`),['follow_metadata','custom']);
+    for(const fallback of [false,true]) {
+      await evaluate(client,`metadataFixture.automaticReasoning=true;metadataFixture.fallbackReasoning=${fallback};dispatchEvent(new Event('model-feed-changed'));true`);
+      await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='follow_metadata'`);
+      assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').value`),'follow_metadata');
+      assert.equal(await evaluate(client,`document.querySelector('#model-default-native_reasoning').closest('dd').querySelector('strong').textContent`),'low / medium / high / xhigh / max');
+      await evaluate(client,`document.querySelector('#model-default-native_reasoning').scrollIntoView({block:'center'});true`);
+      assert.equal(await evaluate(client,`(()=>{const r=document.querySelector('#model-default-native_reasoning').closest('.model-default-field').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})()`),true,'the affected reasoning row must be visible');
+      await geometry(width);await shot(`reasoning-automatic-${fallback?'fallback':'missing'}-${lang}-${theme}-${width}`);
+    }
+    results.push({id:`metadata.reasoning-automatic.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked IPC; missing and derived fallback facts'});
+    await evaluate(client,`metadataFixture.automaticReasoning=true;metadataFixture.reasoningParameter='output_config.effort';dispatchEvent(new Event('model-feed-changed'));true`);
+    await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='follow_metadata'`);
+
+    await select('#model-default-context_tokens','custom');
+    await evaluate(client,`(()=>{const e=document.querySelector('[data-default-field=context_tokens] input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'64000');e.dispatchEvent(new Event('input',{bubbles:true}));metadataFixture.failSave=true;return true;})()`);
+    await click('.model-defaults-editor button',lang==='zh'?'保存修改':'Save changes');
+    await waitFor(client,`!!document.querySelector('.model-defaults-editor [role=alert]')`);
+    assert.deepEqual(await evaluate(client,`trialTrace.find(x=>x.command==='preview_compute_save_v3').payload.defaultPreferences['binding/bailian/qwen-coder'].context_tokens`),{intent:'custom',value:64000});
+    assert.equal(await evaluate(client,`document.querySelector('#model-default-context_tokens').value`),'custom');
+    assert.equal(await evaluate(client,`document.querySelector('[data-default-field=context_tokens] input').value`),'64000');
     await evaluate(client,`metadataFixture.fail=true;dispatchEvent(new Event('model-feed-changed'));true`);
     await waitFor(client,`!!document.querySelector('.model-defaults-editor [role=alert]')`);
-    assert.equal(await evaluate(client,`document.querySelector('#model-default-context_tokens').value`),'preserve_saved');
+    assert.equal(await evaluate(client,`document.querySelector('[data-default-field=context_tokens] input').value`),'64000');
     await shot(`defaults-error-retains-draft-${lang}-${theme}-${width}`);
     await evaluate(client,`metadataFixture.fail=false;true`);
     await click('.model-defaults-editor [role=alert] button',lang==='zh'?'重新读取':'Reload');
     await waitFor(client,`!document.querySelector('.model-defaults-editor [role=alert]')`);
     await geometry(width);await shot(`defaults-current-and-preserved-${lang}-${theme}-${width}`);
+    // Native custom values are staged, invalid input submits nothing, and one Save carries the complete edits.
+    const fill=async(selector,value)=>evaluate(client,`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));return true;})()`);
+    await select('#model-default-tool','custom');await select('[data-default-field=tool] select:not([id])','false');
+    await select('[data-default-field=vision] select:not([id])','unknown');
+    await select('#model-default-max_output_tokens','custom');await fill('[data-default-field=max_output_tokens] input','4096');
+    await select('#model-default-native_reasoning','custom');await select('.model-default-reasoning > select','discrete');
+    await waitFor(client,`!!document.querySelector('[data-capability-profiles]')`);
+    await fill('[data-capability-profiles]','low, low');
+    const beforeSave=await evaluate(client,`trialTrace.filter(x=>x.command==='preview_compute_save_v3').length`);
+    await click('.model-defaults-editor .btn-primary',lang==='zh'?'保存修改':'Save changes');
+    await waitFor(client,`!!document.querySelector('.model-defaults-editor [role=alert]')`);
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='preview_compute_save_v3').length`),beforeSave);
+    await fill('[data-capability-profiles]','low, high, ');
+    assert.equal(await evaluate(client,`document.querySelector('[data-capability-profiles]').value`),'low, high, ');
+    await select('.model-default-reasoning label select','low');
+    // Kind cycling must keep native wire parameters and edited values, including Claude adaptive.
+    for (const kind of ['unknown','budget']) {
+      await select('.model-default-reasoning > select',kind);await select('.model-default-reasoning > select','discrete');
+      assert.equal(await evaluate(client,`document.querySelector('[data-capability-profiles]').value`),'low, high');
+      assert.equal(await evaluate(client,`document.querySelector('.model-default-reasoning label select').value`),'low');
+    }
+
+    await select('#model-default-context_tokens','follow_metadata');await select('#model-default-context_tokens','custom');
+    assert.equal(await evaluate(client,`document.querySelector('[data-default-field=context_tokens] input').value`),'64000');
+    await evaluate(client,`metadataFixture.failSave=false;document.querySelector('.model-defaults-editor .actions').scrollIntoView({block:'center'});true`);
+    await geometry(width);await shot(`defaults-custom-native-${lang}-${theme}-${width}`);
+    await evaluate(client,`(()=>{const b=document.querySelector('.model-defaults-editor .btn-primary');b.click();b.click();return true;})()`);
+    await waitFor(client,`!document.querySelector('.model-defaults-editor .actions')`);
+    const payloads=await evaluate(client,`trialTrace.filter(x=>x.command==='preview_compute_save_v3').map(x=>x.payload)`);
+    assert.equal(payloads.length,beforeSave+1);
+    assert.deepEqual(payloads.at(-1).defaultPreferences['binding/bailian/qwen-coder'],{context_tokens:{intent:'custom',value:64000},tool:{intent:'custom',value:false},vision:{intent:'custom',value:null},max_output_tokens:{intent:'custom',value:4096},native_reasoning:{intent:'custom',value:{kind:'discrete',parameter:'output_config.effort',profiles:['low','high'],default_profile:'low'}}});
+    assert.deepEqual(payloads.at(-1).change.key_edits,[]);
+    results.push({id:`metadata.custom-save.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked save callback; invalid/retained/unknown/typed values and one Save'});
     await click('.model-feed-actions button',lang==='zh'?'详情':'Details');
     await click('.model-feed-details button',lang==='zh'?'浏览全部模型资料':'Browse all model information');
     await waitFor(client,`document.querySelectorAll('.model-metadata-records li').length===1`);
@@ -105,6 +156,22 @@ try {
     await click('[role=dialog] footer button',lang==='zh'?'取消':'Cancel');
     assert.equal(await evaluate(client,`trialTrace.filter(x=>x.command==='model_feed_remove_apply').length`),0);
     results.push({id:`metadata.defaults-pages-impact.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked IPC'});
+    // Reopening a saved Custom Unknown still exposes the exact native template on demand.
+    await client.send('Page.navigate',{url:`${base}new-model-trial.html?metadata=1&metadata-custom-unknown=1&lang=${lang}&theme=${theme}`});
+    await click('.list-row','Qwen3-Coder-Plus');
+    await waitFor(client,`document.querySelector('#model-default-native_reasoning')?.value==='custom'`);
+    assert.equal(await evaluate(client,`document.querySelector('.model-default-reasoning > select').value`),'unknown');
+    await select('.model-default-reasoning > select','discrete');
+    await waitFor(client,`!!document.querySelector('[data-capability-profiles]')`);
+    assert.equal(await evaluate(client,`document.querySelector('[data-capability-profiles]').value`),'low, medium, high, xhigh, max');
+    await evaluate(client,`metadataFixture.failSave=true;true`);
+    await click('.model-defaults-editor .btn-primary',lang==='zh'?'保存修改':'Save changes');
+    await waitFor(client,`trialTrace.some(x=>x.command==='preview_compute_save_v3')`);
+    assert.equal(await evaluate(client,`trialTrace.find(x=>x.command==='preview_compute_save_v3').payload.defaultPreferences['binding/bailian/qwen-coder'].native_reasoning.value.parameter`),'output_config.effort');
+    await evaluate(client,`document.querySelector('.model-default-reasoning > select').scrollIntoView({block:'center'});true`);
+    assert.equal(await evaluate(client,`(()=>{const r=document.querySelector('.model-default-reasoning > select').getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})()`),true);
+    await geometry(width);await shot(`defaults-reopened-unknown-${lang}-${theme}-${width}`);
+    results.push({id:`metadata.reopened-unknown.${lang}.${theme}.${width}`,status:'passed',scope:'production UI; mocked persisted response; exact native template restored'});
   }
   await client.send('Page.navigate',{url:`${base}new-model-trial.html?metadata=1&transport=console&lang=en`});
   await click('.model-feed-actions button','Details');

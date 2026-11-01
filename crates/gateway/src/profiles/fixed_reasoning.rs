@@ -15,6 +15,14 @@ impl CandidateProtocolProfile {
         &self,
         request: &ModelRequestIRV1,
     ) -> Result<Self, CapabilityError> {
+        if self.follow_request_reasoning {
+            let control = request
+                .requested_reasoning
+                .followed_control
+                .as_ref()
+                .ok_or(CapabilityError::ReasoningProfileMismatch)?;
+            return self.follow_reasoning(control, request.requested_max_output_tokens);
+        }
         if request.requested_reasoning.disposition
             != RequestedReasoningDisposition::AppliedToFixedBinding
         {

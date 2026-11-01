@@ -114,6 +114,7 @@ pub async fn dispatch(
             struct Arguments {
                 source_id: Option<String>,
                 expected_source_revision: Option<u64>,
+                native_only: Option<bool>,
             }
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
@@ -122,6 +123,7 @@ pub async fn dispatch(
                 state,
                 input.source_id,
                 input.expected_source_revision,
+                input.native_only,
             )
             .await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
@@ -337,11 +339,16 @@ pub async fn dispatch(
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
             struct Arguments {
-                operation: OperationReferenceV1,
+                #[serde(default)]
+                operation: Option<OperationReferenceV1>,
+                #[serde(default)]
+                idempotency_key: Option<String>,
             }
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
-            let value = get_compute_save_result(window, state, input.operation).await?;
+            let value =
+                get_compute_save_result(window, state, input.operation, input.idempotency_key)
+                    .await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "manage_subscription_login" => {
@@ -991,6 +998,41 @@ pub async fn dispatch(
             )?;
             Ok(Value::Null)
         }
+        "compute_key_budgets" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: hiroute_application_api::ComputeKeyBudgetsQueryV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(compute_key_budgets(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_compute_key_budgets" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                change: WebComputeManagementChangeV2,
+                default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+                network_edit: Option<hiroute_application_api::NativeNetworkEditV1>,
+                key_budget_edits: Vec<hiroute_domain::KeyBudgetEditV1>,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(
+                preview_compute_key_budgets(
+                    window,
+                    state,
+                    input.change,
+                    input.default_preferences,
+                    input.network_edit,
+                    input.key_budget_edits,
+                )
+                .await?,
+            )
+            .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "compute_defaults" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -1008,12 +1050,20 @@ pub async fn dispatch(
             struct Arguments {
                 change: WebComputeManagementChangeV2,
                 default_preferences: hiroute_domain::SourceDefaultPreferencesV1,
+                #[serde(default)]
+                api_link: Option<hiroute_domain::ComputeSubscriptionApiLinkIntentV1>,
             }
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
             serde_json::to_value(
-                preview_compute_save_v3(window, state, input.change, input.default_preferences)
-                    .await?,
+                preview_compute_save_v3(
+                    window,
+                    state,
+                    input.change,
+                    input.default_preferences,
+                    input.api_link,
+                )
+                .await?,
             )
             .map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
