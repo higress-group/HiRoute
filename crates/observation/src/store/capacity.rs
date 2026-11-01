@@ -26,6 +26,9 @@ const ROWS: usize = 128;
 pub(crate) const SCHEMA: &str = r#"
 CREATE INDEX IF NOT EXISTS observation_capacity_oldest_v5 ON logical_requests(started_at_ms,workspace_id,request_id) WHERE finished_at_ms IS NOT NULL;
 CREATE INDEX IF NOT EXISTS observation_capacity_turn_v5 ON logical_requests(workspace_id,turn_id);
+CREATE INDEX IF NOT EXISTS observation_capacity_sensitive_request_v5 ON observation_sensitive_payloads_v2(workspace_id,request_id);
+CREATE INDEX IF NOT EXISTS observation_capacity_link_request_v5 ON observation_link_events(workspace_id,request_id);
+CREATE INDEX IF NOT EXISTS observation_capacity_native_request_v5 ON observation_native_roots_v1(workspace_id,request_id);
 CREATE TABLE IF NOT EXISTS observation_capacity_pending_v5(workspace TEXT NOT NULL,request TEXT NOT NULL,session TEXT NOT NULL,step INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(workspace,request));
 CREATE TABLE IF NOT EXISTS observation_capacity_blobs_v5(workspace TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(workspace,digest));
 CREATE INDEX IF NOT EXISTS observation_capacity_quality_assessment_v5 ON plan_quality_segments(workspace_id,assessment_trigger_request_id);

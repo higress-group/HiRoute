@@ -130,6 +130,10 @@ unreclaimable or protected data may keep usage above this soft threshold.
 Page release consumes each bounded incremental-vacuum result and yields to pinned
 readers before selecting more requests. Request cleanup starts from existing
 request indices so unrelated workspace history does not consume its SQL budget.
+Sensitive payloads, link evidence and native-root evidence have universal
+workspace/request seek indexes; session-only or partial candidate indexes do not
+bound a request's absent-member lookup. Current-store reopen installs missing
+derived indexes once without rewriting evidence or changing the format marker.
 Turn cleanup has a workspace/turn request lookup index, including on current-store
 reopen. A large WAL still receives a nonwaiting checkpoint attempt: its physical
 high-water mark is not evidence of remaining frames or a reason to block forever.

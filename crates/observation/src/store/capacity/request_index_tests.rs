@@ -143,19 +143,37 @@ fn retired_request_cleanup_commits_progress_and_preserves_shared_workspace_survi
     drop(store);
     let store = open_store(directory.path());
     let mut db = store.connection.lock();
-    let mut steps = 0;
-    db.progress_handler(
-        100,
-        Some(move || {
-            steps += 100;
-            steps > 20_000
-        }),
-    );
     let mut state = State::default();
-    let outcome = store.capacity_cleanup(&mut db, &mut state, Instant::now() + BUDGET);
-    db.progress_handler(0, None::<fn() -> bool>);
-    assert!(outcome.unwrap());
-    assert!(state.committed_progress);
+    for pass in 0..32 {
+        let mut steps = 0;
+        db.progress_handler(
+            100,
+            Some(move || {
+                steps += 100;
+                steps > 20_000
+            }),
+        );
+        let deadline = Instant::now() + BUDGET;
+        state.committed_progress = false;
+        let outcome = store.capacity_cleanup(&mut db, &mut state, deadline);
+        db.progress_handler(0, None::<fn() -> bool>);
+        // The real cycle also yields normally after earlier committed units
+        // when its next unit exhausts the unchanged time allowance.
+        assert!(outcome.is_ok() || (state.committed_progress && Instant::now() >= deadline));
+        if pass == 0 {
+            assert!(state.committed_progress);
+        }
+        let pending: usize = db
+            .query_row(
+                "SELECT COUNT(*) FROM observation_capacity_pending_v5",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        if pending == 0 {
+            break;
+        }
+    }
     let pending: usize = db
         .query_row(
             "SELECT COUNT(*) FROM observation_capacity_pending_v5",

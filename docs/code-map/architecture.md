@@ -300,6 +300,9 @@ uses same-filesystem directory publication without traversing historical content
 The optional capacity threshold uses the
 [existing maintenance lifecycle](../../crates/observation/src/maintenance.rs) and
 [bounded retirement owner](../../crates/observation/src/store/capacity.rs).
+Exact workspace/request indexes bound payload, link and native-root cleanup even
+when the selected request has no remaining rows; [request-key regressions](../../crates/observation/src/store/capacity/request_index_tests.rs)
+cover unrelated history, current-store reopen and resumable committed cleanup.
 Background orphan discovery uses a bounded keyset scan in
 [`store/blob_gc`](../../crates/observation/src/store/blob_gc.rs); deletion authority
 remains with the existing transactional reference recheck in
