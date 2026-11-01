@@ -8,6 +8,7 @@ import http.server
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import threading
 import time
@@ -20,6 +21,45 @@ from usage_query_gateway_product import json_event, publish_plan
 
 PARTS = 4096
 TURNS = 3
+
+
+class DaemonUsage:
+    """Sample this exact daemon through foreground forwarding and capture drain."""
+    def __init__(self, pid):
+        self.pid, self.samples, self.errors = pid, [], []
+        self.stop = threading.Event()
+        self.sample()
+        self.thread = threading.Thread(target=self.watch, daemon=True)
+        self.thread.start()
+
+    def sample(self):
+        values = subprocess.check_output(
+            ['ps', '-p', str(self.pid), '-o', 'rss=', '-o', 'time='],
+            text=True, timeout=2).split()
+        assert len(values) == 2, 'exact daemon resource observation unavailable'
+        cpu = sum(float(part) * 60 ** index
+                  for index, part in enumerate(reversed(values[1].split(':'))))
+        self.samples.append((int(values[0]), cpu))
+
+    def watch(self):
+        while not self.stop.wait(.5):
+            try:
+                self.sample()
+            except (OSError, subprocess.SubprocessError, ValueError, AssertionError) as error:
+                self.errors.append(type(error).__name__)
+
+    def finish(self):
+        self.stop.set()
+        self.thread.join(timeout=3)
+        assert not self.thread.is_alive(), 'resource observer did not stop'
+        self.sample()
+        assert not self.errors, ('resource observation gaps', self.errors)
+        return {'scope': 'exact_daemon_forwarding_through_capture_drain',
+                'sample_period_seconds': .5, 'samples': len(self.samples),
+                'initial_rss_kib': self.samples[0][0],
+                'sampled_peak_rss_kib': max(row[0] for row in self.samples),
+                'end_rss_kib': self.samples[-1][0],
+                'cpu_seconds': self.samples[-1][1] - self.samples[0][1]}
 
 
 def fragment(index):
@@ -119,6 +159,7 @@ def verify_exact_bytes(product, requests):
 
 def run(repository):
     product, upstream = Product(repository), PressureUpstream()
+    usage = None
     product.enable_debug_diagnostics()
     try:
         product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
@@ -126,6 +167,7 @@ def run(repository):
         saved = save_native_source(product, upstream, NATIVE_TOKEN)
         _, product.model_alias = publish_plan(product, saved['binding_id'], 'responses')
         configure_model_settings_v2(product, [product.plan_id], 'content-pressure-configure')
+        usage = DaemonUsage(product.process.pid)
         forwarded = []
         messages = []
         for turn in range(TURNS):
@@ -152,11 +194,15 @@ def run(repository):
             finally:
                 client.close()
         assert len(upstream.requests) == TURNS
-        deadline = time.monotonic() + 90
+        drain_started = time.monotonic()
+        deadline = drain_started + 90
         while not (requests := durable_content(product)):
             assert time.monotonic() < deadline, 'accepted capture never became durable and complete'
             assert not durable_gaps(product), 'production content channel lost an admitted record'
             time.sleep(.05)
+        drain_seconds = time.monotonic() - drain_started
+        resources = usage.finish()
+        usage = None
         verify_exact_bytes(product, requests)
         assert not durable_gaps(product)
         product.stop()
@@ -165,8 +211,17 @@ def run(repository):
         verify_exact_bytes(product, requests)
         print(json.dumps({'scenario': 'production-content-pressure', 'state': 'green',
                           'turns': TURNS, 'exact_delta_parts': TURNS * PARTS,
-                          'forward_seconds': forwarded, 'reopen_exact': True}), flush=True)
+                          'forward_seconds': forwarded, 'drain_seconds': drain_seconds,
+                          'resources': resources, 'reopen_exact': True}), flush=True)
     finally:
+        if usage is not None:
+            try:
+                resources = usage.finish()
+            except (OSError, subprocess.SubprocessError, ValueError, AssertionError) as error:
+                resources = {'state': 'unavailable', 'error_type': type(error).__name__}
+            print(json.dumps({'scenario': 'production-content-pressure-resources',
+                              'capture_drain_complete': False,
+                              'resources': resources}), flush=True)
         product.close()
         upstream.close()
 

@@ -465,15 +465,17 @@ impl ByteBoundedObservationProducer {
 
     fn reserve_record(&self, bytes: usize, deadline: Option<Instant>) -> bool {
         let mut gate = lock(&self.shared.credit_gate);
-        // Keep room for concurrent foreground jobs. Borrow enough of that
-        // window for one record when queued work is large, so the sole encoder
-        // can still progress without waiting for itself to consume another job.
+        // Work and encoded records have complementary allowances. Count the
+        // current work plus the record window, rather than letting records
+        // consume the work allowance before the next foreground source arrives.
+        // One canonical chunk always fits the reserved record window, even
+        // when queued work fills its own allowance.
         let record_window = self.shared.capacity_bytes - self.work_capacity();
         let can_wait = deadline.is_some() && bytes <= record_window;
         loop {
             let total = self.shared.queued_bytes.load(Ordering::Relaxed);
             let work = self.shared.work_bytes.load(Ordering::Relaxed);
-            let ceiling = self.work_capacity().max(work.saturating_add(bytes));
+            let ceiling = work.saturating_add(record_window);
             if (!can_wait || total.saturating_add(bytes) <= ceiling)
                 && reserve_bytes(&self.shared, bytes)
             {

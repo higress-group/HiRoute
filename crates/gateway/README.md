@@ -61,8 +61,9 @@ read quantum remains independent of these targets. Fixed slots hold pointers; ea
 covers its allocated header, rather than preallocating 256 maximum-size tasks.
 Only the content worker can park on record credit, with a
 bounded stalled-record wait; foreground producers remain nonblocking. Encoded
-bursts leave room for concurrent foreground jobs; queued work still leaves room
-for one complete chunk record. Both use the same unchanged byte ceiling. Delivery
+records use the reserved 3/16 record allowance rather than borrowing the 13/16
+allowance for future foreground jobs. Queued work still leaves room for one complete
+chunk record. Both use the same unchanged total byte ceiling. Delivery
 releases credit through a condition variable, and a stalled job reports loss
 without publishing dependent completion roots.
 
