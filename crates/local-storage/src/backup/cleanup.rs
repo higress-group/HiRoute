@@ -50,6 +50,7 @@ struct Package {
 struct State {
     initialized: bool,
     discovery: Option<fs::ReadDir>,
+    pending: Option<PathBuf>,
     backups_submitted: bool,
     package: Option<Package>,
     active: Option<Job>,
@@ -73,6 +74,7 @@ impl UpgradeCleanup {
             state: Mutex::new(State {
                 initialized: false,
                 discovery: None,
+                pending: None,
                 backups_submitted: false,
                 package: None,
                 active: None,
@@ -170,6 +172,13 @@ impl UpgradeCleanup {
             }
             return Ok(());
         }
+        if let Some(path) = state.pending.as_ref() {
+            // Do not lose a failed admission by advancing the directory cursor.
+            // Keep this exact item pending under the same error backoff.
+            state.active = self.load(path.clone())?;
+            state.pending = None;
+            return Ok(());
+        }
         if let Some(entries) = state.discovery.as_mut() {
             for _ in 0..16 {
                 let Some(entry) = entries.next().transpose()? else {
@@ -181,7 +190,7 @@ impl UpgradeCleanup {
                     .to_str()
                     .is_some_and(|n| n.starts_with("retire-") && portable(n))
                 {
-                    state.active = self.load(entry.path())?;
+                    state.pending = Some(entry.path());
                     return Ok(());
                 }
             }

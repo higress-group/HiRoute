@@ -246,3 +246,33 @@ fn replaced_installer_handoff_is_preserved_with_its_package() {
     assert!(package.join("hirouted").exists());
     assert_eq!(fs::read(record).unwrap(), bytes);
 }
+
+#[test]
+fn failed_cleanup_stays_pending_and_backs_off_until_repaired() {
+    let f = Fixture::new();
+    let cleanup = f.controller();
+    crate::prepare_owner_directory(&cleanup.jobs().unwrap()).unwrap();
+    let wrapper = cleanup.jobs().unwrap().join("retire-incomplete");
+    crate::prepare_owner_directory(&wrapper).unwrap();
+    f.file(&wrapper.join("unexpected"), b"preserve");
+    cleanup.service_ready();
+    let now = Instant::now();
+    cleanup.cycle_at(now).unwrap(); // discover, without admitting unknown material
+    assert!(cleanup.cycle_at(now + Duration::from_secs(10)).is_err());
+    for seconds in 11..15 {
+        assert!(
+            !cleanup
+                .cycle_at(now + Duration::from_secs(seconds))
+                .unwrap()
+        );
+    }
+    assert_eq!(fs::read(wrapper.join("unexpected")).unwrap(), b"preserve");
+    assert_eq!(
+        cleanup.state.lock().unwrap().pending.as_ref(),
+        Some(&wrapper)
+    );
+    fs::remove_file(wrapper.join("unexpected")).unwrap();
+    drain(&cleanup);
+    assert!(!wrapper.exists());
+    assert!(!f.backups.exists());
+}
