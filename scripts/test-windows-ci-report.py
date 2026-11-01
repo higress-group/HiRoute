@@ -63,11 +63,11 @@ try {
  Reject {Get-WindowsReplayRecipes $captures (@($product)+@($product[0]))}
  Reject {Get-WindowsReplayRecipes $captures (@($product)+@(''))}
  $required=@(Get-WindowsRequiredRecipes background)
- Require ($required.Count -eq 5)
+ Require ($required.Count -eq 6)
  $runtime=@(Get-WindowsAssessmentNames background hosted execute)
  $deferred=@(Get-WindowsAssessmentNames background hosted compile-only)
- Require ($runtime.Count -eq 3 -and $deferred.Count -eq 2)
- Require (@(Get-WindowsAssessmentNames background full execute).Count -eq 5)
+ Require ($runtime.Count -eq 3 -and $deferred.Count -eq 3)
+ Require (@(Get-WindowsAssessmentNames background full execute).Count -eq 6)
  Require (@(Get-WindowsAssessmentNames background full compile-only).Count -eq 0)
  Reject {Get-WindowsRuntimeDisposition background unknown-new-recipe hosted}
  Reject {Get-WindowsRuntimeDisposition background unknown-new-recipe full}
