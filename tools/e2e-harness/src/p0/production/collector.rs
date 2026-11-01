@@ -778,10 +778,12 @@ fn collector(message: &'static str) -> ProductionError {
 
 #[cfg(test)]
 mod execution_order_tests {
+    use super::validate_content_freshness;
     use super::{
         SEALED_EXECUTION_ORDER as SEALED, valid_execution_kind_order, valid_smoke_input_selection,
     };
-    use serde_json::json;
+    use base64::Engine as _;
+    use serde_json::{Value, json};
 
     #[test]
     fn current_order_accepts_each_single_usage_authority_position() {
