@@ -40,3 +40,32 @@ impl BuildIdentityV1 {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_or_invalid_source_metadata_stays_unknown_without_exposing_build_paths() {
+        for revision in [
+            None,
+            Some(""),
+            Some("/private/source/checkout"),
+            Some("not-a-source-sha"),
+        ] {
+            let identity = BuildIdentityV1::compiled("cli", "0.3.2-dev.1", revision);
+            assert!(identity.source_revision.is_none());
+            assert!(identity.text().contains("Source revision: unknown"));
+            assert!(
+                !serde_json::to_string(&identity)
+                    .unwrap()
+                    .contains("/private/")
+            );
+        }
+        let revision = "0123456789abcdef0123456789abcdef01234567";
+        assert_eq!(
+            BuildIdentityV1::compiled("daemon", "0.3.2-dev.1", Some(revision)).source_revision,
+            Some(revision)
+        );
+    }
+}

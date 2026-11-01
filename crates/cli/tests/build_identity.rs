@@ -29,6 +29,10 @@ fn version_is_offline_and_reports_the_cli_build_in_every_output_mode() {
         assert_eq!(envelope["data"]["schema"], "hiroute.build-identity/v1");
         assert_eq!(envelope["data"]["component"], "cli");
         assert_eq!(envelope["data"]["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            envelope["data"]["source_revision"],
+            serde_json::to_value(option_env!("HIROUTE_BUILD_SOURCE_SHA")).unwrap()
+        );
         assert_eq!(envelope["data"]["os"], std::env::consts::OS);
         assert!(
             !String::from_utf8(output.stdout)

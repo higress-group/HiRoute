@@ -154,3 +154,16 @@ fn installed_routing_schemas_publish_the_effective_thousandth_bounds() {
     bounds(&schema.request, &mut found);
     assert!(found >= 2);
 }
+
+#[test]
+fn incomplete_drafts_remain_legal_while_publication_reports_missing_work() {
+    let mut request = plan();
+    request["change"]["editor"]["delegation_enabled"] = json!(true);
+    let editor: hiroute_domain::PlanEditorStateV2 =
+        serde_json::from_value(request["change"]["editor"].clone()).unwrap();
+    assert!(editor.validate_draft().is_ok());
+    assert!(editor.effective().is_err());
+    let (exit, error, _) = invoke(&["routing", "preview"], &request, true);
+    assert_eq!(exit, 2);
+    assert_eq!(error["data"]["diagnostic"]["path"], "$.change.editor.work");
+}

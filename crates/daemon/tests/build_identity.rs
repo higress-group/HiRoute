@@ -25,6 +25,10 @@ fn daemon_version_reports_its_own_build_before_any_service_initialization() {
         assert_eq!(identity["schema"], "hiroute.build-identity/v1");
         assert_eq!(identity["component"], "daemon");
         assert_eq!(identity["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            identity["source_revision"],
+            serde_json::to_value(option_env!("HIROUTE_BUILD_SOURCE_SHA")).unwrap()
+        );
         assert!(
             !String::from_utf8(output.stdout)
                 .unwrap()

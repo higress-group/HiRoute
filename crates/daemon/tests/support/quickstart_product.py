@@ -35,6 +35,9 @@ def run(repository):
     stage = 'install'
     try:
         product.install()
+        version = product.cli('version')['data']
+        assert version['schema'] == 'hiroute.build-identity/v1' and version['component'] == 'cli'
+        assert version['source_revision'] in (None, product.sha)
         support_local_skill_challenge(product)
         product.start()
         stage = 'read-only-navigation'
