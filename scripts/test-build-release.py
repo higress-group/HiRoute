@@ -562,6 +562,9 @@ class HostedReleasePolicyTests(unittest.TestCase):
             'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-cli --lib service::recovery_text_tests -- --test-threads=1',
             'cargo test --locked --target x86_64-pc-windows-msvc '
+            '-p hiroute-integrations --lib agents::opencode::tests::'
+            'opencode_real_git_and_linked_worktree_stop_before_foreign_ancestor_config_and_tools -- --exact',
+            'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-shell --features shell-runtime --lib'])
         self.assertIn("throw 'Windows installation component regressions failed'", workflow)
         self.assertIn('component fixtures, not standard-user installation acceptance', workflow)
