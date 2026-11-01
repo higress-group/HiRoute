@@ -12,9 +12,9 @@ use zeroize::Zeroizing;
 const HEADER_BOUND: usize = 8 * 1024;
 const CONNECTION_BOUND: Duration = Duration::from_secs(2);
 const ATTEMPT_BOUND: usize = 64;
-// Exact a270e7b9e57aaecd8f82555f44c2108518ad2330 source:
-// cmd/server/main.go:790-794 starts this updater even with --local-model.
-// internal/misc/antigravity_version.go:29,187-202 uses this HTTPS origin through
+// Exact dbb706215a3afd2f0ea3c96482d4233856466caa source:
+// cmd/server/main.go:833 starts this updater even with --local-model.
+// internal/misc/antigravity_version.go:32,215-232 uses this HTTPS origin through
 // Go's default transport. This is deliberately an origin comparison, not a claim
 // that the manifest path has been observed through an encrypted tunnel.
 const UPDATER: &str = "antigravity-hub-auto-updater-974169037036.us-central1.run.app:443";
@@ -284,7 +284,7 @@ impl Observation {
             serde_json::from_str(include_str!("../../../../vendor/cpa/source.json")).unwrap();
         assert!(
             source["repository"] == "https://github.com/router-for-me/CLIProxyAPI"
-                && source["commit"] == "a270e7b9e57aaecd8f82555f44c2108518ad2330",
+                && source["commit"] == "dbb706215a3afd2f0ea3c96482d4233856466caa",
             "updater-origin observation must be reviewed for the actual pinned CPA source"
         );
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();

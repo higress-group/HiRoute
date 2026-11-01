@@ -248,6 +248,11 @@ function Invoke-LibraryTests {
     $required = @([regex]::Matches($inventory, '(?m)^(\S+): test\r?$') | ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -notin $optIn })
     if ($required.Count -eq 0) { throw "$Package selected no native library tests" }
     $harness = @($optIn | ForEach-Object { '--skip'; $_ })
+    if ($Package -eq 'hiroute-cpa-bridge') {
+      # Preserve a failed assertion even if a later native test aborts the process
+      # before libtest can print its captured-failure summary.
+      $harness += '--nocapture'
+    }
     @{ source_revision = $ExpectedSha; package = $Package; explicit_opt_in_or_child_fixtures = $optIn;
        reason = 'Real selected installation inputs and helper children have separate explicit native gates; any unregistered ignored case still fails this inventory.'
     } | ConvertTo-Json -Depth 5 | Out-File -Encoding utf8 "$evidence/$name-selection.json"
