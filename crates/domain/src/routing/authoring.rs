@@ -86,6 +86,10 @@ pub struct PlanEditorStateV2 {
 }
 
 impl PlanEditorStateV2 {
+    pub fn missing_delegation_purpose(&self) -> bool {
+        self.delegation_enabled && self.purpose.trim().is_empty()
+    }
+
     /// Publication-only checks: incomplete drafts remain legal. These closed field names
     /// share the effective validator's rules and contain no user-supplied path or value.
     pub fn invalid_publication_field(&self) -> Option<&'static str> {
@@ -94,7 +98,14 @@ impl PlanEditorStateV2 {
                 Some("smart.judgment.degree.simple_threshold_millis")
             }
             Some("competence.floor_millis") => Some("smart.judgment.competence.floor_millis"),
-            _ => WorkerPlanV1::invalid_field(self.delegation_enabled, self.work.as_ref()),
+            _ => self
+                .branch_routing
+                .as_ref()
+                .and_then(BranchRoutingEditorV1::invalid_millis_field)
+                .or_else(|| {
+                    WorkerPlanV1::invalid_field(self.delegation_enabled, self.work.as_ref())
+                })
+                .or_else(|| self.missing_delegation_purpose().then_some("purpose")),
         }
     }
 

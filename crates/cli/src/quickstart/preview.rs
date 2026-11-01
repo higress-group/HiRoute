@@ -217,6 +217,17 @@ fn configure_worker(flags: &Flags, prepared: &mut PlanAuthoringOptionsV1) -> Res
         }
         (None, None) => {}
     }
+    // The shared options were computed before these CLI-only delegation edits.
+    // Re-evaluate purpose in both directions, keeping every unrelated choice.
+    prepared
+        .required_choices
+        .retain(|choice| choice.field != "purpose");
+    if editor.missing_delegation_purpose() {
+        return Err(choices(
+            &["--purpose"],
+            json!({"hint":"Enabling delegation requires a nonempty Plan purpose. Supply --purpose with the intended work."}),
+        ));
+    }
     if editor.delegation_enabled && editor.work.is_none() {
         return Err(choices(
             &["--worker-harness", "--worker-protocol"],

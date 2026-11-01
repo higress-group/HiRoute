@@ -71,6 +71,11 @@ fn main() {
         .next()
         .is_some_and(|argument| argument == "--version" || argument == "-V")
     {
+        #[cfg(windows)]
+        if hiroute_platform::windows::console::attach_parent_preserving_stdio().is_err() {
+            eprintln!("hirouted version parent console unavailable");
+            std::process::exit(6);
+        }
         if identity_args.next().is_some() {
             exit_usage();
         }

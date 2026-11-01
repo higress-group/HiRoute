@@ -418,9 +418,11 @@ For the Quickstart and its supported branches, HiRoute SHALL expose navigable fa
 
 Static semantic input diagnostics SHALL use the same domain rules as publication
 and Agent settings validation. Routing publication SHALL explain missing Worker
-configuration when delegation is enabled, unsupported Worker protocol syntax and
+configuration or purpose when delegation is enabled, unsupported Worker protocol syntax and
 judgment threshold/floor values outside the inclusive integer-thousandth range
-`0..1000`. Installed schemas SHALL publish these numeric bounds. Additional-model
+`0..1000`, including shared and per-branch custom judgment settings. Installed
+schemas SHALL publish these numeric bounds. Branch diagnostics SHALL use wildcard
+paths instead of branch identities. Additional-model
 protocol errors SHALL use bounded wildcard paths without echoing context or Plan
 identities. Ordinary JSON error shape and exit semantics SHALL remain compatible;
 structured input diagnostics retain the existing explicit opt-in. These checks
@@ -451,7 +453,7 @@ native login, account entitlement or dynamic Plan capability.
 
 #### Scenario: Explain a static publication requirement
 
-- **WHEN** the CLI receives a typed publication with enabled delegation but no work, an unsupported work protocol, or an out-of-range judgment value
+- **WHEN** the CLI receives a typed publication with enabled delegation but no work/purpose, an unsupported work protocol, or an out-of-range smart/shared-custom/per-branch judgment value
 - **THEN** it reports the field and allowed correction before submission, with the same usage code and no model, publication or configuration side effect.
 
 #### Scenario: Configure a Worker Plan with convenience flags
@@ -459,6 +461,7 @@ native login, account entitlement or dynamic Plan capability.
 - **WHEN** the caller enables or disables delegation with explicit Worker Harness/protocol choices through routing Preview
 - **THEN** those choices enter the existing editor and exact Preview/Apply workflow; missing choices stay unresolved, omitted work retains its saved value, disabling retains the selection, and unrelated model/reasoning/limit settings remain unchanged.
 - **AND** Preview does not publish, install dependencies, configure standing collaboration or invoke a model; existing Apply identity and complete Plan recovery remain authoritative.
+- **AND** enabling a routing-only Plan with an empty purpose reports the missing purpose choice after the delegation edit; disabling delegation removes only that now-inapplicable purpose requirement.
 
 #### Scenario: Unsupported decision binding
 
@@ -484,11 +487,14 @@ service, storage, native configuration or network request. Missing/invalid compi
 source metadata SHALL remain explicitly unknown, never inferred from runtime
 environment or current-directory Git. Identifying a file SHALL NOT claim it is the
 currently running daemon.
+On Windows, version output from the GUI daemon SHALL attach to the existing parent
+console while preserving redirected standard handles.
 
 #### Scenario: Identify binaries without a working service
 
 - **WHEN** the installed CLI or daemon is asked for its version with no available runtime/HOME
 - **THEN** its own compiled identity remains available without creating state, and runtime source-revision variables cannot replace the embedded identity.
+- **AND** the Windows daemon's version aliases produce the same JSON through the parent console and redirected pipes.
 
 ### Requirement: One canonical management Skill guides complete generic CLI journeys
 

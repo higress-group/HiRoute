@@ -237,6 +237,8 @@ These commands work offline and initialize no service, storage or native account
 package version, compiled source revision, OS and architecture. The daemon's
 `--version`/`-V` prints its own identity as one JSON document. Use the actual installed
 daemon executable when the CLI and service may have different installations.
+On Windows, the daemon attaches to the existing parent console for version output
+and preserves redirected stdout/stderr.
 
 The source revision comes only from the build's `HIROUTE_BUILD_SOURCE_SHA` input.
 Missing or invalid build metadata is `null` in JSON and `unknown` in text. Runtime
@@ -1056,7 +1058,8 @@ For a new Plan, combine these flags with the ordinary name, purpose, mode and
 model/group choices. The complete selection is stored in the existing editor as
 `delegation_enabled` and `work`. Supply both Worker flags together; omitting both
 preserves an existing selection. Enabling a Plan without a selection returns
-explicit required choices. `--delegation disable` keeps the selection but disables
+explicit required choices. A routing-only Plan may have no purpose; enabling its
+delegation then asks for `--purpose`. `--delegation disable` keeps the selection but disables
 the published Plan's delegation eligibility. Unrelated edits retain its delegation
 state and work. Inspect the Preview and exact Apply file; Preview does not publish,
 install a native CLI, enable collaboration or call a model.

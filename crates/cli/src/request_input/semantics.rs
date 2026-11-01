@@ -8,6 +8,10 @@ pub(crate) fn plan(change: &PlanContentChangeV2) -> Result<(), ErrorCode> {
         return Ok(());
     };
     let (category, expected) = match field {
+        "purpose" => (
+            "semantic_requirement",
+            "a nonempty Plan purpose when delegation_enabled is true",
+        ),
         "work" => (
             "semantic_requirement",
             "work with harness and protocol when delegation_enabled is true",

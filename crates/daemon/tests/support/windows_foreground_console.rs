@@ -225,10 +225,12 @@ fn actual_windows_daemon_version_uses_parent_console_and_preserves_pipes() {
 fn daemon_version_console_host() {
     assert_eq!(std::env::var(MODE).unwrap(), "version");
     assert!(console::is_attached().unwrap());
+    checkpoint(0);
     let layout = hiroute_host_runtime::StandaloneLayout::from_environment().unwrap();
     let record = hiroute_host_runtime::read_standalone_install_record(&layout.marker_path).unwrap();
     let daemon = hiroute_host_runtime::standalone_daemon_binary(&record.install_root);
     assert_eq!(subsystem(&daemon), 2);
+    checkpoint(1);
     println!("{READY}");
     std::io::stdout().flush().unwrap();
     for flag in ["--version", "-V"] {
