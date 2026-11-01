@@ -26,7 +26,7 @@ impl BytesSink {
     }
     fn wait(&self) {
         let state = lock(&self.gate.0);
-        let (_, timeout) = self
+        let (_state, timeout) = self
             .gate
             .1
             .wait_timeout_while(state, Duration::from_secs(5), |state| !state.0)

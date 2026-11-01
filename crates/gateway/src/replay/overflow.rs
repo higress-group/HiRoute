@@ -2,7 +2,7 @@
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use sha2::{Digest, Sha256};
 
@@ -276,7 +276,6 @@ impl OverflowRange {
 }
 
 struct WriterState {
-    directory: Option<Arc<DirectoryOwner>>,
     segment: Option<Arc<Segment>>,
     offset: usize,
 }
@@ -285,6 +284,7 @@ pub(crate) struct OverflowWriter {
     factory: OverflowFactory,
     quota: Arc<OverflowQuota>,
     segment_bytes: usize,
+    directory: OnceLock<Arc<DirectoryOwner>>,
     state: Mutex<WriterState>,
 }
 
@@ -294,8 +294,8 @@ impl OverflowFactory {
             factory: self.clone(),
             quota,
             segment_bytes: segment_bytes.max(HEADER_BYTES + DIGEST_BYTES),
+            directory: OnceLock::new(),
             state: Mutex::new(WriterState {
-                directory: None,
                 segment: None,
                 offset: 0,
             }),
@@ -313,31 +313,46 @@ impl OverflowWriter {
             .checked_add(payload.len())
             .and_then(|bytes| bytes.checked_add(DIGEST_BYTES))
             .ok_or(ReplayError::LengthOverflow)?;
-        let (segment, offset) = {
+        let directory = if let Some(directory) = self.directory.get() {
+            Arc::clone(directory)
+        } else {
+            // Filesystem creation and disposal never span the offset/state lock.
+            let created = Arc::new(DirectoryOwner {
+                directory: secure_path::create_request_directory(&self.factory.root)?,
+                quota: Arc::clone(&self.quota),
+                failed_reserved: AtomicUsize::new(0),
+                failed_retained: AtomicU64::new(0),
+            });
+            let _ = self.directory.set(Arc::clone(&created));
+            let retained = Arc::clone(self.directory.get().unwrap());
+            drop(created);
+            retained
+        };
+        let mut spare = None;
+        let (segment, offset) = loop {
             let mut state = lock(&self.state);
-            if state.directory.is_none() {
-                state.directory = Some(Arc::new(DirectoryOwner {
-                    directory: secure_path::create_request_directory(&self.factory.root)?,
-                    quota: Arc::clone(&self.quota),
-                    failed_reserved: AtomicUsize::new(0),
-                    failed_retained: AtomicU64::new(0),
-                }));
-            }
-            if state.segment.is_none()
-                || (state.offset != 0 && state.offset.saturating_add(length) > self.segment_bytes)
-            {
-                let directory = Arc::clone(state.directory.as_ref().unwrap());
-                let (entry, file) = secure_path::create_file(&directory.directory, "content")?;
-                self.quota.live_segments.fetch_add(1, Ordering::AcqRel);
-                self.quota.created_segments.fetch_add(1, Ordering::Relaxed);
-                state.segment = Some(Arc::new(Segment {
-                    directory,
-                    entry,
-                    file: Mutex::new(Some(file)),
-                    reserved: AtomicUsize::new(0),
-                    retained: AtomicU64::new(0),
-                }));
+            let needs_segment = state.segment.is_none()
+                || (state.offset != 0 && state.offset.saturating_add(length) > self.segment_bytes);
+            if needs_segment {
+                let Some(replacement) = spare.take() else {
+                    drop(state);
+                    let (entry, file) = secure_path::create_file(&directory.directory, "content")?;
+                    self.quota.live_segments.fetch_add(1, Ordering::AcqRel);
+                    self.quota.created_segments.fetch_add(1, Ordering::Relaxed);
+                    spare = Some(Arc::new(Segment {
+                        directory: Arc::clone(&directory),
+                        entry,
+                        file: Mutex::new(Some(file)),
+                        reserved: AtomicUsize::new(0),
+                        retained: AtomicU64::new(0),
+                    }));
+                    continue;
+                };
+                let retired = state.segment.replace(replacement);
                 state.offset = 0;
+                drop(state);
+                drop(retired);
+                continue;
             }
             let next = state
                 .offset
@@ -348,8 +363,9 @@ impl OverflowWriter {
             segment.reserved.fetch_add(length, Ordering::Relaxed);
             let offset = state.offset as u64;
             state.offset = next;
-            (segment, offset)
+            break (segment, offset);
         };
+        drop(spare);
         // No sequence, pending, quota, or writer-state lock spans encoded IO.
         let mut header = [0; HEADER_BYTES];
         header[..8].copy_from_slice(MAGIC);
@@ -385,9 +401,12 @@ impl OverflowWriter {
 
     /// Release the writer's current segment; ranges keep only their own backing.
     pub(crate) fn seal(&self) {
-        let mut state = lock(&self.state);
-        state.segment = None;
-        state.offset = 0;
+        let consumed = {
+            let mut state = lock(&self.state);
+            state.offset = 0;
+            state.segment.take()
+        };
+        drop(consumed);
     }
 }
 
