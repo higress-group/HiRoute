@@ -1,7 +1,9 @@
 //! Bounded semantic segments reuse ModelEvent and its existing product reader.
 //! No frame/event log and no whole-response buffer are needed.
 use super::{CONTENT_CHUNK_BYTES, ModelEvent, ModelStreamEventV1};
-use crate::observation::{crypto::WorkspaceHmac, producer::ObservationWorkReservation};
+use crate::server::core_runtime::observation::{
+    crypto::WorkspaceHmac, producer::ObservationWorkReservation,
+};
 use std::collections::BTreeMap;
 
 const MAX_BLOCKS: usize = 128;
@@ -14,7 +16,7 @@ struct Proof {
     bytes: usize,
 }
 
-pub(in crate::observation) struct SemanticResponse {
+pub(in crate::server::core_runtime::observation) struct SemanticResponse {
     pub(super) attempt: String,
     pub(super) partial: bool,
     key: [u8; 32],
@@ -79,6 +81,13 @@ impl SemanticResponse {
             output.push(event);
             return output;
         };
+        if matches!(&event.event, ModelEvent::ToolArgumentsDelta{logical_id,..} if logical_id.len()>4096)
+        {
+            self.partial = true;
+            self.flush_into(&mut output);
+            output.push(event);
+            return output;
+        }
         let tool = if let ModelEvent::ToolArgumentsDelta { logical_id, .. } = &event.event {
             let mut hash = WorkspaceHmac::new(&self.key, b"semantic-tool-identity");
             hash.update(logical_id.as_bytes());

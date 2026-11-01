@@ -1,15 +1,15 @@
 use crate::store::cached_sql;
 use hiroute_domain::{
-    CONVERSATION_CONTENT_SCHEMA_V2, CanonicalDigest, ConversationContentEnvelopeV1,
-    ExecutionFactEnvelopeV1, ExecutionFactError, LossNoticeV1, OBSERVATION_ACK_SCHEMA_V2,
-    OBSERVATION_NACK_SCHEMA_V1, ObservationAckV2, ObservationChannel,
-    ObservationContentAcknowledgementV1, ObservationEnvelopeError, ObservationEnvelopeViolationV1,
-    ObservationFeedbackIdentityV1, ObservationNackDetailV1, ObservationNackV1,
-    ObservationSequenceRangeV1, ObservationStreamV1, SequenceRangeV1,
+    CONVERSATION_CONTENT_SCHEMA_V2, ConversationContentEnvelopeV1, ExecutionFactEnvelopeV1,
+    ExecutionFactError, LossNoticeV1, OBSERVATION_ACK_SCHEMA_V2, OBSERVATION_NACK_SCHEMA_V1,
+    ObservationAckV2, ObservationChannel, ObservationContentAcknowledgementV1,
+    ObservationEnvelopeError, ObservationEnvelopeViolationV1, ObservationFeedbackIdentityV1,
+    ObservationNackDetailV1, ObservationNackV1, ObservationSequenceRangeV1, ObservationStreamV1,
+    SequenceRangeV1,
 };
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::content::lifecycle::{ContentProjectionAck, ContentProjectionError};
+use crate::content::lifecycle::ContentProjectionError;
 use crate::receipt::FactProjectionError;
 use crate::writer::{IngestOutcome, ObservationStoreError};
 
@@ -224,6 +224,7 @@ pub(super) fn advance_checkpoint(
     sequence: u64,
     had_gap: bool,
 ) -> Result<Checkpoint, ObservationStoreError> {
+    gap::resolve_sequence(transaction, channel, stream, sequence)?;
     let checkpoint = Checkpoint {
         contiguous: if !had_gap && prior.contiguous == prior.accounted {
             sequence

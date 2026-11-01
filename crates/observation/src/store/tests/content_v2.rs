@@ -843,23 +843,6 @@ fn many_chunks_install_without_a_whole_stream_buffer() {
     assert_eq!(byte_count, whole.len() as i64);
 }
 
-fn assert_content_ack(
-    value: &ObservationContentAcknowledgementV1,
-    next: u32,
-    blob_count: usize,
-    root: Option<&str>,
-) {
-    assert_eq!(value.request_id, "request-1");
-    assert_eq!(
-        value.direction,
-        ConversationContentDirectionV2::RequestInput
-    );
-    assert_eq!(value.fork_id, "fork-request");
-    assert_eq!(value.next_chunk_ordinal, next);
-    assert_eq!(value.acknowledged_blobs.len(), blob_count);
-    assert_eq!(value.transcript_root.as_deref(), root);
-}
-
 fn ack(outcome: IngestOutcome) -> hiroute_domain::ObservationAckV2 {
     match outcome {
         IngestOutcome::Ack(value) => value,

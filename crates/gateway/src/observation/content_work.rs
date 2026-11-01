@@ -123,10 +123,9 @@ impl RequestObservation {
             self.select_input_capture(
                 request,
                 None,
-                request
-                    .messages
-                    .iter()
-                    .rposition(|m| m.role == crate::model_ir::MessageRole::User),
+                request.messages.iter().rposition(|m| {
+                    m.role == crate::server::core_runtime::model_ir::MessageRole::User
+                }),
                 None,
             );
         }

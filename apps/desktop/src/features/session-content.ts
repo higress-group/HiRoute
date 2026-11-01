@@ -9,7 +9,7 @@ export function isTechnicalContentKind(kind: string): boolean {
   return kind === 'message_name' || kind.startsWith('tool_');
 }
 
-export function coalesceResponseText(events: readonly ReadableEvent[]): { kind: 'text' | 'refusal'; index: number; text: string }[] {
+export function coalesceResponseText(events: readonly ReadableEvent[]): { kind: 'text' | 'refusal'; index: number; text: string; version?: 'accepted' | 'final' }[] {
   const parts = new Map<string, Extract<ReadableEvent, { kind: 'text' | 'reasoning' | 'refusal' }>[]>();
   for (const event of events) {
     if (event.kind !== 'text' && event.kind !== 'refusal') continue;
@@ -18,10 +18,16 @@ export function coalesceResponseText(events: readonly ReadableEvent[]): { kind: 
     group.push(event);
     parts.set(key, group);
   }
-  return [...parts.values()].map(group => {
+  return [...parts.values()].flatMap(group => {
     group.sort((a, b) => a.sequence - b.sequence);
     const finished = group.filter(event => event.phase === 'finished').at(-1);
-    return { kind: group[0].kind as 'text' | 'refusal', index: group[0].index, text: finished?.text ?? group.filter(event => event.phase === 'delta').map(event => event.text).join('') };
+    const accepted = group.filter(event => event.phase === 'delta').map(event => event.text).join('');
+    const identity = { kind: group[0].kind as 'text' | 'refusal', index: group[0].index };
+    if (accepted && finished?.text && accepted !== finished.text) return [
+      { ...identity, text: accepted, version: 'accepted' as const },
+      { ...identity, text: finished.text, version: 'final' as const },
+    ];
+    return [{ ...identity, text: finished?.text || accepted }];
   }).sort((a, b) => a.index - b.index);
 }
 

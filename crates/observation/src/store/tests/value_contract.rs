@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use hiroute_domain::{
     FactsCompleteness, ObservationQueryPort, SEVEN_DAYS_MILLIS, VALUE_LEDGER_SCHEMA_V1,
     ValueGroupByV1,
@@ -252,15 +250,4 @@ fn daily_row_count(store: &LocalObservationStore) -> u64 {
         })
         .unwrap();
     count.try_into().unwrap()
-}
-
-fn schema_version(store: &LocalObservationStore) -> String {
-    let connection = store.connection.lock();
-    connection
-        .query_row(
-            "SELECT value FROM observation_meta WHERE key='schema_version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap()
 }

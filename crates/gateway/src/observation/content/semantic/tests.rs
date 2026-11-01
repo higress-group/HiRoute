@@ -1,12 +1,12 @@
 use super::*;
-use crate::model_ir::ResponseItemStatus;
+use crate::server::core_runtime::model_ir::ResponseItemStatus;
 
 fn capture() -> SemanticResponse {
-    let request = crate::observation::tests::request_with_sinks_capacity(
-        crate::observation::otel::OtelContentPolicy::Disabled,
+    let request = crate::server::core_runtime::observation::tests::request_with_sinks_capacity(
+        crate::server::core_runtime::observation::otel::OtelContentPolicy::Disabled,
         hiroute_diagnostics::runtime::DiagnosticsPort::default(),
         true,
-        crate::observation::GatewayObservationSinks::discard(),
+        crate::server::core_runtime::observation::GatewayObservationSinks::discard(),
         4 * 1024 * 1024,
     );
     let reservation = request

@@ -715,7 +715,7 @@ impl RequestObservation {
     async fn append_response_event_run(
         &self,
         attempt_id: &str,
-        frame_id: &str,
+        _frame_id: &str,
         event: ModelStreamEventV1,
     ) {
         let Some(kind) = canonical_response_content_kind(&event.event) else {

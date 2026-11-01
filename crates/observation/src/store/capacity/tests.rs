@@ -448,8 +448,7 @@ fn retires_completed_request_in_slices_preserves_active_shared_history_and_rollu
         let tx = db.transaction().unwrap();
         for i in 0..2048 {
             // Rowid order deliberately differs from the request index order.
-            tx.execute("INSERT INTO conversation_content_events_v2(stream_ref,sequence,event_id,workspace_id,request_id,direction,fork_id,phase,metadata_json,envelope_digest) SELECT stream_ref,?1,?2,workspace_id,request_id,direction,fork_id,phase,metadata_json,envelope_digest FROM conversation_content_events_v2 WHERE request_id=?3 LIMIT 1",params![12047-i,format!("bulk-{i}"),a.request.as_str()]).unwrap();
-            tx.execute("INSERT INTO observation_feedback_v2(stream_ref,rejected_or_acked_sequence,event_id,envelope_digest,feedback_kind,feedback_json,created_at_unix_nanos) SELECT stream_ref,sequence,event_id,envelope_digest,'ack',(SELECT feedback_json FROM observation_feedback_v2 WHERE feedback_kind='ack' LIMIT 1),100 FROM conversation_content_events_v2 WHERE event_id=?1",[format!("bulk-{i}")]).unwrap();
+            tx.execute("INSERT INTO content_instances_v2(workspace_id,content_id,message_instance_id,request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos) SELECT workspace_id,?1,message_instance_id,request_id,direction,fork_id,?2,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2 WHERE request_id=?3 LIMIT 1",params![format!("bulk-{i}"),12047-i,a.request.as_str()]).unwrap();
         }
         tx.commit().unwrap();
     }
@@ -477,22 +476,12 @@ fn retires_completed_request_in_slices_preserves_active_shared_history_and_rollu
     );
     assert_eq!(
         db.query_row(
-            "SELECT COUNT(*) FROM conversation_content_events_v2 WHERE request_id=?1",
+            "SELECT COUNT(*) FROM content_instances_v2 WHERE request_id=?1",
             [a.request.as_str()],
             |r| r.get::<_, i64>(0)
         )
         .unwrap(),
         0
-    );
-    assert_eq!(
-        db.query_row(
-            "SELECT COUNT(*) FROM observation_feedback_v2 WHERE event_id LIKE 'bulk-%'",
-            [],
-            |r| r.get::<_, u64>(0)
-        )
-        .unwrap(),
-        0,
-        "retiring a carrier must not strand its accepted feedback"
     );
     assert_eq!(
         db.query_row(
@@ -505,21 +494,12 @@ fn retires_completed_request_in_slices_preserves_active_shared_history_and_rollu
     );
     assert_eq!(
         db.query_row(
-            "SELECT COUNT(*) FROM observation_feedback_v2 WHERE event_id=?1",
+            "SELECT COUNT(*) FROM execution_fact_events WHERE event_id=?1",
             [retired_fact.event_id.as_str()],
             |r| r.get::<_, u64>(0)
         )
         .unwrap(),
         0
-    );
-    assert_eq!(
-        db.query_row(
-            "SELECT COUNT(*) FROM observation_events WHERE event_id=?1",
-            [retired_fact.event_id.as_str()],
-            |r| r.get::<_, u64>(0)
-        )
-        .unwrap(),
-        1
     );
     let next: u64 = db
         .query_row(

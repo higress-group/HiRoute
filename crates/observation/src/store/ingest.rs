@@ -3,7 +3,7 @@ use hiroute_domain::{
     ObservationChannel, ObservationEnvelopeViolationV1, ObservationGapHeartbeatV1,
     ObservationNackDetailV1, ObservationStreamV1, SequencedObservationEnvelope,
 };
-use rusqlite::{OptionalExtension, params};
+use rusqlite::params;
 
 use crate::content::lifecycle::{ContentProjectionError, apply_content};
 use crate::content::storage::verify_content_replay;

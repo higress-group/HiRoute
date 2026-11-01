@@ -8,7 +8,7 @@ use hiroute_domain::{
     CanonicalDigest, ContentId, ConversationContentEnvelopeV1, ConversationContentPhaseV2,
     ObservationAckV2, ObservationBlobAcknowledgementV1, ObservationDigestSubjectV1,
 };
-use rusqlite::{OptionalExtension, Transaction, params};
+use rusqlite::{Transaction, params};
 
 use crate::store::LocalObservationStore;
 

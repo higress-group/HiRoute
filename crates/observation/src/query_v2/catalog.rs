@@ -33,7 +33,9 @@ impl crate::LocalObservationStore {
             relation::authorized_link(&tx, reader, &query.request_id, now_ms)?;
         }
         let legacy_binding = (reader.binding()?, &query.request_id, query.limit);
-        let binding = if query.include_input_selection {
+        let binding = if query.include_semantic_metadata {
+            CanonicalDigest::of(&(legacy_binding, query.include_input_selection, true))
+        } else if query.include_input_selection {
             CanonicalDigest::of(&(legacy_binding, true))
         } else {
             CanonicalDigest::of(&legacy_binding)
@@ -66,7 +68,7 @@ impl crate::LocalObservationStore {
         };
         let after = cursor.after.clone().unwrap_or_default();
         let mut contents = {
-            let mut stmt=tx.prepare("SELECT c.content_id,c.message_instance_id,m.message_ordinal,c.part_ordinal,m.message_role,c.direction,c.fork_id,c.canonical_media_type,c.accumulated_byte_count,c.state,c.downstream_delivery,c.content_kind
+            let mut stmt=tx.prepare("SELECT c.content_id,c.message_instance_id,m.message_ordinal,c.part_ordinal,m.message_role,c.direction,c.fork_id,c.canonical_media_type,c.accumulated_byte_count,c.state,c.downstream_delivery,c.content_kind,c.attempt_id,c.semantic_metadata_json
              FROM content_instances_v2 c JOIN content_message_instances_v2 m ON m.workspace_id=c.workspace_id AND m.message_instance_id=c.message_instance_id
              JOIN logical_requests r ON r.workspace_id=c.workspace_id AND r.request_id=c.request_id
              WHERE c.workspace_id=?1 AND c.request_id=?2 AND r.started_at_ms>?3 AND c.rowid<=?4
@@ -100,6 +102,26 @@ impl crate::LocalObservationStore {
                         byte_count: r.get(8)?,
                         state: r.get(9)?,
                         downstream_delivery: r.get(10)?,
+                        attempt_id: if query.include_semantic_metadata {
+                            r.get(12)?
+                        } else {
+                            None
+                        },
+                        capture: if query.include_semantic_metadata {
+                            r.get::<_, Option<String>>(13)?
+                                .map(|json| {
+                                    serde_json::from_str(&json).map_err(|e| {
+                                        rusqlite::Error::FromSqlConversionFailure(
+                                            13,
+                                            rusqlite::types::Type::Text,
+                                            Box::new(e),
+                                        )
+                                    })
+                                })
+                                .transpose()?
+                        } else {
+                            None
+                        },
                     })
                 },
             )?
@@ -158,6 +180,11 @@ impl crate::LocalObservationStore {
                 )
             })
             .flatten();
+        let input_anchor = if query.include_semantic_metadata {
+            super::input_anchor::read(&tx, reader, &query.request_id, now_ms)?
+        } else {
+            None
+        };
         tx.commit()?;
         check_visibility(&connection, visibility)?;
         Ok(ObservationCatalogPageV2 {
@@ -166,6 +193,7 @@ impl crate::LocalObservationStore {
             transcript_roots,
             roots_partial,
             input_selection,
+            input_anchor,
         })
     }
 
