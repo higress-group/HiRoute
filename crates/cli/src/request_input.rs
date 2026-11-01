@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
 pub(crate) mod diagnostics;
-pub(crate) mod semantics;
 mod fields;
+pub(crate) mod semantics;
 
 pub(crate) const MAX_REQUEST_BYTES: u64 = 1024 * 1024;
 
