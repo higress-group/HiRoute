@@ -2,7 +2,7 @@
 use std::collections::BTreeSet;
 
 use hiroute_domain::{
-    CanonicalDigest, CredentialRefV1, DecisionServiceOperationV2, OperationState, OperationV1,
+    CanonicalDigest, CredentialRefV1, DecisionServiceOperationState, OperationState, OperationV1,
     PortError, PortErrorCode, PortResult, SecretMutationKind,
 };
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
@@ -35,15 +35,9 @@ pub(in crate::control) fn reconcile(
     ) {
         return Err(conflict("decision.v2.compensation_state"));
     }
-    let decision: DecisionServiceOperationV2 = serde_json::from_value(
-        operation
-            .plan
-            .control()
-            .get("decision_service_operation_v2")
-            .cloned()
-            .ok_or_else(|| invalid("decision.v2.compensation_operation"))?,
-    )
-    .map_err(|_| invalid("decision.v2.compensation_operation"))?;
+    let decision = DecisionServiceOperationState::from_control(operation.plan.control())
+        .map_err(|_| invalid("decision.compensation_operation"))?
+        .ok_or_else(|| invalid("decision.compensation_operation"))?;
     let mut seen = BTreeSet::new();
     let mut repaired = Vec::new();
     for mutation in &decision.sources {

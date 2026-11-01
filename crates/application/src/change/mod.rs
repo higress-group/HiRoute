@@ -17,6 +17,7 @@ use thiserror::Error;
 use crate::compute_management::ProtectedInputSourceDescriptorV1;
 
 mod compute;
+mod decision_context;
 
 /// Reads a logical Secret slot through a protected adapter. Slots are safe labels, not paths,
 /// provider locators, or SecretStore references.
@@ -37,6 +38,18 @@ pub trait ProtectedInputPort {
 /// owns a hard-coded provider list: an exact option must be present in the installed current
 /// registry before any ProtectedInput, Secret, external, or durable port is touched.
 pub trait ConnectionOptionAuthorizationPort {
+    fn resolve_decision_context(
+        &self,
+        _endpoint: &str,
+        _protocol: hiroute_domain::DecisionWireProtocolV2,
+        _model: &str,
+        _policy: &hiroute_domain::DecisionContextPolicyV1,
+    ) -> PortResult<hiroute_domain::ResolvedDecisionContextV1> {
+        Err(hiroute_domain::PortError::new(
+            hiroute_domain::PortErrorCode::Unavailable,
+            "decision.context.unsupported",
+        ))
+    }
     /// Resolve only the exact source and retained service requested by a decision operation.
     fn decision_source(
         &self,
@@ -489,7 +502,11 @@ fn registered_plan<O: ConnectionOptionAuthorizationPort>(
             })
         }
         "decision.connections.apply" => {
-            plan_decision_connection(connection_options, serde_json::from_value(desired_state)?)
+            if desired_state.get("schema").is_some() {
+                decision_context::plan(connection_options, serde_json::from_value(desired_state)?)
+            } else {
+                plan_decision_connection(connection_options, serde_json::from_value(desired_state)?)
+            }
         }
         // Formal command-specific DTO/handler adapters are owned by later PROCESSes. Unknown
         // commands fail closed instead of falling through a generic Value effects DSL.
@@ -519,6 +536,9 @@ fn plan_decision_connection<O: ConnectionOptionAuthorizationPort>(
         )
     };
     let mut secrets = Vec::new();
+    if matches!(prior, Some(hiroute_domain::DecisionServiceRecord::V3(_))) {
+        return Err(ChangePreparationError::SourceIdentityMismatch);
+    }
     if let Some(service) = &change.service {
         if let Some(slot) = &input.input_slot {
             let header = service
@@ -537,7 +557,7 @@ fn plan_decision_connection<O: ConnectionOptionAuthorizationPort>(
         } else if let Some(header) = service.connection.transport().2
             && !prior
                 .as_ref()
-                .is_some_and(|old| decision_header_is_reusable(old, service, header))
+                .is_some_and(|old| decision_header_is_reusable(old, &service.connection, header))
         {
             return Err(ChangePreparationError::SecretInputRequired);
         }
@@ -583,7 +603,7 @@ fn plan_decision_connection<O: ConnectionOptionAuthorizationPort>(
 
 fn decision_header_is_reusable(
     old: &hiroute_domain::DecisionServiceRecord,
-    new: &hiroute_domain::DecisionServiceV2,
+    new: &hiroute_domain::DecisionConnectionV2,
     header: &hiroute_domain::ClassifierAuthHeaderV1,
 ) -> bool {
     use hiroute_domain::{
@@ -593,7 +613,7 @@ fn decision_header_is_reusable(
         DecisionServiceRecord::V1(service) => {
             let (endpoint, _, header) = service.connection.transport();
             let compatible = matches!(
-                (&service.connection, &new.connection),
+                (&service.connection, new),
                 (
                     DecisionConnectionV1::SystemOne { .. },
                     DecisionConnectionV2::Native {
@@ -607,10 +627,11 @@ fn decision_header_is_reusable(
             );
             (endpoint, header, compatible)
         }
-        DecisionServiceRecord::V2(service) => {
-            let (endpoint, _, header) = service.connection.transport();
+        DecisionServiceRecord::V2(_) | DecisionServiceRecord::V3(_) => {
+            let connection = old.versioned_connection().expect("versioned service");
+            let (endpoint, _, header) = connection.transport();
             let compatible = matches!(
-                (&service.connection, &new.connection),
+                (connection, new),
                 (
                     DecisionConnectionV2::Native {
                         authentication: DecisionAuthenticationV2::Independent { .. },
@@ -664,8 +685,7 @@ fn decision_header_is_reusable(
     };
     compatible
         && old_header == Some(header)
-        && origin(old_endpoint)
-            .is_some_and(|before| Some(before) == origin(new.connection.transport().0))
+        && origin(old_endpoint).is_some_and(|before| Some(before) == origin(new.transport().0))
 }
 
 #[cfg(test)]

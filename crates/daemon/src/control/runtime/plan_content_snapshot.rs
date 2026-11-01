@@ -28,6 +28,9 @@ impl LocalControlAdapter {
                 let selected_service_v2 = configuration
                     .as_ref()
                     .and_then(|configuration| configuration.decision_service_v2().cloned());
+                let selected_service_v3 = configuration
+                    .as_ref()
+                    .and_then(|configuration| configuration.decision_service_v3().cloned());
                 let local_before = self.routing_read_stamp()?;
                 let read_rows = || {
                     let stores = self.stores_lock().map_err(super::map_port)?;
@@ -80,10 +83,31 @@ impl LocalControlAdapter {
                         })
                         .transpose()?
                         .flatten();
-                    let decision_source = match decision_service_v2
+                    let decision_service_v3 = selected_service_v3
+                        .as_ref()
+                        .map(|service| {
+                            stores
+                                .control()
+                                .decision_service_record(workspace, &service.id, service.revision)
+                                .map_err(super::map_port)
+                                .and_then(|record| match record {
+                                    Some(hiroute_domain::DecisionServiceRecord::V3(service)) => {
+                                        Ok(Some(service))
+                                    }
+                                    Some(_) => Err(ControlReadError::Corrupt),
+                                    None => Ok(None),
+                                })
+                        })
+                        .transpose()?
+                        .flatten();
+                    let decision_source = match decision_service_v3
                         .as_ref()
                         .map(|service| &service.connection)
-                    {
+                        .or_else(|| {
+                            decision_service_v2
+                                .as_ref()
+                                .map(|service| &service.connection)
+                        }) {
                         Some(hiroute_domain::DecisionConnectionV2::Native {
                             authentication:
                                 hiroute_domain::DecisionAuthenticationV2::SharedSource {
@@ -102,6 +126,7 @@ impl LocalControlAdapter {
                         heads,
                         decision_service,
                         decision_service_v2,
+                        decision_service_v3,
                         decision_source,
                     ))
                 };
@@ -111,6 +136,7 @@ impl LocalControlAdapter {
                     mut heads,
                     decision_service,
                     decision_service_v2,
+                    decision_service_v3,
                     decision_source,
                 ) = read_rows()?;
                 let after = self.routing_compilation_snapshot(workspace)?;
@@ -194,6 +220,7 @@ impl LocalControlAdapter {
                     facts: after.facts,
                     decision_service,
                     decision_service_v2,
+                    decision_service_v3,
                     decision_source,
                     expected_revisions: after.expected_revisions,
                 })

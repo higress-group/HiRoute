@@ -48,6 +48,7 @@ pub fn stock_c_v4_questions() -> Value {
 pub fn native_mode(mode: &super::ComplexityClassifierModeV1) -> bool {
     matches!(mode, super::ComplexityClassifierModeV1::DecisionService { service } if matches!(service.connection, super::DecisionConnectionV1::SystemOne { .. }))
         || matches!(mode, super::ComplexityClassifierModeV1::DecisionServiceV2 { service } if matches!(service.connection, super::DecisionConnectionV2::Native { .. }))
+        || matches!(mode, super::ComplexityClassifierModeV1::DecisionServiceV3 { service } if matches!(service.connection, super::DecisionConnectionV2::Native { .. }))
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -300,6 +301,8 @@ pub struct FrozenNativeProtocolV1 {
     pub context_layout: String,
     pub decision: DecisionDefinitionV1,
     pub scopes: BTreeMap<String, FrozenAssessmentScopeV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_budget: Option<super::ResolvedDecisionContextV1>,
     pub digest: CanonicalDigest,
 }
 
@@ -371,12 +374,24 @@ impl FrozenNativeProtocolV1 {
             context_layout: C_CONTEXT_LAYOUT.into(),
             decision,
             scopes,
+            context_budget: None,
             digest: CanonicalDigest::of_bytes(&[]),
         };
         value.digest = value.content_digest()?;
         Ok(value)
     }
     fn content_digest(&self) -> Result<CanonicalDigest, NativeProtocolError> {
+        if let Some(context) = &self.context_budget {
+            return CanonicalDigest::of(&(
+                "hiroute.native-execution-context/v1",
+                &self.protocol,
+                &self.context_layout,
+                &self.decision,
+                &self.scopes,
+                context,
+            ))
+            .map_err(|_| NativeProtocolError::Encoding);
+        }
         CanonicalDigest::of(&(
             &self.protocol,
             &self.context_layout,
@@ -387,6 +402,13 @@ impl FrozenNativeProtocolV1 {
     }
     pub fn validate(&self) -> Result<(), NativeProtocolError> {
         self.protocol.validate()?;
+        if self
+            .context_budget
+            .as_ref()
+            .is_some_and(|context| !context.validate())
+        {
+            return Err(NativeProtocolError::ContentMismatch);
+        }
         if self.content_digest()? != self.digest {
             return Err(NativeProtocolError::DigestMismatch);
         }
@@ -459,7 +481,8 @@ impl FrozenNativeProtocolV1 {
             &self.protocol,
             judgment.degree.definition().into(),
             [(super::SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
-        )?;
+        )?
+        .with_context(self.context_budget.as_ref())?;
         if *self != expected {
             return Err(NativeProtocolError::ContentMismatch);
         }
@@ -480,7 +503,8 @@ impl FrozenNativeProtocolV1 {
             branches
                 .iter()
                 .map(|b| (b.id.clone(), b.judgment.clone().unwrap_or_default())),
-        )?;
+        )?
+        .with_context(self.context_budget.as_ref())?;
         if *self != expected {
             return Err(NativeProtocolError::ContentMismatch);
         }
@@ -494,9 +518,31 @@ impl FrozenNativeProtocolV1 {
     ) -> BranchExecutionPolicyV1 {
         let mut policy = judgment.execution_policy(name);
         policy.criteria_digest = self.scopes.get(scope).and_then(|s| {
+            if let Some(context) = &self.context_budget {
+                return CanonicalDigest::of(&(
+                    "hiroute.assessment-context/v1",
+                    &self.protocol.schema,
+                    &self.protocol.fixed,
+                    &s.assessment,
+                    &context.context_digest,
+                ))
+                .ok();
+            }
             CanonicalDigest::of(&(&self.protocol.schema, &self.protocol.fixed, &s.assessment)).ok()
         });
         policy
+    }
+
+    pub fn with_context(
+        mut self,
+        context: Option<&super::ResolvedDecisionContextV1>,
+    ) -> Result<Self, NativeProtocolError> {
+        if context.is_some_and(|context| !context.validate()) {
+            return Err(NativeProtocolError::ContentMismatch);
+        }
+        self.context_budget = context.cloned();
+        self.digest = self.content_digest()?;
+        Ok(self)
     }
 }
 

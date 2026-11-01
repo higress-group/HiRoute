@@ -1,6 +1,6 @@
 use super::*;
 use hiroute_domain::{
-    ComputeManagementMutation, DecisionServiceOperationV2, VerifiedSecretSubjectV1,
+    ComputeManagementMutation, DecisionServiceOperationState, VerifiedSecretSubjectV1,
 };
 
 impl<'a, C, S, R, E, I> TransactionCoordinator<'a, C, S, R, E, I>
@@ -25,13 +25,10 @@ where
             if let Some(expected) = mutation.expected() {
                 expected_sources.push(expected.clone());
             }
-        } else if let Some(value) = operation
-            .plan
-            .control()
-            .get("decision_service_operation_v2")
+        } else if let Some(decision) =
+            DecisionServiceOperationState::from_control(operation.plan.control())
+                .map_err(|_| TransactionError::EffectOwnershipLost)?
         {
-            let decision: DecisionServiceOperationV2 = serde_json::from_value(value.clone())
-                .map_err(|_| TransactionError::EffectOwnershipLost)?;
             expected_sources.extend(decision.sources.into_iter().map(|source| source.before));
         }
         let mut references = Vec::new();

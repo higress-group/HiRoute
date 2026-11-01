@@ -69,6 +69,28 @@ pub struct DecisionServicesV2 {
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct DecisionContextPreviewRequestV1 {
+    pub endpoint: String,
+    pub wire_protocol: DecisionWireProtocolV2,
+    pub model: String,
+    pub policy: hiroute_domain::DecisionContextPolicyV1,
+}
+
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum DecisionServicesSchemaV3 {
+    #[serde(rename = "hiroute.decision-services/v3")]
+    V3,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionServicesV3 {
+    pub schema: DecisionServicesSchemaV3,
+    pub services: Vec<DecisionServiceViewV2>,
+}
+
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct DecisionServiceTestRequestV2 {
     pub id: String,
     pub revision: u64,

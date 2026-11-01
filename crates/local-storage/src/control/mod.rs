@@ -1418,6 +1418,11 @@ impl ControlRepositoryPort for ControlStore {
             .control()
             .get("decision_service_operation_v2")
             .is_some()
+            || operation
+                .plan
+                .control()
+                .get("decision_service_operation_v3")
+                .is_some()
         {
             decision_services_v2::reconcile_compensation(self, operation, references)
         } else {

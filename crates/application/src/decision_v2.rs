@@ -5,9 +5,40 @@ use hiroute_application_api::{
     DecisionServiceTestResultSchemaV2, DecisionServiceTestResultV2, DecisionSourceStateV1,
     DecisionTestOutcomeV2,
 };
-use hiroute_domain::{DecisionAuthenticationV2, DecisionConnectionV2, DecisionServiceRecord};
+use hiroute_domain::{DecisionAuthenticationV2, DecisionConnectionV2};
 
 impl ApplicationService {
+    pub(super) fn apply_decision_connection(
+        &self,
+        request: LocalControlRequestV2,
+    ) -> MachineEnvelopeV2<Value> {
+        let Some(desired) = request
+            .payload
+            .get("spec")
+            .and_then(|spec| spec.get("desired_state"))
+        else {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        };
+        let valid = match request.operation_id.as_str() {
+            "ApplyDecisionServiceV2" => serde_json::from_value::<
+                hiroute_domain::DecisionServiceOperationInputV2,
+            >(desired.clone())
+            .is_ok_and(|input| input.change.validate()),
+            "ApplyDecisionServiceV3" => serde_json::from_value::<
+                hiroute_domain::DecisionServiceOperationInputV3,
+            >(desired.clone())
+            .is_ok_and(|input| input.validate()),
+            _ => false,
+        };
+        if !valid {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        }
+        if request.payload.get("accept_digest").is_some() {
+            self.apply_change(request, "decision.connections.apply")
+        } else {
+            self.preview_change(request, "decision.connections.apply")
+        }
+    }
     pub(super) fn list_decision_v2(
         &self,
         request: LocalControlRequestV2,
@@ -27,6 +58,11 @@ impl ApplicationService {
         };
         if request.operation_id == "ListDecisionConnectionSourcesV1" {
             match port.decision_connection_sources(&WorkspaceId::default()) {
+                Ok(result) => succeeded(result, request.request_id),
+                Err(error) => failed(map_control_error(error), request.request_id),
+            }
+        } else if request.operation_id == "ListDecisionServicesV3" {
+            match port.decision_services_v3(&WorkspaceId::default()) {
                 Ok(result) => succeeded(result, request.request_id),
                 Err(error) => failed(map_control_error(error), request.request_id),
             }
@@ -122,15 +158,14 @@ impl ApplicationService {
                 request.request_id,
             );
         }
-        if let DecisionServiceRecord::V2(service) = &service
-            && let DecisionConnectionV2::Native {
-                authentication:
-                    DecisionAuthenticationV2::SharedSource {
-                        source_id,
-                        source_lineage_digest,
-                    },
-                ..
-            } = &service.connection
+        if let Some(DecisionConnectionV2::Native {
+            authentication:
+                DecisionAuthenticationV2::SharedSource {
+                    source_id,
+                    source_lineage_digest,
+                },
+            ..
+        }) = service.versioned_connection()
         {
             let source = match routing.decision_source_summary(source_id) {
                 Ok(source) => source,
@@ -166,6 +201,38 @@ impl ApplicationService {
                 Ok(result) => succeeded(result, request.request_id),
                 Err(_) => failed(ErrorCode::GatewayUnavailable, request.request_id),
             }
+        }
+    }
+
+    pub(super) fn preview_decision_context(
+        &self,
+        request: LocalControlRequestV2,
+    ) -> MachineEnvelopeV2<Value> {
+        if request.protected_grant.is_some() {
+            return failed(ErrorCode::CapabilityDenied, request.request_id);
+        }
+        let Ok(input) = serde_json::from_value::<
+            hiroute_application_api::DecisionContextPreviewRequestV1,
+        >(request.payload) else {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        };
+        if !input.policy.validate()
+            || input.endpoint.len() > 2048
+            || input.model.is_empty()
+            || input.model.len() > 256
+        {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        }
+        let Some(port) = self
+            .ports
+            .as_ref()
+            .and_then(|ports| ports.routing.as_deref())
+        else {
+            return failed(ErrorCode::DaemonUnavailable, request.request_id);
+        };
+        match port.preview_decision_context(input) {
+            Ok(result) => succeeded(result, request.request_id),
+            Err(error) => failed(map_control_error(error), request.request_id),
         }
     }
 }

@@ -861,6 +861,7 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
             "hiroute.change-preview-or-apply-request/v1"
         }
         "decision.services.test" => "hiroute.classifier-decision-test/v1",
+        "decision.context.preview" => "hiroute.decision-context-preview-request/v1",
         "decision.connections.test" | "decision.network.test" => {
             "hiroute.decision-service-test-request/v2"
         }
@@ -945,7 +946,8 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "routing.apply" => "hiroute.operation-view/v1",
         "decision.services.list" => "hiroute.decision-services/v1",
         "decision.sources.list" => "hiroute.decision-connection-sources/v1",
-        "decision.connections.list" => "hiroute.decision-services/v2",
+        "decision.connections.list" => "hiroute.decision-services/v3",
+        "decision.context.preview" => "hiroute.resolved-decision-context/v1",
         "decision.services.apply" | "decision.connections.apply" => {
             "hiroute.change-preview-or-operation/v1"
         }

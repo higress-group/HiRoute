@@ -658,6 +658,18 @@ pub trait ComputeManagementControlPort: Send + Sync {
 }
 
 pub trait RoutingFactsPort: Send + Sync {
+    fn preview_decision_context(
+        &self,
+        _request: hiroute_application_api::DecisionContextPreviewRequestV1,
+    ) -> Result<hiroute_domain::ResolvedDecisionContextV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
+    fn decision_services_v3(
+        &self,
+        _workspace: &WorkspaceId,
+    ) -> Result<hiroute_application_api::DecisionServicesV3, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn decision_source_summary(
         &self,
         _source_id: &str,

@@ -2,10 +2,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use hiroute_domain::{
-    DECISION_SERVICE_OPERATION_SCHEMA_V2, DecisionAuthenticationV2, DecisionConnectionV2,
-    DecisionServiceOperationV2, DecisionServiceRecord, OperationId, OperationState, OperationV1,
-    PortError, PortErrorCode, PortResult, WorkspaceId, register_decision_consumer,
-    remove_decision_consumers,
+    DecisionAuthenticationV2, DecisionConnectionV2, DecisionServiceOperationState,
+    DecisionServiceRecord, OperationId, OperationState, OperationV1, PortError, PortErrorCode,
+    PortResult, WorkspaceId, register_decision_consumer_record, remove_decision_consumers,
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde_json::Value;
@@ -19,21 +18,12 @@ fn error(code: PortErrorCode, context: &'static str) -> PortError {
     PortError::new(code, context)
 }
 
-fn parse_control(value: &Value) -> PortResult<Option<DecisionServiceOperationV2>> {
-    let Some(value) = value.get("decision_service_operation_v2") else {
-        return Ok(None);
-    };
-    let operation: DecisionServiceOperationV2 = serde_json::from_value(value.clone())
-        .map_err(|_| error(PortErrorCode::Corrupt, "decision.v2.operation"))?;
-    if operation.schema != DECISION_SERVICE_OPERATION_SCHEMA_V2
-        || !operation.input.change.validate()
-    {
-        return Err(error(PortErrorCode::Corrupt, "decision.v2.operation"));
-    }
-    Ok(Some(operation))
+fn parse_control(value: &Value) -> PortResult<Option<DecisionServiceOperationState>> {
+    DecisionServiceOperationState::from_control(value)
+        .map_err(|_| error(PortErrorCode::Corrupt, "decision.operation"))
 }
 
-fn parse_staged(staged: &str) -> PortResult<Option<DecisionServiceOperationV2>> {
+fn parse_staged(staged: &str) -> PortResult<Option<DecisionServiceOperationState>> {
     let value: Value = serde_json::from_str(staged)
         .map_err(|_| error(PortErrorCode::Corrupt, "decision.v2.staged"))?;
     parse_control(
@@ -46,7 +36,7 @@ fn parse_staged(staged: &str) -> PortResult<Option<DecisionServiceOperationV2>> 
 fn check_service(
     connection: &Connection,
     workspace: &WorkspaceId,
-    operation: &DecisionServiceOperationV2,
+    operation: &DecisionServiceOperationState,
 ) -> PortResult<()> {
     let change = &operation.input.change;
     let actual: u64 = connection.query_row(
@@ -70,7 +60,7 @@ fn check_service(
 fn check_sources(
     connection: &Connection,
     workspace: &WorkspaceId,
-    operation: &DecisionServiceOperationV2,
+    operation: &DecisionServiceOperationState,
 ) -> PortResult<()> {
     let change = &operation.input.change;
     let expected: BTreeMap<_, _> = change
@@ -94,7 +84,7 @@ fn check_sources(
             ));
         }
         let planned = match &change.service {
-            Some(service) => register_decision_consumer(before, service).map(Some),
+            Some(service) => register_decision_consumer_record(before, service).map(Some),
             None => remove_decision_consumers(before, &change.id),
         }
         .map_err(|_| error(PortErrorCode::Corrupt, "decision.v2.source_transition"))?
@@ -107,11 +97,11 @@ fn check_sources(
         }
     }
     if let Some(service) = &change.service {
-        let source = match &service.connection {
-            DecisionConnectionV2::Native {
+        let source = match service.versioned_connection() {
+            Some(DecisionConnectionV2::Native {
                 authentication: DecisionAuthenticationV2::SharedSource { source_id, .. },
                 ..
-            } => Some(source_id.as_str()),
+            }) => Some(source_id.as_str()),
             _ => None,
         };
         if seen != source.into_iter().collect() {
@@ -136,13 +126,12 @@ fn check_sources(
             if !record.validate() || record.id() != change.id {
                 return Err(error(PortErrorCode::Corrupt, "decision.v2.retained"));
             }
-            if let DecisionServiceRecord::V2(service) = record
-                && let DecisionConnectionV2::Native {
-                    authentication: DecisionAuthenticationV2::SharedSource { source_id, .. },
-                    ..
-                } = service.connection
+            if let Some(DecisionConnectionV2::Native {
+                authentication: DecisionAuthenticationV2::SharedSource { source_id, .. },
+                ..
+            }) = record.versioned_connection()
             {
-                retained.insert(source_id);
+                retained.insert(source_id.clone());
             }
         }
         let mut statement = connection.prepare("SELECT DISTINCT source_id FROM decision_consumer_runtime WHERE workspace_id=?1 AND service_id=?2")
@@ -307,7 +296,7 @@ pub(super) fn finish(connection: &Connection, operation: &OperationV1) -> PortRe
         let encoded = serde_json::to_string(service)
             .map_err(|_| error(PortErrorCode::Corrupt, "decision.v2.finish_encode"))?;
         connection.execute("INSERT INTO decision_services(workspace_id,service_id,revision,service_json) VALUES(?1,?2,?3,?4)",
-            params![operation.workspace_id.as_str(), service.id, service.revision, encoded])
+            params![operation.workspace_id.as_str(), service.id(), service.revision(), encoded])
             .map_err(|_| error(PortErrorCode::Unavailable, "decision.v2.finish_service"))?;
     } else {
         connection

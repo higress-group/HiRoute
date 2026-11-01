@@ -11,6 +11,8 @@ mod decision;
 pub use decision::*;
 mod decision_v2;
 pub use decision_v2::*;
+mod decision_v3;
+pub use decision_v3::*;
 mod decision_context;
 pub use decision_context::*;
 mod legacy_category;
