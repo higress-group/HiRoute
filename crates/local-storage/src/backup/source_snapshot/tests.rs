@@ -23,6 +23,11 @@ fn current_history_is_not_sized_copied_or_hashed_for_core_recovery() {
     std::os::unix::fs::symlink("absent-history-target", observation.join("must-not-follow"))
         .unwrap();
     assert_eq!(preflight_space(&root, None, &options).unwrap(), before);
+    assert_eq!(fs::metadata(&body).unwrap().len(), length);
+    // Space admission has proved the large-file case. Keep a copy/hash
+    // regression bounded too, rather than letting it process a disk-sized file.
+    fs::remove_file(&body).unwrap();
+    fs::write(&body, b"retained observation body").unwrap();
     let backup = temporary.path().join("backup");
     let barrier = test_writer_barrier();
     let set = BackupSet::create(
@@ -36,7 +41,7 @@ fn current_history_is_not_sized_copied_or_hashed_for_core_recovery() {
     set.publish_stopped_source(&barrier, &root, &options)
         .unwrap();
     assert!(!backup.join("source/storage/observation").exists());
-    assert_eq!(fs::metadata(&body).unwrap().len(), length);
+    assert_eq!(fs::read(&body).unwrap(), b"retained observation body");
     let value = manifest(&backup).unwrap();
     assert_eq!(value["schema"], "hiroute.upgrade-source-backup/v3");
     assert_eq!(value["observation"], "not_backed_up");
