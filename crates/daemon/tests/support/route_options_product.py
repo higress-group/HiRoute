@@ -217,7 +217,7 @@ def unicode_case(product, upstream):
 
 def default_context_case(product, upstream):
     saved = native.save_native_source(product, upstream, native.NATIVE_TOKEN,
-        variant='default-context', context_tokens=1_050_000)
+        upstream_model_id=MODEL, variant='default-context', context_tokens=1_050_000)
     native.publish_plan_and_agent(product, saved['binding_id'], native_model_mode='hiroute_only')
     edited = native.control(product, 'GetPlanEditorOptions', {'editor': product.editor})['data']
     assert edited['context_window']['default_tokens'] == 400_000, edited
