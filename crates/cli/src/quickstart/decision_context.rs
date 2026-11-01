@@ -3,7 +3,7 @@ use super::*;
 use hiroute_domain::{DecisionContextModeV1, DecisionContextPolicyV1, TypeSafeLongContextV1};
 
 pub(super) fn policy(flags: &Flags, existing: Option<&Value>) -> Result<DecisionContextPolicyV1> {
-    let mut policy = existing
+    let mut policy: DecisionContextPolicyV1 = existing
         .and_then(|service| service.get("context"))
         .and_then(|context| context.get("policy"))
         .map(|policy| {

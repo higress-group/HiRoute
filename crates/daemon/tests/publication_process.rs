@@ -15,6 +15,11 @@ fn real_process_versioned_decision_connections_use_exact_source_keys() {
     run_script("decision_connections_v2_product.py");
 }
 
+#[test]
+fn real_process_adaptive_decision_context_preserves_publication_and_fallback() {
+    run_script("decision_context_product.py");
+}
+
 /// Route actual model requests and inspect C facts through the existing product query.
 #[test]
 fn real_process_c_routing_execution_and_retained_observations() {

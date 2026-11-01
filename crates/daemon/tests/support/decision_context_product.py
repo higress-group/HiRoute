@@ -1,0 +1,183 @@
+"""Frozen context through real CLI, journal, publication, Gateway and restart.
+
+Both wire codecs use counted loopback providers; no paid endpoint is contacted.
+"""
+import copy
+import hashlib
+import http.client
+import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+import sys
+import threading
+
+from publication_product import Product, SENTINEL, V1, encoded
+from publication_process import bootstrap, plan_change
+from model_connections_product import (MODEL, NATIVE_TOKEN, NativeUpstream,
+                                       publish_plan_and_agent, save_native_source)
+
+
+class Endpoint(BaseHTTPRequestHandler):
+    requests = []
+
+    def do_POST(self):
+        raw = self.rfile.read(int(self.headers['Content-Length']))
+        body = json.loads(raw)
+        self.requests.append({'body': body, 'bytes': len(raw),
+            'authorization': self.headers.get('Authorization'),
+            'long_context': self.headers.get('TypeSafe-Danger-Zone-Long-Context')})
+        if isinstance(body['questions'], list):
+            answers = []
+            for q in body['questions']:
+                if q['type'] == 'choice':
+                    answers.append({'name': q['name'], 'type': 'choice', 'choice': q['choices'][0]['value'],
+                        'probabilities': [{'value': choice['value'], 'probability': float(i == 0)}
+                                          for i, choice in enumerate(q['choices'])]})
+                else:
+                    answers.append({'name': q['name'], 'type': 'score', 'score': 0.9,
+                        'probabilities': [{'value': i, 'label': level['label'], 'probability': float(i == 0)}
+                                          for i, level in enumerate(q['levels'])]})
+        else:
+            answers = {name: {'type': 'choice', 'choice': next(iter(q['criteria']))}
+                if q['type'] == 'choice' else {'type': 'score', 'score': 0.9}
+                for name, q in body['questions'].items()}
+        result = encoded({'answers': answers})
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(result)))
+        self.end_headers()
+        self.wfile.write(result)
+
+    def log_message(self, *_args):
+        pass
+
+
+def state(body):
+    return body['state'] if isinstance(body['questions'], dict) else body['input'][0]['content'][0]['data']['state']
+
+
+def run(repository):
+    product = Product(repository)
+    product.collaboration_only = True
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Endpoint)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    upstream = NativeUpstream()
+    endpoint = f'http://127.0.0.1:{server.server_port}/decision'
+
+    def data(command, payload=None):
+        return product.public_cli(command, payload)[1]['data']
+
+    def save_preview(preview, key):
+        result = data('decision connections apply', {'schema_version': V1,
+            'spec': preview['normalized_spec'], 'accept_digest': preview['change_digest'],
+            'expected_revisions': preview['expected_revisions'], 'idempotency_key': key})
+        assert result['state'] == 'succeeded', result
+        return preview['normalized_spec']['desired_state']['change']['service']
+
+    def publish(service, key):
+        editor = copy.deepcopy(product.editor)
+        editor['branch_routing']['classifier'] = {'kind': 'decision_service_v3', 'service': service}
+        change = plan_change(product, 'update', **editor)
+        preview = product.preview('routing preview', {'change': change})
+        assert service['context']['resolved']['context_digest'] in json.dumps(preview['plan_version']['compiled'])
+        product.apply('routing apply', 'ApplyAgentPlanChange', preview, {'change': change}, key)
+        product.editor = editor
+
+    def request(content, session, tools=False):
+        client = http.client.HTTPConnection('127.0.0.1', product.port, timeout=30)
+        body = {'model': product.model_alias, 'input': content}
+        if tools:
+            body['tools'] = [{'type': 'function', 'name': 'native_probe', 'description': 'Read fixture', 'parameters': {'type': 'object', 'properties': {}}}]
+        try:
+            client.request('POST', '/v1/responses', body=encoded(body), headers={
+                'Content-Type': 'application/json', 'X-HiRoute-Token': product.bearer(product.agent_connection),
+                'session-id': session})
+            response = client.getresponse()
+            raw = response.read()
+            product.outputs.append(raw)
+            assert response.status == 200, (response.status, raw[:200])
+            return json.loads(raw)
+        finally:
+            client.close()
+
+    try:
+        bootstrap(product)
+        product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
+        source = save_native_source(product, upstream, NATIVE_TOKEN, cli_input=True)
+        source_id = product.source_id
+        for codec in ('system_one', 'openai_decisions'):
+            id = 'decision/context-' + codec
+            command = f'decision connections apply --id {id} --name Context --provider compatible --model fixture --endpoint {endpoint} --wire-protocol {codec}'
+            # System One uses current shared authority, OpenAI uses protected independent input.
+            if codec == 'system_one':
+                auth = ' --source ' + source_id
+            else:
+                token = 'Bearer adaptive-independent-fixture'
+                product.secrets.add(token)
+                product.register_protected_frame({'schema': 'hiroute.protected-input/v1',
+                    'registration_id': hashlib.sha256(b'adaptive-independent').hexdigest(),
+                    'candidate_ref': 'candidate/adaptive-independent', 'candidate_revision': 1, 'secret': token})
+                auth = ' --candidate candidate/adaptive-independent'
+            before = len(Endpoint.requests)
+            preview = data(command + auth + ' --context-window-tokens 1050000')
+            service = save_preview(preview, codec + '-create')
+            assert len(Endpoint.requests) == before, 'save called provider'
+            assert service['schema'] == 'hiroute.decision-service/v3'
+            assert service['context']['resolved']['request_window_tokens'] == 1050000
+            view = next(v for v in data('decision connections list')['services'] if v['service']['id'] == id)
+            assert view['service'] == service
+            tested = data('decision connections test', {'id': id, 'revision': 1,
+                'expected_configuration_digest': view['configuration_digest']})
+            assert tested['outcome'] == 'passed', tested
+            assert Endpoint.requests[-1]['long_context'] is None, 'provider header leaked to loopback'
+            expected_auth = 'Bearer ' + SENTINEL if codec == 'system_one' else token
+            assert Endpoint.requests[-1]['authorization'] == expected_auth
+            if codec == 'system_one':
+                publish_plan_and_agent(product, source['binding_id'], native_model_mode='hiroute_only', branch_service=service)
+            else:
+                publish(service, codec + '-publish')
+            before = len(Endpoint.requests)
+            product.stop(); product.start()
+            assert len(Endpoint.requests) == before, 'restart called provider'
+            assert next(v for v in data('decision connections list')['services'] if v['service']['id'] == id)['service'] == service
+            long_user = 'Current 中文 task: "quoted" \\ and newline\n' * 12000
+            request([{'role': 'user', 'content': long_user}], codec + '-large')
+            admitted = Endpoint.requests[-1]
+            assert len(Endpoint.requests) == before + 1 and admitted['bytes'] > 262144, admitted['bytes']
+            assert state(admitted['body'])['latest_user'][0]['text'] == long_user
+            assert upstream.requests[-1]['body']['input'][0]['content'][0]['text'] == long_user, 'ordinary request was cropped'
+            # Omitted edit flags retain intent; a new revision does not change the active route.
+            edited = save_preview(data(command + ' --context-window-tokens 32000'), codec + '-edit')
+            assert edited['context']['resolved']['request_window_tokens'] == 32000
+            before = len(Endpoint.requests)
+            request([{'role': 'user', 'content': long_user}], codec + '-still-pinned')
+            assert len(Endpoint.requests) == before + 1, 'saving changed the active publication'
+            publish(edited, codec + '-small-publish')
+            before = len(Endpoint.requests)
+            request([{'role': 'user', 'content': long_user}], codec + '-no-fit')
+            assert len(Endpoint.requests) == before, 'mandatory no-fit called the provider'
+            assert upstream.requests[-1]['body']['input'][0]['content'][0]['text'] == long_user, 'fallback changed current input'
+            # Fresh short input still reaches the provider and a same-turn tool result reuses it.
+            upstream.function_tools = True
+            messages = [{'role': 'user', 'content': 'Read the local fixture.'}]
+            before = len(Endpoint.requests)
+            response = request(messages, codec + '-tools', tools=True)
+            assert len(Endpoint.requests) == before + 1 and response['output'][0]['type'] == 'function_call'
+            continuation = messages + response['output'] + [{'type': 'function_call_output', 'call_id': 'native-proxy-call', 'output': 'fixture complete'}]
+            request(continuation, codec + '-tools', tools=True)
+            assert len(Endpoint.requests) == before + 1, 'tool continuation reclassified the same user turn'
+            upstream.function_tools = False
+        print(json.dumps({'scenario': 'adaptive-decision-context-real-cli-gateway', 'state': 'green',
+            'cases': ['both-codecs', 'shared-and-independent', 'save-without-provider', 'exact-readback',
+                      'test-saved-digest', 'restart', 'large-window-beyond-256KiB', 'current-input-exact',
+                      'immutable-publication', 'mandatory-no-fit-zero-attempts', 'fallback-exact-input',
+                      'same-turn-tool-reuse', 'no-header-on-compatible-endpoint']}), flush=True)
+    finally:
+        upstream.close()
+        server.shutdown(); server.server_close(); worker.join(timeout=5)
+        product.close()
+
+
+if __name__ == '__main__':
+    run(Path(sys.argv[1]))
