@@ -22,7 +22,7 @@ mod recovery_package;
 pub(crate) mod routing_read_v32;
 mod startup_format;
 pub(crate) mod startup_recovery;
-pub(crate) use startup_format::validate_startup_format;
+pub(crate) use startup_format::{core_upgrade_required, validate_startup_format};
 #[cfg(test)]
 mod stopped_read_tests;
 pub(crate) use current_storage::{

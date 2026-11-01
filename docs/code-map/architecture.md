@@ -274,6 +274,13 @@ Compact Observation format admission and fresh-generation initialization belong 
 [`store` factory](../../crates/observation/src/store/mod.rs); complete original-source
 preservation remains in the existing
 [startup coordinator](../../crates/local-storage/src/migrations/observation_source.rs).
+Core-only snapshots explicitly exclude compatible live Observation in
+[`source_snapshot`](../../crates/local-storage/src/backup/source_snapshot.rs);
+its format tests and [production Core upgrade regression](../../crates/daemon/src/control/runtime/history_cutover_tests.rs)
+cover in-place history and attribution, recovery scope and legacy verification.
+Archiving completed batches changes location without rehashing historical contents.
+The shared read-only preflight also reports Core recovery workspace so the existing
+Unix/Windows installation handoff retains the matching old package for that boundary.
 The [sealed-source publisher](../../crates/local-storage/src/backup/source_snapshot/seal.rs)
 uses same-filesystem directory publication without traversing historical contents.
 The optional capacity threshold uses the

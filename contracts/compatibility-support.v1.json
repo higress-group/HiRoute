@@ -469,6 +469,7 @@
     "hiroute.upgrade-preflight/v1",
     "hiroute.upgrade-source-backup/v1",
     "hiroute.upgrade-source-backup/v2",
+    "hiroute.upgrade-source-backup/v3",
     "hiroute.value-ledger-entry/v1",
     "hiroute.value-query/v1",
     "hiroute.value-view/v1",
@@ -1362,10 +1363,23 @@
         "hiroute.upgrade-source-backup"
       ],
       "current_contracts": [
-        "hiroute.upgrade-source-backup/v1",
-        "hiroute.upgrade-source-backup/v2"
+        "hiroute.upgrade-source-backup/v2",
+        "hiroute.upgrade-source-backup/v3"
       ],
-      "legacy_support": []
+      "legacy_support": [
+        {
+          "contract": "hiroute.upgrade-source-backup/v1",
+          "mode": "recovery_read_only",
+          "owner": "local-storage/backup",
+          "reason": "Retained complete-source backups copied and hashed Observation with the old authority group. Verify their original file manifest during recovery or interrupted-batch admission; archival alone does not revalidate or authorize their contents. New Core-only snapshots explicitly exclude Observation.",
+          "removal_condition": "Remove only after retained v1 complete or interrupted backups have been restored or explicitly retired by their owner.",
+          "allowed_paths": [
+            "crates/local-storage/src/backup/source_snapshot.rs",
+            "crates/local-storage/src/backup/source_snapshot/tests.rs",
+            "apps/desktop/src-tauri/src/bridge/startup.rs"
+          ]
+        }
+      ]
     },
     {
       "subject": "opencode_native_provider_restore",

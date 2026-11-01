@@ -349,6 +349,27 @@ class RecoveryRetentionTests(StandaloneFixture):
             self.assertFalse((paths["state"] / "upgrade-package.json").exists())
             self.assertEqual((paths["lib"] / "0.2.0/hirouted").read_bytes(), self.sources["hirouted"].read_bytes())
 
+    def test_core_only_upgrade_retains_program_and_leaves_history_in_place(self):
+        with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            args, paths = self.install_original()
+            old_program, old_resources, _service = installer.validate_marker(paths, installer.read_marker(paths))
+            original = (old_program / "hirouted").read_bytes()
+            history = paths["state"] / "storage/observation/retained-body"
+            history.parent.mkdir(parents=True)
+            history.write_bytes(b"compatible observation history")
+            self.sources["hirouted"].write_bytes(b"new Core writer")
+            manifest, archive = self.build("0.2.0")
+            self.preflight.return_value = {"history_cutover_required": False, "required_bytes": 300 * 1024 * 1024}
+            installer.install(self.install_args(manifest, archive))
+            self.assertEqual(self.preflight.call_count, 2)
+            handoff = json.loads((paths["state"] / "upgrade-package.json").read_text())
+            retained = Path(handoff["package_root"])
+            self.assertEqual((retained / "program/hirouted").read_bytes(), original)
+            self.assertEqual(history.read_bytes(), b"compatible observation history")
+            self.assertFalse((retained / "storage").exists())
+            for name, expected in handoff["files"].items():
+                self.assertEqual(installer.digest(retained / name), expected)
+
     def test_refused_cutover_discards_only_this_unpublished_copy(self):
         with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
             args, paths = self.install_original()
