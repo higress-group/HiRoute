@@ -13,6 +13,9 @@ use super::super::feedback::{
 };
 use super::*;
 
+#[path = "batch_tests.rs"]
+mod batch;
+
 #[derive(Default)]
 struct CapturingSink {
     records: Mutex<Vec<ObservationSequenceStamp>>,
