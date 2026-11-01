@@ -73,6 +73,17 @@ independent checksummed level-1 zstd records with an identity fallback. Content
 objects keep their existing digest and file representation. No segment-file
 format or small-object database is introduced.
 
+A Core-only upgrade keeps compatible current Observation in place. Its recovery
+snapshot explicitly excludes this directory: startup does not enumerate, size,
+copy or hash history for the Core snapshot or reverify old history merely to
+archive a completed earlier batch. Core-only matching-version restoration starts
+fresh Observation after preserving the newer storage separately; it does not mix
+newer observations with restored Core authority. Existing sealed-history recovery
+points retain their original scope while startup has not succeeded. After complete
+Core/Observation/publication/Gateway/Control readiness, product-owned upgrade
+recovery material expires and is deleted in bounded, resumable maintenance batches.
+SQL migration completion alone never authorizes deletion; active history is untouched.
+
 `store/upgrade` admits only fresh/current writers and classifies supported old
 formats for sealing. Production startup preserves the complete original group,
 keys and matching old package, seals the old Observation directory by a

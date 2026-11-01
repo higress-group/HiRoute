@@ -749,10 +749,11 @@ def retain_recovery_package(paths, current, target_daemon, version):
     if current["version"] == version and digest(target_daemon) == digest(old_program / "hirouted"):
         yield None
         return
-    # This provisional call determines cutover before allocating any archive.
-    # A cutover repeats preflight with the complete retained program/resources.
+    # Nonzero recovery workspace also covers a Core-only schema change. History
+    # can remain compatible while the old program is still required for recovery.
+    # Repeat preflight with the complete retained program/resources.
     report = candidate_preflight(target_daemon, paths["state"] / "storage", old_program)
-    if not report["history_cutover_required"]:
+    if not report["history_cutover_required"] and not report["required_bytes"]:
         yield None
         return
     def footprint(path):

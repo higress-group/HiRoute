@@ -98,7 +98,7 @@ impl LocalStorageSet {
             return Ok(0);
         }
         migrations::validate_startup_format(storage)?;
-        if !seal {
+        if !seal && !migrations::core_upgrade_required(storage)? {
             return Ok(0);
         }
         LocalSecretStore::migration_binding(
@@ -106,9 +106,11 @@ impl LocalStorageSet {
             &storage.join("master-key"),
         )?
         .ok_or(LocalStorageError::Locked)?;
-        migrations::validate_owner_file(&storage.join("observation-hmac-key"))?;
-        if std::fs::metadata(storage.join("observation-hmac-key"))?.len() != 32 {
-            return Err(LocalStorageError::Locked);
+        if seal {
+            migrations::validate_owner_file(&storage.join("observation-hmac-key"))?;
+            if std::fs::metadata(storage.join("observation-hmac-key"))?.len() != 32 {
+                return Err(LocalStorageError::Locked);
+            }
         }
         match std::fs::symlink_metadata(package) {
             Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {}
@@ -130,7 +132,7 @@ impl LocalStorageSet {
             storage,
             None,
             &StorageStartupOptions {
-                preserve_observation_source: true,
+                preserve_observation_source: seal,
                 recovery_package: Some(package.to_path_buf()),
                 ..Default::default()
             },

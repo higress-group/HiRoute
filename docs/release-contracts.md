@@ -12,6 +12,31 @@ Do not downgrade an initialized data directory in place. Manual recovery require
 complete pre-upgrade backup and the corresponding binary verified to read it; restore
 the whole store group, not selected tables or files.
 
+A Core-only upgrade reuses a compatible Observation directory in place. The new
+Core recovery snapshot excludes Observation, including from free-space sizing,
+copying and hash verification. Its v3 manifest and generated recovery guides
+state that exclusion explicitly. Restoring this snapshot requires the complete
+original Core stores, keys, native restoration material and matching old program;
+keep the newer storage separately and let the old program initialize fresh
+Observation history. Do not mix later observations into restored old Core stores.
+Agent-owned conversations are unaffected. Existing full-history v1 and sealed v2
+recovery points keep their original restoration scope and verification.
+
+Archiving a completed previous batch only moves it and updates its location guide.
+It does not rehash Observation or certify the archive's integrity. Recovery and
+interrupted-batch admission still verify their required original material. Neither
+these archives nor recovery snapshots are governed by the active Observation capacity limit.
+They are temporary failed-upgrade recovery material: once Core, Observation, publication
+restoration, Gateway and Control are all ready, the existing maintenance worker
+automatically retires the product-owned backup namespace, obsolete source link and
+matching private recovery package. There is no post-success rollback window.
+Deletion is incremental (at most 128 entries and a cooperative 10 ms per batch,
+at least one second between batches, with work-proportional/error backoff),
+resumes after interruption and never delays service readiness. Unsafe entries stay
+pending and contribute to existing maintenance errors. Caller-supplied packages
+and installed version directories keep their installer/operator lifecycle.
+Keep an independent backup if post-success rollback is required.
+
 Observation format 5 changes the physical protocol carriers. On a supported
 format 1–4 upgrade, startup preserves the original three-store group, keys,
 auxiliary state and matching old package, then seals the stopped Observation
@@ -32,7 +57,8 @@ preserved for whole-group recovery.
 Installers retain the matching old program/resources through a protected handoff bound
 to the storage root and target daemon image. Linux managed services and Windows Tasks
 consume that record without relying on the shell's environment. New candidate preflight
-checks observable prerequisites before replacement; startup repeats admission under its
+checks observable prerequisites before replacement; a nonzero recovery workspace
+retains the old package for a Core-only schema change as well as history cutover; startup repeats admission under its
 writer barrier. The actual updater shipped by the supported source must be tested. In
 particular, v0.3.1 runs its own helper: a new helper does not retrofit its precommit checks.
 A format-changing release requires a verified source/transition route before publication;
@@ -53,8 +79,8 @@ verification. This local recovery point still occupies disk and is not an
 independent disaster-recovery copy. Protected sources/packages are excluded from
 the active Observation threshold and are never deleted by its capacity policy.
 
-For manual recovery, stop the daemon, preserve later new-format data separately,
-check the old source offline, and restore its complete original storage group
+Before startup has succeeded, for manual recovery of a sealed-history source, stop the daemon, preserve later
+new-format data separately, check the old source offline, and restore its complete original storage group
 and auxiliary state at the recorded original locations with the matching old
 package, following the generated recovery guide. Never mix old business stores
 with newer Observation data or restore only `activity.db`. An independent copy

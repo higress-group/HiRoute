@@ -366,14 +366,35 @@ HiRoute SHALL apply the existing confirmed deletion and seven-day detail-retenti
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248902164
 
-### Requirement: Seal old observation history and start a fresh generation recoverably
+### Requirement: Reuse compatible observations without copying them for Core upgrades
 
-HiRoute SHALL preserve supported old Observation history unchanged in a protected local archive and start a fresh current-format Observation store during upgrade. Startup SHALL retain the complete original storage group, keys, auxiliary state and matching old program before the cutover, preserve current configuration, credentials and routing, and avoid work proportional to old observation rows, body bytes or file count: no full historical copy, hashing, recompression, normalization or index rebuilding. The original Observation DB, WAL/SHM, objects and staging SHALL stay together through a durable same-filesystem namespace transition. Current history and statistics begin at cutover; old observations are available by whole-group matching-version recovery rather than silently combined into current queries. Current-format data and policy SHALL survive ordinary restart. Interrupted cutover SHALL resume the same original batch or expose actionable preserved-source recovery; missing recovery material, insufficient work space, unsupported/corrupt metadata or failed moves SHALL preserve the source and stop the affected startup. An old local archive is not an independent backup or freed disk space. Active capacity retention SHALL NOT reclaim it. Manual recovery SHALL preserve newer data separately and restore the complete corresponding old group with its matching old program.
+When only the Core stores require conversion, HiRoute SHALL reuse a compatible Observation directory in place. Creating and verifying the new Core recovery snapshot, checking its required free space, and archiving a completed previous batch SHALL NOT enumerate, size, copy or hash Observation contents. Configuration, credentials, original Core stores, keys, native restoration material, auxiliary state and the matching old program SHALL retain their existing recovery protections. SQLite recovery copies SHALL retain the original schema-cookie bindings needed by persisted locator proofs; snapshot creation SHALL NOT mutate the live source or weaken restoration admission. New Core-only source manifests and recovery guides SHALL explicitly state that Observation is excluded. Matching-version Core restoration SHALL preserve newer storage separately and start fresh Observation history rather than mix later observations with restored Core stores. Agent-owned conversation history is outside this reset.
+
+Existing full-history and sealed-history recovery batches SHALL retain their original scope, file digests and restoration checks. Moving a completed batch to an archive location SHALL NOT establish its integrity or authorize restoration; actual recovery and interrupted-batch admission SHALL continue to verify the required original material. Recovery points remain protected until the complete upgraded service is ready; the successful-upgrade cleanup below then expires them. Active capacity retention remains independent.
+
+#### Scenario: Upgrade Core alongside large compatible history
+
+- **WHEN** Core needs conversion and Observation is already compatible
+- **THEN** the same live Observation directory and database retain historical facts, content, attribution and capacity policy, while the new recovery snapshot contains the original Core authority and excludes Observation.
+
+#### Scenario: Restore a Core-only recovery point
+
+- **WHEN** the owner follows its matching-version recovery guide
+- **THEN** the original Core stores, keys and native restoration material are restored together with the matching old program; newer storage remains separate and observation history starts fresh.
+
+#### Scenario: Archive a previous full-history batch
+
+- **WHEN** a later Core upgrade moves a completed batch out of the active coordinator slot
+- **THEN** it preserves the original source bytes and manifest without rehashing observation history, and subsequent restoration still rejects missing or changed recovery contents.
+
+### Requirement: Seal incompatible old observation history and start a fresh generation recoverably
+
+HiRoute SHALL preserve supported incompatible old Observation history unchanged in a protected local archive and start a fresh current-format Observation store during upgrade. Startup SHALL retain the complete original storage group, keys, auxiliary state and matching old program before the cutover, preserve current configuration, credentials and routing, and avoid work proportional to old observation rows, body bytes or file count: no full historical copy, hashing, recompression, normalization or index rebuilding. The original Observation DB, WAL/SHM, objects and staging SHALL stay together through a durable same-filesystem namespace transition. Current history and statistics begin at cutover; until complete service readiness, old observations are available by whole-group matching-version recovery rather than silently combined into current queries. Successful startup then expires the upgrade recovery material under the cleanup policy below. Current-format data and policy SHALL survive ordinary restart. Interrupted cutover SHALL resume the same original batch or expose actionable preserved-source recovery; missing recovery material, insufficient work space, unsupported/corrupt metadata or failed moves SHALL preserve the source and stop the affected startup. An old local archive is not an independent backup or freed disk space. Active capacity retention SHALL NOT reclaim it. Manual recovery SHALL preserve newer data separately and restore the complete corresponding old group with its matching old program.
 
 #### Scenario: Upgrade a large old history
 
 - **WHEN** a supported instance with retained old-format observations upgrades
-- **THEN** the complete old history remains unchanged and recoverable, current configuration/credentials/routing continue, and service starts with a fresh current-format history without processing all historical rows or files; current history/statistics start at cutover.
+- **THEN** the complete old history remains unchanged and recoverable until complete service readiness, current configuration/credentials/routing continue, and service starts with a fresh current-format history without processing all historical rows or files; current history/statistics start at cutover. Successful-upgrade cleanup subsequently releases the expired recovery material.
 
 #### Scenario: Interrupt the directory cutover
 
@@ -392,11 +413,27 @@ HiRoute SHALL preserve supported old Observation history unchanged in a protecte
 
 #### Scenario: Recover old observations
 
-- **WHEN** the owner chooses matching-version recovery
+- **WHEN** startup has not succeeded and the owner chooses matching-version recovery
 - **THEN** the complete original group, original locations and matching old program are restored together while newer data remains separately preserved; the original observations retain their bytes, identities and monetary facts.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248902605
+
+### Requirement: Successful upgrades automatically expire their recovery material
+
+HiRoute SHALL retain upgrade recovery material until Core, Observation, publication restoration, Gateway and Control have all started successfully. SQL migration completion alone SHALL NOT authorize deletion. After complete service readiness, all product-owned upgrade recovery batches, archives, sealed old observations and their obsolete observation-source link SHALL expire without an additional retention window. Matching installation-owned recovery package copies and their handoff SHALL expire only when bound to the actual running target image. Caller-supplied packages and installed version directories retain their respective owners. Active Core stores, keys, Observation, native Agent history and configured capacity limits SHALL remain unchanged.
+
+Cleanup SHALL use the existing maintenance lifecycle, atomically retire the owned namespace and persist sufficient identity-bound progress to resume after interruption. It SHALL use retained directory cursors, bounded entry/time batches and a minimum interval including backoff proportional to actual work. Failed or unsafe cleanup SHALL preserve the remaining material, report a maintenance error and allow the ready service to continue. A newer/replaced object or installer handoff SHALL NOT inherit an older cleanup claim. Completion SHALL stop polling rather than repeatedly scanning the filesystem. This automatic material exists for failed-upgrade recovery, not post-success rollback; independent backups remain the operator's responsibility.
+
+#### Scenario: Fail after Core migration
+
+- **WHEN** Core migration succeeds but Observation, publication restoration, Gateway or Control fails
+- **THEN** recovery material remains available and automatic cleanup does not begin.
+
+#### Scenario: Complete startup and interrupt cleanup
+
+- **WHEN** the whole service becomes ready and later exits during namespace retirement or deletion
+- **THEN** recovery material expires, deletion runs outside startup in bounded maintenance batches, and a subsequent successful startup resumes the same retired objects without touching current data or a replacement installation handoff.
 
 ### Requirement: Upgrade recovery actions come from whole-group storage admission
 
