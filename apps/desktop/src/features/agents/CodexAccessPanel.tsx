@@ -49,28 +49,36 @@ export function CodexAccessSettings({ access, mode, language, disabled, onMode }
   </div>;
 }
 
-export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
-  access: CodexAccess; language: 'zh' | 'en'; retryDisabled: boolean; onRetry: () => Promise<void>;
+export function CodexLaunchInstructions({ access, language, primary = false }: {
+  access: CodexAccess; language: 'zh' | 'en'; primary?: boolean;
 }) {
   const [shell, setShell] = useState(() => preferredCodexShell(typeof navigator === 'undefined' ? '' : navigator.platform, access.commands));
   const [copyState, setCopyState] = useState('');
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  if (access.selected_mode !== 'profile' || !access.slot_occupied || access.pending_operation || access.access_revoked) return null;
+  const command = access.commands[shell];
+  return <div data-codex-launch-instructions>
+      <div className="detail-section-head"><strong>{text('启动 Codex', 'Start Codex')}</strong><label className="field-label agent-launch-shell">Shell <select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label></div>
+      <pre className="agent-launch-command"><code>{command}</code></pre>
+      <button className={`btn${primary ? ' btn-primary' : ''}`} disabled={!command} onClick={async () => {
+        try { await copyText(command); setCopyState(text('已复制', 'Copied')); }
+        catch { setCopyState(text('复制失败，请手动选择命令复制', 'Copy failed; select and copy the command manually')); }
+      }}>{text('复制启动命令', 'Copy launch command')}</button><span role="status">{copyState}</span>
+    </div>;
+}
+
+export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
+  access: CodexAccess; language: 'zh' | 'en'; retryDisabled: boolean; onRetry: () => Promise<void>;
+}) {
+  const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   if (!access.slot_occupied && !access.pending_operation) return null;
   const mode = access.selected_mode;
-  const command = access.commands[shell];
   return <section className="fact-section" data-codex-access-mode={mode}>
     <p className="field-help">{mode === 'profile'
       ? text('按需使用 · Codex CLI：复制命令到终端启动。普通 Codex 与 Desktop 保持原配置。', 'On demand · Codex CLI: copy the command to start in a terminal. Ordinary Codex and Desktop keep their settings.')
       : text('默认接入 · Codex CLI 和 Desktop：共享此配置目录的入口使用 HiRoute。', 'Default connection · Codex CLI and Desktop: entry points sharing this directory use HiRoute.')}</p>
     <CodexHistoryNotice language={language} mode={mode} />
-    {mode === 'profile' && access.slot_occupied && !access.pending_operation && !access.access_revoked && <div>
-      <div className="detail-section-head"><strong>{text('启动 Codex', 'Start Codex')}</strong><label className="field-label agent-launch-shell">Shell <select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label></div>
-      <pre className="agent-launch-command"><code>{command}</code></pre>
-      <button className="btn" disabled={!command} onClick={async () => {
-        try { await copyText(command); setCopyState(text('已复制', 'Copied')); }
-        catch { setCopyState(text('复制失败，请手动选择命令复制', 'Copy failed; select and copy the command manually')); }
-      }}>{text('复制启动命令', 'Copy launch command')}</button><span role="status">{copyState}</span>
-    </div>}
+    <CodexLaunchInstructions access={access} language={language} />
     {!access.pending_operation && !access.access_revoked && access.conflict_fields.length > 0 && <div className="callout warn" role="alert" data-codex-restore-conflict>
       <UiIcon name="warning" /><div>
       <strong>{text('配置文件存在冲突', 'Configuration file conflict')}</strong>

@@ -98,6 +98,7 @@
 .trial-mapping p { margin: 0; }
 .trial-mapping-note { color: var(--text-soft); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; overflow-wrap: anywhere; }
 .trial-mapping .actions { margin-block: 4px 0; }
+.trial-codex-handoff { display: grid; gap: 12px; min-width: 0; }
 .trial-session-handoff { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-soft); }
 .trial-session-handoff > p { flex: 1 1 240px; display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--text-soft); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; }
 .trial-session-handoff > p::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }

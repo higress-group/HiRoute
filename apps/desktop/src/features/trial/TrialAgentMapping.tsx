@@ -1,4 +1,5 @@
 import { TrialSessionHandoff } from './TrialSessionHandoff';
+import { TrialCodexHandoff, type TrialCodexTarget } from './TrialCodexHandoff';
 import { TrialRequiredMark } from './TrialRequiredMark';
 import { useEffect, useId, useRef, useState } from 'react';
 import { invoke } from '../../host/index.ts';
@@ -37,7 +38,11 @@ export function TrialAgentChoice({ snapshot, value, onChange, language, disabled
       <span className="trial-presets-title">{t(`${agentDisplayName(value.agentId, language)} 的模型预设`, `${agentDisplayName(value.agentId, language)} model presets`)}<TrialRequiredMark language={language} /></span>
       {(['opus', 'sonnet', 'haiku'] as const).map(preset => <label key={preset} className="trial-preset"><input type="checkbox" disabled={!known} aria-invalid={!!presetError} aria-describedby={presetError ? presetErrorId : undefined} checked={value.presets.includes(preset)} onChange={e => onChange({ ...value, presets: e.target.checked ? [...value.presets, preset] : value.presets.filter(p => p !== preset) })} /><strong>{preset[0].toUpperCase() + preset.slice(1)}</strong><span>{t('现在：', 'Now: ')}{known ? current(preset) : t('尚未核实', 'Not yet verified')}</span></label>)}
       {presetError && <p id={presetErrorId} className="oc-inline-error">{presetError}</p>}
-    </div> : value.agentId && <p className="field-help">{agentDisplayName(value.agentId, language)} · {agentEcosystem(value.agentId) === 'codex' ? t('将此路由设为默认模型；保留已有可用路由。', 'Use this route as the default model and retain existing allowed routes.') : t('将此路由加入可用路由。', 'Add this route to the allowed routes.')}</p>}
+    </div> : value.agentId && <p className="field-help">{agentDisplayName(value.agentId, language)} · {agentEcosystem(value.agentId) === 'codex'
+      ? !known ? t('正在核实接入方式…', 'Checking the connection mode…') : agent?.codex_access?.selected_mode === 'root'
+        ? t('沿用默认接入，将此路由设为默认模型；映射后重新启动对应的 Codex CLI 或 Desktop。', 'Keep the default connection and use this route as the default model. Restart the corresponding Codex CLI or Desktop after mapping.')
+        : t('按需使用 · 仅 Codex CLI。将此路由设为 HiRoute profile 的默认模型；映射后用启动命令开启新会话。普通 Codex 和 Desktop 保持原配置。', 'On demand · Codex CLI only. Use this route as the HiRoute profile’s default model, then start a new session with its launch command. Ordinary Codex and Desktop keep their settings.')
+      : t('将此路由加入可用路由。', 'Add this route to the allowed routes.')}</p>}
     {loading ? <p role="status">{t('正在读取所选 Agent 的模型配置…', 'Reading the selected Agent model settings…')}</p>
       : value.agentId && !known && <p role="alert">{t('所选 Agent 的模型配置尚未确认。请重试或到 Agent 页面处理。', 'The selected Agent model settings are unconfirmed. Retry or inspect the Agent page.')}{onRetry && <button type="button" className="btn btn-quiet" onClick={onRetry}>{t('重试', 'Retry')}</button>}</p>}
     <p className="field-help">{t('只调整选中的模型路由。权限、工具审批和任务协作不变。', 'Only the selected model routing changes. Permissions, tool approval and task collaboration stay unchanged.')}</p>
@@ -59,11 +64,14 @@ export function TrialAgentMapping({ plan, initial, initialChoices, language, mut
   const [pending, setPending] = useState<OperationReference | 'unverified' | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [done, setDone] = useState<number | null>(null);
-  const requested = useRef<{ context: string; fingerprint: string } | null>(null);
+  const [handoffVersion, setHandoffVersion] = useState(0);
+  const requested = useRef<{ context: string; fingerprint: string; codexTarget?: TrialCodexTarget } | null>(null);
   const inFlight = useRef(false);
   async function refresh(observedPending = pending, discover = false) {
     if (inFlight.current) return;
     inFlight.current = true;
+    // Explicit refresh also retires any previously read launch instructions.
+    if (discover) setHandoffVersion(value => value + 1);
     try {
       const current = await agentRead.refresh(discover);
       if (!current) return;
@@ -109,7 +117,9 @@ export function TrialAgentMapping({ plan, initial, initialChoices, language, mut
       }
       const values = trialMappingValues(agent, plan.agent_plan_id, mapping);
       const spec = agentSettingsSpec(agent, 'model', false, { values, codexMode: agent.codex_access?.selected_mode ?? 'profile', restoreNativeModel: '' });
-      requested.current = { context: spec.context_id, fingerprint: editorFingerprint(values) };
+      const fingerprint = editorFingerprint(values);
+      requested.current = { context: spec.context_id, fingerprint, ...(agentEcosystem(agent.agent_id) === 'codex'
+        ? { codexTarget: { contextId: spec.context_id, fingerprint, nativeTarget: agent.native_target } } : {}) };
       const input = { language, spec };
       submitted = true;
       let result = await invoke<Outcome>('preview_agent_settings', { input });
@@ -136,9 +146,12 @@ export function TrialAgentMapping({ plan, initial, initialChoices, language, mut
   }
   return <section className="trial-mapping"><h3>{done ? t('路由已发布，Agent 已映射', 'Route published and Agent mapped') : t('路由已发布，接下来映射 Agent', 'Route published. Map an Agent next.')}</h3><p className="trial-mapping-note">{plan.desired.display_name}{!done && <> · {t('即使离开，也可从智能路由页面继续映射。', 'You can resume mapping from Routing after leaving this flow.')}</>}</p>
     {(error || (agentRead.error && !snapshot?.choices.length)) && <p role="alert" className="callout warn">{error || t('Agent 配置暂时无法读取，请刷新结果。', 'Agent settings could not be read. Refresh the result.')}</p>}
-    {done ? <p role="status" className="callout good"><span>{mapping && <strong>{agentDisplayName(mapping.agentId, language)}{agentEcosystem(mapping.agentId) === 'claude' ? ` · ${mapping.presets.join(', ')}` : ''} — </strong>}{t('映射已确认。回到 Agent 发起新会话，在会话路由时间线中观察试用结果。', 'Mapping confirmed. Start a new session in your Agent and inspect the routing timeline for trial results.')}</span></p> : snapshot && <TrialAgentChoice snapshot={snapshot} value={mapping ?? initialTrialMapping(snapshot)} onChange={setMapping} language={language} disabled={busy || !!pending} loading={agentRead.loading} onRetry={() => void refresh(pending, true)} />}
+    {done ? <p role="status" className="callout good"><span>{mapping && <strong>{agentDisplayName(mapping.agentId, language)}{agentEcosystem(mapping.agentId) === 'claude' ? ` · ${mapping.presets.join(', ')}` : ''} — </strong>}{mapping && agentEcosystem(mapping.agentId) === 'codex'
+      ? t('映射已确认。按下方启动方式开始使用，再到会话路由时间线观察试用结果。', 'Mapping confirmed. Follow the launch instructions below, then inspect the routing timeline for trial results.')
+      : t('映射已确认。回到 Agent 发起新会话，在会话路由时间线中观察试用结果。', 'Mapping confirmed. Start a new session in your Agent and inspect the routing timeline for trial results.')}</span></p> : snapshot && <TrialAgentChoice snapshot={snapshot} value={mapping ?? initialTrialMapping(snapshot)} onChange={setMapping} language={language} disabled={busy || !!pending} loading={agentRead.loading} onRetry={() => void refresh(pending, true)} />}
     {preview && <AgentSettingsFeedback preview={preview} language={language} facet="model" defaultChoice={{ kind: 'plan', plan_id: plan.agent_plan_id }} disabled={busy || !!pending} onCheck={() => void apply()} />}
     {pending && <p role="status">{t('正在核实本次映射；刷新不会重复提交。', 'Verifying this mapping; refresh does not resubmit.')}</p>}
+    {done !== null && requested.current?.codexTarget && <TrialCodexHandoff key={handoffVersion} target={requested.current.codexTarget} language={language} mutable={mutable} />}
     {done !== null && <TrialSessionHandoff planId={plan.agent_plan_id} confirmedAt={done} language={language} onWatch={onOpenSessions} />}
     <div className="actions">{done && onOpenPerformance && <button className="btn" onClick={onOpenPerformance}>{t('查看模型表现', 'View model performance')}</button>}{done && onOpenSessions && <button className="btn" onClick={() => onOpenSessions()}>{t('查看会话时间线', 'View session timelines')}</button>}<button className="btn btn-quiet" disabled={busy || agentRead.loading} onClick={() => void refresh(pending, true)}>{t('刷新结果', 'Refresh result')}</button>{!done && <button className="btn btn-primary" disabled={busy || !!pending || !mutable || !agentRead.ready || !snapshot?.selected || !agentEditorSeed(snapshot.selected, 'model', []).known || !snapshot?.trusted_authority || !mapping?.agentId || (agentEcosystem(mapping.agentId) === 'claude' && !mapping.presets.length)} onClick={() => void apply()}>{t('检查并映射 Agent', 'Review and map Agent')}</button>}{mapping?.agentId && onOpenAgent && <button className="btn btn-quiet" onClick={() => onOpenAgent(mapping.agentId)}>{t('查看 Agent 配置', 'Inspect Agent settings')}</button>}</div>
   </section>;
