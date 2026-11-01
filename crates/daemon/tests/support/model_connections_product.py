@@ -726,12 +726,16 @@ def run(repository, expected_sha=None):
         configure_reference_price(product, saved['binding_id'], 2_000_000)
         assert timeline_amounts(product, session_id, 1) == frozen_amounts
         assert_live_credential_switches(product, upstream, saved)
+        # Response delivery precedes asynchronous valuation. Freeze all three
+        # completed valuations before testing their persistence across restart.
+        settled_amounts = timeline_amounts(product, session_id, 3)
         product.stop()
         product.start()
         recheck_saved_native_source(product, saved, 3, 'after-restart')
         recheck_saved_native_source(product, unknown, 3, 'unknown-after', unknown=True)
         assert_session_record(product, started_ms, saved['binding_id'])
         reopened_amounts = timeline_amounts(product, session_id, 3)
+        assert reopened_amounts == settled_amounts, 'restart changed settled valuations'
         for request, costs in frozen_amounts.items():
             assert reopened_amounts[request] == costs, 'price edits rewrote historical valuation'
         first_amount = sum(cost['known_micros'] for costs in frozen_amounts.values() for cost in costs)

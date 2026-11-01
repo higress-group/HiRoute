@@ -4,7 +4,7 @@ use crate::server::core_runtime::adapters;
 use crate::server::request_plan::IngressProtocol;
 use hiroute_gateway_core::runtime::body::BudgetTree;
 use serde_json::{Value, json};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 #[path = "hermes_tests.rs"]
 mod hermes;
@@ -23,13 +23,12 @@ struct Fixture {
 }
 impl Fixture {
     fn new() -> Self {
+        let mut nonce = [0; 16];
+        getrandom::fill(&mut nonce).unwrap();
         let root = std::env::temp_dir().join(format!(
-            "hiroute-routing-view-{}-{}",
+            "hiroute-routing-view-{}-{:032x}",
             std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            u128::from_ne_bytes(nonce)
         ));
         let manager = ReplayManager::open(ReplayConfig {
             root: root.clone(),
