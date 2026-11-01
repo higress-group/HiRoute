@@ -95,8 +95,8 @@ def durable_content(product):
 
 
 def verify_exact_bytes(product, requests):
-    paths = list(product.storage.rglob('activity.db'))
-    assert len(paths) == 1
+    activity = product.storage / 'observation/activity.db'
+    assert activity.is_file()
     with activity_database(product) as db:
         for request in requests:
             rows = db.execute(
@@ -111,7 +111,7 @@ def verify_exact_bytes(product, requests):
                 relative = Path(locator)
                 assert not relative.is_absolute() and '..' not in relative.parts
                 assert relative.parts[0] == 'conversation-content'
-                raw = (paths[0].parent / relative).read_bytes()
+                raw = (activity.parent / relative).read_bytes()
                 assert len(raw) == byte_count
                 event = json.loads(raw)['event']
                 assert event == {'kind': 'text_delta', 'index': 0, 'text': fragment(index)}
