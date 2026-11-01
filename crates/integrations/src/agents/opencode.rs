@@ -669,16 +669,16 @@ mod tests {
             &search_path,
         );
         let linked = base.join("linked");
+        // Keep canonical paths for native identity checks, but pass Git the
+        // ordinary drive spelling rather than Rust's Win32 verbatim prefix.
+        #[cfg(windows)]
+        let linked_argument = linked.to_str().unwrap().trim_start_matches(r"\\?\");
+        #[cfg(not(windows))]
+        let linked_argument = linked.to_str().unwrap();
         git(
             &native,
             &repository,
-            &[
-                "worktree",
-                "add",
-                "--detach",
-                linked.to_str().unwrap(),
-                "HEAD",
-            ],
+            &["worktree", "add", "--detach", linked_argument, "HEAD"],
             &search_path,
         );
         let foreign_config = base.join("opencode.json");
