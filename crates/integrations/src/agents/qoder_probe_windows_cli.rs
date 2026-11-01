@@ -318,7 +318,7 @@ mod tests {
             let images: Vec<_> = locations
                 .iter()
                 .map(|path| {
-                    security::open_read_lease(path).unwrap_or_else(|error| {
+                    security::open_installed_image_lease(path).unwrap_or_else(|error| {
                         let links = security::open_identity(path, false)
                             .and_then(|file| security::file_link_count(&file));
                         panic!(
