@@ -104,7 +104,8 @@ direction.
 ## Storage upgrade recovery
 
 Before replacing an installed program, the verified candidate performs read-only
-preflight. When a history-format cutover is required, the installer retains the
+preflight. When Core conversion or a history-format cutover needs recovery
+workspace, the installer retains the
 complete original program/resources and installation records in private service
 state; the daemon receives that handoff directly, including under systemd.
 Current-format repair skips this archival copy and its extra space reserve.
@@ -123,11 +124,21 @@ downgrade. Preserve data, keys, programs and journals; follow diagnostic/support
 steps when necessary material is unavailable. A resumable batch uses the current
 program. Whole-group recovery uses that batch's `RECOVERY.md`, `恢复说明.md` and,
 when present, `PROGRAM-LOCATIONS.md`: stop the service and automatic restarts,
-preserve newer data/program separately, restore all stores/keys/Observation and
-recorded auxiliary files, then restore the matching program/resources and service
+preserve newer data/program separately, restore the original Core stores/keys,
+native restoration material and recorded auxiliary files, then restore the matching
+program/resources and service
 registration at their recorded locations. Reload the manager and verify actual
 Control/Gateway readiness and a real request. Installation-command success alone
 is insufficient.
+
+Compatible Observation stays in place during a Core upgrade and is excluded from
+its v3 recovery snapshot, including space sizing, copying and hashing. Its guide
+requires fresh Observation on matching-version Core restoration; newer storage,
+including history and observation-local settings, remains separately preserved.
+Reapply a custom capacity setting after that restoration. Older full-history or
+sealed-history backups retain their original scope: restore their Observation
+DB/WAL/SHM/content with the matching old group. Archival only changes a completed
+batch's location and does not verify or automatically delete its contents.
 
 Explicit headless operators may still provide the absolute complete old-package
 directory via `HIROUTE_RECOVERY_PACKAGE` on the daemon's first sealing startup.
