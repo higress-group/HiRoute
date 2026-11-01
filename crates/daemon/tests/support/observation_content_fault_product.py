@@ -82,9 +82,12 @@ def wait_for(predicate, explanation):
 
 
 def activity_database(product):
-    paths = list(product.storage.rglob('activity.db'))
-    assert len(paths) == 1, paths
-    return sqlite3.connect(paths[0].as_uri() + '?mode=ro', uri=True)
+    # Current Product storage owns this exact locator. Walking live staging
+    # directories races their normal post-commit removal and scales with every
+    # captured blob, although none is a dependency of this read-only DB query.
+    path = product.storage / 'observation/activity.db'
+    assert path.is_file(), 'current Product activity database is unavailable'
+    return sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
 
 
 def content_rows(product, request_id):
