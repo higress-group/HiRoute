@@ -155,6 +155,11 @@ pub(super) fn verify_collector_evidence_for(
     } else {
         (LEGACY_EXECUTION_SCHEMA, LEGACY_EXECUTION_SCHEMA_DIGEST)
     };
+    let (content_schema, content_schema_digest) = if current {
+        (CURRENT_CONTENT_SCHEMA, CURRENT_CONTENT_SCHEMA_DIGEST)
+    } else {
+        (LEGACY_CONTENT_SCHEMA, LEGACY_CONTENT_SCHEMA_DIGEST)
+    };
     let channels = [
         (
             &evidence.lifecycle,
@@ -171,8 +176,8 @@ pub(super) fn verify_collector_evidence_for(
         (
             &evidence.conversation_content,
             "conversation_content",
-            CONTENT_SCHEMA,
-            CONTENT_SCHEMA_DIGEST,
+            content_schema,
+            content_schema_digest,
         ),
         (&evidence.otel, "otel", OTEL_SCHEMA, OTEL_SCHEMA_DIGEST),
     ];
@@ -697,9 +702,18 @@ fn validate_content_freshness(
                 .and_then(Value::as_str)
                 != Some("text_finished")
                 || response_events[2]
-                    .pointer("/event/text")
+                    .get("schema_version")
                     .and_then(Value::as_str)
-                    != Some(freshness_challenge)))
+                    != Some("hiroute.semantic-terminal/v1")
+                || response_events[2]
+                    .get("text_source")
+                    .and_then(Value::as_str)
+                    != Some("accepted_segments")
+                || response_events[2].pointer("/event/text").is_some()
+                || response_appends[2]
+                    .get("canonical_media_type")
+                    .and_then(Value::as_str)
+                    != Some("application/vnd.hiroute.semantic-terminal+json;version=1")))
     {
         return Err(collector(
             "response ConversationContent does not bind the fresh challenge exactly",
@@ -835,5 +849,58 @@ mod execution_order_tests {
         selection["evidence"] = json!("wire_observed");
         selection["message_ordinal"] = json!(1);
         assert!(!valid_smoke_input_selection(&selection));
+    }
+    #[test]
+    fn current_semantic_terminal_requires_exact_accepted_text_and_explicit_metadata() {
+        let challenge = "fresh-semantic-content-challenge-1234567890";
+        let append = |direction: &str, kind: &str, raw: Vec<u8>| {
+            json!({
+                "direction":direction, "phase":"append", "content_kind":kind,
+                "canonical_bytes_base64":base64::engine::general_purpose::STANDARD.encode(raw),
+                "canonical_media_type":"application/vnd.hiroute.model-stream-event+json;version=1",
+                "downstream_delivery":"full_frame_transport_accepted",
+            })
+        };
+        let encode = |event: Value| {
+            serde_json::to_vec(
+                &json!({"schema_version":"hiroute.model-stream-event/v1","event":event}),
+            )
+            .unwrap()
+        };
+        let terminal = json!({"schema_version":"hiroute.semantic-terminal/v1","text_source":"accepted_segments","event":{"kind":"text_finished","index":0,"status":"completed","annotations":[]}});
+        let mut records = vec![
+            append("request_input", "text", challenge.as_bytes().to_vec()),
+            append(
+                "response_delivered",
+                "content_block_started",
+                encode(json!({"kind":"content_block_started","index":0,"block_kind":"text"})),
+            ),
+            append(
+                "response_delivered",
+                "text_delta",
+                encode(json!({"kind":"text_delta","index":0,"text":challenge})),
+            ),
+            append(
+                "response_delivered",
+                "text_finished",
+                serde_json::to_vec(&terminal).unwrap(),
+            ),
+        ];
+        records[3]["canonical_media_type"] =
+            json!("application/vnd.hiroute.semantic-terminal+json;version=1");
+        assert!(validate_content_freshness(&records, challenge, true).is_ok());
+        let mut wrong_text = records.clone();
+        wrong_text[2]["canonical_bytes_base64"] =
+            json!(base64::engine::general_purpose::STANDARD.encode(encode(
+                json!({"kind":"text_delta","index":0,"text":"different"})
+            )));
+        assert!(validate_content_freshness(&wrong_text, challenge, true).is_err());
+        let mut fake_final = terminal.clone();
+        fake_final["event"]["text"] = json!("");
+        records[3]["canonical_bytes_base64"] = json!(
+            base64::engine::general_purpose::STANDARD
+                .encode(serde_json::to_vec(&fake_final).unwrap())
+        );
+        assert!(validate_content_freshness(&records, challenge, true).is_err());
     }
 }
