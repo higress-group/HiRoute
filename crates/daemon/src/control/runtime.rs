@@ -180,6 +180,11 @@ fn windows_agent_discovery_uses_the_private_isolated_test_home() {
 }
 
 impl ProductionControlRuntime {
+    /// Recovery material expires only once the whole serving composition is ready.
+    pub(crate) fn service_ready(&self) {
+        self.adapter.upgrade_cleanup.service_ready();
+    }
+
     pub(crate) fn upgrade_active_tasks(&self) -> Result<u64, String> {
         let occupied = self
             .adapter
@@ -695,6 +700,7 @@ impl ProductionControlRuntime {
             .open_launcher_capability_registrar()
             .map_err(|error| error.to_string())?;
         let adapter = Arc::new(LocalControlAdapter {
+            upgrade_cleanup: hiroute_local_storage::backup::UpgradeCleanup::new(storage_root),
             native_network: Arc::new(hiroute_domain::NativeNetworkRegistryV1::new(
                 native_network::capture(),
             )),
@@ -1027,6 +1033,7 @@ fn delegation_epoch() -> Result<String, String> {
 }
 
 struct LocalControlAdapter {
+    upgrade_cleanup: hiroute_local_storage::backup::UpgradeCleanup,
     native_network: Arc<hiroute_domain::NativeNetworkRegistryV1>,
     publication_diagnostics: Mutex<DiagnosticsPort>,
     publication_marker_cache: Mutex<Option<publication::DecodedMarker>>,

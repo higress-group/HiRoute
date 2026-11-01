@@ -12,6 +12,8 @@ use std::{
 pub struct UpgradePreflight {
     pub schema: String,
     pub history_cutover_required: bool,
+    /// Recovery workspace for Core conversion or history cutover; zero when
+    /// neither needs a new snapshot. Installers retain the old package for both.
     pub required_bytes: u64,
     pub available_bytes: u64,
     pub recovery: Option<StorageRecovery>,

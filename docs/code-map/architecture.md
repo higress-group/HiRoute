@@ -276,6 +276,23 @@ Compact Observation format admission and fresh-generation initialization belong 
 [`store` factory](../../crates/observation/src/store/mod.rs); complete original-source
 preservation remains in the existing
 [startup coordinator](../../crates/local-storage/src/migrations/observation_source.rs).
+Core-only snapshots explicitly exclude compatible live Observation in
+[`source_snapshot`](../../crates/local-storage/src/backup/source_snapshot.rs);
+its format tests and [production Core upgrade regression](../../crates/daemon/src/control/runtime/history_cutover_tests.rs)
+cover in-place history and attribution, recovery scope and legacy verification.
+The [SQLite snapshot writer](../../crates/local-storage/src/backup/mod.rs) preserves
+the original schema cookie before publishing its copy so restored locator proofs remain valid.
+Archiving completed batches changes location without rehashing historical contents.
+[Successful-upgrade cleanup](../../crates/local-storage/src/backup/cleanup.rs) is
+armed only after role-all Control and Gateway readiness and reuses the Observation
+maintenance hook. It retires owned recovery namespaces, then uses the platform
+identity-bound directory cursor for bounded resumable deletion. Failed startup
+retains recovery material; compatible active history is never traversed.
+Recovery-package retirement also binds the running target image: macOS validates
+the opened file against the [main Mach-O vnode](../../crates/platform/src/private_fs/running_image.rs)
+so hot installation cannot let an old process retire its successor's recovery package.
+The shared read-only preflight also reports Core recovery workspace so the existing
+Unix/Windows installation handoff retains the matching old package for that boundary.
 The [sealed-source publisher](../../crates/local-storage/src/backup/source_snapshot/seal.rs)
 uses same-filesystem directory publication without traversing historical contents.
 The optional capacity threshold uses the
