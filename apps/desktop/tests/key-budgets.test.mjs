@@ -55,6 +55,16 @@ test('period controls retain saved original anchors when opening or selecting th
   }
 });
 
+test('amount-only edits preserve second and fractional-second precision accepted by the public API', () => {
+  for (const anchor_local of ['2024-02-29T10:15:30', '2024-02-29T10:15:30.123456789']) {
+    const policy = { currency: 'USD', amount_micros: 100000000, renewal: { period: 'yearly', mode: 'reset', anchor_local, timezone: 'UTC', balance_cap_micros: null } };
+    const saved = budgetDraft({ definition: { budget_id: 'budget/seconds', revision: 3, display_name: 'Credits', policy } });
+    assert.deepEqual(budgetAssignment({ ...saved, amount: '120' }).policy.renewal, policy.renewal);
+    const changed = changeRenewalSchedule(saved, { time: '11:00' }, new Date('2026-11-01T00:00:00Z'));
+    assert.match(budgetAssignment(changed).policy.renewal.anchor_local, /T11:00:00$/);
+  }
+});
+
 test('daily and weekly changes use the allowance time zone instead of a hidden future date', () => {
   const now = new Date('2026-03-02T00:30:00Z');
   const draft = scheduleDraft('monthly', '2030-12-31T09:00', 'America/Los_Angeles');

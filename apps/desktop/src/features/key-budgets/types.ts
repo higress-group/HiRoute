@@ -45,8 +45,12 @@ export function budgetAssignment(draft: BudgetDraft): BudgetAssignment {
   try { if (draft.mode === 'periodic') Intl.DateTimeFormat('en', { timeZone: draft.timezone }).format(); } catch { throw new Error('KEY_BUDGET_INVALID'); }
   const initial = !draft.existing && draft.initial.trim() ? moneyMicros(draft.initial) : null;
   if (initial !== null && initial > amount) throw new Error('KEY_BUDGET_INVALID');
+  const savedRenewal = draft.existing?.policy.renewal;
+  // The minute-based form must not erase seconds accepted through the public API.
+  const anchor = savedRenewal?.period === draft.period && savedRenewal.anchor_local.slice(0, 16) === draft.anchor
+    ? savedRenewal.anchor_local : `${draft.anchor}:00`;
   return { intent: 'configure', budget_id: draft.existing?.budget_id ?? null, expected_revision: draft.existing?.revision ?? 0, display_name: draft.name.trim() || 'API allowance',
-    policy: { currency: draft.currency, amount_micros: amount, renewal: draft.mode === 'once' ? null : { period: draft.period, mode: draft.renewalMode, anchor_local: `${draft.anchor}:00`, timezone: draft.timezone.trim(), balance_cap_micros: cap } }, initial_remaining_micros: initial };
+    policy: { currency: draft.currency, amount_micros: amount, renewal: draft.mode === 'once' ? null : { period: draft.period, mode: draft.renewalMode, anchor_local: anchor, timezone: draft.timezone.trim(), balance_cap_micros: cap } }, initial_remaining_micros: initial };
 }
 export function budgetMoney(micros: number, currency: string, language: 'zh' | 'en') {
   return new Intl.NumberFormat(language === 'zh' ? 'zh-CN' : 'en-US', { style: 'currency', currency, maximumFractionDigits: 4 }).format(micros / million);

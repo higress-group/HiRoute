@@ -118,6 +118,14 @@ try {
   await waitFor(client,'window.budgetTrace.length===1 && !document.querySelector(".modal")');
   assert.equal(await evaluate(client,'window.budgetTrace[0].budgets[0].assignment.policy.renewal.anchor_local'),'2026-11-30T09:00:00');
   results.push({name:'amount-only-retains-saved-anchor'});
+  await navigate(client,`http://127.0.0.1:${httpPort}/key-budgets.html?seconds=1`,{width:755,height:600});
+  await click('.list-row');await click('.btn','管理 Key 与额度');
+  await waitFor(client,'document.querySelector("[data-budget-time]")!==null');
+  assert.equal(await evaluate(client,'document.querySelector("[data-budget-time]").value'),'09:00');
+  await change('[data-key-budget] .key-budget-amount input','120');await click('.modal-foot .btn-primary');
+  await waitFor(client,'window.budgetTrace.length===1 && !document.querySelector(".modal")');
+  assert.equal(await evaluate(client,'window.budgetTrace[0].budgets[0].assignment.policy.renewal.anchor_local'),'2026-11-30T09:00:30.123456789');
+  results.push({name:'amount-only-retains-subminute-anchor'});
   await navigate(client,`http://127.0.0.1:${httpPort}/key-budgets.html`,{width:755,height:600});
   await click('.list-row');await click('.btn','管理 Key 与额度');
   await waitFor(client,'document.querySelector("[data-budget-time]")!==null');
