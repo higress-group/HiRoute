@@ -128,12 +128,13 @@ impl UpgradeCleanup {
     }
 
     fn jobs(&self) -> Result<PathBuf, LocalStorageError> {
-        let name = self
+        let mut name = self
             .storage
             .file_name()
             .ok_or(LocalStorageError::InvalidData)?
-            .to_string_lossy();
-        Ok(self.parent()?.join(format!("{name}.upgrade-cleanup")))
+            .to_os_string();
+        name.push(".upgrade-cleanup");
+        Ok(self.parent()?.join(name))
     }
 
     fn source(&self, source: &Source) -> Result<PathBuf, LocalStorageError> {

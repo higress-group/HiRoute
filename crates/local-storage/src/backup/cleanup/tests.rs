@@ -276,3 +276,27 @@ fn failed_cleanup_stays_pending_and_backs_off_until_repaired() {
     assert!(!wrapper.exists());
     assert!(!f.backups.exists());
 }
+
+#[cfg(unix)]
+#[test]
+fn native_storage_names_do_not_share_retirement_authority() {
+    use std::os::unix::ffi::OsStringExt;
+    let f = Fixture::new();
+    let roots = [b"store-\x80".to_vec(), b"store-\x81".to_vec()]
+        .map(|name| f.state.join(std::ffi::OsString::from_vec(name)));
+    let controllers = roots.map(|root| {
+        crate::prepare_owner_directory(&root).unwrap();
+        let cleanup = UpgradeCleanup::new(&root);
+        let backups = cleanup.source(&Source::Backups).unwrap();
+        crate::prepare_owner_directory(&backups).unwrap();
+        f.file(&backups.join("source"), b"keep original");
+        cleanup
+    });
+    let other = controllers[1].submit(Source::Backups).unwrap().unwrap();
+    let payload = other.path.join("data");
+    fs::rename(controllers[1].source(&Source::Backups).unwrap(), &payload).unwrap();
+    controllers[0].service_ready();
+    drain(&controllers[0]);
+    assert_eq!(fs::read(payload.join("source")).unwrap(), b"keep original");
+    assert!(other.path.join("task.json").exists());
+}
