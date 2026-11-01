@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { contextWindowError } from '../src/plan-context-window.ts';
 
 test('default and custom windows allow the full proven range', () => {
-  const bounds = { maximum_tokens: 1050000, default_tokens: 272000 };
-  for (const value of [undefined, 1, 128000, 272000, 500000, 1050000]) {
+  const bounds = { maximum_tokens: 1050000, default_tokens: 400000 };
+  for (const value of [undefined, 1, 128000, 272000, 400000, 500000, 1050000]) {
     assert.equal(contextWindowError(value, bounds, 'zh'), null);
   }
   for (const value of [0, -1, 1.5, NaN, Infinity, 1050001]) {
