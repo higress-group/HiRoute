@@ -159,6 +159,15 @@ Native login stays with the selected context; HiRoute cannot copy credentials or
 auto-login in discovery. Unproven auxiliary model/tool or restricted permission
 capability is unavailable, never direct fallback to native account/another source.
 
+Qoder Worker progress MUST identify the actual selected native configuration
+directory from the rendered run profile, including the original task directory on
+Continue. This is a host-authored fact, not model output or proof of login/custom-model
+entitlement. Paths MUST be escaped as data. Account-switch guidance MUST explain
+normal login in the selected directory and production Restore of any managed model/
+Skill configuration under the previous directory before changing the daemon selector.
+It MUST preserve exact recovery bindings, authentication files and existing tasks.
+A locked-state hint MUST remain conditional and retain the storage-owned cause.
+
 Native context uses existing frozen total/output/reasoning policy; output is the
 minimum exact nonzero bound across all active candidates/protocols. Both context
 and output are projected for native compaction. Unknown/unrepresentable budgets,
@@ -294,6 +303,38 @@ including after an earlier terminal run; hidden/switched pages stop old observat
 stale replies cannot replace the current task, and an explicit historical selector
 cannot be changed into latest. Polling does not resubmit. Wait expiry/observer close
 is not task cancel. Terminal state and unavailable result body remain separate.
+
+A native `cancelled` response without HiRoute cancellation intent MUST be treated
+as a native prompt failure, rather than user cancellation or success. A Qoder
+prompt that returns its native JSON-RPC error code 500 is also a known
+native failure; its message MUST NOT be parsed to guess an account entitlement.
+Execution deadlines MUST retain their cause when ACP cancellation is used for shutdown.
+Owned-process cleanup MUST NOT turn a known failure or uncertain connection into
+a user cancellation. Existing historical states are not reclassified without evidence.
+
+Marked host explanations in ordinary Worker progress MUST preserve closed execution
+failure reasons. They MAY include the last fixed typed Gateway rejection and HTTP
+status observed for the same authenticated run, labelled as request evidence rather
+than proof of the terminal cause. An HTTP failure without a fixed Gateway code MUST
+report that the code is unavailable, without inspecting or inventing provider details.
+They MUST NOT infer account entitlement from
+assistant text, expose provider bodies/credentials, cross run boundaries, or become
+model Result. Missing diagnostic capture MUST NOT invent a cause or authorize replay.
+
+#### Scenario: Qoder reports a protocol failure as cancellation
+
+- **WHEN** an authenticated Qoder model request receives a typed Gateway protocol rejection and the native client ends its prompt as `cancelled` without a HiRoute cancel request
+- **THEN** the run is failed, ordinary progress explains the native failure and observed Gateway code/status, and owned cleanup preserves that outcome.
+
+#### Scenario: Deadline and user cancellation remain distinct
+
+- **WHEN** HiRoute stops a run because its execution deadline expired, or because a local caller requested cancellation
+- **THEN** the deadline remains a failed execution with its own explanation, while a real cancellation retains cancellation intent; both use the existing owned-process cleanup.
+
+#### Scenario: Qoder account selection changes after a task
+
+- **WHEN** a Qoder task continues after the daemon's configuration-directory selector changes
+- **THEN** progress reports the original frozen task directory, a new task may use the newly selected directory, and guidance does not claim that installation readiness proves model access.
 
 Negotiated error-severity terminal sessionFailure in ACP PromptResponse is an
 authoritative failed run even when RPC returned successfully; warning alone is not

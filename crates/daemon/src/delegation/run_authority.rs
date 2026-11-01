@@ -149,6 +149,16 @@ impl RunRequestAuthorityPort for DelegationRunAuthority {
 }
 
 impl RunRequestSafetyPort for RunSafety {
+    fn request_failed(
+        &self,
+        locator: &RunRequestLocator,
+        failure: hiroute_gateway::server::dispatch::RunRequestFailure,
+    ) {
+        if locator == &self.locator {
+            self.verifier.record_request_failure(failure);
+        }
+    }
+
     fn authorize_request(
         &self,
         authorization: &str,

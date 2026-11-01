@@ -21,6 +21,48 @@ The routing editor displays the current head's call state separately from unsave
 edits and saved drafts. A disabled route remains visibly stopped even while its
 configuration is being edited; only a successful lifecycle change enables calls.
 
+## Qoder Worker accounts and configuration directories
+
+The daemon selects Qoder's native context from its own `QODER_CONFIG_DIR`, falling
+back to its native HOME's `.qoder` directory. Setting the variable only in the
+terminal that submits `worker exec` does not change an already running daemon.
+For a systemd user service, the drop-in must contain a section header:
+
+```ini
+[Service]
+Environment="QODER_CONFIG_DIR=/absolute/path/to/qoder-worker"
+```
+
+Reload the user service configuration and restart the daemon after changing it.
+Complete Qoder's normal login using the selected CLI and the same `--config-dir`.
+HiRoute does not copy login files between accounts. Installation readiness only
+checks execution prerequisites; it does not establish login or custom-model access.
+An account's subscription label alone is not a reliable capability check.
+
+After submission, `hiroute worker read --run RUN_ID --output json` includes a marked
+`[HiRoute]` entry naming the actual Qoder directory selected for that run. A Continue
+uses its task's original directory, even if today's daemon environment differs.
+Use a new task to select the new account.
+
+Before changing an account directory, restore any HiRoute-managed ordinary model
+settings and collaboration Skill through `agents restore preview/apply` while the
+daemon still uses the previous directory. Then change the daemon's selector and
+restart. If startup reports an unavailable exact key binding after a directory
+change, return to the previous selector and perform that Restore. The startup hint
+is conditional: other missing-key causes still require the original storage and
+keys. Deleting recovery markers or copying authentication files is not a repair.
+
+A Worker-only Qoder account does not need an ordinary `agents connect` model
+mapping. Its frozen Plan route is injected per run. A separate account used behind
+an API gateway keeps its own configuration and login context.
+
+Native model failures, execution deadlines and user cancellation are distinct.
+Inspect marked host explanations with `worker read` when status/result reports a
+failed or unknown run. They may include the last typed Gateway HTTP rejection for
+that exact run, without raw provider bodies or credentials. A past model-request
+rejection is contextual evidence, not proof that every later native failure has
+the same cause. Transport uncertainty does not authorize automatic resubmission.
+
 ## Codex CLI profile
 
 For an isolated instance, set `HOME` and `CODEX_HOME` to its private directories.

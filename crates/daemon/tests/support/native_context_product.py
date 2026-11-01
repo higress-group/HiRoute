@@ -316,6 +316,15 @@ def run(repository, candidate):
             assert continued['task_id'] == first['task_id']
             assert continued['run_id'] not in report['run_ids'] and not continued['replayed']
             result = wait_for_worker_result(product, continued['run_id'], timeout=150)
+            if harness == 'qoder':
+                _, progress = worker_cli(product, 'worker read --run ' + continued['run_id']
+                                         + ' --max-bytes 65536 --output json')
+                expected_directory = json.dumps(fixture['config'], ensure_ascii=False)
+                assert expected_directory in progress['data']['text'], \
+                    'Continue must report the original Qoder directory'
+                if product.env['QODER_CONFIG_DIR'] != fixture['config']:
+                    assert json.dumps(product.env['QODER_CONFIG_DIR'], ensure_ascii=False) not in progress['data']['text'], \
+                        'current daemon context must not replace the task context in diagnostics'
             assert 'continued-' + fixture['receipt'] in result['result']
             ready = wait_for_resumable_task(product, first['task_id'], continued['run_id'])
             current_history = exact_history(fixture)
