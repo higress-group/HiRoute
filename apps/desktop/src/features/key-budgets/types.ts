@@ -16,9 +16,10 @@ export type BudgetDraft = {
   existing?: BudgetDefinition; sharedId: string; sharedRevision: number; name: string;
 };
 const million = 1_000_000;
-export function budgetDraft(view?: BudgetView): BudgetDraft {
+export function budgetDraft(view?: BudgetView, now = new Date()): BudgetDraft {
   const value = view?.definition, renewal = value?.policy.renewal;
-  const date = new Date(); date.setMonth(date.getMonth() + 1); date.setHours(0, 0, 0, 0);
+  // A recurring rule starts in the current calendar period; the ledger picks its next event.
+  const date = new Date(now.getTime()); date.setHours(0, 0, 0, 0);
   const local = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T00:00`;
   return { enabled: Boolean(value), mode: renewal ? 'periodic' : value ? 'once' : 'periodic', amount: value ? String(value.policy.amount_micros / million) : '', currency: value?.policy.currency ?? 'USD',
     period: renewal?.period ?? 'monthly', renewalMode: renewal?.mode ?? 'reset', anchor: renewal?.anchor_local.slice(0, 16) ?? local,

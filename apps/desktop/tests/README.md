@@ -53,6 +53,14 @@ contract. Node state tests explain decision rules; browser scenarios exercise th
 production React components and their wiring through synthetic IPC. Neither layer
 proves native authorization, persistence, process cleanup or real model calls.
 
+`node tests/v3/visual/key-budgets.mjs OUTPUT` exercises the production Key allowance
+dialog, its period-specific calendar controls, one-save policy serialization,
+untouched saved anchors, invalid times and pending/unavailable states. Daily,
+weekly, monthly and yearly controls use both languages/themes at 1200×813 and
+755×600, with geometry assertions and screenshots. Calendar arithmetic and
+time-zone/month-end/leap-day rules are covered by `key-budgets.test.mjs`.
+The shared editor also serves subscription/API setup; IPC remains synthetic here.
+
 ## Capability map
 
 | User capability | Representative tests | Unique guarantee |

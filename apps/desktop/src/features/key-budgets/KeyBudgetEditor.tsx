@@ -2,6 +2,7 @@ import React, { useId } from 'react';
 import './key-budgets.css';
 import { Disclosure } from '../../ui';
 import { budgetMoney, type BudgetDraft, type BudgetView } from './types';
+import { BudgetRenewalFields } from './BudgetRenewalFields';
 
 /** Both entry points submit this draft through the source's single save action. */
 export function KeyBudgetEditor({ language, value, onChange, disabled, current, shared = [] }: {
@@ -10,10 +11,12 @@ export function KeyBudgetEditor({ language, value, onChange, disabled, current, 
   const id = useId(), zh = language === 'zh', t = (cn: string, en: string) => zh ? cn : en;
   const update = (patch: Partial<BudgetDraft>) => onChange({ ...value, ...patch });
   const money = (amount: number) => budgetMoney(amount, current?.definition.policy.currency ?? value.currency, language);
+  const savedRenewal = current?.definition.policy.renewal;
+  const sameSchedule = value.enabled && value.mode === 'periodic' && savedRenewal && value.period === savedRenewal.period && value.anchor === savedRenewal.anchor_local.slice(0, 16) && value.timezone === savedRenewal.timezone;
   return <div className="key-budget-editor" data-key-budget>
     <label className="key-budget-toggle"><input type="checkbox" checked={value.enabled} disabled={disabled} onChange={event => update({ enabled: event.target.checked })} /><span>{t('限制 API 花费', 'Limit API spending')}</span></label>
     {current && <p className="field-help" role="status">{t('可用', 'Available')} {money(current.available_micros)} · {t('已用', 'Spent')} {money(current.lifetime_spent_micros)}{current.reserved_micros > 0 && <> · {t('待结算', 'Pending')} {money(current.reserved_micros)}</>}{current.key_count > 1 && <> · {t(`${current.key_count} 个 Key 共用`, `Shared by ${current.key_count} keys`)}</>}
-      {current.next_renewal_at_ms !== null && <><br />{t('下次补充：', 'Next renewal: ')}{new Date(current.next_renewal_at_ms).toLocaleString(zh ? 'zh-CN' : 'en-US', { timeZone: current.definition.policy.renewal?.timezone })} {current.definition.policy.renewal?.timezone}</>}
+      {sameSchedule && current.next_renewal_at_ms !== null && <><br />{t('下次补充：', 'Next renewal: ')}{new Date(current.next_renewal_at_ms).toLocaleString(zh ? 'zh-CN' : 'en-US', { timeZone: current.definition.policy.renewal?.timezone })} {current.definition.policy.renewal?.timezone}</>}
     </p>}
     {value.enabled && <div className="key-budget-fields">
       <div className="key-budget-grid">
@@ -25,10 +28,8 @@ export function KeyBudgetEditor({ language, value, onChange, disabled, current, 
         </select></label> : <label className="field"><span className="field-label">{value.mode === 'once' ? t('总金额', 'Total amount') : t('每期金额', 'Amount per period')}</span><span className="key-budget-amount"><select className="select" aria-label={t('币种', 'Currency')} value={value.currency} disabled={disabled || Boolean(value.existing)} onChange={event => update({ currency: event.target.value })}><option>USD</option><option>CNY</option>{!['USD', 'CNY'].includes(value.currency) && <option>{value.currency}</option>}</select><input className="input" aria-label={t('金额', 'Amount')} inputMode="decimal" placeholder="100.00" value={value.amount} disabled={disabled} onChange={event => update({ amount: event.target.value })} /></span></label>}
       </div>
       {value.mode === 'periodic' && <>
-        <div className="key-budget-grid"><label className="field"><span className="field-label">{t('补充周期', 'Renewal period')}</span><select className="select" value={value.period} disabled={disabled} onChange={event => update({ period: event.target.value as BudgetDraft['period'] })}>
-          <option value="daily">{t('每天', 'Daily')}</option><option value="weekly">{t('每周', 'Weekly')}</option><option value="monthly">{t('每月', 'Monthly')}</option><option value="yearly">{t('每年', 'Yearly')}</option>
-        </select></label><label className="field"><span className="field-label">{t('补充日期与时间', 'Renewal date and time')}</span><input className="input" type="datetime-local" value={value.anchor} disabled={disabled} onChange={event => update({ anchor: event.target.value })} /></label></div>
-        <p className="field-help">{value.renewalMode === 'accumulate' ? t('每期增加设定金额，最多累积至余额上限。', 'Adds the period amount up to the balance cap.') : t('每期恢复到设定金额，余额不结转。月底日期在短月按月末执行。', 'Restores the amount without carryover. Month-end dates use the last available day.')}</p>
+        <BudgetRenewalFields language={language} value={value} onChange={onChange} disabled={disabled} />
+        <p className="field-help">{value.renewalMode === 'accumulate' ? t('每期增加设定金额，最多累积至余额上限。', 'Adds the period amount up to the balance cap.') : t('每期恢复到设定金额，余额不结转。', 'Restores the amount without carryover.')}</p>
       </>}
       {value.mode !== 'shared' && <Disclosure language={language} label={t('更多额度设置', 'More allowance settings')}>
         <label className="field"><span className="field-label">{t('额度名称', 'Allowance name')}</span><input className="input" value={value.name} maxLength={256} disabled={disabled} onChange={event => update({ name: event.target.value })} /></label>

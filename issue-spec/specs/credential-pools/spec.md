@@ -119,6 +119,14 @@ allowance MAY differ from the recurring amount. Editing or rotating a Key does
 not reset consumed funds or erase accounting history. Policy changes apply to
 current source authority without republishing routes.
 
+The recurring editor MUST match its calendar period: time only for daily,
+weekday and time for weekly, day and time for monthly, and month/day and time for
+yearly. It MUST show the governing timezone and explain month-end or leap-day
+clamping when relevant. Opening an existing policy or editing only its amount
+MUST retain its original calendar anchor. Selecting a different recurring rule
+MUST schedule from the current period in that timezone, without requiring a year
+or backfilling past grants.
+
 Before an upstream request, the authority MUST atomically reserve a conservatively
 priced amount against the exact admitted Key and shared budget. Concurrent callers
 and repeated model fallbacks cannot each admit the same remaining funds. Known
