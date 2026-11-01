@@ -111,6 +111,45 @@ fn legacy_full_history_verification_remains_required_only_for_recovery() {
 }
 
 #[test]
+fn core_only_recovery_preserves_locator_and_key_binding_with_fresh_history() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().join("storage");
+    let stores = crate::LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+    prepare_owner_directory(&root.join("observation")).unwrap();
+    fs::write(
+        root.join("observation/body"),
+        b"newer history stays separate",
+    )
+    .unwrap();
+    let key = fs::read(root.join("master-key")).unwrap();
+    let backup = temporary.path().join("backup");
+    let barrier = test_writer_barrier();
+    let set = BackupSet::create(
+        &barrier,
+        &backup,
+        &stores.control().connection.borrow(),
+        &stores.runtime().connection.borrow(),
+        &stores.secrets().connection.borrow(),
+    )
+    .unwrap();
+    set.publish_stopped_source(&barrier, &root, &crate::StorageStartupOptions::default())
+        .unwrap();
+    drop(stores);
+    let newer = temporary.path().join("storage-newer");
+    hiroute_platform::durable::rename(&root, &newer).unwrap();
+    copy_tree(&backup.join("source/storage"), &root).unwrap();
+    let restored = crate::LocalStorageSet::open_for_daemon_startup(&root).unwrap();
+    crate::control::agent_locator::validate_coverage(&restored.control().connection.borrow())
+        .expect("the original locator proof must admit its recovery copy");
+    assert_eq!(fs::read(root.join("master-key")).unwrap(), key);
+    assert!(!root.join("observation").exists());
+    assert_eq!(
+        fs::read(newer.join("observation/body")).unwrap(),
+        b"newer history stays separate"
+    );
+}
+
+#[test]
 fn stopped_current_snapshot_preserves_keys_auxiliary_files_and_complete_manifest() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("storage");

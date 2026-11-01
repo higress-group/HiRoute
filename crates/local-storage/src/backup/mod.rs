@@ -80,6 +80,8 @@ impl SqliteBackup {
 
         connection.execute_batch("PRAGMA wal_checkpoint(FULL)")?;
         let source_state_digest = database_state_digest(connection)?;
+        let source_schema: i64 =
+            connection.pragma_query_value(None, "schema_version", |r| r.get(0))?;
         // SQLite explicitly accepts an existing empty INTO file. Allocate it
         // privately first so an elevated default token owner never reaches the
         // backup, including during the crash window before VACUUM completes.
@@ -90,6 +92,13 @@ impl SqliteBackup {
             params![stage.to_string_lossy().as_ref()],
         )?;
         set_owner_file_permissions(&stage)?;
+        // VACUUM changes the destination schema cookie although the schema is
+        // unchanged. Locator coverage binds that original cookie: preserve it
+        // in the private copy before hashing/publication, without changing the
+        // source or weakening the restored reader's validation.
+        let copy = Connection::open_with_flags(&stage, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+        copy.pragma_update(None, "schema_version", source_schema)?;
+        drop(copy);
         hiroute_platform::durable::sync_file(&stage)?;
         validate_database(&stage)?;
         let identity = database_identity(connection)?;
