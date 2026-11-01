@@ -135,6 +135,19 @@ fn is_enabled(value: &bool) -> bool {
 }
 
 impl AgentModelSelectionV2 {
+    /// Static additional-model syntax, independent of account entitlement and Plan capability.
+    pub fn unsupported_plan_protocol(&self) -> bool {
+        match self {
+            Self::QoderAdditional { plan_protocols, .. }
+            | Self::PiAdditional { plan_protocols, .. }
+            | Self::DshAdditional { plan_protocols, .. }
+            | Self::OpenCodeAdditional { plan_protocols, .. } => plan_protocols
+                .values()
+                .any(|protocol| *protocol == crate::AgentIngressProtocolV1::ChatCompletions),
+            _ => false,
+        }
+    }
+
     pub fn installs_native_routing_metadata(&self) -> bool {
         !matches!(
             self,
@@ -248,9 +261,7 @@ impl AgentModelSelectionV2 {
             | Self::DshAdditional { plan_protocols, .. }
             | Self::OpenCodeAdditional { plan_protocols, .. } => {
                 if plan_protocols.keys().any(|id| !plans.contains(id))
-                    || plan_protocols
-                        .values()
-                        .any(|p| *p == crate::AgentIngressProtocolV1::ChatCompletions)
+                    || self.unsupported_plan_protocol()
                 {
                     return Err(crate::AgentConnectionError::InvalidGrant);
                 }

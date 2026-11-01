@@ -108,7 +108,7 @@ pub(crate) fn prepare_authoring(
             PlanAuthoringChoiceReasonV1::Required,
         );
     }
-    if editor.delegation_enabled && editor.purpose.trim().is_empty() {
+    if editor.missing_delegation_purpose() {
         required(
             &mut choices,
             "purpose",

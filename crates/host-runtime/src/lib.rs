@@ -9,6 +9,7 @@
 #[cfg(test)]
 mod development_versions_tests;
 
+mod build_identity;
 mod desktop_package;
 mod gateway_listener;
 mod releases;
@@ -17,6 +18,7 @@ mod service_proxy;
 mod standalone;
 mod upgrade;
 
+pub use build_identity::*;
 pub use desktop_package::*;
 pub use gateway_listener::*;
 pub use releases::*;

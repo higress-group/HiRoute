@@ -144,6 +144,7 @@ pub struct CompetencePolicyV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub standard: Option<super::AssessmentStandardV1>,
     /// Integer thousandths keep published policy canonical and comparable.
+    #[schemars(range(min = 0, max = 1000))]
     pub floor_millis: u16,
     pub instructions: String,
     pub criteria: [String; 3],
@@ -162,7 +163,7 @@ impl Default for CompetencePolicyV1 {
 
 impl CompetencePolicyV1 {
     pub fn validate(&self) -> bool {
-        self.floor_millis <= 1000
+        self.floor_millis <= MAX_JUDGMENT_MILLIS
             && prompt(&self.instructions)
             && self.criteria.iter().all(|v| prompt(v))
     }
@@ -204,6 +205,7 @@ pub enum ModelGroupReasonV1 {
 }
 
 pub const SMART_SAVING_SCOPE_ID: &str = "smart_saving";
+pub const MAX_JUDGMENT_MILLIS: u16 = 1000;
 
 /// Custom categories cannot impersonate the built-in single task scope.
 pub fn valid_task_category_id(id: &str) -> bool {
@@ -215,6 +217,7 @@ pub const DEFAULT_DEGREE_INSTRUCTIONS: &str = "Judge the degree of reasoning and
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DegreePolicyV1 {
+    #[schemars(range(min = 0, max = 1000))]
     pub simple_threshold_millis: u16,
     pub instructions: String,
     pub simple: String,
@@ -232,7 +235,7 @@ impl Default for DegreePolicyV1 {
 }
 impl DegreePolicyV1 {
     pub fn validate(&self) -> bool {
-        self.simple_threshold_millis <= 1000
+        self.simple_threshold_millis <= MAX_JUDGMENT_MILLIS
             && [&self.instructions, &self.simple, &self.complex]
                 .iter()
                 .all(|v| prompt(v))
@@ -245,12 +248,22 @@ pub struct JudgmentSettingsV1 {
     pub competence: CompetencePolicyV1,
 }
 impl JudgmentSettingsV1 {
+    /// Closed field names only; callers can explain invalid input without echoing its value.
+    pub fn invalid_millis_field(&self) -> Option<&'static str> {
+        if self.degree.simple_threshold_millis > MAX_JUDGMENT_MILLIS {
+            Some("degree.simple_threshold_millis")
+        } else if self.competence.floor_millis > MAX_JUDGMENT_MILLIS {
+            Some("competence.floor_millis")
+        } else {
+            None
+        }
+    }
+
     pub fn validate(&self) -> bool {
         self.degree.validate() && self.competence.validate()
     }
     pub fn validate_draft(&self) -> bool {
-        self.degree.simple_threshold_millis <= 1000
-            && self.competence.floor_millis <= 1000
+        self.invalid_millis_field().is_none()
             && [
                 &self.degree.instructions,
                 &self.degree.simple,
@@ -265,8 +278,7 @@ impl JudgmentSettingsV1 {
     }
     /// Parked editor text is not an active prompt, but still obeys input safety.
     pub fn validate_parked(&self) -> bool {
-        self.degree.simple_threshold_millis <= 1000
-            && self.competence.floor_millis <= 1000
+        self.invalid_millis_field().is_none()
             && [
                 &self.degree.instructions,
                 &self.degree.simple,
