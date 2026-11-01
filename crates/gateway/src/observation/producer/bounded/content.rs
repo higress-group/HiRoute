@@ -442,6 +442,17 @@ impl ByteBoundedObservationProducer {
         let estimate = estimate.max(CONTENT_RECORD_BYTES);
         let timing_bytes = usize::from(timing.is_some()) * 64;
         let descriptor_bytes = CONTENT_RECORD_BYTES + timing_bytes;
+        // An envelope is nonempty. Without backing, its descriptor must leave
+        // room for payload; with backing, the descriptor itself must fit.
+        // This intrinsic refusal cannot be repaired by draining queue credit.
+        if descriptor_bytes > resources.limits.bytes
+            || (descriptor_bytes == resources.limits.bytes && !(background && spool.can_spill()))
+        {
+            drop(timing.map(|timing| timing.record()));
+            let sequence = self.shared.next_sequence.fetch_add(1, Ordering::Relaxed);
+            self.restore_and_drop(sequence, ObservationLossReason::EventTooLarge);
+            return Err(ContentPublishFailure::Capacity);
+        }
         let class = if control {
             ContentSlotClass::Control
         } else {
