@@ -1,6 +1,16 @@
 //! Reject unsupported source formats before any database, key or backup mutation.
 use super::*;
 
+/// Read-only hint after format admission; startup still owns batch admission.
+pub(crate) fn core_upgrade_required(root: &Path) -> Result<bool, LocalStorageError> {
+    for path in live_database_paths(&root.join("live")) {
+        if database_version(&path)?.is_some_and(|version| version < LATEST_SCHEMA_VERSION) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 pub(crate) fn validate_startup_format(root: &Path) -> Result<(), LocalStorageError> {
     let live = root.join("live");
     let paths = live_database_paths(&live);
@@ -66,6 +76,46 @@ fn bootstrap_diagnostics_directory(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preflight_core_upgrade_retains_recovery_requirements_without_mutation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("storage");
+        drop(crate::LocalStorageSet::open_for_daemon_startup(&root).unwrap());
+        let package = temporary.path().join("old-package");
+        fs::create_dir(&package).unwrap();
+        fs::write(package.join("daemon"), b"old program fixture").unwrap();
+        assert_eq!(
+            crate::LocalStorageSet::preflight_upgrade(&root, &package, false).unwrap(),
+            0
+        );
+        let paths = live_database_paths(&root.join("live"));
+        // The provisional entry only reads admitted markers; authoritative
+        // conversion is covered by the production Core upgrade regression.
+        for path in &paths {
+            Connection::open(path)
+                .unwrap()
+                .pragma_update(None, "user_version", LATEST_SCHEMA_VERSION - 1)
+                .unwrap();
+        }
+        let before = paths.clone().map(|path| fs::read(path).unwrap());
+        let key = fs::read(root.join("master-key")).unwrap();
+        let required = crate::LocalStorageSet::preflight_upgrade(&root, &package, false).unwrap();
+        assert!(required > 256 * 1024 * 1024);
+        let error = crate::LocalStorageSet::preflight_upgrade(
+            &root,
+            &temporary.path().join("missing-package"),
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.recovery().cause,
+            hiroute_host_runtime::StorageRecoveryCause::MissingPackage
+        );
+        assert_eq!(paths.map(|path| fs::read(path).unwrap()), before);
+        assert_eq!(fs::read(root.join("master-key")).unwrap(), key);
+        assert!(!crate::upgrade_backup_root(&root).unwrap().exists());
+    }
 
     #[test]
     fn production_diagnostics_can_precede_first_store_without_being_discarded() {

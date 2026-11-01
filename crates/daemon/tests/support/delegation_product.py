@@ -323,30 +323,21 @@ def run(repository, expected_sha):
                 + ' --run-timeout 180 --no-wait'
                 + ' --submission-key restricted-codex-start'
                 + ' --file - --output json')
-            _, restricted = worker_cli(
+            restricted_status, restricted = worker_cli(
                 product, restricted_command,
-                'Write must-not-exist in the current directory, then reply done.')
-            restricted = restricted['data']
-            assert restricted['run_state'] == 'accepted', restricted
-            deadline = time.monotonic() + 30
-            while True:
-                _, restricted_result = worker_cli(
-                    product, 'worker result --run ' + restricted['run_id']
-                    + ' --output json')
-                restricted_result = restricted_result['data']
-                if restricted_result['run_state'] in (
-                        'succeeded', 'failed', 'cancelled', 'unknown'):
-                    assert restricted_result['run_state'] == 'failed', restricted_result
-                    break
-                assert time.monotonic() < deadline, restricted_result
-                time.sleep(.05)
+                'Write must-not-exist in the current directory, then reply done.', success=False)
+            assert restricted_status == 2, restricted
+            assert restricted['status'] == 'usage_error', restricted
+            assert restricted['error']['message_key'] == \
+                'worker.error.permission_policy_unsupported_remove_argument', restricted
+            assert 'data' not in restricted, 'unsupported option admitted a Worker run'
             after_attempts = len(attempts_path.read_text().splitlines()) \
                 if attempts_path.exists() else 0
             assert before_attempts == after_attempts
             assert not restricted_marker.exists()
             restricted_policy = {
                 'policy': 'approve_reads',
-                'run_state': restricted_result['run_state'],
+                'submission_state': 'rejected_before_submission',
                 'prompt_reached_gateway': False,
                 'workspace_mutated': False,
             }

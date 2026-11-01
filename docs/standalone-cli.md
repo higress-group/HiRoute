@@ -104,7 +104,8 @@ direction.
 ## Storage upgrade recovery
 
 Before replacing an installed program, the verified candidate performs read-only
-preflight. When a history-format cutover is required, the installer retains the
+preflight. When Core conversion or a history-format cutover needs recovery
+workspace, the installer retains the
 complete original program/resources and installation records in private service
 state; the daemon receives that handoff directly, including under systemd.
 Current-format repair skips this archival copy and its extra space reserve.
@@ -123,11 +124,21 @@ downgrade. Preserve data, keys, programs and journals; follow diagnostic/support
 steps when necessary material is unavailable. A resumable batch uses the current
 program. Whole-group recovery uses that batch's `RECOVERY.md`, `恢复说明.md` and,
 when present, `PROGRAM-LOCATIONS.md`: stop the service and automatic restarts,
-preserve newer data/program separately, restore all stores/keys/Observation and
-recorded auxiliary files, then restore the matching program/resources and service
+preserve newer data/program separately, restore the original Core stores/keys,
+native restoration material and recorded auxiliary files, then restore the matching
+program/resources and service
 registration at their recorded locations. Reload the manager and verify actual
 Control/Gateway readiness and a real request. Installation-command success alone
 is insufficient.
+
+Compatible Observation stays in place during a Core upgrade and is excluded from
+its v3 recovery snapshot, including space sizing, copying and hashing. Its guide
+requires fresh Observation on matching-version Core restoration; newer storage,
+including history and observation-local settings, remains separately preserved.
+Reapply a custom capacity setting after that restoration. Older full-history or
+sealed-history backups retain their original scope: restore their Observation
+DB/WAL/SHM/content with the matching old group. Archival only changes a completed
+batch's location and does not verify or automatically delete its contents.
 
 Explicit headless operators may still provide the absolute complete old-package
 directory via `HIROUTE_RECOVERY_PACKAGE` on the daemon's first sealing startup.
@@ -928,8 +939,11 @@ after contention or ineffective work. Initial inventory, pending cleanup or prot
 data can delay physical release. `show` reports the saved limit, measured active
 allocated bytes, measurement time and pending/blocked reason. Reusable SQLite
 pages are not reported as released disk space. Protected source directories and
-recovery packages have separate retention; their space must be budgeted for an
-upgrade. See [whole-group recovery](release-contracts.md#upgrade-and-manual-recovery).
+recovery packages need temporary upgrade space. After the complete service starts
+successfully, product-owned upgrade recovery material is automatically retired and
+removed in bounded background batches, with no rollback retention window. Failed
+startup keeps it; interrupted cleanup resumes after a successful restart. External
+packages and installed version directories keep their existing owner lifecycle. See [whole-group recovery](release-contracts.md#upgrade-and-manual-recovery).
 
 ## Configure a Worker and delegate a task
 
@@ -942,6 +956,29 @@ hiroute worker dependencies discover --harness codex_cli --output json \
 
 Copy `selection_revisions[].revision` for the same Harness and select complete absolute paths
 whose state is `found`:
+
+| Harness | Required selection fields | Other fields |
+| --- | --- | --- |
+| `codex_cli`, `claude_code` | `cli_path`, `adapter_path` | `node_path` is optional in the tuple; script/protected adapter launch may require it |
+| `qoder_cli`, `deepseek_harness`, `opencode` | `cli_path` | Omit `adapter_path` and `node_path` |
+| `pi` | `cli_path`, `node_path` | Omit `adapter_path`; Node alone is incomplete |
+
+Pi's CLI component is its installed official CLI/SDK entry, for example an absolute
+`dist/cli.js` path. It is separate from the Node executable. Claude's ordinary CLI
+is also separate from its ACP adapter. Missing components remain installation
+prerequisites; discovery never downloads them.
+
+Text discovery shows candidate reason codes and installation hints. For npm
+OpenCode, copy the canonical native candidate path. If multiple official platform
+variants are installed, choose explicitly from the listed paths; the ambiguous
+wrapper is marked `worker.dependencies.platform_selection_required`. Discovery
+does not select a variant, and an `.exe` suffix alone does not identify Windows
+code. Selection success still does not prove the native version/history format is
+supported for Worker execution.
+
+Use `--error-details --output json` on selection to inspect bounded invalid-input
+details such as a missing `cli_path` or an adapter field forbidden for that Harness.
+Submitted paths and other request values are not copied into those explanations.
 
 ```json
 {

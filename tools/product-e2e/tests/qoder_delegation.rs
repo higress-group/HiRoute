@@ -15,6 +15,10 @@ fn qoder_main_agent_uses_installed_user_skill_to_delegate_real_work() {
 #[ignore = "requires an explicitly selected, normally logged-in Qoder context and native CLI"]
 fn qoder_worker_uses_native_skills_and_continues_the_frozen_task() {
     worker_product_support::run_real_worker_scenario(
+        "HIROUTE_PRODUCT_QODER_FAILURES",
+        "qoder-worker-failure-diagnostics",
+    );
+    worker_product_support::run_real_worker_scenario(
         "HIROUTE_PRODUCT_QODER_CORE",
         "worker-native-context-core",
     );

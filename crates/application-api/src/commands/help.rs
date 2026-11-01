@@ -193,7 +193,7 @@ pub(super) fn network_and_model_use(command_id: &str, kind: CommandKind) -> &'st
         return "May open the provider authorization flow and exchange or refresh independent OAuth credentials through CPA. No model inference is performed and native-client refresh tokens are never imported.";
     }
     if matches!(command_id, "worker.exec" | "worker.continue") {
-        return "The selected Worker may send model traffic only through its run-bound numeric-loopback Gateway route; native tools follow the run-scoped permission policy.";
+        return "The selected Worker may send model traffic only through its run-bound numeric-loopback Gateway route; native tools run without per-tool approval.";
     }
     if command_id == "agents.check" {
         return "Local checks make no provider call and require no second authorization channel. Live quick sends one fixed inference request, tool sends a fixed inference request with a built-in no-side-effect tool, and conformance may send a bounded protocol matrix; every live suite may consume real provider quota and requires explicit consent plus a protected probe grant.";

@@ -296,8 +296,7 @@ fn continue_template(actions: &mut Vec<NextActionV1>, task_id: &str, run_id: &st
             "task_id": task_id,
             "expected_latest_run_id": run_id,
             "input": null,
-            "submission_key": null,
-            "permission_policy": null
+            "submission_key": null
         }),
         "worker.continue.optional_template",
     );
@@ -393,5 +392,6 @@ mod tests {
         );
         assert_eq!(actions[0].input["offset"], 42);
         assert!(actions[2].input["submission_key"].is_null());
+        assert!(actions[2].input.get("permission_policy").is_none());
     }
 }

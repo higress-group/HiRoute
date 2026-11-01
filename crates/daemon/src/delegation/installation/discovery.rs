@@ -592,9 +592,37 @@ impl HarnessScan {
             self.incomplete = true;
             return;
         }
-        let fact = inspect(path, require_executable);
+        let mut fact = inspect(path, require_executable);
         if !retain_missing && fact.state == WorkerDependencyCandidateStateV1::Missing {
             return;
+        }
+        let original = fact.canonical.clone().unwrap_or_else(|| path.to_path_buf());
+        if self.seen.contains(&(component, original.clone())) {
+            return;
+        }
+        let mut alternatives = Vec::new();
+        if self.harness == WorkerHarnessV1::OpenCode
+            && component == WorkerDependencyComponentV1::Cli
+            && fact.state == WorkerDependencyCandidateStateV1::Found
+        {
+            match hiroute_integrations::opencode_native_candidates(&original) {
+                Ok(mut native) if native.len() == 1 => {
+                    let native = native.pop().unwrap();
+                    if native != original {
+                        self.seen.insert((component, original));
+                    }
+                    fact = inspect(&native, true);
+                }
+                Ok(native) if native.len() > 1 => {
+                    fact.state = WorkerDependencyCandidateStateV1::Invalid;
+                    fact.reason = Some("worker.dependencies.platform_selection_required");
+                    alternatives = native;
+                }
+                _ => {
+                    fact.state = WorkerDependencyCandidateStateV1::Invalid;
+                    fact.reason = Some("worker.dependencies.native_resolution_failed");
+                }
+            }
         }
         let identity = fact.canonical.clone().unwrap_or_else(|| path.to_path_buf());
         if !identity.is_absolute() || !self.seen.insert((component, identity.clone())) {
@@ -612,6 +640,9 @@ impl HarnessScan {
             state: fact.state,
             reason_code: fact.reason.map(str::to_owned),
         });
+        for native in alternatives {
+            self.add_discovered(component, &native, source, true);
+        }
     }
 
     fn add_discovered(

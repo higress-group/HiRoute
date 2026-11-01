@@ -1,4 +1,4 @@
-//! Atomic publication of the complete stopped authority snapshot and recovery instructions.
+//! Atomic publication of stopped authority recovery material, excluding live Observation.
 use super::*;
 use crate::migrations::{prepare_storage_root as prepare_owner_directory, validate_owner_file};
 use serde_json::{Value, json};
@@ -20,9 +20,15 @@ pub(crate) fn archive_guide(
     if !backup.join("source").exists() {
         return Ok(());
     }
-    verify(backup)?;
+    // Archival only moves an already completed batch out of the coordinator's
+    // active slot. It neither restores nor authorizes reuse of its contents.
+    // Old v1 backups may contain the entire Observation tree: verifying those
+    // bytes here would make an unrelated Core upgrade history-sized again.
+    let _source = hiroute_diagnostics::files::PrivateDir::open_existing(&backup.join("source"))
+        .map_err(|_| LocalStorageError::Permission)?;
+    validate_owner_file(&backup.join("source").join(MANIFEST))?;
     let text = format!(
-        "# HiRoute 已完成升级批次定位说明\n\n批次 ID：{batch_id}\n\n恢复源以本说明所在目录/source/ 为准。归档后的完整源路径：{}\n\n请阅读 source/恢复说明.md。旧说明中的固定 migration-set/source 绝对源路径可能已失效，必须改为本说明所在目录/source/，不得使用下一批备份。storage/ 和其它源文件均在该 source/ 下，恢复目标及对应旧完整 App 仍以原说明和 source/source-backup.json 为准。\n\n原备份文件、恢复说明和已哈希清单保持不变。\n",
+        "# HiRoute 已完成升级批次定位说明\n\n批次 ID：{batch_id}\n\n恢复源以本说明所在目录/source/ 为准。归档后的完整源路径：{}\n\n请阅读 source/恢复说明.md。旧说明中的固定 migration-set/source 绝对源路径可能已失效，必须改为本说明所在目录/source/，不得使用下一批备份。storage/ 和其它源文件均在该 source/ 下，恢复目标及对应旧完整 App 仍以原说明和 source/source-backup.json 为准。\n\n原备份文件、恢复说明和已哈希清单保持不变。归档只改变目录位置，未重新校验备份内容；恢复前仍须校验原清单。\n",
         archived.join("source").display()
     );
     let directory = hiroute_diagnostics::files::PrivateDir::open_existing(backup)
@@ -169,9 +175,9 @@ pub(super) fn publish(
     for entry in fs::read_dir(root)? {
         let entry = entry?;
         let name = entry.file_name();
-        if excluded(&name.to_string_lossy())
-            || (options.preserve_observation_source && name == "observation")
-        {
+        // Compatible history stays live; incompatible history is moved by seal.
+        // Neither path copies, sizes or hashes the Observation namespace.
+        if name == "observation" || excluded(&name.to_string_lossy()) {
             continue;
         }
         copy_tree(&entry.path(), &storage.join(name))?;
@@ -241,7 +247,7 @@ pub(super) fn publish(
     let history = if options.preserve_observation_source {
         "原 Observation 目录已在同一文件系统原地封存；包含原始数据库、WAL/SHM、对象和暂存文件，未逐文件扫描、哈希、转换或压缩。清单仅校验其余恢复材料并绑定封存目录身份，不宣称已逐字节验证历史内容。新版历史和统计从切换后开始。封存仍占用磁盘空间，不受当前观测容量回收影响；它是本机恢复点，不是独立灾备。需要独立备份时，在启动之外复制并校验本目录。恢复前离线检查原始数据库和内容。"
     } else {
-        "本次可能转换核心数据库和 Observation 历史；该目录同时保存原始 Observation、密钥、原生恢复材料及其余自有持久状态。"
+        "本次快照不包含 Observation。兼容的观测库在升级时原地复用，未复制或校验其内容。手工恢复旧核心数据库时，不要混入升级后的观测库；保留新版 storage 后，仅复制此快照中的材料，由配套旧程序初始化空观测库。恢复配置、密钥和原生恢复材料不恢复观测历史及其中的容量设置；恢复后按需重设自定义容量上限。Agent 自己保存的对话不受影响。"
     };
     let text = format!(
         "# HiRoute 手工恢复\n\n备份批次 ID：{}\n\n备份源以本说明所在目录为准，目录改名或归档后仍从这里读取；不要使用其它批次。以下源文件路径均相对于本说明所在目录，目标路径为绝对位置。\n\n1. 完全退出 HiRoute，确认服务、CPA、任务与后台自动重启均已停止。\n2. 将 storage 目录 {} 改名保留；不要改名它的上级目录，备份仍保留在上述位置。备份之后的新数据必须与配套新版本单独保留，不能混入旧格式恢复。另将新版升级协调目录 {coordinator} 在同一文件系统内改名到未使用的位置完整保留，不能删除，也不能留给旧程序读取。本说明可能随它一起移动；后续仍以本说明的新位置为备份源。\n3. 将 storage/ 整个复制回 {}，保留权限。不要逐库覆盖，不要遗留不配套的 WAL/SHM。再按以下源 → 目标路径复制额外文件：\n\n{}\n4. 确认完整旧组已还原后，使用下面记录的完整原版程序包。macOS 恢复完整 App；Linux/Windows 按平台安装指南恢复配套程序与服务注册。如存在 PROGRAM-LOCATIONS.md，先按其还原程序、资源和安装记录。启动后检查配置、Agent 接入及一次真实请求。\n\n{}\n\n{history}\n\n不要将此备份加入诊断导出。\n",
@@ -255,8 +261,13 @@ pub(super) fn publish(
     );
     write_private(&stage.join("恢复说明.md"), text.as_bytes())?;
     let english_package=options.recovery_package.as_ref().map(|p|format!("Original complete package: {}. The preserved copy is recovery-package/; exact file SHA-256 identities are recorded in source-backup.json.",p.display())).unwrap_or_else(||"Use the exact complete package that produced this backup. Do not substitute a version based only on a label.".into());
+    let english_history = if options.preserve_observation_source {
+        "Keep Control, Runtime, Secrets, all keys and the sealed Observation DB/WAL/SHM/content together. Old history was preserved by a same-filesystem directory transition without an eager full-content verification. Inspect original databases/content offline before restoring."
+    } else {
+        "Observation is NOT included in this snapshot. Compatible history was reused in place during upgrade. For matching-version Core recovery, leave the newer Observation with the separately preserved newer storage; copy only this snapshot and let the old program create an empty Observation store. Do not mix newer observations with restored old Core stores. Core configuration, keys and native restoration material remain recoverable. Observation-local settings are not included; reapply a custom capacity limit after restoration. Agent-owned conversations are unaffected."
+    };
     let english = format!(
-        "# HiRoute complete-group recovery\n\nBatch: {}\n\nUse this guide's containing directory as the source, including after archival. Never use another batch's source or package.\n\n1. Fully stop HiRoute, its daemon, CPA, tasks and automatic service restarts.\n2. Rename the current storage directory at {} and keep it with its matching newer program. Do not rename the parent containing this backup. Post-backup data must remain separate from the restored old group. Also move the newer upgrade coordinator directory at {coordinator} to a distinct unused name on the same filesystem and preserve it completely; do not delete it or leave its metadata for the old program to read. This guide may move with that directory: continue from its new location.\n3. Copy the complete storage/ directory back to {} preserving native permissions. Keep Control, Runtime, Secrets, all keys and Observation DB/WAL/SHM/content together. Never restore only activity.db or mix generations.\n4. Restore the auxiliary files below to their recorded original locations.\n{}\n5. The matching complete previous program is preserved in recovery-package/. For macOS restore the complete App, not individual binaries. For an installed standalone package, use its recorded PROGRAM-LOCATIONS.md instructions to restore the original program, resources and service registration before starting the old service. If no installed-location record exists, follow the matching platform installer guide using the exact preserved package identity; do not guess another release.\n6. Start the matching old program. Verify configuration, Agent access, old history where applicable, actual Control/Gateway readiness and a real request. A successful manager command alone does not establish recovery.\n\n{}\n\nOld Observation history was preserved by a same-filesystem directory transition without an eager full-content verification. Inspect original databases/content offline before restoring. Keep newer data separately. The protected source still occupies disk and is a local recovery point, not an independent disaster-recovery copy. Do not include private backups in diagnostic exports.\n",
+        "# HiRoute storage recovery\n\nBatch: {}\n\nUse this guide's containing directory as the source, including after archival. Never use another batch's source or package.\n\n1. Fully stop HiRoute, its daemon, CPA, tasks and automatic service restarts.\n2. Rename the current storage directory at {} and keep it with its matching newer program. Do not rename the parent containing this backup. Post-backup data must remain separate from the restored old group. Also move the newer upgrade coordinator directory at {coordinator} to a distinct unused name on the same filesystem and preserve it completely; do not delete it or leave its metadata for the old program to read. This guide may move with that directory: continue from its new location.\n3. Copy the complete storage/ directory from this snapshot back to {} preserving native permissions. Keep Control, Runtime, Secrets, all keys and native restoration material together. Never restore individual databases or mix generations.\n4. Restore the auxiliary files below to their recorded original locations.\n{}\n5. For macOS restore the complete matching old App, not individual binaries. For an installed standalone package, use its recorded PROGRAM-LOCATIONS.md instructions to restore the original program, resources and service registration before starting the old service. If no installed-location record exists, follow the matching platform installer guide using the exact preserved package identity; do not guess another release.\n6. Start the matching old program. Verify configuration, Agent access, actual Control/Gateway readiness and a real request. A successful manager command alone does not establish recovery.\n\n{}\n\n{english_history}\n\nKeep newer data separately. The protected source still occupies disk and is a local recovery point, not an independent disaster-recovery copy. Do not include private backups in diagnostic exports.\n",
         metadata["batch_id"]
             .as_str()
             .ok_or(LocalStorageError::InvalidData)?,
@@ -277,10 +288,12 @@ pub(super) fn publish(
         .as_secs();
     let mut info = metadata.clone();
     info["created_unix_seconds"] = json!(created);
-    let mut manifest = json!({"schema":"hiroute.upgrade-source-backup/v1","complete":true,
-        "source_storage":root.to_string_lossy(),"extra_locations":extra,"files":files,"source_info":info});
+    let mut manifest = json!({"schema":"hiroute.upgrade-source-backup/v3","complete":true,
+        "source_storage":root.to_string_lossy(),"extra_locations":extra,"files":files,"source_info":info,
+        "observation":"not_backed_up"});
     if options.preserve_observation_source {
         manifest["schema"] = json!("hiroute.upgrade-source-backup/v2");
+        manifest.as_object_mut().unwrap().remove("observation");
         manifest["sealed_observation"] = seal::capture(root, &storage)?;
     }
     write_private(
@@ -358,9 +371,7 @@ pub(crate) fn preflight_space(
     let mut required = 256_u64 * 1024 * 1024;
     for entry in fs::read_dir(root)? {
         let entry = entry?;
-        if !excluded(&entry.file_name().to_string_lossy())
-            && !(options.preserve_observation_source && entry.file_name() == "observation")
-        {
+        if entry.file_name() != "observation" && !excluded(&entry.file_name().to_string_lossy()) {
             required = required.saturating_add(bytes(&entry.path())?);
         }
     }
@@ -455,6 +466,7 @@ fn read_manifest(source: &Path) -> Result<Value, LocalStorageError> {
     let fields = match value["schema"].as_str() {
         Some("hiroute.upgrade-source-backup/v1") => 6,
         Some("hiroute.upgrade-source-backup/v2") if value.get("sealed_observation").is_some() => 7,
+        Some("hiroute.upgrade-source-backup/v3") if value["observation"] == "not_backed_up" => 7,
         _ => return Err(LocalStorageError::InvalidData),
     };
     if value["complete"] != true || value.as_object().is_none_or(|o| o.len() != fields) {
@@ -464,6 +476,14 @@ fn read_manifest(source: &Path) -> Result<Value, LocalStorageError> {
 }
 pub(crate) fn verify(backup: &Path) -> Result<(), LocalStorageError> {
     let value = manifest(backup)?;
+    if value["schema"] == "hiroute.upgrade-source-backup/v3" {
+        // An excluded namespace must not be quietly reintroduced into a Core
+        // recovery batch, even as an empty directory or via a modified manifest.
+        match fs::symlink_metadata(backup.join("source/storage/observation")) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            _ => return Err(LocalStorageError::InvalidData),
+        }
+    }
     verify_files(&backup.join("source"), &value)?;
     if value.get("sealed_observation").is_some() {
         seal::verify_directory(&backup.join("source/storage/observation"), &value)?;
@@ -503,9 +523,12 @@ pub(crate) fn verify_unchanged(root: &Path, backup: &Path) -> Result<(), LocalSt
         if excluded(&entry.file_name().to_string_lossy()) {
             continue;
         }
-        if value.get("sealed_observation").is_some() && entry.file_name() == "observation" {
-            // The old generation is bound at its sealed location, not compared
-            // with the intentionally empty/new live Observation generation.
+        if (value.get("sealed_observation").is_some()
+            || value["schema"] == "hiroute.upgrade-source-backup/v3")
+            && entry.file_name() == "observation"
+        {
+            // Sealed history is bound separately; reused history is outside the
+            // Core snapshot. Legacy v1 copies still require full comparison.
             continue;
         }
         collect(root, &entry.path(), &mut actual, false)?;
@@ -542,98 +565,4 @@ fn storage_root_conflict(package: &Path, root: &Path) -> Result<bool, LocalStora
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stopped_current_snapshot_preserves_keys_auxiliary_files_and_complete_manifest() {
-        let temporary = tempfile::tempdir().unwrap();
-        let root = temporary.path().join("storage");
-        let stores = crate::LocalStorageSet::open_for_daemon_startup(&root).unwrap();
-        prepare_owner_directory(&root.join("observation")).unwrap();
-        hiroute_platform::durable::write_private_new(
-            &root.join("observation/body"),
-            b"preserved observation",
-        )
-        .unwrap();
-        set_owner_file_permissions(&root.join("observation/body")).unwrap();
-        // Cross three complete 64KiB chunks plus a partial tail. Readonly
-        // content must retain both bytes and real native security in the copy.
-        let chunked = (0..(3 * 64 * 1024 + 17))
-            .map(|index| ((index * 37 + 11) & 0xff) as u8)
-            .collect::<Vec<_>>();
-        let chunked_path = root.join("observation/chunked-readonly");
-        hiroute_platform::durable::write_private_new(&chunked_path, &chunked).unwrap();
-        let mut readonly = fs::metadata(&chunked_path).unwrap().permissions();
-        readonly.set_readonly(true);
-        fs::set_permissions(&chunked_path, readonly).unwrap();
-        let backup = temporary.path().join("backup");
-        let barrier = test_writer_barrier();
-        let set = BackupSet::create(
-            &barrier,
-            &backup,
-            &stores.control().connection.borrow(),
-            &stores.runtime().connection.borrow(),
-            &stores.secrets().connection.borrow(),
-        )
-        .unwrap();
-        set.publish_stopped_source(&barrier, &root, &crate::StorageStartupOptions::default())
-            .unwrap();
-        verify(&backup).unwrap();
-        verify_unchanged(&root, &backup).unwrap();
-        for name in [
-            "master-key",
-            "observation/body",
-            "observation/chunked-readonly",
-        ] {
-            assert_eq!(
-                fs::read(root.join(name)).unwrap(),
-                fs::read(backup.join("source/storage").join(name)).unwrap()
-            );
-            #[cfg(windows)]
-            {
-                let original =
-                    hiroute_platform::windows::security::open_identity(&root.join(name), false)
-                        .unwrap();
-                let copy = hiroute_platform::windows::security::open_identity(
-                    &backup.join("source/storage").join(name),
-                    false,
-                )
-                .unwrap();
-                assert_eq!(
-                    hiroute_platform::file_security::capture(&original).unwrap(),
-                    hiroute_platform::file_security::capture(&copy).unwrap(),
-                    "the complete source snapshot must retain native recovery permissions",
-                );
-            }
-        }
-        assert_eq!(
-            fs::read(backup.join("source/storage/observation/chunked-readonly")).unwrap(),
-            chunked
-        );
-        assert!(
-            fs::metadata(backup.join("source/storage/observation/chunked-readonly"))
-                .unwrap()
-                .permissions()
-                .readonly()
-        );
-        let manifest = fs::read(backup.join("source/source-backup.json")).unwrap();
-        set.publish_stopped_source(&barrier, &root, &crate::StorageStartupOptions::default())
-            .unwrap();
-        assert_eq!(
-            fs::read(backup.join("source/source-backup.json")).unwrap(),
-            manifest
-        );
-        fs::write(root.join("observation/body"), b"changed").unwrap();
-        assert!(verify_unchanged(&root, &backup).is_err());
-        #[cfg(windows)]
-        for path in [
-            chunked_path,
-            backup.join("source/storage/observation/chunked-readonly"),
-        ] {
-            let mut writable = fs::metadata(&path).unwrap().permissions();
-            writable.set_readonly(false);
-            fs::set_permissions(path, writable).unwrap();
-        }
-    }
-}
+mod tests;

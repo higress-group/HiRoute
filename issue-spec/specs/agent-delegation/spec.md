@@ -159,6 +159,15 @@ Native login stays with the selected context; HiRoute cannot copy credentials or
 auto-login in discovery. Unproven auxiliary model/tool or restricted permission
 capability is unavailable, never direct fallback to native account/another source.
 
+Qoder Worker progress MUST identify the actual selected native configuration
+directory from the rendered run profile, including the original task directory on
+Continue. This is a host-authored fact, not model output or proof of login/custom-model
+entitlement. Paths MUST be escaped as data. Account-switch guidance MUST explain
+normal login in the selected directory and production Restore of any managed model/
+Skill configuration under the previous directory before changing the daemon selector.
+It MUST preserve exact recovery bindings, authentication files and existing tasks.
+A locked-state hint MUST remain conditional and retain the storage-owned cause.
+
 Native context uses existing frozen total/output/reasoning policy; output is the
 minimum exact nonzero bound across all active candidates/protocols. Both context
 and output are projected for native compaction. Unknown/unrepresentable budgets,
@@ -189,11 +198,20 @@ changes need their own real evidence, not an acceptance-pin allowlist.
 
 ### Requirement: Permission policy is native, explicit, and scoped to one run
 
+The public `worker exec` and `worker continue` CLI uses `approve-all` and MUST NOT
+advertise a permission-policy option in help, CLI request schemas, collaboration
+Skills or generated next actions. An explicitly supplied `--permission-policy`,
+including `approve-all`, MUST fail as a usage error before task submission, with
+an actionable message that the option is temporarily unsupported and must be
+removed. It MUST NOT silently ignore an explicit restriction or admit a failed
+Worker run. Literal option text in task input is ordinary task content.
+
 Default `approve-all` uses each supported Harness's autonomous/no-per-tool-approval
 mode. HiRoute is not a normal tool-permission manager and creates no directory/tool
 capability. An unexpected ACP request may choose AllowOnce only while run is live,
 uncancelled/unexpired and the option is offered; never AllowAlways or persisted
-permission. `approve-reads`/`deny-all` require explicit choice and actual corresponding
+permission. Existing Local Control and persisted run policies remain unchanged;
+`approve-reads`/`deny-all` require explicit choice and actual corresponding
 native tool/sandbox constraints. A mode name alone is not proof: unsupported mapping
 fails before prompt, never upgrades to approve-all. Read-only permits only native
 read AllowOnce when applicable, rejects write/execute/unknown; deny-all rejects
@@ -286,12 +304,44 @@ stale replies cannot replace the current task, and an explicit historical select
 cannot be changed into latest. Polling does not resubmit. Wait expiry/observer close
 is not task cancel. Terminal state and unavailable result body remain separate.
 
+A native `cancelled` response without HiRoute cancellation intent MUST be treated
+as a native prompt failure, rather than user cancellation or success. A Qoder
+prompt that returns its native JSON-RPC error code 500 is also a known
+native failure; its message MUST NOT be parsed to guess an account entitlement.
+Execution deadlines MUST retain their cause when ACP cancellation is used for shutdown.
+Owned-process cleanup MUST NOT turn a known failure or uncertain connection into
+a user cancellation. Existing historical states are not reclassified without evidence.
+
+Marked host explanations in ordinary Worker progress MUST preserve closed execution
+failure reasons. They MAY include the last fixed typed Gateway rejection and HTTP
+status observed for the same authenticated run, labelled as request evidence rather
+than proof of the terminal cause. An HTTP failure without a fixed Gateway code MUST
+report that the code is unavailable, without inspecting or inventing provider details.
+They MUST NOT infer account entitlement from
+assistant text, expose provider bodies/credentials, cross run boundaries, or become
+model Result. Missing diagnostic capture MUST NOT invent a cause or authorize replay.
+
 Negotiated error-severity terminal sessionFailure in ACP PromptResponse is an
 authoritative failed run even when RPC returned successfully; warning alone is not
 failure. Invalid extension kind/version fails closed. Codex adapter must advertise
 required AIR sessionFailure at initialize before New/Load/prompt; absence gives a
 fixed marked `[HiRoute]` actionable explanation in progress, without native text/
 paths/secrets, and normal owned cleanup rather than a software-version allowlist.
+
+#### Scenario: Qoder reports a protocol failure as cancellation
+
+- **WHEN** an authenticated Qoder model request receives a typed Gateway protocol rejection and the native client ends its prompt as `cancelled` without a HiRoute cancel request
+- **THEN** the run is failed, ordinary progress explains the native failure and observed Gateway code/status, and owned cleanup preserves that outcome.
+
+#### Scenario: Deadline and user cancellation remain distinct
+
+- **WHEN** HiRoute stops a run because its execution deadline expired, or because a local caller requested cancellation
+- **THEN** the deadline remains a failed execution with its own explanation, while a real cancellation retains cancellation intent; both use the existing owned-process cleanup.
+
+#### Scenario: Qoder account selection changes after a task
+
+- **WHEN** a Qoder task continues after the daemon's configuration-directory selector changes
+- **THEN** progress reports the original frozen task directory, a new task may use the newly selected directory, and guidance does not claim that installation readiness proves model access.
 
 ### Requirement: Progress is a bounded best-effort public-text stream
 
@@ -331,6 +381,21 @@ Passive discovery reads bounded directories/file/package metadata from the actua
 service environment, including supported global/npm prefix/cache locations. Multiple
 candidates require explicit choice, including one candidate; disappearance retains
 the saved choice and reports absence without auto-switch/download/change monitoring.
+
+For a known npm OpenCode wrapper, discovery MUST offer canonical native platform
+paths that survive exact tuple validation. Multiple matching official variants MUST
+remain explicit choices, with an actionable reason on the ambiguous wrapper; the
+selection transaction MUST NOT silently normalize to a different candidate. An
+executable suffix alone MUST NOT reject a valid native installation. Current native
+version/history-format requirements remain independent of discovery and selection.
+
+Public CLI text MUST render valid native ACP and Pi SDK selections without assuming
+an adapter. Candidate reason codes and installation hints MUST remain visible.
+Selection input diagnostics MUST explain required/forbidden tuple components and
+support the existing opt-in rich error envelope without exposing submitted values.
+Pi requires its CLI entry plus Node; an adapter-based Harness requires both its
+ordinary CLI and its ACP adapter. Native ACP Harnesses omit adapter and Node.
+
 Partial scan/permission/budget limits are not a complete no-install result. Selection
 is instance+Harness shared and affects later launches, not running tasks. Installation
 UI belongs to plan editing; other pages navigate there. Core ready never runs Worker
@@ -347,6 +412,16 @@ initial supported producer is the official npm platform package for 1.19.3, iden
 through adjacent package/layout/platform metadata without launching a shim or
 fingerprinting a binary. Standalone, unknown or ambiguous installations remain
 unavailable for this action without disabling independent model/Skill configuration.
+
+#### Scenario: OpenCode has two matching native packages
+
+- **WHEN** discovery sees a wrapper with two matching official platform variants
+- **THEN** both canonical native paths are offered, the wrapper explains that explicit selection is required, and neither saved selection nor runtime format support changes automatically.
+
+#### Scenario: A Pi selection supplies only Node
+
+- **WHEN** the public CLI receives a Pi selection without `cli_path`
+- **THEN** it rejects the request with the existing invalid-arguments code and a bounded missing-field explanation; rich diagnostics are included only when requested.
 
 #### Scenario: Separate capabilities
 
