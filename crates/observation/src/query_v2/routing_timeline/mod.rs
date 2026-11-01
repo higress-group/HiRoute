@@ -107,6 +107,32 @@ impl crate::LocalObservationStore {
         }
         let _permit = self.query_permit()?;
         let started = std::time::Instant::now();
+        self.read_routing_timeline(reader, query, now_ms, started, after_take)
+            .map_err(|error| {
+                // SQLite can mask an interrupt in a virtual-table constructor
+                // as SQLITE_ERROR. Preserve the exhausted operation's deadline
+                // without treating the same error on a fresh read as a timeout.
+                if error == ObservationV2Error::Unavailable
+                    && (started.elapsed() > ObservationReaderContext::QUERY_BUDGET
+                        || reader
+                            .query_deadline()
+                            .is_some_and(|deadline| std::time::Instant::now() >= deadline))
+                {
+                    ObservationV2Error::Timeout
+                } else {
+                    error
+                }
+            })
+    }
+
+    fn read_routing_timeline(
+        &self,
+        reader: &ObservationReaderContext,
+        query: &RoutingTimelineQueryV1,
+        now_ms: i64,
+        started: std::time::Instant,
+        after_take: impl FnOnce() -> rusqlite::Result<()>,
+    ) -> Result<RoutingTimelinePageV1, ObservationV2Error> {
         let mut connection =
             Connection::open_with_flags(&self.activity_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         let _deadline = QueryDeadline::start_for(&connection, reader)?;
