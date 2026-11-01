@@ -137,6 +137,7 @@ def durable_content(product, expected=TURNS):
 
 
 def verify_exact_bytes(product, requests):
+    semantic_parts = 0
     activity = product.storage / 'observation/activity.db'
     assert activity.is_file()
     with activity_database(product) as db:
@@ -148,15 +149,22 @@ def verify_exact_bytes(product, requests):
                 "AND c.direction='response_delivered' AND c.content_kind='text_delta' "
                 "AND c.state='complete' AND b.state='complete' ORDER BY c.part_ordinal",
                 (request,)).fetchall()
-            assert len(rows) == PARTS, (len(rows), PARTS)
-            for index, (_, locator, byte_count) in enumerate(rows):
+            expected = ''.join(map(fragment, range(PARTS)))
+            assert 0 < len(rows) <= (len(expected.encode()) + 65535) // 65536, (len(rows), PARTS)
+            semantic_parts += len(rows)
+            texts = []
+            for _, locator, byte_count in rows:
                 relative = Path(locator)
                 assert not relative.is_absolute() and '..' not in relative.parts
                 assert relative.parts[0] == 'conversation-content'
                 raw = (activity.parent / relative).read_bytes()
                 assert len(raw) == byte_count
                 event = json.loads(raw)['event']
-                assert event == {'kind': 'text_delta', 'index': 0, 'text': fragment(index)}
+                assert event['kind'] == 'text_delta' and event['index'] == 0
+                assert len(event['text'].encode()) <= 65536
+                texts.append(event['text'])
+            assert ''.join(texts) == expected, 'semantic segmentation changed accepted content'
+    return semantic_parts
 
 
 def run(repository):
@@ -244,7 +252,7 @@ def run(repository):
             assert not durable_gaps(product), 'concurrent content channel lost an admitted record'
             time.sleep(.05)
         assert first_requests.issubset(requests)
-        verify_exact_bytes(product, requests)
+        semantic_parts = verify_exact_bytes(product, requests)
         assert not durable_gaps(product)
         resources = usage.finish()
         usage = None
@@ -254,7 +262,8 @@ def run(repository):
         verify_exact_bytes(product, requests)
         print(json.dumps({'scenario': 'production-content-pressure', 'state': 'green',
                           'turns': TURNS, 'concurrent_requests': CONCURRENT,
-                          'exact_delta_parts': expected * PARTS,
+                          'accepted_wire_deltas': expected * PARTS,
+                          'semantic_text_parts': semantic_parts,
                           'parallel_seconds': parallel_seconds,
                           'forward_seconds': forwarded, 'resources': resources, 'reopen_exact': True}), flush=True)
     finally:
