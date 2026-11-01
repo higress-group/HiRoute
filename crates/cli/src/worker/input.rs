@@ -6,9 +6,8 @@ use hiroute_application_api::{
     AgentPlanId, DEFAULT_WORKER_RUN_SECS, DEFAULT_WORKER_WAIT_SECS,
     DelegationSubmissionOperationV1, ErrorCode, MAX_DELEGATION_INPUT_BYTES, WorkerCancelRequestV1,
     WorkerDependenciesDiscoverRequestV1, WorkerDependenciesSelectRequestV1, WorkerHarnessV1,
-    WorkerListRequestV1, WorkerPermissionPolicyV1, WorkerReadRequestV1,
-    WorkerResidualConfirmRequestV1, WorkerResultRequestV1, WorkerStatusRequestV1,
-    WorkerWaitRequestV1,
+    WorkerListRequestV1, WorkerReadRequestV1, WorkerResidualConfirmRequestV1,
+    WorkerResultRequestV1, WorkerStatusRequestV1, WorkerWaitRequestV1,
 };
 
 const MAX_FILE_BYTES: u64 = (MAX_DELEGATION_INPUT_BYTES + 1) as u64;
@@ -287,7 +286,6 @@ pub(super) struct ParsedSubmission {
     pub(super) task: Option<String>,
     pub(super) expected_latest_run: Option<String>,
     pub(super) cwd: Option<String>,
-    pub(super) permission_policy: WorkerPermissionPolicyV1,
     pub(super) run_timeout_secs: u32,
     pub(super) prompt: String,
     pub(super) submission_key: String,
@@ -295,6 +293,22 @@ pub(super) struct ParsedSubmission {
     pub(super) title: Option<String>,
     pub(super) no_wait: bool,
     pub(super) wait_timeout_secs: u32,
+}
+
+pub(super) fn has_permission_policy_option(options: &[String]) -> bool {
+    let mut arguments = options.iter();
+    while let Some(option) = arguments.next() {
+        if option == "--" {
+            break;
+        }
+        if option == "--permission-policy" || option.starts_with("--permission-policy=") {
+            return true;
+        }
+        for _ in 0..crate::args::worker_option_arity(option).unwrap_or(0) {
+            arguments.next();
+        }
+    }
+    false
 }
 
 pub(super) fn parse_submission(
@@ -306,8 +320,6 @@ pub(super) fn parse_submission(
     let mut task = None;
     let mut expected_latest_run = None;
     let mut cwd = None;
-    let mut permission_policy = WorkerPermissionPolicyV1::ApproveAll;
-    let mut permission_policy_set = false;
     let mut run_timeout_secs = DEFAULT_WORKER_RUN_SECS;
     let mut run_timeout_set = false;
     let mut file = None;
@@ -333,15 +345,6 @@ pub(super) fn parse_submission(
                 expected_latest_run = unique(expected_latest_run, next(options, &mut index)?)?
             }
             "--cwd" => cwd = unique(cwd, next(options, &mut index)?)?,
-            "--permission-policy" if !permission_policy_set => {
-                permission_policy = match next(options, &mut index)?.as_str() {
-                    "approve-all" => WorkerPermissionPolicyV1::ApproveAll,
-                    "approve-reads" => WorkerPermissionPolicyV1::ApproveReads,
-                    "deny-all" => WorkerPermissionPolicyV1::DenyAll,
-                    _ => return Err(ErrorCode::InvalidArguments),
-                };
-                permission_policy_set = true;
-            }
             "--run-timeout" | "--run-timeout-secs" if !run_timeout_set => {
                 run_timeout_secs = parse_u32(&next(options, &mut index)?)?;
                 run_timeout_set = true;
@@ -385,7 +388,6 @@ pub(super) fn parse_submission(
         task,
         expected_latest_run,
         cwd,
-        permission_policy,
         run_timeout_secs,
         prompt,
         submission_key: match submission_key {
@@ -553,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn submission_defaults_to_approve_all_and_accepts_explicit_restriction() {
+    fn submission_uses_default_scope_without_permission_options() {
         let cwd = std::env::current_dir().unwrap();
         let parsed = parse_submission(
             &[
@@ -561,8 +563,6 @@ mod tests {
                 "worker".into(),
                 "--cwd".into(),
                 cwd.to_string_lossy().into_owned(),
-                "--permission-policy".into(),
-                "approve-reads".into(),
                 "--run-timeout".into(),
                 "60".into(),
                 "goal".into(),
@@ -571,10 +571,6 @@ mod tests {
             "request",
         )
         .unwrap();
-        assert_eq!(
-            parsed.permission_policy,
-            WorkerPermissionPolicyV1::ApproveReads
-        );
         assert_eq!(parsed.run_timeout_secs, 60);
         assert!(std::path::Path::new(&parsed.cwd.unwrap()).is_absolute());
 
@@ -590,10 +586,7 @@ mod tests {
             "request",
         )
         .unwrap();
-        assert_eq!(
-            defaulted.permission_policy,
-            WorkerPermissionPolicyV1::ApproveAll
-        );
+        assert_eq!(defaulted.run_timeout_secs, DEFAULT_WORKER_RUN_SECS);
 
         assert!(
             parse_submission(

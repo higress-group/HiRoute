@@ -136,6 +136,10 @@ the existing local Worker CLI and does not become a Worker executor.
 | Start, cancel and finalize processes | [Executor](../../crates/daemon/src/delegation/executor.rs), [OS launcher](../../crates/daemon/src/delegation/local_worker/README.md), [finalization](../../crates/daemon/src/delegation/finalization.rs) | Explicit argv/environment/materials and owned process identity; stopping and successful task completion are separate facts |
 | Read, hide, expire or clean up content | [Reads](../../crates/daemon/src/control/runtime/delegation_reads.rs), [Continue admission](../../crates/daemon/src/control/runtime/delegation_continue.rs), [maintenance](../../crates/daemon/src/control/runtime/delegation_maintenance.rs), [native cleanup](../../crates/daemon/src/delegation/native_cleanup.rs) | Saved progress is independent of execution/cleanup state; current content permission and exact cleanup ownership still apply; borrowed history is not a deletion target |
 
+The public Worker CLI submits autonomous runs with `approve-all`. Its input owner
+rejects explicit permission options before submission; the native profile owner
+still enforces policies carried by existing Local Control or persisted runs.
+
 ## Ecosystem differences
 
 | Ecosystem | Resource context | Worker transport / native owner | History and acceptance |

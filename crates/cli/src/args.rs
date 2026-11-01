@@ -225,7 +225,11 @@ fn is_worker_invocation(arguments: &[String]) -> bool {
     false
 }
 
-fn worker_option_arity(option: &str) -> Option<usize> {
+pub(crate) fn worker_option_arity(option: &str) -> Option<usize> {
+    // Reserve the retired option for an actionable Worker error, including a missing value.
+    if option == "--permission-policy" || option.starts_with("--permission-policy=") {
+        return Some(0);
+    }
     match option {
         "--no-wait" | "--request-stdin" | "--handled" => Some(0),
         "--title"
@@ -233,7 +237,6 @@ fn worker_option_arity(option: &str) -> Option<usize> {
         | "--limit"
         | "--plan"
         | "--cwd"
-        | "--permission-policy"
         | "--run-timeout"
         | "--run-timeout-secs"
         | "--wait-timeout"

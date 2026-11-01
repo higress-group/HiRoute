@@ -166,9 +166,11 @@ fn v2_settings_skill_only_enable_change_and_disable_keep_model_untouched() {
     assert!(content.contains("literal value in `--submission-key`"));
     assert!(content.contains("An empty list or unclear match"));
     assert!(!content.contains("--agent"));
-    assert!(content.contains(
-        "use a restricted policy only when the user asks for one and the selected harness supports it"
-    ));
+    assert!(content.contains("Worker runs use `approve-all` without per-tool approval"));
+    assert!(content.contains("without permission options"));
+    assert!(content.contains("If the task requires enforced read-only access, do not delegate"));
+    assert!(!content.contains("use a restricted policy"));
+    assert!(!content.contains("--permission-policy"));
     assert_eq!(fs::read(&model).unwrap(), original_model);
     assert_skill_upgrade(
         &runtime,

@@ -282,6 +282,9 @@ fn obsolete_receipt_configuration_and_readonly_cwd_do_not_block_exec_replay_or_c
         );
         assert_eq!(continued["status"], "succeeded", "{continued}");
         assert_eq!(continued["data"]["submission_key"], "submission/continued");
+        for (_, _, request) in tasks.calls.lock().unwrap().iter() {
+            assert_eq!(request["permission_policy"], "approve_all");
+        }
         assert_eq!(
             std::fs::read(&legacy).unwrap(),
             b"existing-private-receipt-sentinel"
@@ -292,6 +295,65 @@ fn obsolete_receipt_configuration_and_readonly_cwd_do_not_block_exec_replay_or_c
         );
         fixture.assert_no_workspace_receipt();
         assert_eq!(std::fs::read_dir(&fixture.home).unwrap().count(), 1);
+    });
+}
+
+#[test]
+fn explicit_permission_options_fail_actionably_before_daemon_access() {
+    let fixture = Fixture::new();
+    for command in ["exec", "continue"] {
+        for output in ["json", "text", "quiet"] {
+            for option in [
+                vec!["--permission-policy", "approve-all"],
+                vec!["--permission-policy", "approve-reads"],
+                vec!["--permission-policy", "deny-all"],
+                vec!["--permission-policy", "invalid"],
+                vec!["--permission-policy=approve-reads"],
+                vec!["--permission-policy"],
+            ] {
+                let result = fixture
+                    .command()
+                    .args(["worker", command, "--output", output])
+                    .args(&option)
+                    .output()
+                    .unwrap();
+                assert_eq!(result.status.code(), Some(2), "{command}: {option:?}");
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                assert!(stderr.contains("temporarily unsupported"), "{stderr}");
+                assert!(stderr.contains("Remove this argument"), "{stderr}");
+                assert!(stderr.contains("approve-all by default"), "{stderr}");
+                if output == "json" {
+                    let envelope = response(&result);
+                    assert_eq!(envelope["status"], "usage_error");
+                    assert_eq!(envelope["error"]["code"], "INVALID_ARGUMENTS");
+                    assert_eq!(
+                        envelope["error"]["message_key"],
+                        "worker.error.permission_policy_unsupported_remove_argument"
+                    );
+                }
+                assert!(
+                    !fixture.runtime.exists(),
+                    "must reject before daemon access"
+                );
+                fixture.assert_no_workspace_receipt();
+            }
+        }
+    }
+}
+
+#[test]
+fn permission_option_text_in_a_prompt_or_title_is_preserved_as_content() {
+    with_control(|fixture, tasks| {
+        let mut args = fixture.exec_args(Some("submission/literal-option"), "--permission-policy");
+        let title = args.iter().position(|arg| arg == "--title").unwrap() + 1;
+        args[title] = "--permission-policy".into();
+        let result = fixture.command().args(args).output().unwrap();
+        assert!(result.status.success(), "{result:?}");
+        let calls = tasks.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].2["permission_policy"], "approve_all");
+        assert_eq!(calls[0].2["input"]["goal"], "--permission-policy");
+        assert_eq!(calls[0].2["title"], "--permission-policy");
     });
 }
 

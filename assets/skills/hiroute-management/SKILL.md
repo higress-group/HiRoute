@@ -251,6 +251,7 @@ Use worker help: worker dependencies discover --harness codex_cli, then worker d
 --request-stdin. Select a complete tuple using selection_revisions[].revision as
 expected_selection_revision, not a CLI/package version. Selection installs nothing. Read executors/plans.
 worker exec needs a published delegation-enabled Plan, absolute cwd, text source and stable key.
+Worker runs use approve-all without per-tool approval; submit exec/continue without permission options.
 Retain submission/run ID for status/wait/result/list; wait timeout is pending. Replay the identical request/key after uncertainty; cancel only on request. Management grants no recursive or coordination/
 status/result-summary delegation. Readiness proves no success.
 

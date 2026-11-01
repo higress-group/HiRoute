@@ -1584,7 +1584,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2496,6 +2496,38 @@
       ],
       "reason": "Retained source choices and sealed Operations keep their original canonical bytes and exact saved/official-locator meaning. Current explicit edits use custom values or follow_metadata; the Desktop maps retained choices to the same two visible modes without rewriting them. Custom unknown is an explicit value and cannot be filled automatically.",
       "removal_condition": "Retire only after the release support policy explicitly retires all supported retained source/default choices and unfinished Operations, or an authenticated migration preserves their original meaning."
+    },
+    {
+      "contract": "hiroute.worker-exec-request/v1",
+      "field": "CLI --permission-policy option and permission_policy discovery property",
+      "mode": "rejection_fixture",
+      "owner": "worker-cli",
+      "reason": "The v0.3.1 producer at 13856abd873da5b4373d39322493b4cc105c4867 advertised explicit permission selection. The current public CLI deliberately rejects every explicit value before submission, explains removal and uses approve-all when omitted. The Local Control DTO and persisted/native run-policy enforcement retain their existing meanings; explicit restrictions are never silently expanded.",
+      "removal_condition": "Retire these rejection cases only when public CLI permission selection is deliberately restored with proven native mappings and updated discovery/help/Skill guidance.",
+      "allowed_paths": [
+        "crates/cli/src/args.rs",
+        "crates/cli/src/worker.rs",
+        "crates/cli/src/worker/input.rs",
+        "crates/cli/tests/worker_submission.rs",
+        "crates/daemon/tests/support/delegation_product.py",
+        "crates/daemon/tests/support/qoder_native_context.py"
+      ]
+    },
+    {
+      "contract": "hiroute.worker-continue-request/v1",
+      "field": "CLI --permission-policy option and permission_policy discovery property",
+      "mode": "rejection_fixture",
+      "owner": "worker-cli",
+      "reason": "The v0.3.1 producer at 13856abd873da5b4373d39322493b4cc105c4867 advertised explicit permission selection. The current public CLI deliberately rejects every explicit value before submission, explains removal and uses approve-all when omitted. The Local Control DTO and persisted/native run-policy enforcement retain their existing meanings; explicit restrictions are never silently expanded.",
+      "removal_condition": "Retire these rejection cases only when public CLI permission selection is deliberately restored with proven native mappings and updated discovery/help/Skill guidance.",
+      "allowed_paths": [
+        "crates/cli/src/args.rs",
+        "crates/cli/src/worker.rs",
+        "crates/cli/src/worker/input.rs",
+        "crates/cli/tests/worker_submission.rs",
+        "crates/daemon/tests/support/delegation_product.py",
+        "crates/daemon/tests/support/qoder_native_context.py"
+      ]
     }
   ]
 }

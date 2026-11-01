@@ -694,7 +694,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         [],
         Released,
         Apply,
-        "Submit one local Worker task with an explicit cwd and run-scoped permission policy."
+        "Submit one local Worker task with an explicit cwd and autonomous tool execution."
     ),
     command!(
         "worker.status",
@@ -739,7 +739,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         [],
         Released,
         Apply,
-        "Continue one exact task/session with a run-scoped permission policy."
+        "Continue one exact task/session with autonomous tool execution."
     ),
     command!(
         "worker.cancel",
