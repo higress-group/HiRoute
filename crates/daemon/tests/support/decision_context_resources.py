@@ -96,7 +96,7 @@ def run(repository, legacy, output):
         preview = data('decision connections apply', {'schema_version': V1, 'spec': spec})
         result = data('decision connections apply', {'schema_version': V1,
             'spec': preview['normalized_spec'], 'accept_digest': preview['change_digest'],
-            'expected_revisions': preview['expected_revisions'], 'idempotency_key': id})
+            'expected_revisions': preview['expected_revisions'], 'idempotency_key': id.replace('/', '-')})
         assert result['state'] == 'succeeded'
         return service
 
@@ -105,7 +105,7 @@ def run(repository, legacy, output):
         editor['branch_routing']['classifier'] = {'kind': 'decision_service_v2' if legacy else 'decision_service_v3', 'service': service}
         change = plan_change(product, 'update', **editor)
         preview = product.preview('routing preview', {'change': change})
-        product.apply('routing apply', 'ApplyAgentPlanChange', preview, {'change': change}, service['id'] + '-publish')
+        product.apply('routing apply', 'ApplyAgentPlanChange', preview, {'change': change}, service['id'].replace('/', '-') + '-publish')
         product.editor = editor
 
     escaped = '中文 "quotes" \\ newline\n'
