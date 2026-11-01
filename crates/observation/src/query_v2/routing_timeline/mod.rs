@@ -91,7 +91,7 @@ impl crate::LocalObservationStore {
         query: &RoutingTimelineQueryV1,
         now_ms: i64,
     ) -> Result<RoutingTimelinePageV1, ObservationV2Error> {
-        self.routing_timeline_inner(reader, query, now_ms, || {})
+        self.routing_timeline_inner(reader, query, now_ms, || Ok(()))
     }
 
     fn routing_timeline_inner(
@@ -99,7 +99,7 @@ impl crate::LocalObservationStore {
         reader: &ObservationReaderContext,
         query: &RoutingTimelineQueryV1,
         now_ms: i64,
-        after_take: impl FnOnce(),
+        after_take: impl FnOnce() -> rusqlite::Result<()>,
     ) -> Result<RoutingTimelinePageV1, ObservationV2Error> {
         reader.check(now_ms, false, false)?;
         if !identifier(&query.session_id) || query.limit == 0 || query.limit > 200 {
@@ -157,7 +157,7 @@ impl crate::LocalObservationStore {
             .lock()
             .take(&key)
             .filter(|c| c.visibility == visibility && now_ms < c.expires_at);
-        after_take();
+        after_take()?;
         let mut state = cached.unwrap_or_default();
         let frozen = cursor.snapshot.is_some();
         if frozen && state.position != Some(target) {
@@ -293,6 +293,7 @@ mod tests {
                             )
                             .unwrap();
                         assert!(*ready, "the second reader did not enter concurrently");
+                        Ok(())
                     })
                 }));
             }
@@ -378,6 +379,7 @@ mod tests {
                         ObservationReaderContext::QUERY_BUDGET
                             + std::time::Duration::from_millis(10),
                     );
+                    Ok(())
                 })
                 .unwrap_err(),
             ObservationV2Error::Timeout
@@ -387,6 +389,72 @@ mod tests {
                 .observed_routing_timeline(&reader, &query, 5000)
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn sqlite_wrapper_errors_follow_the_timeline_budget_and_fresh_reads_recover() {
+        use std::time::{Duration, Instant};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = crate::query_v2::tests::open(dir.path());
+        let reader = ObservationReaderContext::local_user(
+            WorkspaceId::default(),
+            "user".into(),
+            1,
+            10_000,
+            false,
+            false,
+        )
+        .unwrap();
+        let query = RoutingTimelineQueryV1 {
+            include_presentation: false,
+            session_id: "session/test".into(),
+            after_watermark: None,
+            limit: 50,
+        };
+        for (name, delay, caller_budget, expected) in [
+            (
+                "within budget",
+                Duration::ZERO,
+                None,
+                ObservationV2Error::Unavailable,
+            ),
+            (
+                "elapsed ordinary budget",
+                ObservationReaderContext::QUERY_BUDGET + Duration::from_millis(10),
+                None,
+                ObservationV2Error::Timeout,
+            ),
+            (
+                "elapsed caller budget",
+                Duration::from_millis(500),
+                Some(Duration::from_millis(400)),
+                ObservationV2Error::Timeout,
+            ),
+        ] {
+            let scope = caller_budget.map_or_else(
+                || reader.clone(),
+                |budget| reader.clone().with_query_deadline(Instant::now() + budget),
+            );
+            let injected = std::cell::Cell::new(false);
+            let result = store.routing_timeline_inner(&scope, &query, 5000, || {
+                std::thread::sleep(delay);
+                injected.set(true);
+                // SQLite can wrap an interrupt during virtual-table construction
+                // in SQLITE_ERROR, as observed in the real native query failure.
+                Err(rusqlite::Error::SqliteFailure(
+                    rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_ERROR),
+                    Some("vtable constructor failed: json_each".into()),
+                ))
+            });
+            assert!(injected.get(), "the SQLite failure was not reached: {name}");
+            assert_eq!(result.unwrap_err(), expected, "{name}");
+            assert!(
+                store
+                    .observed_routing_timeline(&reader, &query, 5000)
+                    .is_ok()
+            );
+        }
     }
 
     #[test]
