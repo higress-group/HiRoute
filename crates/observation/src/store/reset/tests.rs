@@ -92,7 +92,7 @@ fn interrupted(parent: &Path) -> (PathBuf, Record) {
         .connection
         .lock()
         .execute(
-            "INSERT INTO observation_meta VALUES('format_generation',?1)",
+            "UPDATE observation_meta SET value=?1 WHERE key='format_generation'",
             [&token],
         )
         .unwrap();
@@ -192,4 +192,29 @@ fn retired_cleanup_is_bounded_and_rejects_replaced_paths() {
     store.reset_cleanup.lock().due = Instant::now();
     assert!(store.cleanup_retired_format().is_err());
     assert_eq!(fs::read(retired.join("foreign")).unwrap(), b"preserve");
+}
+
+#[test]
+fn query_cursors_are_bound_to_the_observation_generation_not_only_the_installation_key() {
+    let first = tempfile::tempdir().unwrap();
+    let second = tempfile::tempdir().unwrap();
+    let a = LocalObservationStore::open(first.path(), authority()).unwrap();
+    let b = LocalObservationStore::open(second.path(), authority()).unwrap();
+    let cursor = a
+        .encode_observation_cursor(&serde_json::json!({"same_query":true}))
+        .unwrap();
+    assert!(
+        a.decode_observation_cursor::<serde_json::Value>(&cursor)
+            .is_ok()
+    );
+    assert!(
+        b.decode_observation_cursor::<serde_json::Value>(&cursor)
+            .is_err()
+    );
+    drop(a);
+    let a = LocalObservationStore::open(first.path(), authority()).unwrap();
+    assert!(
+        a.decode_observation_cursor::<serde_json::Value>(&cursor)
+            .is_ok()
+    );
 }

@@ -51,6 +51,7 @@ pub struct LocalObservationStore {
     pub(crate) query_workers: std::sync::atomic::AtomicUsize,
     pub(crate) connection: Mutex<Connection>,
     pub(crate) activity_path: PathBuf,
+    pub(crate) cursor_generation: String,
     pub(crate) staging_root: PathBuf,
     pub(crate) blob_root: PathBuf,
     pub(crate) authority: DigestAuthority,
@@ -137,7 +138,15 @@ impl LocalObservationStore {
         // Cover the fixed content/protocol SQL working set without retaining
         // an unbounded collection of programs. Read workers keep their defaults.
         connection.set_prepared_statement_cache_capacity(64);
+        let cursor_generation = connection
+            .query_row(
+                "SELECT value FROM observation_meta WHERE key='format_generation'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| ObservationStoreError::Corrupt)?;
         Ok(Self {
+            cursor_generation,
             timeline_cache: Default::default(),
             maintenance_running: Default::default(),
             index_running: Default::default(),

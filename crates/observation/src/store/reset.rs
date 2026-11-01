@@ -171,7 +171,7 @@ impl LocalObservationStore {
             {
                 let db = fresh.connection.lock();
                 db.execute(
-                    "INSERT INTO observation_meta VALUES('format_generation',?1)",
+                    "UPDATE observation_meta SET value=?1 WHERE key='format_generation'",
                     [&token],
                 )
                 .map_err(|_| Error::ActivityUnavailable)?;

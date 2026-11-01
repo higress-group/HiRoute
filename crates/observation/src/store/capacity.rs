@@ -570,12 +570,8 @@ impl LocalObservationStore {
                     // The fact event identity remains a business invariant;
                     // content no longer has a permanent event/reply ledger.
                     if *table == "execution_fact_events" {
-                        sql(super::fact_identity::retire_request(
-                            &tx,
-                            &w,
-                            &r,
-                            Some(ROWS),
-                        ))?;
+                        super::fact_identity::retire_request(&tx, &w, &r, Some(ROWS))
+                            .map_err(|_| Error::Unavailable)?;
                     }
                     let order = if *table == "execution_fact_events" {
                         " ORDER BY e.sequence,e.rowid"

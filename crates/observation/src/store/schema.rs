@@ -19,6 +19,16 @@ pub(super) fn migrate(connection: &mut Connection) -> Result<(), ObservationStor
         if version != STORE_SCHEMA_VERSION {
             return Err(ObservationStoreError::Corrupt);
         }
+        let generation: String = connection
+            .query_row(
+                "SELECT value FROM observation_meta WHERE key='format_generation'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| ObservationStoreError::Corrupt)?;
+        if generation.len() != 32 || !generation.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(ObservationStoreError::Corrupt);
+        }
         let count:u64=connection.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name IN('logical_requests','observation_checkpoints','observation_current_commits_v6','conversation_content_streams_v2','content_message_instances_v2','content_instances_v2','content_blobs_v2','transcript_roots_v2')",[],|r|r.get(0)).map_err(|_|ObservationStoreError::Corrupt)?;
         if count != 8 {
             return Err(ObservationStoreError::Corrupt);
@@ -36,7 +46,8 @@ pub(super) fn migrate(connection: &mut Connection) -> Result<(), ObservationStor
         .transaction()
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
     tx.execute_batch("CREATE TABLE IF NOT EXISTS observation_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-        INSERT OR IGNORE INTO observation_meta(key,value) VALUES('schema_version','6'),('store_revision','0');")
+        INSERT OR IGNORE INTO observation_meta(key,value) VALUES('schema_version','6'),('store_revision','0');
+        INSERT OR IGNORE INTO observation_meta VALUES('format_generation',lower(hex(randomblob(16))));")
         .map_err(|_|ObservationStoreError::ActivityUnavailable)?;
     for ddl in [
         BASE_SCHEMA_V2,

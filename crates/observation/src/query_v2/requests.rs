@@ -297,7 +297,8 @@ impl LocalObservationStore {
         let json = serde_json::to_string(cursor).map_err(|_| ObservationV2Error::Invalid)?;
         Ok(format!(
             "{}:{json}",
-            self.authority.query_cursor_signature(json.as_bytes())
+            self.authority
+                .query_cursor_signature(&self.cursor_generation, json.as_bytes())
         ))
     }
 
@@ -309,10 +310,11 @@ impl LocalObservationStore {
             return Err(ObservationV2Error::Invalid);
         }
         let (signature, json) = encoded.split_once(':').ok_or(ObservationV2Error::Invalid)?;
-        if !self
-            .authority
-            .verify_query_cursor_signature(json.as_bytes(), signature)
-        {
+        if !self.authority.verify_query_cursor_signature(
+            &self.cursor_generation,
+            json.as_bytes(),
+            signature,
+        ) {
             return Err(ObservationV2Error::Invalid);
         }
         serde_json::from_str(json).map_err(|_| ObservationV2Error::Invalid)
