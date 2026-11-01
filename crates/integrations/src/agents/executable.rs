@@ -102,6 +102,7 @@ pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
         if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
             directories.push(PathBuf::from(home).join(".local/bin"));
         }
+        #[cfg(unix)]
         directories.extend([PathBuf::from("/usr/local/bin"), PathBuf::from("/usr/bin")]);
         #[cfg(target_os = "macos")]
         directories.push(PathBuf::from("/opt/homebrew/bin"));

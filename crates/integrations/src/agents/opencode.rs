@@ -604,7 +604,12 @@ mod tests {
             std::time::Duration::from_secs(5),
             4096,
         )
-        .unwrap();
+        .unwrap_or_else(|error| {
+            panic!(
+                "native Git fixture command {:?} failed: {error:?}",
+                args.first()
+            )
+        });
     }
 
     #[test]

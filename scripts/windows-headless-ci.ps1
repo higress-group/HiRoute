@@ -606,7 +606,8 @@ if ($Scope -eq 'components') {
   Invoke-RequiredTests 'agent-business-oracle' @('-p','hiroute-daemon','--test','windows_headless','windows_worker_business::oracle::tests::') @(
     'windows_worker_business::oracle::tests::a_prompt_or_unrelated_or_error_tool_result_cannot_supply_a_native_receipt',
     'windows_worker_business::oracle::tests::a_running_native_shell_does_not_complete_even_after_printing_json',
-    'windows_worker_business::oracle::tests::ambiguous_native_cli_stdout_is_rejected')
+    'windows_worker_business::oracle::tests::ambiguous_native_cli_stdout_is_rejected',
+    'windows_worker_business::oracle::tests::shell_timeout_follows_declared_units_without_a_description_argument')
   $httpOracle = 'windows_business_http::tests::windows_loopback_oracle_reads_delayed_header_and_body_from_nonblocking_listener'
   Invoke-RequiredTests 'agent-http' @('-p','hiroute-daemon','--test','windows_headless',$httpOracle) @($httpOracle) @('--exact')
   $nativeSourceOracle = 'windows_headless_business::upstream::tests::native_source_oracle_reads_delayed_header_and_body_from_nonblocking_stream'
