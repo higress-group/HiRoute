@@ -939,8 +939,11 @@ after contention or ineffective work. Initial inventory, pending cleanup or prot
 data can delay physical release. `show` reports the saved limit, measured active
 allocated bytes, measurement time and pending/blocked reason. Reusable SQLite
 pages are not reported as released disk space. Protected source directories and
-recovery packages have separate retention; their space must be budgeted for an
-upgrade. See [whole-group recovery](release-contracts.md#upgrade-and-manual-recovery).
+recovery packages need temporary upgrade space. After the complete service starts
+successfully, product-owned upgrade recovery material is automatically retired and
+removed in bounded background batches, with no rollback retention window. Failed
+startup keeps it; interrupted cleanup resumes after a successful restart. External
+packages and installed version directories keep their existing owner lifecycle. See [whole-group recovery](release-contracts.md#upgrade-and-manual-recovery).
 
 ## Configure a Worker and delegate a task
 

@@ -79,7 +79,10 @@ copy or hash history for the Core snapshot or reverify old history merely to
 archive a completed earlier batch. Core-only matching-version restoration starts
 fresh Observation after preserving the newer storage separately; it does not mix
 newer observations with restored Core authority. Existing sealed-history recovery
-points retain their original scope and are not automatically deleted.
+points retain their original scope while startup has not succeeded. After complete
+Core/Observation/publication/Gateway/Control readiness, product-owned upgrade
+recovery material expires and is deleted in bounded, resumable maintenance batches.
+SQL migration completion alone never authorizes deletion; active history is untouched.
 
 `store/upgrade` admits only fresh/current writers and classifies supported old
 formats for sealing. Production startup preserves the complete original group,

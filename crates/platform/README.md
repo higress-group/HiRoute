@@ -2,6 +2,10 @@
 
 This crate owns shared filesystem primitives and Windows kernel handles/FFI. It does
 not select an Agent, authorize a business command, or own business state.
+`private_fs::DirectoryRemoval` incrementally removes a caller-authorized retired
+directory with retained iterators, native identity checks and entry/time budgets.
+It does not select expired data. Unix unlink and Windows handle deletion remain
+separate; links/mounts cannot redirect recursive cleanup into another tree.
 `file_security::macos` provides safe, read-only descriptor calls for native ACL/flags
 and extended attributes, including compression attributes. Callers supply bounded
 buffers and own snapshot validation, hashing and diagnostic policy; these opaque

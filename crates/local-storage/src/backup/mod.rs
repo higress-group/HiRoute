@@ -1,6 +1,8 @@
+mod cleanup;
 #[cfg(test)]
 mod digest_tests;
 pub(crate) mod source_snapshot;
+pub use cleanup::UpgradeCleanup;
 use std::fs;
 use std::path::{Path, PathBuf};
 

@@ -25,8 +25,17 @@ recovery points keep their original restoration scope and verification.
 Archiving a completed previous batch only moves it and updates its location guide.
 It does not rehash Observation or certify the archive's integrity. Recovery and
 interrupted-batch admission still verify their required original material. Neither
-these archives nor successful recovery snapshots are automatically removed by the
-active Observation capacity limit.
+these archives nor recovery snapshots are governed by the active Observation capacity limit.
+They are temporary failed-upgrade recovery material: once Core, Observation, publication
+restoration, Gateway and Control are all ready, the existing maintenance worker
+automatically retires the product-owned backup namespace, obsolete source link and
+matching private recovery package. There is no post-success rollback window.
+Deletion is incremental (at most 128 entries and a cooperative 10 ms per batch,
+at least one second between batches, with work-proportional/error backoff),
+resumes after interruption and never delays service readiness. Unsafe entries stay
+pending and contribute to existing maintenance errors. Caller-supplied packages
+and installed version directories keep their installer/operator lifecycle.
+Keep an independent backup if post-success rollback is required.
 
 Observation format 5 changes the physical protocol carriers. On a supported
 format 1–4 upgrade, startup preserves the original three-store group, keys,
@@ -70,7 +79,7 @@ verification. This local recovery point still occupies disk and is not an
 independent disaster-recovery copy. Protected sources/packages are excluded from
 the active Observation threshold and are never deleted by its capacity policy.
 
-For manual recovery of a sealed-history source, stop the daemon, preserve later
+Before startup has succeeded, for manual recovery of a sealed-history source, stop the daemon, preserve later
 new-format data separately, check the old source offline, and restore its complete original storage group
 and auxiliary state at the recorded original locations with the matching old
 package, following the generated recovery guide. Never mix old business stores

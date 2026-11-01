@@ -13,6 +13,8 @@ mod native;
 mod native;
 
 pub use native::{OwnedDirectory, create_directory, create_file, open_regular_file};
+mod removal;
+pub use removal::{DirectoryRemoval, RemovalProgress, directory_identity};
 
 /// A rejected existing entry is distinct from an OS failure. Storage callers keep
 /// their released Permission versus Io error mapping on both platforms.

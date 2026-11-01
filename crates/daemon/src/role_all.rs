@@ -48,6 +48,10 @@ mod decision_network;
 #[path = "role_all/subscription_startup_tests.rs"]
 mod subscription_startup_tests;
 
+#[cfg(test)]
+#[path = "role_all/upgrade_cleanup_tests.rs"]
+mod upgrade_cleanup_tests;
+
 // A 272k-context agent sends its history in a burst, not at token generation
 // speed. Two such requests can exceed 4 MiB after per-part envelope overhead.
 // Keep a hard, lazy byte bound while allowing the local writer to drain them.
@@ -661,6 +665,7 @@ fn start_role_all_with_runtime(
             return Err(RoleAllError::Component("Local Control", error.to_string()));
         }
     };
+    runtime.service_ready();
     Ok(RoleAllHandle {
         control,
         gateway,
