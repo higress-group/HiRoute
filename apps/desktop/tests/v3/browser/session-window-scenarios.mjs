@@ -1215,6 +1215,12 @@ const scenarios = [
 
 export const sessionWindowScenarioCount = scenarios.length;
 
+export function runSemanticCaptureScenario() {
+  const index = scenarios.findIndex(([name]) => name.startsWith('semantic captures show imported context'));
+  if (index < 0) throw new Error('Semantic capture scenario is missing');
+  return runSessionWindowScenarios(index, index + 1);
+}
+
 export async function runSessionWindowScenarios(start = 0, end = Infinity) {
   const results = [];
   for (const [name, run] of scenarios.slice(start, end)) {
