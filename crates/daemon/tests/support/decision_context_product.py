@@ -40,6 +40,7 @@ class Endpoint(BaseHTTPRequestHandler):
         else:
             answers = {name: {'type': 'choice', 'choice': next(iter(q['criteria']))}
                 if q['type'] == 'choice' else {'type': 'score', 'score': 0.9}
+                if len(q['criteria']) == 3 else {'type': 'score', 'probabilities': {'0': 1.0, '1': 0.0}}
                 for name, q in body['questions'].items()}
         result = encoded({'answers': answers})
         self.send_response(200)
@@ -54,6 +55,11 @@ class Endpoint(BaseHTTPRequestHandler):
 
 def state(body):
     return body['state'] if isinstance(body['questions'], dict) else body['input'][0]['content'][0]['data']['state']
+
+
+def forwarded_text(body):
+    content = body['input'][0]['content']
+    return content if isinstance(content, str) else ''.join(part['text'] for part in content)
 
 
 def run(repository):
@@ -146,7 +152,7 @@ def run(repository):
             admitted = Endpoint.requests[-1]
             assert len(Endpoint.requests) == before + 1 and admitted['bytes'] > 262144, admitted['bytes']
             assert state(admitted['body'])['latest_user'][0]['text'] == long_user
-            assert upstream.requests[-1]['body']['input'][0]['content'][0]['text'] == long_user, 'ordinary request was cropped'
+            assert forwarded_text(upstream.requests[-1]['body']) == long_user, 'ordinary request was cropped'
             # Omitted edit flags retain intent; a new revision does not change the active route.
             edited = save_preview(data(command + ' --context-window-tokens 32000'), codec + '-edit')
             assert edited['context']['resolved']['request_window_tokens'] == 32000
@@ -157,7 +163,7 @@ def run(repository):
             before = len(Endpoint.requests)
             request([{'role': 'user', 'content': long_user}], codec + '-no-fit')
             assert len(Endpoint.requests) == before, 'mandatory no-fit called the provider'
-            assert upstream.requests[-1]['body']['input'][0]['content'][0]['text'] == long_user, 'fallback changed current input'
+            assert forwarded_text(upstream.requests[-1]['body']) == long_user, 'fallback changed current input'
             # Fresh short input still reaches the provider and a same-turn tool result reuses it.
             upstream.function_tools = True
             messages = [{'role': 'user', 'content': 'Read the local fixture.'}]
