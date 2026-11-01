@@ -301,8 +301,8 @@ pub(super) fn prepare(client: &LocalControlClient, options: &[String]) -> Result
         }
         (service, revisions)
     };
-    let input = json!({"schema":hiroute_domain::DECISION_SERVICE_OPERATION_INPUT_SCHEMA_V3,"change":{"id":id,"expected_revision":expected_revision,"service":service,"expected_source_revisions":expected_source_revisions},"input_slot":input_slot});
-    let typed: hiroute_domain::DecisionServiceOperationInputV3 =
+    let input = json!({"schema":hiroute_application_api::DECISION_SERVICE_OPERATION_INPUT_SCHEMA_V3,"change":{"id":id,"expected_revision":expected_revision,"service":service,"expected_source_revisions":expected_source_revisions},"input_slot":input_slot});
+    let typed: hiroute_application_api::DecisionServiceOperationInputV3 =
         serde_json::from_value(input).map_err(|_| error(ErrorCode::InvalidArguments))?;
     if !typed.validate() {
         return Err(error(ErrorCode::InvalidArguments));

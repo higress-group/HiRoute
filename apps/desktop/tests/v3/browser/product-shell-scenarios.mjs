@@ -3,6 +3,7 @@ import { productShellRequired } from './scenario-requirements.mjs';
 import { extensionDecisionScenarios } from './extension-decision-scenarios.mjs';
 import { cProtocolScenarios } from './c-protocol-scenarios.mjs';
 import { decisionReviewScenarios } from './decision-review-scenarios.mjs';
+import { decisionContextScenarios } from './decision-context-scenarios.mjs';
 import { nativeConnectionScenarios } from './native-connection-scenarios.mjs';
 import { presentationScenarios } from './presentation-interactions.mjs';
 import { trustProgressScenarios } from './trust-progress-scenarios.mjs';
@@ -121,6 +122,7 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  ...decisionContextScenarios({ fresh, click, until, all, text, calls, setInput, nativeField, decisionStore, control: c }),
   ...trialModelNavigationScenarios(scenario),
   scenario('desktop.operation.hidden-summaries-defer', ['operation-feedback'], 'Terminal confirmation does not scan a hidden Agent page or unrelated Home summaries', async () => {
     await fresh();

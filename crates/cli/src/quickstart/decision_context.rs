@@ -1,6 +1,8 @@
 //! Omitted edit flags retain saved intent; an explicit Automatic choice clears custom caps.
 use super::*;
-use hiroute_domain::{DecisionContextModeV1, DecisionContextPolicyV1, TypeSafeLongContextV1};
+use hiroute_application_api::{
+    DecisionContextModeV1, DecisionContextPolicyV1, TypeSafeLongContextV1,
+};
 
 pub(super) fn policy(flags: &Flags, existing: Option<&Value>) -> Result<DecisionContextPolicyV1> {
     let mut policy: DecisionContextPolicyV1 = existing
