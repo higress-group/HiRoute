@@ -10,22 +10,22 @@ metadata:
 
 # HiRoute management
 
-One Skill serves all supported Agents. Distinguish the caller, managed target, and independent
-model/management/collaboration facets. Use installed public commands, not repository access.
+Use installed public commands; distinguish caller, target and independent model/management/
+collaboration facets across supported Agents.
 
 ## Target and contracts
 
 Use quickstart/help and returned --context CONTEXT_ID/--plan PLAN_ID; resolve ambiguous targets/IDs.
 Hermes needs --hermes-root /ABS/ROOT. Saved, loaded, selected and actually served are separate facts.
 
-Missing CLI: Desktop Settings → CLI or standalone installer. Agent → HiRoute management enables this
-Skill independently of models/delegation. Recover via status/doctor/bounded logs; keep one daemon.
+Missing CLI: Desktop Settings → CLI or standalone installer. Enable this Skill independently via
+Agent → HiRoute management. Recover via status/doctor/bounded logs; keep one daemon.
 
-Use family/leaf --help and schema show --command-id COMMAND --include-schema. For reads without full
-schemas, use the installed descriptor/leaf help. Planned handlers are unavailable; resolve IDs,
-revisions and choices from current results/defaults. Capture complete stdout JSON, separate stderr
-and actual exit privately. Exit 2 is invalid input; --error-details gives hints. Accepted is pending;
-query success can contain a failed Operation. Never parse only the first output line.
+Use family/leaf --help and schema show --command-id COMMAND --include-schema; descriptor/leaf help
+suffices for reads. Planned handlers are unavailable. Resolve IDs/revisions/choices from current
+results/defaults. Privately retain complete stdout JSON, separate stderr and actual exit. Exit 2 is
+invalid input; --error-details gives hints. Accepted is pending; query success can contain a failed
+Operation. Never parse only the first output line.
 
 ## Model access
 
@@ -37,19 +37,19 @@ privately. Refs/catalogs prove no save/entitlement/inference. Never patch native
 Select all currently selectable models unless the user requests a subset:
 
 ```sh
-hiroute compute connection preview --candidate CANDIDATE_REF --candidate-revision REV --all-selectable --apply-file source-apply.json
-hiroute compute connection apply --request-file source-apply.json
+hiroute compute connection preview --candidate CANDIDATE_REF --candidate-revision REV --all-selectable --apply-file source.json
+hiroute compute connection apply --request-file source.json
 ```
 
 --model-ref selects a subset; freeze a nonempty selection, not a future wildcard. Drift needs fresh
 preparation. Secrets use protected FD/candidates or the human terminal, never argv/env/ordinary
 JSON/files/chat. Release unused refs. Never replay a one-use subscription callback after uncertainty.
 
-Native networking defaults to Direct. compute network show/resolve is non-probing; preview/apply
-uses current revisions/exact retry key. Changes affect new requests; Inherit uses startup env.
-Subscription settings are separate. Read connection test-network/decision network test help for
-input identity. Tests may bill; inspect check/network/failure. Route changes stale success; proxy
-auth does not justify provider-Key replacement/disablement.
+Networking defaults to Direct; Inherit uses startup env. compute network show/resolve never probes;
+preview/apply uses current revisions/exact retry key and affects new requests. Subscription settings
+are separate. Read connection test-network/decision network test help for input identity. Tests may
+bill; inspect check/network/failure. Route changes stale success; proxy auth does not justify Key
+replacement/disablement.
 
 ## Create or edit routing
 
@@ -57,8 +57,8 @@ routing options --request-stdin with `{}` gives IDs/defaults. Fixed uses --mode 
 --model BINDING_ID. Difficulty routing keeps the smart_saving CLI identifier:
 
 ```sh
-hiroute routing preview --name 'Difficulty routing' --purpose 'Routine and complex work' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route-apply.json
-hiroute routing apply --request-file route-apply.json
+hiroute routing preview --name 'Difficulty routing' --purpose 'Routine and complex work' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route.json
+hiroute routing apply --request-file route.json
 ```
 
 Repeat group flags for order. Choose local_rules or saved --decision-service ID@REVISION explicitly;
@@ -67,31 +67,31 @@ remain. Use returned choices.
 
 ### Complete Plan recovery
 
-Before edits, save a new private complete baseline and validate its exit/response:
+Before edits, save a private complete baseline; validate exit/response:
 
 ```sh
-(umask 077; set -C; hiroute routing show PLAN_ID --output json > /ABS/plan-before.json)
+(umask 077; set -C; hiroute routing show PLAN_ID --output json > /ABS/before.json)
 ```
 
-Before Apply fill these recovery commands with **actual CLI absolute path, Plan ID and unique absolute
-files**; selecting old model names alone can restore different defaults:
+Before Apply fill recovery commands with **actual CLI absolute path, Plan ID and unique absolute files**;
+model names alone cannot restore defaults:
 
 ```sh
-hiroute routing preview --plan PLAN_ID --restore-from /ABS/plan-before.json --apply-file /ABS/restore-apply.json
-hiroute routing apply --request-file /ABS/restore-apply.json
+hiroute routing preview --plan PLAN_ID --restore-from /ABS/before.json --apply-file /ABS/restore.json
+hiroute routing apply --request-file /ABS/restore.json
 hiroute routing show PLAN_ID --output json
 ```
 
-Compare all desired fields: order/reasoning, classifier/judgment, context/limits, requirements, mode,
-delegation/work and alias. Inspect Preview/Operation. Restore uses the current head; revisions advance.
-Do not mix restore with edits, copy revisions or substitute missing refs. Later restoration after
-completed recovery needs a fresh Preview/Apply identity. Sources/credentials/Agent facets recover separately.
+Compare order/reasoning, classifier/judgment, context/limits, requirements, mode, delegation/work and
+alias. Inspect Preview/Operation. Restore uses the current head and advances revisions; never mix
+edits, copy revisions or substitute missing refs. After completed recovery, another restoration needs
+a fresh Preview/Apply identity. Sources/credentials/Agent facets recover separately.
 
 ### Decision-service onboarding
 
-Use decision services options: reuse the explicitly chosen ID@REVISION or show installed provider/
-custom choices. Saved presets prove no testing/availability. Credentials require a human handoff
-**outside chat**: give a fresh non-secret candidate ref and this command for the user's own terminal:
+Use decision services options to reuse the chosen ID@REVISION or show installed provider/custom
+choices. Saved presets prove no testing/availability. Hand off credentials **outside chat**: give
+a fresh non-secret candidate ref and this command for the user's own terminal:
 
 ```sh
 hiroute protected-input register --candidate CANDIDATE_REF --prompt --format bearer
@@ -114,9 +114,8 @@ cancelled/timeouts; transport failure is not completed delivery.
 
 ## Connect or restore Agent facets
 
-Before restore/reconnect/grant changes, establish independent continuation if caller access may be
-revoked; running processes can retain old grants. Unknown dependency leaves the effect pending for
-an operator. Keep self-restart protection.
+Before restore/reconnect/grant changes, ensure independent continuation if caller access may be
+revoked; processes can retain old grants. Unknown dependency stays pending for an operator.
 
 Unknown Codex/Claude Skill loading needs agents check AGENT_ID --scope collaboration, then fresh
 Preview. This isolated native/local challenge makes no upstream call; failed prerequisites remain.
@@ -125,12 +124,11 @@ agents connect preview --context CONTEXT_ID --apply-file PATH takes requested fa
 --management enable, --collaboration explicit|delegate_by_default. Omissions remain; management-only
 needs no Plan/plugin. Delegation requires user intent/collaboration policy.
 
-Binary/Skill upgrades leave model plugins unchanged. Refresh the saved model facet with access_token=keep,
-then reload/start native as required; preserve other facets. Follow native help: Hermes requires exact
-root/protocol and preserved Responses reasoning; recommend >=0.21.7 for replay, while compatible older
-versions remain allowed subject to plugin/SDK interfaces. No unsolicited upgrade/patch/thinking disable.
-Codex needs exact root/profile/native model choice; preserve other Claude presets. Qoder/Pi/DSH entries
-claim no global default.
+Keep model plugins on binary/Skill upgrades. Refresh the saved model facet with access_token=keep,
+preserving other facets, then reload/start native as required. Hermes needs exact root/protocol and
+Responses reasoning; >=0.21.7 is recommended for replay, with compatible older plugin/SDK interfaces
+allowed. No unsolicited upgrade/patch/thinking disable. Codex needs exact root/profile/native model;
+preserve other Claude presets. Qoder/Pi/DSH entries imply no global default.
 
 Honor blockers/native prerequisites; inspect Apply Operation and:
 
@@ -138,14 +136,14 @@ Honor blockers/native prerequisites; inspect Apply Operation and:
 hiroute agents connect status --effective --context CONTEXT_ID --plan PLAN_ID
 ```
 
-Session selection may override config; one change proves no global IM switch. Match target/request/
-publication/model/outcome; absent loading/model-call consent leaves verification pending.
+Session selection can override config; no global IM switch is proved. Match target/request/publication/
+model/outcome; missing loading/model-call consent leaves verification pending.
 
 Restore selected owned facets using the retained ref, preserving foreign edits and caller continuity:
 
 ```sh
-hiroute agents restore preview --context CONTEXT_ID --facet management_skill --apply-file restore-apply.json
-hiroute agents restore apply --request-file restore-apply.json
+hiroute agents restore preview --context CONTEXT_ID --facet management_skill --apply-file restore.json
+hiroute agents restore apply --request-file restore.json
 ```
 
 Repeat --facet for model/collaboration or a set. Give filled root/selection flags and native follow-up;
@@ -160,10 +158,10 @@ hiroute observation plan-trust suggestions --output json
 hiroute observation plan-trust --plan-id PLAN_ID --revision active --group-by model --output json
 ```
 
-Filter the workspace feed to selected Plans. The report explains keep/missing evidence. Show revision,
-branch/model/reasoning, interval/cohort, scored/executed/session counts, competence/coverage/protections.
-Keep partial/unscored/awaiting/unavailable distinct; null is not zero. Accepted/no-retry requests or
-low cost prove no competence; sparse scores cannot justify confidence.
+Filter the workspace feed to selected Plans; reports explain keep/missing evidence. Show revision,
+branch/model/reasoning, interval/cohort, scored/executed/session counts and competence/coverage/protections.
+Distinguish partial/unscored/awaiting/unavailable; null is not zero. Accepted/no-retry or low cost proves
+no competence; sparse scores justify no confidence.
 
 Use branches.suggestion and returned rules/counts. Its full retained active-revision evidence and
 post-announcement upward cohort cannot be replaced by windowed rows/latest samples. Announcements
@@ -175,14 +173,13 @@ Check pending/per-Plan unavailable; failure is not healthy emptiness. Use bounde
 
 ### Ongoing follow-up
 
-Offer follow-up. When requested, reuse an Agent/host scheduler and matching job (Hermes cronjob is one example).
-Record verified job ID, cadence/timezone and authorized destination. Prefer daily unless requested
-otherwise, not minute-level full scans. Fresh self-contained runs load this Skill, use absolute CLI
-path/target/context/Plan IDs and read fresh reports. Keep minimal comparison notes outside this Skill;
+Offer follow-up; on request reuse the Agent/host scheduler and matching job. Record verified job ID,
+cadence/timezone and authorized destination. Default to daily, not minute-level full scans. Runs load
+this Skill, absolute CLI path/target/context/Plan IDs and fresh reports. Keep notes outside this Skill;
 compare like revision/model/reasoning/cohort scopes and disclose changes. Honor regular-report requests;
-otherwise notify changed advice, meaningful competence/protection changes or new read gaps, staying
-quiet on unchanged healthy/insufficient evidence. Unverified scheduling
-remains unconfigured, with manual read commands; monitoring grants no routing-edit authority.
+otherwise notify changed advice, meaningful competence/protection changes or new read gaps. Stay quiet
+on unchanged healthy/insufficient evidence. Unverified scheduling stays unconfigured; give manual
+read commands. Monitoring grants no routing-edit authority.
 
 ## Analyze history and savings
 
@@ -196,7 +193,7 @@ hiroute sessions list --view switches --period 7d
 hiroute sessions list --view conversations --period 7d --query TEXT
 ```
 
-Use sessions/value help. Disclose requested/effective bounds, timezone and clipping; civil days are
+Use sessions/value help. Show requested/effective bounds, timezone and clipping; civil days are
 service-local. Keep analysis_scope for related/narrower reads without new time selectors. Search
 starts with --query TEXT; changing keywords needs a new scope. Page unchanged view/filters/limit to
 END; member previews/page lengths are not totals:
@@ -239,11 +236,11 @@ Re-estimation changes no entitlement/history; free/subscription/paid/unknown dif
 
 ## Exact submission and scope
 
---apply-file creates private exact request/key files without secrets/capabilities. Review effects;
-submit submission.arguments; retain file/operation_lookup. Use the OS socket, not minted capabilities.
-Uncertain delivery: operations find/get or replay the **identical file/key**. Confirmed unaccepted stale
-input needs fresh Preview. Reuse completed IDs. Keep authorization/notes outside this Skill; honor
-scope/cancellation/quotas. Quickstart/status never call models.
+--apply-file creates private exact request/key files, excluding secrets/capabilities. Review effects;
+submit submission.arguments; retain file/operation_lookup. Use the OS socket. On uncertain delivery,
+use operations find/get or replay the **identical file/key**. Confirmed unaccepted stale input needs
+fresh Preview. Reuse completed IDs. Keep authorization/notes outside this Skill; honor scope/cancellation/
+quotas. Quickstart/status never call models.
 
 ## Worker
 
@@ -258,15 +255,13 @@ coordination/status/result-summary delegation. Readiness proves no success.
 
 ## Listener and service changes
 
-Publish Plan changes and apply runtime settings through their normal CLI/Operation flow; the
-running service applies them. Verify completion and effective readback, without manually restarting
-HiRoute. Native Agent selection/reload is separate; follow the returned native actions.
+Publish Plans/apply runtime settings through CLI/Operation. Verify completion/effective readback;
+the service applies them live. Follow native Agent selection/reload actions separately.
 
-Read gateway show before set; remote/wildcard needs explicit risk acknowledgement. Distinguish applied/
-ready from firewall/TLS. gateway set/recover owns its listener restart; add no manual restart.
+Read gateway show before set; acknowledge remote/wildcard risk. Applied/ready does not prove firewall/TLS.
+gateway set/recover owns listener restart; recovery restores the safe listener.
 
-Binary upgrades and process-environment changes can require a HiRoute restart. If the caller uses
-HiRoute for model access, arrange independent operator continuation before interrupting that shared
-service. After a necessary start/restart, require service status local_control_ready=true, system
-status daemon=role_all/gateway=ready and gateway show ready=true before model verification. Process
-manager active/exit zero or a fixed sleep is insufficient. Start is not autostart.
+Plan/settings/listener changes need no manual restart. For necessary binary/environment restarts,
+ensure independent operator continuation if caller model access uses HiRoute. Before model verification
+require service status local_control_ready=true, system status daemon=role_all/gateway=ready and
+gateway show ready=true; manager active/exit zero or sleep is insufficient. Start is not autostart.

@@ -69,6 +69,37 @@ fn family_help_is_navigable_and_does_not_promote_unreleased_commands() {
 }
 
 #[test]
+fn worker_input_error_recommends_callable_offline_help() {
+    let output = invoke(
+        &[
+            "worker", "dependencies", "select", "--request-stdin", "--error-details", "--output", "json",
+        ],
+        br#"{"harness":"pi","node_path":"/private/component-must-not-appear","expected_selection_revision":0}"#,
+    );
+    assert_eq!(output.status.code(), Some(2));
+    let envelope: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(envelope["error"]["code"], "INVALID_ARGUMENTS");
+    assert_eq!(envelope["data"]["diagnostic"]["path"], "$.cli_path");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(!stderr.contains("component-must-not-appear"));
+    let command = stderr
+        .lines()
+        .find_map(|line| line.strip_prefix("Run: hiroute "))
+        .expect("the diagnostic must include an executable correction hint");
+    let help = invoke(&command.split_whitespace().collect::<Vec<_>>(), b"");
+    assert!(
+        help.status.success(),
+        "{command}: {}",
+        String::from_utf8_lossy(&help.stdout)
+    );
+    assert!(
+        String::from_utf8(help.stdout)
+            .unwrap()
+            .contains("worker dependencies select")
+    );
+}
+
+#[test]
 fn installed_full_schemas_are_offline_complete_and_opt_in() {
     for id in [
         "compute.scan",

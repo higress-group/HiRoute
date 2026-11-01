@@ -21,10 +21,20 @@ fn package(root: &Path) -> Result<Option<Value>, QoderNativeError> {
 /// Resolves the explicitly located official npm wrapper to a single declared native package.
 /// A directly selected standalone binary remains selectable without format capability.
 pub fn opencode_native_executable(selected: &Path) -> Result<Option<PathBuf>, QoderNativeError> {
+    let mut candidates = opencode_native_candidates(selected)?;
+    if candidates.len() > 1 {
+        return Err(qoder_error("ambiguous OpenCode platform package"));
+    }
+    Ok(candidates.pop())
+}
+
+/// Metadata-only alternatives for explicit selection. Multiple matching official
+/// packages remain separate choices; discovery must not silently choose one.
+pub fn opencode_native_candidates(selected: &Path) -> Result<Vec<PathBuf>, QoderNativeError> {
     let Some(path) =
         super::executable::resolve(selected).map_err(|_| qoder_error("OpenCode executable"))?
     else {
-        return Ok(None);
+        return Ok(Vec::new());
     };
     #[cfg(windows)]
     let path = if path
@@ -57,7 +67,7 @@ pub fn opencode_native_executable(selected: &Path) -> Result<Option<PathBuf>, Qo
         {
             return Err(qoder_error("OpenCode native executable required"));
         }
-        return Ok(Some(path));
+        return Ok(vec![path]);
     }
     let version = metadata
         .as_ref()
@@ -107,10 +117,10 @@ pub fn opencode_native_executable(selected: &Path) -> Result<Option<PathBuf>, Qo
     }
     candidates.sort();
     candidates.dedup();
-    if candidates.len() != 1 {
+    if candidates.is_empty() {
         return Err(qoder_error("ambiguous OpenCode platform package"));
     }
-    Ok(candidates.pop())
+    Ok(candidates)
 }
 
 fn platform_matches(meta: &Value) -> bool {

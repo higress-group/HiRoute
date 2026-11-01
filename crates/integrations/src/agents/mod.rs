@@ -74,7 +74,9 @@ mod opencode_tests;
 pub use opencode::{
     OpenCodeConfig, OpenCodeNativeContext, opencode_provider, validate_opencode_composition,
 };
-pub use opencode_installation::{opencode_native_executable, opencode_native_format};
+pub use opencode_installation::{
+    opencode_native_candidates, opencode_native_executable, opencode_native_format,
+};
 mod pi_runtime;
 mod pi_sources;
 pub use native_points::*;

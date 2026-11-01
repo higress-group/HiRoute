@@ -426,6 +426,12 @@ impl DelegationRunExecutor {
             return self.finish_without_worker(&journal, &run, &verifier, false, false);
         }
         let session_root = profile.session_root.clone();
+        if task.plan.harness == hiroute_domain::delegation::WorkerHarnessV1::QoderCli
+            && let Some(config_dir) = profile.env.get("QODER_CONFIG_DIR")
+            && let Ok(now) = i64::try_from(now_ms()?)
+        {
+            journal.qoder_context(config_dir.as_str(), now);
+        }
         if self
             .authority
             .register(&task, &run, version, Arc::clone(&verifier))

@@ -493,7 +493,19 @@ async fn run_session(
         biased;
         _ = input.cancellation.cancelled() => None,
         _ = tokio::time::sleep_until(input.deadline) => None,
-        response = &mut prompt => Some(response.map_err(pi_failure::map_error)?),
+        response = &mut prompt => Some(response.map_err(|error| {
+            // Qoder 1.1.81 reports terminal model/access failures as JSON-RPC code
+            // 500. This is a native response, not an uncertain transport failure.
+            // Its free-text message is never used to infer account entitlement.
+            if (input.identity_contract == AcpNativeIdentityContract::QoderSessionV1
+                && i32::from(error.code) == 500)
+                || i32::from(error.code) == -32800
+            {
+                DelegationErrorV1::PromptFailed
+            } else {
+                pi_failure::map_error(error)
+            }
+        })?),
     };
     let stop_reason = if let Some(response) = response {
         let prompt_failed = prompt_session_failure(response.meta.as_ref())?;
@@ -503,6 +515,15 @@ async fn run_session(
             .ok_or(DelegationErrorV1::ProtocolFailed)?;
         if prompt_failed {
             return Err(DelegationErrorV1::PromptFailed);
+        }
+        // Some native clients use cancelled for terminal model/access errors as well.
+        // Only our cancellation/deadline can establish why execution was stopped.
+        if stop_reason == "cancelled" && !input.cancellation.is_cancelled() {
+            return Err(if Instant::now() >= input.deadline {
+                DelegationErrorV1::DeadlineExceeded
+            } else {
+                DelegationErrorV1::PromptFailed
+            });
         }
         stop_reason
     } else {
@@ -516,6 +537,9 @@ async fn run_session(
             .await
             .map_err(|_| DelegationErrorV1::DeadlineExceeded)?
             .map_err(|_| DelegationErrorV1::ProtocolFailed)?;
+        if !input.cancellation.is_cancelled() {
+            return Err(DelegationErrorV1::DeadlineExceeded);
+        }
         "cancelled".to_owned()
     };
     let mut state = updates.lock().unwrap_or_else(|e| e.into_inner());
@@ -661,6 +685,8 @@ async fn phase<T>(
     }
 }
 
+#[cfg(test)]
+mod failure_tests;
 #[cfg(test)]
 mod identity_tests;
 #[cfg(test)]
