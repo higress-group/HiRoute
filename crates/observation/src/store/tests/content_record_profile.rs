@@ -88,3 +88,50 @@ fn repeated_history_writer_size_and_cpu() {
         "writer_wall_us":write_wall,"writer_cpu_ticks":write_cpu})
     );
 }
+
+#[test]
+#[ignore = "requires an explicitly captured private read-only record sample"]
+fn captured_records_reconstruct_complete_original_values() {
+    use crate::store::{record_projection, records};
+    use std::io::{BufRead, BufReader};
+    let file = std::fs::File::open(std::env::var_os("HIROUTE_RECORD_SAMPLE").expect("sample path"))
+        .unwrap();
+    let mut totals = std::collections::BTreeMap::<String, (usize, usize, usize)>::new();
+    for line in BufReader::new(file).lines() {
+        let row: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+        let kind = row["kind"].as_str().unwrap();
+        let frame: Vec<u8> = serde_json::from_value(row["frame"].clone()).unwrap();
+        let original: serde_json::Value =
+            serde_json::from_slice(&records::decode(&frame).unwrap()).unwrap();
+        let shared = if kind == "content" {
+            let envelope: ConversationContentEnvelopeV1 =
+                serde_json::from_value(original.clone()).unwrap();
+            record_projection::ContentColumns::from_envelope(&envelope).shared()
+        } else {
+            let identity = &original["identity"];
+            let stream = serde_json::from_value(serde_json::json!({
+                "producer_id":identity["producer_id"],"producer_epoch":identity["producer_epoch"],
+                "stream_id":identity["stream_id"]}))
+            .unwrap();
+            record_projection::feedback_fields(identity["channel"].as_str().unwrap(), &stream)
+        };
+        let compact = record_projection::encode(original.clone(), &shared).unwrap();
+        assert!(
+            record_projection::decode(&compact, &shared).unwrap() == original,
+            "captured record did not reconstruct its original value"
+        );
+        let entry = totals.entry(kind.into()).or_default();
+        entry.0 += 1;
+        entry.1 += frame.len();
+        entry.2 += compact.len();
+    }
+    assert!(
+        totals.values().map(|x| x.0).sum::<usize>() > 0,
+        "zero records is not acceptance"
+    );
+    println!(
+        "{}",
+        serde_json::json!({"measurement":"captured_records_lossless_projection",
+        "scope":"sampled frame bytes only; no database or whole-request claim", "by_kind":totals})
+    );
+}

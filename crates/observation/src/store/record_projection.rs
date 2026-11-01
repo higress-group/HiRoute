@@ -1,11 +1,7 @@
 //! Lossless record normalization against immutable carrier columns. Tags 2/3
 //! omit repeated fields, but authenticate the complete reconstructed JSON value.
 //! Legacy tags 0/1 remain independently readable without rewriting old rows.
-use hiroute_domain::{
-    CONVERSATION_CONTENT_PORT_DIGEST_V2, CONVERSATION_CONTENT_SCHEMA_V2,
-    ConversationContentEnvelopeV1, OBSERVATION_ACK_SCHEMA_V2, OBSERVATION_NACK_SCHEMA_V1,
-    ObservationStreamV1, canonicalize_json,
-};
+use hiroute_domain::{ConversationContentEnvelopeV1, ObservationStreamV1, canonicalize_json};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -42,9 +38,6 @@ impl ContentColumns {
 
     pub(crate) fn shared(&self) -> Value {
         json!({
-            "schema_version": CONVERSATION_CONTENT_SCHEMA_V2,
-            "schema_digest": CONVERSATION_CONTENT_PORT_DIGEST_V2,
-            "channel": "conversation_content",
             "producer": {
                 "producer_id": self.stream.producer_id,
                 "producer_epoch": self.stream.producer_epoch,
@@ -60,25 +53,15 @@ impl ContentColumns {
     }
 }
 
-pub(super) fn feedback_fields(
-    kind: &str,
-    channel: &str,
-    stream: &ObservationStreamV1,
-) -> Result<Value, Error> {
-    let schema = match kind {
-        "ack" => OBSERVATION_ACK_SCHEMA_V2,
-        "nack" => OBSERVATION_NACK_SCHEMA_V1,
-        _ => return Err(Error::Corrupt),
-    };
-    Ok(json!({
-        "schema_version": schema,
+pub(super) fn feedback_fields(channel: &str, stream: &ObservationStreamV1) -> Value {
+    json!({
         "identity": {
             "channel": channel,
             "producer_id": stream.producer_id,
             "producer_epoch": stream.producer_epoch,
             "stream_id": stream.stream_id,
         },
-    }))
+    })
 }
 
 pub(crate) fn encode(value: Value, shared: &Value) -> Result<Vec<u8>, Error> {

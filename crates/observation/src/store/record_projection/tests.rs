@@ -68,7 +68,11 @@ fn corruption_truncation_wrong_codec_and_excessive_expansion_fail() {
     assert!(decode(&bad, &shared).is_err());
     let mut bomb = records::encode(&vec![b'x'; records::MAX_RECORD]).unwrap();
     bomb[0] = 3;
-    bomb[1..5].copy_from_slice(&100u32.to_le_bytes());
+    bomb[1..5].copy_from_slice(&1024u32.to_le_bytes());
+    assert!(
+        bomb.len() <= 1024 + 37,
+        "exercise expansion, not the encoded-size guard"
+    );
     assert!(decode(&bomb, &shared).is_err());
 }
 

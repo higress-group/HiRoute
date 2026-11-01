@@ -82,7 +82,7 @@ Focused package checks use `cargo test -p hiroute-observation`.
 The current physical layout is format 5. Only the three repeated protocol
 carriers share a stream descriptor. Content metadata and frozen feedback omit
 only fields exactly recoverable from their existing immutable SQL columns,
-stream identity and fixed envelope schema. `store/record_projection` restores the
+stream identity. Schema markers and every other original field remain in the record. `store/record_projection` restores the
 complete canonical JSON value and authenticates its original length and SHA-256;
 changed source fields cannot silently change a replayed event or ACK/NACK.
 Each record still uses independent level-1 zstd with an identity fallback. Codec

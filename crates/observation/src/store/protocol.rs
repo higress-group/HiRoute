@@ -351,7 +351,7 @@ pub(super) fn persist_feedback(
             kind,
             record_projection::encode(
                 json.map_err(|_| ObservationStoreError::Corrupt)?,
-                &record_projection::feedback_fields(kind, channel, stream)?,
+                &record_projection::feedback_fields(channel, stream),
             )?,
             i64_from_u64(occurred_at_unix_nanos)?
         ],
@@ -386,24 +386,18 @@ pub(super) fn load_feedback(
         .optional()
         .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
     match row {
-        Some((kind, json)) if kind == "ack" => {
-            serde_json::from_value::<ObservationAckV2>(record_projection::decode(
-                &json,
-                &record_projection::feedback_fields(&kind, channel, stream)?,
-            )?)
-            .map(IngestOutcome::Ack)
-            .map(Some)
-            .map_err(|_| ObservationStoreError::Corrupt)
-        }
-        Some((kind, json)) if kind == "nack" => {
-            serde_json::from_value::<ObservationNackV1>(record_projection::decode(
-                &json,
-                &record_projection::feedback_fields(&kind, channel, stream)?,
-            )?)
-            .map(IngestOutcome::Nack)
-            .map(Some)
-            .map_err(|_| ObservationStoreError::Corrupt)
-        }
+        Some((kind, json)) if kind == "ack" => serde_json::from_value::<ObservationAckV2>(
+            record_projection::decode(&json, &record_projection::feedback_fields(channel, stream))?,
+        )
+        .map(IngestOutcome::Ack)
+        .map(Some)
+        .map_err(|_| ObservationStoreError::Corrupt),
+        Some((kind, json)) if kind == "nack" => serde_json::from_value::<ObservationNackV1>(
+            record_projection::decode(&json, &record_projection::feedback_fields(channel, stream))?,
+        )
+        .map(IngestOutcome::Nack)
+        .map(Some)
+        .map_err(|_| ObservationStoreError::Corrupt),
         Some(_) => Err(ObservationStoreError::Corrupt),
         None => Ok(None),
     }

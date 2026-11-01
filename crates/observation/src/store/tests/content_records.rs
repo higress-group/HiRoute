@@ -2,6 +2,25 @@ use super::*;
 use crate::store::{record_projection, records};
 
 #[test]
+fn schema_markers_remain_original_record_data() {
+    let fixture = Fixture::new();
+    let begin = fixture.begin(1);
+    let shared = record_projection::ContentColumns::from_envelope(&begin).shared();
+    let mut original = serde_json::to_value(&begin).unwrap();
+    original
+        .as_object_mut()
+        .unwrap()
+        .remove("canonical_bytes_base64");
+    original["schema_version"] = serde_json::json!("retained-original-schema");
+    original["schema_digest"] = serde_json::json!("retained-original-digest");
+    let frame = record_projection::encode(original.clone(), &shared).unwrap();
+    assert_eq!(
+        record_projection::decode(&frame, &shared).unwrap(),
+        original
+    );
+}
+
+#[test]
 fn mixed_old_and_projected_records_reopen_with_original_feedback_and_history() {
     let fixture = Fixture::new();
     let begin = fixture.begin(1);
@@ -85,15 +104,18 @@ fn projected_ack_and_nack_keep_their_original_complete_values() {
         LocalObservationStore::open(fixture._root.path(), fixture.authority.clone()).unwrap();
     assert_eq!(reopened.ingest_content(&bad, &[]).unwrap(), rejected);
     let db = reopened.connection.lock();
-    let (kind, frame): (String, Vec<u8>) = db.query_row(
-        "SELECT feedback_kind,feedback_json FROM observation_feedback_v2 ORDER BY feedback_id DESC LIMIT 1", [],
-        |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+    let frame: Vec<u8> = db
+        .query_row(
+            "SELECT feedback_json FROM observation_feedback_v2 ORDER BY feedback_id DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert!(matches!(frame[0], 2 | 3));
     assert_eq!(
         record_projection::decode(
             &frame,
-            &record_projection::feedback_fields(&kind, "conversation_content", &fixture.stream)
-                .unwrap()
+            &record_projection::feedback_fields("conversation_content", &fixture.stream)
         )
         .unwrap(),
         match rejected {
