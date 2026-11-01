@@ -13,7 +13,10 @@ pub(crate) fn version(root: &Path) -> Result<Option<String>, Error> {
     if !root.join("activity.db").exists() {
         return Ok(None);
     }
-    hiroute_platform::private_fs::open_private_file(&root.join("activity.db"))
+    // SQLite storage admits regular, reparse-free files. Existing Windows SQL
+    // files may inherit their parent's private DACL rather than carry an atomic
+    // private-file descriptor; reading a format marker must not adopt/repair it.
+    hiroute_platform::private_fs::open_regular_file(&root.join("activity.db"))
         .map_err(|_| Error::Corrupt)?;
     let db =
         Connection::open_with_flags(root.join("activity.db"), OpenFlags::SQLITE_OPEN_READ_ONLY)

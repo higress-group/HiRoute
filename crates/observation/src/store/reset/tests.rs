@@ -3,9 +3,8 @@ use super::*;
 fn legacy(parent: &Path, setting: Option<&str>) -> PathBuf {
     let root = parent.join("observation");
     private_fs::create_directory(&root).unwrap();
-    // Released native processes create private files. Do not depend on this
-    // test harness's default owner/DACL when constructing the old SQL source.
-    drop(private_fs::create_file(&root.join("activity.db"), private_fs::FileMode::Data).unwrap());
+    // Keep SQLite's original inherited permissions: admission must not require
+    // that old data was written through the current atomic-file primitive.
     let db = Connection::open(root.join("activity.db")).unwrap();
     db.execute_batch("CREATE TABLE observation_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO observation_meta VALUES('schema_version','3'); CREATE TABLE old_history(body TEXT); INSERT INTO old_history VALUES('old observations');").unwrap();
     if let Some(value) = setting {
@@ -51,6 +50,11 @@ fn format_reset_preserves_capacity_choices_without_copying_observations_or_nativ
         let native = dir.path().join("native-history.db");
         fs::write(&native, b"original native conversation").unwrap();
         let old_id = directory_identity(&root).unwrap();
+        #[cfg(windows)]
+        let old_permissions = hiroute_platform::file_security::capture(
+            &private_fs::open_regular_file(&root.join("activity.db")).unwrap(),
+        )
+        .unwrap();
         let store = LocalObservationStore::open_for_daemon_startup(&root, authority()).unwrap();
         assert_eq!(store.capacity_status().unwrap().max_active_bytes, expected);
         assert_eq!(upgrade::version(&root).unwrap().as_deref(), Some("6"));
@@ -58,6 +62,15 @@ fn format_reset_preserves_capacity_choices_without_copying_observations_or_nativ
         let record = read_record(&journal(&root).unwrap()).unwrap();
         let (retired, _) = paths(&root, &record).unwrap();
         assert_eq!(directory_identity(&retired).unwrap(), old_id);
+        #[cfg(windows)]
+        assert_eq!(
+            hiroute_platform::file_security::capture(
+                &private_fs::open_regular_file(&retired.join("activity.db")).unwrap(),
+            )
+            .unwrap(),
+            old_permissions,
+            "reset must not rewrite the old SQLite file's owner or DACL"
+        );
         assert_eq!(
             fs::read(retired.join("old-body")).unwrap(),
             b"do not copy me"
