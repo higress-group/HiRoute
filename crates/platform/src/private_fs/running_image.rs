@@ -2,6 +2,12 @@
 use nix::libc;
 use std::{fs::File, io, mem::MaybeUninit, os::unix::fs::MetadataExt};
 
+unsafe extern "C" {
+    // mach-o/dyld.h. Only the opaque mapping address is needed, so no Mach-O
+    // header type or additional Mach binding dependency is required.
+    fn _dyld_get_image_header(image_index: u32) -> *const std::ffi::c_void;
+}
+
 // sys/proc_info.h: proc_regioninfo. The four protection fields, file offset
 // and fourteen u32 region-detail fields precede the region address and size.
 #[repr(C)]
@@ -27,7 +33,7 @@ pub fn open_running_executable() -> io::Result<File> {
     let file = super::open_regular_file(&std::env::current_exe()?)?;
     // SAFETY: image index zero is the process's main image; no dereference is
     // needed. The address is used only as an input to the native region query.
-    let header = unsafe { libc::_dyld_get_image_header(0) };
+    let header = unsafe { _dyld_get_image_header(0) };
     if header.is_null() {
         return Err(io::ErrorKind::NotFound.into());
     }
