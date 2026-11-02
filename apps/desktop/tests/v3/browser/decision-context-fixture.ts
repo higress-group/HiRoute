@@ -6,10 +6,11 @@ export function fixtureDecisionContext(input: DecisionContextPreviewInput): Reso
   const fallback = contract.preview_decision_context.result as ResolvedDecisionContext;
   const direct = input.endpoint === 'https://api.typesafe.ai/v1/systemone' && input.wire_protocol === 'system_one';
   const enabled = direct && input.policy.typesafe_long_context === 'automatic';
-  const knownTypeSafe = direct && ['jev-1.13.0', 'jev-1.14.0'].includes(input.model);
+  const knownTypeSafe = direct && ['jev-1.13.0', 'jev-1.14.0', 'jev-latest'].includes(input.model);
+  const routerAlias = input.endpoint === 'https://openrouter.ai/api/alpha/decisions' && input.wire_protocol === 'system_one' && input.model === '~typesafe/jev-latest';
   const openai = input.endpoint === 'https://api.openai.com/v1/decisions' && input.wire_protocol === 'openai_decisions' && input.model === 'gpt-6-luna';
-  const known = knownTypeSafe || openai;
-  const maintained = openai ? 1050000 : knownTypeSafe ? enabled ? 262144 : 64000 : 32000;
+  const known = knownTypeSafe || openai || routerAlias;
+  const maintained = openai ? 1050000 : routerAlias ? 262144 : knownTypeSafe ? enabled ? 262144 : 64000 : 32000;
   const request = input.policy.window_tokens ?? maintained;
   const providerQuestion = knownTypeSafe ? enabled ? 262144 : 32000 : null;
   const question = input.policy.per_question_tokens ?? Math.min(request, providerQuestion ?? request);

@@ -2042,6 +2042,24 @@
       "collected_on": "2026-11-02",
       "bytes_digest": null,
       "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-201",
+      "authority": "openrouter.ai",
+      "source_kind": "provider-public-metadata",
+      "locator": "https://openrouter.ai/api/v1/models/~typesafe/jev-latest/endpoints",
+      "collected_on": "2026-11-02",
+      "bytes_digest": "sha256:7f1db702a7b04945aad2f50f3fa90427ea2f8ce27ac44b3dee6322157e3c79a8",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-202",
+      "authority": "openrouter.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://openrouter.ai/blog/insights/what-is-jev/",
+      "collected_on": "2026-11-02",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -4657,7 +4675,9 @@
       "canonical_identity": "jev-1.14",
       "upstream_ids": [
         "jev-1.14.0",
-        "typesafe/jev-1.14"
+        "jev-latest",
+        "typesafe/jev-1.14",
+        "~typesafe/jev-latest"
       ],
       "context_tokens": null,
       "context_state": "not-applicable",
@@ -4681,10 +4701,12 @@
       },
       "identity_stability": "unknown",
       "lifecycle": "active",
-      "source_stability_note": "Decision input constraints belong exclusively to exact endpoint bindings.",
+      "source_stability_note": "Decision input constraints belong exclusively to exact endpoint bindings. Documented rolling aliases are separate bindings; their current association is dated metadata, not an immutable served-version guarantee.",
       "evidence_refs": [
         "source-194",
-        "source-198"
+        "source-198",
+        "source-201",
+        "source-202"
       ],
       "data_note": "Decision-only identity; no ordinary inference eligibility."
     },
@@ -7589,6 +7611,43 @@
       ]
     },
     {
+      "binding_key": "openrouter-credits-byok/jev-1.14/~typesafe/jev-latest/decision",
+      "product_key": "openrouter-credits-byok",
+      "model_key": "jev-1.14",
+      "upstream_model_id": "~typesafe/jev-latest",
+      "upstream_identity_role": "rolling-alias",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "openrouter-credits-byok/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "OpenRouter documents this exact rolling alias for the latest Jev release. Its served version can change; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "openrouter-credits-byok/system-one/always",
+          "interface_key": "openrouter-credits-byok/system-one",
+          "condition": "always",
+          "request_tokens": 262144,
+          "per_question_tokens": null,
+          "basis": "inferred",
+          "note": "Source-backed current alias budget: OpenRouter documents the latest Jev alias and Jev 1.14 with 262,144 context; its pinned endpoint reports the same exact limit. The alias endpoint does not publish its own numeric ceiling. This is a dated inference, not measured alias capacity or a pinned served-version guarantee; no direct-provider header is inferred.",
+          "evidence_refs": [
+            "source-198",
+            "source-201",
+            "source-202"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-198",
+        "source-201",
+        "source-202"
+      ]
+    },
+    {
       "binding_key": "tencent-hy-token-plan/hunyuan-hy3/hy3",
       "product_key": "tencent-hy-token-plan",
       "model_key": "hunyuan-hy3",
@@ -7804,6 +7863,53 @@
           "per_question_tokens": 262144,
           "basis": "inferred",
           "note": "HiRoute normalization of documented rounded 262k for both dimensions with the official header; corroborated by exact OpenRouter metadata, not a direct capacity measurement.",
+          "evidence_refs": [
+            "source-194",
+            "source-198"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-194",
+        "source-198"
+      ]
+    },
+    {
+      "binding_key": "typesafe-direct-global/jev-1.14/jev-latest/decision",
+      "product_key": "typesafe-direct-global",
+      "model_key": "jev-1.14",
+      "upstream_model_id": "jev-latest",
+      "upstream_identity_role": "rolling-alias",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "typesafe-direct-global/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Provider documents jev-latest as the current stable Jev alias. Its served version can change; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "typesafe-direct-global/system-one/typesafe_default",
+          "interface_key": "typesafe-direct-global/system-one",
+          "condition": "typesafe_default",
+          "request_tokens": 64000,
+          "per_question_tokens": 32000,
+          "basis": "inferred",
+          "note": "Documented jev-latest currently points to jev-1.14.0; the request retains its alias. Conservative decimal normalization of documented 64k request / 32k question without the long-context header.",
+          "evidence_refs": [
+            "source-194"
+          ]
+        },
+        {
+          "constraint_key": "typesafe-direct-global/system-one/typesafe_long_context",
+          "interface_key": "typesafe-direct-global/system-one",
+          "condition": "typesafe_long_context",
+          "request_tokens": 262144,
+          "per_question_tokens": 262144,
+          "basis": "inferred",
+          "note": "Documented jev-latest currently points to jev-1.14.0; the request retains its alias. HiRoute normalization of documented rounded 262k for both dimensions with the official header; corroborated by exact OpenRouter metadata, not a direct capacity measurement.",
           "evidence_refs": [
             "source-194",
             "source-198"

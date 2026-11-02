@@ -145,6 +145,26 @@ def run(repository):
 
     try:
         bootstrap(product)
+        # Exercise installed defaults, not hand-authored model IDs that can hide
+        # a preset/metadata mismatch. These queries never contact the providers.
+        for provider, model, window, header in [
+                ('typesafe', 'jev-latest', 262144, True),
+                ('openrouter', '~typesafe/jev-latest', 262144, False),
+                ('openai', 'gpt-6-luna', 1050000, False)]:
+            preset = data(f'decision connections options --provider {provider}')['selected_provider']
+            assert preset['model'] == model, preset
+            request = {name: preset[name] for name in ('endpoint', 'model', 'wire_protocol')}
+            request['policy'] = {'mode': 'automatic', 'typesafe_long_context': 'automatic'}
+            resolved = data('decision context preview', request)
+            assert resolved['request_window_tokens'] == window and resolved['per_question_window_tokens'] == window, resolved
+            assert resolved['request_source'] == 'metadata' and resolved['typesafe_long_context_header'] == header, resolved
+            if provider == 'typesafe':
+                request['policy']['typesafe_long_context'] = 'disabled'
+                smaller = data('decision context preview', request)
+                assert (smaller['request_window_tokens'], smaller['per_question_window_tokens']) == (64000, 32000), smaller
+                assert not smaller['typesafe_long_context_header'], smaller
+        assert not Endpoint.requests, 'Preset previews contacted a provider'
+        assert not data('decision connections list')['services'], 'Preset previews saved a connection'
         product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
         source = save_native_source(product, upstream, NATIVE_TOKEN, cli_input=True)
         source_id = product.source_id
@@ -231,7 +251,8 @@ def run(repository):
             upstream.function_tools = False
             assert_retained_budget_diagnostics()
         print(json.dumps({'scenario': 'adaptive-decision-context-real-cli-gateway', 'state': 'green',
-            'cases': ['both-codecs', 'shared-and-independent', 'save-without-provider', 'exact-readback',
+            'cases': ['installed-provider-preset-contexts-without-save-or-provider',
+                      'both-codecs', 'shared-and-independent', 'save-without-provider', 'exact-readback',
                       'test-saved-digest', 'restart', 'large-window-beyond-256KiB', 'current-input-exact',
                       'immutable-publication', 'mandatory-no-fit-zero-attempts', 'fallback-exact-input',
                       'same-turn-tool-reuse', 'no-header-on-compatible-endpoint',

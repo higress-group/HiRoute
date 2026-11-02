@@ -833,6 +833,13 @@ Native decision authoring SHALL provide Automatic and Custom context settings th
 - **WHEN** a custom setting is explicitly replaced by Automatic and saved
 - **THEN** a new revision records the then-effective automatic snapshot while already published revisions remain unchanged
 
+#### Scenario: Native provider presets resolve maintained alias limits
+
+- **WHEN** a new independent connection uses the installed TypeSafe, OpenRouter or OpenAI Decisions preset through Desktop, console or CLI
+- **THEN** TypeSafe retains `jev-latest`, OpenRouter retains `~typesafe/jev-latest`, and OpenAI retains `gpt-6-luna`; exact documented endpoint/protocol/model bindings resolve maintained automatic limits instead of the unknown-model fallback
+- **AND** the maintained TypeSafe alias policy resolves 262,144 request/question tokens with long context enabled and 64,000/32,000 with it disabled; the current OpenRouter alias budget is a source-backed 262,144-token inference, and OpenAI Decisions retains the 1,050,000-token product policy
+- **AND** rolling aliases retain their mutable identity, provenance and dated budget basis; no request model is replaced with a pinned version, no provider is probed, and existing saved connections/publications are not rewritten
+
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/319#issuecomment-6558828337
 

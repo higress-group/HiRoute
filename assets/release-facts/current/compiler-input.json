@@ -5798,7 +5798,9 @@
           "display_name": "Jev 1.14",
           "evidence_refs": [
             "source-194",
-            "source-198"
+            "source-198",
+            "source-201",
+            "source-202"
           ],
           "identity_stability": "unknown",
           "lifecycle": "active",
@@ -5822,11 +5824,13 @@
             "note": "Decision-only model; no ordinary generation or reasoning contract is inferred.",
             "profiles": []
           },
-          "source_stability_note": "Decision input constraints belong exclusively to exact endpoint bindings.",
+          "source_stability_note": "Decision input constraints belong exclusively to exact endpoint bindings. Documented rolling aliases are separate bindings; their current association is dated metadata, not an immutable served-version guarantee.",
           "upstream_id_state": null,
           "upstream_ids": [
             "jev-1.14.0",
-            "typesafe/jev-1.14"
+            "jev-latest",
+            "typesafe/jev-1.14",
+            "~typesafe/jev-latest"
           ]
         },
         {
@@ -9325,6 +9329,45 @@
         },
         {
           "availability": {
+            "condition": "OpenRouter documents this exact rolling alias for the latest Jev release. Its served version can change; account and request-shape eligibility require runtime qualification.",
+            "state": "conditional"
+          },
+          "binding_key": "openrouter-credits-byok/jev-1.14/~typesafe/jev-latest/decision",
+          "capability_overrides": {},
+          "decision_constraints": [
+            {
+              "basis": "inferred",
+              "condition": "always",
+              "constraint_key": "openrouter-credits-byok/system-one/always",
+              "evidence_refs": [
+                "source-198",
+                "source-201",
+                "source-202"
+              ],
+              "interface_key": "openrouter-credits-byok/system-one",
+              "note": "Source-backed current alias budget: OpenRouter documents the latest Jev alias and Jev 1.14 with 262,144 context; its pinned endpoint reports the same exact limit. The alias endpoint does not publish its own numeric ceiling. This is a dated inference, not measured alias capacity or a pinned served-version guarantee; no direct-provider header is inferred.",
+              "per_question_tokens": null,
+              "request_tokens": 262144
+            }
+          ],
+          "evidence_refs": [
+            "source-198",
+            "source-201",
+            "source-202"
+          ],
+          "interface_candidates": [
+            "openrouter-credits-byok/system-one"
+          ],
+          "lifecycle": "active",
+          "model_key": "jev-1.14",
+          "product_key": "openrouter-credits-byok",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "rolling-alias",
+          "upstream_model_id": "~typesafe/jev-latest"
+        },
+        {
+          "availability": {
             "condition": "documented for the product; account, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -9564,6 +9607,55 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "versioned-id",
           "upstream_model_id": "jev-1.14.0"
+        },
+        {
+          "availability": {
+            "condition": "Provider documents jev-latest as the current stable Jev alias. Its served version can change; account and request-shape eligibility require runtime qualification.",
+            "state": "conditional"
+          },
+          "binding_key": "typesafe-direct-global/jev-1.14/jev-latest/decision",
+          "capability_overrides": {},
+          "decision_constraints": [
+            {
+              "basis": "inferred",
+              "condition": "typesafe_default",
+              "constraint_key": "typesafe-direct-global/system-one/typesafe_default",
+              "evidence_refs": [
+                "source-194"
+              ],
+              "interface_key": "typesafe-direct-global/system-one",
+              "note": "Documented jev-latest currently points to jev-1.14.0; the request retains its alias. Conservative decimal normalization of documented 64k request / 32k question without the long-context header.",
+              "per_question_tokens": 32000,
+              "request_tokens": 64000
+            },
+            {
+              "basis": "inferred",
+              "condition": "typesafe_long_context",
+              "constraint_key": "typesafe-direct-global/system-one/typesafe_long_context",
+              "evidence_refs": [
+                "source-194",
+                "source-198"
+              ],
+              "interface_key": "typesafe-direct-global/system-one",
+              "note": "Documented jev-latest currently points to jev-1.14.0; the request retains its alias. HiRoute normalization of documented rounded 262k for both dimensions with the official header; corroborated by exact OpenRouter metadata, not a direct capacity measurement.",
+              "per_question_tokens": 262144,
+              "request_tokens": 262144
+            }
+          ],
+          "evidence_refs": [
+            "source-194",
+            "source-198"
+          ],
+          "interface_candidates": [
+            "typesafe-direct-global/system-one"
+          ],
+          "lifecycle": "active",
+          "model_key": "jev-1.14",
+          "product_key": "typesafe-direct-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "rolling-alias",
+          "upstream_model_id": "jev-latest"
         },
         {
           "availability": {
@@ -11614,6 +11706,24 @@
           "digest_state": "not-captured",
           "locator": "https://openrouter.ai/blog/tutorials/jev-vs-llm-when-to-use-each/",
           "source_key": "source-200",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "openrouter.ai",
+          "bytes_digest": "sha256:7f1db702a7b04945aad2f50f3fa90427ea2f8ce27ac44b3dee6322157e3c79a8",
+          "collected_on": "2026-11-02",
+          "digest_state": "captured",
+          "locator": "https://openrouter.ai/api/v1/models/~typesafe/jev-latest/endpoints",
+          "source_key": "source-201",
+          "source_kind": "provider-public-metadata"
+        },
+        {
+          "authority": "openrouter.ai",
+          "bytes_digest": null,
+          "collected_on": "2026-11-02",
+          "digest_state": "not-captured",
+          "locator": "https://openrouter.ai/blog/insights/what-is-jev/",
+          "source_key": "source-202",
           "source_kind": "provider-documentation"
         }
       ],
@@ -102310,7 +102420,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:3d4fcb242b41219362188157c8db3287e53c1d6b69af376256621009d0add878"
+      "source_catalog_digest": "sha256:437803d2fa489700c372639242cca54591f0d60dea52406d3464d4c82a98cfc6"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -104419,7 +104529,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 5,
+    "data_revision": 6,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-haiku-5-5/claude-haiku-5-5",

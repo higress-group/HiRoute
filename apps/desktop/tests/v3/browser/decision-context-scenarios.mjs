@@ -74,13 +74,11 @@ export function decisionContextScenarios({ fresh, click, until, all, text, calls
       assert(store.services[0].context.policy.window_tokens === 16000 && !('per_question_tokens' in store.services[0].context.policy), 'Repair did not preserve user intent');
       assert(!calls('test_decision_service_v3').length, 'Save-only tested the provider');
     }),
-    scenario('desktop.decisions.context-typesafe', ['decision-services'], 'TypeSafe long context follows only the exact official endpoint and preserves the smaller question cap', async () => {
+    scenario('desktop.decisions.context-typesafe', ['decision-services'], 'TypeSafe and OpenRouter presets retain exact aliases, channel windows and official-only headers', async () => {
       await fresh(() => decisionStore());
-      await independent('compatible');
-      setInput(nativeField('endpoint'), 'https://api.typesafe.ai/v1/systemone');
-      setInput(nativeField('model'), 'jev-1.14.0');
-      const codec = nativeField('wire_protocol');
-      if (codec) { codec.value = 'system_one'; codec.dispatchEvent(new Event('change', { bubbles: true })); }
+      await independent('TypeSafe');
+      assert(nativeField('model').value === 'jev-latest', 'TypeSafe preset lost its documented rolling alias');
+      assert(document.querySelector('.decision-endpoint')?.textContent === 'https://api.typesafe.ai/v1/systemone', 'TypeSafe preset changed destination');
       await until(() => setting().querySelector('input[type="checkbox"]') && setting().textContent.includes('262,144'), 'official long context');
       setting().querySelector('input[type="checkbox"]').click();
       await until(() => setting().textContent.includes('64,000') && setting().textContent.includes('32,000'), 'provider smaller windows');
@@ -88,6 +86,13 @@ export function decisionContextScenarios({ fresh, click, until, all, text, calls
       setInput(nativeField('endpoint'), 'https://api.typesafe.ai.proxy.example.test/v1/systemone');
       await until(() => !setting().querySelector('input[type="checkbox"]') && setting().textContent.includes('保守默认'), 'lookalike fallback without toggle');
       assert(!calls('save_decision_service_v3').length && !calls('test_decision_service_v3').length, 'Window preview mutated or tested');
+      await fresh(() => decisionStore());
+      await independent('OpenRouter');
+      assert(nativeField('model').value === '~typesafe/jev-latest', 'OpenRouter preset lost its exact documented alias');
+      await until(() => setting().textContent.includes('262,144'), 'OpenRouter alias context');
+      assert(!setting().querySelector('input[type="checkbox"]'), 'OpenRouter borrowed a direct-provider header');
+      assert(setting().textContent.includes('折算值'), 'Alias budget was not identified as a source-backed inference');
+      assert(!calls('save_decision_service_v3').length && !calls('test_decision_service_v3').length, 'Preset preview mutated or tested');
     }),
     scenario('desktop.decisions.context-preview-repair', ['decision-services'], 'Preview failure and stale metadata preserve drafts and require an explicit retry', async () => {
       let store, failed = true;

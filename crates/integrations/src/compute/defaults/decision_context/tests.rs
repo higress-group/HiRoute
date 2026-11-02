@@ -78,6 +78,22 @@ fn maintained_bindings_resolve_only_on_the_documented_wire_surface() {
             1050000,
             DecisionContextBasisV1::MaintainerPolicy,
         ),
+        (
+            "https://api.typesafe.ai/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "jev-latest",
+            262144,
+            262144,
+            DecisionContextBasisV1::Inferred,
+        ),
+        (
+            "https://openrouter.ai/api/alpha/decisions",
+            DecisionWireProtocolV2::SystemOne,
+            "~typesafe/jev-latest",
+            262144,
+            262144,
+            DecisionContextBasisV1::Inferred,
+        ),
     ] {
         let resolved = catalog
             .resolve_decision_context(
@@ -126,7 +142,7 @@ fn unmatched_models_aliases_codecs_and_destinations_use_fallback() {
         (
             "https://api.typesafe.ai/v1/systemone",
             DecisionWireProtocolV2::SystemOne,
-            "jev-latest",
+            "jev-unknown",
         ),
         (
             "https://api.typesafe.ai.example/v1/systemone",
@@ -162,6 +178,65 @@ fn unmatched_models_aliases_codecs_and_destinations_use_fallback() {
         assert_eq!(resolved.request_source, DecisionContextSourceV1::Fallback);
         assert!(resolved.metadata.is_none());
     }
+}
+
+#[test]
+fn installed_provider_presets_resolve_automatic_windows_without_model_substitution() {
+    let catalog = catalog();
+    let presets: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../assets/decision-services/providers.v1.json"
+    )))
+    .unwrap();
+    for (id, model, window, header) in [
+        ("typesafe", "jev-latest", 262144, true),
+        ("openrouter", "~typesafe/jev-latest", 262144, false),
+        ("openai", "gpt-6-luna", 1050000, false),
+    ] {
+        let preset = presets["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["id"] == id)
+            .unwrap();
+        assert_eq!(preset["model"], model);
+        let protocol = match preset["wire_protocol"].as_str() {
+            Some("openai_decisions") => DecisionWireProtocolV2::OpenaiDecisions,
+            None => DecisionWireProtocolV2::SystemOne,
+            other => panic!("unexpected preset protocol: {other:?}"),
+        };
+        let resolved = catalog
+            .resolve_decision_context(
+                preset["endpoint"].as_str().unwrap(),
+                protocol,
+                preset["model"].as_str().unwrap(),
+                &DecisionContextPolicyV1::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            resolved.request_source,
+            DecisionContextSourceV1::Metadata,
+            "{id}"
+        );
+        assert_eq!(resolved.request_window_tokens, window, "{id}");
+        assert_eq!(resolved.per_question_window_tokens, window, "{id}");
+        assert_eq!(resolved.typesafe_long_context_header, header, "{id}");
+    }
+    let off = catalog
+        .resolve_decision_context(
+            "https://api.typesafe.ai/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "jev-latest",
+            &DecisionContextPolicyV1 {
+                typesafe_long_context: TypeSafeLongContextV1::Disabled,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        (off.request_window_tokens, off.per_question_window_tokens),
+        (64000, 32000)
+    );
 }
 
 #[test]
