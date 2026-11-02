@@ -38,6 +38,9 @@ Explicit retention covers diagnosis and consumers that still need build artifact
 Explicit scheduled retention uses the [bounded local GC wrapper](../../scripts/local-rust-gc.py)
 and its [expiry, renewal and protected-owner regressions](../../scripts/test-local-rust-gc.py);
 the shared local runner owns deletion checks and evidence export.
+Configured SSH workbenches use the same wrapper with the [remote cleanup owner](../../scripts/remote-rust.py);
+[remote expiry regressions](../../scripts/test-remote-rust.py) protect queued borrowers,
+recent continuations, live processes and activity changes between preview and deletion.
 The SSH cleanup owner preserves original run exports while the shared exporter
 publishes independent cleanup generations; its filesystem regressions cover
 same-revision reuse, source continuation, immutable manifests and refusal exits.
