@@ -207,22 +207,23 @@ impl NativeProtocolV1 {
             std::array::from_fn(|i| stock["q1"]["criteria"][i].as_str().unwrap().into());
     }
 
-    /// Current editable default; the v1 fixed bundle and its stock fixture remain unchanged.
+    /// Current editable default; supported fixed bundles and stock fixtures remain unchanged.
     pub fn current_assessment(&self, judgment: &mut JudgmentSettingsV1) {
         self.stock_assessment(judgment);
         let guidance: Value = serde_json::from_str(include_str!(
             "../../../../assets/decision-services/default-assessment-guidance.json"
         ))
         .expect("default assessment guidance");
-        judgment.competence.instructions.push(' ');
-        judgment
-            .competence
-            .instructions
-            .push_str(guidance["feedback"].as_str().expect("feedback guidance"));
-        judgment.competence.criteria[2] = guidance["highest_criterion"]
-            .as_str()
-            .expect("highest competence criterion")
-            .into();
+        for key in ["progress", "feedback"] {
+            judgment.competence.instructions.push(' ');
+            judgment
+                .competence
+                .instructions
+                .push_str(guidance[key].as_str().expect("assessment guidance"));
+        }
+        judgment.competence.criteria =
+            ["lowest_criterion", "middle_criterion", "highest_criterion"]
+                .map(|key| guidance[key].as_str().expect("competence criterion").into());
     }
 
     pub(crate) fn is_stock_assessment(&self, judgment: &JudgmentSettingsV1) -> bool {

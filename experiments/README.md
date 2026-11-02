@@ -12,6 +12,7 @@ Chinese prompts are deliberately preserved for reproducibility.
 | [Unattended engineering](cases/unattended-engineering/README.md) | Can a native coding agent automatically upgrade at a context boundary and complete independent acceptance? | Prepare a pinned HTTPX task, then verify its implementation |
 | [Usage reconciliation](cases/usage-reconciliation/README.md) | Does built-in smart saving complete a changing data-audit workflow with less model usage? | [Completed local results and limits](results/decision-routing-20261006/README.md); independent staged verifier |
 | [Writer and reviewer](cases/writer-reviewer/README.md) | Does routing drafting to Qwen and review to GLM improve an article over either model alone? | [Completed blinded assessment](results/decision-routing-20261006/README.md); all six conditions retained |
+| [Competence progress](cases/competence-progress/README.md) | Does the editable competence default distinguish useful partial progress, essential failure and completed scoped work? | Offline request preparation; separate diagnostic labels and report-derived reconstructions |
 
 The October 6 result report includes all registered outcomes, partial runs,
 actual routing deviations and later product repairs. Its compact result record
