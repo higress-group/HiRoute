@@ -25,7 +25,7 @@ fn responses_parallel_tools_default_and_opt_out_reach_each_upstream() {
                 upstream_protocol: protocol,
                 statically_enabled: true,
             }];
-            let fixture = RuntimeFixture::launch_with_publication_candidates(
+            let mut fixture = RuntimeFixture::launch_with_publication_candidates(
                 &[&provider],
                 1,
                 Some(&candidates),
@@ -37,7 +37,8 @@ fn responses_parallel_tools_default_and_opt_out_reach_each_upstream() {
                 .unwrap()
                 .codex_parallel_tool_calls = setting;
             publication.publication_revision += 1;
-            fixture.publish(&mut publication);
+            publication.payload_digest = publication.canonical_digest().unwrap();
+            fixture.restart_with_publication(&publication);
             for requested in [true, false] {
                 let body = json!({"model":MODEL,"input":"Read two independent facts","stream":false,
                     "parallel_tool_calls":requested,"max_output_tokens":128,
