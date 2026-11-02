@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Bounded GC regressions in disposable Git worktrees; no real cache deletion."""
 import importlib.util
+import contextlib
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -314,7 +316,9 @@ class ManagedCheckoutGcTest(unittest.TestCase):
         for args in (["--older-than-hours", "47"], ["--limit", "0"],
                      ["--expire-after-hours", "0"], ["--expire-after-hours", "nan"],
                      ["--expire-after-hours", "inf"],
-                     ["--expire-after-hours", "3", "--older-than-hours", "48"]):
+                     ["--expire-after-hours", "3", "--older-than-hours", "48"],
+                     ['--backend-workbench', 'workbench'],
+                     ['--expire-after-hours', '3', '--backend-workbench', '../elsewhere']):
             with self.subTest(args=args), patch.object(gc.sys, "argv", ["gc", *args]):
                 with patch.object(gc.runner, "Store") as store:
                     with self.assertRaises(SystemExit) as error:
@@ -325,9 +329,29 @@ class ManagedCheckoutGcTest(unittest.TestCase):
     def test_cli_passes_explicit_expiry_to_bounded_sweep(self):
         with patch.object(gc.sys, "argv", ["gc", "--expire-after-hours", "3", "--limit", "10"]), \
                 patch.object(gc.runner, "Store", return_value=self.store), \
-                patch.object(gc, "sweep", return_value={}) as sweep, patch("builtins.print"):
+                patch.object(gc, "sweep", return_value={'selected': []}) as sweep, patch("builtins.print"):
             self.assertEqual(gc.main(), 0)
         self.assertEqual(sweep.call_args.args, (self.store, False, 48, 10, 3))
+
+    def test_host_sweep_delegates_configured_workbenches_with_one_attempt_budget(self):
+        for name in ('first', 'second'):
+            (self.root / name / 'runs').mkdir(parents=True)
+        replies = [dict(candidates=[{'id': 'refused'}], cleaned=[], skipped=[]),
+                   dict(candidates=[], cleaned=[], skipped=[])]
+        output = io.StringIO()
+        argv = ['gc', '--expire-after-hours', '3', '--apply', '--limit', '3',
+                '--backend-workbench', 'first', '--backend-workbench', 'second']
+        with patch.object(gc.sys, 'argv', argv), patch.object(gc.Path, 'home', return_value=self.root), \
+                patch.object(gc.runner, 'Store', return_value=self.store), \
+                patch.object(gc, 'sweep', return_value={'selected': ['local']}) as local, \
+                patch.object(gc.runner.remote, 'gc_terminal_runs', side_effect=replies) as backend, \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(gc.main(), 1)
+        self.assertEqual(local.call_args.args[-2:], (3, 3))
+        self.assertEqual([call.args for call in backend.call_args_list],
+                         [(self.root / 'first', 0, True, True, 3, 2),
+                          (self.root / 'second', 0, True, True, 3, 1)])
+        self.assertEqual(len(json.loads(output.getvalue())['backend_workbenches']), 2)
 
 
 if __name__ == "__main__":

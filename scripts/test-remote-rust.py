@@ -23,6 +23,51 @@ spec.loader.exec_module(runner)
 
 
 class Contract(unittest.TestCase):
+    def test_process_observation_does_not_require_access_to_protected_login_helpers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            proc = base / 'proc'
+            (proc / '123').mkdir(parents=True)
+            actual_path = Path
+            def locate(value):
+                return proc if value == '/proc' else actual_path(value)
+            with patch.object(runner, 'Path', side_effect=locate), \
+                    patch.object(runner.os, 'readlink', side_effect=PermissionError):
+                self.assertEqual(runner.checkout_processes(base / 'checkout'), [])
+
+    def test_gc_expiry_cli_transports_hours_and_attempt_limit(self):
+        argv = ['remote-rust', '--host', 'fixture-host', '--workbench', 'workbench',
+                'gc', '--expire-after-hours', '3', '--limit', '2', '--apply']
+        with patch.object(sys, 'argv', argv), patch.object(runner, 'command', return_value='a' * 40), \
+                patch.object(runner.subprocess, 'run') as transport:
+            runner.main()
+        payload = json.loads(transport.call_args.kwargs['input'])
+        self.assertEqual(payload['driver_args'],
+                         ['_gc', '7', 'apply', 'default', 'workbench',
+                          '--expire-after-hours', '3.0', '--limit', '2'])
+        for flags in (['--expire-after-hours', '0'], ['--expire-after-hours', 'nan'],
+                      ['--limit', '0'], ['--older-than', '7', '--expire-after-hours', '3']):
+            with self.subTest(flags=flags), patch.object(sys, 'argv', argv[:5] + ['gc'] + flags), \
+                    patch.object(runner.subprocess, 'run') as transport, patch.object(runner, 'command') as source:
+                with self.assertRaises(SystemExit):
+                    runner.main()
+                transport.assert_not_called()
+                source.assert_not_called()
+
+    def test_gc_limit_bounds_refused_attempts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for rid in ('20260905-010203-abcdef12', '20260905-010204-abcdef12'):
+                path = root / 'runs' / rid
+                path.mkdir(parents=True)
+                runner.save(path / 'result.json', dict(id=rid, status='failed',
+                    retention='on-failure', finished_at=0, worker_pid=None))
+            with patch.object(runner, 'cleanup_terminal_run', return_value={'state': 'retained'}) as cleanup:
+                report = runner.gc_terminal_runs(root, 1, True, False, limit=1)
+            self.assertEqual(len(report['candidates']), 1)
+            self.assertEqual(report['cleaned'], [])
+            self.assertEqual(cleanup.call_count, 1)
+
     def test_checkout_recovery_requires_a_known_unexecuted_setup_blocker(self):
         first = dict(retention='always')
         latest = dict(status='blocked', blocker='console_assets', process_exit=None,
@@ -1324,6 +1369,129 @@ class CleanupEvidence(unittest.TestCase):
         self.assertEqual((self.run / 'evidence.json').read_bytes(), self.original_manifest)
         self.assertEqual((self.run / 'validation-report.json').read_bytes(), self.original_report)
         self.assertEqual((self.run / 'artifacts/.rustc_info.json').read_text(), 'owner compiler metadata')
+
+    def expiry(self, apply=False, limit=None):
+        with patch.object(runner, 'checkout_processes', return_value=[]):
+            return runner.gc_terminal_runs(self.root, 7, apply, False,
+                                           expire_after_hours=3, limit=limit)
+
+    def test_expiry_preview_and_cleanup_preserve_owner_evidence_and_verdict(self):
+        before = (self.run / 'result.json').read_bytes()
+        report = self.expiry()
+        self.assertEqual([row['id'] for row in report['candidates']], [self.owner])
+        self.assertEqual((self.run / 'result.json').read_bytes(), before)
+        self.assertEqual(report['candidates'][0]['expiry']['expires_at'], 3 * 3600)
+        report = self.expiry(apply=True)
+        self.assertEqual([row['id'] for row in report['cleaned']], [self.owner])
+        self.assertFalse(self.checkout.exists())
+        self.assert_original_preserved()
+        saved = json.loads((self.run / 'result.json').read_text())
+        self.assertEqual(saved['cleanup']['expiry']['related_runs'], [self.owner])
+        runner.reporting().verify_evidence(Path(saved['cleanup']['evidence_export']['manifest']).parent,
+                                          saved['cleanup']['evidence_export'])
+
+    def test_recent_continuation_protects_an_old_owner(self):
+        self.advance()
+        path = self.root / 'runs' / self.borrower / 'result.json'
+        row = json.loads(path.read_text())
+        row['finished_at'] = time.time() - 3600
+        runner.save(path, row)
+        report = self.expiry(apply=True)
+        self.assertEqual(report['candidates'], [])
+        self.assertIn('not expired', report['skipped'][0]['reason'])
+        self.assertTrue(self.checkout.exists())
+        self.assert_original_preserved()
+
+    def test_live_borrower_worker_protects_owner_even_when_process_paths_are_unavailable(self):
+        self.advance()
+        path = self.root / 'runs' / self.borrower / 'result.json'
+        row = json.loads(path.read_text())
+        row['worker_pid'] = os.getpid()
+        runner.save(path, row)
+        report = self.expiry(apply=True)
+        self.assertEqual(report['candidates'], [])
+        self.assertIn('worker is still alive', report['skipped'][0]['reason'])
+        self.assertTrue(self.checkout.exists())
+
+    def test_queued_borrower_without_result_protects_its_owner(self):
+        run = self.root / 'runs' / self.borrower
+        run.mkdir()
+        runner.save(run / 'request.json', dict(id=self.borrower, reuse_checkout=self.owner,
+                                               submitted_at=time.time()))
+        report = self.expiry(apply=True)
+        self.assertEqual(report['candidates'], [])
+        self.assertIn('active or unknown', report['skipped'][0]['reason'])
+        self.assertTrue(self.checkout.exists())
+
+    def test_queued_result_protects_owner_when_its_request_is_corrupt(self):
+        run = self.root / 'runs' / self.borrower
+        run.mkdir()
+        runner.save(run / 'result.json', dict(id=self.borrower, status='queued',
+                                              reuse_checkout=self.owner, submitted_at=time.time()))
+        (run / 'request.json').write_text('{unfinished')
+        self.assertEqual(self.expiry(apply=True)['candidates'], [])
+        self.assertTrue(self.checkout.exists())
+
+    def test_new_request_after_preview_is_rechecked_under_the_cleanup_lease(self):
+        cleanup = runner.cleanup_terminal_run
+
+        def queued_then_cleanup(root, run_id, **options):
+            run = self.root / 'runs' / self.borrower
+            run.mkdir()
+            runner.save(run / 'request.json', dict(id=self.borrower, continue_checkout=self.owner,
+                                                   submitted_at=time.time()))
+            return cleanup(root, run_id, **options)
+
+        with patch.object(runner, 'cleanup_terminal_run', side_effect=queued_then_cleanup):
+            report = self.expiry(apply=True)
+        self.assertEqual(len(report['candidates']), 1)
+        self.assertEqual(report['cleaned'], [])
+        self.assertIn('active or unknown', report['candidates'][0]['cleanup']['checkout']['error'])
+        self.assertTrue(self.checkout.exists())
+        self.assert_original_preserved()
+
+    def test_expiry_preserves_busy_source_modified_and_live_process_checkouts(self):
+        lease = runner.checkout_lease(self.root, self.owner)
+        try:
+            self.assertEqual(self.expiry(apply=True)['cleaned'], [])
+        finally:
+            lease.close()
+        with patch.object(runner, 'checkout_processes', return_value=[123]):
+            report = runner.gc_terminal_runs(self.root, 7, True, False, expire_after_hours=3)
+            self.assertEqual(report['candidates'], [])
+        (self.checkout / '.gitignore').write_text('valuable source change')
+        report = self.expiry(apply=True)
+        self.assertEqual(report['cleaned'], [])
+        self.assertEqual((self.checkout / '.gitignore').read_text(), 'valuable source change')
+        self.assertTrue(self.checkout.exists())
+
+    def test_expiry_rejects_invalid_timestamps_and_unknown_latest_state(self):
+        path = self.run / 'result.json'
+        for changes in (dict(finished_at=None), dict(finished_at=True), dict(finished_at=float('nan'))):
+            with self.subTest(changes=changes):
+                runner.save(path, dict(self.original, **changes))
+                self.assertEqual(self.expiry(apply=True)['candidates'], [])
+                self.assertTrue(self.checkout.exists())
+        runner.save(path, self.original)
+        runner.save(self.root / ('checkout-' + self.owner + '.json'), dict(run_id=self.borrower, sha=self.sha))
+        self.assertEqual(self.expiry(apply=True)['candidates'], [])
+        self.assertTrue(self.checkout.exists())
+
+    def test_expiry_export_failure_keeps_original_resources(self):
+        (self.run / 'evidence.json').write_text('{}')
+        report = self.expiry(apply=True)
+        self.assertEqual(report['cleaned'], [])
+        self.assertTrue(self.checkout.exists())
+        self.assertTrue(self.scratch.exists())
+        self.assertEqual((self.run / 'evidence.json').read_text(), '{}')
+
+    def test_process_observation_finds_a_child_using_the_checkout(self):
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'], cwd=self.checkout)
+        try:
+            self.assertIn(child.pid, runner.checkout_processes(self.checkout))
+        finally:
+            child.terminate()
+            child.wait(timeout=5)
 
     def assert_retained(self):
         cleanup = self.cleanup(expected=1)

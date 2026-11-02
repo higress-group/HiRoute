@@ -6,6 +6,7 @@ import fcntl
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import platform
 from pathlib import Path
@@ -294,6 +295,130 @@ def worker_alive(pid):
     return True
 
 
+def checkout_processes(checkout):
+    """Find observable processes using a checkout; run/lease checks remain authoritative."""
+    checkout = str(Path(checkout).resolve())
+
+    def inside(value):
+        return value == checkout or value.startswith(checkout + os.sep)
+
+    found = set()
+    proc = Path('/proc')
+    if proc.is_dir():
+        for entry in proc.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                if entry.stat().st_uid != os.geteuid():
+                    continue
+                for name in ('cwd', 'exe'):
+                    try:
+                        if inside(os.readlink(str(entry / name))):
+                            found.add(int(entry.name))
+                    except PermissionError:
+                        # Linux hides these links for ordinary SSH/PAM session
+                        # helpers. Do not require elevated access to inspect them.
+                        # Recorded workers, queued requests and leases are checked
+                        # independently, including workers we cannot inspect.
+                        continue
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+            except PermissionError:
+                continue
+    else:
+        output = subprocess.check_output(
+            ['lsof', '-nP', '-a', '-u', str(os.geteuid()), '-d', 'cwd,txt', '-Fpn'],
+            text=True, timeout=15)
+        pid = None
+        for line in output.splitlines():
+            if line.startswith('p'):
+                pid = int(line[1:])
+            elif pid is not None and line.startswith('n') and inside(line[1:]):
+                found.add(pid)
+    return sorted(found)
+
+
+def expiry_hours(value):
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or value <= 0):
+        raise ValueError('Expiry hours must be finite and positive')
+    return value
+
+
+def retained_expiry(root, result, hours):
+    """Use the whole reuse/continuation chain, including queued requests, as activity."""
+    expiry_hours(hours)
+    owner = result['id']
+    if result.get('checkout_owner', owner) != owner:
+        raise RuntimeError('Expiry cleanup belongs to the checkout owner')
+    if 'evidence_export' not in result:
+        raise RuntimeError('Legacy run needs owner-confirmed evidence before expiry')
+    records, requests = {}, {}
+    for name, destination in (('result.json', records), ('request.json', requests)):
+        for path in (root / 'runs').glob('*/' + name):
+            try:
+                if path.is_symlink():
+                    raise ValueError('Run metadata is a link')
+                value = json.loads(path.read_text())
+                if not isinstance(value, dict) or value.get('id') != path.parent.name:
+                    raise ValueError('Invalid run identity')
+                destination[path.parent.name] = value
+            except (OSError, ValueError, TypeError):
+                destination[path.parent.name] = None
+    related = {owner}
+    related.update(key for key, row in records.items()
+                   if row and row.get('checkout_owner') == owner)
+    state_path = root / ('checkout-' + owner + '.json')
+    if os.path.lexists(state_path):
+        if state_path.is_symlink():
+            raise RuntimeError('Checkout state is a link')
+        state = json.loads(state_path.read_text())
+        latest = records.get(state['run_id'])
+        if not latest or latest.get('checkout_owner', latest['id']) != owner:
+            raise RuntimeError('Latest checkout ownership is unknown')
+        related.add(latest['id'])
+    for mapping in (records, requests):
+        for key, request in mapping.items():
+            if request is None:
+                if key in related:
+                    raise RuntimeError('Request ownership is unknown: ' + key)
+                continue
+            ref = request.get('reuse_checkout') or request.get('continue_checkout')
+            if ref:
+                previous = records.get(ref)
+                if not previous:
+                    if key in related:
+                        raise RuntimeError('Referenced checkout ownership is unknown: ' + str(ref))
+                    continue  # An unrelated invalid reference cannot acquire this checkout.
+                if previous.get('checkout_owner', ref) == owner:
+                    related.add(key)
+    activity = 0
+    for key in related:
+        row = records.get(key)
+        if not row or row.get('status') not in TERMINAL_STATUSES:
+            raise RuntimeError('Related run is active or unknown: ' + key)
+        if worker_alive(row.get('worker_pid')):
+            raise RuntimeError('Related worker is still alive: ' + key)
+        for record, required in ((row, True), (requests.get(key) or {}, False)):
+            if required and 'finished_at' not in record:
+                raise RuntimeError('Missing finish time: ' + key)
+            for field in ('submitted_at', 'queued_at', 'started_at', 'command_finished_at', 'finished_at'):
+                if field not in record:
+                    continue
+                stamp = record[field]
+                if stamp is None and field != 'finished_at':
+                    continue  # A blocked run can leave optional command times unset.
+                if (isinstance(stamp, bool) or not isinstance(stamp, (int, float))
+                        or not math.isfinite(stamp) or stamp < 0):
+                    raise RuntimeError('Invalid retention timestamp: ' + key)
+                activity = max(activity, stamp)
+    deadline = activity + hours * 3600
+    if not math.isfinite(deadline):
+        raise RuntimeError('Invalid expiry deadline')
+    return dict(expire_after_hours=hours, last_activity_at=activity,
+                expires_at=deadline, related_runs=sorted(related))
+
+
 def worktree_paths(repo):
     output = command(["git", "--git-dir", str(repo), "worktree", "list", "--porcelain"])
     return {Path(line[9:]).resolve() for line in output.splitlines() if line.startswith("worktree ")}
@@ -502,7 +627,7 @@ def cleanup_capture(root, result, checkout):
     return capture
 
 
-def cleanup_checkout(root, result, current_worker=False):
+def cleanup_checkout(root, result, current_worker=False, expire_after_hours=None):
     """Remove one terminal, generated checkout without ever accepting an arbitrary path."""
     checkout_text = result.get("checkout")
     if not checkout_text:
@@ -515,6 +640,7 @@ def cleanup_checkout(root, result, current_worker=False):
     except RunBlocked as error:
         return {"state": "retained", "path": str(checkout), "error": str(error)}
     evidence_export = None
+    expiry = None
     try:
         repo = root / "repository.git"
         if not checkout.exists():
@@ -528,6 +654,15 @@ def cleanup_checkout(root, result, current_worker=False):
             raise RuntimeError("checkout is not this run's managed direct child")
         if resolved not in worktree_paths(repo):
             raise RuntimeError("checkout is not registered by the managed bare repository")
+        if expire_after_hours is not None:
+            # Re-read activity under the same lease that protects evidence export
+            # and deletion. A recent borrower must invalidate an earlier preview.
+            expiry = retained_expiry(root, result, expire_after_hours)
+            if expiry['expires_at'] > time.time():
+                raise RuntimeError('Checkout retention has not expired')
+            processes = checkout_processes(resolved)
+            if processes:
+                raise RuntimeError('Checkout is in use by processes: ' + ','.join(map(str, processes)))
         if "evidence_export" in result:
             try:
                 verify_disposable_source(resolved)
@@ -556,7 +691,8 @@ def cleanup_checkout(root, result, current_worker=False):
         return {"state": "removed", "path": str(resolved),
                 "method": "git-worktree-remove-force" if status else "git-worktree-remove",
                 "untracked_or_modified": status,
-                **({"evidence_export": evidence_export} if evidence_export else {})}
+                **({"evidence_export": evidence_export} if evidence_export else {}),
+                **({'expiry': expiry} if expiry else {})}
     except Exception as error:
         return {"state": "retained", "path": str(checkout), "error": str(error),
                 **({"evidence_export": evidence_export} if evidence_export else {})}
@@ -580,7 +716,7 @@ def cleanup_validation_ref(root, run_id, checkout_state):
         return {"state": "retained", "ref": ref, "error": str(error)}
 
 
-def cleanup_terminal_run(root, run_id, current_worker=False):
+def cleanup_terminal_run(root, run_id, current_worker=False, expire_after_hours=None):
     """Persist cleanup facts while retaining all run logs and result evidence."""
     validate_run_id(run_id)
     result_path = root / "runs" / run_id / "result.json"
@@ -593,11 +729,13 @@ def cleanup_terminal_run(root, run_id, current_worker=False):
         raise RuntimeError("Run worker is still alive; refusing cleanup")
     # Worktree removal and ref deletion serialize with fetch/worktree-add operations.
     with lock(root / "repository.lock"):
-        checkout = cleanup_checkout(root, result, current_worker=current_worker)
+        checkout = cleanup_checkout(root, result, current_worker=current_worker,
+                                    expire_after_hours=expire_after_hours)
         validation_ref = cleanup_validation_ref(root, run_id,
             "removed" if result.get("checkout_owner") and result["checkout_owner"] != run_id else checkout["state"])
     borrowed = bool(result.get("checkout_owner") and result["checkout_owner"] != run_id)
     evidence_export = checkout.pop("evidence_export", None)
+    expiry = checkout.pop('expiry', None)
     export_failed = (result.get("evidence_export", {}).get("state") == "failed"
                      and (evidence_export or {}).get("state") != "saved")
     temporary = ({"state": "retained", "reason": "Owner checkout cleanup was refused"}
@@ -617,6 +755,8 @@ def cleanup_terminal_run(root, run_id, current_worker=False):
     }
     if evidence_export:
         result["cleanup"]["evidence_export"] = evidence_export
+    if expiry:
+        result['cleanup']['expiry'] = expiry
     save(result_path, result)
     return result["cleanup"]
 
@@ -637,10 +777,14 @@ def retain_cleanup_facts(result, reason):
     }
 
 
-def gc_terminal_runs(root, older_than_days, apply, include_retained):
+def gc_terminal_runs(root, older_than_days, apply, include_retained, expire_after_hours=None, limit=None):
     """Clean aged terminal runs only; never infer that a live or unknown run is safe."""
     if older_than_days < 0:
         raise ValueError("GC retention age must be non-negative")
+    if expire_after_hours is not None:
+        expiry_hours(expire_after_hours)
+    if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 1):
+        raise ValueError('GC limit must be a positive integer')
     cutoff = time.time() - older_than_days * 24 * 60 * 60
     candidates, skipped, cleaned = [], [], []
     for result_path in sorted((root / "runs").glob("*/result.json")):
@@ -651,31 +795,53 @@ def gc_terminal_runs(root, older_than_days, apply, include_retained):
         except Exception as error:
             skipped.append({"path": str(result_path), "reason": "invalid result: " + str(error)})
             continue
+        if expire_after_hours is not None and not (root / 'worktrees' / run_id).exists():
+            continue
         if result.get("status") not in TERMINAL_STATUSES:
             skipped.append({"id": run_id, "reason": "run is not terminal"})
             continue
-        if result.get("finished_at", float("inf")) > cutoff:
+        if expire_after_hours is None and result.get("finished_at", float("inf")) > cutoff:
             skipped.append({"id": run_id, "reason": "younger than retention age"})
             continue
-        if result.get("retention", "always") == "always" and not include_retained:
+        if (expire_after_hours is None and result.get("retention", "always") == "always"
+                and not include_retained):
             skipped.append({"id": run_id, "reason": "explicitly retained"})
             continue
         if worker_alive(result.get("worker_pid")):
             skipped.append({"id": run_id, "reason": "recorded worker PID is alive"})
             continue
+        expiry = None
+        if expire_after_hours is not None:
+            try:
+                expiry = retained_expiry(root, result, expire_after_hours)
+                if expiry['expires_at'] > time.time():
+                    raise RuntimeError('Checkout retention has not expired')
+                if checkout_processes(root / 'worktrees' / run_id):
+                    raise RuntimeError('Checkout has live processes')
+            except (OSError, ValueError, TypeError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+                skipped.append(dict(id=run_id, reason=str(error)))
+                continue
         candidate = {"id": run_id, "status": result["status"],
-                     "retention": result.get("retention", "always")}
+                     "retention": result.get("retention", "always"),
+                     **({'expiry': expiry} if expiry else {})}
         candidates.append(candidate)
         if apply:
             try:
-                candidate["cleanup"] = cleanup_terminal_run(root, run_id)
+                if expire_after_hours is None:
+                    candidate['cleanup'] = cleanup_terminal_run(root, run_id)
+                else:
+                    candidate['cleanup'] = cleanup_terminal_run(root, run_id,
+                                                               expire_after_hours=expire_after_hours)
                 if candidate["cleanup"]["state"] == "removed":
                     cleaned.append(candidate)
             except Exception as error:
                 candidate["error"] = str(error)
-    return {"apply": apply, "older_than_days": older_than_days,
+        if limit is not None and len(candidates) >= limit:
+            break
+    return {"apply": apply, "older_than_days": older_than_days if expire_after_hours is None else None,
             "candidates": candidates, "cleaned": cleaned, "skipped": skipped,
-            "run_logs_preserved": True}
+            "run_logs_preserved": True,
+            **({'expire_after_hours': expire_after_hours} if expire_after_hours is not None else {})}
 
 
 def test_summary(log, cargo):
@@ -1030,10 +1196,19 @@ def main():
         if cleanup["state"] != "removed":
             raise SystemExit(1)
         return
-    if len(sys.argv) in (5, 6) and sys.argv[1] == "_gc":
-        root = Path.home() / workbench_path(sys.argv[5] if len(sys.argv) == 6 else ROOT)
-        collected = gc_terminal_runs(root, int(sys.argv[2]),
-                                     sys.argv[3] == "apply", sys.argv[4] == "include-retained")
+    if len(sys.argv) > 1 and sys.argv[1] == "_gc":
+        maintenance = argparse.ArgumentParser()
+        maintenance.add_argument('days', type=int)
+        maintenance.add_argument('mode', choices=('apply', 'preview'))
+        maintenance.add_argument('retention', choices=('include-retained', 'default'))
+        maintenance.add_argument('workbench', nargs='?', default=ROOT, type=workbench_path)
+        maintenance.add_argument('--expire-after-hours', type=float)
+        maintenance.add_argument('--limit', type=int)
+        options = maintenance.parse_args(sys.argv[2:])
+        root = Path.home() / options.workbench
+        collected = gc_terminal_runs(root, options.days, options.mode == 'apply',
+                                     options.retention == 'include-retained',
+                                     options.expire_after_hours, options.limit)
         print(json.dumps(collected, indent=2, ensure_ascii=False))
         if collected["apply"] and len(collected["cleaned"]) != len(collected["candidates"]):
             raise SystemExit(1)
@@ -1067,7 +1242,11 @@ def main():
     cleanup = sub.add_parser("cleanup", help="Safely reclaim one completed validation run while retaining its logs")
     cleanup.add_argument("id")
     gc = sub.add_parser("gc", help="List or reclaim aged terminal validation worktrees; dry-run by default")
-    gc.add_argument("--older-than", type=int, default=7, metavar="DAYS")
+    age = gc.add_mutually_exclusive_group()
+    age.add_argument("--older-than", type=int, metavar="DAYS")
+    age.add_argument('--expire-after-hours', type=float,
+                     help='Expire retained owners after the last reuse/continuation activity')
+    gc.add_argument('--limit', type=int, help='Maximum checkout cleanup attempts')
     gc.add_argument("--apply", action="store_true", help="Perform cleanup; omit for a read-only preview")
     gc.add_argument("--include-retained", action="store_true",
                     help="Also select runs submitted with --retention always")
@@ -1149,10 +1328,22 @@ def main():
                 parser.error(str(error))
             driver_args = ["_cleanup", args.id, workbench]
         else:
-            if args.older_than < 0:
+            days = 7 if args.older_than is None else args.older_than
+            if days < 0:
                 parser.error("--older-than must be non-negative")
-            driver_args = ["_gc", str(args.older_than), "apply" if args.apply else "preview",
+            if args.expire_after_hours is not None:
+                try:
+                    expiry_hours(args.expire_after_hours)
+                except ValueError as error:
+                    parser.error(str(error))
+            if args.limit is not None and args.limit < 1:
+                parser.error('--limit must be positive')
+            driver_args = ["_gc", str(days), "apply" if args.apply else "preview",
                            "include-retained" if args.include_retained else "default", workbench]
+            if args.expire_after_hours is not None:
+                driver_args += ['--expire-after-hours', str(args.expire_after_hours)]
+            if args.limit is not None:
+                driver_args += ['--limit', str(args.limit)]
         executor_sha = command(["git", "rev-parse", "HEAD"])
         source = command(["git", "show", executor_sha + ":scripts/remote-rust.py"]) + "\n"
         payload = dict(mode="maintenance", workbench=workbench, driver_args=driver_args, executor_sha=executor_sha,

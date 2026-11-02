@@ -257,6 +257,45 @@ python3 scripts/remote-rust.py gc --older-than 7 --apply
 python3 scripts/remote-rust.py gc --older-than 7 --apply --include-retained
 ```
 
+For an explicitly requested retention window, use hours instead of the ordinary
+age-based policy:
+
+```sh
+python3 scripts/remote-rust.py gc --expire-after-hours 3 --limit 10
+python3 scripts/remote-rust.py gc --expire-after-hours 3 --limit 10 --apply
+```
+
+Timed expiry includes `always` retention. Its deadline follows the most recent
+activity in the owner's complete reuse/continuation chain, including submitted
+requests. A queued or unknown borrower, live worker, observable process using the
+checkout, or busy checkout lease retains the owner. Completion time of the first
+run alone cannot expire a recently reused checkout. The controller rechecks the
+latest activity under the deletion lease before exporting evidence and removing
+the checkout. Source changes and failed or altered evidence exports still retain
+the originals; neither expiry nor cleanup rewrites a test verdict. Legacy records
+without export metadata need explicit owner cleanup. `--limit` bounds attempted
+checkout removals, including refused attempts. Ordinary day-based GC retains its
+existing policy and `--include-retained` behavior.
+
+On the execution host, the bounded local wrapper can service both local-runner
+records and explicitly configured SSH workbenches from one user timer:
+
+```sh
+python3 scripts/local-rust-gc.py --expire-after-hours 3 --limit 10 --apply \
+  --backend-workbench .local/share/hiroute-rust-github \
+  --backend-workbench .local/share/hiroute-rust
+```
+
+These are HOME-relative execution-host paths, with the same validation as the SSH
+runner. Select the actual current workbench from personal configuration and add an
+older workbench only while it still owns retained runs. The wrapper shares one
+attempt budget across stores and delegates deletion to their existing owners. It
+continues other stores after a refusal and returns nonzero for failed backend
+cleanup attempts. Install matching tested runner/exporter files together; keep the
+user's systemd unit, paths and logs in HOME. A user-requested timer may run every
+ten minutes. It does not collect arbitrary temporary directories, source worktrees
+or shared sccache objects.
+
 Cleanup also removes that run's ephemeral `refs/validation/RUN_ID` reference after its
 checkout is safely gone. It does not automatically run repository-wide `git gc`: that
 operation affects the shared bare repository and must be scheduled separately when no
