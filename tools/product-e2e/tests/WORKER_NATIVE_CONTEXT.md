@@ -54,6 +54,17 @@ The selected command is:
 cargo test --locked -p hiroute-product-e2e --test worker_native_context -- --ignored --nocapture --test-threads=1
 ```
 
+For a Claude-only capability regression, select the Claude binary, its ACP adapter
+and Node using the same variables and exact candidate, then run:
+
+```sh
+cargo test --locked -p hiroute-product-e2e --test claude_delegation claude_worker_capability_admission_preserves_native_skills_and_exact_continue -- --exact --ignored --nocapture --test-threads=1
+```
+
+This executes the same core assertions for Claude, including conflicting provider
+settings, native tools and exact Continue after daemon restart. It does not stand
+in for the separate boundary cases or another client's native acceptance.
+
 The runner builds the current checkout's CLI/daemon and executes both Harnesses.
 For a previously attested exact-candidate build, the Python entry can be called
 with `REPO FULL_SHA`; `HIROUTE_VALIDATION_PRODUCT_BIN_DIR` selects that build's
