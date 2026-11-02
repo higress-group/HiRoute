@@ -101,6 +101,7 @@ impl DelegationTaskPort for Tasks {
         Ok(hiroute_application_api::DelegationWaitV1 {
             schema: "hiroute.delegation-wait/v1".into(),
             run,
+            changed: true,
             timed_out: false,
         })
     }
