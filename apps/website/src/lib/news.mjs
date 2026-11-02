@@ -26,6 +26,12 @@ export function articleLink(href) {
   return href;
 }
 
+// Images shared with the READMEs are published under /decision-assets/; links keep pointing to GitHub.
+export function articleImage(href) {
+  if (href.startsWith('../decision-extensions/assets/')) return '/decision-assets/' + href.slice('../decision-extensions/assets/'.length);
+  return articleLink(href);
+}
+
 export async function renderNews(slug, language) {
   const post = posts.find(p => p.slug === slug);
   if (!post || !['zh', 'en'].includes(language)) throw Error('unknown article or language');
@@ -34,6 +40,6 @@ export async function renderNews(slug, language) {
   source = source.slice(source.indexOf('\n') + 1);
   const renderer = new marked.Renderer();
   renderer.link = function(token) { return marked.Renderer.prototype.link.call(this, { ...token, href: articleLink(token.href) }); };
-  renderer.image = function(token) { return marked.Renderer.prototype.image.call(this, { ...token, href: articleLink(token.href) }); };
+  renderer.image = function(token) { return marked.Renderer.prototype.image.call(this, { ...token, href: articleImage(token.href) }); };
   return marked.parse(source, { gfm: true, renderer });
 }
