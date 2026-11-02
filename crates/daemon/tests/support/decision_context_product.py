@@ -153,14 +153,14 @@ def run(repository):
                 ('openai', 'gpt-6-luna', 1050000, False)]:
             preset = data(f'decision connections options --provider {provider}')['selected_provider']
             assert preset['model'] == model, preset
-            request = {name: preset[name] for name in ('endpoint', 'model', 'wire_protocol')}
-            request['policy'] = {'mode': 'automatic', 'typesafe_long_context': 'automatic'}
-            resolved = data('decision context preview', request)
+            preview_request = {name: preset[name] for name in ('endpoint', 'model', 'wire_protocol')}
+            preview_request['policy'] = {'mode': 'automatic', 'typesafe_long_context': 'automatic'}
+            resolved = data('decision context preview', preview_request)
             assert resolved['request_window_tokens'] == window and resolved['per_question_window_tokens'] == window, resolved
             assert resolved['request_source'] == 'metadata' and resolved['typesafe_long_context_header'] == header, resolved
             if provider == 'typesafe':
-                request['policy']['typesafe_long_context'] = 'disabled'
-                smaller = data('decision context preview', request)
+                preview_request['policy']['typesafe_long_context'] = 'disabled'
+                smaller = data('decision context preview', preview_request)
                 assert (smaller['request_window_tokens'], smaller['per_question_window_tokens']) == (64000, 32000), smaller
                 assert not smaller['typesafe_long_context_header'], smaller
         assert not Endpoint.requests, 'Preset previews contacted a provider'
