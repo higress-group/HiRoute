@@ -456,6 +456,7 @@ impl ControlStore {
                 "control.capability.binding",
             ));
         }
+        decision_services_v2::admit(&transaction, operation)?;
         let claimed = transaction
             .execute(
                 "INSERT INTO writer_claim(singleton, operation_id, admitted_at)

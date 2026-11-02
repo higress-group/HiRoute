@@ -1037,6 +1037,12 @@ impl TransactionError {
             };
         }
         match self {
+            Self::Port(error)
+                if error.code == hiroute_domain::PortErrorCode::Conflict
+                    && error.context == "decision_service.in_use" =>
+            {
+                ErrorCode::RevisionConflict
+            }
             Self::Port(error) | Self::Preparation(ChangePreparationError::Port(error))
                 if error.code == hiroute_domain::PortErrorCode::Conflict
                     && error.context == "qoder.model.budget.shrink" =>

@@ -84,11 +84,16 @@ def run(repository):
 
     def delete_connection(id, key, referenced=False):
         preview = data(f'decision connections apply --id {id} --delete')
-        _, result = product.public_cli('decision connections apply', {'schema_version': V1,
+        code, result = product.public_cli('decision connections apply', {'schema_version': V1,
             'spec': preview['normalized_spec'], 'accept_digest': preview['change_digest'],
             'expected_revisions': preview['expected_revisions'], 'idempotency_key': key}, success=False)
-        # The existing journal reports a refused Control activation as needs_attention.
-        assert result.get('data', {}).get('state') == ('needs_attention' if referenced else 'succeeded'), result
+        if referenced:
+            assert code == 3, result
+            assert result.get('status') == 'conflict' and result.get('error', {}).get('code') == 'REVISION_CONFLICT', result
+            assert 'operation' not in result and 'data' not in result, 'in-use deletion was accepted before refusal'
+        else:
+            assert code == 0, result
+            assert result.get('data', {}).get('state') == 'succeeded', result
 
     def publish(service, key):
         editor = copy.deepcopy(product.editor)

@@ -57,6 +57,17 @@ fn check_service(
     Ok(())
 }
 
+/// Refuse referenced deletions before accepting a journal or rebinding shared Secrets.
+/// The same writer transaction fences Plan/draft writes; stage/activation still recheck.
+pub(super) fn admit(connection: &Connection, operation: &OperationV1) -> PortResult<()> {
+    if let Some(decision) = parse_control(operation.plan.control())?
+        && decision.input.change.service.is_none()
+    {
+        check_service(connection, &operation.workspace_id, &decision)?;
+    }
+    Ok(())
+}
+
 fn check_sources(
     connection: &Connection,
     workspace: &WorkspaceId,
