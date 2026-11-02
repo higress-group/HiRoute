@@ -147,9 +147,10 @@ impl ApplicationService {
             "CancelOperation" => self.cancel_operation(request),
             "CheckAgentConnection" => self.check_agent(request),
             "TestClassifierDecision" => self.test_classifier_decision(request),
-            "ListDecisionConnectionSourcesV1" | "ListDecisionServicesV2" => {
-                self.list_decision_v2(request)
-            }
+            "ListDecisionConnectionSourcesV1"
+            | "ListDecisionServicesV2"
+            | "ListDecisionServicesV3" => self.list_decision_v2(request),
+            "PreviewDecisionContextV1" => self.preview_decision_context(request),
             "TestDecisionServiceV2" | "TestDecisionServiceV3" => self.test_decision_v2(request),
             "ListDecisionServices" => {
                 if serde_json::from_value::<hiroute_application_api::ClientEmptyRequestV1>(
@@ -185,10 +186,9 @@ impl ApplicationService {
                 self.apply_change(request, "decision.services.apply")
             }
             "ApplyDecisionService" => self.preview_change(request, "decision.services.apply"),
-            "ApplyDecisionServiceV2" if request.payload.get("accept_digest").is_some() => {
-                self.apply_change(request, "decision.connections.apply")
+            "ApplyDecisionServiceV2" | "ApplyDecisionServiceV3" => {
+                self.apply_decision_connection(request)
             }
-            "ApplyDecisionServiceV2" => self.preview_change(request, "decision.connections.apply"),
             "ScanAgents" | "ListAgents" => self.list_agents(request),
             "PreviewAgentConnectionChange" => {
                 control_plane::dispatch_preview_agent_connection(self, request)

@@ -31,6 +31,60 @@ pub struct DecisionServiceSaveInputV2 {
     pub secret: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionServiceSaveInputV3 {
+    pub change: hiroute_domain::DecisionServiceChangeV3,
+    pub secret: Option<String>,
+}
+
+pub async fn decision_services_v3(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+) -> Result<hiroute_application_api::DecisionServicesV3, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .decision_services_v3()
+        .await
+}
+
+pub async fn preview_decision_context(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: hiroute_application_api::DecisionContextPreviewRequestV1,
+) -> Result<hiroute_domain::ResolvedDecisionContextV1, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .preview_decision_context(input)
+        .await
+}
+
+pub async fn save_decision_service_v3(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: DecisionServiceSaveInputV3,
+) -> Result<ApplyResultV1, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_mut()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .save_decision_service_v3(input.change, input.secret.map(zeroize::Zeroizing::new))
+        .await
+}
+
 pub async fn decision_connection_sources(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,

@@ -580,7 +580,7 @@ pub async fn dispatch(
             let value = worker_task_continue(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
-        "decision_connection_sources" | "decision_services_v2" => {
+        "decision_connection_sources" | "decision_services_v2" | "decision_services_v3" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
             struct Arguments {}
@@ -588,6 +588,9 @@ pub async fn dispatch(
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
             if name == "decision_connection_sources" {
                 serde_json::to_value(decision_connection_sources(window, state).await?)
+                    .map_err(|_| "RESPONSE_DATA_INVALID".into())
+            } else if name == "decision_services_v3" {
+                serde_json::to_value(decision_services_v3(window, state).await?)
                     .map_err(|_| "RESPONSE_DATA_INVALID".into())
             } else {
                 serde_json::to_value(decision_services_v2(window, state).await?)
@@ -603,6 +606,28 @@ pub async fn dispatch(
             let input: Arguments = serde_json::from_value(args)
                 .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
             serde_json::to_value(save_decision_service_v2(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "save_decision_service_v3" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {
+                input: DecisionServiceSaveInputV3,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(save_decision_service_v3(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "preview_decision_context" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {
+                input: DecisionContextPreviewRequestV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(preview_decision_context(window, state, input.input).await?)
                 .map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
         "test_decision_service_v2" => {

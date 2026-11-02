@@ -27,7 +27,7 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .unwrap();
-    if kind == DatabaseKind::Control && matches!(version, 34..=37) {
+    if kind == DatabaseKind::Control && matches!(version, 34..=38) {
         crate::control::agent_locator::validate_coverage(&transaction).unwrap();
     }
     transaction
@@ -49,6 +49,9 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     }
     if kind == DatabaseKind::Control && version == 37 {
         key_budgets_v37::initialize(&transaction).unwrap();
+    }
+    if kind == DatabaseKind::Control && version == 38 {
+        decision_sources_v34::refresh_locator(&transaction).unwrap();
     }
     transaction
         .pragma_update(None, "user_version", version)
@@ -77,7 +80,7 @@ fn assert_latest_and_preserved(root: &Path, key: &[u8]) {
 #[test]
 fn upgrade_progress_tracks_real_conversion_and_is_silent_after_completion() {
     use hiroute_host_runtime::StorageUpgradePhase::*;
-    for target in [24, 36, LATEST_SCHEMA_VERSION] {
+    for target in [24, 36, 37, LATEST_SCHEMA_VERSION] {
         let directory = crate::test_tempdir().unwrap();
         let root = directory.path().join("storage");
         source_batch(&root, target);
@@ -221,7 +224,7 @@ fn missing_original_backup_for_old_mixed_versions_refuses_without_adopting_data(
 
 #[test]
 fn prior_target_batch_finishes_and_archives_before_a_new_current_batch() {
-    for target in [24, 25, 32, 33, 34, 35] {
+    for target in [24, 25, 32, 33, 34, 35, 37] {
         for persist_phase in [false, true] {
             let directory = crate::test_tempdir().unwrap();
             let root = directory.path().join("storage");

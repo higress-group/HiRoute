@@ -35,8 +35,19 @@ impl DecisionCredentialBindingV1 {
     pub fn for_service(
         service: &crate::DecisionServiceV2,
     ) -> Result<Option<Self>, NativeCredentialContractErrorV1> {
-        use crate::{DecisionAuthenticationV2, DecisionConnectionV2};
         if !service.validate() {
+            return Err(NativeCredentialContractErrorV1::InvalidRequest);
+        }
+        Self::for_connection(&service.id, service.revision, &service.connection)
+    }
+
+    pub fn for_connection(
+        service_id: &str,
+        service_revision: u64,
+        connection: &crate::DecisionConnectionV2,
+    ) -> Result<Option<Self>, NativeCredentialContractErrorV1> {
+        use crate::{DecisionAuthenticationV2, DecisionConnectionV2};
+        if !connection.validate() || service_id.is_empty() || service_revision == 0 {
             return Err(NativeCredentialContractErrorV1::InvalidRequest);
         }
         let DecisionConnectionV2::Native {
@@ -49,7 +60,7 @@ impl DecisionCredentialBindingV1 {
                     source_lineage_digest,
                 },
             ..
-        } = &service.connection
+        } = connection
         else {
             return Ok(None);
         };
@@ -60,16 +71,16 @@ impl DecisionCredentialBindingV1 {
             .consumer(
                 source_id,
                 source_lineage_digest,
-                &service.id,
-                service.revision,
+                service_id,
+                service_revision,
                 model,
             )
             .map_err(|_| invalid())?;
         let binding = Self {
             source_id: source_id.clone(),
             source_lineage_digest: source_lineage_digest.clone(),
-            service_id: service.id.clone(),
-            service_revision: service.revision,
+            service_id: service_id.into(),
+            service_revision,
             consumer_binding_id: consumer.consumer_binding_id,
             model: model.clone(),
             endpoint: target.endpoint,

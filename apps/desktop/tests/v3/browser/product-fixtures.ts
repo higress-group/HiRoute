@@ -1,4 +1,5 @@
 import { resolveAssessment } from '../../../src/features/decision-services/native-protocol.ts';
+import { fixtureDecisionContext, fixtureDecisionRoute } from './decision-context-fixture';
 import { trialAgentRead } from './trial-agent-fixture';
 import { agentHomeRead } from './agent-home-fixture';
 import { defaultJudgment } from '../../../src/features/decision-services/types';
@@ -546,7 +547,9 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
   fixtureTrace.commands.push(command);
   fixtureTrace.requests.push({ command, payload: structuredClone(payload) });
   const fresh = scenario === 'fresh';
-  if (command === 'decision_services_v2') return { services: [] };
+  if (command === 'decision_services_v3') return { schema: 'hiroute.decision-services/v3', services: [] };
+  if (command === 'preview_decision_context') return fixtureDecisionContext(payload!.input);
+  if (command === 'preview_native_network_route' && payload?.input?.target?.kind === 'decision') return fixtureDecisionRoute('https://decision.example.test');
   if (command === 'decision_connection_sources') return { sources: [] };
   if (command === 'compute_management_snapshot') return fresh ? { ...readyManagement, sources: [] } : readyManagement;
   if (command === 'compute_key_masks') {

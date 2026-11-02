@@ -34,6 +34,7 @@ mod completed_batches;
 mod compute_v8;
 mod convergence_v15;
 mod convergence_v17;
+mod decision_references_v38;
 mod decision_services_v28;
 pub(crate) mod decision_sources_v34;
 mod delegation_native_lifecycle_v21;
@@ -65,7 +66,7 @@ mod convergence_tests;
 /// Current stable storage format, including native ACP Worker dependency selections.
 /// Production source admission is defined in `startup_format`; supported upgrades retain the
 /// existing durable three-store backup and recovery coordinator.
-pub const LATEST_SCHEMA_VERSION: u32 = 37;
+pub const LATEST_SCHEMA_VERSION: u32 = 38;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DatabaseKind {
@@ -310,7 +311,7 @@ fn migrate(
 
     for version in (current + 1)..=target {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if kind == DatabaseKind::Control && matches!(version, 34..=37) {
+        if kind == DatabaseKind::Control && matches!(version, 34..=38) {
             // Validate coverage before the known additive DDL changes its cookie.
             crate::control::agent_locator::validate_coverage(&transaction)
                 .map_err(|_| LocalStorageError::InvalidData)?;
@@ -343,6 +344,9 @@ fn migrate(
         }
         if kind == DatabaseKind::Control && version == 37 {
             key_budgets_v37::initialize(&transaction)?;
+        }
+        if kind == DatabaseKind::Control && version == 38 {
+            decision_sources_v34::refresh_locator(&transaction)?;
         }
         if kind == DatabaseKind::Secrets && version == 15 {
             convergence_v15::ensure_collaboration_preparation_column(&transaction)?;
@@ -550,7 +554,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | 31 | 32 | 33 | 34 | 35 | 36 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | LATEST_SCHEMA_VERSION
         ) || (set.target_schema_version() == 24
             && [
                 set.control.manifest(),
@@ -596,7 +600,12 @@ impl MigrationSetCoordinator {
             let source = set.control.manifest().schema_version;
             matches!(
                 (source, set.target_schema_version()),
-                (32, 33..=37) | (33, 34..=37) | (34, 35..=37) | (35, 36..=37) | (36, 37)
+                (32, 33..=38)
+                    | (33, 34..=38)
+                    | (34, 35..=38)
+                    | (35, 36..=38)
+                    | (36, 37..=38)
+                    | (37, 38)
             ) && [
                 set.control.manifest(),
                 set.runtime.manifest(),
@@ -994,7 +1003,8 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Control, 35) => Ok(source_network_v35::CONTROL),
         (DatabaseKind::Control, 36) => Ok(subscription_api_v36::CONTROL),
         (DatabaseKind::Control, 37) => Ok(key_budgets_v37::CONTROL),
-        (DatabaseKind::Runtime | DatabaseKind::Secrets, 35..=37) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 38) => Ok(decision_references_v38::CONTROL),
+        (DatabaseKind::Runtime | DatabaseKind::Secrets, 35..=38) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
 }

@@ -299,6 +299,8 @@ pub struct MetadataEndpointBindingV1 {
     pub protocol_qualification: String,
     #[serde(default)]
     pub capability_overrides: MetadataBindingCapabilityOverridesV1,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decision_constraints: Vec<super::MetadataDecisionConstraintV1>,
     pub evidence_refs: Vec<String>,
 }
 
@@ -489,6 +491,11 @@ impl ModelMetadataCatalogV1 {
                 || !valid_optional_text(&binding.replaced_by_upstream_id, 512)
                 || binding.capability_overrides.context_tokens == Some(0)
                 || binding.capability_overrides.max_output_tokens == Some(0)
+                || !super::decision_metadata::valid_decision_constraints(
+                    &binding.decision_constraints,
+                    &binding.interface_candidates,
+                    &evidence,
+                )
                 || !refs_exist(&binding.evidence_refs, &evidence)
             {
                 return Err(ComputeContractError::CrossReference);

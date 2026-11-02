@@ -184,6 +184,7 @@ fn valid_text(value: &str, max: usize) -> bool {
 pub enum DecisionServiceRecord {
     V1(DecisionServiceV1),
     V2(DecisionServiceV2),
+    V3(super::DecisionServiceV3),
 }
 
 impl DecisionServiceRecord {
@@ -191,6 +192,7 @@ impl DecisionServiceRecord {
         match self {
             Self::V1(service) => &service.id,
             Self::V2(service) => &service.id,
+            Self::V3(service) => &service.id,
         }
     }
 
@@ -198,6 +200,7 @@ impl DecisionServiceRecord {
         match self {
             Self::V1(service) => service.revision,
             Self::V2(service) => service.revision,
+            Self::V3(service) => service.revision,
         }
     }
 
@@ -205,6 +208,7 @@ impl DecisionServiceRecord {
         match self {
             Self::V1(service) => service.validate(),
             Self::V2(service) => service.validate(),
+            Self::V3(service) => service.validate(),
         }
     }
 
@@ -212,6 +216,7 @@ impl DecisionServiceRecord {
         match self {
             Self::V1(service) => service.connection.transport().2,
             Self::V2(service) => service.connection.transport().2,
+            Self::V3(service) => service.connection.transport().2,
         }
     }
 }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-decision-service-v3"
+description = "Enables the save_decision_service_v3 command without any pre-configured scope."
+commands.allow = ["save_decision_service_v3"]
+
+[[permission]]
+identifier = "deny-save-decision-service-v3"
+description = "Denies the save_decision_service_v3 command without any pre-configured scope."
+commands.deny = ["save_decision_service_v3"]

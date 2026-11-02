@@ -73,6 +73,24 @@
     "host_only": false
   },
   {
+    "name": "decision_services_v3",
+    "args": [],
+    "result": "Result<hiroute_application_api::DecisionServicesV3, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "preview_decision_context",
+    "args": [{ "name": "input", "type": "hiroute_application_api::DecisionContextPreviewRequestV1" }],
+    "result": "Result<hiroute_domain::ResolvedDecisionContextV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "save_decision_service_v3",
+    "args": [{ "name": "input", "type": "DecisionServiceSaveInputV3" }],
+    "result": "Result<ApplyResultV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
     "name": "test_decision_service_v2",
     "args": [
       {

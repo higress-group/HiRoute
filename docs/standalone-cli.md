@@ -1295,6 +1295,37 @@ Choose the appropriate Bailian Token Plan or workspace endpoint; a preset does n
 access. Use `--candidate` with protected input for an independent Key instead of `--source`.
 Typesafe can continue to use independent configuration. The source API never returns Key values.
 
+Native connections resolve context windows automatically from exact endpoint, codec and model
+metadata. Unknown windows use a conservative **32,000 tokens**. The Preview and saved V3 record
+show the request and independent per-question limits, their sources and the frozen context digest.
+Use `--context-window-tokens N` for a custom request window and optionally
+`--context-question-tokens N` for an explicit question override. Both require positive u32
+integers; the question cap cannot exceed the request window. A request override alone preserves
+any independent provider question cap. `--context-window-auto` clears both custom overrides.
+Omitted edit flags preserve saved intent.
+
+To inspect a draft without saving it, run `hiroute decision context preview --request-file
+context-draft.json --output json`. The file contains `endpoint`, `model`, `wire_protocol` and
+`policy`; inspect the exact installed request with `hiroute schema show --command-id
+decision.context.preview --include-schema --output json`. The response includes the effective
+limits and their metadata, user or fallback sources. This operation uses local metadata and
+does not contact the decision provider.
+
+`--typesafe-long-context auto|off` defaults to automatic. Only the exact official HTTPS
+TypeSafe System One destination receives the typed long-context header; compatible proxies and
+other providers do not. Turning it off selects the smaller maintained provider limits.
+Preview/save performs no provider call. A metadata change before acceptance requires refresh;
+accepted Operations and published routes keep the approved snapshot across recovery and restart.
+Save a new connection revision and explicitly publish the route to adopt another window.
+
+The allocator conservatively counts escaped UTF-8 request bytes as estimated tokens, including
+every decision question and each independent single-question envelope. It reserves 5% with a
+1,024-token floor once, protects the complete current user input and decision questions, and
+then retains whole recent target steps/turns before captured background and bounded replayed
+text. Mandatory input that cannot fit produces a local fallback without a decision provider
+attempt. Ordinary model requests remain complete. A fixed connection test does not prove
+maximum provider context capacity.
+
 After saving and testing, attach the returned revision through the existing route authoring flow:
 
 ```sh

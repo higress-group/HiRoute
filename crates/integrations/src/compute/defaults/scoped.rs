@@ -136,7 +136,13 @@ mod tests {
             .metadata_catalog
             .endpoint_bindings
             .iter()
-            .find(|b| b.product_key == "bailian-payg-cn")
+            .find(|b| {
+                b.product_key == "bailian-payg-cn"
+                    && b.decision_constraints.is_empty()
+                    && b.interface_candidates
+                        .iter()
+                        .any(|i| i == "bailian-payg-cn/openai-chat")
+            })
             .unwrap()
             .clone();
         let mut binding = template.clone();

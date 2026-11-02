@@ -12,6 +12,18 @@ use hiroute_domain::{
 use super::LocalControlAdapter;
 
 impl ConnectionOptionAuthorizationPort for LocalControlAdapter {
+    fn resolve_decision_context(
+        &self,
+        endpoint: &str,
+        protocol: hiroute_domain::DecisionWireProtocolV2,
+        model: &str,
+        policy: &hiroute_domain::DecisionContextPolicyV1,
+    ) -> PortResult<hiroute_domain::ResolvedDecisionContextV1> {
+        self.current_catalog()
+            .ok_or_else(|| PortError::new(PortErrorCode::Unavailable, "decision.context.catalog"))?
+            .resolve_decision_context(endpoint, protocol, model, policy)
+            .map_err(|_| PortError::new(PortErrorCode::InvalidData, "decision.context.policy"))
+    }
     fn decision_source(
         &self,
         source_id: &str,

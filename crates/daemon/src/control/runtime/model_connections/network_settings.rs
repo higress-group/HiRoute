@@ -92,6 +92,7 @@ impl LocalControlAdapter {
                 let display_name = match service {
                     hiroute_domain::DecisionServiceRecord::V1(service) => service.name,
                     hiroute_domain::DecisionServiceRecord::V2(service) => service.name,
+                    hiroute_domain::DecisionServiceRecord::V3(service) => service.name,
                 };
                 Ok(NativeNetworkAffectedDecisionV1 {
                     service_id: consumer.service_id.clone(),
@@ -148,10 +149,7 @@ impl LocalControlAdapter {
                     .decision_service_record(&WorkspaceId::default(), &id, revision)
                     .map_err(map_port)?
                     .ok_or(ComputeManagementControlError::NotFound)?;
-                let hiroute_domain::DecisionServiceRecord::V2(service) = service else {
-                    return Err(ComputeManagementControlError::Invalid);
-                };
-                let hiroute_domain::DecisionConnectionV2::Native {
+                let Some(hiroute_domain::DecisionConnectionV2::Native {
                     endpoint,
                     authentication:
                         hiroute_domain::DecisionAuthenticationV2::SharedSource {
@@ -159,19 +157,22 @@ impl LocalControlAdapter {
                             source_lineage_digest,
                         },
                     ..
-                } = service.connection
+                }) = service.versioned_connection()
                 else {
                     return Err(ComputeManagementControlError::Invalid);
                 };
                 let source = stores
                     .control()
-                    .compute_management_source(&source_id)
+                    .compute_management_source(source_id)
                     .map_err(map_port)?
                     .ok_or(ComputeManagementControlError::NotFound)?;
-                if source.lineage_digest != source_lineage_digest {
+                if &source.lineage_digest != source_lineage_digest {
                     return Err(ComputeManagementControlError::Conflict);
                 }
-                (endpoint, Some((source_id, source_lineage_digest)))
+                (
+                    endpoint.clone(),
+                    Some((source_id.clone(), source_lineage_digest.clone())),
+                )
             }
             NativeNetworkPreviewTargetV1::Saved {
                 source_id,

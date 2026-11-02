@@ -243,7 +243,11 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
         ),
         "decision.connections.list" => (
             request!(ClientEmptyRequestV1),
-            response!(DecisionServicesV2),
+            response!(DecisionServicesV3),
+        ),
+        "decision.context.preview" => (
+            request!(DecisionContextPreviewRequestV1),
+            response!(hiroute_domain::ResolvedDecisionContextV1),
         ),
         "agents.scan" | "agents.list" => (
             request!(AgentScanRequestV1),
@@ -410,11 +414,11 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
     } else if command_id == "decision.connections.apply" {
         specialize_change(
             &mut request,
-            &schema::<hiroute_domain::DecisionServiceOperationInputV2>(false),
+            &schema::<hiroute_domain::DecisionServiceOperationInputV3>(false),
         );
         specialize_change(
             &mut response,
-            &schema::<hiroute_domain::DecisionServiceOperationInputV2>(true),
+            &schema::<hiroute_domain::DecisionServiceOperationInputV3>(true),
         );
         remove_property(&mut request, "apply_capability");
     } else if command_id == "compute.connection.apply" {

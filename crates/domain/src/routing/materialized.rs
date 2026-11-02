@@ -566,6 +566,13 @@ fn validate_request_groups(
             default_branch_id,
             ..
         } => {
+            if native_protocol
+                .as_ref()
+                .and_then(|p| p.context_budget.as_ref())
+                != classifier.mode.resolved_context()
+            {
+                return Err(CompiledPlanError::InvalidClassifier);
+            }
             if let Some(p) = native_protocol {
                 p.validate_branches(branches, default_branch_id)
                     .map_err(CompiledPlanError::NativeProtocol)?;
@@ -610,6 +617,13 @@ fn validate_request_groups(
             complex_groups,
             ..
         } => {
+            if native_protocol
+                .as_ref()
+                .and_then(|p| p.context_budget.as_ref())
+                != classifier.mode.resolved_context()
+            {
+                return Err(CompiledPlanError::InvalidClassifier);
+            }
             if let Some(p) = native_protocol {
                 p.validate_smart(
                     judgment

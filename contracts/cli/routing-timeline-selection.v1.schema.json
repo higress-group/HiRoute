@@ -129,6 +129,222 @@
       ],
       "type": "string"
     },
+    "DecisionContextConstraintV1": {
+      "enum": [
+        "request",
+        "question",
+        "json_shape"
+      ],
+      "type": "string"
+    },
+    "DecisionContextNoFitV1": {
+      "enum": [
+        "mandatory_core",
+        "mandatory_shape",
+        "accounting"
+      ],
+      "type": "string"
+    },
+    "DecisionContextObservationSchemaV1": {
+      "enum": [
+        "hiroute.decision-context-observation/v1"
+      ],
+      "type": "string"
+    },
+    "DecisionContextObservationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "context_digest": {
+          "type": "string"
+        },
+        "encoded_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "estimated_largest_question_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "estimated_request_tokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "estimator": {
+          "type": "string"
+        },
+        "limiting_constraint": {
+          "$ref": "#/$defs/DecisionContextConstraintV1"
+        },
+        "no_fit_reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionContextNoFitV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prior_steps_removed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "prior_steps_retained": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "prior_turns_removed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "prior_turns_retained": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "question_source": {
+          "$ref": "#/$defs/DecisionContextSourceV1"
+        },
+        "question_usable_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "question_window_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "replay_boundary_unavailable": {
+          "type": "boolean"
+        },
+        "replay_budget_omitted": {
+          "type": "boolean"
+        },
+        "replay_envelopes_scanned": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "replay_envelopes_unscanned": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replay_messages_omitted": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "replay_messages_retained": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "replay_truncated": {
+          "type": "boolean"
+        },
+        "request_source": {
+          "$ref": "#/$defs/DecisionContextSourceV1"
+        },
+        "request_usable_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "request_window_tokens": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schema": {
+          "$ref": "#/$defs/DecisionContextObservationSchemaV1"
+        },
+        "target_partial": {
+          "type": "boolean"
+        },
+        "target_steps_removed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "target_steps_retained": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target_turns_removed": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "target_turns_retained": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema",
+        "context_digest",
+        "request_source",
+        "question_source",
+        "request_window_tokens",
+        "question_window_tokens",
+        "request_usable_tokens",
+        "question_usable_tokens",
+        "estimator",
+        "target_turns_retained",
+        "target_turns_removed",
+        "target_steps_retained",
+        "prior_turns_retained",
+        "prior_turns_removed",
+        "prior_steps_retained",
+        "replay_messages_retained",
+        "replay_envelopes_scanned",
+        "replay_truncated",
+        "replay_boundary_unavailable",
+        "replay_budget_omitted",
+        "target_partial",
+        "limiting_constraint"
+      ],
+      "type": "object"
+    },
+    "DecisionContextSourceV1": {
+      "enum": [
+        "user",
+        "metadata",
+        "fallback"
+      ],
+      "type": "string"
+    },
     "DecisionExtensionIdentityV1": {
       "additionalProperties": false,
       "properties": {
@@ -238,6 +454,16 @@
         },
         "content_digest": {
           "type": "string"
+        },
+        "context_budget": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecisionContextObservationV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "eligibility": {
           "$ref": "#/$defs/ProtectionEligibilityV1"

@@ -311,6 +311,57 @@ fn pre_c_product_digest_is_read_only_and_cannot_authenticate_new_detail() {
 }
 
 #[test]
+fn pre_context_rows_reopen_unchanged_but_cannot_authenticate_budget_diagnostics() {
+    let mut old = gateway_fact_envelopes().remove(0);
+    old.schema_digest = CanonicalDigest::parse(
+        "sha256:9e6d31fead103a6203f3bd4c6464b5a63c0ddd5ea0e2cad6674be31f2cc03c38",
+    )
+    .unwrap();
+    let bytes = serde_json::to_vec(&old).unwrap();
+    old.validate_persisted_contract().unwrap();
+    assert_eq!(old.validate(), Err(ExecutionFactError::UnsupportedSchema));
+    let decoded: ExecutionFactEnvelopeV1 = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
+    let p = crate::NativeProtocolV1::default();
+    let j = crate::JudgmentSettingsV1::default();
+    let frozen = crate::FrozenNativeProtocolV1::freeze(
+        &p,
+        j.degree.definition().into(),
+        [(crate::SMART_SAVING_SCOPE_ID.into(), j)],
+    )
+    .unwrap();
+    let mut observation =
+        crate::RoutingObservationV1::not_dispatched(&frozen, crate::SMART_SAVING_SCOPE_ID);
+    observation.context_budget = Some(serde_json::from_value(serde_json::json!({
+        "schema":"hiroute.decision-context-observation/v1",
+        "context_digest":CanonicalDigest::of_bytes(b"context"), "request_source":"fallback", "question_source":"fallback",
+        "request_window_tokens":32000,"question_window_tokens":32000,"request_usable_tokens":30400,"question_usable_tokens":30400,
+        "estimator":"escaped-utf8-v1","estimated_request_tokens":33000,"estimated_largest_question_tokens":33000,"encoded_bytes":null,
+        "target_turns_retained":0,"target_turns_removed":0,"target_steps_retained":0,"target_steps_removed":null,
+        "prior_turns_retained":0,"prior_turns_removed":0,"prior_steps_retained":0,"prior_steps_removed":null,
+        "replay_messages_retained":0,"replay_messages_omitted":null,"replay_envelopes_scanned":0,"replay_envelopes_unscanned":null,
+        "replay_truncated":false,"replay_boundary_unavailable":false,"replay_budget_omitted":false,"target_partial":false,
+        "limiting_constraint":"request","no_fit_reason":"mandatory_core"
+    })).unwrap());
+    let ExecutionFactV1::RouteDecision(route) = &mut old.fact else {
+        unreachable!()
+    };
+    let decision = route.complexity.as_mut().unwrap();
+    decision.decision_protocol = Some(crate::DecisionProtocolV1::SystemOneC);
+    decision.routing_observation = Some(observation);
+    decision.decision_source = ComplexityDecisionSourceV1::ExternalClassifier;
+    decision.complexity_score = None;
+    decision.threshold = None;
+    decision.classification_duration_micros = Some(125);
+    assert_eq!(
+        old.validate_persisted_contract(),
+        Err(ExecutionFactError::InvalidFact)
+    );
+    old.schema_digest = CanonicalDigest::parse(EXECUTION_FACT_PORT_DIGEST_V2).unwrap();
+    old.validate().unwrap();
+}
+
+#[test]
 fn legacy_execution_trust_without_plan_display_name_remains_readable() {
     let mut value = serde_json::to_value(envelope(
         1,

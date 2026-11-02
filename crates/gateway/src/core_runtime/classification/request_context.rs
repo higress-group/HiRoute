@@ -25,7 +25,16 @@ pub(super) fn append(
 ) -> Result<(), CallFailure> {
     // Native projections may precede trailing synthetic User envelopes. Use
     // their validated position, never a text match or the final User as a proxy.
-    let boundary = match (input.current, input.position) {
+    let boundary = boundary(input);
+    let Some(boundary) = boundary else {
+        body["state"]["request_context"]["boundary_unavailable"] = json!(true);
+        return Ok(());
+    };
+    append_at_boundary(authority, input, body, refs, &mut budget, boundary)
+}
+
+pub(super) fn boundary(input: DecisionInput<'_>) -> Option<usize> {
+    match (input.current, input.position) {
         (Some(_), Some(CurrentInputPosition::Event(index))) => Some(index),
         (Some(_), Some(CurrentInputPosition::Window { first, last }))
             if first <= last && last < input.request.messages.len() =>
@@ -41,11 +50,17 @@ pub(super) fn append(
             .messages
             .get(*index)
             .is_some_and(|m| m.role == MessageRole::User)
-    });
-    let Some(boundary) = boundary else {
-        body["state"]["request_context"]["boundary_unavailable"] = json!(true);
-        return Ok(());
-    };
+    })
+}
+
+fn append_at_boundary(
+    authority: &RestBranchClassifierAuthorityV1,
+    input: DecisionInput<'_>,
+    body: &mut Value,
+    refs: &mut Vec<RequestedReplacement>,
+    budget: &mut usize,
+    boundary: usize,
+) -> Result<(), CallFailure> {
     let mut wire_len =
         openai_decisions::prepare_template(authority.wire_protocol, body, refs.clone())?.wire_len;
     let mut messages = Vec::new();
@@ -86,7 +101,7 @@ pub(super) fn append(
                         .map_or(text.len() as u64, |r| r.byte_len());
                     sum.checked_add(usize::try_from(bytes).ok()?)
                 })
-                .is_none_or(|bytes| bytes > budget)
+                .is_none_or(|bytes| bytes > *budget)
         {
             body["state"]["request_context"]["truncated"] = json!(true);
             break;
@@ -112,7 +127,7 @@ pub(super) fn append(
         let next = candidate.ok().and_then(|p| {
             p.wire_len
                 .checked_sub(wire_len)
-                .filter(|bytes| *bytes <= budget)
+                .filter(|bytes| *bytes <= *budget)
                 .map(|bytes| (p.wire_len, bytes))
         });
         let Some((next_len, used)) = next else {
@@ -122,7 +137,7 @@ pub(super) fn append(
             break;
         };
         wire_len = next_len;
-        budget -= used;
+        *budget -= used;
         *refs = candidate_refs;
     }
     Ok(())

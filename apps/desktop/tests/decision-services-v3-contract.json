@@ -1,0 +1,213 @@
+{
+  "preview_decision_context": {
+    "args": {
+      "input": {
+        "endpoint": "https://example.test/v1/decisions",
+        "model": "gpt-6-luna",
+        "wire_protocol": "openai_decisions",
+        "policy": {
+          "mode": "automatic",
+          "typesafe_long_context": "automatic"
+        }
+      }
+    },
+    "result": {
+      "request_window_tokens": 32000,
+      "per_question_window_tokens": 32000,
+      "request_source": "fallback",
+      "per_question_source": "fallback",
+      "catalog_revision": 5,
+      "catalog_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "metadata": null,
+      "typesafe_long_context_header": false,
+      "accounting_algorithm": "escaped-utf8-v1",
+      "reserve_policy": "five-percent-min-1024-v1",
+      "context_digest": "sha256:04eb199e60bbd3ad492badbc8235467edc27cab831a4ff0ac4f7041f81ba191b"
+    }
+  },
+  "decision_services_v3": {
+    "args": {},
+    "result": {
+      "schema": "hiroute.decision-services/v3",
+      "services": [
+        {
+          "service": {
+            "schema": "hiroute.decision-service/v3",
+            "id": "decision/example",
+            "revision": 2,
+            "name": "Decision example",
+            "connection": {
+              "kind": "native",
+              "provider": "openai",
+              "wire_protocol": "openai_decisions",
+              "model": "gpt-6-luna",
+              "endpoint": "https://example.test/v1/decisions",
+              "timeout_ms": 10000,
+              "authentication": {
+                "kind": "shared_source",
+                "source_id": "source/example",
+                "source_lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+              }
+            },
+            "context": {
+              "policy": {
+                "mode": "automatic",
+                "typesafe_long_context": "automatic"
+              },
+              "resolved": {
+                "request_window_tokens": 32000,
+                "per_question_window_tokens": 32000,
+                "request_source": "fallback",
+                "per_question_source": "fallback",
+                "catalog_revision": 5,
+                "catalog_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+                "metadata": null,
+                "typesafe_long_context_header": false,
+                "accounting_algorithm": "escaped-utf8-v1",
+                "reserve_policy": "five-percent-min-1024-v1",
+                "context_digest": "sha256:04eb199e60bbd3ad492badbc8235467edc27cab831a4ff0ac4f7041f81ba191b"
+              }
+            }
+          },
+          "configuration_digest": "sha256:934dae08e190ac8c8dc2d5c5fc900f819e1473f6cbc8014337eca7ec7b23a4e3",
+          "credential_state_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+          "source": {
+            "source_id": "source/example",
+            "lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "revision": 7,
+            "display_name": "Example API",
+            "provider_label": "Example",
+            "endpoint_host": "example.test",
+            "auth_kind": "native_api_key",
+            "state": "ready",
+            "credential_state_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "suggestion": {
+              "model": "gpt-6-luna",
+              "endpoint": "https://example.test/v1/decisions",
+              "wire_protocol": "openai_decisions"
+            }
+          },
+          "related_sources": [
+            {
+              "source_id": "source/example",
+              "lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+              "revision": 7,
+              "display_name": "Example API",
+              "provider_label": "Example",
+              "endpoint_host": "example.test",
+              "auth_kind": "native_api_key",
+              "state": "ready",
+              "credential_state_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+              "suggestion": {
+                "model": "gpt-6-luna",
+                "endpoint": "https://example.test/v1/decisions",
+                "wire_protocol": "openai_decisions"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "save_decision_service_v3": {
+    "args": {
+      "input": {
+        "change": {
+          "id": "decision/example",
+          "expected_revision": 1,
+          "service": {
+            "schema": "hiroute.decision-service/v3",
+            "id": "decision/example",
+            "revision": 2,
+            "name": "Decision example",
+            "connection": {
+              "kind": "native",
+              "provider": "openai",
+              "wire_protocol": "openai_decisions",
+              "model": "gpt-6-luna",
+              "endpoint": "https://example.test/v1/decisions",
+              "timeout_ms": 10000,
+              "authentication": {
+                "kind": "shared_source",
+                "source_id": "source/example",
+                "source_lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+              }
+            },
+            "context": {
+              "policy": {
+                "mode": "automatic",
+                "typesafe_long_context": "automatic"
+              },
+              "resolved": {
+                "request_window_tokens": 32000,
+                "per_question_window_tokens": 32000,
+                "request_source": "fallback",
+                "per_question_source": "fallback",
+                "catalog_revision": 5,
+                "catalog_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+                "metadata": null,
+                "typesafe_long_context_header": false,
+                "accounting_algorithm": "escaped-utf8-v1",
+                "reserve_policy": "five-percent-min-1024-v1",
+                "context_digest": "sha256:04eb199e60bbd3ad492badbc8235467edc27cab831a4ff0ac4f7041f81ba191b"
+              }
+            }
+          },
+          "expected_source_revisions": [
+            {
+              "source_id": "source/example",
+              "revision": 7
+            }
+          ]
+        },
+        "secret": null
+      }
+    },
+    "result": {
+      "operation_id": "operation/example",
+      "accepted_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "state": "succeeded"
+    }
+  },
+  "classifier_v3": {
+    "kind": "decision_service_v3",
+    "service": {
+      "schema": "hiroute.decision-service/v3",
+      "id": "decision/example",
+      "revision": 2,
+      "name": "Decision example",
+      "connection": {
+        "kind": "native",
+        "provider": "openai",
+        "wire_protocol": "openai_decisions",
+        "model": "gpt-6-luna",
+        "endpoint": "https://example.test/v1/decisions",
+        "timeout_ms": 10000,
+        "authentication": {
+          "kind": "shared_source",
+          "source_id": "source/example",
+          "source_lineage_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      },
+      "context": {
+        "policy": {
+          "mode": "automatic",
+          "typesafe_long_context": "automatic"
+        },
+        "resolved": {
+          "request_window_tokens": 32000,
+          "per_question_window_tokens": 32000,
+          "request_source": "fallback",
+          "per_question_source": "fallback",
+          "catalog_revision": 5,
+          "catalog_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "metadata": null,
+          "typesafe_long_context_header": false,
+          "accounting_algorithm": "escaped-utf8-v1",
+          "reserve_policy": "five-percent-min-1024-v1",
+          "context_digest": "sha256:04eb199e60bbd3ad492badbc8235467edc27cab831a4ff0ac4f7041f81ba191b"
+        }
+      }
+    }
+  }
+}

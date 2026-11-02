@@ -344,7 +344,12 @@ fn execute_control(
     let request = LocalControlWireRequestV2 {
         schema_version: LOCAL_CONTROL_SCHEMA_V2,
         request_id: request_id.clone(),
-        operation_id: descriptor.operation_id,
+        operation_id: control_plane::operation_id(
+            &descriptor.command_id,
+            &descriptor.operation_id,
+            &payload,
+        )
+        .to_owned(),
         payload,
         protected_grant: mutation_capability.map(|capability| ProtectedClientGrantV2 {
             principal_kind,
@@ -901,7 +906,7 @@ mod tests {
         assert_eq!(execution.exit_code, 0);
         assert_eq!(execution.stdout.lines().count(), 1);
         let value: Value = serde_json::from_str(&execution.stdout).unwrap();
-        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 89);
+        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 90);
         assert!(!execution.stdout.contains(HIDDEN_AGENT_GRANT_HELPER_VERB_V1));
     }
 

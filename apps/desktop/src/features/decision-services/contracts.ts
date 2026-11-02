@@ -18,11 +18,29 @@ export type DecisionConnectionV2 =
 export type DecisionServiceV2 = {
   schema: 'hiroute.decision-service/v2'; id: string; revision: number; name: string; connection: DecisionConnectionV2;
 };
-export type DecisionServiceRecord = DecisionServiceV1 | DecisionServiceV2;
+export type DecisionContextPolicy = {
+  mode: 'automatic' | 'custom'; window_tokens?: number; per_question_tokens?: number;
+  typesafe_long_context: 'automatic' | 'disabled';
+};
+export type ResolvedDecisionContext = {
+  request_window_tokens: number; per_question_window_tokens: number;
+  request_source: 'user' | 'metadata' | 'fallback'; per_question_source: 'user' | 'metadata' | 'fallback';
+  catalog_revision: number; catalog_digest: CanonicalDigest;
+  metadata: { binding_key: string; interface_key: string; constraint_key: string;
+    basis: 'documented' | 'inferred' | 'maintainer_policy'; evidence_refs: string[]; note: string } | null;
+  typesafe_long_context_header: boolean; accounting_algorithm: string; reserve_policy: string; context_digest: CanonicalDigest;
+};
+export type DecisionContextPreviewInput = { endpoint: string; model: string; wire_protocol: DecisionWireProtocol; policy: DecisionContextPolicy };
+export type DecisionServiceV3 = {
+  schema: 'hiroute.decision-service/v3'; id: string; revision: number; name: string;
+  connection: DecisionConnectionV2; context?: { policy: DecisionContextPolicy; resolved: ResolvedDecisionContext };
+};
+export type DecisionServiceRecord = DecisionServiceV1 | DecisionServiceV2 | DecisionServiceV3;
 export type DecisionClassifier =
   | { kind: 'local_rules' }
   | { kind: 'decision_service'; service: DecisionServiceV1 }
-  | { kind: 'decision_service_v2'; service: DecisionServiceV2 };
+  | { kind: 'decision_service_v2'; service: DecisionServiceV2 }
+  | { kind: 'decision_service_v3'; service: DecisionServiceV3 };
 
 export type DecisionSourceState = 'ready' | 'disabled' | 'missing_credentials' | 'missing' | 'unavailable';
 export type DecisionSourceSuggestion = {
@@ -40,10 +58,10 @@ export type DecisionServiceView = {
   credential_state_revision: CanonicalDigest | null; source: DecisionSourceSummary | null;
   related_sources: DecisionSourceSummary[];
 };
-export type DecisionServices = { services: DecisionServiceView[] };
+export type DecisionServices = { schema: 'hiroute.decision-services/v3'; services: DecisionServiceView[] };
 export type DecisionExpectedSourceRevision = { source_id: string; revision: number };
 export type DecisionServiceChange = {
-  id: string; expected_revision: number; service: DecisionServiceV2 | null;
+  id: string; expected_revision: number; service: DecisionServiceV3 | null;
   expected_source_revisions: DecisionExpectedSourceRevision[];
 };
 export type DecisionServiceSaveArgs = { input: { change: DecisionServiceChange; secret: string | null } };
@@ -69,8 +87,11 @@ export type DecisionServiceNetworkTestResult = {
 /** Names and wrappers are identical for Tauri and web-console invoke. */
 export type DecisionProductCalls = {
   decision_connection_sources: { args: Record<string, never>; result: DecisionConnectionSources };
-  decision_services_v2: { args: Record<string, never>; result: DecisionServices };
-  save_decision_service_v2: { args: DecisionServiceSaveArgs; result: DecisionServiceApplyResult };
+  decision_services_v2: { args: Record<string, never>; result: { services: DecisionServiceView[] } };
+  save_decision_service_v2: { args: { input: { change: Omit<DecisionServiceChange, 'service'> & { service: DecisionServiceV2 | null }; secret: string | null } }; result: DecisionServiceApplyResult };
+  decision_services_v3: { args: Record<string, never>; result: DecisionServices };
+  preview_decision_context: { args: { input: DecisionContextPreviewInput }; result: ResolvedDecisionContext };
+  save_decision_service_v3: { args: DecisionServiceSaveArgs; result: DecisionServiceApplyResult };
   test_decision_service_v2: { args: DecisionServiceTestArgs; result: DecisionServiceTestResult };
   test_decision_service_v3: { args: DecisionServiceTestArgs; result: DecisionServiceNetworkTestResult };
 };

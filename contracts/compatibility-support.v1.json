@@ -52,6 +52,7 @@
     "hiroute.agent-settings-retry/v1",
     "hiroute.agent-surface-check/v1",
     "hiroute.api-equivalent-value/v1",
+    "hiroute.assessment-context/v1",
     "hiroute.borrowed-claude-binding/v1",
     "hiroute.borrowed-claude-evidence/v1",
     "hiroute.borrowed-codex-access-lease/v1",
@@ -74,7 +75,7 @@
     "hiroute.claude-subscription-discovery-evidence/v1",
     "hiroute.claude-subscription-source/v1",
     "hiroute.cli-decision-options/v1",
-    "hiroute.cli-decision-options/v2",
+    "hiroute.cli-decision-options/v3",
     "hiroute.cli-input-diagnostic/v1",
     "hiroute.cli-prepared-preview/v1",
     "hiroute.cli-quickstart/v1",
@@ -186,14 +187,20 @@
     "hiroute.daemon-startup-failure/v1",
     "hiroute.daemon-upgrade-progress/v1",
     "hiroute.decision-connection-sources/v1",
+    "hiroute.decision-context-observation/v1",
+    "hiroute.decision-context-preview-request/v1",
     "hiroute.decision-header-state/v1",
+    "hiroute.decision-service-operation-input/v3",
     "hiroute.decision-service-operation/v2",
+    "hiroute.decision-service-operation/v3",
     "hiroute.decision-service-test-request/v2",
     "hiroute.decision-service-test-result/v2",
     "hiroute.decision-service-test-result/v3",
     "hiroute.decision-service/v2",
+    "hiroute.decision-service/v3",
     "hiroute.decision-services/v1",
     "hiroute.decision-services/v2",
+    "hiroute.decision-services/v3",
     "hiroute.decision-source-state/v1",
     "hiroute.delegation-accepted/v1",
     "hiroute.delegation-cancel-request/v1",
@@ -304,6 +311,7 @@
     "hiroute.model-stream-event/v1",
     "hiroute.native-claude-read/v1",
     "hiroute.native-credential-lease-request/v1",
+    "hiroute.native-execution-context/v1",
     "hiroute.native-field-restore/v1",
     "hiroute.native-file-reference/v1",
     "hiroute.native-files/v1",
@@ -399,6 +407,7 @@
     "hiroute.release-facts-cross-reference/v2",
     "hiroute.release-facts/v2",
     "hiroute.release-model-data/v2",
+    "hiroute.resolved-decision-context/v1",
     "hiroute.retained-recovery-package/v1",
     "hiroute.routing-control/v1",
     "hiroute.routing-control/v2",
@@ -539,11 +548,12 @@
       ],
       "current_contracts": [
         "hiroute.decision-services/v1",
-        "hiroute.decision-services/v2"
+        "hiroute.decision-services/v2",
+        "hiroute.decision-services/v3"
       ],
       "legacy_support": [],
       "owner": "decision-foundation",
-      "reason": "The released V1 query remains explicit and rejects a V2 latest record; the V2 query returns both strict retained service versions and safe source state.",
+      "reason": "The explicit V1 and V2 queries preserve strict old shapes. V1 rejects unrepresentable latest records; V2 omits V3 latest records rather than dropping context. Current V3 listing returns exact retained V1/V2/V3 content and safe source state.",
       "removal_condition": "Retire the V1 query only with an explicit supported-client compatibility decision."
     },
     {
@@ -553,11 +563,11 @@
       ],
       "current_contracts": [
         "hiroute.cli-decision-options/v1",
-        "hiroute.cli-decision-options/v2"
+        "hiroute.cli-decision-options/v3"
       ],
       "legacy_support": [],
       "owner": "decision-foundation",
-      "reason": "V1 options retain System One semantics while V2 options expose the same preset catalog with an explicit wire codec.",
+      "reason": "The legacy services convenience path retains V1 options. Current connections convenience options publish V3 with explicit codecs and complete context-bearing saved records; old clients use their explicit V1/V2 daemon operations unchanged.",
       "removal_condition": "Retire V1 options only with an explicit supported-client compatibility decision."
     },
     {
@@ -1539,6 +1549,34 @@
       "owner": "compute-management-network",
       "reason": "The released explicit V1 probe union stays strict; the separate V2 operation accepts network-aware Native/registered/saved requests. Neither injects fields into the other carrier.",
       "removal_condition": "Retire an explicit operation only under the supported-client compatibility policy."
+    },
+    {
+      "subject": "decision_service_content",
+      "audited_prefixes": [
+        "hiroute.decision-service"
+      ],
+      "current_contracts": [
+        "hiroute.decision-service/v2",
+        "hiroute.decision-service/v3"
+      ],
+      "legacy_support": [],
+      "owner": "decision-foundation",
+      "reason": "Explicit V2 saves retain original input/output and recovery. Current V3 saves require the previewed context snapshot for native services and omit it for custom extensions. Both are immutable exact revisions; V3 is never projected by removing its context.",
+      "removal_condition": "Retire an explicit supported entrypoint or retained Operation only through the release compatibility policy."
+    },
+    {
+      "subject": "decision_service_operations",
+      "audited_prefixes": [
+        "hiroute.decision-service-operation"
+      ],
+      "current_contracts": [
+        "hiroute.decision-service-operation/v2",
+        "hiroute.decision-service-operation/v3"
+      ],
+      "legacy_support": [],
+      "owner": "decision-foundation",
+      "reason": "The original V2 entrypoint and namespace retain their exact sealed Operation. V3 prepares against the approved context then executes and recovers that snapshot without metadata or provider I/O.",
+      "removal_condition": "Retire an explicit supported entrypoint or retained Operation only through the release compatibility policy."
     }
   ],
   "forbidden_contracts": [
@@ -2572,6 +2610,35 @@
         "crates/gateway/src/context_hold/replay_json_tests.rs"
       ],
       "field": "canonical JSON Replay expansion, lexicographic object keys and string-escape byte semantics from the main 2e6ba55c1 walker"
+    },
+    {
+      "contract": "hiroute.partitioned-history/v1",
+      "field": "omitted context_budget on supported frozen C v1/v2/v3/v4 publications",
+      "mode": "recovery_read_only",
+      "owner": "decision-foundation",
+      "reason": "Absence preserves the original native policy and tuple digests, including the fixed 262144-byte allocator and existing header behavior. Reads, recovery and runtime never resolve current metadata. Explicit V3 save and route publication adopt a frozen adaptive snapshot and a distinct execution identity.",
+      "removal_condition": "Retire only when the supported publication, journal and backup policy retires every context-free native publication.",
+      "allowed_paths": [
+        "crates/domain/src/routing/system_one_c.rs",
+        "crates/domain/src/routing/decision_v3/tests.rs",
+        "crates/gateway/src/core_runtime/classification/c_request.rs",
+        "crates/gateway/src/publication/compiler.rs",
+        "crates/application/src/compiler/explicit.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "pre-context digest sha256:9e6d31fead103a6203f3bd4c6464b5a63c0ddd5ea0e2cad6674be31f2cc03c38",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate pre-context rows with unchanged reasoning, input-selection, stage and routing evidence. The old digest cannot authenticate a context_budget diagnostic; live ingestion uses only the current descriptor. Optional absence never fabricates a budget or cropped-content count.",
+      "removal_condition": "Retire only with supported retained observation and backup retirement.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/fixtures/pre-context-contract.json",
+        "crates/domain/src/observation/pricing.rs"
+      ]
     }
   ]
 }

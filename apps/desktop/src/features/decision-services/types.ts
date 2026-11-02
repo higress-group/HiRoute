@@ -38,6 +38,7 @@ export function newBranch(name: string, condition = ''): RouteBranch {
   return { id: 'branch-' + randomId(), name, condition, candidates: [], primary_candidates: [] };
 }
 export function classifierFor(service: DecisionService): Classifier {
+  if ('schema' in service && service.schema === 'hiroute.decision-service/v3') return { kind: 'decision_service_v3', service };
   return 'schema' in service ? { kind: 'decision_service_v2', service } : { kind: 'decision_service', service };
 }
 export function classifierService(classifier: Classifier | null | undefined): DecisionService | null {

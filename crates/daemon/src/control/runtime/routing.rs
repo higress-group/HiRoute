@@ -235,7 +235,36 @@ impl RoutingFactsPort for LocalControlAdapter {
         &self,
         workspace: &WorkspaceId,
     ) -> Result<hiroute_application_api::DecisionServicesV2, ControlReadError> {
+        self.decision_services_view(workspace).map(|current| {
+            hiroute_application_api::DecisionServicesV2 {
+                services: current
+                    .services
+                    .into_iter()
+                    .filter(|view| {
+                        !matches!(view.service, hiroute_domain::DecisionServiceRecord::V3(_))
+                    })
+                    .collect(),
+            }
+        })
+    }
+    fn decision_services_v3(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> Result<hiroute_application_api::DecisionServicesV3, ControlReadError> {
         self.decision_services_view(workspace)
+    }
+    fn preview_decision_context(
+        &self,
+        request: hiroute_application_api::DecisionContextPreviewRequestV1,
+    ) -> Result<hiroute_domain::ResolvedDecisionContextV1, ControlReadError> {
+        hiroute_application::ConnectionOptionAuthorizationPort::resolve_decision_context(
+            self,
+            &request.endpoint,
+            request.wire_protocol,
+            &request.model,
+            &request.policy,
+        )
+        .map_err(super::map_port)
     }
     fn decision_service_record(
         &self,

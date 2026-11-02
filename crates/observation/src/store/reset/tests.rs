@@ -47,6 +47,11 @@ fn format_reset_preserves_capacity_choices_without_copying_observations_or_nativ
     ] {
         let dir = tempfile::tempdir().unwrap();
         let root = legacy(dir.path(), setting);
+        // Exceed one removal batch even on a fast filesystem. The cleanup
+        // contract is eventual completion after readiness, not one-call removal.
+        for i in 0..129 {
+            fs::write(root.join(format!("retired-{i}")), b"old").unwrap();
+        }
         let native = dir.path().join("native-history.db");
         fs::write(&native, b"original native conversation").unwrap();
         let old_id = directory_identity(&root).unwrap();
@@ -77,7 +82,7 @@ fn format_reset_preserves_capacity_choices_without_copying_observations_or_nativ
         );
         store.cleanup_retired_format().unwrap();
         assert!(retired.exists(), "SQL open is not service readiness");
-        assert_eq!(fs::read(native).unwrap(), b"original native conversation");
+        assert_eq!(fs::read(&native).unwrap(), b"original native conversation");
         // A restart must keep newly written data and a newer setting.
         store.set_capacity_limit(Some(12345)).unwrap();
         store
@@ -108,8 +113,28 @@ fn format_reset_preserves_capacity_choices_without_copying_observations_or_nativ
         );
         reopened.service_ready();
         reopened.cleanup_retired_format().unwrap();
+        assert!(
+            retired.exists(),
+            "one bounded batch cannot remove every entry"
+        );
+        assert!(journal(&root).unwrap().exists());
+        // Advance maintenance ticks without sleeping; each step removes at
+        // least one entry. Keep the journal until the owned directory is gone.
+        for _ in 0..256 {
+            reopened.reset_cleanup.lock().due = Instant::now();
+            reopened.cleanup_retired_format().unwrap();
+            if !retired.exists() {
+                break;
+            }
+            assert!(journal(&root).unwrap().exists());
+        }
         assert!(!retired.exists());
         assert!(!journal(&root).unwrap().exists());
+        assert_eq!(fs::read(&native).unwrap(), b"original native conversation");
+        assert_eq!(
+            reopened.capacity_status().unwrap().max_active_bytes,
+            Some(12345)
+        );
     }
 }
 

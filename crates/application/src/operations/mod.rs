@@ -199,10 +199,17 @@ where
         let descriptor = command_by_id(&request.spec.command_id)
             .filter(|descriptor| descriptor.kind == hiroute_application_api::CommandKind::Apply)
             .ok_or(TransactionError::InvalidArguments)?;
+        let operation_kind = if request.spec.command_id == "decision.connections.apply"
+            && request.spec.desired_state.get("schema").is_none()
+        {
+            "ApplyDecisionServiceV2"
+        } else {
+            &descriptor.operation_id
+        };
         self.accept_with_reproduced_plan(
             workspace,
             principal,
-            &descriptor.operation_id,
+            operation_kind,
             request,
             |current, request| {
                 let PreparedPreview { result, plan } = prepare_preview(
@@ -1030,6 +1037,12 @@ impl TransactionError {
             };
         }
         match self {
+            Self::Port(error)
+                if error.code == hiroute_domain::PortErrorCode::Conflict
+                    && error.context == "decision_service.in_use" =>
+            {
+                ErrorCode::RevisionConflict
+            }
             Self::Port(error) | Self::Preparation(ChangePreparationError::Port(error))
                 if error.code == hiroute_domain::PortErrorCode::Conflict
                     && error.context == "qoder.model.budget.shrink" =>

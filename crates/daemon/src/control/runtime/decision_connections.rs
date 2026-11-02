@@ -3,14 +3,13 @@ use std::collections::BTreeSet;
 
 use hiroute_application::control::ControlReadError;
 use hiroute_application_api::{
-    DecisionConnectionSourcesV1, DecisionServiceViewV2, DecisionServicesV2,
-    DecisionSourceAuthKindV1, DecisionSourceStateV1, DecisionSourceSuggestionV1,
-    DecisionSourceSummaryV1,
+    DecisionConnectionSourcesV1, DecisionServiceViewV2, DecisionServicesSchemaV3,
+    DecisionServicesV3, DecisionSourceAuthKindV1, DecisionSourceStateV1,
+    DecisionSourceSuggestionV1, DecisionSourceSummaryV1,
 };
 use hiroute_domain::{
     CanonicalDigest, ComputeManagementRepositoryPort, ComputeManagementSourceV2,
-    DecisionCredentialBindingV1, DecisionServiceRecord, DecisionWireProtocolV2,
-    GatewayAuthenticationSemanticsV1, MaterializationState, WorkspaceId,
+    DecisionWireProtocolV2, GatewayAuthenticationSemanticsV1, MaterializationState, WorkspaceId,
 };
 
 use super::LocalControlAdapter;
@@ -53,7 +52,7 @@ impl LocalControlAdapter {
     pub(super) fn decision_services_view(
         &self,
         workspace: &WorkspaceId,
-    ) -> Result<DecisionServicesV2, ControlReadError> {
+    ) -> Result<DecisionServicesV3, ControlReadError> {
         let stores = self.stores_lock().map_err(super::map_port)?;
         let records = stores
             .control()
@@ -67,20 +66,16 @@ impl LocalControlAdapter {
                 .map_err(super::map_port)?;
             let mut ids = BTreeSet::new();
             for version in versions {
-                if let DecisionServiceRecord::V2(version) = version
-                    && let Some(binding) = DecisionCredentialBindingV1::for_service(&version)
-                        .map_err(|_| ControlReadError::Corrupt)?
+                if let Some(binding) = version
+                    .credential_binding()
+                    .map_err(|_| ControlReadError::Corrupt)?
                 {
                     ids.insert(binding.source_id);
                 }
             }
-            let binding = match &service {
-                DecisionServiceRecord::V2(service) => {
-                    DecisionCredentialBindingV1::for_service(service)
-                        .map_err(|_| ControlReadError::Corrupt)?
-                }
-                _ => None,
-            };
+            let binding = service
+                .credential_binding()
+                .map_err(|_| ControlReadError::Corrupt)?;
             if let Some(binding) = &binding {
                 ids.insert(binding.source_id.clone());
             }
@@ -143,7 +138,10 @@ impl LocalControlAdapter {
                 related_sources,
             });
         }
-        Ok(DecisionServicesV2 { services })
+        Ok(DecisionServicesV3 {
+            schema: DecisionServicesSchemaV3::V3,
+            services,
+        })
     }
 }
 

@@ -1,5 +1,7 @@
 //! Versioned decision onboarding. Credentials remain protected input references.
 use super::*;
+#[path = "decision_context.rs"]
+mod context;
 
 pub(super) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExecution> {
     if !arguments.starts_with(&["decision".into(), "connections".into(), "options".into()]) {
@@ -46,10 +48,10 @@ fn provider_options(client: Option<&LocalControlClient>) -> Value {
         }
     }
     providers.push(json!({"id":"custom", "name":"Custom extension", "wire_protocol":null}));
-    let services = client.and_then(|client| data(client, "ListDecisionServicesV2", json!({})).ok());
+    let services = client.and_then(|client| data(client, "ListDecisionServicesV3", json!({})).ok());
     let sources =
         client.and_then(|client| data(client, "ListDecisionConnectionSourcesV1", json!({})).ok());
-    json!({"schema":"hiroute.cli-decision-options/v2", "providers":providers,
+    json!({"schema":"hiroute.cli-decision-options/v3", "providers":providers,
         "saved_services":services.as_ref().map(|value| &value["services"]),
         "sources":sources.as_ref().map(|value| &value["sources"]),
         "guidance":"Presets are suggestions, not provider entitlement or connectivity. Use --candidate for a protected independent credential or --source for a managed source. Test the exact saved revision after saving."})
@@ -69,12 +71,15 @@ pub(super) fn prepare(client: &LocalControlClient, options: &[String]) -> Result
             "--candidate",
             "--header",
             "--timeout-ms",
+            "--context-window-tokens",
+            "--context-question-tokens",
+            "--typesafe-long-context",
         ],
         &[],
-        &["--no-auth", "--delete"],
+        &["--no-auth", "--delete", "--context-window-auto"],
     )?;
     let id = flags.required("--id")?;
-    let services = data(client, "ListDecisionServicesV2", json!({}))?;
+    let services = data(client, "ListDecisionServicesV3", json!({}))?;
     let rows = services["services"]
         .as_array()
         .ok_or_else(|| error(ErrorCode::Internal))?;
@@ -269,15 +274,37 @@ pub(super) fn prepare(client: &LocalControlClient, options: &[String]) -> Result
             };
             json!({"kind":"native","provider":provider,"wire_protocol":codec,"model":model,"endpoint":endpoint,"timeout_ms":timeout,"authentication":authentication})
         };
-        (
-            json!({"schema":"hiroute.decision-service/v2","id":id,"revision":revision,"name":name,"connection":connection}),
-            revisions,
-        )
+        let mut service = json!({"schema":"hiroute.decision-service/v3","id":id,"revision":revision,"name":name,"connection":connection});
+        if provider == "custom" {
+            if [
+                "--context-window-tokens",
+                "--context-question-tokens",
+                "--typesafe-long-context",
+                "--context-window-auto",
+            ]
+            .iter()
+            .any(|flag| flags.has(flag))
+            {
+                return Err(error(ErrorCode::InvalidArguments));
+            }
+        } else {
+            let policy = context::policy(&flags, existing.map(|row| &row["service"]))?;
+            let resolved = data(
+                client,
+                "PreviewDecisionContextV1",
+                json!({
+                    "endpoint":service["connection"]["endpoint"], "wire_protocol":service["connection"]["wire_protocol"],
+                    "model":service["connection"]["model"], "policy":policy,
+                }),
+            )?;
+            service["context"] = json!({"policy":policy,"resolved":resolved});
+        }
+        (service, revisions)
     };
-    let input = json!({"change":{"id":id,"expected_revision":expected_revision,"service":service,"expected_source_revisions":expected_source_revisions},"input_slot":input_slot});
-    let typed: DecisionServiceOperationInputV2 =
+    let input = json!({"schema":hiroute_application_api::DECISION_SERVICE_OPERATION_INPUT_SCHEMA_V3,"change":{"id":id,"expected_revision":expected_revision,"service":service,"expected_source_revisions":expected_source_revisions},"input_slot":input_slot});
+    let typed: hiroute_application_api::DecisionServiceOperationInputV3 =
         serde_json::from_value(input).map_err(|_| error(ErrorCode::InvalidArguments))?;
-    if !typed.change.validate() {
+    if !typed.validate() {
         return Err(error(ErrorCode::InvalidArguments));
     }
     Ok(json!(PreviewRequestV1 {
@@ -302,7 +329,7 @@ pub(super) fn test(client: &LocalControlClient, options: &[String]) -> Result<Va
         .ok()
         .filter(|revision| *revision > 0)
         .ok_or_else(|| error(ErrorCode::InvalidArguments))?;
-    let services = data(client, "ListDecisionServicesV2", json!({}))?;
+    let services = data(client, "ListDecisionServicesV3", json!({}))?;
     let row = services["services"]
         .as_array()
         .and_then(|rows| {

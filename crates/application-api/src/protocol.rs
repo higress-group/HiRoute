@@ -861,6 +861,7 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
             "hiroute.change-preview-or-apply-request/v1"
         }
         "decision.services.test" => "hiroute.classifier-decision-test/v1",
+        "decision.context.preview" => "hiroute.decision-context-preview-request/v1",
         "decision.connections.test" | "decision.network.test" => {
             "hiroute.decision-service-test-request/v2"
         }
@@ -945,7 +946,8 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "routing.apply" => "hiroute.operation-view/v1",
         "decision.services.list" => "hiroute.decision-services/v1",
         "decision.sources.list" => "hiroute.decision-connection-sources/v1",
-        "decision.connections.list" => "hiroute.decision-services/v2",
+        "decision.connections.list" => "hiroute.decision-services/v3",
+        "decision.context.preview" => "hiroute.resolved-decision-context/v1",
         "decision.services.apply" | "decision.connections.apply" => {
             "hiroute.change-preview-or-operation/v1"
         }
@@ -1132,7 +1134,7 @@ pub(crate) fn staged_coverage(command_id: &str, positive: bool) -> Option<Covera
 pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
     match command_id {
         "decision.services.apply" => return "hiroute decision services apply (--id ID [--name NAME] [--provider bailian-token-plan|bailian-workspace|openrouter|typesafe|compatible|custom] [--endpoint URL] [--model MODEL] [--timeout-ms MS] [--candidate REF [--header NAME] | --no-auth] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
-        "decision.connections.apply" => return "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        "decision.connections.apply" => return "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] [--context-window-tokens N | --context-window-auto] [--context-question-tokens N] [--typesafe-long-context auto|off] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
         "decision.services.test" => return "hiroute decision services test (--service ID@REVISION | --request-file PATH | --request-stdin)".into(),
         "decision.connections.test" => return "hiroute decision connections test (--service ID@REVISION | --request-file PATH | --request-stdin)".into(),
         "routing.preview" => return "hiroute routing preview (--name NAME --purpose PURPOSE --mode fixed_model --model BINDING | --name NAME --purpose PURPOSE --mode smart_saving --economy BINDING --primary BINDING --decision local_rules | --plan ID <changes> | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),

@@ -169,7 +169,7 @@ fn decision_choices_work_offline_without_claiming_saved_availability() {
     let providers = options["providers"].as_array().unwrap();
     assert_eq!(providers.len(), 6);
     let openrouter = providers.iter().find(|p| p["id"] == "openrouter").unwrap();
-    assert_eq!(openrouter["model"], "typesafe/jev-1.13");
+    assert_eq!(openrouter["model"], "~typesafe/jev-latest");
     assert!(options["effects"].as_array().unwrap().is_empty());
     let invalid = invoke(
         &[

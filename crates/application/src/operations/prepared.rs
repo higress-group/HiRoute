@@ -661,7 +661,11 @@ where
             )
         })
         .map_err(|error| {
-            if error.code == hiroute_domain::PortErrorCode::Conflict {
+            // A live Plan reference is a refusal, not a stale preview. Preserve
+            // its safe conflict mapping while keeping ordinary admission races stale.
+            if error.code == hiroute_domain::PortErrorCode::Conflict
+                && error.context != "decision_service.in_use"
+            {
                 TransactionError::ChangePreviewStale
             } else {
                 TransactionError::Port(error)

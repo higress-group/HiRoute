@@ -38,6 +38,9 @@ pub enum ComplexityClassifierModeV1 {
     DecisionServiceV2 {
         service: Box<super::DecisionServiceV2>,
     },
+    DecisionServiceV3 {
+        service: Box<super::DecisionServiceV3>,
+    },
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -72,6 +75,17 @@ impl ComplexityClassifierModeV1 {
                     revision: service.revision,
                 })
             }
+            Self::DecisionServiceV3 { service }
+                if matches!(
+                    service.connection,
+                    super::DecisionConnectionV2::Custom { .. }
+                ) =>
+            {
+                Some(super::DecisionExtensionIdentityV1 {
+                    id: service.id.clone(),
+                    revision: service.revision,
+                })
+            }
             _ => None,
         }
     }
@@ -93,6 +107,34 @@ impl ComplexityClassifierModeV1 {
                     Err(ComplexityClassifierError::UnsupportedClassifier)
                 }
             }
+            Self::DecisionServiceV3 { service } => {
+                if service.validate() {
+                    Ok(())
+                } else {
+                    Err(ComplexityClassifierError::UnsupportedClassifier)
+                }
+            }
+        }
+    }
+
+    pub fn resolved_context(&self) -> Option<&super::ResolvedDecisionContextV1> {
+        match self {
+            Self::DecisionServiceV3 { service } => {
+                service.context.as_ref().map(|context| &context.resolved)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn versioned_connection(&self) -> Option<(&str, u64, &super::DecisionConnectionV2)> {
+        match self {
+            Self::DecisionServiceV2 { service } => {
+                Some((&service.id, service.revision, &service.connection))
+            }
+            Self::DecisionServiceV3 { service } => {
+                Some((&service.id, service.revision, &service.connection))
+            }
+            _ => None,
         }
     }
 }

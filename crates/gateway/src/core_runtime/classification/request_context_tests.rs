@@ -4,6 +4,9 @@ use crate::server::core_runtime::model_ir::{ContentPart, ModelRequestIRV1};
 use crate::server::request_plan::IngressProtocol;
 use hiroute_domain::{DecisionWireProtocolV2, FrozenNativeProtocolV1, NativeProtocolV1};
 
+#[path = "adaptive_request_tests.rs"]
+mod adaptive_tests;
+
 fn current_authority(codec: DecisionWireProtocolV2) -> RestBranchClassifierAuthorityV1 {
     let mut a = c_authority();
     let mut j = JudgmentSettingsV1::default();
