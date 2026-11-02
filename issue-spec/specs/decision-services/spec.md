@@ -312,6 +312,50 @@ The request context admission SHALL preserve current input, frozen questions and
 - **WHEN** current category or degree defaults change after a C publication is saved
 - **THEN** Reopen and execution MUST retain the frozen questions, role bindings and content identity, while corrupted or authoring-mismatched content remains rejected.
 
+The current editable native competence default SHALL distinguish supported failure,
+usable partial progress and completed scoped work. The middle criterion SHALL NOT
+require that the whole core outcome already be delivered. Concrete substantive
+findings, usable intermediate results and completed subtasks can qualify during
+open execution. A bounded local omission may remain middle even when completing
+that part was explicitly required; classify its effect on intended usability,
+not the fraction of requirements completed. A supported essential defect that
+makes delivered work unusable, a repeated avoidable error without recovery or
+final non-delivery retains the lowest criterion. A usable partial deliverable
+with a local omission is distinct from supplying none of the requested deliverable
+or only promising it later. Completed work within the assessed scope, including
+clear relevant acceptance without a supported contradiction, retains the highest
+criterion. Planned later work is not a missing part of an already completed scope.
+
+The default SHALL require positive evidence for useful progress; a tool invocation,
+successful status or unsupported success claim alone is insufficient. Bounded
+waiting for an external operation is not repeated avoidable failure and does not
+erase earlier evidenced progress. Missing final prose at an open checkpoint,
+unfinished overall work and missing evidence alone establish neither execution
+failure nor success. Replayed client context retains its existing evidence limits.
+These editable defaults affect only the next explicit default publication or reset;
+custom text, sealed publications and retained Operations remain exact. No additional
+assessment call, closure trigger, numeric-path change or historical regrading is implied.
+
+#### Scenario: Useful progress without the final verdict
+
+- **WHEN** an ongoing review has produced substantive findings or usable intermediate results but its overall verdict and remaining checks are still pending
+- **THEN** the current default permits middle competence without requiring the final verdict, while tool activity or an unsupported success claim alone does not establish that progress.
+
+#### Scenario: Required local omission versus an unusable result
+
+- **WHEN** an assessed deliverable contains usable completed parts and one bounded required omission
+- **THEN** that omission alone does not force the lowest criterion; an explicitly essential missing element that makes the result unusable remains a lowest-criterion failure.
+
+#### Scenario: Waiting and unresolved repeated errors remain distinct
+
+- **WHEN** a running external operation is checked at bounded intervals, or the same avoidable error persists across repeated attempts without recovery
+- **THEN** waiting alone does not establish failure or erase earlier progress, while repeated uncorrected execution errors retain the lowest criterion.
+
+#### Scenario: Final non-delivery is not partial delivery
+
+- **WHEN** final output only promises a required deliverable or supplies none of it
+- **THEN** the current default retains low competence; substantive progress at an open checkpoint does not excuse final non-delivery.
+
 #### Scenario: Explicit acceptance after correction
 
 - **WHEN** latest relevant feedback clearly accepts the assessed stage's result or confirms that it resolved the prior problem, with no specific unresolved contradiction to an existing requirement
