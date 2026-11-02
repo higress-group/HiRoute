@@ -30,6 +30,7 @@ pub fn open_read_lease(location: &Path) -> io::Result<ReadLease> {
 /// links inside its distribution. The caller must bind the exact installation,
 /// capture its ACL and authenticate its bytes separately. This does not admit
 /// a hard-linked private configuration file or change any borrowed ACL.
+/// Other link names are not retained; verify rejects a changed link count.
 pub fn open_installed_image_lease(location: &Path) -> io::Result<ReadLease> {
     open(location, true)
 }
@@ -126,14 +127,40 @@ mod tests {
                 .open(&alias)
                 .is_err()
         );
-        assert!(std::fs::remove_file(&alias).is_err());
+        assert!(
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&image)
+                .is_err()
+        );
+        assert!(std::fs::remove_file(&image).is_err());
         assert!(std::fs::rename(&image, root.path().join("replacement.exe")).is_err());
         lease.verify().unwrap();
+        // NTFS may unlink a different, unretained name despite the source lease.
+        // The admitted path/data remain pinned; a changed link count is refused.
+        let expected_links = match std::fs::remove_file(&alias) {
+            Ok(()) => {
+                assert_eq!(
+                    lease.verify().unwrap_err().kind(),
+                    io::ErrorKind::PermissionDenied
+                );
+                1
+            }
+            Err(_) => {
+                lease.verify().unwrap();
+                2
+            }
+        };
+        assert_eq!(security::file_identity(lease.file()).unwrap(), before);
+        assert_eq!(
+            security::file_identity(&security::open_identity(&image, false).unwrap()).unwrap(),
+            before
+        );
         drop(lease);
         assert_eq!(std::fs::read(&image).unwrap(), b"fixed installed image");
         assert_eq!(
             security::file_link_count(&security::open_identity(&image, false).unwrap()).unwrap(),
-            2
+            expected_links
         );
     }
 }
