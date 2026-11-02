@@ -45,6 +45,59 @@ pub(super) fn temporary(prefix: &str) -> io::Result<PrivateProbeRoot> {
     PrivateProbeRoot::from_cleanup(builder.tempdir()?)
 }
 
+/// Retain the private object while giving native shells an ordinary drive name.
+#[cfg(windows)]
+pub(super) fn native_directory(path: &Path) -> io::Result<(PathBuf, File)> {
+    use hiroute_platform::windows::security;
+    use std::path::{Component, Prefix};
+    let disk = |path: &Path| {
+        matches!(
+            path.components().next(),
+            Some(Component::Prefix(prefix))
+                if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+        )
+    };
+    if !path.is_absolute() || !disk(path) {
+        return Err(invalid());
+    }
+    // Inspect the original private object before canonicalization could hide aliases.
+    let held = security::open_owner_only(path, true)?;
+    let canonical = std::fs::canonicalize(path)?;
+    let mut components = canonical.components();
+    let Some(Component::Prefix(prefix)) = components.next() else {
+        return Err(invalid());
+    };
+    let drive = match prefix.kind() {
+        Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) if drive.is_ascii_alphabetic() => drive,
+        _ => return Err(invalid()),
+    };
+    if components.next() != Some(Component::RootDir) {
+        return Err(invalid());
+    }
+    let mut ordinary = PathBuf::from(format!("{}:\\", char::from(drive)));
+    for part in components {
+        let Component::Normal(name) = part else {
+            return Err(invalid());
+        };
+        ordinary.push(name);
+    }
+    let roundtrip = security::open_owner_only(&ordinary, true)?;
+    if std::fs::canonicalize(&ordinary)? != canonical
+        || security::file_identity(&held)? != security::file_identity(&roundtrip)?
+    {
+        return Err(invalid());
+    }
+    Ok((ordinary, held))
+}
+
+#[cfg(windows)]
+fn invalid() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "native private workspace identity",
+    )
+}
+
 pub(super) fn directory(path: &Path) -> io::Result<()> {
     hiroute_platform::private_fs::create_directory(path)
 }

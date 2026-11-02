@@ -25,6 +25,7 @@ function Get-WindowsLiveHistoryCases {
     ($prefix + 'interrupted_terminal_checkpoint_retains_lease_completion_and_false_readiness'),
     ($prefix + 'terminal_publication_failure_does_not_wait_or_double_write'),
     ($prefix + 'execute_outer_cancel_and_deadline_after_completion_preserve_terminal_receipt'),
+    ($prefix + 'execution_deadline_is_not_replaced_by_its_acp_shutdown_cancellation'),
     ($prefix + 'claude_completed_settled_history_does_not_replace_failed_owned_stop_evidence'))
 }
 function Get-WindowsQoderAccountRecipes {

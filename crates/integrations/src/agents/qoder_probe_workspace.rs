@@ -3,57 +3,10 @@
 use hiroute_platform::windows::security;
 use std::{
     fs::File,
-    io,
-    path::{Component, Path, PathBuf, Prefix},
+    path::{Path, PathBuf},
 };
 
-pub(super) fn retain(path: &Path) -> io::Result<(PathBuf, File)> {
-    let disk = |path: &Path| {
-        matches!(
-            path.components().next(),
-            Some(Component::Prefix(prefix))
-                if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
-        )
-    };
-    if !path.is_absolute() || !disk(path) {
-        return Err(invalid());
-    }
-    // Inspect the original private object before canonicalization could hide aliases.
-    let held = security::open_owner_only(path, true)?;
-    let canonical = std::fs::canonicalize(path)?;
-    let mut components = canonical.components();
-    let Some(Component::Prefix(prefix)) = components.next() else {
-        return Err(invalid());
-    };
-    let drive = match prefix.kind() {
-        Prefix::Disk(drive) | Prefix::VerbatimDisk(drive) if drive.is_ascii_alphabetic() => drive,
-        _ => return Err(invalid()),
-    };
-    if components.next() != Some(Component::RootDir) {
-        return Err(invalid());
-    }
-    let mut ordinary = PathBuf::from(format!("{}:\\", char::from(drive)));
-    for part in components {
-        let Component::Normal(name) = part else {
-            return Err(invalid());
-        };
-        ordinary.push(name);
-    }
-    let roundtrip = security::open_owner_only(&ordinary, true)?;
-    if std::fs::canonicalize(&ordinary)? != canonical
-        || security::file_identity(&held)? != security::file_identity(&roundtrip)?
-    {
-        return Err(invalid());
-    }
-    Ok((ordinary, held))
-}
-
-fn invalid() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidInput,
-        "native private workspace identity",
-    )
-}
+pub(super) use super::super::probe_files::native_directory as retain;
 
 /// Qoder 1.1.65 appends this fixed stderr notice when its Bash cwd is reset.
 /// It is a tool envelope, not CLI stdout. Accept it only for this held workspace.
@@ -89,6 +42,7 @@ impl Receipt {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::{Component, Prefix};
 
     #[test]
     fn shell_workspace_uses_an_ordinary_name_for_the_same_private_directory() {

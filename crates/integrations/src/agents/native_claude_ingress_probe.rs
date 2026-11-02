@@ -9,6 +9,7 @@ use hiroute_domain::{
     AgentCapability, CanonicalDigest, CapabilityState, SupportedAgentInstallationV1,
 };
 use serde_json::json;
+#[cfg(not(windows))]
 use std::fs;
 use std::io::Write;
 #[cfg(unix)]
@@ -66,8 +67,14 @@ impl ClaudeNativeIngressProbe {
         let before = binary_identity(&binary)?;
         let root = super::probe_files::temporary("hiroute-native-claude-")
             .map_err(|_| fail("private check directory"))?;
+        #[cfg(not(windows))]
         let root_path =
             fs::canonicalize(root.path()).map_err(|_| fail("private check directory"))?;
+        // Git Bash cannot use Rust's verbatim spelling for its working directory
+        // and temporary roots. Preserve the same owner-only directory identity.
+        #[cfg(windows)]
+        let (root_path, _root_lease) = super::probe_files::native_directory(root.path())
+            .map_err(|_| fail("private check directory"))?;
         private_directory(&root_path)?;
         let home = root_path.join("home");
         let config = home.join(".claude");

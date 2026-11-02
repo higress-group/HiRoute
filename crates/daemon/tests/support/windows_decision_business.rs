@@ -34,10 +34,14 @@ pub fn roundtrip(product: &InstalledProduct) {
             "prior_context",
             "assessment_stage",
             "history_partial",
-            "visible_conversation",
+            "request_context",
         ] {
             assert!(state.contains_key(field), "current request lacks {field}");
         }
+        assert_eq!(state["request_context"]["source"], "request_replay");
+        assert!(state["request_context"]["messages"].is_array());
+        assert!(state["request_context"]["truncated"].is_boolean());
+        assert!(state["request_context"]["boundary_unavailable"].is_boolean());
         let questions = request.body["questions"].as_object().unwrap();
         let historical = questions
             .values()
