@@ -127,7 +127,8 @@ pub(super) fn plan_entry(
         "auto_compact_token_limit": null, "effective_context_window_percent": 95,
         "supports_reasoning_summary_parameter": false, "default_reasoning_summary": "none",
         "support_verbosity": false, "default_verbosity": null,
-        "input_modalities": modalities, "supports_parallel_tool_calls": false,
+        "input_modalities": modalities,
+        "supports_parallel_tool_calls": plan.body.materialized.attempt_owned.limits.codex_parallel_tool_calls_enabled(),
         "supports_image_detail_original": false,
         "web_search_tool_type": "text", "supports_search_tool": false,
         "experimental_supported_tools": [], "use_responses_lite": false, "tool_mode": "direct",
@@ -195,7 +196,14 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
                 Some(&candidate.binding_id),
             );
         }
-        if let Err(error) = executable.validate(&requirements(false)) {
+        if let Err(error) = executable.validate(&requirements(
+            false,
+            plan.body
+                .materialized
+                .attempt_owned
+                .limits
+                .codex_parallel_tool_calls_enabled(),
+        )) {
             return unavailable(
                 if matches!(
                     error,
@@ -303,7 +311,17 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
             CodexReasoningControlV1::FollowRequest
         },
         limitations,
-        fixed_limits: vec![CodexFixedCapabilityLimitV1::ParallelToolCallsDisabled],
+        fixed_limits: if plan
+            .body
+            .materialized
+            .attempt_owned
+            .limits
+            .codex_parallel_tool_calls_enabled()
+        {
+            Vec::new()
+        } else {
+            vec![CodexFixedCapabilityLimitV1::ParallelToolCallsDisabled]
+        },
     }
 }
 
@@ -385,7 +403,7 @@ fn unavailable(
     }
 }
 
-pub(super) fn requirements(image: bool) -> RequestCapabilityRequirementsV1 {
+pub(super) fn requirements(image: bool, parallel_tools: bool) -> RequestCapabilityRequirementsV1 {
     RequestCapabilityRequirementsV1 {
         ingress_protocol: IngressProtocol::Responses,
         text: true,
@@ -403,7 +421,7 @@ pub(super) fn requirements(image: bool) -> RequestCapabilityRequirementsV1 {
         function_tools: true,
         strict_tools: false,
         tool_choice: ToolChoice::Auto,
-        parallel_tools: false,
+        parallel_tools,
         tool_roundtrip: true,
         tool_result_text: true,
         tool_result_json: true,

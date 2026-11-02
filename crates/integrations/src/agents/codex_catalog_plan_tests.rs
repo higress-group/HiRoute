@@ -135,7 +135,7 @@ fn private_worker_catalog_uses_the_same_plan_entry_as_the_user_target_merge() {
         .unwrap();
     assert_eq!(private["models"].as_array().unwrap().len(), 1);
     assert_eq!(private["models"][0]["slug"], plan.model_alias().as_str());
-    assert_eq!(private["models"][0]["supports_parallel_tool_calls"], false);
+    assert_eq!(private["models"][0]["supports_parallel_tool_calls"], true);
     let mut private_entry = private["models"][0].clone();
     let mut merged_entry = merged["models"].as_array().unwrap().last().unwrap().clone();
     private_entry.as_object_mut().unwrap().remove("priority");
@@ -158,6 +158,38 @@ fn reseal(mut plan: CompiledAgentPlanV1) -> CompiledAgentPlanV1 {
     }
     body.materialized_route_digest = body.materialized.route_digest().unwrap();
     CompiledAgentPlanV1::seal_current(plan.body.as_ref().clone()).unwrap()
+}
+
+#[test]
+fn route_can_disable_and_reenable_parallel_tools_for_user_and_worker_catalogs() {
+    let original = plan();
+    let before = serde_json::to_value(&original).unwrap();
+    for setting in [None, Some(false), Some(true)] {
+        let mut value = original.clone();
+        std::sync::Arc::make_mut(&mut value.body)
+            .materialized
+            .attempt_owned
+            .limits
+            .codex_parallel_tool_calls = setting;
+        let value = reseal(value);
+        let enabled = setting.unwrap_or(true);
+        let entry = plan_entry(&value, 0).unwrap();
+        assert_eq!(entry["supports_parallel_tool_calls"], enabled);
+        let private: Value =
+            serde_json::from_slice(&codex_private_worker_catalog(&value).unwrap()).unwrap();
+        assert_eq!(
+            private["models"][0]["supports_parallel_tool_calls"],
+            enabled
+        );
+        let CodexClientCapabilityPreviewV1::Available { fixed_limits, .. } =
+            codex_plan_capability_preview(&value)
+        else {
+            panic!("valid route must have a Codex preview");
+        };
+        assert_eq!(fixed_limits.is_empty(), enabled);
+        assert_eq!(requirements(false, enabled).parallel_tools, enabled);
+    }
+    assert_eq!(serde_json::to_value(&original).unwrap(), before);
 }
 
 #[test]
@@ -299,7 +331,7 @@ fn target_cache_missing_parallel_flag_defaults_true_without_mutating_source() {
         json!({"preserve": [null, 1]})
     );
     assert_eq!(after[1]["supports_parallel_tool_calls"], false);
-    assert_eq!(after.last().unwrap()["supports_parallel_tool_calls"], false);
+    assert_eq!(after.last().unwrap()["supports_parallel_tool_calls"], true);
 }
 
 #[test]
@@ -322,7 +354,7 @@ fn user_configured_catalog_does_not_infer_missing_parallel_flag() {
     let after = merged["models"].as_array().unwrap();
     assert_eq!(&after[..before.len()], before);
     assert!(after[0].get("supports_parallel_tool_calls").is_none());
-    assert_eq!(after.last().unwrap()["supports_parallel_tool_calls"], false);
+    assert_eq!(after.last().unwrap()["supports_parallel_tool_calls"], true);
 }
 
 #[test]
@@ -599,10 +631,7 @@ fn context_and_modalities_use_all_candidates_common_capabilities() {
             CodexCandidateCapabilityLimitKindV1::ImageInput,
         ]
     );
-    assert_eq!(
-        fixed_limits,
-        vec![CodexFixedCapabilityLimitV1::ParallelToolCallsDisabled]
-    );
+    assert!(fixed_limits.is_empty());
     let entry = plan_entry(&value, 99).unwrap();
     assert_eq!(entry["context_window"], 64000);
     assert_eq!(entry["input_modalities"], json!(["text"]));

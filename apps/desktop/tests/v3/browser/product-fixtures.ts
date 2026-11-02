@@ -742,7 +742,7 @@ function productFixtureReply(command: string, payload: Record<string, any> | und
         { kind: 'context_window', binding_ids: ['binding/bailian/qwen-coder'] },
         { kind: 'image_input', binding_ids: ['binding/bailian/qwen-coder'] },
       ],
-      fixed_limits: ['parallel_tool_calls_disabled'],
+      fixed_limits: [],
     },
   };
   if (command === 'preview_agent_settings') return scenario === 'agent_blocked' && !agentPrerequisiteChecked

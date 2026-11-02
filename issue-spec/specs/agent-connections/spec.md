@@ -280,8 +280,15 @@ Merged output preserves top-level unknown fields, complete retained-entry JSON a
 relative order, then appends qualified plans. It exposes only authorized retained
 names. For target-cache native entries, absent supports_parallel_tool_calls defaults
 to true; explicit booleans remain, null/wrong types fail. Explicit user catalogs get
-no such missing default. Appended plans explicitly set false for current serial
-capability. Metadata does not grant account/model rights.
+no such missing default. Appended Plan entries allow parallel tool calls by default.
+An optional boolean `limits.codex_parallel_tool_calls` controls this Codex catalog
+declaration; false disables it for both user-target and private Worker catalogs.
+Omission permits parallel calls and preserves the original serialized Plan bytes.
+The preview validates the selected tool capability and reports an explicit disable
+as a route setting, not a fixed implementation limit or a candidate defect. Existing
+installed catalogs change only after model settings are saved again and Codex restarts.
+This capability permits multiple calls; it does not schedule native tools or override
+the client's own request preference. Metadata does not grant account/model rights.
 
 Preview/Apply bind producer kind, exact path, complete content/context digest.
 Drift fails context_drift before config write. Artifact is private and immutable;
