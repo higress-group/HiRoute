@@ -158,8 +158,13 @@ claim without its corresponding acceptance and publication prerequisites.
 
 Run the **build-release-candidates** workflow on the public candidate branch.
 Unix candidate builds start independently of the reusable **windows-headless**
-workflow at the same source commit. All five native scopes, their selected Windows 11
-x64-artifact replays and the native ARM64 Rust-installation job must succeed before Windows package-build jobs can start.
+workflow at the same source commit. All five x64 native scopes and their selected
+Windows 11 x64-artifact replays must succeed before Windows package-build jobs can
+start. The public release has no Windows ARM64 asset: its native headless package
+remains available through `build-release.py` on a native ARM64 host, and its Rust
+installation assessment remains in the default manual **windows-headless** run.
+The release workflow explicitly
+excludes that internal ARM64 assessment; it does not establish ARM64 runtime support.
 Both groups use **build-release-platform** for the same per-target build steps. This expensive Windows matrix
 does not run automatically on PR or main pushes; ordinary iteration uses the
 [cross-compilation and development-machine path](validation-routing.md#windows-iteration-and-release-validation).

@@ -201,11 +201,16 @@ function Invoke-LibraryTests {
         'query_v2::session_search_tests::live_search_450k_occurrences_and_100k_sources_under_real_deadline',
         'store::field_replay_tests::captured_native_suffix_uses_the_real_writer',
         'store::field_tests::current_history_and_real_maintenance',
+        'store::semantic_field::current_writer_storage_and_reads_for_private_semantic_field_corpus',
+        'store::tests::content_v2::pressure::bounded_batches_keep_the_same_small_item_bytes_and_feedback',
+        'store::tests::content_v2::pressure::thousands_of_small_items_remain_durable_and_replay_exactly',
         'store::tests::plan_quality::routing_timeline::timeline_long_session_read_cost',
         'store::tests::plan_quality::trust::trust_suggestion_population_read_cost')
     }
     if ($Package -eq 'hiroute-gateway') {
-      $optIn = @('server::core_runtime::adapters::tests::local_work::benchmark_local_text_processing')
+      $optIn = @(
+        'server::core_runtime::adapters::tests::local_work::benchmark_local_text_processing',
+        'server::core_runtime::observation::content::request::field::export_actual_semantic_capture_for_private_field_corpus')
     }
     if ($Package -eq 'hiroute-integrations') {
       $optIn = @(
@@ -255,7 +260,7 @@ function Invoke-LibraryTests {
       $harness += '--nocapture'
     }
     @{ source_revision = $ExpectedSha; package = $Package; explicit_opt_in_or_child_fixtures = $optIn;
-       reason = 'Real selected installation inputs and helper children have separate explicit native gates; any unregistered ignored case still fails this inventory.'
+       reason = 'Selected installations, helper children, private stopped field corpora and controlled persistence/performance runs require explicit inputs or assessment. Any unregistered ignored case still fails this inventory.'
     } | ConvertTo-Json -Depth 5 | Out-File -Encoding utf8 "$evidence/$name-selection.json"
     Invoke-RequiredTests $name @('-p',$Package,'--lib') $required $harness
   } catch { $failures.Add($_.Exception.Message); Write-Warning $_.Exception.Message }
@@ -296,6 +301,11 @@ if ($Scope -eq 'components') {
     'private_fs::tests::private_materials_are_exclusive_and_read_without_permission_adoption',
     'private_fs::tests::storage_preparation_reopens_without_adopting_a_file',
     'private_fs::tests::windows_owned_root_stays_pinned_and_private_read_does_not_repair_borrowed_acl',
+    'private_fs::removal::tests::deep_or_unknown_entry_is_preserved_without_false_completion',
+    'private_fs::removal::tests::exhausted_time_budget_still_makes_one_entry_progress',
+    'private_fs::removal::tests::large_flat_tree_is_bounded_and_resumes_with_linear_progress',
+    'private_fs::removal::tests::read_only_retired_copy_can_be_removed',
+    'private_fs::removal::tests::replaced_root_and_descendant_are_never_adopted',
     'windows::read_lease::tests::admitted_installed_hardlinks_keep_identity_and_write_delete_fences',
     'windows::background::tests::native_argv_quotes_spaces_quotes_and_trailing_slashes_without_shell',
     'windows::background::tests::profile_is_absolute_and_definition_rejects_unknown_or_foreign_owner',
