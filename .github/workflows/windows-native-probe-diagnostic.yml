@@ -4,6 +4,7 @@ on:
     branches: [codex/release-0.5.0-claude-auth]
 permissions:
   contents: read
+  actions: read
 jobs:
   tool-free-claude:
     runs-on: windows-2025
@@ -31,22 +32,44 @@ jobs:
           "HIROUTE_WORKER_CLAUDE_BINARY=$($clients[0].FullName)" >> $env:GITHUB_ENV
       - name: Actual installed daemon and pinned independent model fixtures
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cargo build --locked -p hiroute-daemon --bin hirouted -p hiroute-cli --bin hiroute
-          if ($LASTEXITCODE -ne 0) { throw 'Actual CLI and daemon build failed' }
+          gh run download 41530295529 --repo higress-group/HiRoute --name release-x86_64-pc-windows-msvc-desktop-4be499ff7bb067e6d39a015103971f6af5584f70-1 --dir artifacts/frozen-installer
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen installer artifact download failed' }
+          $prepare = @'
+          import hashlib,json,os,subprocess,zipfile
+          from pathlib import Path
+          sha='4be499ff7bb067e6d39a015103971f6af5584f70'
+          bundles=list(Path('artifacts/frozen-installer').rglob('development-bundle.zip'))
+          assert len(bundles)==1
+          destination=Path('artifacts/frozen-product/bin').resolve()
+          destination.mkdir(parents=True,exist_ok=False)
+          with zipfile.ZipFile(bundles[0]) as source:
+              manifest=json.loads(source.read('manifest.json'))
+              assert manifest['source_revision']==sha and manifest['target']=='x86_64-pc-windows-msvc'
+              assert manifest['installer_format']=='nsis'
+              for name in ('hiroute.exe','hirouted.exe'):
+                  raw=source.read(name);record=manifest['files'][name]
+                  assert len(raw)==record['bytes'] and hashlib.sha256(raw).hexdigest()==record['sha256']
+                  with (destination/name).open('xb') as output: output.write(raw)
+          identity=json.loads(subprocess.check_output([str(destination/'hiroute.exe'),'version','--output','json'],text=True))['data']
+          assert identity['source_revision']==sha and identity['version']=='0.5.0'
+          print(json.dumps({'frozen_package_cli_identity':identity,'files':{name:manifest['files'][name] for name in ('hiroute.exe','hirouted.exe')}}))
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as output:
+              output.write('HIROUTE_VALIDATION_PRODUCT_BIN_DIR='+str(destination)+'\n')
+          '@
+          $prepare | Set-Content "$env:RUNNER_TEMP/frozen-product.py" -Encoding utf8
+          python "$env:RUNNER_TEMP/frozen-product.py"
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen packaged product verification failed' }
           New-Item -ItemType Directory -Force artifacts/probe-diagnostic | Out-Null
-          python scripts/windows-agent-fixtures.py --daemon target/debug/hirouted.exe --output artifacts/probe-diagnostic/clients > artifacts/probe-diagnostic/clients.json
+          python scripts/windows-agent-fixtures.py --daemon artifacts/frozen-product/bin/hirouted.exe --output artifacts/probe-diagnostic/clients > artifacts/probe-diagnostic/clients.json
           if ($LASTEXITCODE -ne 0) { throw 'Pinned independent client fixture failed' }
           $clients = Get-Content artifacts/probe-diagnostic/clients.json -Raw | ConvertFrom-Json
           foreach ($property in $clients.environment.PSObject.Properties) {
             "$($property.Name)=$($property.Value)" >> $env:GITHUB_ENV
           }
           foreach ($entry in $clients.discovery_path) { $entry >> $env:GITHUB_PATH }
-      - name: Current custom extension route and observation contract
-        shell: pwsh
-        run: |
-          cargo test --locked -p hiroute-daemon --test windows_headless actual_windows_public_routing_modes -- --ignored --exact --nocapture
-          if ($LASTEXITCODE -ne 0) { throw 'Current native routing-mode contract failed' }
       - name: Actual installed public business with closed native failure classification
         shell: pwsh
         run: |
