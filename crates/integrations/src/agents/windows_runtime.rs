@@ -13,24 +13,37 @@ pub fn windows_agent_command(
     args: &[PathBuf],
     search: &str,
 ) -> io::Result<(PathBuf, Vec<PathBuf>)> {
-    if program
-        .extension()
-        .is_some_and(|ext| ext.as_encoded_bytes().eq_ignore_ascii_case(b"exe"))
-    {
-        return Ok((program.to_owned(), args.to_vec()));
+    let entry = command_entry(program)?;
+    if is_native(&entry) {
+        return Ok((entry, args.to_vec()));
     }
+    let node = node_path(Some(std::ffi::OsStr::new(search)), &entry)?;
+    let mut args = args.to_vec();
+    args.insert(0, entry);
+    Ok((node, args))
+}
+
+fn is_native(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|ext| ext.as_encoded_bytes().eq_ignore_ascii_case(b"exe"))
+}
+
+pub(super) fn command_entry(program: &Path) -> io::Result<PathBuf> {
     let entry = if program
         .extension()
         .is_some_and(|ext| ext.as_encoded_bytes().eq_ignore_ascii_case(b"cmd"))
     {
         windows_npm_entry(program)?
     } else {
-        program.to_owned()
+        return Ok(program.to_owned());
     };
-    let node = node_path(Some(std::ffi::OsStr::new(search)), &entry)?;
-    let mut args = args.to_vec();
-    args.insert(0, entry);
-    Ok((node, args))
+    if is_native(&entry) {
+        // The manifest may declare a native PE, not a JavaScript entry. Keep
+        // the same borrowed FileID while returning its ordinary drive spelling.
+        super::managed_launch::windows_executable_path(&entry)
+    } else {
+        Ok(entry)
+    }
 }
 
 /// OS selectors come from the kernel's system directory, never a caller shell override.
@@ -212,20 +225,10 @@ pub(super) fn spawn(
             }
         }
     }
-    let program = if selected
-        .extension()
-        .is_some_and(|ext| ext.as_encoded_bytes().eq_ignore_ascii_case(b"exe"))
-    {
-        selected.to_owned()
+    let entry = command_entry(selected)?;
+    let program = if is_native(&entry) {
+        entry
     } else {
-        let entry = if selected
-            .extension()
-            .is_some_and(|ext| ext.as_encoded_bytes().eq_ignore_ascii_case(b"cmd"))
-        {
-            windows_npm_entry(selected)?
-        } else {
-            selected.to_owned()
-        };
         let search = value("PATH", &env);
         let node = node_path(search.as_deref(), &entry)?;
         args.insert(0, entry.into_os_string());
@@ -452,10 +455,15 @@ pub(super) fn cleanup_unknown(error: &io::Error) -> bool {
 }
 
 #[cfg(test)]
+#[path = "windows_native_npm_tests.rs"]
+mod native_npm_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    const ENV_FIXTURE: &str = "agents::windows_runtime::tests::windows_native_environment_fixture";
+    pub(super) const ENV_FIXTURE: &str =
+        "agents::windows_runtime::tests::windows_native_environment_fixture";
 
     #[test]
     #[ignore = "selected only as the actual native environment child"]

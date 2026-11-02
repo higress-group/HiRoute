@@ -32,6 +32,8 @@ jobs:
       - name: Explicit tool-free authentication against an isolated local endpoint
         shell: pwsh
         run: |
+          cargo test --locked -p hiroute-integrations --lib agents::windows_runtime::native_npm_tests::native_npm_pe_runs_without_node_and_invalidates_changed_engine_identity -- --exact --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Native npm dispatch regression failed' }
           cargo test --locked -p hiroute-integrations --lib agents::windows_collaboration_tests::actual_windows_claude_native_authentication_without_tools -- --ignored --exact --nocapture
           if ($LASTEXITCODE -ne 0) { throw 'Local native authentication diagnostic failed' }
       - name: Actual installed daemon and pinned independent model fixtures
