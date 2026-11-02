@@ -9,7 +9,16 @@ pub(super) fn read(
     reader: &ObservationReaderContext,
     request: &LogicalRequestId,
     now: i64,
-) -> Result<Option<ObservationInputAnchorV1>, ObservationV2Error> {
+) -> Result<(Option<ObservationInputAnchorV1>, bool), ObservationV2Error> {
+    let expected: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM observation_input_anchors_v6
+         WHERE workspace_id=?1 AND request_id=?2 AND source_message_id IS NOT NULL)",
+        params![reader.workspace().as_str(), request.as_str()],
+        |row| row.get(0),
+    )?;
+    if !expected {
+        return Ok((None, false));
+    }
     let source:Option<(String,String)>=tx.query_row(
         "SELECT m.request_id,m.message_instance_id FROM observation_input_anchors_v6 a
          JOIN logical_requests r ON r.workspace_id=a.workspace_id AND r.request_id=a.request_id
@@ -26,16 +35,24 @@ pub(super) fn read(
         params![reader.workspace().as_str(),request.as_str(),now.saturating_sub(crate::managed_text::RETENTION_MS)],
         |r|Ok((r.get(0)?,r.get(1)?))).optional()?;
     let Some((source, occurrence)) = source else {
-        return Ok(None);
+        return Ok((None, true));
     };
     let source = LogicalRequestId::parse(source).map_err(|_| ObservationV2Error::Unavailable)?;
     if reader.allowed_runs().is_some()
         && relation::authorized_link(tx, reader, &source, now).is_err()
     {
-        return Ok(None);
+        return Ok((None, true));
     }
-    Ok(Some(ObservationInputAnchorV1 {
-        source_request_id: source,
-        message_occurrence_id: occurrence,
-    }))
+    let partial = crate::content::completeness::request_state(
+        tx,
+        reader.workspace().as_str(),
+        source.as_str(),
+    )? != "complete";
+    Ok((
+        Some(ObservationInputAnchorV1 {
+            source_request_id: source,
+            message_occurrence_id: occurrence,
+        }),
+        partial,
+    ))
 }

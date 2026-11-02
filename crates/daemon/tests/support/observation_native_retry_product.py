@@ -19,9 +19,8 @@ def rows(product, sql, values=()):
         return db.execute(sql, values).fetchall()
 
 
-def send(product, messages, turn, failed=False):
+def send(product, messages, turn, failed=False, session='native-content-retry', captured=True):
     prior = {row[0] for row in rows(product, 'SELECT request_id FROM logical_requests')}
-    session = 'native-content-retry'
     client = http.client.HTTPConnection('127.0.0.1', product.port, timeout=30)
     try:
         client.request('POST', '/v1/responses', encoded({
@@ -50,10 +49,11 @@ def send(product, messages, turn, failed=False):
 
     wait_for(finished, 'native request receipt did not persist')
     request_id = result[0]
-    wait_for(lambda: rows(product,
-        "SELECT 1 FROM conversation_content_streams_v2 WHERE request_id=? "
-        "AND direction='request_input' AND state='finish' AND completeness='complete'",
-        (request_id,)), 'native input capture did not complete')
+    if captured:
+        wait_for(lambda: rows(product,
+            "SELECT 1 FROM conversation_content_streams_v2 WHERE request_id=? "
+            "AND direction='request_input' AND state='finish' AND completeness='complete'",
+            (request_id,)), 'native input capture did not complete')
     return request_id
 
 
@@ -116,9 +116,33 @@ def run(repository):
                 'content_id': users[0]['content_id'], 'cursor': None})
             assert body['state'] == 'available' and body['next_cursor'] is None, body
             assert ''.join(c['text'] for c in body['chunks']) == messages[0]['content'], body
+
+            # Runtime history cannot prove optional body persistence. A failed
+            # first capture must remain an explicit gap on a healthy retry.
+            product.stop()
+            product.env['HIROUTE_TEST_OBSERVATION_CONTENT_SINK'] = 'fail_once'
+            product.start()
+            upstream.rejected_status = 400
+            lost_input = [{'role': 'user', 'content': 'Optional capture was unavailable.'}]
+            send(product, lost_input, 'gap-A', failed=True,
+                 session='native-content-retry-gap', captured=False)
+            wait_for(lambda: content_nacks(product), 'first capture fault was not exercised')
+            assert content_nacks(product) == [
+                {'channel': 'content', 'reason': 'unavailable', 'retryable': True}]
+            upstream.rejected_status = None
+            recovered = send(product, lost_input, 'gap-A', session='native-content-retry-gap')
+            wait_for(lambda: complete_content(product, recovered), 'healthy retry did not finish')
+            for metadata in (False, True):
+                page = query(product, 'catalog', {'request_id': recovered, 'limit': 200,
+                    'cursor': None, 'include_semantic_metadata': metadata})
+                assert page['roots_partial'] and not page.get('input_anchor'), page
+                assert [c for c in page['contents'] if c['direction'] == 'response_delivered']
+            assert content_nacks(product) == [
+                {'channel': 'content', 'reason': 'unavailable', 'retryable': True}]
             print(json.dumps({'scenario': 'native-failed-request-retry-semantic-history',
-                'state': 'green', 'real_requests': 3, 'input_occurrences': 1,
-                'content_nacks': 0, 'durable_content_gaps': 0,
+                'state': 'green', 'real_requests': 5, 'input_occurrences': 1,
+                'ordinary_retry_content_nacks': 0, 'ordinary_retry_content_gaps': 0,
+                'injected_capture_failures': 1, 'missing_retry_input_explicitly_partial': True,
                 'actual_attempts_linked': True, 'history_reopened': True}), flush=True)
     finally:
         try:

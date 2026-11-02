@@ -180,18 +180,22 @@ impl crate::LocalObservationStore {
                 )
             })
             .flatten();
-        let input_anchor = if query.include_semantic_metadata {
-            super::input_anchor::read(&tx, reader, &query.request_id, now_ms)?
-        } else {
-            None
-        };
+        // A proven runtime input boundary does not prove optional body capture.
+        // Every reader must see a missing/partial source as a gap, even when it
+        // opts out of the additional provenance fields.
+        let (input_anchor, anchor_partial) =
+            super::input_anchor::read(&tx, reader, &query.request_id, now_ms)?;
+        let input_anchor = query
+            .include_semantic_metadata
+            .then_some(input_anchor)
+            .flatten();
         tx.commit()?;
         check_visibility(&connection, visibility)?;
         Ok(ObservationCatalogPageV2 {
             contents,
             next_cursor,
             transcript_roots,
-            roots_partial,
+            roots_partial: roots_partial || anchor_partial,
             input_selection,
             input_anchor,
         })

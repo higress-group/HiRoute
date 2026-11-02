@@ -274,3 +274,116 @@ fn a_partial_first_seed_is_not_reimported_by_a_new_request() {
     // inventing a content object or rejecting the original model request.
     ack(fixture.ingest(&context));
 }
+
+#[test]
+fn referenced_input_gaps_survive_reopen_and_metadata_opt_out() {
+    for case in [
+        "complete",
+        "missing",
+        "partial",
+        "expired",
+        "deleted",
+        "foreign-session",
+        "no-anchor",
+    ] {
+        let mut fixture = Fixture::new();
+        let mut events = vec![fixture.begin(1)];
+        if case != "missing" {
+            events.push(fixture.append(
+                2,
+                0,
+                "source-user",
+                "source-part",
+                0,
+                0,
+                b"input",
+                b"input",
+            ));
+        }
+        // Keep producer sequencing contiguous even when no source occurrence
+        // was retained; its request-input stream can still terminate normally.
+        let end = events.len() as u64 + 1;
+        let mut finish = fixture.finish(end, "11");
+        if case == "partial" {
+            finish.phase = ConversationContentPhaseV2::Abort;
+            finish.abort_reason = Some("cancelled".into());
+            finish.completeness_delta = Some(ContentCompletenessDeltaV2::Partial);
+        }
+        events.push(finish);
+        for event in &mut events {
+            capture(event, false, "source-user");
+            ack(fixture.ingest(event));
+        }
+        for mut event in [fixture.begin(end + 1), fixture.finish(end + 2, "22")] {
+            next(&mut event);
+            capture(&mut event, false, "source-user");
+            if case == "no-anchor" {
+                event.capture.as_mut().unwrap().input_anchor_id = None;
+            }
+            ack(fixture.ingest(&event));
+        }
+        let now = if case == "expired" {
+            let now = hiroute_domain::SEVEN_DAYS_MILLIS + 5_000;
+            assert_eq!(fixture.store.expire_request_details(now, 200).unwrap(), 1);
+            now
+        } else {
+            20_000
+        };
+        if case == "foreign-session" {
+            fixture.store.connection.lock().execute(
+                "UPDATE logical_requests SET session_id='other-session' WHERE request_id='request-1'",
+                [],
+            ).unwrap();
+        }
+        if case == "deleted" {
+            fixture
+                .store
+                .connection
+                .lock()
+                .execute(
+                    "UPDATE content_instances_v2 SET state='deleted' WHERE request_id='request-1'",
+                    [],
+                )
+                .unwrap();
+        }
+        fixture.store = Arc::new(
+            LocalObservationStore::open(fixture._root.path(), fixture.authority.clone()).unwrap(),
+        );
+        let reader = hiroute_domain::ObservationReaderContext::local_user(
+            fixture.workspace.clone(),
+            "user".into(),
+            1,
+            i64::MAX,
+            true,
+            true,
+        )
+        .unwrap();
+        for metadata in [false, true] {
+            let page = fixture
+                .store
+                .observed_catalog(
+                    &reader,
+                    &ObservationCatalogQueryV2 {
+                        request_id: LogicalRequestId::parse("request-2").unwrap(),
+                        limit: 20,
+                        cursor: None,
+                        include_input_selection: false,
+                        include_semantic_metadata: metadata,
+                    },
+                    now,
+                )
+                .unwrap();
+            assert_eq!(
+                page.roots_partial,
+                !matches!(case, "complete" | "no-anchor"),
+                "{case}/{metadata}"
+            );
+            assert_eq!(
+                page.input_anchor.is_some(),
+                metadata && matches!(case, "complete" | "partial"),
+                "{case}/{metadata}"
+            );
+            assert!(page.contents.is_empty());
+        }
+    }
+}
