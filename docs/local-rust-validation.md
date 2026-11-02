@@ -206,6 +206,12 @@ HOME. Expiry is eligibility, not a forced deadline: the next pass retries busy o
 protected resources and reports why they remain. No custom cleanup daemon is
 needed, and the runner does not silently install a scheduler.
 
+The same execution-host wrapper accepts repeatable `--backend-workbench` paths
+with timed expiry to include SSH-runner stores. It uses the configured current
+workbench rather than assuming the legacy root, and shares `--limit` across all
+stores. See [remote retention](remote-rust-validation.md#checkout-retention-and-cleanup)
+for reuse/continuation activity and the execution-host timer command.
+
 After a volume remount, a changed device number still refuses automatic deletion.
 Do not infer identity from an inode alone or rewrite the old run's identity.
 After the owner confirms the exact checkout is no longer in use and exports unique

@@ -84,6 +84,8 @@ def main():
     age.add_argument("--expire-after-hours", type=float,
                      help="Expire terminal managed builds, including keep, after completion or keep renewal")
     parser.add_argument("--limit", type=int, help="Maximum candidates attempted in this pass")
+    parser.add_argument('--backend-workbench', action='append', default=[],
+                        help='Also expire this HOME-relative SSH workbench on the execution host')
     args = parser.parse_args()
     older_than_hours = 48 if args.older_than_hours is None else args.older_than_hours
     if args.expire_after_hours is not None:
@@ -95,10 +97,36 @@ def main():
         parser.error("Age must be at least 48 hours and limit must be positive")
     if args.limit is not None and args.limit < 1:
         parser.error("Age must be at least 48 hours and limit must be positive")
-    print(json.dumps(sweep(runner.Store(), args.apply, older_than_hours, args.limit,
-                           args.expire_after_hours),
-                     ensure_ascii=False, sort_keys=True))
-    return 0
+    if args.backend_workbench and args.expire_after_hours is None:
+        parser.error('--backend-workbench requires --expire-after-hours')
+    try:
+        workbenches = list(dict.fromkeys(runner.remote.workbench_path(p) for p in args.backend_workbench))
+    except ValueError as error:
+        parser.error(str(error))
+    report = sweep(runner.Store(), args.apply, older_than_hours, args.limit, args.expire_after_hours)
+    failed = False
+    remaining = None if args.limit is None else args.limit - len(report['selected'])
+    if workbenches:
+        report['backend_workbenches'] = []
+    for workbench in workbenches:
+        if remaining == 0:
+            report['backend_workbenches'].append(dict(workbench=workbench, state='limit reached'))
+            continue
+        root = Path.home() / workbench
+        try:
+            if not root.is_dir() or not (root / 'runs').is_dir():
+                raise ValueError('Configured backend workbench is missing')
+            result = runner.remote.gc_terminal_runs(root, 0, args.apply, True,
+                                                    args.expire_after_hours, remaining)
+            report['backend_workbenches'].append(dict(workbench=workbench, **result))
+            if remaining is not None:
+                remaining -= len(result['candidates'])
+            failed |= args.apply and len(result['cleaned']) != len(result['candidates'])
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            report['backend_workbenches'].append(dict(workbench=workbench, error=str(error)))
+            failed = True
+    print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+    return int(failed)
 
 
 if __name__ == "__main__":
