@@ -86,25 +86,40 @@ fn complete_turn_scores_survive_a_later_interrupted_turn() {
 fn legacy_multi_turn_scores_are_not_migrated_or_counted_and_raw_facts_survive_reopen() {
     let directory = tempfile::tempdir().unwrap();
     let first = Fixture::new("legacy-score-no-migration");
+    let mut second = Fixture::new("legacy-score-second-turn");
+    let mut feedback = Fixture::new("legacy-score-feedback");
+    for fixture in [&mut second, &mut feedback] {
+        fixture.session = first.session.clone();
+        fixture.fact_stream = first.fact_stream.clone();
+    }
     let preserved;
     {
         let store = open_store(directory.path());
         let channel = fact_channel(&first, 256 * 1024);
         let writer = writer(&store);
         let facts = [
-            finished(&first, "legacy-stage", "turn-1", 1, "code", 1000),
-            finished(&first, "legacy-stage", "turn-2", 2, "code", 1100),
-            assessment(
+            (
                 &first,
-                "legacy-stage",
-                ("turn-1", "turn-2", 1, 2),
-                1200,
-                0.2,
+                finished(&first, "legacy-stage", "turn-1", 1, "code", 1000),
+            ),
+            (
+                &second,
+                finished(&second, "legacy-stage", "turn-2", 2, "code", 1100),
+            ),
+            (
+                &feedback,
+                assessment(
+                    &feedback,
+                    "legacy-stage",
+                    ("turn-1", "turn-2", 1, 2),
+                    1200,
+                    0.2,
+                ),
             ),
         ];
-        for (i, fact) in facts.into_iter().enumerate() {
+        for (i, (fixture, fact)) in facts.into_iter().enumerate() {
             assert!(matches!(
-                offer_fact(&writer, &channel, first.fact(i as u64 + 1, fact, 1300)),
+                offer_fact(&writer, &channel, fixture.fact(i as u64 + 1, fact, 1300)),
                 WriterCycleOutcome::Ack(_)
             ));
         }

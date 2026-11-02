@@ -443,7 +443,7 @@ pub(super) fn project(
                 } = assessment;
                 // Keep old multi-turn facts intact, but never present their
                 // cumulative score as an independent score on each covered turn.
-                base.view.agent_turn_id.as_deref() == Some(target_from_turn_id)
+                base.view.agent_turn_id.as_deref() == Some(target_from_turn_id.as_str())
                     && target_from_turn_id == target_through_turn_id
                     && target_from_ordinal == target_through_ordinal
                     && base.view.plan_id.as_deref() == Some(plan_id.as_str())

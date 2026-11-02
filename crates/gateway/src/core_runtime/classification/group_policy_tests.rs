@@ -44,9 +44,9 @@ fn outcome(
                 }),
                 segment_id: "stage-1".into(),
                 first_turn_id: "turn-1".into(),
-                through_turn_id: "turn-2".into(),
+                through_turn_id: "turn-1".into(),
                 first_ordinal: 1,
-                through_ordinal: 2,
+                through_ordinal: 1,
                 target_partial: false,
                 plan: PlanSnapshot {
                     plan_id: "plan-test".into(),
