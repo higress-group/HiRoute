@@ -232,9 +232,16 @@ provider/default or advertise Desktop configured. Advanced root explicitly affec
 CLI/Desktop sharing that scope; discovering one surface does not require installing
 or validating another. Desktop-only discovery uses its actual embedded engine.
 
-Filename, comments, same-name empty file/provider, or an inherited HiRoute provider
-are not ownership proof. Existing unowned files remain untouched; conflicting names
-may suggest another name. Creating a profile rejects inherited same-name provider
+Filename, comments, a parseable file, or an inherited HiRoute provider do not prove
+prior ownership. An explicit first connection may merge a readable, valid native
+profile file when its reserved HiRoute provider/profile identities are unoccupied.
+Preserve existing preferences, comments, unrelated providers and unknown fields;
+record original values and file existence in the protected field-restoration journal.
+Restore removes only owned effects and preserves the original file and later unrelated
+edits. Preview/Apply still fence exact source bytes and reject concurrent changes.
+Malformed, inaccessible or same-name identity conflicts remain refused with actionable
+configuration-conflict guidance, rather than a misleading stale-preview retry.
+Creating a profile rejects inherited same-name provider
 auth residue rather than clearing it with an empty table. Added auth/header fields
 inside an owned provider are conflicts, not silently cleaned. Root selector
 `profile="hiroute"` conflicts just like the reserved inherited profile; other selectors

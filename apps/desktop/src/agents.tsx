@@ -27,6 +27,7 @@ import type { OperationReference } from './features/model-connections/types';
 import { safeDiagnosticCode } from './error-code';
 import {
   agentActionErrorMessage,
+  agentSettingsFailureMessage,
   agentDisableMessage,
   classifyAgentMutation,
 } from './features/agents/mutation-feedback';
@@ -112,7 +113,7 @@ export function Agents({
   }
   function setActionFailure(error: unknown) {
     setActionErrorCode(desktopErrorCode(error));
-    setActionErrorHint(collaborationCheckFailureMessage(error, language));
+    setActionErrorHint(agentSettingsFailureMessage(error, language) ?? collaborationCheckFailureMessage(error, language));
   }
   const [notice, setNotice] = useState('');
   const [tokenEditing, setTokenEditing] = useState(false);

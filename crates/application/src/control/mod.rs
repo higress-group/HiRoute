@@ -47,6 +47,8 @@ pub enum ControlReadError {
     ClientVersionRequired,
     /// A model-only Codex profile cannot own the collaboration Skill in the original HOME.
     CollaborationRootRequired,
+    /// The selected Codex profile cannot be safely merged or inherits reserved identities.
+    CodexProfileConflict,
 }
 
 /// Bounded observation composition never waits on a control writer mutex.
