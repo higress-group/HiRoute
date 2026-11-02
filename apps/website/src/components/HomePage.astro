@@ -29,7 +29,7 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
       <h1>{en ? <><span>Pay for your strongest model</span><span class="hero-accent">only where the work needs it.</span></> : <><span>只在需要的地方，</span><span class="hero-accent">为最强的模型付费。</span></>}</h1>
       <p class="intro">{t('常规工作交给经济模型，复杂任务交给主力；经济模型没做好，主力随时接手。继续用你熟悉的 Agent，组合订阅、API 和本地模型。', 'Routine work goes to economical models and complex work to your primary model, which steps in when an economical model falls short. Keep your Agent and combine subscriptions, APIs and local models.')}</p>
       <div class="actions"><a class="button" href={en ? '/en/download/' : '/download/'}>{t('下载 HiRoute', 'Download HiRoute')} <span>↗</span></a><a class="button outline" href="#tour">{t('观看 3 分钟介绍', 'Watch the 3-minute tour')} <span>▶</span></a></div>
-      <p class="small-note">{t('支持 Codex、Claude Code、Qoder、Pi、OpenCode、Hermes 和 DeepSeek Harness · macOS 与 Linux', 'Works with Codex, Claude Code, Qoder, Pi, OpenCode, Hermes and DeepSeek Harness · macOS and Linux')}</p>
+      <p class="small-note">{t('支持 Codex、Claude Code、Qoder、OpenCode 等 Agent · macOS 与 Linux', 'Works with Codex, Claude Code, Qoder, OpenCode and more · macOS and Linux')}</p>
     </div>
     <div class="journey-art" aria-label={t('一个长任务中的模型分工示意', 'How models share one long task')}>
       <div class="journey-goal"><span>{t('一个长任务 · 每个阶段选对模型', 'ONE LONG TASK · THE RIGHT MODEL FOR EACH STAGE')}</span><strong>{t('大部分工作很常规，少数决策才需要最强的模型。', 'Most of the work is routine. Only a few decisions need your strongest model.')}</strong></div>
@@ -42,7 +42,7 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
   <div class="trust-line stat-line wrap">
     <a href="#savings"><b>~90%</b><span>{t('真实任务中的成本降幅，验收标准不变', 'lower cost on a real task at the same acceptance standard')}</span></a>
     <a href="#trial"><b>{t('低分保护', 'Low-score protection')}</b><span>{t('经济模型没做好，主力接手下一轮', 'primary takes the next turn when an economical model falls short')}</span></a>
-    <a href="#ecosystem"><b>{t('7 种 Agent', '7 Agents')}</b><span>{t('照常使用 Codex、Claude Code 等', 'keep using Codex, Claude Code and more')}</span></a>
+    <a href="#ecosystem"><b>{t('多种 Agent', 'Many Agents')}</b><span>{t('Codex、Claude Code、Qoder、OpenCode 等', 'Codex, Claude Code, Qoder, OpenCode and more')}</span></a>
   </div>
 
   <section class="section wrap tour-section" id="tour">
