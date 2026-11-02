@@ -1,0 +1,36 @@
+name: windows-native-local-probe-diagnostic
+on:
+  push:
+    branches: [codex/release-0.5.0-claude-auth]
+permissions:
+  contents: read
+jobs:
+  tool-free-claude:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
+      CARGO_INCREMENTAL: '0'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: mozilla-actions/sccache-action@v0.0.11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - name: Locked native client
+        shell: pwsh
+        run: |
+          npm --prefix tools/windows-agent-fixtures ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned client installation failed' }
+          $clients = @(Get-ChildItem tools/windows-agent-fixtures/node_modules/@anthropic-ai/claude-code-win32-x64 -Recurse -Filter claude.exe)
+          if ($clients.Count -ne 1) { throw 'One pinned native client required' }
+          "HIROUTE_WORKER_CLAUDE_BINARY=$($clients[0].FullName)" >> $env:GITHUB_ENV
+      - name: Explicit tool-free authentication against an isolated local endpoint
+        shell: pwsh
+        run: |
+          cargo test --locked -p hiroute-integrations --lib agents::windows_collaboration_tests::actual_windows_claude_native_authentication_without_tools -- --ignored --exact --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Local native authentication diagnostic failed' }

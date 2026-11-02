@@ -258,6 +258,27 @@ impl ClaudeNativeIngressProbe {
             let _ = root.keep();
             return Err(fail("native cleanup"));
         }
+        #[cfg(test)]
+        if result.is_err() {
+            let bytes = std::fs::read(&output_path).unwrap_or_default();
+            let text = String::from_utf8_lossy(&bytes);
+            let value = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+            eprintln!(
+                "native Claude closed completion: requests={requests} authenticated={authenticated_message} collaboration={} output_bytes={} json={} result_type={} native_error={:?} tools_argument_error={} sources_argument_error={} login_required={} helper_failed={}",
+                cli.is_some(),
+                bytes.len(),
+                value.is_some(),
+                value.as_ref().is_some_and(|v| v["type"] == "result"),
+                value.as_ref().and_then(|v| v["is_error"].as_bool()),
+                text.contains("--tools")
+                    && (text.contains("argument") || text.contains("requires")),
+                text.contains("--setting-sources")
+                    && (text.contains("argument") || text.contains("requires")),
+                text.contains("Not logged in") || text.contains("Please run /login"),
+                text.contains("apiKeyHelper")
+                    && (text.contains("error") || text.contains("failed")),
+            );
+        }
         result?;
         if binary_identity(&binary)? != before {
             return Err(fail("stable executable"));
