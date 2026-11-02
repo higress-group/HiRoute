@@ -135,6 +135,19 @@ with patch('publication_product.secrets.SystemRandom') as chooser:
         self.assertEqual(action['id'], 'native_context_execute')
         self.assertNotIn(value['receipt'], json.dumps(action))
 
+    def test_claude_model_probe_cannot_satisfy_native_tool_or_continue_proof(self):
+        value = self.context('claude')
+        body = {'model': 'gpt-5.4', 'max_tokens': 1,
+                'messages': [{'role': 'user', 'content': 'count'}]}
+        action = fixture.decision(value, body)
+        self.assertEqual(action['request_kind'], 'model-probe')
+        self.assertFalse(action['continued'])
+        self.assertNotIn(value['receipt'], action['text'])
+        for change in ({'max_tokens': 2}, {'tools': [{'name': 'Skill'}]},
+                       {'messages': [{'role': 'user', 'content': fixture.CONTINUE_PROMPT}]}):
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                fixture.decision(value, dict(body, **change))
+
     def test_actual_fixture_scripts_produce_the_independent_receipts(self):
         value = self.context('codex')
         action = fixture.decision(value, self.body(value))
