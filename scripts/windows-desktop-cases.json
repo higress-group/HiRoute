@@ -20,5 +20,28 @@
       "uninstall.restore-agent"
     ]
   },
-  "release_decisions": []
+  "release_decisions": [
+    {
+      "version": "0.5.0",
+      "revision": "4be499ff7bb067e6d39a015103971f6af5584f70",
+      "installer_sha256": "e60c16581e6187351b7cfe0d2ea61ffda15b43196d6735ca309b41f610008b36",
+      "decision_url": "https://github.com/higress-group/HiRoute/issues/193#issuecomment-6590510067",
+      "deferred_cases": {
+        "windows11": [
+          "console.source-plan-agent",
+          "update.success",
+          "update.digest-before-stop",
+          "update.cancel-active-worker",
+          "update.replace-rollback",
+          "update.killed-resume",
+          "update.manual-installer",
+          "uninstall.restore-agent"
+        ],
+        "server": [
+          "console.source-plan-agent",
+          "uninstall.restore-agent"
+        ]
+      }
+    }
+  ]
 }

@@ -2,6 +2,77 @@
   "schema": "hiroute.website.releases/v3",
   "releases": [
     {
+      "version": "0.5.0",
+      "channel": "stable",
+      "published_at": "2026-11-02T22:55:15Z",
+      "notes": {
+        "zh": "提供 Windows x64 桌面应用、Linux Web UI 与 CLI，统一模型、决策模型、智能路由和 Agent 的编辑、移除与恢复交互；完善 Codex 独立配置和默认并行工具调用、模型试用、会话与路由评估、官方模型元信息同步及跨平台原生客户端运行。",
+        "en": "Adds Windows x64 Desktop and Linux Web UI and CLI; unifies model, decision-model, routing and Agent editing, removal and recovery; improves dedicated Codex profiles, parallel tool calls by default, model trials, session/routing evaluation, official model metadata and native client execution."
+      },
+      "artifacts": [
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "arm64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.5.0-4be499ff7bb0-macos-arm64-trial.dmg",
+          "sha256": "e42b1e437facaac4693ac84a2e4c6ccb61d23d8851589b82786a86d46194fca3",
+          "size": 101851341
+        },
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "x86_64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.5.0-4be499ff7bb0-macos-x86_64-trial.dmg",
+          "sha256": "247e91f3be2926a210508fe00dd823df06221b7f1d23ee7fefe350559438863d",
+          "size": 110922283
+        },
+        {
+          "kind": "desktop",
+          "platform": "Windows",
+          "architecture": "x86_64",
+          "format": "nsis",
+          "distribution": "unsigned",
+          "filename": "HiRoute-0.5.0-4be499ff7bb0-windows-x86_64-setup.exe",
+          "sha256": "e60c16581e6187351b7cfe0d2ea61ffda15b43196d6735ca309b41f610008b36",
+          "size": 71884209
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "x86_64",
+          "target": "x86_64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.5.0-4be499ff7bb0-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "f857b9a1f94aa053300c0b1a3026857f69a9e4c20bea07da863ce6cc1b729aaf",
+          "size": 86394605,
+          "manifest_filename": "hiroute-0.5.0-4be499ff7bb0-x86_64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "67e98a4d658cb474f61ad480384bb375ba305adce1af2bd72f676309fa8d11fb",
+          "manifest_size": 3929
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "aarch64",
+          "target": "aarch64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.5.0-4be499ff7bb0-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "120806a60f30978092b53cbc15eb3771826ad7cbdc793fa2f531bd61806accad",
+          "size": 81639827,
+          "manifest_filename": "hiroute-0.5.0-4be499ff7bb0-aarch64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "2d5bfe36885fe72fecf19cdc0bacf9034e8285400c11ad05e97eaff500f56173",
+          "manifest_size": 3931
+        }
+      ]
+    },
+    {
       "version": "0.3.1",
       "channel": "stable",
       "published_at": "2026-10-11T17:45:36Z",
