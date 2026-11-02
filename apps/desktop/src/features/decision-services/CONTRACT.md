@@ -43,6 +43,11 @@ After acknowledgement, read back before testing the exact ID, revision and
 configuration digest. Conflict and uncertain outcomes require refresh while
 retaining non-secret edits; do not blindly resubmit.
 
+Deletion must reject references from any retained V1/V2/V3 Plan version or draft
+before revoking shared consumers or deleting saved connection revisions. The
+server's keyed reference projection owns that guard; the visible current-route
+list is not its complete reference authority.
+
 The test response uses `DecisionFailureCode` for a failed synthetic provider
 call. Request/host failures can also use the existing native, transport and
 machine-envelope error codes. A generic upstream rejection is
@@ -83,6 +88,11 @@ the editor retains parked custom values per source/mode. TypeSafe automatic/off
 is scoped to its exact official HTTPS System One destination; destination or
 provider labels never authorize arbitrary headers. Preview responses are tied to
 the exact draft signature and superseded reads cannot enable a different save.
+Cross-field limit errors remain visible outside collapsed advanced settings.
+A new question-limit conflict opens its field without moving typing focus; an
+explicit repair action focuses the field and scrolls it above the sticky actions.
+Inputs associate their error/help text for assistive technology. Invalid limits
+do not offer a metadata refresh as a substitute for correcting the values.
 
 Saving an old revision explicitly produces V3. Passive reads and opening an
 editor preserve the old budget; active/prepared publications remain frozen until

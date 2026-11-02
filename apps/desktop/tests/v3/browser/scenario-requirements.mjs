@@ -113,6 +113,7 @@ export const productShellRequired = [
   'desktop.models.branch-route-references',
   'desktop.decisions.hidden-invalid-field',
   'desktop.decisions.context-intent',
+  'desktop.decisions.context-cross-field-error',
   'desktop.decisions.context-typesafe',
   'desktop.decisions.context-preview-repair',
   'desktop.decisions.save-test-revision',

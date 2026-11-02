@@ -50,6 +50,30 @@ export function decisionContextScenarios({ fresh, click, until, all, text, calls
       assert(!calls('test_decision_service_v3').length && !calls('preview_plan_editor').length, 'Save implicitly tested or published');
       await until(() => text().includes('65,536') && text().includes('32,000'), 'saved context summary');
     }),
+    scenario('desktop.decisions.context-cross-field-error', ['decision-services'], 'A parked question limit conflict stays visible, opens its field and preserves typing focus', async () => {
+      let store; await fresh(() => { store = decisionStore(); });
+      await independent();
+      await choose('自定义'); setInput(nativeField('context_window'), '65536');
+      await choose('高级：单个问题上限'); setInput(nativeField('context_question'), '32000');
+      await until(() => setting().textContent.includes('65,536'), 'custom limits');
+      await choose('高级：单个问题上限');
+      const request = nativeField('context_window'); request.focus(); setInput(request, '16000');
+      await until(() => setting().querySelector('details').open, 'question error expands advanced settings');
+      assert(document.activeElement === request, 'Cross-field validation stole typing focus');
+      const alert = setting().querySelector('.decision-context-validation');
+      assert(alert?.getClientRects().length && alert.textContent.includes('32,000') && alert.textContent.includes('16,000'), 'Conflict has no visible, specific explanation');
+      assert(nativeField('context_question').getAttribute('aria-describedby')?.includes('-question-error'), 'Question error is not associated with its input');
+      await choose('高级：单个问题上限');
+      assert(!setting().querySelector('details').open && alert.getClientRects().length, 'Collapsing hid the reason saving is blocked');
+      await choose('检查问题上限');
+      await until(() => document.activeElement === nativeField('context_question'), 'review action focuses the question');
+      assert(setting().querySelector('details').open && !calls('save_decision_service_v3').length, 'Repair changed data or failed to expand');
+      setInput(nativeField('context_question'), '');
+      await until(() => setting().textContent.includes('16,000') && !setting().querySelector('.decision-context-validation'), 'corrected limit resolves');
+      await click('仅保存'); await until(() => store.services.length === 1, 'corrected explicit save');
+      assert(store.services[0].context.policy.window_tokens === 16000 && !('per_question_tokens' in store.services[0].context.policy), 'Repair did not preserve user intent');
+      assert(!calls('test_decision_service_v3').length, 'Save-only tested the provider');
+    }),
     scenario('desktop.decisions.context-typesafe', ['decision-services'], 'TypeSafe long context follows only the exact official endpoint and preserves the smaller question cap', async () => {
       await fresh(() => decisionStore());
       await independent('compatible');

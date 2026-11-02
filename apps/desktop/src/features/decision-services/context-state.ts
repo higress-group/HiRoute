@@ -20,7 +20,10 @@ export function contextErrors(bundle: Binding, language: 'zh' | 'en'): { context
   if (draft.mode === 'automatic') return errors;
   const window = positive(draft.window), question = draft.question ? positive(draft.question) : null;
   if (window === null) errors.context_window = language === 'zh' ? '请输入 1 到 4,294,967,295 之间的整数。' : 'Enter an integer from 1 to 4,294,967,295.';
-  if (draft.question && (question === null || window !== null && question > window)) errors.context_question = language === 'zh' ? '问题上限需为正整数，且不超过总窗口。' : 'Use a positive integer no greater than the request window.';
+  if (draft.question && question === null) errors.context_question = language === 'zh' ? '问题上限需为 1 到 4,294,967,295 之间的整数。' : 'Use an integer from 1 to 4,294,967,295 for the question limit.';
+  else if (question !== null && window !== null && question > window) errors.context_question = language === 'zh'
+    ? `问题上限 ${question.toLocaleString()} 超过总窗口 ${window.toLocaleString()}。请降低问题上限或提高总窗口。`
+    : `The question limit (${question.toLocaleString()}) exceeds the request window (${window.toLocaleString()}). Lower the question limit or raise the request window.`;
   return errors;
 }
 export function contextPolicy(bundle: Binding): DecisionContextPolicy | null {

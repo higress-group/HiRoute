@@ -82,6 +82,13 @@ def run(repository):
         assert result['state'] == 'succeeded', result
         return preview['normalized_spec']['desired_state']['change']['service']
 
+    def delete_connection(id, key, referenced=False):
+        preview = data(f'decision connections apply --id {id} --delete')
+        _, result = product.public_cli('decision connections apply', {'schema_version': V1,
+            'spec': preview['normalized_spec'], 'accept_digest': preview['change_digest'],
+            'expected_revisions': preview['expected_revisions'], 'idempotency_key': key}, success=False)
+        assert result.get('data', {}).get('state') == ('failed' if referenced else 'succeeded'), result
+
     def publish(service, key):
         editor = copy.deepcopy(product.editor)
         editor['branch_routing']['classifier'] = {'kind': 'decision_service_v3', 'service': service}
@@ -171,10 +178,20 @@ def run(repository):
             assert Endpoint.requests[-1]['long_context'] is None, 'provider header leaked to loopback'
             expected_auth = 'Bearer ' + SENTINEL if codec == 'system_one' else token
             assert Endpoint.requests[-1]['authorization'] == expected_auth
+            unused_id = id + '-unused'
+            unused = data(f'decision connections apply --id {unused_id} --name Unused --provider compatible'
+                f' --source {source_id} --model fixture --endpoint {endpoint} --wire-protocol {codec}'
+                ' --context-window-tokens 32000')
+            assert save_preview(unused, codec + '-unused-create')['schema'] == 'hiroute.decision-service/v3'
+            delete_connection(unused_id, codec + '-unused-delete')
+            assert all(v['service']['id'] != unused_id for v in data('decision connections list')['services'])
             if codec == 'system_one':
                 publish_plan_and_agent(product, source['binding_id'], native_model_mode='hiroute_only', branch_service=service)
             else:
                 publish(service, codec + '-publish')
+            # The actual publication pins this V3 record and its shared consumers.
+            delete_connection(id, codec + '-referenced-delete', referenced=True)
+            assert next(v for v in data('decision connections list')['services'] if v['service']['id'] == id)['service'] == service
             before = len(Endpoint.requests)
             product.stop(); product.start()
             assert len(Endpoint.requests) == before, 'restart called provider'
@@ -212,6 +229,7 @@ def run(repository):
                       'test-saved-digest', 'restart', 'large-window-beyond-256KiB', 'current-input-exact',
                       'immutable-publication', 'mandatory-no-fit-zero-attempts', 'fallback-exact-input',
                       'same-turn-tool-reuse', 'no-header-on-compatible-endpoint',
+                      'unreferenced-v3-deletion', 'referenced-v3-deletion-refused-with-credentials-intact',
                       'retained-safe-large-and-no-fit-diagnostics', 'stale-context-conflict-without-write']}), flush=True)
     finally:
         upstream.close()

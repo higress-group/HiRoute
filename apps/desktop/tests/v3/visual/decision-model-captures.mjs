@@ -50,12 +50,17 @@ const driver = `(() => {
     if (kind === 'typesafe') {
       setInput(field('model'), 'jev-1.14.0'); await until(() => box().textContent.includes('262,144'), 'TypeSafe long context');
       box().querySelector('input[type="checkbox"]').click(); await until(() => box().textContent.includes('64,000'), 'TypeSafe smaller cap');
-    } else if (kind === 'custom' || kind === 'question' || kind === 'invalid') {
+    } else if (kind === 'custom' || kind === 'question' || kind === 'invalid' || kind === 'conflict') {
       contextControl(label('自定义', 'Custom')).click(); await pause(40);
-      setInput(field('context_window'), kind === 'invalid' ? '4294967296' : '4294967295');
+      setInput(field('context_window'), kind === 'invalid' ? '4294967296' : kind === 'conflict' ? '65536' : '4294967295');
       contextControl(label('高级：单个问题上限', 'Advanced: per-question limit')).click(); await pause(40);
       setInput(field('context_question'), '32000');
-      await until(() => kind === 'invalid' ? box().querySelector('[role="alert"]') : box().textContent.includes('4,294,967,295'), 'custom context state');
+      await until(() => kind === 'invalid' ? box().querySelector('[role="alert"]') : box().textContent.includes(kind === 'conflict' ? '65,536' : '4,294,967,295'), 'custom context state');
+      if (kind === 'conflict') {
+        contextControl(label('高级：单个问题上限', 'Advanced: per-question limit')).click(); await pause(40);
+        setInput(field('context_window'), '16000');
+        await until(() => box().querySelector('.decision-context-validation') && box().querySelector('details').open, 'visible cross-field conflict');
+      }
     } else if (kind === 'unknown') {
       document.querySelector('.decision-address-value button').click(); await pause(40);
       setInput(field('endpoint'), 'https://proxy.example.test/v1/decisions');
@@ -65,7 +70,7 @@ const driver = `(() => {
     }
     box().scrollIntoView({ block: 'center' });
     if (kind === 'question') field('context_question').scrollIntoView({ block: 'center' });
-    if (kind === 'custom' || kind === 'invalid') field('context_window').scrollIntoView({ block: 'center' });
+    if (kind === 'custom' || kind === 'invalid' || kind === 'conflict') field('context_window').scrollIntoView({ block: 'center' });
     if (kind === 'typesafe') box().querySelector('input[type="checkbox"]').scrollIntoView({ block: 'center' });
     return '.decision-context';
   }
@@ -106,6 +111,7 @@ const driver = `(() => {
     'context-custom': () => contextForm('custom'),
     'context-question': () => contextForm('question'),
     'context-invalid': () => contextForm('invalid'),
+    'context-conflict': () => contextForm('conflict'),
     'context-typesafe': () => contextForm('typesafe'),
     'context-error': () => contextForm('error'),
     'context-loading': () => contextForm('loading'),
@@ -170,7 +176,7 @@ const driver = `(() => {
 
 export async function decisionModelCaptures(client, baseUrl, output) {
   const results = [];
-  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) for (const state of ['shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-question', 'context-invalid', 'context-typesafe', 'context-error', 'context-loading']) {
+  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) for (const state of ['shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-question', 'context-invalid', 'context-conflict', 'context-typesafe', 'context-error', 'context-loading']) {
     await navigate(client, new URL('product-shell.html', baseUrl).href, viewport);
     await waitFor(client, 'Boolean(window.productShell)');
     await evaluate(client, `(() => { const c = window.productShell; c.reset(); localStorage.setItem('hiroute.language', ${JSON.stringify(language)}); localStorage.setItem('hiroute.theme', ${JSON.stringify(theme)}); })()`);
