@@ -29,13 +29,6 @@ jobs:
           $clients = @(Get-ChildItem tools/windows-agent-fixtures/node_modules/@anthropic-ai/claude-code-win32-x64 -Recurse -Filter claude.exe)
           if ($clients.Count -ne 1) { throw 'One pinned native client required' }
           "HIROUTE_WORKER_CLAUDE_BINARY=$($clients[0].FullName)" >> $env:GITHUB_ENV
-      - name: Explicit tool-free authentication against an isolated local endpoint
-        shell: pwsh
-        run: |
-          cargo test --locked -p hiroute-integrations --lib agents::windows_runtime::native_npm_tests::native_npm_pe_runs_without_node_and_invalidates_changed_engine_identity -- --exact --nocapture
-          if ($LASTEXITCODE -ne 0) { throw 'Native npm dispatch regression failed' }
-          cargo test --locked -p hiroute-integrations --lib agents::windows_collaboration_tests::actual_windows_claude_native_authentication_without_tools -- --ignored --exact --nocapture
-          if ($LASTEXITCODE -ne 0) { throw 'Local native authentication diagnostic failed' }
       - name: Actual installed daemon and pinned independent model fixtures
         shell: pwsh
         run: |
@@ -49,6 +42,11 @@ jobs:
             "$($property.Name)=$($property.Value)" >> $env:GITHUB_ENV
           }
           foreach ($entry in $clients.discovery_path) { $entry >> $env:GITHUB_PATH }
+      - name: Current custom extension route and observation contract
+        shell: pwsh
+        run: |
+          cargo test --locked -p hiroute-daemon --test windows_headless actual_windows_public_routing_modes -- --ignored --exact --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Current native routing-mode contract failed' }
       - name: Actual installed public business with closed native failure classification
         shell: pwsh
         run: |

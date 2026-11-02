@@ -21,9 +21,7 @@ pub(super) fn assert_committed(product: &InstalledProduct, plan: &str, count: us
             &["observation", "plan-quality", "samples", "--plan-id", plan],
             deadline,
         );
-        if page.summary.scored_stage_count > 0
-            && page.samples.iter().any(|sample| sample.upgrade.is_some())
-        {
+        if page.summary.scored_stage_count > 0 {
             break page;
         }
         assert!(
@@ -48,42 +46,38 @@ pub(super) fn assert_committed(product: &InstalledProduct, plan: &str, count: us
         .iter()
         .find(|sample| {
             sample.executed_branch_id.as_deref() == Some(scope)
-                && sample.assessment.as_ref().is_some_and(|assessment| {
-                    assessment.reason.as_deref() == Some("windows-native-actual-stage-low")
-                })
+                && sample
+                    .branch_execution
+                    .as_ref()
+                    .is_some_and(|execution| execution.group == ExecutionGroupV1::Regular)
+                && sample
+                    .assessment
+                    .as_ref()
+                    .is_some_and(|assessment| (assessment.score - 0.1).abs() < f64::EPSILON)
         })
         .expect("the actual preceding execution stage must own the returned score");
     let assessment = scored.assessment.as_ref().unwrap();
     assert!((assessment.score - 0.1).abs() < f64::EPSILON);
     assert!(!assessment.partial && assessment.evidence_available);
+    assert!(assessment.reason.is_none());
     let execution = scored.branch_execution.as_ref().unwrap();
     assert_eq!(execution.group, ExecutionGroupV1::Regular);
     assert_eq!(execution.candidate_index, 0);
-    assert_eq!(execution.policy.floor_millis, Some(500));
-    assert!(execution.policy.criteria_digest.is_some());
-    let upgrade_source = quality
+    let extension = execution.policy.extension.as_ref().unwrap();
+    assert_eq!(extension.id, "windows-modes-decision");
+    assert_eq!(extension.revision, 1);
+    // The extension explicitly chose Primary; the optional prior score is not
+    // an automatic competence-protection trigger.
+    let selected = quality
         .samples
         .iter()
-        .find(|sample| sample.upgrade.is_some())
-        .unwrap();
-    let upgrade = upgrade_source.upgrade.as_ref().unwrap();
-    assert_eq!(upgrade_source.segment_id, scored.segment_id);
-    // The upgrade belongs to the assessed old stage. Its trigger request
-    // identifies the new stage whose actual execution must be Primary.
-    let protected = quality
-        .samples
-        .iter()
-        .find(|sample| sample.first_request_id.as_deref() == Some(&upgrade.trigger_request_id))
-        .expect("the actual upgrade-triggering request must open the protected execution stage");
-    assert_eq!(protected.executed_branch_id.as_deref(), Some(scope));
+        .find(|sample| sample.first_request_id.as_deref() == Some(&assessment.trigger_request_id))
+        .expect("the assessment-triggering request must own its actual selected execution");
+    assert_eq!(selected.executed_branch_id.as_deref(), Some(scope));
     assert_eq!(
-        protected.branch_execution.as_ref().unwrap().group,
+        selected.branch_execution.as_ref().unwrap().group,
         ExecutionGroupV1::Primary
     );
-    assert_eq!(upgrade.decision.segment_id, scored.segment_id);
-    assert_eq!(upgrade.decision.from_group, ExecutionGroupV1::Regular);
-    assert_eq!(upgrade.decision.floor_millis, 500);
-    assert!((upgrade.decision.score.as_f64().unwrap() - 0.1).abs() < f64::EPSILON);
     for sample in &quality.samples {
         assert_eq!(sample.plan_id, plan);
         assert!(sample.plan_revision > 0);
@@ -102,6 +96,23 @@ pub(super) fn assert_committed(product: &InstalledProduct, plan: &str, count: us
                 .is_some_and(|digest| digest.starts_with("sha256:"))
         );
         assert_eq!(sample.branch_execution.as_ref().unwrap().candidate_index, 0);
+        let policy = &sample.branch_execution.as_ref().unwrap().policy;
+        assert!(policy.floor_millis.is_none() && policy.criteria_digest.is_none());
+        assert_eq!(policy.extension.as_ref(), Some(extension));
+        assert!(sample.upgrade.is_none());
+        let decision = sample.selection.as_ref().unwrap();
+        assert_eq!(
+            decision.decision_protocol,
+            Some(hiroute_domain::DecisionProtocolV1::CustomExtensionV1)
+        );
+        assert_eq!(
+            decision.extension_reason.as_deref(),
+            Some("windows-native-extension-choice")
+        );
+        assert!(
+            decision.simple_probability.is_none() && decision.simple_threshold_millis.is_none()
+        );
+        assert!(decision.competence_trigger.is_none() && !decision.fallback_used);
         assert_eq!(
             sample.selected_branch_id,
             sample.executed_branch_id.as_deref().unwrap()
@@ -119,7 +130,7 @@ pub(super) fn assert_committed(product: &InstalledProduct, plan: &str, count: us
         );
         assert!(
             docs.upgrade.is_none(),
-            "a single-group docs category cannot inherit code primary protection"
+            "a single-group docs category cannot acquire competence protection"
         );
     }
     let below = quality_page(
@@ -136,17 +147,9 @@ pub(super) fn assert_committed(product: &InstalledProduct, plan: &str, count: us
         deadline,
     );
     assert!(
-        below
-            .samples
-            .iter()
-            .any(|sample| sample.segment_id == scored.segment_id)
+        below.samples.is_empty(),
+        "an extension has no built-in competence floor"
     );
-    assert!(below.samples.iter().all(|sample| {
-        sample
-            .assessment
-            .as_ref()
-            .is_some_and(|assessment| assessment.score < 0.5 && !assessment.partial)
-    }));
 }
 
 fn assert_usage_committed(
