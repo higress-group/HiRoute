@@ -261,6 +261,9 @@ impl LocalControlAdapter {
                 {
                     (**installation).clone()
                 }
+                _ if class == SettingsAgentClass::CodexProfile => {
+                    return Err(ControlReadError::CodexProfileConflict);
+                }
                 _ => return Err(ControlReadError::NotFound),
             },
         };
