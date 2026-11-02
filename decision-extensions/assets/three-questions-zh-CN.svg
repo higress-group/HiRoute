@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="990" viewBox="0 0 1200 990" role="img" aria-label="回看上一步，判断这一步，守住下一步。 再由 HiRoute 选出执行模型。">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#161829"/><stop offset="1" stop-color="#0a0b12"/></linearGradient>
+ <radialGradient id="glow" cx=".5" cy=".62" r=".5"><stop offset="0" stop-color="#6d5cff" stop-opacity=".16"/><stop offset="1" stop-color="#6d5cff" stop-opacity="0"/></radialGradient>
+ <linearGradient id="head" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#eef0f8"/><stop offset="1" stop-color="#c9bfff"/></linearGradient>
+ <linearGradient id="axis" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5b6290" stop-opacity=".5"/><stop offset=".5" stop-color="#8fa2ff"/><stop offset="1" stop-color="#5b6290" stop-opacity=".5"/></linearGradient>
+ <linearGradient id="plan" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2fd6b5" stop-opacity=".10"/><stop offset=".5" stop-color="#8fa2ff" stop-opacity=".08"/><stop offset="1" stop-color="#a98bff" stop-opacity=".12"/></linearGradient>
+ <filter id="soft" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="8"/></filter>
+ <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8fa2ff"/></marker>
+</defs>
+<rect width="1200" height="990" rx="24" fill="url(#bg)"/><rect width="1200" height="990" rx="24" fill="url(#glow)"/>
+<g stroke="#fff" stroke-opacity=".03"><path d="M0 0V990"/><path d="M60 0V990"/><path d="M120 0V990"/><path d="M180 0V990"/><path d="M240 0V990"/><path d="M300 0V990"/><path d="M360 0V990"/><path d="M420 0V990"/><path d="M480 0V990"/><path d="M540 0V990"/><path d="M600 0V990"/><path d="M660 0V990"/><path d="M720 0V990"/><path d="M780 0V990"/><path d="M840 0V990"/><path d="M900 0V990"/><path d="M960 0V990"/><path d="M1020 0V990"/><path d="M1080 0V990"/><path d="M1140 0V990"/><path d="M0 0H1200"/><path d="M0 60H1200"/><path d="M0 120H1200"/><path d="M0 180H1200"/><path d="M0 240H1200"/><path d="M0 300H1200"/><path d="M0 360H1200"/><path d="M0 420H1200"/><path d="M0 480H1200"/><path d="M0 540H1200"/><path d="M0 600H1200"/><path d="M0 660H1200"/><path d="M0 720H1200"/><path d="M0 780H1200"/><path d="M0 840H1200"/><path d="M0 900H1200"/><path d="M0 960H1200"/></g>
+<rect x=".5" y=".5" width="1199" height="989" rx="24" fill="none" stroke="#2c3150"/>
+<text letter-spacing="2" x="60" y="70.0" font-size="15" font-weight="400" fill="#8d95b8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">SYSTEM ONE · 每一轮三个问题</text>
+<text x="60" y="122" font-size="38" font-weight="800" fill="url(#head)" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" letter-spacing="-.5">回看上一步，判断这一步，守住下一步。</text>
+<text x="60" y="160.0" font-size="20" font-weight="400" fill="#a3abc6" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">再由 HiRoute 选出执行模型。</text>
+<path d="M70 232H600" stroke="url(#axis)" stroke-width="2"/>
+<path d="M600 232H1124" stroke="#8fa2ff" stroke-opacity=".6" stroke-width="2" stroke-dasharray="6 7" marker-end="url(#arr)"/>
+<circle cx="210" cy="232" r="11" fill="#8fa2ff"/>
+<text x="210" y="206" font-size="16" font-weight="700" letter-spacing="2" fill="#cfd6ff" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">上一步</text>
+<text x="210" y="270" font-size="15" fill="#8d95b8" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">已完成的阶段</text>
+<circle cx="600" cy="232" r="22" fill="#8fa2ff" opacity=".35" filter="url(#soft)"/><circle cx="600" cy="232" r="13" fill="#0f1120" stroke="#cfd6ff" stroke-width="3"/><circle cx="600" cy="232" r="5" fill="#cfd6ff"/>
+<text x="600" y="206" font-size="16" font-weight="700" letter-spacing="2" fill="#cfd6ff" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">这一步</text>
+<text x="600" y="270" font-size="15" fill="#8d95b8" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">新消息到达 · 执行前判断</text>
+<circle cx="990" cy="232" r="11" fill="#0f1120" stroke="#8fa2ff" stroke-width="2" stroke-dasharray="4 4"/>
+<text x="990" y="206" font-size="16" font-weight="700" letter-spacing="2" fill="#cfd6ff" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">下一步</text>
+<text x="990" y="270" font-size="15" fill="#8d95b8" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">接下来的工作</text>
+<rect x="20" y="290" width="1160" height="310" rx="22" fill="#ffffff" fill-opacity=".018" stroke="#8fa2ff" stroke-opacity=".28" stroke-dasharray="2 6"/>
+<text x="44" y="322" font-size="13" font-weight="700" letter-spacing="2" fill="#8fa2ff" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">决策模型 · 只回答问题</text>
+<text x="1156" y="322" font-size="14" fill="#8d95b8" text-anchor="end" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">Jev · OpenAI · 百炼 · OpenRouter · TypeSafe · 自定义扩展</text>
+<rect x="20" y="650" width="1160" height="310" rx="22" fill="#ffffff" fill-opacity=".018" stroke="#c9bfff" stroke-opacity=".28" stroke-dasharray="2 6"/>
+<text x="44" y="682" font-size="13" font-weight="700" letter-spacing="2" fill="#c9bfff" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">HIROUTE · 决定并执行</text>
+<text x="1156" y="682" font-size="14" fill="#8d95b8" text-anchor="end" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">改阈值即可调整分流 · 每一轮可追溯</text>
+<path d="M210 280V290" stroke="#8fa2ff" stroke-opacity=".35" stroke-dasharray="3 5"/>
+<rect x="35.0" y="344" width="350" height="232" rx="18" fill="#141729" stroke="#2c3150"/>
+<text x="61.0" y="384" font-size="13" font-weight="700" letter-spacing="2" fill="#8fa2ff" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">01 · 回看</text>
+<text x="61.0" y="424.0" font-size="24" font-weight="700" fill="#eef0f8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">上一步做得怎么样？</text>
+<rect x="61.0" y="482" width="92" height="30" rx="15" fill="#8fa2ff" fill-opacity=".14" stroke="#8fa2ff" stroke-opacity=".5"/>
+<text x="107" y="502" font-size="15" font-weight="600" fill="#cfd6ff" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">胜任度评分</text>
+<text x="61.0" y="532.0" font-size="15" font-weight="400" fill="#8d95b8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">同时计入模型表现报告</text><text x="61.0" y="553.0" font-size="15" font-weight="400" fill="#8d95b8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">与信任度建议</text>
+<path d="M600 280V290" stroke="#8fa2ff" stroke-opacity=".35" stroke-dasharray="3 5"/>
+<rect x="425.0" y="344" width="350" height="232" rx="18" fill="#141729" stroke="#5f6bd8"/>
+<text x="451.0" y="384" font-size="13" font-weight="700" letter-spacing="2" fill="#8fa2ff" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">02 · 当下</text>
+<text x="451.0" y="424.0" font-size="24" font-weight="700" fill="#eef0f8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">这一步有多难？</text>
+<rect x="451.0" y="482" width="76" height="30" rx="15" fill="#8fa2ff" fill-opacity=".14" stroke="#8fa2ff" stroke-opacity=".5"/>
+<text x="489" y="502" font-size="15" font-weight="600" fill="#cfd6ff" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">简单概率</text>
+<text x="451.0" y="532.0" font-size="15" font-weight="400" fill="#8d95b8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">够简单的工作</text><text x="451.0" y="553.0" font-size="15" font-weight="400" fill="#8d95b8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">才可能交给经济模型</text>
+<path d="M990 280V290" stroke="#8fa2ff" stroke-opacity=".35" stroke-dasharray="3 5"/>
+<rect x="815.0" y="344" width="350" height="232" rx="18" fill="#141729" stroke="#2c3150"/>
+<text x="841.0" y="384" font-size="13" font-weight="700" letter-spacing="2" fill="#8fa2ff" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">03 · 往前看</text>
+<text x="841.0" y="424.0" font-size="24" font-weight="700" fill="#eef0f8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">上一步的问题，</text><text x="841.0" y="456.0" font-size="24" font-weight="700" fill="#eef0f8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">会带进下一步吗？</text>
+<rect x="841.0" y="482" width="154" height="30" rx="15" fill="#8fa2ff" fill-opacity=".14" stroke="#8fa2ff" stroke-opacity=".5"/>
+<text x="918" y="502" font-size="15" font-weight="600" fill="#cfd6ff" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">之前的问题相关概率</text>
+<text x="841.0" y="532.0" font-size="15" font-weight="400" fill="#8d95b8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">不预测成败，只看</text><text x="841.0" y="553.0" font-size="15" font-weight="400" fill="#8d95b8" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">已暴露、未解决的问题</text>
+<path d="M210 576C210 616 600 654 600 700" fill="none" stroke="#8fa2ff" stroke-opacity=".45" stroke-width="1.6"/>
+<path d="M600 576C600 616 600 654 600 700" fill="none" stroke="#8fa2ff" stroke-opacity=".45" stroke-width="1.6"/>
+<path d="M990 576C990 616 600 654 600 700" fill="none" stroke="#8fa2ff" stroke-opacity=".45" stroke-width="1.6"/>
+<rect x="370" y="610.0" width="460" height="30" rx="15" fill="#0f1120" stroke="#2c3150"/>
+<text x="600" y="631.0" font-size="15" fill="#a3abc6" text-anchor="middle" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">三个独立回答 · 一次决策请求</text>
+<rect x="220.0" y="704" width="760" height="128" rx="20" fill="#121428"/><rect x="220.0" y="704" width="760" height="128" rx="20" fill="url(#plan)" stroke="#5f6bd8"/>
+<text x="250.0" y="746" font-size="20" font-weight="700" fill="#eef0f8" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">你的方案</text>
+<rect x="810" y="724" width="140" height="30" rx="8" fill="#0b0d18" stroke="#2c3150"/><text x="880" y="744" font-size="14" fill="#a3abc6" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">胜任度下限 0.5</text>
+<rect x="648" y="724" width="153" height="30" rx="8" fill="#0b0d18" stroke="#2c3150"/><text x="724" y="744" font-size="14" fill="#a3abc6" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace">简单概率阈值 0.8</text>
+<text x="250.0" y="786.0" font-size="18" font-weight="400" fill="#d7dbef" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">这一步够简单，且没有延续下来的低分问题 → 经济模型。</text>
+<text x="250.0" y="814.0" font-size="18" font-weight="400" fill="#d7dbef" text-anchor="start" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">否则 → 主力模型。</text>
+<path d="M480 832L390.0 872" stroke="#2fd6b5" stroke-opacity=".7" stroke-width="1.8"/>
+<rect x="204" y="874" width="372" height="58" rx="29" fill="#2fd6b5" fill-opacity=".14" stroke="#2fd6b5" stroke-opacity=".75"/>
+<circle cx="234" cy="903" r="7" fill="#2fd6b5"/>
+<text x="254" y="910" font-size="19" font-weight="700" fill="#eef0f8" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">经济模型<tspan font-size="15" font-weight="400" fill="#a3abc6"> · 常规工作</tspan></text>
+<path d="M720 832L810.0 872" stroke="#a98bff" stroke-opacity=".7" stroke-width="1.8"/>
+<rect x="624" y="874" width="372" height="58" rx="29" fill="#a98bff" fill-opacity=".14" stroke="#a98bff" stroke-opacity=".75"/>
+<circle cx="654" cy="903" r="7" fill="#a98bff"/>
+<text x="674" y="910" font-size="19" font-weight="700" fill="#eef0f8" font-family="Inter,-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">主力模型<tspan font-size="15" font-weight="400" fill="#a3abc6"> · 难点与低分保护</tspan></text>
+</svg>
