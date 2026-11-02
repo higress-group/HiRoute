@@ -321,12 +321,6 @@ known cause with an unclassified internal error or imply automatic prompt replay
 Older records without a cause remain explicitly unrecorded; neither progress prose
 nor today's installed client may invent or reclassify their cause.
 
-#### Scenario: Capability admission survives a client release update
-
-- **WHEN** the selected Agent or adapter changes its release label while retaining the required route, launch, ACP and history capabilities
-- **THEN** new work and an otherwise eligible exact Continue remain admissible without adding that label to a support list.
-- **AND** a client lacking a required capability is refused with the missing check and next action even if its release label was previously tested.
-
 Marked host explanations in ordinary Worker progress MUST preserve closed execution
 failure reasons. They MAY include the last fixed typed Gateway rejection and HTTP
 status observed for the same authenticated run, labelled as request evidence rather
@@ -342,6 +336,12 @@ failure. Invalid extension kind/version fails closed. Codex adapter must adverti
 required AIR sessionFailure at initialize before New/Load/prompt; absence gives a
 fixed marked `[HiRoute]` actionable explanation in progress, without native text/
 paths/secrets, and normal owned cleanup rather than a software-version allowlist.
+
+#### Scenario: Capability admission survives a client release update
+
+- **WHEN** the selected Agent or adapter changes its release label while retaining the required route, launch, ACP and history capabilities
+- **THEN** new work and an otherwise eligible exact Continue remain admissible without adding that label to a support list.
+- **AND** a client lacking a required capability is refused with the missing check and next action even if its release label was previously tested.
 
 #### Scenario: Qoder reports a protocol failure as cancellation
 

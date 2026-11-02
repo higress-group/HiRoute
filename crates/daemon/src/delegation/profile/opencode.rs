@@ -143,6 +143,7 @@ pub(super) fn render(
         native_model_id: selector,
         native_args: vec![
             "acp".into(),
+            "--pure".into(),
             "--cwd".into(),
             input.workspace.into(),
             "--hostname".into(),

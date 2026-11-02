@@ -65,11 +65,10 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
     let mut command = Command::new(binary);
     command
         .args([
-            "--bare",
             "--print",
             "--no-session-persistence",
             "--setting-sources",
-            "",
+            "user,project,local",
             "--settings",
         ])
         .arg(&settings)

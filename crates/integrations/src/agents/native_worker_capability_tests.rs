@@ -78,7 +78,7 @@ fn actual_claude_host_provider_capability() {
 }
 
 #[test]
-#[ignore = "requires an explicitly selected negative native Claude control"]
+#[ignore = "requires an explicitly selected native Claude with a controlled missing-provider-guard wrapper"]
 fn actual_claude_without_host_provider_capability_is_refused() {
     let binary = std::env::var_os("HIROUTE_WORKER_CLAUDE_NEGATIVE_BINARY")
         .expect("selected negative native Claude binary");
