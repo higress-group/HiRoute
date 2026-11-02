@@ -110,11 +110,23 @@ pub(super) fn serve(
         .map_err(|_| "response")?;
         return Ok(false);
     }
-    let (content, stop_reason) = if let Some(challenge) = challenge {
+    let model_probe = request["stream"] == false && request["max_tokens"] == 1;
+    let (content, stop_reason) = if model_probe {
+        (json!({"type":"text", "text":"OK"}), "max_tokens")
+    } else if let Some(challenge) = challenge {
         challenge.reply_claude(&request)?
     } else {
         (json!({"type":"text", "text":"OK"}), "end_turn")
     };
+    if request["stream"] == false {
+        let body = json!({"id":"msg_probe", "type":"message", "role":"assistant",
+            "model":model, "content":[content], "stop_reason":stop_reason,
+            "stop_sequence":null, "usage":{"input_tokens":1,"output_tokens":1}})
+        .to_string();
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+            .map_err(|_| "response")?;
+        return Ok(!model_probe);
+    }
     let (start_content, delta) = if content["type"] == "tool_use" {
         (
             json!({"type":"tool_use", "id":content["id"], "name":content["name"], "input":{}}),
@@ -184,5 +196,20 @@ mod tests {
         assert!(response.starts_with("HTTP/1.1 200"));
         let (evidence, _) = exchange(format!("POST /v1/messages HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer other\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes());
         assert_eq!(evidence, Err("wrong authentication"));
+    }
+
+    #[test]
+    fn nonstreaming_token_probes_receive_json_without_model_capability_evidence() {
+        for (max_tokens, expected) in [(1, false), (32, true)] {
+            let body = json!({"model":"frozen-model", "stream":false, "max_tokens":max_tokens})
+                .to_string();
+            let (evidence, response) = exchange(format!("POST /v1/messages HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer local-challenge\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes());
+            assert_eq!(evidence, Ok(expected));
+            assert!(response.contains("Content-Type: application/json\r\n"));
+            let (_, body) = response.split_once("\r\n\r\n").unwrap();
+            let body: serde_json::Value = serde_json::from_str(body).unwrap();
+            assert_eq!(body["type"], "message");
+            assert_eq!(body["model"], "frozen-model");
+        }
     }
 }
