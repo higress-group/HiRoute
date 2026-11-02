@@ -137,7 +137,7 @@ with patch('publication_product.secrets.SystemRandom') as chooser:
 
     def test_claude_model_probe_cannot_satisfy_native_tool_or_continue_proof(self):
         value = self.context('claude')
-        body = {'model': 'gpt-5.4', 'max_tokens': 1,
+        body = {'model': 'gpt-5.4', 'max_tokens': 1, 'stream': False,
                 'messages': [{'role': 'user', 'content': 'count'}]}
         action = fixture.decision(value, body)
         self.assertEqual(action['request_kind'], 'model-probe')
@@ -148,10 +148,24 @@ with patch('publication_product.secrets.SystemRandom') as chooser:
         with self.assertRaisesRegex(AssertionError, 'resumed native history'):
             assert_frozen_route([{'state': 'green', **fixture.decision(value, continued_probe)}],
                                 0, Mock())
-        for change in ({'max_tokens': 2}, {'tools': [{'name': 'Skill'}]},
-                       {'system': 'ordinary task instructions'}):
+        self.assertFalse(fixture.decision(value, dict(body, tools=[{'name': 'Skill'}]))['continued'])
+        for change in ({'max_tokens': 2}, {'stream': True}):
             with self.subTest(change=change), self.assertRaises(AssertionError):
                 fixture.decision(value, dict(body, **change))
+
+    def test_native_model_probe_gets_json_and_never_a_task_stream(self):
+        controls = self.root / 'probe-controls'
+        controls.mkdir()
+        (controls / 'native-context.json').write_text(json.dumps(self.context('claude')))
+        handler = Mock(path='/v1/messages')
+        body = {'model': 'gpt-5.4', 'max_tokens': 1, 'stream': False,
+                'messages': [{'role': 'user', 'content': 'count'}]}
+        self.assertTrue(fixture.handle(handler, body, controls, threading.Lock()))
+        handler.send_messages_stream.assert_not_called()
+        message = handler.send.call_args.args[0]
+        self.assertEqual(message['type'], 'message')
+        self.assertEqual(message['usage'], {'input_tokens': 1, 'output_tokens': 1})
+        self.assertNotIn('completed-', json.dumps(message))
 
     def test_actual_fixture_scripts_produce_the_independent_receipts(self):
         value = self.context('codex')

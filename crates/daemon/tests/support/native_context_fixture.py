@@ -151,13 +151,9 @@ def decision(fixture, body):
     assert harness != 'qoder' or not is_native_compaction(body), \
         'unexpected Qoder compaction in the ordinary Skill journey; check the native context budget'
     rendered = json.dumps(body)
-    messages = body.get('messages', [])
-    if (harness == 'claude' and body.get('max_tokens') == 1 and not body.get('tools')
-            and not body.get('system') and len(messages) == 1
-            and messages[0].get('role') == 'user'
-            and isinstance(messages[0].get('content'), str)):
-        # Native fallback token estimation sends isolated conversation fragments.
-        # It cannot establish task tool execution or exact continued history.
+    if harness == 'claude' and body.get('max_tokens') == 1 and body.get('stream') is False:
+        # Fallback token estimation probes system fragments and tool definitions.
+        # Its non-streaming response cannot prove task tools or continued history.
         return dict(kind='text', text='OK', request_kind='model-probe', continued=False)
     if harness=='opencode' and any(signature in native_text(body).lower() for signature in ('title generator','generate a concise title','generate a short title')):
         return dict(kind='text',text='Native context receipt',request_kind='title',continued=False)
@@ -299,7 +295,13 @@ def handle(handler, body, controls, lock, reply=decision):
                                 'call_id': action.get('id'), 'continued': action.get('continued'),
                                 'model': body['model'], 'protocol': protocol,
                                 **({'request_kind': action['request_kind']} if 'request_kind' in action else {})}) + '\n')
-    handler.send_messages_stream(events(body, action, protocol))
+    if action.get('request_kind') == 'model-probe':
+        handler.send({'id': 'msg_native_model_probe', 'type': 'message', 'role': 'assistant',
+                      'model': body['model'], 'content': [{'type': 'text', 'text': action['text']}],
+                      'stop_reason': 'max_tokens', 'stop_sequence': None,
+                      'usage': {'input_tokens': 1, 'output_tokens': 1}})
+    else:
+        handler.send_messages_stream(events(body, action, protocol))
     return True
 
 
