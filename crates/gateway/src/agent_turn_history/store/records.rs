@@ -83,13 +83,6 @@ impl StageClosure {
     }
 }
 
-fn segment_has_unproven_closure(entry: &SessionEntry, segment: &SegmentState) -> bool {
-    entry
-        .closed
-        .iter()
-        .any(|turn| turn.completed.segment_id == segment.segment_id && !turn.closure_proven)
-}
-
 pub(super) fn close_active(
     entry: &mut SessionEntry,
     next_segment_id: String,
@@ -261,24 +254,16 @@ pub(super) fn snapshot(
         .or(entry.referenced_segment.as_ref())
         .filter(|segment| {
             entry.closed.back().is_some_and(|last| {
-                segment.first_turn_id == last.completed.agent_turn_id
+                segment.segment_id == last.completed.segment_id
+                    && segment.first_turn_id == last.completed.agent_turn_id
                     && segment.through_turn_id == last.completed.agent_turn_id
                     && segment.first_ordinal == last.completed.ordinal
                     && segment.through_ordinal == last.completed.ordinal
             })
         });
-    let assessment_from = target_segment.and_then(|segment| {
-        entry
-            .closed
-            .iter()
-            .position(|turn| turn.completed.segment_id == segment.segment_id)
-    });
+    let assessment_from = target_segment.and_then(|_| entry.closed.len().checked_sub(1));
     let assessment_target = target_segment.and_then(|segment| {
-        let last = entry
-            .closed
-            .iter()
-            .rev()
-            .find(|turn| turn.completed.segment_id == segment.segment_id)?;
+        let last = entry.closed.back()?;
         match &last.completed.attribution {
             ExecutionAttribution::Single { .. } | ExecutionAttribution::Mixed
                 if matches!(
@@ -295,7 +280,7 @@ pub(super) fn snapshot(
                     through_turn_id: segment.through_turn_id.clone(),
                     first_ordinal: segment.first_ordinal,
                     through_ordinal: segment.through_ordinal,
-                    target_partial: segment.partial || segment_has_unproven_closure(entry, segment),
+                    target_partial: segment.partial || !last.closure_proven,
                     plan: last.completed.plan.clone(),
                     attribution: last.completed.attribution.clone(),
                 })

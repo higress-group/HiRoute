@@ -385,7 +385,7 @@ maintenance or automatic retry policy.
 Plan quality defaults to the selected published version's latest seven days.
 Backend aggregation covers the full authorized retained scope, using the same
 snapshot as individual-turn pages. Pagination, selected model, and detail score filters cannot
-change the mean. Count each real user turn once using its latest complete valid score; valid
+change the mean. Count each real user turn once using its latest valid assessment only when complete; valid
 zero counts, unrated/partial do not. Versions, categories, groups, and model/profiles
 remain separate. Failed candidates that did not serve the stage receive no score.
 Configured candidates without execution display no records, not zero.

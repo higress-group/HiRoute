@@ -57,6 +57,32 @@ fn query() -> PlanQualitySamplesQuery {
 }
 
 #[test]
+fn stage_population_cursor_cannot_continue_a_turn_population() {
+    let root = tempfile::tempdir().unwrap();
+    let store = open_store(root.path());
+    append(&store, "cursor-first");
+    append(&store, "cursor-second");
+    let page = store
+        .observed_plan_quality_samples(&reader(), &query(), 5000)
+        .unwrap();
+    let encoded = page.next_cursor.unwrap();
+    let mut continuation = query();
+    continuation.cursor = Some(encoded.clone());
+    let next = store
+        .observed_plan_quality_samples(&reader(), &continuation, 5000)
+        .unwrap();
+    assert_eq!(next.samples.len(), 1);
+    assert_ne!(page.samples[0].segment_id, next.samples[0].segment_id);
+    let mut old: Cursor = store.decode_observation_cursor(&encoded).unwrap();
+    old.schema = "plan-quality/v1".into();
+    continuation.cursor = Some(store.encode_observation_cursor(&old).unwrap());
+    assert!(matches!(
+        store.observed_plan_quality_samples(&reader(), &continuation, 5000),
+        Err(ObservationV2Error::Stale)
+    ));
+}
+
+#[test]
 fn fresh_quality_read_returns_one_consistent_snapshot_despite_concurrent_ingestion() {
     let root = tempfile::tempdir().unwrap();
     let store = open_store(root.path());

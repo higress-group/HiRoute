@@ -170,6 +170,10 @@ struct Cursor {
     last_segment_id: String,
 }
 
+// Old opaque cursors describe a cumulative-stage population, not turn samples.
+// Reject them through the existing stale-page recovery, without rewriting data.
+const CURSOR_SCHEMA: &str = "plan-quality/v2";
+
 impl LocalObservationStore {
     pub fn observed_plan_quality_samples(
         &self,
@@ -203,7 +207,7 @@ impl LocalObservationStore {
         let cursor = match &query.cursor {
             Some(encoded) => {
                 let cursor: Cursor = self.decode_observation_cursor(encoded)?;
-                if cursor.schema != "plan-quality/v1"
+                if cursor.schema != CURSOR_SCHEMA
                     || cursor.binding != binding
                     || cursor.generation != generation
                 {
@@ -212,7 +216,7 @@ impl LocalObservationStore {
                 cursor
             }
             None => Cursor {
-                schema: "plan-quality/v1".into(),
+                schema: CURSOR_SCHEMA.into(),
                 binding,
                 generation,
                 last_at_ms: i64::MAX,
