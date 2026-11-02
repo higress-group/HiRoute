@@ -402,6 +402,10 @@ pub(super) fn cache_error() -> NativeIngressProbeError {
     fail("native evidence cache")
 }
 
+#[cfg(all(test, windows))]
+#[path = "windows_skill_settings_tests.rs"]
+mod windows_skill_settings_tests;
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
