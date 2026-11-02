@@ -143,8 +143,13 @@ with patch('publication_product.secrets.SystemRandom') as chooser:
         self.assertEqual(action['request_kind'], 'model-probe')
         self.assertFalse(action['continued'])
         self.assertNotIn(value['receipt'], action['text'])
+        continued_probe = dict(body, messages=[{'role': 'user', 'content': fixture.CONTINUE_PROMPT}])
+        self.assertFalse(fixture.decision(value, continued_probe)['continued'])
+        with self.assertRaisesRegex(AssertionError, 'resumed native history'):
+            assert_frozen_route([{'state': 'green', **fixture.decision(value, continued_probe)}],
+                                0, Mock())
         for change in ({'max_tokens': 2}, {'tools': [{'name': 'Skill'}]},
-                       {'messages': [{'role': 'user', 'content': fixture.CONTINUE_PROMPT}]}):
+                       {'system': 'ordinary task instructions'}):
             with self.subTest(change=change), self.assertRaises(AssertionError):
                 fixture.decision(value, dict(body, **change))
 

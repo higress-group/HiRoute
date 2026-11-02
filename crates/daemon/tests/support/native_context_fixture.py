@@ -151,9 +151,13 @@ def decision(fixture, body):
     assert harness != 'qoder' or not is_native_compaction(body), \
         'unexpected Qoder compaction in the ordinary Skill journey; check the native context budget'
     rendered = json.dumps(body)
+    messages = body.get('messages', [])
     if (harness == 'claude' and body.get('max_tokens') == 1 and not body.get('tools')
-            and not body.get('system') and body.get('messages') == [{'role': 'user', 'content': 'count'}]):
-        # Native custom-model probing is separate from the task's tool/history proof.
+            and not body.get('system') and len(messages) == 1
+            and messages[0].get('role') == 'user'
+            and isinstance(messages[0].get('content'), str)):
+        # Native fallback token estimation sends isolated conversation fragments.
+        # It cannot establish task tool execution or exact continued history.
         return dict(kind='text', text='OK', request_kind='model-probe', continued=False)
     if harness=='opencode' and any(signature in native_text(body).lower() for signature in ('title generator','generate a concise title','generate a short title')):
         return dict(kind='text',text='Native context receipt',request_kind='title',continued=False)
@@ -284,9 +288,9 @@ def handle(handler, body, controls, lock, reply=decision):
     except AssertionError as error:
         # Bounded controlled-source evidence stays private for native protocol diagnosis.
         failed = controls / 'last-failed-request.json'
-        failed.write_text(json.dumps(body))
-        failed.chmod(0o600)
         with lock, (controls / 'native-context-events.jsonl').open('a') as stream:
+            failed.write_text(json.dumps(body))
+            failed.chmod(0o600)
             stream.write(json.dumps({'state': 'red', 'reason': str(error)}) + '\n')
         handler.send({'error': {'message': str(error), 'type': 'invalid_request_error'}}, 400)
         return True
