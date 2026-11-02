@@ -474,9 +474,13 @@ class HostedReleasePolicyTests(unittest.TestCase):
     def test_manual_scope_cannot_narrow_the_reusable_release_gate(self):
         workflow = (REPO / '.github/workflows/windows-headless.yml').read_text()
         triggers = workflow.split('\non:\n', 1)[1].split('\npermissions:', 1)[0]
-        # Scope is a dispatch-only choice. Reusable calls reject undeclared
-        # inputs, so callers cannot turn the release gate into a partial run.
-        self.assertEqual(triggers.split('  workflow_call:', 1)[1].strip(), '')
+        # Scope is a dispatch-only choice. Reusable calls can omit only the
+        # unpublished ARM64 assessment, never any required x64 scope.
+        reusable = triggers.split('  workflow_call:', 1)[1]
+        self.assertNotRegex(reusable, r'(?m)^      scope:')
+        self.assertIn('include_internal_arm64:', reusable)
+        self.assertIn('type: boolean', reusable)
+        self.assertIn('default: true', reusable)
         self.assertIn('default: all', triggers)
         self.assertIn('options: [all, components, core, product, background, agents]', triggers)
         matrix = ("scope: ${{ fromJSON(inputs.scope != '' && inputs.scope != 'all' && "
@@ -485,6 +489,7 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertEqual(workflow.count(matrix), 1)
         self.assertIn("windows11-arm-install:", workflow)
         self.assertIn("-Scope install", workflow)
+        self.assertIn("if: inputs.include_internal_arm64 && (", workflow)
 
     def test_windows_replay_requires_successful_producers(self):
         workflow = (REPO / '.github/workflows/windows-headless.yml').read_text()
@@ -503,12 +508,13 @@ class HostedReleasePolicyTests(unittest.TestCase):
         windows = jobs['build-windows']
         unix = jobs['build-unix']
         self.assertIn('uses: ./.github/workflows/windows-headless.yml', gate)
+        self.assertIn('include_internal_arm64: false', gate)
         self.assertNotRegex(gate, r'(?m)^    (if|continue-on-error):')
         self.assertRegex(windows, r'\A    needs: windows-validation\n')
         self.assertNotRegex(windows, r'(?m)^    (if|continue-on-error):')
         self.assertNotRegex(unix, r'(?m)^    (needs|if|continue-on-error):')
         self.assertEqual(re.findall(r'target: ([a-z0-9_-]+)', windows),
-                         ['x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc'])
+                         ['x86_64-pc-windows-msvc'])
         self.assertEqual(re.findall(r'target: ([a-z0-9_-]+)', unix),
                          ['aarch64-apple-darwin', 'x86_64-apple-darwin',
                           'x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu'])

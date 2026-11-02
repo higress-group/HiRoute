@@ -5,29 +5,18 @@ import {
   acceptResponse,
   acceptStatus,
   canSave,
-  debugEnabled,
   fixedFailureText,
   nativeFailureCode,
   openLogsState,
   saveRequest,
   settingsReadErrorText,
   shouldRequest,
-  toggleDebug,
 } from '../src/features/diagnostics/diagnostics-state.ts';
 
 const status = (revision, level, extra = {}) => ({
   schema: 'hiroute.diagnostic-status/v1',
   settings: { revision, level, ...extra },
   logs_directory_available: true,
-});
-
-test('the debug toggle and the level select share one draft', () => {
-  assert.equal(toggleDebug('info', true), 'debug');
-  assert.equal(toggleDebug('debug', false), 'info');
-  // Turning debug off must not silently promote a warn/error choice to info.
-  assert.equal(toggleDebug('warn', false), 'warn');
-  assert.equal(debugEnabled('debug'), true);
-  assert.equal(debugEnabled('info'), false);
 });
 
 test('a save carries the saved revision and only exists for a real change', () => {

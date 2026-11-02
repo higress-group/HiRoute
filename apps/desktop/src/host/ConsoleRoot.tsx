@@ -1,5 +1,5 @@
 import { type PropsWithChildren, useEffect, useRef, useState } from 'react';
-import { PresentationRoot, UiIcon, usePresentationPreferences } from '../ui';
+import { HiRouteMark, PresentationRoot, UiIcon, usePresentationPreferences } from '../ui';
 import { safeDiagnosticCode } from '../error-code';
 import { hostKind, initializeShellHost, invoke } from './index.ts';
 import { clearConsoleSession, CONSOLE_EXPIRED_EVENT, CONSOLE_UNAVAILABLE_EVENT, exchangeConsoleCredential, readConsoleSession, sessionBearer } from './console.ts';
@@ -68,14 +68,17 @@ function ConsoleSessionRoot({ children }: PropsWithChildren) {
     {hadSession && <div className="console-product" hidden={phase !== 'ready'} inert={phase !== 'ready'}>{children}</div>}
     {phase !== 'ready' && <PresentationRoot language={preferences.language} theme={preferences.resolvedTheme} textScale={1}>
       <main className="console-entry"><section className="console-entry-card">
-        <div className="console-entry-brand"><span className="brand-mark">H</span><strong>HiRoute</strong></div>
+        <div className="console-entry-brand"><HiRouteMark /><strong>HiRoute</strong></div>
         <h1>{phase === 'loading' ? text('正在连接控制台', 'Connecting to your console')
           : phase === 'expired' ? text('控制台会话已结束', 'Your console session has ended')
             : phase === 'assets' ? text('控制台文件不可用', 'Console files are unavailable')
               : phase === 'unavailable' ? text('暂时无法连接服务', 'The service is unavailable')
                 : text('登录控制台', 'Sign in to the console')}</h1>
         {loginPage && <>
-          <p>{text('在服务所在设备运行 hiroute console open 获取一次性登录链接，或输入由 hiroute console token create 创建的 access token。', 'On the service host, run hiroute console open for a single-use sign-in link, or enter an access token created with hiroute console token create.')}</p>
+          <div className="console-entry-help"><p>{text('在运行 HiRoute 服务的设备上，选择一种登录方式：', 'On the device running HiRoute, choose a sign-in method:')}</p>
+            <ul><li><code>hiroute console open</code><span>{text('获取一次性登录链接。', 'Get a single-use sign-in link.')}</span></li>
+              <li><code>hiroute console token create</code><span>{text('创建 access token，然后在下方输入。', 'Create an access token, then enter it below.')}</span></li></ul>
+          </div>
           {plaintext && <div className="callout warn" role="note"><UiIcon name="warning" /><span>{text('当前连接未加密，access token 将以明文通过网络发送。仅在信任的网络中继续。', 'This connection is unencrypted. Your access token will travel over the network as plaintext. Continue only on a network you trust.')}</span></div>}
           <form className="console-login" autoComplete="off" onSubmit={event => void login(event)}>
             <label className="field"><span className="field-label">Access token</span><input className="input" type="password" name="access-token" autoComplete="off" spellCheck={false} required maxLength={64} value={token} disabled={busy} onChange={event => setToken(event.currentTarget.value)} autoFocus /></label>

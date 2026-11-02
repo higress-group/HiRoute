@@ -19,6 +19,10 @@ const ATTEMPT_BOUND: usize = 64;
 // Go's default transport. This is deliberately an origin comparison, not a claim
 // that the manifest path has been observed through an encrypted tunnel.
 const UPDATER: &str = "antigravity-hub-auto-updater-974169037036.us-central1.run.app:443";
+// The same pin starts the Grok CLI version updater in
+// sdk/cliproxy/service_lifecycle.go:430. Its fixed public npm origin is declared
+// in internal/runtime/executor/helps/xai_version.go:33. No tunnel is forwarded.
+const XAI_UPDATER: &str = "registry.npmjs.org:443";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -58,6 +62,7 @@ enum Method {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Destination {
     StockVersionUpdaterOrigin,
+    StockXaiVersionUpdaterOrigin,
     // Diagnostic distinctions only: the managed config disables this updater,
     // and neither management origin is an approved account-free attempt.
     ManagementReleaseOrigin,
@@ -71,6 +76,7 @@ enum Destination {
 fn destination(value: &str) -> Destination {
     match value {
         UPDATER => Destination::StockVersionUpdaterOrigin,
+        XAI_UPDATER => Destination::StockXaiVersionUpdaterOrigin,
         "api.github.com:443" => Destination::ManagementReleaseOrigin,
         "cpamc.router-for.me:443" => Destination::ManagementFallbackOrigin,
         "auth.openai.com:443" => Destination::CodexOAuth,
@@ -188,7 +194,10 @@ impl Receipt {
         self.read_end == ReadEnd::Complete
             && self.facts.valid
             && self.facts.method == Method::Connect
-            && self.facts.destination == Destination::StockVersionUpdaterOrigin
+            && matches!(
+                self.facts.destination,
+                Destination::StockVersionUpdaterOrigin | Destination::StockXaiVersionUpdaterOrigin
+            )
             && !self.facts.authentication
             && !self.facts.body
             && !self.facts.unknown_header
@@ -415,7 +424,7 @@ impl Observation {
             })
             .count();
         eprintln!(
-            "packaged CPA proxy observation completed: attempts={}, before-manual-login-attempts={before_login}, fixed-updater-origin-only=true, forwarding=false, tls-tunnel=false, oauth-account=not-executed, model-account=not-executed",
+            "packaged CPA proxy observation completed: attempts={}, before-manual-login-attempts={before_login}, fixed-updater-origins-only=true, forwarding=false, tls-tunnel=false, oauth-account=not-executed, model-account=not-executed",
             ledger.receipts.len()
         );
     }
@@ -458,6 +467,7 @@ mod tests {
     #[test]
     fn only_exact_pinned_updater_origin_is_an_approved_rejected_connect() {
         assert!(approved(&request(UPDATER, "")));
+        assert!(approved(&request(XAI_UPDATER, "")));
         for target in [
             "api.github.com:443",
             "cpamc.router-for.me:443",
@@ -465,16 +475,20 @@ mod tests {
             "claude.ai:443",
             "chatgpt.com:443",
             "api.anthropic.com:443",
+            "registry.npmjs.org.evil.test:443",
+            "registry.npmjs.org:444",
             "antigravity-hub-auto-updater-974169037036.us-central1.run.app.evil.test:443",
             "antigravity-hub-auto-updater-974169037036.us-central1.run.app:444",
         ] {
             assert!(!approved(&request(target, "")));
         }
         for method in ["GET", "POST", "connect"] {
-            let bytes = String::from_utf8(request(UPDATER, ""))
-                .unwrap()
-                .replacen("CONNECT", method, 1);
-            assert!(!approved(bytes.as_bytes()));
+            for target in [UPDATER, XAI_UPDATER] {
+                let bytes = String::from_utf8(request(target, ""))
+                    .unwrap()
+                    .replacen("CONNECT", method, 1);
+                assert!(!approved(bytes.as_bytes()));
+            }
         }
     }
     #[test]
@@ -488,9 +502,11 @@ mod tests {
             format!("X-Private: {PRIVATE}\r\n"),
             format!("Host: {UPDATER}\r\n"),
         ] {
-            let bytes = request(UPDATER, &header);
-            assert!(!approved(&bytes));
-            assert!(!format!("{:?}", classify(&bytes)).contains(PRIVATE));
+            for target in [UPDATER, XAI_UPDATER] {
+                let bytes = request(target, &header);
+                assert!(!approved(&bytes));
+                assert!(!format!("{:?}", classify(&bytes)).contains(PRIVATE));
+            }
         }
         let mut bytes = request(UPDATER, "");
         bytes.extend_from_slice(PRIVATE.as_bytes());

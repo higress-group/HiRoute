@@ -113,6 +113,8 @@ pub struct AliasRoutingV1 {
     /// Safe Plan display text frozen by the product publication. Absent on legacy snapshots.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_parallel_tool_calls: Option<bool>,
     pub request_owned: AliasRequestOwnedRouteV1,
     pub groups: Vec<AliasModelGroupV1>,
 }

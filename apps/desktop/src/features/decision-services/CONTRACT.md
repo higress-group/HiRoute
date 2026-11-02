@@ -71,6 +71,20 @@ source save refreshes metadata while preserving decision/parent drafts and never
 starts another test. Collapsing retains the mounted editor and original pending
 Operation. Proxy-authentication repair leaves provider-Key management untouched.
 
+The detail UI keeps configuration, credential and network digests internal to the
+existing test-identity and freshness checks. Present the saved version, timing,
+current test state and repair actions; failed-test diagnostics expose the typed
+error code without opaque hashes. A standalone removal section follows the same
+section/action/confirmation pattern as general models for decision models and
+custom extensions. Opening or cancelling its confirmation
+does not mutate a configuration. Confirmed removal retains the existing exact
+revision/source-closure transaction and backend reference guards; a shared API
+connection and its keys are not removed with the decision configuration.
+The confirmation keeps the captured service revision: refreshed state cannot
+silently replace its target. Current visible references block confirmation and
+offer their route/draft entries. A backend reference rejection stays in the dialog
+and disables resubmission until it is closed and reopened.
+
 Current hosts use `decision_services_v3`, `preview_decision_context` and
 `save_decision_service_v3`. The preview takes the exact endpoint, model, codec
 and context policy and returns the server-resolved request and per-question

@@ -1,0 +1,45 @@
+.agents-page .detail-inner > .agent-capability {
+  margin: 16px 0;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-solid);
+}
+
+.agent-capability .detail-section-head {
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+}
+
+.agent-capability .detail-section-head h3 {
+  flex: 1;
+  min-width: 0;
+  font-size: calc(14px * var(--hr-text-scale));
+  overflow-wrap: anywhere;
+}
+
+.agent-capability-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.agent-capability-actions .btn {
+  min-height: 34px;
+}
+
+.agents-page .agent-capability > p {
+  margin: 8px 0 0;
+  line-height: 1.7;
+}
+
+.agent-capability .field-help {
+  font-size: calc(12px * var(--hr-text-scale));
+}
+
+@media (max-width: 900px) {
+  .agents-page .detail-inner > .agent-capability { padding: 16px; }
+}

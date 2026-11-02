@@ -65,6 +65,7 @@ pub fn request(root: &Path, cwd: &Path, nonce: &str, mode: &str) -> WorkerLaunch
         workspace: cwd,
         alias: "probe",
         codex_catalog: None,
+        preserve_legacy_serial_catalog: false,
         native_effort: None,
         gateway: "127.0.0.1:1".parse().unwrap(),
         permit: &permit,

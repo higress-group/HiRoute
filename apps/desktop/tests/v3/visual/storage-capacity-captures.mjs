@@ -9,6 +9,8 @@ export async function runStorageCapacityCaptures(client, output) {
     const label = language === 'zh' ? '设置' : 'Settings';
     await waitFor(client, `Boolean(document.querySelector('button[aria-label="${label}"]'))`);
     await evaluate(client, `window.productShell.handlers.observation_capacity_get=()=>({max_active_bytes:20_000_000_000,active_bytes:21_000_000_000,measured_at_ms:1000,state:'pending',reason:'physical_release'});document.querySelector('button[aria-label="${label}"]').click()`);
+    await waitFor(client, `Boolean(document.querySelector('.settings-tabs [role="tab"]'))`);
+    await evaluate(client, `Array.from(document.querySelectorAll('.settings-tabs button')).find(button=>button.textContent===${JSON.stringify(language === 'zh' ? '记录与诊断' : 'Records & diagnostics')}).click()`);
     const field = `document.querySelector('input[aria-label="${language === 'zh' ? '记录容量上限（GB）' : 'Record storage limit (GB)'}"]')`;
     await waitFor(client, `Boolean(${field} && !${field}.disabled && ${field}.value==='20')`);
     await evaluate(client, `${field}.scrollIntoView({block:'center'})`);

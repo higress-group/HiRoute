@@ -52,6 +52,7 @@ fn definitions() -> Value {
         ],
         json!({
         "context_window_tokens":{"type":"integer","minimum":1,"maximum":9223372036854775807u64},
+        "codex_parallel_tool_calls":{"type":"boolean","default":true},
         "maximum_attempts":{"type":"integer","minimum":1,"maximum":64},"request_timeout_ms":{"type":"integer","minimum":1000,"maximum":3600000},"attempt_timeout_ms":{"type":"integer","minimum":1000,"maximum":3600000}}),
     );
     let classifier = classifier_definition();

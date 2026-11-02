@@ -291,6 +291,7 @@ pub enum CodexClientCapabilityPreviewV1 {
         input_modalities: Vec<CodexInputModalityV1>,
         reasoning: CodexReasoningControlV1,
         limitations: Vec<CodexCandidateCapabilityLimitV1>,
+        /// Candidate-independent restrictions, including an explicit route-level opt-out.
         fixed_limits: Vec<CodexFixedCapabilityLimitV1>,
     },
     Unavailable {

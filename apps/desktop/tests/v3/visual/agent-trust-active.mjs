@@ -157,6 +157,12 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (process.env.HIROUTE_UI_FULL_AUDIT === '1') {
+        checks.push(...await (await import('./interaction-audit-captures.mjs')).interactionAuditCaptures(client, baseUrl, outputRoot, { baseline: process.env.HIROUTE_UI_CAPTURE_BASELINE === '1' }));
+      }
+      if (selected.some(s => s.capabilities.includes('frontend-consistency'))) {
+        checks.push(...await (await import('./frontend-consistency-captures.mjs')).frontendConsistencyCaptures(client, baseUrl, outputRoot, { baseline: process.env.HIROUTE_UI_CAPTURE_BASELINE === '1' }));
+      }
       if (selected.some(s => s.id === 'desktop.home.saved-settings-are-not-verified')) {
         checks.push(...await (await import('./home-summary-captures.mjs')).homeSummaryCaptures(client, baseUrl, outputRoot));
       }

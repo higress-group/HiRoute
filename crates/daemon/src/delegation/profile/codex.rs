@@ -11,9 +11,11 @@ pub(super) fn render(
     let catalog_path = input
         .codex_catalog
         .map(|catalog| {
-            input
-                .session_root
-                .prepare_codex_catalog(input.alias, catalog)
+            input.session_root.prepare_codex_catalog(
+                input.alias,
+                catalog,
+                input.preserve_legacy_serial_catalog,
+            )
         })
         .transpose()?;
     let borrowed = input.native_context.is_borrowed();

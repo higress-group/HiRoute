@@ -95,6 +95,7 @@ mod tests {
         let mut snapshot = snapshot(7, "native-live-check");
         for (index, alias) in snapshot.aliases.iter_mut().enumerate() {
             alias.routing = Some(AliasRoutingV1 {
+                codex_parallel_tool_calls: None,
                 agent_plan_id: format!("legacy/{}", alias.served_model_id),
                 plan_display_name: Some(format!("{} display", alias.served_model_id)),
                 request_owned: AliasRequestOwnedRouteV1::Ordered {

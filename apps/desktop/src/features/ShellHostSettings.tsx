@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { invoke } from '../host/index.ts';
 import { safeDiagnosticCode } from '../error-code';
 import type { Language } from '../ui/preferences';
+import { Dialog } from '../ui/Dialog';
 export function ShellHostSettings({ active, language }: { active: boolean; language: Language }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -16,6 +17,7 @@ export function ShellHostSettings({ active, language }: { active: boolean; langu
     return () => { current = false; };
   }, [active]);
   async function action(command: string, args = {}) {
+    if (busy) return;
     setBusy(true); setError('');
     try {
       const value = await invoke<{ enabled: boolean } | null>(command, args);
@@ -29,7 +31,10 @@ export function ShellHostSettings({ active, language }: { active: boolean; langu
     </div>
     <div className="settings-row"><div className="settings-copy"><strong>{text('在浏览器中打开', 'Open in browser')}</strong><span>{text('创建一次性本机入口；浏览器会话需要重新进入', 'Create a one-time local entry; the browser session requires re-entry')}</span></div><button className="btn" type="button" disabled={busy} onClick={() => void action('open_in_browser')}>{text('打开', 'Open')}</button></div>
     <div className="settings-row"><div className="settings-copy"><strong>{text('重新启动后台服务', 'Restart background service')}</strong><span>{text('桌面窗口可以保留；现有调用可能暂时中断', 'Keep the Desktop window open; current calls may be interrupted')}</span></div><button className="btn" type="button" disabled={busy} onClick={() => setConfirmRestart(true)}>{text('重启服务…', 'Restart service…')}</button></div>
-    {confirmRestart && <div className="gateway-risk"><p>{text('确认重启后台服务？请先等待当前调用和 Worker 任务完成。', 'Restart the background service? Wait for current calls and Worker tasks first.')}</p><button className="btn" type="button" disabled={busy} onClick={() => void action('restart_service')}>{text('确认重启', 'Restart service')}</button><button className="btn" type="button" disabled={busy} onClick={() => setConfirmRestart(false)}>{text('取消', 'Cancel')}</button></div>}
+    <Dialog open={confirmRestart} title={text('重启后台服务？', 'Restart the background service?')} closeLabel={text('取消', 'Cancel')} closeDisabled={busy} onClose={() => setConfirmRestart(false)}
+      footer={<><button className="btn" type="button" disabled={busy} onClick={() => setConfirmRestart(false)}>{text('取消', 'Cancel')}</button><button className="btn btn-primary" type="button" disabled={busy} onClick={() => void action('restart_service')}>{busy ? text('正在重启…', 'Restarting…') : text('确认重启', 'Restart service')}</button></>}>
+      <p>{text('现有调用可能暂时中断。请先等待当前调用和 Worker 任务完成，再确认重启。', 'Current calls may be interrupted. Wait for current calls and Worker tasks to finish before restarting.')}</p>
+    </Dialog>
     {error && <div className="settings-inline-error" role="status">{error}</div>}
   </div></section>;
 }

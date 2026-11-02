@@ -9,9 +9,9 @@ export async function runConsoleScenarios(client, baseUrl, output) {
     .filter(animation => animation.effect?.getTiming().iterations !== Infinity)
     .map(animation => animation.finished.catch(() => undefined)))
     .then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))`);
-  const open = async (state, language = 'zh', theme = 'light', width = 1200, height = 813) => {
+  const open = async (state, language = 'zh', theme = 'light', width = 1200, height = 813, extra = {}) => {
     const url = new URL('console-entry.html', baseUrl);
-    for (const [key, value] of Object.entries({ case: state, language, theme })) url.searchParams.set(key, value);
+    for (const [key, value] of Object.entries({ case: state, language, theme, ...extra })) url.searchParams.set(key, value);
     await navigate(client, url.href, { width, height });
     await waitFor(client, 'Boolean(window.consoleComponent)');
     await waitFor(client, state === 'ready' || state === 'launch' ? 'Boolean(document.querySelector(".sidebar"))' : 'Boolean(document.querySelector(".console-entry h1")) && !document.querySelector(".console-entry [role=status]")');
@@ -34,7 +34,14 @@ export async function runConsoleScenarios(client, baseUrl, output) {
   };
   const check = async (id, run) => { try { await run(); results.push({ id, state: 'green' }); } catch (error) { results.push({ id, state: 'red', error: String(error) }); } };
   await check('console.session.launch', async () => {
-    await open('launch');
+    await open('launch', 'zh', 'light', 1200, 813, { startup: 'held' });
+    try {
+      await waitFor(client, 'window.consoleComponent.desktopPending() > 0');
+      const startup = await evaluate(client, 'window.consoleComponent.invoke("startup_status", {})');
+      assert(startup.state === 'ready', 'Authenticated console invented a startup failure before its first snapshot: ' + JSON.stringify(startup));
+      assert(await evaluate(client, '!document.querySelector(".startup-recovery")'), 'Authenticated console displays a false startup failure while its first snapshot is pending');
+    } finally { await evaluate(client, 'window.consoleComponent.releaseDesktop()'); }
+    await waitFor(client, 'Boolean(document.querySelector(".sidebar-health .good"))');
     assert(await evaluate(client, 'Boolean(document.querySelector(".console-transport-bar.plaintext"))'), 'Network launch login lost its persistent plaintext warning');
     assert(await evaluate(client, 'location.pathname === "/" && !location.search && window.consoleComponent.requests.filter(r => r.path.endsWith("/launch")).length === 1 && window.consoleComponent.requests.every(r => !r.url.includes("code="))'), 'Launch code was not removed before exchange');
     assert(await evaluate(client, 'sessionStorage.getItem("hiroute.console.session")?.length === 64 && !localStorage.getItem("hiroute.console.session") && !document.cookie'), 'Session escaped sessionStorage');
@@ -42,6 +49,15 @@ export async function runConsoleScenarios(client, baseUrl, output) {
   });
   await check('console.session.token', async () => {
     await open('login');
+    await waitFor(client, 'document.querySelector(".console-entry-brand img")?.complete ?? true');
+    const brand = await evaluate(client, `(() => {
+      const mark = document.querySelector('.console-entry-brand .brand-mark');
+      const image = mark?.querySelector('img');
+      const box = image?.getBoundingClientRect();
+      return { naturalWidth: image?.naturalWidth ?? 0, width: box?.width ?? 0, height: box?.height ?? 0, text: mark?.textContent.trim() };
+    })()`);
+    assert(brand.naturalWidth > 0 && Math.abs(brand.width - 34) < 1 && Math.abs(brand.height - 34) < 1 && !brand.text,
+      'Console entry does not render the HiRoute mark: ' + JSON.stringify(brand));
     assert(await evaluate(client, 'document.querySelector("[role=note]")?.textContent.includes("明文")'), 'Plaintext token warning is missing');
     await evaluate(client, 'Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(document.querySelector("input"), "c".repeat(64)); document.querySelector("input").dispatchEvent(new Event("input",{bubbles:true}))');
     await evaluate(client, 'document.querySelector("form").requestSubmit()');
@@ -51,6 +67,8 @@ export async function runConsoleScenarios(client, baseUrl, output) {
   await check('console.session.expired', async () => {
     await open('expired');
     assert(await evaluate(client, '!sessionStorage.getItem("hiroute.console.session") && document.body.innerText.includes("会话已结束")'), '401 did not discard the bearer and render expiry');
+    const startupError = await evaluate(client, 'window.consoleComponent.invoke("startup_status", {}).then(() => null, error => error.code)');
+    assert(startupError === 'CONSOLE_AUTH_REQUIRED', 'Expired console session produced a startup verdict without authentication');
   });
   await check('console.host-capabilities', async () => {
     await open('ready');

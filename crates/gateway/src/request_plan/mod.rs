@@ -151,6 +151,7 @@ pub(crate) struct VerifiedRunObservationContext {
 pub struct AuthorizedRequestPlan {
     native_consumer: Option<hiroute_domain::AgentModelConsumerV1>,
     web_search_allowed: bool,
+    codex_parallel_tools_allowed: bool,
     verified_run_observation: Option<VerifiedRunObservationContext>,
     receipt: RequestAuthorityReceipt,
     deadline: Instant,
@@ -182,6 +183,7 @@ impl AuthorizedRequestPlan {
     ) -> Self {
         Self {
             web_search_allowed: false,
+            codex_parallel_tools_allowed: true,
             native_consumer: None,
             verified_run_observation,
             receipt,
@@ -218,6 +220,22 @@ impl AuthorizedRequestPlan {
 
     pub(crate) fn web_search_allowed(&self) -> bool {
         self.web_search_allowed
+    }
+
+    pub(crate) fn with_codex_parallel_tools_allowed(mut self, allowed: bool) -> Self {
+        self.codex_parallel_tools_allowed = allowed;
+        self
+    }
+
+    /// Newer Codex clients can send true even when their catalog declares false.
+    /// Apply only the route's explicit Responses opt-out before native/IR projection.
+    pub(crate) fn apply_codex_tool_policy(&self, document: &mut serde_json::Value) {
+        if self.receipt.ingress_protocol == IngressProtocol::Responses
+            && !self.codex_parallel_tools_allowed
+            && let Some(object) = document.as_object_mut()
+        {
+            object.insert("parallel_tool_calls".into(), serde_json::Value::Bool(false));
+        }
     }
 
     pub(crate) fn verified_run_observation(&self) -> Option<&VerifiedRunObservationContext> {

@@ -220,6 +220,7 @@ fn try_request_in_context(
         workspace: Path::new("/work/a"),
         alias,
         codex_catalog,
+        preserve_legacy_serial_catalog: true,
         native_effort: Some("high"),
         gateway: "127.0.0.1:44123".parse().unwrap(),
         permit: &permit,
@@ -842,3 +843,6 @@ fn private_fixture() -> PrivateFixture {
 
 #[path = "capability_tests.rs"]
 mod capability_tests;
+
+#[path = "parallel_tools_tests.rs"]
+mod parallel_tools_tests;

@@ -1,4 +1,4 @@
 interface:
-  display_name: "HiRoute UI Quality"
-  short_description: "Verify Desktop layout with production styles and screenshots"
-  default_prompt: "Use $hiroute-ui-quality to verify the changed Desktop states with production styles, geometry and screenshots."
+  display_name: "HiRoute Interaction & UI Quality"
+  short_description: "Align and verify Desktop/Web interactions with real UI evidence"
+  default_prompt: "Use $hiroute-ui-quality to align the changed Desktop/Web interactions with existing flows and verify their states, layout and before/after evidence."

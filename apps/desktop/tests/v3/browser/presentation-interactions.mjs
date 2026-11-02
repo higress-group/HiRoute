@@ -44,6 +44,7 @@ export const presentationScenarios = [
       control().handlers.observation_capacity_get = () => structuredClone(effective);
       control().handlers.observation_capacity_set = payload => { effective = { ...effective, ...payload.input }; return structuredClone(effective); };
       await navigate(language === 'zh' ? '设置' : 'Settings');
+      all('[role="tab"]').find(button => button.textContent === (language === 'zh' ? '记录与诊断' : 'Records & diagnostics')).click(); await pause();
       const field = () => document.querySelector('input[aria-label="' + (language === 'zh' ? '记录容量上限（GB）' : 'Record storage limit (GB)') + '"]');
       await until(() => field() && !field().disabled, 'Capacity read did not finish');
       const set = value => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(field(), value); field().dispatchEvent(new Event('input', { bubbles: true })); };
@@ -54,13 +55,14 @@ export const presentationScenarios = [
       assert(control().commands.some(c => c.command === 'observation_capacity_set' && c.payload.input.max_active_bytes === 25_000_000_000), 'Save bypassed the shared capacity boundary');
       set('0'); await pause(); assert(save().disabled, 'Zero capacity can be saved');
       set('21'); await pause(); control().handlers.observation_capacity_set = () => { throw new Error('STORAGE_UNAVAILABLE'); }; save().click();
-      await until(() => !field().disabled && document.querySelector('.settings-inline-error')?.textContent.includes('STORAGE_UNAVAILABLE'), 'Failed save did not expose retry');
+      await until(() => !field().disabled && field().closest('.settings-list').querySelector('.settings-inline-error')?.textContent.includes('STORAGE_UNAVAILABLE'), 'Failed save did not expose retry');
       assert(effective.max_active_bytes === 25_000_000_000 && field().value === '21', 'Failed save changed the effective policy or discarded the draft');
       control().handlers.observation_capacity_set = payload => { effective = { ...effective, ...payload.input }; return structuredClone(effective); };
       set(''); await pause(); save().click();
       await until(() => effective.max_active_bytes === null && !field().disabled, 'Empty capacity did not disable early expiry');
       control().remount(); await pause();
       await navigate(language === 'zh' ? '设置' : 'Settings');
+      all('[role="tab"]').find(button => button.textContent === (language === 'zh' ? '记录与诊断' : 'Records & diagnostics')).click(); await pause();
       await until(() => field() && !field().disabled && field().value === '', 'Disabled policy was not retained when reopening settings');
       field().scrollIntoView({ block: 'center' }); await pause();
       const row = field().closest('.settings-row');

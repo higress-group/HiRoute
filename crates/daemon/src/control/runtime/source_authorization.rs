@@ -264,6 +264,7 @@ fn map_control_read(error: hiroute_application::control::ControlReadError) -> Po
         hiroute_application::control::ControlReadError::Unavailable => PortErrorCode::Unavailable,
         hiroute_application::control::ControlReadError::NotFound => PortErrorCode::NotFound,
         hiroute_application::control::ControlReadError::Denied
+        | hiroute_application::control::ControlReadError::CodexProfileConflict
         | hiroute_application::control::ControlReadError::CollaborationRootRequired => {
             PortErrorCode::PermissionDenied
         }

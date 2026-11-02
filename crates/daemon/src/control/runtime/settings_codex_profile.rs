@@ -126,7 +126,12 @@ impl LocalControlAdapter {
             owner.is_some(),
         )
         .map(Some)
-        .map_err(|_| ControlReadError::SnapshotChanged)
+        .map_err(|error| match error {
+            hiroute_integrations::AgentFilesystemScanError::SourceChanged => {
+                ControlReadError::SnapshotChanged
+            }
+            _ => ControlReadError::CodexProfileConflict,
+        })
     }
 
     pub(super) fn codex_access_view(&self) -> Result<CodexAccessViewV1, ControlReadError> {

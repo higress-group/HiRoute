@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { agentActionErrorMessage, agentDisableMessage, classifyAgentMutation } from '../src/agent-mutation-feedback.ts';
+import { agentActionErrorMessage, agentSettingsFailureMessage, agentDisableMessage, classifyAgentMutation } from '../src/agent-mutation-feedback.ts';
 
 const operation = {
   operation_id: 'operation/agent-settings',
@@ -38,4 +38,14 @@ test('disable feedback reports success, verified rollback and uncertain recovery
   assert.match(agentDisableMessage('needs_attention', 'zh'), /回滚尚未确认/);
   assert.doesNotMatch(agentDisableMessage('needs_attention', 'zh'), /原连接仍有效|连接已停用/);
   assert.doesNotMatch(agentDisableMessage('activating', 'en'), /is disabled|remains active/);
+});
+
+test('stable Codex merge conflicts explain the file problem instead of asking for stale retries', () => {
+  const failure = { source: 'backend', envelope: { error: { code: 'CAPABILITY_DENIED', message_key: 'error.codex_profile_conflict' } } };
+  assert.match(agentSettingsFailureMessage(failure, 'zh'), /无法安全合并/);
+  assert.match(agentSettingsFailureMessage(failure, 'en'), /file format/);
+  assert.doesNotMatch(agentSettingsFailureMessage(failure, 'zh'), /配置在保存前发生变化|再次保存以重新读取/);
+  assert.equal(agentSettingsFailureMessage({ ...failure, source: 'native' }, 'zh'), null);
+  assert.equal(agentSettingsFailureMessage({ source: 'backend', envelope: { error: { code: 'CHANGE_PREVIEW_STALE', message_key: 'error.codex_profile_conflict' } } }, 'en'), null);
+  assert.equal(agentSettingsFailureMessage({ source: 'backend', envelope: { error: { code: 'CAPABILITY_DENIED', message_key: 'private native output' } } }, 'zh'), null);
 });

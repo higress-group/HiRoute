@@ -13,10 +13,11 @@ a prerequisite, not a model call, installed Skill invocation or resumable task.
 | --- | --- | --- |
 | Scan, prepare and import model sources | [Source admission map](architecture.md#model-sources-and-native-configuration), [model connection assembly](../../crates/daemon/src/control/runtime/model_connections.rs) | [Pi acceptance](../../tools/product-e2e/tests/PI_INTEGRATION.md), [DSH acceptance](../../tools/product-e2e/tests/DSH_INTEGRATION.md) |
 | Configure, edit and restore models | [Settings transaction](../../crates/application/src/agent_connection/settings), [typed facts](../../crates/daemon/src/control/runtime/settings_facts), [Desktop Agent feature](../../apps/desktop/src/features/agents/README.md) | [Additional native provider guide](../../crates/integrations/src/agents/additional_native/README.md), [saved-model journey](../../crates/daemon/tests/support/additional_model_product.py), [Windows ordinary Pi/DSH clients](../../crates/daemon/tests/support/windows_user_models.rs), [Windows Qoder official-account journey](../../crates/daemon/tests/support/windows_qoder_user_models.rs) |
-| Choose an Agent for a model trial | [Choice/detail reads](../../crates/product-session/src/commands/trial_agents.rs), [flow lifetime](../../apps/desktop/src/features/trial/useTrialAgents.ts), [model projection](../../crates/daemon/src/control/runtime/settings_status.rs) | [Trial read races and mapping refresh](../../apps/desktop/tests/v3/visual/trial-agent-read-checks.mjs), [strict model/full query control](../../crates/daemon/src/control/runtime/settings_projection_tests.rs) |
+| Choose an Agent for a model trial | [Choice/detail reads](../../crates/product-session/src/commands/trial_agents.rs), [flow lifetime](../../apps/desktop/src/features/trial/useTrialAgents.ts), [confirmed Codex launch handoff](../../apps/desktop/src/features/trial/TrialCodexHandoff.tsx), [model projection](../../crates/daemon/src/control/runtime/settings_status.rs) | [Trial read races and mapping refresh](../../apps/desktop/tests/v3/visual/trial-agent-read-checks.mjs), [mode-specific launch and recovery](../../apps/desktop/tests/v3/visual/trial-codex-handoff-active.mjs), [strict model/full query control](../../crates/daemon/src/control/runtime/settings_projection_tests.rs) |
 | Show recorded Agent settings on Home or route associations | [Home and visible-route reads](../../crates/product-session/src/commands/agent_home.rs), [metadata-only summary](../../crates/daemon/src/control/runtime/settings_summary.rs), [Home projection](../../apps/desktop/src/product/home-projections.ts) | [Home states and fan-out](../../apps/desktop/tests/v3/browser/home-startup-scenarios.mjs), [session and authority fences](../../crates/product-session/src/commands/agent_snapshot/tests.rs) |
 | Preview a trial's DSH model limits | [Editor option orchestration](../../crates/application/src/client_access/editor_options.rs), [Responses ingress and token budget](../../crates/daemon/src/control/runtime/routing.rs) | [Frozen publication equivalence](../../crates/daemon/src/control/runtime/routing_dsh_preview_tests.rs), [real daemon editor options](../../crates/daemon/tests/support/route_options_product.py) |
 | Publish a Plan for Worker delegation | [CLI Plan choices](../../crates/cli/src/quickstart/preview.rs), [shared defaults](../../crates/application/src/routing/editor_options.rs), [domain publication rules](../../crates/domain/src/routing/authoring.rs) | [Installed CLI selection, publication and Restore](../../crates/daemon/tests/support/quickstart_worker_plan.py) |
+| Set Codex parallel tool calls | [Route limits](../../crates/domain/src/routing/strategy.rs), [shared user/Worker catalog projection](../../crates/integrations/src/agents/codex_catalog_plan.rs), [collapsed advanced controls](../../apps/desktop/src/features/PlanRuntimeSettings.tsx) | [Default/override and retained native entries](../../crates/integrations/src/agents/codex_catalog_plan_tests.rs), [draft/reopen interaction](../../apps/desktop/tests/v3/browser/plan-editor-ux.tsx) |
 | Enable, edit or disable task collaboration independently | [CLI intent workflow](../../crates/cli/src/collaboration.rs), [Skill effects](../../crates/application/src/agent_connection), [shared session checks](../../crates/product-session/src/agent_check_session.rs) | [CLI workflow regressions](../../crates/cli/src/collaboration/tests.rs), [real main-Agent → public CLI → Worker journey](../../crates/daemon/tests/support/collaboration_product.py) |
 
 Qoder/Pi/DSH/OpenCode saved models use one owned provider per Plan with an explicit
@@ -26,6 +27,10 @@ protocol and receipt authority across publication/restart. `work.protocol` is th
 independent frozen Worker choice. [Publication budget guards](../../crates/daemon/src/control/runtime/additional_model_budget.rs)
 report the actual installed consumers; [safe conflict facts](../../crates/domain/src/agents/model_budget_conflict.rs)
 retain rejection identity through compensation and client observation.
+The published Codex parallel-tool opt-out is enforced before native/IR request
+projection in [Gateway authority](../../crates/gateway/src/request_plan/mod.rs);
+[listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/parallel_tools.rs)
+cover native and cross-protocol forwarding.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
 [Native routing resources](../../crates/integrations/src/agents/routing_adapters.rs)
@@ -69,6 +74,12 @@ explains native provider-scoped session discovery before enabling routing. Defau
 on-demand access preserves the ordinary entry for earlier sessions; advanced default
 takeover first requires configuration restoration. See [session recovery](../local-user-configuration.md#find-earlier-codex-sessions). Worker Continue below
 has its own exact-history binding and does not replace the native `/resume` picker.
+The trial flow preserves that selected mode. After confirmed mapping, its
+[handoff](../../apps/desktop/src/features/trial/TrialCodexHandoff.tsx) reads only
+the submitted native context, verifies its saved selection and reuses the shared
+profile command/copy view. Default mode instead explains restarting the matching
+CLI/Desktop. Explicit result refresh retires the earlier launch instructions;
+unverified, changed or revoked settings cannot supply a command.
 OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)

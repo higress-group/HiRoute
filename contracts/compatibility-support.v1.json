@@ -2641,6 +2641,35 @@
       ]
     },
     {
+      "contract": "hiroute.sqlite-backup-set/v2",
+      "field": "target_schema_version=30 with original schema29 control/runtime/secrets sources",
+      "mode": "recovery_read_only",
+      "owner": "local-storage/migrations",
+      "reason": "Retained schema29-to30 batches can stop before or after any store commit or phase publication. Verify the original three-store source digests, identities, secret binding and recorded phase; finish target30 under its original batch, archive it unchanged, then publish a distinct current-target batch. The historical SQL30 step extends Worker selection constraints without rewriting existing journals. Other sources and changed live data remain refused.",
+      "removal_condition": "Remove only after retained schema29-to30 incomplete batches have completed or been restored and their recovery support is explicitly retired.",
+      "allowed_paths": [
+        "crates/local-storage/src/migrations/mod.rs",
+        "crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.codex-catalog/v1",
+      "field": "retained private Worker catalog serial projection before the default-on policy",
+      "mode": "recovery_read_only",
+      "owner": "agent-worker/codex",
+      "reason": "A retained task from the preceding installed 0.5.0 development candidate has an immutable serial catalog. Only when its frozen Plan omits codex_parallel_tool_calls, Continue admits the exact current projection with only supports_parallel_tool_calls changed back to false, preserving the original file. Explicit settings and all unrelated catalog drift still fail. Fresh tasks always use the current producer.",
+      "removal_condition": "Remove when retained pre-default-on Worker tasks and their supported recovery copies have expired or been retired; do not regenerate the frozen intermediate input with the current producer.",
+      "allowed_paths": [
+        "crates/daemon/src/delegation/installation.rs",
+        "crates/daemon/src/delegation/profile/mod.rs",
+        "crates/daemon/src/delegation/profile/codex.rs",
+        "crates/daemon/src/delegation/profile/materials.rs",
+        "crates/daemon/src/delegation/profile/parallel_tools_tests.rs",
+        "crates/daemon/src/delegation/profile/fixtures/codex-worker-serial-546.json",
+        "crates/daemon/src/delegation/profile/fixtures/README.md"
+      ]
+    },
+    {
       "contract": "hiroute.delegation-run/v1",
       "field": "released run records without execution_failure",
       "mode": "recovery_read_only",

@@ -195,8 +195,15 @@ Without `limits.context_window_tokens`, the client window is
 `min(400000, common_usable_upper_bound)`; explicit values are positive integers no
 larger than that bound. This is a client window, not a rewrite of model capability.
 Editor and generated Codex catalog MUST use the same aggregation and identify which
-candidate narrows context/vision. Serial-tool limitations are separate product
-constraints, not attributed to a candidate. Unknown required window/protocol facts
+candidate narrows context/vision. Codex parallel tool calls default to enabled;
+the optional `limits.codex_parallel_tool_calls` boolean can disable the declaration.
+Its switch is in the capability preview's Advanced settings, collapsed by default.
+Draft save/reopen, publication and new Worker catalogs retain the same preference.
+The published opt-out also disables parallel calls in Responses requests forwarded
+to any candidate; enabling leaves the incoming request preference intact.
+Changing it requires publishing, saving the Agent model settings again and restarting
+Codex; it does not rewrite a running client's catalog or force tool scheduling.
+Unknown required window/protocol facts
 cannot produce a falsely complete catalog; expressible runtime forwarding does
 not itself prove catalog vision support.
 

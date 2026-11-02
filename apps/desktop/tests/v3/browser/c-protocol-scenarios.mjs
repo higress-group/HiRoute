@@ -70,6 +70,7 @@ export function cProtocolScenarios({ fresh, routing, click, until, all, text, ca
   }
   async function publish(t){
     const before=calls('preview_plan_editor').length;
+    await until(()=>all('button').some(button=>!button.disabled && button.textContent.includes(t('发布更改','Publish changes'))),'current publication options');
     await click(t('发布更改','Publish changes'));
     await until(()=>calls('preview_plan_editor').length>before,'ordinary publication dispatch');
     const input=calls('preview_plan_editor').at(-1).payload.input;
@@ -115,7 +116,7 @@ export function cProtocolScenarios({ fresh, routing, click, until, all, text, ca
     }
   }),scenario('desktop.decisions.connectivity-test',['decision-services','c-protocol'],'The connection page runs one connectivity test of the read-back V1 record by digest',async()=>{
     for(const language of ['zh','en']){
-      await fresh(()=>{control().handlers.decision_services_v3=()=>({services:[control().decisionView(service)]});control().handlers.test_decision_service_v3=({input})=>{const view=control().decisionView(service);assert(input.id===service.id&&input.revision===7&&input.expected_configuration_digest===view.configuration_digest&&!input.request,'Connection switched contract');return {schema:'hiroute.decision-service-test-result/v3',check:{schema:'hiroute.decision-service-test-result/v2',outcome:'passed',failure_code:null,duration_millis:1,tested_configuration_digest:view.configuration_digest,tested_credential_state_revision:view.credential_state_revision},network:null,failure:null};};});
+      await fresh(()=>{control().handlers.decision_services_v3=()=>({services:[control().decisionView(service)]});control().handlers.test_decision_service_v3=({input})=>{const view=control().decisionView(service);assert(input.id===service.id&&input.revision===7&&input.expected_configuration_digest===view.configuration_digest&&!input.request,'Connection switched contract');return control().decisionNetworkTest({schema:'hiroute.decision-service-test-result/v2',outcome:'passed',failure_code:null,duration_millis:1,tested_configuration_digest:view.configuration_digest,tested_credential_state_revision:view.credential_state_revision});};});
       localStorage.setItem('hiroute.language',language);control().remount();const t=(zh,en)=>language==='zh'?zh:en;
       await click(t('模型','Models'));await click(t('决策模型','Decision models'));await until(()=>document.querySelector('.decision-heading h2')?.textContent===service.name,'connection details');await click(t('测试连接','Test connection'));
       await until(()=>text().includes(t('连接测试通过','Connection test passed')),'connection test');

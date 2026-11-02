@@ -12,6 +12,12 @@ retention and handoff guidance for ordinary changes as well as integration.
 Its linked guides retain runner commands and report details. Keep integration
 ownership in `hiroute-integrate`, rather than making it a prerequisite for testing.
 
+`hiroute-ui-quality` owns shared interaction and visual-delivery guidance for the
+product UI. Its [interaction reference](../docs/desktop-interactions.md) is the
+single current source for equivalent controls, edit/confirmation state and
+comparative evidence. Design, implementation and validation skills reference it
+when their task changes UI; they do not maintain competing style or approval rules.
+
 Optional local skills and their matching Claude links can be explicitly ignored.
 They are not part of the published skillset or prerequisites for public worktrees.
 Keep required public references within the tracked instruction set.

@@ -28,12 +28,13 @@ pub fn roundtrip(product: &InstalledProduct) {
         };
         assert_eq!(request.body["model"], "windows-decision-model");
         let state = request.body["state"].as_object().unwrap();
-        assert_eq!(state.len(), 4);
+        assert_eq!(state.len(), 5);
         for field in [
             "latest_user",
             "prior_context",
             "assessment_stage",
             "history_partial",
+            "visible_conversation",
         ] {
             assert!(state.contains_key(field), "current request lacks {field}");
         }

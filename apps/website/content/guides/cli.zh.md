@@ -1,13 +1,14 @@
 # HiRoute CLI
 
-HiRoute CLI 让你在终端连接模型、配置路由、接入 Agent、查看会话和委派任务。它连接本机的 HiRoute 服务，与桌面应用使用相同的配置和执行记录，也可以独立管理 Linux 无界面版。
+HiRoute CLI 让你在终端连接模型、配置路由、接入 Agent、查看会话和委派任务。它连接本机的 HiRoute 服务，与 macOS / Windows 桌面应用、Linux Web UI 使用相同的配置和执行记录，也可以独立用于终端和自动化环境。
 
 本文中的命令名、参数和 JSON 字段均保留原文。例如 `worker` 管理委派任务，`schema` 查看命令接受和返回的数据格式。
 
 ## 安装与检查
 
 - macOS 桌面应用：打开“设置” → “CLI” → “终端入口”，选择“安装”。
-- Linux 无界面版：按 [Linux 无界面版安装](/docs/install-linux/) 使用官网一行命令安装，再手动启动服务。
+- Windows 桌面应用（0.5.0+）：当前用户安装包自带 CLI，可选择将入口加入 PATH。按 [Windows 安装指南](/docs/install-windows/)安装后打开新终端。
+- Linux：按 [Linux Web UI 与 CLI 安装](/docs/install-linux/)使用官网一行命令安装，再手动启动服务。
 
 如果 PATH 不包含入口目录，把下面一行加入 shell 配置后重新打开终端：
 

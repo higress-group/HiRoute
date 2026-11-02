@@ -231,6 +231,8 @@ export function homeStartupScenarios({ until, control }) {
       try {
         await readyRoute(c);
         document.querySelector('button[aria-label="设置"]').click();
+        await until(() => [...document.querySelectorAll('.settings-tabs button')].some(button => button.textContent === '服务与接入'), 'Settings service area');
+        [...document.querySelectorAll('.settings-tabs button')].find(button => button.textContent === '服务与接入').click();
         await until(() => badge()?.classList.contains('good'), 'ready Settings service badge');
         c.handlers.desktop_snapshot = () => new Promise(resolve => { release = resolve; });
         window.dispatchEvent(new Event('focus'));

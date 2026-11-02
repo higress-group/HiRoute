@@ -1,6 +1,5 @@
 import type { ConsoleIdentity, HostCapabilities, HostTransport } from './types.ts';
 import { browserCapabilities } from './types.ts';
-import { safeDiagnosticCode } from '../error-code.ts';
 const SESSION_KEY = 'hiroute.console.session';
 const CONTEXT_KEY = 'hiroute.console.context';
 const API = '/api/console/v1';
@@ -9,7 +8,6 @@ export const CONSOLE_UNAVAILABLE_EVENT = 'hiroute-console-unavailable';
 let context: string | undefined;
 let capabilities: HostCapabilities = browserCapabilities;
 let transport: ConsoleIdentity['transport'] = 'loopback';
-let lastFailure = 'CONSOLE_UNAVAILABLE';
 const failure = (code: string) => ({ kind: 'native', code });
 function storage(): Storage { try { return window.sessionStorage; } catch { throw failure('CONSOLE_STORAGE_UNAVAILABLE'); } }
 export function sessionBearer(): string | null { try { return storage().getItem(SESSION_KEY); } catch { return null; } }
@@ -44,7 +42,6 @@ async function request<T>(path: string, options: RequestInit = {}, authenticated
   let value: unknown;
   try { value = await response.json(); } catch { throw failure('RESPONSE_DATA_INVALID'); }
   if (!response.ok) {
-    lastFailure = safeDiagnosticCode(value, 'CONSOLE_UNAVAILABLE');
     if (response.status === 401 && authenticated) { clearConsoleSession(); window.dispatchEvent(new Event(CONSOLE_EXPIRED_EVENT)); }
     throw value;
   }
@@ -69,7 +66,12 @@ export const consoleCapabilities = () => capabilities;
 export const consoleTransport: HostTransport = {
   capabilities: consoleCapabilities,
   async call<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-    if (command === 'startup_status') return { state: 'failed', code: lastFailure, recovery_available: Boolean(capabilities.recovery_directory) } as T;
+    if (command === 'startup_status') {
+      // The console starts after daemon admission. Confirm the live session
+      // instead of turning an earlier request error into a startup failure.
+      await readConsoleSession();
+      return { state: 'ready', recovery_available: false } as T;
+    }
     return request<T>(`/command/${encodeURIComponent(command)}`, { method: 'POST', body: JSON.stringify(args) });
   },
 };

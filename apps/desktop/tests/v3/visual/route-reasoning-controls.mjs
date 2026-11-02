@@ -4,8 +4,9 @@ import { evaluate, waitFor } from './cdp-client.mjs';
 // Production editor and styles, driven through the model-list quick entry.
 export async function reasoningControlScenarios({ client, run, setup, click, shot, choose, current, editorReady }) {
   const key = async (key, code = key) => {
-    const windowsVirtualKeyCode = { ArrowRight: 39, ArrowDown: 40 }[key];
-    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode });
+    const windowsVirtualKeyCode = { ArrowRight: 39, ArrowDown: 40, Enter: 13 }[key] ?? (key.length === 1 ? key.toUpperCase().charCodeAt(0) : undefined);
+    const text = key === 'Enter' ? '\r' : key.length === 1 ? key : undefined;
+    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode, ...(text ? { text, unmodifiedText: text } : {}) });
     await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode });
   };
   const save = async () => {
@@ -25,12 +26,15 @@ export async function reasoningControlScenarios({ client, run, setup, click, sho
       await evaluate(client, 'document.querySelector(".route-reasoning-policy").scrollIntoView({block:"start"});true');
       const policy = await evaluate(client, `(()=>{
         const e=document.querySelector('.route-reasoning-policy'),label=e.querySelector('.field-label');
+        const labelBox=label.getBoundingClientRect(),controlBox=e.querySelector('.route-reasoning-modes').getBoundingClientRect();
         return {overflow:e.scrollWidth-e.clientWidth,font:getComputedStyle(label).fontSize,family:getComputedStyle(label).fontFamily,
+          verticalOffset:Math.abs((labelBox.top+labelBox.bottom-controlBox.top-controlBox.bottom)/2),
           segments:[...e.querySelectorAll('.segment')].map(s=>({font:getComputedStyle(s).fontSize,family:getComputedStyle(s).fontFamily,height:s.getBoundingClientRect().height})),
           checked:e.querySelector('input:checked').value,count:e.querySelectorAll('input[type=radio]').length};
       })()`);
       assert.equal(policy.overflow, 0); assert.equal(policy.count, 2); assert.equal(policy.checked, 'follow');
       assert.equal(policy.font, '12px');
+      assert.ok(policy.verticalOffset <= 1, JSON.stringify(policy));
       assert.ok(policy.segments.every(s => s.font === policy.font && s.family === policy.family && s.height >= 30), JSON.stringify(policy));
       await shot(`reasoning-policy-${id}`);
       // Native radio keys stage the policy without altering the model setting.
@@ -62,7 +66,7 @@ export async function reasoningControlScenarios({ client, run, setup, click, sho
     assert.equal(await evaluate(client, 'document.querySelectorAll("[role=dialog]").length'), 0);
     assert.equal((await current()).writes, 0);
     assert.deepEqual(await evaluate(client, '[...document.querySelectorAll(".route-candidate select.effort-select")].map(e=>e.value)'), ['medium','xhigh']);
-    await evaluate(client, 'document.querySelector("select.effort-select").focus();true'); await key('ArrowDown');
+    await evaluate(client, 'document.querySelector("select.effort-select").focus();true'); await key('h', 'KeyH');
     await waitFor(client, 'document.querySelector("select.effort-select").value==="high"');
     const saved = await save();
     assert.equal(saved.follow_request_reasoning, true);

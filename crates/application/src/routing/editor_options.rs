@@ -181,6 +181,7 @@ fn initial_editor() -> PlanEditorStateV2 {
         requirements: CapabilityRequirementsV1::default(),
         limits: RoutingLimitsV1 {
             context_window_tokens: None,
+            codex_parallel_tool_calls: None,
             maximum_attempts: 6,
             request_timeout_ms: 3_600_000,
             attempt_timeout_ms: 30_000,

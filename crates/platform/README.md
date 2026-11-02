@@ -56,6 +56,9 @@ metadata, identity and native permission facts without adopting external ACLs.
 `open_installed_image_lease` is the explicit installed-image alternative: after
 the caller admits the exact installation, it retains its initial positive hardlink
 count as well as the same FileID, reparse-free pathname and write/delete fences.
+These deletion fences retain the admitted pathname, not every other hardlink name.
+If NTFS permits unlinking another name, the held bytes/identity stay protected and
+verification refuses the changed link count.
 Callers still authenticate original ACLs and bytes. Private configuration and
 diagnostic readers continue to require the original single-link lease.
 `open_read_write` opens an existing regular file without create, truncate or

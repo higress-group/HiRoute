@@ -8,7 +8,8 @@ use toml_edit::DocumentMut;
 pub const CODEX_STANDALONE_PROFILE_ID: &str = "codex-standalone-profile-v1";
 pub const CODEX_MANAGED_PROFILE_NAME: &str = "hiroute";
 
-/// Hash every inherited file, including absence. Never infer ownership from a filename.
+/// Hash every inherited file, including absence. Existing user preferences can be merged;
+/// only an existing journal may authorize replacing the reserved HiRoute provider.
 pub fn codex_profile_dependency_digest(
     root: &Path,
     owned: bool,
@@ -33,20 +34,18 @@ pub fn codex_profile_dependency_digest(
                 .map(|(bytes, _)| CanonicalDigest::of_bytes(bytes)),
         ));
         if let Some((bytes, _)) = content {
-            if path == profile && !owned {
-                return Err(AgentFilesystemScanError::InvalidConfig);
-            }
             let text =
                 std::str::from_utf8(&bytes).map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
             let doc = text
                 .parse::<DocumentMut>()
                 .map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
-            if path != profile
+            if (path != profile || !owned)
                 && (doc
                     .get("model_providers")
                     .and_then(|v| v.get("hiroute"))
                     .is_some()
                     || doc.get("profiles").and_then(|v| v.get("hiroute")).is_some()
+                    || doc.get("model_provider").and_then(|v| v.as_str()) == Some("hiroute")
                     || doc.get("profile").and_then(|v| v.as_str())
                         == Some(CODEX_MANAGED_PROFILE_NAME))
             {
@@ -218,7 +217,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn inheritance_and_file_existence_are_preview_dependencies() {
+    fn inheritance_and_existing_preferences_are_preview_dependencies() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
@@ -243,7 +242,24 @@ mod tests {
         let profile = root.with_file_name("hiroute.config.toml");
         std::fs::write(&profile, "").unwrap();
         std::fs::set_permissions(&profile, std::fs::Permissions::from_mode(0o600)).unwrap();
-        assert!(codex_profile_dependency_digest(&root, false).is_err());
+        let empty = codex_profile_dependency_digest(&root, false).unwrap();
+        std::fs::write(&profile, "# native preferences\nmodel_reasoning_effort = 'high'\nscreen_reader_detection_done = true\n").unwrap();
+        assert_ne!(
+            empty,
+            codex_profile_dependency_digest(&root, false).unwrap()
+        );
         assert!(codex_profile_dependency_digest(&root, true).is_ok());
+        for conflict in [
+            "[model_providers.hiroute]\nname = 'Other owner'\n",
+            "model_provider = 'hiroute'\n",
+            "[profiles.hiroute]\nmodel = 'native'\n",
+            "profile = 'hiroute'\n",
+        ] {
+            std::fs::write(&profile, conflict).unwrap();
+            assert!(codex_profile_dependency_digest(&root, false).is_err());
+        }
+        std::fs::write(&profile, "model = 'one'\nmodel = 'two'\n").unwrap();
+        assert!(codex_profile_dependency_digest(&root, false).is_err());
+        assert!(codex_profile_dependency_digest(&root, true).is_err());
     }
 }

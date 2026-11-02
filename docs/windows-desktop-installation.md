@@ -237,8 +237,12 @@ be bypassed by it. Retry the installer to recover an interrupted installation.
 The native acceptance inventory is
 [`windows-desktop-cases.json`](../scripts/windows-desktop-cases.json). Windows 11
 x64 and Server selections require real standard-user execution, the candidate SHA,
-installer digest, OS/build and architecture. A Server result is not Windows 11
-evidence. Browser fixtures, Cargo checks and package construction do not establish
+installer digest, OS/build and architecture. For 0.5.0, the maintainer explicitly
+accepted the existing Windows Server host for the Windows 11 desktop selection
+in [the release acceptance Issue](https://github.com/higress-group/HiRoute/issues/193).
+Execute the full selected desktop cases as a standard user and retain the actual
+Server OS/build in the evidence; this is an approved release scope, not an observed
+Windows 11 execution. Browser fixtures, Cargo checks and package construction do not establish
 installation, native authorization, upgrade recovery or a live model call.
 
 The [release builder](release-builds.md) keeps a Desktop installer separate from

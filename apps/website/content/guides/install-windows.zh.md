@@ -1,6 +1,6 @@
 # Windows 桌面版安装
 
-HiRoute 桌面版提供按当前用户安装的 NSIS 安装包，只支持原生 Windows x64。安装包自带命令行、后台服务、控制台文件和 WebView2 引导安装器，不要求 Python 或管理员权限。经过验证的版本发布后，可从[下载页](/download/)选择 Windows 桌面安装包。
+HiRoute 0.5.0 新增 Windows 桌面版，提供按当前用户安装的 NSIS 安装包，只支持原生 Windows x64。安装包自带命令行、后台服务、控制台文件和 WebView2 引导安装器，不要求 Python 或管理员权限。经过验证的版本发布后，可从[下载页](/download/)选择 Windows 桌面安装包。
 
 ## 校验下载
 

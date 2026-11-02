@@ -122,6 +122,7 @@ fn custom_extension_snapshot() -> GatewayPublicationSnapshotV3 {
             overall_timeout_ms: 5_000,
             max_attempts: 2,
             routing: Some(AliasRoutingV1 {
+                codex_parallel_tool_calls: None,
                 agent_plan_id: "legacy/smart".into(),
                 plan_display_name: Some("Smart".into()),
                 request_owned: AliasRequestOwnedRouteV1::Classified {

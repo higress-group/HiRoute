@@ -45,6 +45,7 @@
     "docs/code-map/worker-context.md",
     "docs/contract-convergence.md",
     "docs/desktop-tauri-pilot.md",
+    "docs/desktop-interactions.md",
     "docs/diagnostic-troubleshooting.md",
     "docs/github-actions-validation.md",
     "docs/local-rust-validation.md",

@@ -1,6 +1,6 @@
 # Install HiRoute Desktop on Windows
 
-HiRoute Desktop uses a current-user NSIS installer for native Windows x64. It includes the command line, background service, console files and a WebView2 bootstrapper. Python and administrator privileges are not required. Choose a Windows Desktop installer from the [download page](/en/download/) when a validated release is available.
+HiRoute 0.5.0 introduces Desktop for native Windows x64, using a current-user NSIS installer. It includes the command line, background service, console files and a WebView2 bootstrapper. Python and administrator privileges are not required. Choose a Windows Desktop installer from the [download page](/en/download/) when a validated release is available.
 
 ## Verify the download
 

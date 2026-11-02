@@ -1,12 +1,13 @@
 import { hostCapabilities } from '../host/index.ts';
 import { invoke } from '../host/index.ts';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import './settings.css';
 import { ObservationStorageSettings } from '../features/ObservationStorageSettings';
 import { DiagnosticsSettings } from '../features/diagnostics/DiagnosticsSettings';
 import { UpdatesSettings } from '../features/UpdatesSettings';
 import { ShellHostSettings } from '../features/ShellHostSettings';
 import { safeDiagnosticCode } from '../error-code';
-import { ProductPage } from '../ui';
+import { ProductPage, TabList } from '../ui';
 import type { Language, LanguagePreference, ThemePreference } from '../ui/preferences';
 import { listenerApplyRequest, listenerScopeFromAddress, type GatewayListenerScope } from './gateway-listener-scope';
 
@@ -57,6 +58,8 @@ function validWorkerSettings(value: WorkerSettings): boolean {
 /** occami-settings.js DOM, backed by real persisted preferences and service state. */
 export function SettingsPage(props: SettingsPageProps) {
   const text = (zh: string, en: string) => props.language === 'zh' ? zh : en;
+  const [section, setSection] = useState<'general' | 'runtime' | 'records'>('general');
+  const sectionId = useId();
   const [workerLimit, setWorkerLimit] = useState<number | null>(null);
   const [workerDraft, setWorkerDraft] = useState('');
   const [workerBusy, setWorkerBusy] = useState(false);
@@ -92,11 +95,14 @@ export function SettingsPage(props: SettingsPageProps) {
     let current = true;
     setCliError('');
     setListenerError('');
-    if (hostCapabilities().cli_entry) void invoke<CliEntryView>('cli_entry_status').then(value => {
+    if (hostCapabilities().cli_entry) {
+      setCliBusy(true);
+      void invoke<CliEntryView>('cli_entry_status').then(value => {
       if (current) setCliEntry(value);
     }).catch(error => {
-      if (current) setCliError(safeDiagnosticCode(error, 'CLI_ENTRY_UNAVAILABLE'));
-    });
+      if (current) { setCliEntry(null); setCliError(safeDiagnosticCode(error, 'CLI_ENTRY_UNAVAILABLE')); }
+    }).finally(() => { if (current) setCliBusy(false); });
+    }
     void invoke<GatewayListenerView>('gateway_listener_status').then(value => {
       if (!current) return;
       setListener(value);
@@ -117,6 +123,14 @@ export function SettingsPage(props: SettingsPageProps) {
     } finally {
       setCliBusy(false);
     }
+  };
+
+  const retryCliRead = async () => {
+    if (cliBusy) return;
+    setCliBusy(true); setCliError('');
+    try { setCliEntry(await invoke<CliEntryView>('cli_entry_status')); }
+    catch (error) { setCliEntry(null); setCliError(safeDiagnosticCode(error, 'CLI_ENTRY_UNAVAILABLE')); }
+    finally { setCliBusy(false); }
   };
 
   const saveListener = async () => {
@@ -170,59 +184,76 @@ export function SettingsPage(props: SettingsPageProps) {
     return text(`监听器设置不可用（${code}）`, `Listener settings unavailable (${code})`);
   };
 
-  return <ProductPage title={text('设置', 'Settings')} subtitle={text('偏好与本机服务', 'Preferences and local service')}>
+  const groups = [
+    { id: 'general', label: text('通用', 'General') },
+    { id: 'runtime', label: text('服务与接入', 'Service & access') },
+    { id: 'records', label: text('记录与诊断', 'Records & diagnostics') },
+  ] as const;
+  const tabs = <TabList<'general' | 'runtime' | 'records'> className="settings-tabs" label={text('设置分组', 'Settings areas')} value={section} onChange={setSection} activation="automatic"
+    items={groups.map(group => ({ value: group.id, label: group.label, id: `${sectionId}-tab-${group.id}`, controls: `${sectionId}-panel-${group.id}` }))} />;
+
+  return <ProductPage title={text('设置', 'Settings')} subtitle={text('偏好与本机服务', 'Preferences and local service')} className="settings-page" tabs={tabs}>
     <div className="settings-wrap">
-      {hostCapabilities().host === 'shell-console' && <ShellHostSettings active={props.active} language={props.language} />}
-      <section className="settings-group"><h2>{text('偏好', 'Preferences')}</h2><div className="settings-list">
-        <div className="settings-row"><div className="settings-copy"><strong>{text('语言', 'Language')}</strong><span>{text('界面与状态文案', 'Interface and status text')}</span></div>
-          <div className="segmented">{(['system', 'zh', 'en'] as const).map(language => <button type="button" key={language} className={`segment ${props.languagePreference === language ? 'active' : ''}`} aria-pressed={props.languagePreference === language} onClick={() => props.onLanguageChange(language)}>{language === 'system' ? text('跟随系统', 'System') : language === 'zh' ? '中文' : 'English'}</button>)}</div>
-        </div>
-        <div className="settings-row"><div className="settings-copy"><strong>{text('外观', 'Appearance')}</strong><span>{text('默认跟随系统，可随时切换', 'Follows the system by default')}</span></div>
-          <div className="segmented">{(['system', 'light', 'dark'] as const).map(theme => <button type="button" key={theme} className={`segment ${props.theme === theme ? 'active' : ''}`} aria-pressed={props.theme === theme} onClick={() => props.onThemeChange(theme)}>{theme === 'system' ? text('跟随系统', 'System') : theme === 'light' ? text('浅色', 'Light') : text('深色', 'Dark')}</button>)}</div>
-        </div>
-      </div></section>
-      <section className="settings-group"><h2>Worker</h2><div className="settings-list"><div className="settings-row">
-        <div className="settings-copy"><strong>{text('并发任务上限', 'Concurrent task limit')}</strong><span>{workerLimit === null ? text('允许 1–1000 个任务', 'Allows 1–1000 tasks') : text(`当前生效：${workerLimit}`, `Effective now: ${workerLimit}`)}</span></div>
-        <div className="worker-settings-control">
-          <input className="input worker-settings-input" type="number" min={1} max={1000} step={1} inputMode="numeric" aria-label={text('并发任务上限', 'Concurrent task limit')} value={workerDraft} disabled={workerBusy} onChange={event => setWorkerDraft(event.target.value)} />
-          <button className="btn" type="button" disabled={workerBusy || workerDraft === '' || workerDraft === String(workerLimit)} onClick={() => void saveWorkerLimit()}>{workerBusy ? text('处理中…', 'Working…') : text('保存', 'Save')}</button>
-        </div>
-      </div>{workerError && <div className="settings-inline-error" role="status">{workerError === 'INVALID_WORKER_CONCURRENCY' ? text('请输入 1 到 1000 之间的整数。', 'Enter an integer from 1 to 1000.') : text(`设置暂时不可用（${workerError}）`, `Settings unavailable (${workerError})`)}</div>}</div></section>
-      <section className="settings-group"><h2>{text('本地记录', 'Local records')}</h2><div className="settings-list"><div className="settings-row">
-        <div className="settings-copy"><strong>{text('会话内容', 'Session content')}</strong><span>{text('在会话详情中，可以清理该会话的正文或记录。', 'Clear content or records from each session’s detail view.')}</span></div>
-        <button className="btn" type="button" onClick={() => props.onOpenSessions()}>{text('查看会话', 'View sessions')}</button>
-      </div><ObservationStorageSettings active={props.active} language={props.language} /></div></section>
-      <DiagnosticsSettings active={props.active} language={props.language} />
-      {hostCapabilities().updates && <UpdatesSettings active={props.active} language={props.language} onServiceChanged={props.onServiceChanged} />}
-      {hostCapabilities().cli_entry && <section className="settings-group"><h2>CLI</h2><div className="settings-list"><div className="settings-row">
-        <div className="settings-copy"><strong>{text('终端入口', 'Terminal entry')}</strong><span>{cliEntry === null
-          ? text('正在检查 ~/.local/bin/hiroute', 'Checking ~/.local/bin/hiroute')
-          : text(`状态：${cliEntry.state} · ${cliEntry.entry_path}`, `State: ${cliEntry.state} · ${cliEntry.entry_path}`)}</span>
-          {cliEntry?.state === 'valid' && !cliEntry.path_contains_entry_directory && <span>{text('zsh：将 export PATH="$HOME/.local/bin:$PATH" 加入 ~/.zprofile 后重新打开终端；HiRoute 不会代写。', 'zsh: add export PATH="$HOME/.local/bin:$PATH" to ~/.zprofile, then reopen Terminal. HiRoute does not edit it.')}</span>}
-          {cliEntry?.path_contains_entry_directory && !cliEntry.command_resolves_to_app_cli && <span>{text(`当前被更早的命令遮蔽：${cliEntry.resolved_command ?? 'unknown'}`, `An earlier command shadows this entry: ${cliEntry.resolved_command ?? 'unknown'}`)}</span>}
-          {cliEntry && !cliEntry.daemon_available && <span>{text('CLI 入口与服务可用性相互独立；当前本机服务尚未就绪。', 'The CLI entry and daemon availability are independent; the local service is not ready.')}</span>}
-        </div>
-        <div className="worker-settings-control">
-          {cliEntry?.state !== 'valid' && <button className="btn" type="button" disabled={cliBusy || cliEntry?.state === 'conflict'} onClick={() => void updateCliEntry('cli_entry_install')}>{cliEntry?.state === 'broken' ? text('修复', 'Repair') : text('安装', 'Install')}</button>}
-          {cliEntry?.state === 'valid' && <button className="btn" type="button" disabled={cliBusy} onClick={() => void updateCliEntry('cli_entry_remove')}>{text('移除', 'Remove')}</button>}
-        </div>
-      </div>{cliError && <div className="settings-inline-error" role="status">{text(`CLI 入口不可用（${cliError}）`, `CLI entry unavailable (${cliError})`)}</div>}</div></section>}
-      <section className="settings-group"><h2>Gateway</h2><div className="settings-list"><div className="settings-row">
-        <div className="settings-copy"><strong>{text('监听范围', 'Listener access')}</strong><span>{listener?.config.applied
-          ? text(`已应用 ${listener.config.applied.address}:${listener.config.applied.port} · ${listener.ready ? 'ready' : 'not ready'}`, `Applied ${listener.config.applied.address}:${listener.config.applied.port} · ${listener.ready ? 'ready' : 'not ready'}`)
-          : text('尚无已应用地址', 'No applied address yet')}</span>{listener?.connect_address && <span>{text(`本机连接：${listener.connect_address}`, `Local connect address: ${listener.connect_address}`)}</span>}</div>
-        <div className="gateway-listener-control">
-          <div className="segmented" role="group" aria-label={text('监听范围', 'Listener access')}>
-            {(['local', 'external'] as const).map(scope => <button type="button" key={scope} className={`segment ${listenerScope === scope ? 'active' : ''}`} aria-pressed={listenerScope === scope} disabled={!listener || listenerBusy} onClick={() => { setListenerScope(scope); setListenerError(''); }}>{scope === 'local' ? text('仅本机', 'This device') : text('对外开放', 'Network access')}</button>)}
+      <div role="tabpanel" data-settings-panel="general" id={`${sectionId}-panel-general`} aria-labelledby={`${sectionId}-tab-general`} hidden={section !== 'general'} tabIndex={0}>
+        {hostCapabilities().host === 'shell-console' && <ShellHostSettings active={props.active} language={props.language} />}
+        <section className="settings-group"><h2>{text('偏好', 'Preferences')}</h2><div className="settings-list">
+          <div className="settings-row"><div className="settings-copy"><strong>{text('语言', 'Language')}</strong><span>{text('界面与状态文案', 'Interface and status text')}</span></div>
+            <div className="segmented">{(['system', 'zh', 'en'] as const).map(language => <button type="button" key={language} className={`segment ${props.languagePreference === language ? 'active' : ''}`} aria-pressed={props.languagePreference === language} onClick={() => props.onLanguageChange(language)}>{language === 'system' ? text('跟随系统', 'System') : language === 'zh' ? '中文' : 'English'}</button>)}</div>
           </div>
-          <button className="btn" type="button" disabled={!listener || listenerBusy} onClick={() => void saveListener()}>{listenerBusy ? text('正在重启…', 'Restarting…') : text('保存并重启', 'Save and restart')}</button>
-          {(listener?.config.operation?.state === 'failed' || listenerError) && <button className="btn" type="button" disabled={listenerBusy} onClick={() => void recoverListener()}>{text('恢复上次设置', 'Recover previous setting')}</button>}
-        </div>
-      </div>{listenerScope === 'external' && listener && <div className="gateway-risk">{text('对外开放会监听所有 IPv4 网卡；点击“保存并重启”即确认扩大网络访问范围。仍需自行配置防火墙、TLS 和 Agent，现有请求鉴权保持启用。', 'Network access listens on all IPv4 interfaces. Save and restart confirms the wider exposure. Firewall, TLS, and Agent setup remain your responsibility; request authorization stays enabled.')}</div>}{listener?.suggested_agent_base_url && (listener.existing_agent_count ?? 0) > 0 && <div className="gateway-risk">{text(`发现 ${listener.existing_agent_count} 个 Agent。监听范围改变后，如需从其他设备使用，请在 Agent 设置中检查连接地址 ${listener.suggested_agent_base_url}；现有配置不会自动覆盖。`, `${listener.existing_agent_count} Agent(s) detected. To use them from another device after changing listener access, check their connection address ${listener.suggested_agent_base_url} in Agent settings. Existing settings are not overwritten.`)}</div>}{listener?.config.operation?.state === 'failed' && <div className="settings-inline-error" role="status">{text(`上次应用失败（${listener.config.operation.error_code ?? 'UNKNOWN'}），已应用地址保持不变。`, `The last apply failed (${listener.config.operation.error_code ?? 'UNKNOWN'}); the applied address is unchanged.`)}</div>}{listenerError && <div className="settings-inline-error" role="status">{listenerErrorMessage(listenerError)}</div>}</div></section>
-      <section className="settings-group"><h2>{text('服务', 'Service')}</h2><div className="settings-list"><div className="settings-row">
-        <div className="settings-copy"><strong>{text('本机服务', 'Local service')}</strong><span>{text('模型与 Agent 路由使用本机服务', 'Model and agent routing use the local service')}</span></div>
-        <span className={`badge ${props.serviceReady ? 'good' : 'warn'}`}>{props.serviceLabel}</span>
-      </div></div></section>
+          <div className="settings-row"><div className="settings-copy"><strong>{text('外观', 'Appearance')}</strong><span>{text('默认跟随系统，可随时切换', 'Follows the system by default')}</span></div>
+            <div className="segmented">{(['system', 'light', 'dark'] as const).map(theme => <button type="button" key={theme} className={`segment ${props.theme === theme ? 'active' : ''}`} aria-pressed={props.theme === theme} onClick={() => props.onThemeChange(theme)}>{theme === 'system' ? text('跟随系统', 'System') : theme === 'light' ? text('浅色', 'Light') : text('深色', 'Dark')}</button>)}</div>
+          </div>
+        </div></section>
+        {hostCapabilities().updates && <UpdatesSettings active={props.active} language={props.language} onServiceChanged={props.onServiceChanged} />}
+      </div>
+      <div role="tabpanel" data-settings-panel="runtime" id={`${sectionId}-panel-runtime`} aria-labelledby={`${sectionId}-tab-runtime`} hidden={section !== 'runtime'} tabIndex={0}>
+        <section className="settings-group"><h2>{text('任务执行', 'Task execution')}</h2><div className="settings-list"><div className="settings-row">
+          <div className="settings-copy"><strong>{text('并发任务上限', 'Concurrent task limit')}</strong><span>{workerLimit === null ? text('允许 1–1000 个任务', 'Allows 1–1000 tasks') : text(`当前生效：${workerLimit}`, `Effective now: ${workerLimit}`)}</span></div>
+          <div className="worker-settings-control">
+            <input className="input worker-settings-input" type="number" min={1} max={1000} step={1} inputMode="numeric" aria-label={text('并发任务上限', 'Concurrent task limit')} value={workerDraft} disabled={workerBusy} onChange={event => setWorkerDraft(event.target.value)} />
+            <button className="btn" type="button" disabled={workerBusy || workerDraft === '' || workerDraft === String(workerLimit)} onClick={() => void saveWorkerLimit()}>{workerBusy ? text('处理中…', 'Working…') : text('保存', 'Save')}</button>
+          </div>
+        </div>{workerError && <div className="settings-inline-error" role="status">{workerError === 'INVALID_WORKER_CONCURRENCY' ? text('请输入 1 到 1000 之间的整数。', 'Enter an integer from 1 to 1000.') : text(`设置暂时不可用（${workerError}）`, `Settings unavailable (${workerError})`)}</div>}</div></section>
+        {hostCapabilities().cli_entry && <section className="settings-group"><h2>CLI</h2><div className="settings-list"><div className="settings-row">
+          <div className="settings-copy"><strong>{text('终端入口', 'Terminal entry')}</strong><span>{cliEntry === null
+            ? cliError ? text('暂时无法读取入口状态', 'Entry status is temporarily unavailable') : text('正在检查终端入口…', 'Checking the terminal entry…')
+            : ({ missing: text('尚未安装', 'Not installed'), valid: text('已安装', 'Installed'), broken: text('需要修复', 'Repair needed'), conflict: text('与现有入口冲突', 'Conflicts with an existing entry') })[cliEntry.state]}</span>
+            {cliEntry && <code className="configuration-path">{cliEntry.entry_path}</code>}
+            {cliEntry?.state === 'valid' && !cliEntry.path_contains_entry_directory && <span>{text('zsh：将 export PATH="$HOME/.local/bin:$PATH" 加入 ~/.zprofile 后重新打开终端；HiRoute 不会代写。', 'zsh: add export PATH="$HOME/.local/bin:$PATH" to ~/.zprofile, then reopen Terminal. HiRoute does not edit it.')}</span>}
+            {cliEntry?.path_contains_entry_directory && !cliEntry.command_resolves_to_app_cli && <span>{text(`当前被更早的命令遮蔽：${cliEntry.resolved_command ?? 'unknown'}`, `An earlier command shadows this entry: ${cliEntry.resolved_command ?? 'unknown'}`)}</span>}
+            {cliEntry && !cliEntry.daemon_available && <span>{text('CLI 入口与服务可用性相互独立；当前本机服务尚未就绪。', 'The CLI entry and daemon availability are independent; the local service is not ready.')}</span>}
+          </div>
+          <div className="worker-settings-control">
+            {!cliEntry && <button className="btn" type="button" disabled={cliBusy || !cliError} onClick={() => void retryCliRead()}>{cliBusy || !cliError ? text('正在检查…', 'Checking…') : text('重试', 'Retry')}</button>}
+            {cliEntry && cliEntry.state !== 'valid' && <button className="btn" type="button" disabled={cliBusy || cliEntry.state === 'conflict'} onClick={() => void updateCliEntry('cli_entry_install')}>{cliEntry.state === 'broken' ? text('修复', 'Repair') : text('安装', 'Install')}</button>}
+            {cliEntry?.state === 'valid' && <button className="btn" type="button" disabled={cliBusy} onClick={() => void updateCliEntry('cli_entry_remove')}>{text('移除', 'Remove')}</button>}
+          </div>
+        </div>{cliError && <div className="settings-inline-error" role="status">{text(`CLI 入口不可用（${cliError}）`, `CLI entry unavailable (${cliError})`)}</div>}</div></section>}
+        <section className="settings-group"><h2>Gateway</h2><div className="settings-list"><div className="settings-row">
+          <div className="settings-copy"><strong>{text('监听范围', 'Listener access')}</strong><span>{listener?.config.applied
+            ? text(`已应用 ${listener.config.applied.address}:${listener.config.applied.port} · ${listener.ready ? '可用' : '尚未就绪'}`, `Applied ${listener.config.applied.address}:${listener.config.applied.port} · ${listener.ready ? 'ready' : 'not ready'}`)
+            : text('尚无已应用地址', 'No applied address yet')}</span>{listener?.connect_address && <span>{text(`本机连接：${listener.connect_address}`, `Local connect address: ${listener.connect_address}`)}</span>}</div>
+          <div className="gateway-listener-control">
+            <div className="segmented" role="group" aria-label={text('监听范围', 'Listener access')}>
+              {(['local', 'external'] as const).map(scope => <button type="button" key={scope} className={`segment ${listenerScope === scope ? 'active' : ''}`} aria-pressed={listenerScope === scope} disabled={!listener || listenerBusy} onClick={() => { setListenerScope(scope); setListenerError(''); }}>{scope === 'local' ? text('仅本机', 'This device') : text('对外开放', 'Network access')}</button>)}
+            </div>
+            <button className="btn" type="button" disabled={!listener || listenerBusy} onClick={() => void saveListener()}>{listenerBusy ? text('正在重启…', 'Restarting…') : text('保存并重启', 'Save and restart')}</button>
+            {(listener?.config.operation?.state === 'failed' || listenerError) && <button className="btn" type="button" disabled={listenerBusy} onClick={() => void recoverListener()}>{text('恢复上次设置', 'Recover previous setting')}</button>}
+          </div>
+        </div>{listenerScope === 'external' && listener && <div className="gateway-risk">{text('对外开放会监听所有 IPv4 网卡；点击“保存并重启”即确认扩大网络访问范围。仍需自行配置防火墙、TLS 和 Agent，现有请求鉴权保持启用。', 'Network access listens on all IPv4 interfaces. Save and restart confirms the wider exposure. Firewall, TLS, and Agent setup remain your responsibility; request authorization stays enabled.')}</div>}{listener?.suggested_agent_base_url && (listener.existing_agent_count ?? 0) > 0 && <div className="gateway-risk">{text(`发现 ${listener.existing_agent_count} 个 Agent。监听范围改变后，如需从其他设备使用，请在 Agent 设置中检查连接地址 ${listener.suggested_agent_base_url}；现有配置不会自动覆盖。`, `${listener.existing_agent_count} Agent(s) detected. To use them from another device after changing listener access, check their connection address ${listener.suggested_agent_base_url} in Agent settings. Existing settings are not overwritten.`)}</div>}{listener?.config.operation?.state === 'failed' && <div className="settings-inline-error" role="status">{text(`上次应用失败（${listener.config.operation.error_code ?? 'UNKNOWN'}），已应用地址保持不变。`, `The last apply failed (${listener.config.operation.error_code ?? 'UNKNOWN'}); the applied address is unchanged.`)}</div>}{listenerError && <div className="settings-inline-error" role="status">{listenerErrorMessage(listenerError)}</div>}</div></section>
+        <section className="settings-group"><h2>{text('服务', 'Service')}</h2><div className="settings-list"><div className="settings-row">
+          <div className="settings-copy"><strong>{text('本机服务', 'Local service')}</strong><span>{text('模型与 Agent 路由使用本机服务', 'Model and agent routing use the local service')}</span></div>
+          <span className={`badge ${props.serviceReady ? 'good' : 'warn'}`}>{props.serviceLabel}</span>
+        </div></div></section>
+      </div>
+      <div role="tabpanel" data-settings-panel="records" id={`${sectionId}-panel-records`} aria-labelledby={`${sectionId}-tab-records`} hidden={section !== 'records'} tabIndex={0}>
+        <section className="settings-group"><h2>{text('本地记录', 'Local records')}</h2><div className="settings-list"><div className="settings-row">
+          <div className="settings-copy"><strong>{text('会话内容', 'Session content')}</strong><span>{text('在会话详情中，可以清理该会话的正文或记录。', 'Clear content or records from each session’s detail view.')}</span></div>
+          <button className="btn" type="button" onClick={() => props.onOpenSessions()}>{text('查看会话', 'View sessions')}</button>
+        </div><ObservationStorageSettings active={props.active} language={props.language} /></div></section>
+        <DiagnosticsSettings active={props.active} language={props.language} />
+      </div>
+
     </div>
   </ProductPage>;
 }

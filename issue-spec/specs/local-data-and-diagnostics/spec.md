@@ -117,6 +117,12 @@ number after reboot cannot alone invalidate logically intact supported store ide
 - **WHEN** debug diagnostics are enabled for an Agent read
 - **THEN** closed operation categories distinguish total time, storage lock wait and hold, snapshot and locator work, lock-free validation, native checks, final fence and current grant authentication. Aggregate operation and payload counts and byte lengths do not contain paths, user content or credential material. Diagnostics do not scan history or change the read result.
 
+#### Scenario: Resume a retained schema29-to30 upgrade batch
+
+- **WHEN** a retained migration batch targets schema30 and all three original source stores are schema29
+- **THEN** startup verifies the original backup files and logical digests, store identities, secret binding and recorded phase, finishes the original target30 batch, archives it unchanged, and only then creates and completes a separate current-target batch before admitting service.
+- **AND** interruption before or after a store commit or phase publication preserves the original batch and source bytes. Reopen does not repeat a completed upgrade. Changed live source data, inconsistent identities or a target30 batch from another source version remain refused without adopting or retargeting the batch.
+
 #### Scenario: Completed upgrade backup is retained without reopening history
 
 - **WHEN** the durable completion record names the current target format and agrees with the current three-store identities and secret binding

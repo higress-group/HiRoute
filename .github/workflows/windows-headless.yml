@@ -7,7 +7,16 @@ on:
         type: choice
         default: all
         options: [all, components, core, product, background, agents]
+      include_internal_arm64:
+        description: 'Also assess the unpublished native ARM64 headless installation'
+        type: boolean
+        default: true
   workflow_call:
+    inputs:
+      include_internal_arm64:
+        description: 'Assess the separate unpublished ARM64 headless target'
+        type: boolean
+        default: true
 permissions:
   contents: read
 jobs:
@@ -123,7 +132,7 @@ jobs:
 
   windows11-arm-install:
     name: Windows 11 ARM64 native Rust installation
-    if: inputs.scope == '' || inputs.scope == 'all' || inputs.scope == 'background'
+    if: inputs.include_internal_arm64 && (inputs.scope == '' || inputs.scope == 'all' || inputs.scope == 'background')
     runs-on: windows-11-arm
     timeout-minutes: 75
     env:

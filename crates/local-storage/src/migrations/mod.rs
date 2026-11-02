@@ -552,18 +552,23 @@ impl MigrationSetCoordinator {
                 LATEST_SCHEMA_VERSION,
             )?
         };
+        let required_source = match set.target_schema_version() {
+            24 => Some(23),
+            30 => Some(29),
+            _ => None,
+        };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | LATEST_SCHEMA_VERSION
-        ) || (set.target_schema_version() == 24
-            && [
+            24 | 25 | 26 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | LATEST_SCHEMA_VERSION
+        ) || required_source.is_some_and(|version| {
+            [
                 set.control.manifest(),
                 set.runtime.manifest(),
                 set.secrets.manifest(),
             ]
             .iter()
-            .any(|source| source.schema_version != 23))
-            || set.secrets.manifest().key_id.as_deref() != Some(secret_binding.key_id.as_str())
+            .any(|source| source.schema_version != version)
+        }) || set.secrets.manifest().key_id.as_deref() != Some(secret_binding.key_id.as_str())
         {
             return Err(LocalStorageError::InvalidData);
         }

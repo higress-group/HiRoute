@@ -34,3 +34,10 @@ A planning request authorizes planning only. Follow current user authorization,
 host tool policies and `AGENTS.md`; do not delegate, merge or publish automatically.
 Maturity is separate from this candidate's result: navigation, save, actual calls
 and completed tasks each need their own evidence.
+
+For affected UI acceptance, use the [shared interaction guidelines](../../../docs/desktop-interactions.md):
+compare equivalent capabilities, verify Cancel/Back and recovery without unintended
+effects, and check focus, reachable actions and draft retention in the actual host.
+Keep source-bound before/after screenshots with matching state and display settings.
+Record intentional host differences from real capabilities. Fixture appearance
+does not establish native authorization, persistence or a completed provider call.

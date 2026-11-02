@@ -68,12 +68,19 @@ pub struct RoutingLimitsV1 {
     /// None follows the bounded default; omission preserves historical signed digests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window_tokens: Option<u64>,
+    /// Codex catalog/Responses opt-out. Omission preserves old signed bytes and client preferences.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_parallel_tool_calls: Option<bool>,
     pub maximum_attempts: u16,
     pub request_timeout_ms: u64,
     pub attempt_timeout_ms: u64,
 }
 
 impl RoutingLimitsV1 {
+    pub fn codex_parallel_tool_calls_enabled(&self) -> bool {
+        self.codex_parallel_tool_calls.unwrap_or(true)
+    }
+
     pub fn validate(&self) -> Result<(), RoutingStrategyError> {
         if self
             .context_window_tokens

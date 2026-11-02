@@ -567,6 +567,7 @@ impl ProductionGatewayRuntime {
                         .await;
                     }
                 };
+            authorized.apply_codex_tool_policy(&mut document);
             // Resolve controls before either ingress or canonical JSON becomes a content reference.
             let fixed_reasoning = match PublicationPlannerInputAuthority::bind_request_reasoning(
                 &document,

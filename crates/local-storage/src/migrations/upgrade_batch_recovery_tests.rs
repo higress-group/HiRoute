@@ -5,8 +5,24 @@ use crate::{LocalStorageSet, backup::test_writer_barrier};
 use worker_dependencies_v24_tests::{assert_frozen_rows, cases, schema23_source};
 
 fn source_batch(root: &Path, target: u32) -> BackupSet {
+    source_batch_from_version(root, 23, target)
+}
+
+fn source_batch_from_version(root: &Path, source: u32, target: u32) -> BackupSet {
     schema23_source(root, &cases()[0]);
     let paths = live_database_paths(&root.join("live"));
+    for version in 24..=source {
+        for (index, kind) in [
+            DatabaseKind::Control,
+            DatabaseKind::Runtime,
+            DatabaseKind::Secrets,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            commit_step(&paths[index], kind, version);
+        }
+    }
     let binding = crate::LocalSecretStore::migration_binding(&paths[2], &root.join("master-key"))
         .unwrap()
         .unwrap();
@@ -268,6 +284,115 @@ fn prior_target_batch_finishes_and_archives_before_a_new_current_batch() {
                 current.set_id()
             );
         }
+    }
+}
+
+#[test]
+fn retained_schema29_to30_batch_finishes_before_current_upgrade() {
+    for committed in 0..=3 {
+        for persist_last_phase in [false, true] {
+            if committed == 0 && persist_last_phase {
+                continue;
+            }
+            let directory = crate::test_tempdir().unwrap();
+            let root = directory.path().join("storage");
+            let mut set = source_batch_from_version(&root, 29, 30);
+            let backup = set.directory().to_owned();
+            let original_id = set.set_id().to_owned();
+            let original_sources = [
+                set.control.manifest().clone(),
+                set.runtime.manifest().clone(),
+                set.secrets.manifest().clone(),
+            ];
+            let original_bytes = ["control.db", "runtime.db", "secrets.db"]
+                .map(|name| fs::read(backup.join(name)).unwrap());
+            let key = fs::read(root.join("master-key")).unwrap();
+            let kinds = [
+                DatabaseKind::Control,
+                DatabaseKind::Runtime,
+                DatabaseKind::Secrets,
+            ];
+            let phases = [
+                BackupSetPhase::ControlMigrated,
+                BackupSetPhase::RuntimeMigrated,
+                BackupSetPhase::SecretsMigrated,
+            ];
+            let paths = live_database_paths(&root.join("live"));
+            for (index, kind) in kinds.into_iter().take(committed).enumerate() {
+                commit_step(&paths[index], kind, 30);
+                if index + 1 < committed || persist_last_phase {
+                    set.persist_phase(&test_writer_barrier(), phases[index])
+                        .unwrap();
+                }
+            }
+            drop(set);
+            assert_latest_and_preserved(&root, &key);
+            let archived = backup
+                .parent()
+                .unwrap()
+                .join(format!("migration-set.{original_id}"));
+            let previous = BackupSet::open(&crate::test_storage_authority(), &archived).unwrap();
+            assert_eq!(previous.set_id(), original_id);
+            assert_eq!(previous.target_schema_version(), 30);
+            assert_eq!(previous.phase(), BackupSetPhase::Completed);
+            assert_eq!(
+                [
+                    previous.control.manifest().clone(),
+                    previous.runtime.manifest().clone(),
+                    previous.secrets.manifest().clone(),
+                ],
+                original_sources
+            );
+            for (index, name) in ["control.db", "runtime.db", "secrets.db"]
+                .iter()
+                .enumerate()
+            {
+                assert_eq!(
+                    fs::read(archived.join(name)).unwrap(),
+                    original_bytes[index]
+                );
+            }
+            let current = BackupSet::open(&crate::test_storage_authority(), &backup).unwrap();
+            assert_ne!(current.set_id(), original_id);
+            assert_eq!(current.control.manifest().schema_version, 30);
+            assert_eq!(current.target_schema_version(), LATEST_SCHEMA_VERSION);
+            assert_eq!(current.phase(), BackupSetPhase::Completed);
+            assert_latest_and_preserved(&root, &key);
+            assert_eq!(
+                BackupSet::open(&crate::test_storage_authority(), &backup)
+                    .unwrap()
+                    .set_id(),
+                current.set_id()
+            );
+        }
+    }
+}
+
+#[test]
+fn retained_target30_refuses_other_sources_and_changed_live_data() {
+    for source in [23, 29] {
+        let directory = crate::test_tempdir().unwrap();
+        let root = directory.path().join("storage");
+        let set = source_batch_from_version(&root, source, 30);
+        let original_id = set.set_id().to_owned();
+        let backup = set.directory().to_owned();
+        drop(set);
+        if source == 29 {
+            Connection::open(root.join("live/control.db"))
+                .unwrap()
+                .execute_batch("CREATE TABLE unverified_source_change(value TEXT);")
+                .unwrap();
+        }
+        let paths = live_database_paths(&root.join("live"));
+        let before = paths.each_ref().map(|path| fs::read(path).unwrap());
+        assert!(LocalStorageSet::open_for_daemon_startup(&root).is_err());
+        for (index, path) in paths.iter().enumerate() {
+            assert_eq!(database_version(path).unwrap(), Some(source));
+            assert_eq!(fs::read(path).unwrap(), before[index]);
+        }
+        let original = BackupSet::open(&crate::test_storage_authority(), &backup).unwrap();
+        assert_eq!(original.set_id(), original_id);
+        assert_eq!(original.phase(), BackupSetPhase::SourcePublished);
     }
 }
 
