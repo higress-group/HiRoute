@@ -311,28 +311,40 @@ Every request in a multi-model turn retains actual model/native reasoning; the l
 model cannot stand for all execution. Main Agent using another provider does not
 invalidate the delegated Worker evidence.
 
-### Requirement: Quality stages preserve frozen selection and later assessment
+### Requirement: Independent turn assessments preserve frozen selection and later feedback
 
-Route stages derive from sealed actual execution identity and can span multiple
-routing turns, not simply user-message counts. New user input rejudges; broken
-ContextHold can also seal a decision boundary, while tool continuations stay in
-that turn. A boundary without a task-ending fact is unknown, not invented completed/
-interrupted. No new judgment means no newly invented external assessment. Missing,
-zero, malformed, and partial scores are different.
+One real user activation and all of its accepted answers, tool continuations and retries form one assessment unit. Distinct user turns MUST remain independent even when the actual model, reasoning profile, group, category, Plan and rubric are identical. New user input may assess only the immediately preceding captured turn. Earlier conversation remains contextual evidence, never part of that score's target. A missing or ineligible latest turn MUST NOT fall back to a stale scoreable turn. The final turn waits for a subsequent judgment; reads do not generate assessments or model calls.
 
-Each stage retains selected/actual category, group/index, model/profile, plan revision,
-turn range, degree probability/threshold, selection reason, and any low-score trigger/
-floor/source stage. Assessment uses the previous stage's frozen rubric. Later more
-complete assessment may replace that stage's latest score but cannot rewrite an
-already-made selection reason. Network/quota/observation failure is not incompetence.
-Mixed or unknown model identity stays separate instead of crediting one model.
+Each unit retains selected/actual category, group/index, model/profile, Plan revision, exact turn identity and request membership, degree probability/threshold, selection reason and any low-score trigger/floor/source unit. The previous turn's frozen rubric owns its assessment. Later assessment of that same target may replace its latest projection without rewriting original facts or an already-made selection reason. Reopening the same turn may extend its actual membership; only its current execution revision enters quality statistics. A new user turn never extends another turn's score or capture-partial state. ContextHold and tool continuations retain their established admission and decision inheritance.
 
-Extension stages MUST retain the extension identity and optional bounded reason without a fabricated probability, threshold or floor. Optional valid scores remain stage observations and enter ordinary score averages. Original supported envelope bytes and canonical digests remain unchanged on reopen; historical schema digests cannot authenticate new extension fields.
+A boundary without a task-ending fact is unknown, not invented completed/interrupted. Capture completeness, proven closure and actual executor attribution remain separate. A partial or interrupted target cannot become full by borrowing other turns' evidence. Network/quota/observation failure is not incompetence. Missing, zero, malformed and partial scores are different. A fully captured mixed-model turn may have an overall turn assessment under one common rubric; it receives no single-model capability credit or native low-score protection.
 
-#### Scenario: Extension stage is assessed later
+No independent stage-wide competence score is generated, persisted or used by routing. Model/route statistics aggregate only current, valid individual-turn scores in their proper Plan/rubric/execution scope; complete zero counts and partial/unrated scores do not enter complete-score means. Reconstructible SQL projections may retain legacy field names such as segment_id and scored_stage_count; these name opaque scoring units and individual-turn counts in current reads, not a second scoring model.
 
-- **WHEN** an extension-selected stage later receives a valid complete score
-- **THEN** the recorded score MUST remain on that actual stage without inventing a HiRoute floor or rewriting its selection.
+Historical raw facts, content, native history, configuration, published snapshots and recovery inputs remain intact. Old multi-turn stage scores are not split, rescored, migrated or presented as individual-turn scores, and do not enter new quality statistics. Compatible single-turn historical observations retain their own exact meaning. This change adds no whole-history conversion, startup backup or configuration rewrite.
+
+Extension-selected turns retain extension identity and optional bounded reason without fabricated probability, threshold or floor. Optional valid scores remain observation-only. Frozen question/extension wire vocabulary stays unchanged: a target suffix contains precisely the previous captured turn, and earlier history is outside it. Original envelope bytes and canonical digests remain unchanged on reopen; historical schema digests cannot authenticate new extension fields.
+
+#### Scenario: Consecutive turns use the same model
+
+- **WHEN** two completed user turns execute under the same actual model and frozen policy
+- **THEN** each has its own scoring target and latest assessment; a judgment of the second cannot replace the first's score.
+
+#### Scenario: A later turn is cancelled
+
+- **WHEN** a third turn is interrupted after two completely captured turns
+- **THEN** only the third target carries its actual incompleteness, previous complete scores remain complete, and the next judgment cannot substitute an older score for the interrupted target.
+- **AND** a subsequent completely captured user turn can independently receive a full score.
+
+#### Scenario: An extension-selected turn is assessed later
+
+- **WHEN** an extension-selected turn later receives a valid complete score
+- **THEN** the recorded score remains on that actual turn without inventing a HiRoute floor or rewriting its selection.
+
+#### Scenario: Old stage evidence is retained
+
+- **WHEN** current software opens raw history containing a score spanning more than one turn
+- **THEN** the original facts and content remain intact while current per-turn quality/timeline reads exclude that cumulative score, without converting it or issuing model requests.
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/150#issuecomment-6246370790
@@ -372,8 +384,8 @@ maintenance or automatic retry policy.
 
 Plan quality defaults to the selected published version's latest seven days.
 Backend aggregation covers the full authorized retained scope, using the same
-snapshot as stage pages. Pagination, selected model, and detail score filters cannot
-change the mean. Count a stage once using its latest complete valid score; valid
+snapshot as individual-turn pages. Pagination, selected model, and detail score filters cannot
+change the mean. Count each real user turn once using its latest complete valid score; valid
 zero counts, unrated/partial do not. Versions, categories, groups, and model/profiles
 remain separate. Failed candidates that did not serve the stage receive no score.
 Configured candidates without execution display no records, not zero.
@@ -389,7 +401,7 @@ reasoning, without demanding equality to today's materialized model ID. This onl
 supplies names/order and cannot merge differing recorded model/profile summaries.
 Display published order, not performance ranking; unknown labels stay unavailable.
 Draft edits cannot change historical rows/threshold interpretation. Below-floor,
-meets-floor, and unrated filters use each stage's frozen floor; equality meets it,
+meets-floor, and unrated filters use each turn's frozen floor; equality meets it,
 partial is unrated but may expose its raw score/gaps in detail.
 
 Plan and session views share stage/score/query components and reject stale-range

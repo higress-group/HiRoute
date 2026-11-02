@@ -623,6 +623,7 @@ impl ProductionGatewayRuntime {
                         .history
                         .assessment_target
                         .clone()
+                        .filter(AssessmentTarget::is_single_turn)
                         .map(|target| bind_assessment(target, assessment))
                 });
                 Ok(ClassificationOutcome {

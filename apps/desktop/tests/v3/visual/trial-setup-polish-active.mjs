@@ -755,8 +755,8 @@ try {
   });
   await run('classifier-copy-and-keyboard', async () => {
     const expected = {
-      en: { native: ['trial model handles suitable tasks', 'earlier problem still matters', 'cannot be checked', 'fixed or unrelated', 'previous Primary stage'], local: ['Current task signals', 'do not assess the previous stage'], custom: ['custom extension chooses', 'Optional scores are observation only'] },
-      zh: { native: ['新模型先处理适合它的任务', '问题仍相关', '无法判断', '问题已修正或无关', '上一阶段已使用主力'], local: ['当前任务信号', '不评估上一阶段'], custom: ['自定义扩展选择', '可选评分仅用于观察'] },
+      en: { native: ['trial model handles suitable tasks', 'earlier problem still matters', 'cannot be checked', 'fixed or unrelated', 'previous Primary stage'], local: ['Current task signals', 'do not assess the previous turn'], custom: ['custom extension chooses', 'Optional scores are observation only'] },
+      zh: { native: ['新模型先处理适合它的任务', '问题仍相关', '无法判断', '问题已修正或无关', '上一轮次已使用主力'], local: ['当前任务信号', '不评估上一轮次'], custom: ['自定义扩展选择', '可选评分仅用于观察'] },
     };
     const summaries = {
       en: { native: 'The trial model handles suitable tasks; Primary handles complex tasks. When low-score protection applies, this turn uses Primary.', local: 'Current task signals choose between the trial model and Primary. This mode does not apply low-score protection.', custom: 'The custom extension chooses the trial model or Primary. HiRoute adds no trust threshold or low-score protection.' },

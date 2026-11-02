@@ -56,6 +56,9 @@ fn preceding_stage(
 ) -> Option<Value> {
     let identity = authority.extension_identity.as_ref()?;
     let target = history.assessment_target.as_ref()?;
+    if !target.is_single_turn() {
+        return None;
+    }
     if authority
         .plan_identity
         .as_ref()
@@ -67,7 +70,7 @@ fn preceding_stage(
     }
     let from = history
         .assessment_from
-        .filter(|from| *from < history.visible_conversation.len())?;
+        .filter(|from| from.checked_add(1) == Some(history.visible_conversation.len()))?;
     let ExecutionAttribution::Single {
         selected_branch_id,
         executed_branch_id,

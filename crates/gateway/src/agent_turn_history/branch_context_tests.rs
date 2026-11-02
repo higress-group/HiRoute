@@ -317,7 +317,7 @@ fn complete_new_input_recovers_assessment_after_a_partial_stage_on_the_same_mode
         accepted_output::text_output(&store, &ticket, "actual A execution");
         let a = close_branch_turn(&store, &ticket, now);
         assert_eq!(a.history_partial, current_output_missing);
-        assert_eq!(a.segment_id == partial.segment_id, current_output_missing);
+        assert_ne!(a.segment_id, partial.segment_id);
         messages.push(text(MessageRole::Assistant, "actual A execution"));
         messages.push(text(MessageRole::User, "fresh B"));
         let (_, history) = new_turn(
@@ -333,14 +333,8 @@ fn complete_new_input_recovers_assessment_after_a_partial_stage_on_the_same_mode
         assert_eq!(target.segment_id, a.segment_id);
         assert_eq!(target.target_partial, current_output_missing);
         assert_eq!(target.through_ordinal, 2);
-        assert_eq!(
-            target.first_ordinal,
-            if current_output_missing { 1 } else { 2 }
-        );
-        assert_eq!(
-            history.assessment_from,
-            Some(if current_output_missing { 0 } else { 1 })
-        );
+        assert_eq!(target.first_ordinal, 2);
+        assert_eq!(history.assessment_from, Some(1));
     }
 }
 

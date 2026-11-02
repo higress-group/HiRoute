@@ -141,8 +141,8 @@ export function PlanQuality({
       ?? text('模型名称不可用', 'Model name unavailable'));
   const resetDetail = () => { setSelected(null); setScore('all'); };
   const stageCount = summary.scored_stage_count + summary.unrated_stage_count;
-  const filter = <label><span className="sr-only">{text('阶段评分筛选', 'Stage score filter')}</span><select className="select quality-score-filter" value={score} onChange={event => setScore(event.target.value as ScoreFilter)}>
-    <option value="all">{text('全部阶段', 'All stages')}</option>
+  const filter = <label><span className="sr-only">{text('轮次评分筛选', 'Turn score filter')}</span><select className="select quality-score-filter" value={score} onChange={event => setScore(event.target.value as ScoreFilter)}>
+    <option value="all">{text('全部轮次', 'All turns')}</option>
     <option value="low">{text('低于当时胜任下限', 'Below the execution competence floor')}</option>
     <option value="high">{text('达到当时胜任下限', 'Meets the execution competence floor')}</option>
     <option value="unrated">{text('未评分', 'Unrated')}</option>
@@ -187,18 +187,18 @@ export function PlanQuality({
     ['complete', counts.complete, '完整评分', 'complete'], ['partial', counts.partial, '部分评分', 'partial'],
     ['awaiting', counts.awaiting_assessment, '等待评分', 'awaiting assessment'], ['unscored', counts.unscored, '未评分', 'unscored'],
   ] as const).map(([state, value, zh, en]) => <span key={state} data-state={state}>{text(`${value} ${zh}`, `${value} ${en}`)}</span>)}</span>;
-  const columns = <div className="quality-table-head" aria-hidden="true"><span>{text('模型 / 思考设置', 'Model / reasoning')}</span><span>{text('平均阶段胜任度', 'Average stage competence')}</span><span>{text('胜任率', 'Competence rate')}</span><span>{text('阶段占比', 'Stage share')}</span><span>{text('阶段样本', 'Stage samples')}</span><span>{text('耗时中位数', 'Median duration')}</span><span /></div>;
+  const columns = <div className="quality-table-head" aria-hidden="true"><span>{text('模型 / 思考设置', 'Model / reasoning')}</span><span>{text('平均轮次胜任度', 'Average turn competence')}</span><span>{text('胜任率', 'Competence rate')}</span><span>{text('轮次占比', 'Turn share')}</span><span>{text('轮次样本', 'Turn samples')}</span><span>{text('耗时中位数', 'Median duration')}</span><span /></div>;
   const stageSection = (compact || selected) && <section className="quality-stage-section">
-    {!compact && <div className="quality-stage-heading"><div><h4>{selected?.label ?? (selectedRow ? rowName(selectedRow) : text('执行阶段', 'Execution stages'))}</h4><span>{text('按实际执行模型与推理配置查看', 'Stages for the actual execution and reasoning configuration')}</span></div><div className="quality-filters">{filter}<button type="button" className="btn btn-quiet" onClick={resetDetail}>{text('收起', 'Close')}</button></div></div>}
+    {!compact && <div className="quality-stage-heading"><div><h4>{selected?.label ?? (selectedRow ? rowName(selectedRow) : text('执行轮次', 'Execution turns'))}</h4><span>{text('按实际执行模型与推理配置查看', 'Turns for the actual execution and reasoning configuration')}</span></div><div className="quality-filters">{filter}<button type="button" className="btn btn-quiet" onClick={resetDetail}>{text('收起', 'Close')}</button></div></div>}
     {compact && stageCount > 20 && <div className="quality-filters">{filter}</div>}
-    {loaded && !busy && !error && samples.length === 0 && <p className="oc-meta">{text('没有符合筛选条件的执行阶段。', 'No execution stages match this filter.')}</p>}
+    {loaded && !busy && !error && samples.length === 0 && <p className="oc-meta">{text('没有符合筛选条件的执行轮次。', 'No execution turns match this filter.')}</p>}
     <div className="quality-list">{samples.map(sample => <PlanQualityStage key={sample.segment_id} sample={sample} modelName={sampleName(sample)} activeRevision={activeRevision} language={language} onOpenEvidence={onOpenEvidence} />)}</div>
-    {cursor && <button className="btn quality-more" type="button" disabled={busy} onClick={() => void load(cursor)}>{text('加载更多阶段', 'Load more stages')}</button>}
+    {cursor && <button className="btn quality-more" type="button" disabled={busy} onClick={() => void load(cursor)}>{text('加载更多轮次', 'Load more turns')}</button>}
   </section>;
 
   return <div className={'plan-quality' + (compact ? ' compact' : '')}>
     <div className="quality-toolbar">
-      <div className="quality-scope-meta">{text(`所选范围：${stageCount} 个阶段 · ${summary.scored_stage_count} 已评分 · ${summary.unrated_stage_count} 未评分${report ? ` · 证据来自 ${report.session_total} 个会话` : ''}`, `Selected scope: ${stageCount} stages · ${summary.scored_stage_count} scored · ${summary.unrated_stage_count} unrated${report ? ` · evidence from ${report.session_total} sessions` : ''}`)}</div>
+      <div className="quality-scope-meta">{text(`所选范围：${stageCount} 个轮次 · ${summary.scored_stage_count} 已评分 · ${summary.unrated_stage_count} 未评分${report ? ` · 证据来自 ${report.session_total} 个会话` : ''}`, `Selected scope: ${stageCount} turns · ${summary.scored_stage_count} scored · ${summary.unrated_stage_count} unrated${report ? ` · evidence from ${report.session_total} sessions` : ''}`)}</div>
       <div className="quality-filters">
         {!compact && <label><span className="sr-only">{text('时间范围', 'Time range')}</span><select className="select" value={period} onChange={event => { resetDetail(); setPeriod(event.target.value as Period); }}>
           <option value="seven_days">{text('最近 7 天', 'Last 7 days')}</option><option value="one_day">{text('最近 24 小时', 'Last 24 hours')}</option><option value="all">{text('全部保留期', 'All retained')}</option>
@@ -230,33 +230,33 @@ export function PlanQuality({
           <header className="quality-group-heading"><h4>{qualityRowSectionLabel(members[0], language)}{names.length === 1 ? ` → ${names[0]}` : ''}</h4><span>{text(members.length + ' 个模型配置', members.length + (members.length === 1 ? ' model configuration' : ' model configurations'))}</span></header>
           <div className="quality-table">{columns}{members.map(row => { const evidence = trustRow(row); const tone = groupTone(groupOf(row)); return <div className={'quality-model-row' + (selected?.key === row.key ? ' selected' : '')} key={row.key} data-model-configuration={row.configured?.model_configuration_id ?? row.summary?.execution.model_configuration_id ?? ''}>
             <div className="quality-model-name"><strong>{rowName(row)}</strong><span className="quality-model-tags"><span className={`badge no-dot ${tone}`}>{qualityGroupLabel(row.branch, groupOf(row), language)}</span><span>{qualityReasoningLabel(row.summary ? row.summary.reasoning_profile_id : row.configured?.reasoning_profile_id, language)}{version === 'all' && row.summary && text(' · 版本 ', ' · version ') + row.summary.execution.plan_revision}</span></span></div>
-            <div className="quality-model-average" data-label={text('平均阶段胜任度', 'Average stage competence')}>{row.summary?.average_score != null ? <><strong>{row.summary.average_score.toFixed(2)} <small>/ 1</small></strong><div className={`quality-score-bar ${tone}`} aria-hidden="true"><svg viewBox="0 0 100 4" preserveAspectRatio="none"><rect width={Math.max(0, Math.min(100, row.summary.average_score * 100))} height="4" /></svg></div></> : <span>{row.summary?.execution.attribution === 'mixed' ? text('不归属单模型', 'No single-model attribution') : row.summary ? text('未评分', 'Unrated') : text('暂无记录', 'No records')}</span>}</div>
+            <div className="quality-model-average" data-label={text('平均轮次胜任度', 'Average turn competence')}>{row.summary?.average_score != null ? <><strong>{row.summary.average_score.toFixed(2)} <small>/ 1</small></strong><div className={`quality-score-bar ${tone}`} aria-hidden="true"><svg viewBox="0 0 100 4" preserveAspectRatio="none"><rect width={Math.max(0, Math.min(100, row.summary.average_score * 100))} height="4" /></svg></div></> : <span>{row.summary?.execution.attribution === 'mixed' ? text('不归属单模型', 'No single-model attribution') : row.summary ? text('未评分', 'Unrated') : text('暂无记录', 'No records')}</span>}</div>
             <span data-label={text('胜任率', 'Competence rate')}>{percent(evidence?.competence_rate)}</span>
-            <span data-label={text('阶段占比', 'Stage share')}>{percent(evidence?.execution_share)}</span>
-            <span className="quality-model-counts" data-label={text('阶段样本', 'Stage samples')}>{evidence ? <><span className="quality-row-coverage">{text(`评分覆盖 ${percent(evidence.scoring_coverage)}`, `${percent(evidence.scoring_coverage)} scoring coverage`)}</span>{stageStates(evidence.counts)}</> : <><span>{text((row.summary?.scored_stage_count ?? 0) + ' 已评分', (row.summary?.scored_stage_count ?? 0) + ' scored')}</span><span>{text((row.summary?.unrated_stage_count ?? 0) + ' 未评分', (row.summary?.unrated_stage_count ?? 0) + ' unrated')}</span></>}</span>
+            <span data-label={text('轮次占比', 'Turn share')}>{percent(evidence?.execution_share)}</span>
+            <span className="quality-model-counts" data-label={text('轮次样本', 'Turn samples')}>{evidence ? <><span className="quality-row-coverage">{text(`评分覆盖 ${percent(evidence.scoring_coverage)}`, `${percent(evidence.scoring_coverage)} scoring coverage`)}</span>{stageStates(evidence.counts)}</> : <><span>{text((row.summary?.scored_stage_count ?? 0) + ' 已评分', (row.summary?.scored_stage_count ?? 0) + ' scored')}</span><span>{text((row.summary?.unrated_stage_count ?? 0) + ' 未评分', (row.summary?.unrated_stage_count ?? 0) + ' unrated')}</span></>}</span>
             <span data-label={text('耗时中位数', 'Median duration')}>{seconds(evidence?.duration_p50_ms)}</span>
-            <button type="button" className="btn btn-quiet quality-view-stages" aria-expanded={selected?.key === row.key} onClick={() => { setScore('all'); setSelected(selected?.key === row.key ? null : { key: row.key, execution: row.summary?.execution ?? null }); }}>{selected?.key === row.key ? text('收起阶段', 'Hide stages') : text('查看阶段', 'View stages')}<UiIcon name="chevronRight" /></button>
+            <button type="button" className="btn btn-quiet quality-view-stages" aria-expanded={selected?.key === row.key} onClick={() => { setScore('all'); setSelected(selected?.key === row.key ? null : { key: row.key, execution: row.summary?.execution ?? null }); }}>{selected?.key === row.key ? text('收起轮次', 'Hide turns') : text('查看轮次', 'View turns')}<UiIcon name="chevronRight" /></button>
           </div>; })}</div>
         </section>;
       })}
       {groupBy === 'executor' && report && <section className="quality-group" data-execution-group="executor">
         <header className="quality-group-heading"><h4>{text('按执行 Agent', 'By execution agent')}</h4><span>{text(`${report.rows.length} 个执行组`, `${report.rows.length} execution groups`)}</span></header>
-        <div className="quality-table"><div className="quality-table-head" aria-hidden="true"><span>{text('模型 · 执行 Agent', 'Model · execution agent')}</span><span>{text('评分覆盖', 'Scoring coverage')}</span><span>{text('胜任率', 'Competence rate')}</span><span>{text('阶段占比', 'Stage share')}</span><span>{text('阶段样本', 'Stage samples')}</span><span>{text('耗时中位数', 'Median duration')}</span><span /></div>
+        <div className="quality-table"><div className="quality-table-head" aria-hidden="true"><span>{text('模型 · 执行 Agent', 'Model · execution agent')}</span><span>{text('评分覆盖', 'Scoring coverage')}</span><span>{text('胜任率', 'Competence rate')}</span><span>{text('轮次占比', 'Turn share')}</span><span>{text('轮次样本', 'Turn samples')}</span><span>{text('耗时中位数', 'Median duration')}</span><span /></div>
           {report.rows.map(row => { const key = JSON.stringify({ branch_id: row.branch_id, group: row.group, model_configuration_id: row.model_configuration_id, reasoning_profile_id: row.reasoning_profile_id, attribution: row.attribution, executor: row.executor, group_by_executor: true }); return <div className={'quality-model-row' + (selected?.key === key ? ' selected' : '')} key={key}>
             <div className="quality-model-name"><strong>{trustRowName(row)}</strong><span className="quality-model-tags"><span className={`badge no-dot ${groupTone(row.group)}`}>{qualityGroupLabel(row.branch_id, row.group, language)}</span><span>{row.executor ?? text('执行 Agent 未知', 'Unknown execution agent')}</span></span></div>
             <span data-label={text('评分覆盖', 'Scoring coverage')}>{percent(row.scoring_coverage)}</span>
             <span data-label={text('胜任率', 'Competence rate')}>{percent(row.competence_rate)}</span>
-            <span data-label={text('阶段占比', 'Stage share')}>{percent(row.execution_share)}</span>
-            <span className="quality-model-counts" data-label={text('阶段样本', 'Stage samples')}><span>{text(`${row.counts.executed} 次执行`, `${row.counts.executed} executed`)}</span>{stageStates(row.counts)}</span>
+            <span data-label={text('轮次占比', 'Turn share')}>{percent(row.execution_share)}</span>
+            <span className="quality-model-counts" data-label={text('轮次样本', 'Turn samples')}><span>{text(`${row.counts.executed} 次执行`, `${row.counts.executed} executed`)}</span>{stageStates(row.counts)}</span>
             <span data-label={text('耗时中位数', 'Median duration')}>{seconds(row.duration_p50_ms)}</span>
-            <button type="button" className="btn btn-quiet quality-view-stages" aria-expanded={selected?.key === key} onClick={() => selectTrustRow(row)}>{selected?.key === key ? text('收起阶段', 'Hide stages') : text('查看阶段', 'View stages')}<UiIcon name="chevronRight" /></button>
+            <button type="button" className="btn btn-quiet quality-view-stages" aria-expanded={selected?.key === key} onClick={() => selectTrustRow(row)}>{selected?.key === key ? text('收起轮次', 'Hide turns') : text('查看轮次', 'View turns')}<UiIcon name="chevronRight" /></button>
           </div>; })}
         </div>
       </section>}
       </div>
       {report && <TrustScopeNotes report={report} names={modelNames} language={language} />}
-      {loaded && groups.length > 0 && groupBy === 'model' && <p className="quality-average-note">{text('平均值使用当前范围内各已评分阶段的最新原始评分，未评分阶段不计入平均。', 'Averages use the latest raw assessment of every scored stage in this scope. Unrated stages are excluded.')}</p>}
-      {loaded && !error && groups.length === 0 && <p className="oc-meta">{text('当前范围还没有模型阶段记录。', 'No model-stage records are available for this scope yet.')}</p>}
+      {loaded && groups.length > 0 && groupBy === 'model' && <p className="quality-average-note">{text('平均值使用当前范围内各轮次的最新完整评分，未评分和部分评分不计入平均。', 'Averages use the latest raw assessment of every fully scored turn in this scope. Unrated and partial turns are excluded.')}</p>}
+      {loaded && !error && groups.length === 0 && <p className="oc-meta">{text('当前范围还没有模型轮次记录。', 'No model-stage records are available for this scope yet.')}</p>}
     </section>}
     {stageSection}
     {report && groupBy === 'model' && <div className="trust-card-pair">
@@ -283,12 +283,12 @@ function ProtectionCard({ report, released, caught, language, onShowLow, onOpenE
   }[released.reason];
   const time = (ms: number) => new Date(ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   return <section className="trust-card trust-protection">
-    <h3>{text(`被拦下的 ${protections} 次`, `${protections} stages caught`)}</h3>
-    <p>{protections ? text('这些轮次因低分保护而交给主力模型，计数来自实际发生的记录。', 'These turns went to Primary through low-score protection; the count comes from recorded routing.') : text('还没有因为低分转交主力的阶段。', 'No stage has been handed to Primary after a low score yet.')}</p>
+    <h3>{text(`被拦下的 ${protections} 次`, `${protections} turns caught`)}</h3>
+    <p>{protections ? text('这些轮次因低分保护而交给主力模型，计数来自实际发生的记录。', 'These turns went to Primary through low-score protection; the count comes from recorded routing.') : text('还没有因为低分转交主力的轮次。', 'No turn has been handed to Primary after a low score yet.')}</p>
     <div className="trust-release" data-release-state={released.kind}>
       <strong>{released.kind === 'available' ? text(`解除 ${released.count} 次`, `${released.count} protections released`) : text('解除次数 —', 'Protections released —')}</strong>
       <p>{releaseReason}</p>
-      {released.kind === 'available' && <p className="field-help">{text('解除按路由判断次数统计，与上方保护阶段数分开。', 'Releases count routing decisions; protections above count stages.')}</p>}
+      {released.kind === 'available' && <p className="field-help">{text('解除按路由判断次数统计，与上方保护轮次数分开。', 'Releases count routing decisions; protections above count turns.')}</p>}
     </div>
     {caught && caught.length > 0 && <ul className="trust-caught">{caught.map(sample => <li key={sample.segment_id}>
       <div><strong><ContentExcerpt session={sample.session_id} language={language} fallback={text('会话记录', 'Session')} limit={40} /></strong>
@@ -296,6 +296,6 @@ function ProtectionCard({ report, released, caught, language, onShowLow, onOpenE
       {onOpenEvidence && <button type="button" className="btn btn-quiet" onClick={() => onOpenEvidence(sample.session_id, sample.last_request_id ?? sample.first_request_id ?? '')}>{text('查看证据', 'View evidence')}</button>}
     </li>)}</ul>}
     <p className="field-help">{text(`另有 ${relays} 次故障接力：模型暂时不可用时换用其他模型，不算没做好。`, `${relays} availability relays switched models while one was unavailable; they are not counted as failures.`)}</p>
-    {onShowLow && protections > 0 && <button type="button" className="btn btn-quiet" onClick={onShowLow}>{text('查看全部低分阶段', 'View all low-score stages')}<UiIcon name="chevronRight" /></button>}
+    {onShowLow && protections > 0 && <button type="button" className="btn btn-quiet" onClick={onShowLow}>{text('查看全部低分轮次', 'View all low-score turns')}<UiIcon name="chevronRight" /></button>}
   </section>;
 }

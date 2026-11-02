@@ -32,8 +32,8 @@ export function TrustSuggestions({ report, language, currentModels = [], onThres
   // that no model-update cutoff applies without the published per-branch identities.
   const noModelUpdates = report.announcements.length === 0;
   function facts(counts: TrustCounts, upward: boolean) {
-    return t(`完整评分阶段 ${counts.complete}（要求 ≥30）· 胜任率 ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)}（${upward ? '要求 ≥85%' : '低于 70% 时建议下调'}）· 评分覆盖 ${ratio(counts.complete, counts.executed)}${upward ? '（要求 ≥60%）' : ''} · 来自 ${counts.sessions} 个会话${upward ? '（要求 ≥3）' : ''}`,
-      `${counts.complete} fully scored stages (≥30 required) · ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)} competence (${upward ? '≥85% required' : 'below 70% suggests stepping down'}) · ${ratio(counts.complete, counts.executed)} scored${upward ? ' (≥60% required)' : ''} · ${counts.sessions} sessions${upward ? ' (≥3 required)' : ''}`);
+    return t(`完整评分轮次 ${counts.complete}（要求 ≥30）· 胜任率 ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)}（${upward ? '要求 ≥85%' : '低于 70% 时建议下调'}）· 评分覆盖 ${ratio(counts.complete, counts.executed)}${upward ? '（要求 ≥60%）' : ''} · 来自 ${counts.sessions} 个会话${upward ? '（要求 ≥3）' : ''}`,
+      `${counts.complete} fully scored turns (≥30 required) · ${ratio(counts.meets_floor, counts.competence_eligible ?? counts.complete)} competence (${upward ? '≥85% required' : 'below 70% suggests stepping down'}) · ${ratio(counts.complete, counts.executed)} scored${upward ? ' (≥60% required)' : ''} · ${counts.sessions} sessions${upward ? ' (≥3 required)' : ''}`);
   }
   function banner(branch: TrustBranch): SuggestionBanner {
     const s = branch.suggestion;
@@ -41,11 +41,11 @@ export function TrustSuggestions({ report, language, currentModels = [], onThres
     const threshold = 'threshold_millis' in s ? t(`简单概率 ≥ ${(s.threshold_millis / 1000).toFixed(2)}`, `P(simple) ≥ ${(s.threshold_millis / 1000).toFixed(2)}`) : '';
     const join = (...parts: string[]) => parts.filter(Boolean).join(t('', ' '));
     const replay = 'threshold_millis' in s ? branch.replay.thresholds.find(row => row.threshold_millis === s.threshold_millis) : undefined;
-    const replayText = replay?.regular_share != null ? t(`按你的记录回放，这一档约 ${Math.round(replay.regular_share * 100)}% 的阶段会交给常规模型，${replay.protected_as_primary} 个仍由主力保护。`, `Replaying your records, about ${Math.round(replay.regular_share * 100)}% of stages would go to Regular; ${replay.protected_as_primary} stay protected by Primary.`) : '';
-    const fresh = replay && replay.newly_regular > 0 ? t(`${replay.newly_regular} 个阶段之前由主力处理，没有常规模型的胜任证据。`, `${replay.newly_regular} of them were handled by Primary and carry no Regular competence evidence.`) : '';
+    const replayText = replay?.regular_share != null ? t(`按你的记录回放，这一档约 ${Math.round(replay.regular_share * 100)}% 的轮次会交给常规模型，${replay.protected_as_primary} 个仍由主力保护。`, `Replaying your records, about ${Math.round(replay.regular_share * 100)}% of turns would go to Regular; ${replay.protected_as_primary} stay protected by Primary.`) : '';
+    const fresh = replay && replay.newly_regular > 0 ? t(`${replay.newly_regular} 个轮次之前由主力处理，没有常规模型的胜任证据。`, `${replay.newly_regular} of them were handled by Primary and carry no Regular competence evidence.`) : '';
     if (s.kind === 'keep') {
       const need: Record<string, string> = {
-        complete_scores: t(`至少 30 个评分完整的阶段（现在 ${branch.upward_cohort.complete}）`, `at least 30 fully scored stages (now ${branch.upward_cohort.complete})`),
+        complete_scores: t(`至少 30 个评分完整的轮次（现在 ${branch.upward_cohort.complete}）`, `at least 30 fully scored turns (now ${branch.upward_cohort.complete})`),
         scoring_coverage: t(`评分覆盖至少 60%（现在 ${ratio(branch.upward_cohort.complete, branch.upward_cohort.executed)}）`, `at least 60% scored (now ${ratio(branch.upward_cohort.complete, branch.upward_cohort.executed)})`),
         contributing_sessions: t(`来自至少 3 个会话（现在 ${branch.upward_cohort.sessions}）`, `from at least 3 sessions (now ${branch.upward_cohort.sessions})`),
       };
@@ -107,10 +107,10 @@ export function TrustTiles({ report, language }: { report: TrustReport; language
   const money = (entry: Extract<typeof cost, { kind: 'available' }>['routed'], signed = false) => cost.kind === 'available'
     ? `${formatPresentedCostAmount(entry, cost.currency, language, signed)}${entry.kind === 'range' ? t('（范围）', ' (Range)') : ''}` : '';
   return <div className="trust-tiles">
-    <div className="trust-tile"><span>{t('交给常规模型的阶段', 'Stages given to Regular')}</span><strong>{ratio(executed, total)}</strong><small>{executed} / {total}</small></div>
+    <div className="trust-tile"><span>{t('交给常规模型的轮次', 'Turns given to Regular')}</span><strong>{ratio(executed, total)}</strong><small>{executed} / {total}</small></div>
     <div className="trust-tile"><span>{t('常规模型胜任率', 'Regular competence')}</span><strong>{ratio(meets, eligible)}</strong><small>{t(`${meets} / ${eligible} 达到下限 · ${unscored} 未完整评分`, `${meets} / ${eligible} meet the floor · ${unscored} not fully scored`)}</small></div>
     <div className="trust-tile"><span>{t('低分保护', 'Low-score protection')}</span><strong>{t(`${protections} 次`, String(protections))}</strong><small>{t(`另有 ${relays} 次故障接力，不算没做好`, `${relays} availability relays are not counted as failures`)}</small></div>
-    <div className="trust-tile"><span>{t('常规模型阶段估算费用', 'Estimated Regular cost')}</span>{cost.kind === 'available' ? <><strong>{money(cost.routed)}</strong><small>{t(`同样用量的主力参考：${money(cost.reference)}`, `Primary reference for the same usage: ${money(cost.reference)}`)}</small><small>{t(`估算差额：${money(cost.difference, true)}`, `Estimated difference: ${money(cost.difference, true)}`)}</small></> : <small>{t('费用对比暂不可用：', 'Cost comparison unavailable: ')}{trustCostUnavailableReason(cost.reason, language)}</small>}</div>
+    <div className="trust-tile"><span>{t('常规模型轮次估算费用', 'Estimated Regular cost')}</span>{cost.kind === 'available' ? <><strong>{money(cost.routed)}</strong><small>{t(`同样用量的主力参考：${money(cost.reference)}`, `Primary reference for the same usage: ${money(cost.reference)}`)}</small><small>{t(`估算差额：${money(cost.difference, true)}`, `Estimated difference: ${money(cost.difference, true)}`)}</small></> : <small>{t('费用对比暂不可用：', 'Cost comparison unavailable: ')}{trustCostUnavailableReason(cost.reason, language)}</small>}</div>
   </div>;
 }
 
@@ -118,7 +118,7 @@ export function TrustTiles({ report, language }: { report: TrustReport; language
 export function TrustScopeNotes({ report, names, language }: { report: TrustReport; names: Map<string, string>; language: Language }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   const notes = [
-    ...report.announcements.map(a => t(`${names.get(a.model_configuration_id) ?? a.model_configuration_id} 在 ${a.included_on} 有更新公告：之前 ${a.before} 个阶段，当天 ${a.announcement_day} 个，之后 ${a.after} 个。公告日期不代表供应商实际部署时间。`, `${names.get(a.model_configuration_id) ?? a.model_configuration_id} has an update announced on ${a.included_on}: ${a.before} stages before, ${a.announcement_day} that day, ${a.after} after. The date does not establish when the provider deployed it.`)),
+    ...report.announcements.map(a => t(`${names.get(a.model_configuration_id) ?? a.model_configuration_id} 在 ${a.included_on} 有更新公告：之前 ${a.before} 个轮次，当天 ${a.announcement_day} 个，之后 ${a.after} 个。公告日期不代表供应商实际部署时间。`, `${names.get(a.model_configuration_id) ?? a.model_configuration_id} has an update announced on ${a.included_on}: ${a.before} turns before, ${a.announcement_day} that day, ${a.after} after. The date does not establish when the provider deployed it.`)),
     report.rows.some(row => rolling.includes(row.identity_stability)) ? t('供应商可能在不改模型名的情况下更新模型，这些记录可能混合多个版本，实际执行版本未经确认。', 'Providers can update a model without changing its name. These records may mix versions; the executed version is unverified.') : '',
   ].filter(Boolean);
   return notes.length ? <div className="trust-scope-notes">{notes.map(note => <p key={note}>{note}</p>)}</div> : null;
@@ -140,7 +140,7 @@ export function TrustSessions({ report, language, onOpenSession, onViewAll }: { 
   if (!report.sessions.length) return null;
   return <section className="trust-card trust-sessions">
     <div className="trust-card-head"><h3>{t(`证据来自你的 ${report.session_total} 个会话`, `Evidence from ${report.session_total} of your sessions`)}</h3>{onViewAll && <button type="button" className="btn btn-quiet" onClick={onViewAll}>{t('查看全部', 'View all')}</button>}</div>
-    <div className="trust-session-grid">{report.sessions.slice(0, limit).map(session => <button type="button" className="trust-session" key={session.session_id} disabled={!onOpenSession} onClick={() => onOpenSession?.(session.session_id)}><strong><ContentExcerpt session={session.session_id} language={language} fallback={t('会话记录', 'Session')} limit={48} /></strong><span>{t(`${session.stages} 个阶段`, `${session.stages} stages`)}</span></button>)}</div>
+    <div className="trust-session-grid">{report.sessions.slice(0, limit).map(session => <button type="button" className="trust-session" key={session.session_id} disabled={!onOpenSession} onClick={() => onOpenSession?.(session.session_id)}><strong><ContentExcerpt session={session.session_id} language={language} fallback={t('会话记录', 'Session')} limit={48} /></strong><span>{t(`${session.stages} 个轮次`, `${session.stages} turns`)}</span></button>)}</div>
     {limit < report.sessions.length && <button type="button" className="btn btn-quiet" onClick={() => setLimit(n => n + 8)}>{t('查看更多', 'Show more')}</button>}
   </section>;
 }

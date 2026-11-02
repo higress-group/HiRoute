@@ -29,6 +29,23 @@ with no current runtime or product entry.
 | Inspect actual execution and competence | [Quality query](../../crates/observation/src/query_v2/plan_quality.rs), [PlanQuality](../../apps/desktop/src/features/PlanQuality.tsx), [stage detail](../../apps/desktop/src/features/PlanQualityStage.tsx) | [Real C execution and retained query](../../crates/daemon/tests/support/c_protocol_product.py), [stage summaries](../../crates/observation/src/store/tests/plan_quality/summary.rs), [UI identities](../../apps/desktop/tests/plan-quality-state.test.mjs), [C counts and coverage UI](../../apps/desktop/tests/v3/browser/c-protocol-scenarios.mjs) |
 | Start a model trial or divide a published route | [TrialQuickStart](../../apps/desktop/src/features/trial/TrialQuickStart.tsx), [Plan editor](../../apps/desktop/src/plan-editor.tsx), [division source and draft](../../apps/desktop/src/features/trust/division-draft.ts), [draft disclosure](../../apps/desktop/src/features/trust/DivisionDraftDialog.tsx) | [Trial scenarios](../../apps/desktop/tests/v3/visual/new-model-trial-active.mjs) distinguish built-in protection from custom group selection; the manual division entry depends on published model groups, not threshold suggestions |
 
+## Independent turn assessments
+
+The history [assessment snapshot](../../crates/gateway/src/agent_turn_history/store/records.rs)
+binds only the preceding real user turn, including its tools/retries, to its frozen
+rubric and exact actual request membership. Identical executors never merge distinct
+user turns. The existing wire names assessment_stage/preceding_stage and opaque
+segment_id remain; no question bundle, saved configuration or published digest is
+rewritten. Older captured turns remain bounded contextual evidence. There is no
+separate stage-wide score or extra assessment request.
+
+The shared [quality query](../../crates/observation/src/query_v2/plan_quality.rs)
+selects one current execution sample per real turn using its exact indexed identity;
+model/trust statistics and timeline use those individual scores. Raw old multi-turn
+facts remain unchanged but are not converted or counted as turn scores. See the
+[turn isolation regressions](../../crates/gateway/src/agent_turn_history/per_turn_assessment_tests.rs)
+and [raw-history and quality regressions](../../crates/observation/src/store/tests/plan_quality/per_turn.rs).
+
 ## Frozen configuration
 
 The [execution and association contract](../../issue-spec/specs/request-routing/spec.md#requirement-execution-facts-and-history-association-have-separate-authority)
@@ -67,7 +84,7 @@ Desktop calls connections decision models or custom extensions; current CLI uses
 existing Secret storage. Custom HTTP belongs to a saved connection, not inline
 `rest` authoring. Current development v1 replaces the earlier decision shape;
 the custom-extension v1 shape has no old-format negotiation. New native publications freeze historical problem applicability in the existing System One
-wire envelope. Earlier built-in frozen publications keep their original execution semantics.
+wire envelope. Earlier built-in frozen publications retain their exact questions, rubric and policy snapshots; current scoring supplies an individual-turn target within the existing suffix contract.
 
 Editor input/readback has no native protocol or background selection. Effective
 native authoring records C v4 as the current internal protocol, with a fixed eight-turn

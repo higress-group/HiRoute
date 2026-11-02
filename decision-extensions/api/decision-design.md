@@ -68,11 +68,11 @@ HTTP 200 响应为 `{decision, assessment?}`。`decision` 依定义分别为：
 
 历史轮次为 `{user, status, steps}`，复用现有 content parts、轮次顺序和状态含义，不对外暴露 `branch_id` / `executed_branch_id`。执行类别、档位、精确模型/profile、阶段 ID、计划版本和标准摘要由 HiRoute 在请求快照内绑定，不交给扩展猜测或回传。任务内容及目标评分标准足以解释评分对象，不需要暴露内部模型身份。
 
-`assessment_target.from` 是 `visible_conversation` 中零基下标，范围为 `[0, len-1]`；从该下标到末尾构成**同一个**可评分执行阶段。HiRoute 必须先确认该后缀可归属单一实际执行身份和兼容的发布标准，否则传 null。`instructions` 与 `criteria` 是该目标执行时冻结的有效评分提示词，包含分支覆盖；不是本轮新选分支的标准。`criteria` 本期固定三项 `{score, criterion}`，score 按顺序为 `0, 0.5, 1`。所有字段必填。
+`assessment_target.from` is a zero-based index into `visible_conversation` and must identify its last captured user turn. The suffix contains exactly that turn, including tool continuations and retries; earlier history is context, not part of its score. HiRoute supplies null unless that turn has a proven single actual execution identity and a compatible published rubric. `instructions` and `criteria` are the effective instructions frozen for the target's execution, including branch overrides, rather than the newly selected branch's standard. The three `{score, criterion}` entries use scores `0, 0.5, 1` in that order. All fields are required.
 
 响应 assessment 为 `{score, partial, reason?}`：score 为有限 `[0,1]`，partial 必填，reason 可选且 1–1024 个 Unicode 标量。目标为 null 时不应返回 assessment；若返回，只丢弃这个无请求目标的评分。目标后缀被服务裁剪则 partial 为 true；目标全被移除则省略评分。HiRoute 合并自身缺口标记，服务的 false 不能抵消它。有效零分必须保留，缺失/非法/部分评分不是零分。
 
-`history_partial` 描述整段可见历史的缺口；评分的 `partial` 只判断 `assessment_target.from` 起的目标阶段证据是否缺失。接入 HiRoute 前的更早消息未采集，不应把随后完整采集的新阶段永久标成部分证据；当前阶段内已发生但未采集的回答、裁剪或中断仍须标记为部分证据。
+`history_partial` discloses gaps in the visible history as a whole. Assessment `partial` concerns only evidence missing within the target turn at `assessment_target.from`. An uncaptured older prefix must not permanently make a subsequently complete target partial; missing accepted answers, clipping or interruption within that target remain partial. A later cancelled turn cannot change an earlier turn's complete assessment.
 
 历史仅含用户内容、已接受回答、工具名称/顺序/显式粗粒度状态、不可用内容标记。仍不发送 system/developer prompt、工具参数或结果正文、凭据。重复用户文本、继续或摘要本身不算负面反馈。省略评分不删除已保存的观测，但旧观测不能再作为本次新得低分使用。
 

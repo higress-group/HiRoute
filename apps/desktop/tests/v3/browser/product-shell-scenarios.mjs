@@ -1375,7 +1375,7 @@ const scenarios = [
     assert(all('.classifier-protocol pre')[1].textContent.includes('regular') && !all('.classifier-protocol pre')[1].textContent.includes('assessment'), 'First decision fabricated an assessment');
     await click('自定义分支 · 分类并评分');
     assert(all('.classifier-protocol pre')[0].textContent.includes('"from": 0'), 'Assessment request has no prior stage');
-    assert(all('.classifier-protocol pre')[1].textContent.includes('review') && text().includes('评分只属于同类别的前一实际阶段'), 'Assessment targets the new branch');
+    assert(all('.classifier-protocol pre')[1].textContent.includes('review') && text().includes('评分只属于同类别的前一实际轮次'), 'Assessment targets the new branch');
     if (window.fixtureTransport === 'console') {
       await click('保存 OpenAPI'); await until(() => text().includes('已开始下载') || text().includes('保存失败'), 'browser download outcome');
       if (text().includes('保存失败')) await c().callHost('save_classifier_openapi');

@@ -12,11 +12,11 @@ for (const language of ['en', 'zh']) {
     const copy = protectionExplanation(builtin, language, 'Selected Primary');
     for (const phrase of language === 'zh' ? ['问题仍相关', '无法判断', '问题已修正或无关'] : ['earlier problem still matters', 'cannot be checked', 'fixed or unrelated']) assert.ok(copy.includes(phrase), copy);
     assert.ok(copy.includes('Selected Primary'));
-    for (const phrase of language === 'zh' ? ['上一实际阶段', '按难度选择模型', '不会出现第三组'] : ['previous actual stage', 'based on difficulty', 'no third group']) assert.ok(copy.includes(phrase), copy);
+    for (const phrase of language === 'zh' ? ['上一实际轮次', '按难度选择模型', '不会出现第三组'] : ['previous actual turn', 'based on difficulty', 'no third group']) assert.ok(copy.includes(phrase), copy);
   });
   test(`local rules do not claim to assess or protect a preceding stage (${language})`, () => {
     const copy = protectionExplanation(localRules, language);
-    for (const phrase of language === 'zh' ? ['本地规则', '不评估上一阶段', '不应用低分保护'] : ['Local rules', 'do not assess the previous stage', 'apply low-score protection']) assert.ok(copy.includes(phrase), copy);
+    for (const phrase of language === 'zh' ? ['本地规则', '不评估上一轮次', '不应用低分保护'] : ['Local rules', 'do not assess the previous turn', 'apply low-score protection']) assert.ok(copy.includes(phrase), copy);
   });
   test(`custom extension explains group selection and observational scores (${language})`, () => {
     const copy = protectionExplanation(extension, language);

@@ -441,7 +441,7 @@ const scenarios = [
     await until(() => document.querySelectorAll('.quality-row').length === 20, 'first stage page');
     const first = queryOf(reads('plan_quality').at(-1));
     assert(JSON.stringify(first.execution) === JSON.stringify(identity), 'Drill-down did not send the complete actual execution identity');
-    button('加载更多阶段').click();
+    button('加载更多轮次').click();
     await until(() => document.querySelectorAll('.quality-row').length === 26, 'second stage page');
     const second = queryOf(reads('plan_quality').at(-1));
     assert(first.from_ms === second.from_ms && first.to_ms === second.to_ms, 'Stage pagination changed the summary window');
@@ -535,7 +535,7 @@ const scenarios = [
     const quality = document.querySelector('.plan-quality').innerText;
     assert(names.every(name => !name.includes('model/runtime-fallback/')), 'Internal IDs appear as primary labels');
     assert(quality.includes('历史记录不完整') && quality.includes('评分证据不完整'), 'Distinct evidence gaps are not explained');
-    assert(quality.includes('尚未产生该阶段的胜任度评分'), 'Unrated stage lacks an explanation');
+    assert(quality.includes('尚未产生该轮次的胜任度评分'), 'Unrated stage lacks an explanation');
     assert(quality.includes('评分覆盖轮次 1–1'), 'Assessment coverage disappeared');
     assert(quality.includes('沿用本轮故障接力') && quality.includes('简单任务'), 'The inherited relay reason replaced or hid the original selection reason');
     button('查看执行过程').click();

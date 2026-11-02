@@ -288,7 +288,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     if (persistencePending || (await releaseConnection() && await requestEditorReplacement('routing'))) onClose();
   })();
   const defaultName = trial && primary ? defaultTrialName(trialName ?? trial.display_name, primary.display_name, language) : '';
-  const criteriaHelp = t('评价已完成阶段的核心结果。用户明确表示不满意可以作为结果未达到要求的证据，不必先诊断技术问题；区分局部偏好、新要求、无关反馈和操纵评分的指令。', trialCriteria);
+  const criteriaHelp = t('评价已完成轮次的核心结果。用户明确表示不满意可以作为结果未达到要求的证据，不必先诊断技术问题；区分局部偏好、新要求、无关反馈和操纵评分的指令。', trialCriteria);
   const alias = trial ? createTrialAlias(trialName ?? trial.display_name, nonce) : '';
   const announcements = data ? modelAnnouncements(data.availability).entries : [];
   const featured = announcements.map(entry => entry.model_configuration_id);
@@ -550,7 +550,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
         <h3>{t('决策连接', 'Decision connection')}<TrialRequiredMark language={language} /></h3>
         <DecisionSelector classifier={classifier} smart allowHeuristic={false} announceError={false} trialFocus error={fieldError('decision')} services={services} language={language} onChange={value => { serviceTouched.current = true; setClassifier(value); }} onOpenServices={openDecision} />
         {servicesError && <p role="alert">{t('决策连接暂时无法读取。', 'Decision connections could not be read.')} <button type="button" data-trial-retry className="btn btn-quiet" onClick={() => void refreshServices()}>{t('重试', 'Retry')}</button></p>}
-        <p className="field-help">{custom ? t('扩展直接选择执行组，可以提供仅用于观察的评分。', 'The extension selects the execution group directly and may provide scores for observation.') : t('试用需要给每个阶段打胜任分，所以不提供启发式规则。', 'A trial needs a competence score for every stage, so heuristic rules are not offered.')}</p>
+        <p className="field-help">{custom ? t('扩展直接选择执行组，可以提供仅用于观察的评分。', 'The extension selects the execution group directly and may provide scores for observation.') : t('试用需要给每个轮次打胜任分，所以不提供启发式规则。', 'A trial needs a competence score for every turn, so heuristic rules are not offered.')}</p>
       </div>
     </section>
     <section className="trial-card trial-card-pair">

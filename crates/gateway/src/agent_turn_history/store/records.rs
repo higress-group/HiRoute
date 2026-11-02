@@ -114,17 +114,15 @@ pub(super) fn close_active(
     let key = super::evaluation::segment_key(&entry.active, &attribution);
     let evaluation_scope = key.as_ref().and_then(|key| key.evaluation_scope.clone());
     let (segment_id, segment_partial) = if let Some(segment_key) = key {
+        // The opaque segment identifies one assessment unit, not consecutive
+        // work by the same executor. Only reopening this exact user turn may
+        // retain it; tool continuations and retries remain part of that turn.
         let reusable = entry.current_segment.as_ref().is_some_and(|segment| {
             segment.key == segment_key
-                // A composite assessment covers this task only. It must not
-                // combine different tasks merely because they share a rubric.
-                && (evaluation_scope.is_none()
-                    || segment.through_turn_id == entry.active.agent_turn_id)
-                && !((segment.partial || segment_has_unproven_closure(entry, segment))
-                    && !entry.active.capture_partial
-                    && entry.active.opening_cause
-                        == hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
-                    && segment.through_turn_id != entry.active.agent_turn_id)
+                && segment.first_turn_id == entry.active.agent_turn_id
+                && segment.through_turn_id == entry.active.agent_turn_id
+                && segment.first_ordinal == entry.active.ordinal
+                && segment.through_ordinal == entry.active.ordinal
         });
         if reusable {
             let segment = entry.current_segment.as_mut().expect("checked");
@@ -260,7 +258,15 @@ pub(super) fn snapshot(
         .current_segment
         .as_ref()
         .or(observed_assessment_segment)
-        .or(entry.referenced_segment.as_ref());
+        .or(entry.referenced_segment.as_ref())
+        .filter(|segment| {
+            entry.closed.back().is_some_and(|last| {
+                segment.first_turn_id == last.completed.agent_turn_id
+                    && segment.through_turn_id == last.completed.agent_turn_id
+                    && segment.first_ordinal == last.completed.ordinal
+                    && segment.through_ordinal == last.completed.ordinal
+            })
+        });
     let assessment_from = target_segment.and_then(|segment| {
         entry
             .closed

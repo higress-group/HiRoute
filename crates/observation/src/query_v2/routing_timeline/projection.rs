@@ -435,11 +435,18 @@ pub(super) fn project(
                     plan_revision,
                     history_membership,
                     model_configuration_id,
+                    target_from_turn_id,
+                    target_through_turn_id,
                     target_from_ordinal,
                     target_through_ordinal,
                     ..
                 } = assessment;
-                base.view.plan_id.as_deref() == Some(plan_id.as_str())
+                // Keep old multi-turn facts intact, but never present their
+                // cumulative score as an independent score on each covered turn.
+                base.view.agent_turn_id.as_deref() == Some(target_from_turn_id)
+                    && target_from_turn_id == target_through_turn_id
+                    && target_from_ordinal == target_through_ordinal
+                    && base.view.plan_id.as_deref() == Some(plan_id.as_str())
                     && base.view.plan_revision == Some(plan_revision)
                     && base.view.model_configuration_id.as_deref() == model_configuration_id
                     && history_membership.map_or_else(

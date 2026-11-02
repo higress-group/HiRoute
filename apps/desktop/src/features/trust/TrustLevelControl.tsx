@@ -37,7 +37,7 @@ export function TrustLevelControl({ value, classifier, onChange, language, id, c
   const floor = value.competence.floor_millis / 1000;
   const evidence = complete === undefined ? (evidenceError ? t('暂时无法读取当前版本的证据。', 'Evidence for the active version is temporarily unavailable.') : t('当前版本的证据尚未载入。', 'Evidence for the active version has not loaded yet.'))
     : complete === 0 ? t('当前版本还没有记录的证据。', 'No recorded evidence is available for the active version yet.')
-    : t(`当前版本已有 ${complete} 个评分完整的常规阶段；信任设置由你决定，依据见「模型表现」。`, `The active version has ${complete} fully scored Regular stages. The setting is your choice; see Model performance for the evidence.`);
+    : t(`当前版本已有 ${complete} 个评分完整的常规轮次；信任设置由你决定，依据见「模型表现」。`, `The active version has ${complete} fully scored Regular turns. The setting is your choice; see Model performance for the evidence.`);
   return <section className="trust-control" data-trust-control={id}>
     <div className="trust-control-head"><h3>{t('信任度 · 交给常规模型的程度', 'Trust · how much goes to Regular')}</h3></div>
     <p className="trust-control-help">{context === 'initial-trial' ? t('设置试用模型最初承担多少工作，之后可以调整。适用的低分保护仍然生效。', 'Sets how much work the trial model receives initially. You can adjust it later. Applicable low-score protection still applies.') : t('越往右，越多任务交给常规模型。实际保存的是简单概率阈值：任务越简单，越先交给它。只改变路由，不影响 Agent 权限、工具审批和沙箱。', 'Further right sends more tasks to Regular. The saved value is a simple-probability threshold: simpler tasks go first. Only routing changes; agent permissions, tool approval and sandboxing do not.')}</p>

@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 #[path = "openai_isolation_tests.rs"]
 mod openai_isolation_tests;
+#[path = "per_turn_protocol_tests.rs"]
+mod per_turn_protocol_tests;
 #[path = "request_context_tests.rs"]
 mod request_context_tests;
 
@@ -602,11 +604,11 @@ fn c_rejects_oversized_current_input_without_truncating_it() {
     ));
 }
 #[test]
-fn c_partitions_cap_only_background_and_preserve_a_ten_turn_target() {
+fn c_partitions_cap_background_and_preserve_only_the_previous_turn_target() {
     for background in [0, 2, 8, 12] {
         let a = c_authority();
         let mut h = c_history(&a);
-        h.visible_conversation = (0..background + 10)
+        h.visible_conversation = (0..background + 1)
             .map(|i| {
                 let mut turn = (*h.visible_conversation[0]).clone();
                 turn.user = vec![VisibleContentPart::Text {
@@ -624,7 +626,7 @@ fn c_partitions_cap_only_background_and_preserve_a_ten_turn_target() {
         );
         assert_eq!(
             wire["state"]["assessment_stage"].as_array().unwrap().len(),
-            10
+            1
         );
         assert!(!prepared.target_partial);
         assert!(prepared.routing_observation.unwrap().target_complete);

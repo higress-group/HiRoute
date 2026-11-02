@@ -40,7 +40,7 @@ export function RoutingObservations({ summary, language }: { summary: RoutingSum
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   if (!summary) return null;
   return <Disclosure className="routing-observations" label={text('历史问题适用性观测', 'Historical problem applicability observations')} language={language} defaultOpen={expanded} onOpenChange={setExpanded}>
-    <p className="oc-meta">{text('统计当前计划、版本与时间范围内所有保留的决策，不受模型、阶段评分或分页筛选影响。', 'Counts cover every retained decision in this plan, revision and time range, independently of model, stage-score and page filters.')}</p>
+    <p className="oc-meta">{text('统计当前计划、版本与时间范围内所有保留的决策，不受模型、轮次评分或分页筛选影响。', 'Counts cover every retained decision in this plan, revision and time range, independently of model, turn-score and page filters.')}</p>
     <p className="oc-meta">{new Date(summary.covered_from_ms).toLocaleString()} – {new Date(summary.covered_to_ms).toLocaleString()} · {text('保留决策 ', 'Retained decisions ')}{summary.retained_decisions} · {text('早期发布及其他路由决策 ', 'Earlier publications and other routing decisions ')}{summary.known_non_c_decisions} · {summary.coverage === 'complete' ? text('覆盖完整', 'Complete coverage') : text('覆盖不完整，比例不可用', 'Partial coverage; rates unavailable')}</p>
     {(summary.legacy_or_unknown_decisions > 0 || summary.unknown_scope_decisions > 0 || summary.missing_projection_events > 0 || summary.scan_limited) && <p className="quality-coverage">{text('来源无法确认的决策 ', 'Decisions of unconfirmed origin ')}{summary.legacy_or_unknown_decisions} · {text('范围未知 ', 'Unknown scope ')}{summary.unknown_scope_decisions} · {text('缺少安全投影的事件 ', 'Events missing safe projection ')}{summary.missing_projection_events}{summary.scan_limited && text(' · 达到读取上限', ' · Read limit reached')}</p>}
     {summary.cohorts.length === 0 && <p className="oc-meta">{text('此范围内暂无历史问题适用性决策记录。', 'No historical problem applicability decisions are available in this scope.')}</p>}
@@ -70,7 +70,7 @@ export function RoutingDecisionDetail({ observation: o, language }: { observatio
   return <section className="routing-decision-detail">
     <strong>{text('本次历史问题适用性决策', 'This historical problem applicability decision')}</strong><p>{actions[o.protection_action] ?? o.protection_action}</p>
     <p>{text('适用性判断 ', 'Applicability ')}{o.applicability_requested ? text('已请求', 'requested') : text('未请求', 'not requested')} · {o.applicability_state} · {o.applicability_reason}{o.applicability_probability != null && ' · ' + o.applicability_probability.toFixed(3)}</p>
-    <p>{text('目标阶段 ', 'Target stage ')}{o.target_segment ?? '—'} · {o.target_complete ? text('完整', 'complete') : text('不可用或不完整', 'unavailable or partial')} · {o.eligibility}</p>
+    <p>{text('目标轮次 ', 'Target turn ')}{o.target_segment ?? '—'} · {o.target_complete ? text('完整', 'complete') : text('不可用或不完整', 'unavailable or partial')} · {o.eligibility}</p>
     <p>{text('原始评分 ', 'Raw score ')}{o.score ?? '—'} · {text('当时胜任下限 ', 'Competence floor ')}{o.competence_floor_millis / 1000}</p>
     <p>{text('背景保留 / 移除 ', 'Prior turns retained / removed ')}{o.prior_retained} / {o.prior_removed} · {text('目标保留 / 移除 ', 'Target turns retained / removed ')}{o.stage_retained} / {o.stage_removed} · {o.request_bytes} B</p>
     {o.context_budget && <DecisionContextDetail budget={o.context_budget} language={language} />}

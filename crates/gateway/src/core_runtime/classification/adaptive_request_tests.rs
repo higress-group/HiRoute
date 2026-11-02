@@ -395,7 +395,7 @@ fn newest_oversized_step_is_not_skipped_and_user_only_capture_cannot_request_ass
 }
 
 #[test]
-fn target_has_no_eight_turn_cap_and_any_target_loss_excludes_captured_background() {
+fn previous_turn_keeps_all_steps_and_target_loss_excludes_captured_background() {
     for codec in [
         DecisionWireProtocolV2::SystemOne,
         DecisionWireProtocolV2::OpenaiDecisions,
@@ -405,13 +405,18 @@ fn target_has_no_eight_turn_cap_and_any_target_loss_excludes_captured_background
         h.visible_conversation = (0..20)
             .map(|i| turn(&format!("turn {i}"), vec!["execution".into()]))
             .collect();
-        h.assessment_from = Some(10);
+        h.assessment_from = Some(19);
+        h.visible_conversation[19] = turn("last task", vec!["execution".into(); 10]);
         let p = request_template(&a, &diagnostic_request(), &h, false).unwrap();
         assert_wire_budgets(codec, &a, &p);
         let s = state(codec, &p);
-        assert_eq!(s["assessment_stage"].as_array().unwrap().len(), 10);
+        assert_eq!(s["assessment_stage"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            s["assessment_stage"][0]["steps"].as_array().unwrap().len(),
+            10
+        );
         assert_eq!(s["prior_context"].as_array().unwrap().len(), 8);
-        h.visible_conversation[10] = turn(&"user".repeat(100_000), vec!["execution".into()]);
+        h.visible_conversation[19] = turn(&"user".repeat(100_000), vec!["execution".into()]);
         let p = request_template(&a, &diagnostic_request(), &h, false).unwrap();
         assert_wire_budgets(codec, &a, &p);
         assert!(p.target_partial);
@@ -421,7 +426,7 @@ fn target_has_no_eight_turn_cap_and_any_target_loss_excludes_captured_background
                 .as_array()
                 .unwrap()
                 .len(),
-            9
+            0
         );
     }
 }

@@ -294,13 +294,14 @@ fn witnessed_new_activation_closes_routing_stage_without_inventing_task_completi
     );
     accepted_output::text_output(&store, &b, "The different record is ready");
     let b_closed = finish(&store, &b, "b-final", AgentTurnStatus::Completed, true).unwrap();
-    assert_eq!(b_closed.segment_id, closed.segment_id);
+    assert_ne!(b_closed.segment_id, closed.segment_id);
     messages.extend([
         text(MessageRole::Assistant, "The different record is ready"),
-        text(MessageRole::User, "Assess the complete preceding stage"),
+        text(MessageRole::User, "Assess the preceding turn"),
     ]);
     let (c, all) = new_turn(measured(&store, &scope, &request(messages), &replay, false));
-    assert!(!target_with_members(&all, &["a-tool", "b-final"]).target_partial);
+    assert!(!target_with_members(&all, &["b-final"]).target_partial);
+    assert_eq!(all.assessment_from, Some(1));
     assert_eq!(all.visible_conversation[0].status, AgentTurnStatus::Unknown);
     store.abort(&c);
 }

@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use super::AgentTurnAttributionV1;
 
-/// One bounded query over the latest persisted quality value for each execution segment.
+/// One bounded query over the latest quality value for each independently assessed user turn.
+/// Legacy segment/stage field names identify this unit; they do not imply a cumulative score.
 #[derive(schemars::JsonSchema, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlanQualitySamplesQuery {

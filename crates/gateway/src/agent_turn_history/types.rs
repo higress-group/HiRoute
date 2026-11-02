@@ -125,6 +125,10 @@ pub(crate) struct AssessmentTarget {
 }
 
 impl AssessmentTarget {
+    pub(crate) fn is_single_turn(&self) -> bool {
+        self.first_turn_id == self.through_turn_id && self.first_ordinal == self.through_ordinal
+    }
+
     pub(crate) fn evaluation_policy(
         &self,
     ) -> Option<(&str, &hiroute_domain::BranchExecutionPolicyV1)> {

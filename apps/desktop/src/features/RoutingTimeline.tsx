@@ -298,13 +298,13 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
       : history.outcome === 'retained_unavailable' ? text('无法判断之前的问题，保留保护', 'Earlier problem judgment unavailable; protection retained')
       : history.outcome === 'not_needed' ? text('无需历史低分保护', 'Historical protection not needed') : text('未进入历史低分保护判断', 'Historical protection was not considered');
     const eligibility = turn.selection?.routing_observation?.eligibility;
-    const previous = eligibility === 'no_target' ? text('暂无可用于判断的上一阶段', 'No prior stage is available for this decision')
-      : eligibility === 'partial_target' ? text('上一阶段证据不完整', 'Previous stage evidence is incomplete')
-      : eligibility === 'different_plan' || eligibility === 'different_category' || eligibility === 'different_policy' ? text('上一阶段与当前策略范围不同', 'Previous stage is outside the current policy scope')
+    const previous = eligibility === 'no_target' ? text('暂无可用于判断的上一轮次', 'No prior stage is available for this decision')
+      : eligibility === 'partial_target' ? text('上一轮次证据不完整', 'Previous turn evidence is incomplete')
+      : eligibility === 'different_plan' || eligibility === 'different_category' || eligibility === 'different_policy' ? text('上一轮次与当前策略范围不同', 'Previous turn is outside the current policy scope')
       : history.previous_score == null ? text('评分未记录', 'Score not recorded') : history.previous_score.toFixed(2);
     return <div className="routing-judgments">
       <p>{text('当前工作：', 'Current task: ')}{task}{p != null && <> ({p.toFixed(2)}{threshold != null && <> {simple ? '≥' : '<'} {fixed(threshold)}</>})</>}</p>
-      <p>{text('上一阶段：', 'Previous stage: ')}{previous} · {text('胜任下限 ', 'Competence floor ')}{fixed(history.competence_floor_millis)}</p>
+      <p>{text('上一轮次：', 'Previous turn: ')}{previous} · {text('胜任下限 ', 'Competence floor ')}{fixed(history.competence_floor_millis)}</p>
       <p>{history.outcome === 'not_needed' && a != null ? <>{text('之前的问题相关概率 ', 'Earlier problem relevance ')}{a.toFixed(2)} · {applicability}</> : <>{applicability}{a != null && <> ({a.toFixed(2)})</>}</>}</p>
       <strong>→ {laneName(selectedLane(turn))}</strong>
     </div>;
@@ -319,7 +319,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
       case 'decision_unavailable': return text(`扩展未提供有效模型组，保留任务类别并使用主力 → ${target}。`, `The extension did not return a valid group; keep the category and use primary → ${target}.`);
       case 'simple_task': return text(`简单概率 ${p?.toFixed(2) ?? '—'} ≥ 阈值 ${fixed(threshold)}，没有适用的低分 → ${target}。`, `P(simple) ${p?.toFixed(2) ?? '—'} ≥ threshold ${fixed(threshold)} with no applicable low score → ${target}.`);
       case 'complex_task': return text(`简单概率 ${p?.toFixed(2) ?? '—'} < 阈值 ${fixed(threshold)} → ${target}。`, `P(simple) ${p?.toFixed(2) ?? '—'} < threshold ${fixed(threshold)} → ${target}.`);
-      case 'low_competence': return trigger ? text(`上一阶段评分 ${trigger.score.toFixed(2)} 低于下限 ${fixed(trigger.floor_millis)} → ${target}。`, `The previous stage scored ${trigger.score.toFixed(2)}, below the ${fixed(trigger.floor_millis)} floor → ${target}.`) : text(`上一阶段低于胜任下限 → ${target}。`, `The previous stage was below the competence floor → ${target}.`);
+      case 'low_competence': return trigger ? text(`上一轮次评分 ${trigger.score.toFixed(2)} 低于下限 ${fixed(trigger.floor_millis)} → ${target}。`, `The previous turn scored ${trigger.score.toFixed(2)}, below the ${fixed(trigger.floor_millis)} floor → ${target}.`) : text(`上一轮次低于胜任下限 → ${target}。`, `The previous turn was below the competence floor → ${target}.`);
       default: return `${reason(turn)}${p != null ? ` · ${text('简单概率', 'P(simple)')} ${p.toFixed(2)}` : ''}${threshold != null ? ` · ${text('阈值', 'threshold')} ${fixed(threshold)}` : ''} → ${target}${text('。', '.')}`;
     }
   }
@@ -335,8 +335,8 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
       const floor = turn.competence_floor_millis != null ? text(`，下限 ${fixed(turn.competence_floor_millis)}`, `, floor ${fixed(turn.competence_floor_millis)}`) : '';
       const protectedNext = turn.protected_turn_ids.length ? text('低于下限，下一轮交给主力。', ' Below the floor, so the next agent turn went to Primary.') : '';
       const attributionNote = !turn.model_configuration_id
-        ? text('整体阶段评分，不计入单模型能力。', ' Overall stage score; excluded from individual model capability.') : '';
-      return text(`阶段评分${covered}${floor}。${turn.assessment.partial ? '证据不完整。' : ''}${attributionNote}${protectedNext}`, `This stage score ${covered}${floor}.${turn.assessment.partial ? ' Evidence is incomplete.' : ''}${attributionNote}${protectedNext}`);
+        ? text('整体轮次评分，不计入单模型能力。', ' Overall turn score; excluded from individual model capability.') : '';
+      return text(`轮次评分${covered}${floor}。${turn.assessment.partial ? '证据不完整。' : ''}${attributionNote}${protectedNext}`, `This turn score ${covered}${floor}.${turn.assessment.partial ? ' Evidence is incomplete.' : ''}${attributionNote}${protectedNext}`);
     }
     if (turn.status === 'running') return text('这一轮还在进行，结束后才评分。', 'This agent turn is still running; it is scored after it ends.');
     if (turn.assessment_state === 'pending') return text('下一轮开始后，根据你的反馈给这一轮评分。', 'Scored from your feedback once the next agent turn starts.');
@@ -363,7 +363,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           ? text('会话开始或网关确认的对话延续都可能触发重新判断。客户端自动追加的后台消息也可能满足此规则。', 'A session opening or gateway-confirmed continuing history may trigger a fresh decision. Client-generated background messages can also meet this rule.')
           : text('上下文中的消息步骤比上一份可比较记录少，按压缩归因。回退或共享会话的后台、子代理请求也可能满足此条件。', 'The context has fewer message steps than the prior comparable checkpoint, so this is attributed to compaction. Rewinds or background and subagent requests sharing a session can also meet this condition.')}</p></Disclosure>}
         {selectedTurn.requests[0] && <blockquote className="routing-quote"><ContentExcerpt active={active && displayed} contentCleared={contentCleared || clearedRequestIds.includes(selectedTurn.requests[0].request_id)} request={selectedTurn.requests[0].request_id} requestRunning={selectedTurn.requests[0].outcome === null} language={language} fallback={text('这一轮的消息暂不可用', 'This turn’s message is unavailable')} limit={140} revision={selectedTurn.content_digest} /></blockquote>}
-        <div className="routing-detail-block"><span>{text('阶段开始时的模型选择', 'Model selection at the start of this stage')}</span>{pending(selectedTurn) ? <p>{text('判断中…', 'Choosing a model…')}</p> : historicalExplanation(selectedTurn)}</div>
+        <div className="routing-detail-block"><span>{text('轮次开始时的模型选择', 'Model selection at the start of this turn')}</span>{pending(selectedTurn) ? <p>{text('判断中…', 'Choosing a model…')}</p> : historicalExplanation(selectedTurn)}</div>
         <div className="routing-detail-block"><span>{text('胜任评分', 'Competence score')}</span><div><span className={`routing-score ${scoreTone(selectedTurn)}`}>{score(selectedTurn)}</span></div><p>{scoreExplanation(selectedTurn)}</p></div>
         <p className="routing-detail-facts">{[
           status(selectedTurn),

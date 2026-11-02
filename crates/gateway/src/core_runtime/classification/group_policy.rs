@@ -137,7 +137,8 @@ fn reduce(
     let Some(assessment) = &outcome.assessment else {
         return;
     };
-    if assessment.partial
+    if !assessment.target.is_single_turn()
+        || assessment.partial
         || assessment.target.target_partial
         || !assessment.score.is_finite()
         || assessment.score < 0.0

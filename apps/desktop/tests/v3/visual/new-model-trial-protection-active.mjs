@@ -108,10 +108,10 @@ try {
         await waitFor(client,`document.querySelector('.trust-release')?.dataset.releaseState==='available'`);
         const trustCount=await evaluate(client,`trialTrace.filter(x=>x.payload?.request?.intent?.view==='plan_trust').length`);
         await evaluate(client,`window.advanceRetentionClock(120_000);true`);
-        await click('.trust-protection button',lang==='zh'?'查看全部低分阶段':'View all low-score stages');
+        await click('.trust-protection button',lang==='zh'?'查看全部低分轮次':'View all low-score turns');
         await waitFor(client,`!!document.querySelector('.quality-more:not(:disabled)')`);
         assert.equal(await evaluate(client,`document.querySelector('.trust-release').dataset.releaseState`),'available','filter preserves paired base summary after retention moves');
-        await click('.quality-more',lang==='zh'?'加载更多阶段':'Load more stages');
+        await click('.quality-more',lang==='zh'?'加载更多轮次':'Load more turns');
         await waitFor(client,`!document.querySelector('.quality-more')`);
         assert.ok(await evaluate(client,`document.querySelector('.trust-release').textContent.includes(${JSON.stringify(lang==='zh'?'解除 5 次':'5 protections released')})`),'pagination preserves the paired count');
         assert.equal(await evaluate(client,`trialTrace.filter(x=>x.payload?.request?.intent?.view==='plan_trust').length`),trustCount,'filters do not refresh the aggregate scope');

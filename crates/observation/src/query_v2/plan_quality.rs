@@ -13,6 +13,8 @@ use crate::LocalObservationStore;
 #[path = "plan_quality_snapshot_tests.rs"]
 mod snapshot_tests;
 
+/// Samples are individual user turns. Legacy multi-turn assessments are neither
+/// converted nor counted; their original facts remain in the archive.
 /// Both projections share the same scope and transaction. Detail filters never
 /// enter this CTE, so pagination and drill-down cannot change the full-scope mean.
 /// The request-scoped candidate index excludes unrelated content carriers.
@@ -30,6 +32,8 @@ pub(super) const SCOPE: &str = "
       json_extract(q.branch_execution_json,'$.policy.floor_millis') AS floor_millis,
       retired_assessment.request_id IS NOT NULL AS assessment_retired,
       CASE WHEN q.assessment_partial=0 AND retired_assessment.request_id IS NULL
+        AND q.target_from_turn_id=q.first_turn_id AND q.target_through_turn_id=q.first_turn_id
+        AND q.target_from_ordinal=q.first_turn_ordinal AND q.target_through_ordinal=q.first_turn_ordinal
         AND COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
         AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) THEN q.score END AS reliable_score,
@@ -78,6 +82,13 @@ pub(super) const SCOPE: &str = "
       AND l.request_id=q.first_request_id
     WHERE q.workspace_id=:workspace AND q.last_at_ms>=:from AND q.last_at_ms<:to
       AND q.last_at_ms IS NOT NULL AND q.selected_branch_id IS NOT NULL
+      AND q.first_turn_id=q.last_observed_turn_id
+      AND q.first_turn_ordinal=q.last_observed_turn_ordinal
+      AND NOT EXISTS(SELECT 1 FROM plan_quality_segments newer INDEXED BY plan_quality_by_turn
+        WHERE newer.workspace_id=q.workspace_id AND newer.session_id=q.session_id
+          AND newer.first_turn_id=q.first_turn_id
+          AND newer.first_turn_id=newer.last_observed_turn_id
+          AND newer.execution_sequence>q.execution_sequence)
       AND NOT EXISTS(SELECT 1 FROM observation_request_tombstones_v2 retired
         WHERE retired.workspace_id=q.workspace_id AND retired.request_id=q.last_request_id
           AND NOT EXISTS(SELECT 1 FROM logical_requests retained
@@ -112,7 +123,12 @@ pub(super) const SAMPLE_SELECT: &str = "SELECT q.segment_id,q.session_id,q.plan_
                             AND last_req.request_id=q.last_request_id),
                         CASE WHEN COALESCE(l.conflicted,0)=0 THEN json_extract(l.body_json,'$.task_id') END,
                         CASE WHEN COALESCE(l.conflicted,0)=0 THEN l.run_id END,
-                        CASE WHEN NOT q.assessment_retired THEN q.assessment_event_id END,
+                        CASE WHEN NOT q.assessment_retired
+                          AND q.target_from_turn_id=q.first_turn_id
+                          AND q.target_through_turn_id=q.first_turn_id
+                          AND q.target_from_ordinal=q.first_turn_ordinal
+                          AND q.target_through_ordinal=q.first_turn_ordinal
+                          THEN q.assessment_event_id END,
                         q.assessment_trigger_request_id,q.assessed_at_ms,
                         q.target_from_turn_id,q.target_through_turn_id,q.target_from_ordinal,
                         q.target_through_ordinal,q.score,

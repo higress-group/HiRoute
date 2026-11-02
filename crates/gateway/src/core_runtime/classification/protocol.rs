@@ -58,9 +58,12 @@ pub(super) fn assessment_definition_result(
 ) -> Result<AssessmentDefinition, hiroute_domain::ProtectionEligibilityV1> {
     use hiroute_domain::ProtectionEligibilityV1 as E;
     let target = history.assessment_target.as_ref().ok_or(E::NoTarget)?;
+    if !target.is_single_turn() {
+        return Err(E::InvalidBoundary);
+    }
     let from = history
         .assessment_from
-        .filter(|i| *i < history.visible_conversation.len())
+        .filter(|i| i.checked_add(1) == Some(history.visible_conversation.len()))
         .ok_or(E::InvalidBoundary)?;
     let missing_scope = match &target.attribution {
         crate::agent_turn_history::ExecutionAttribution::Single { .. } => E::Unrated,

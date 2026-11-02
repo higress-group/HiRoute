@@ -58,7 +58,7 @@ export function PlanQualityStage({ sample, modelName, activeRevision, language, 
       <div className="quality-row-main">
         <strong>{modelName}</strong>
         <span>{qualityReasoningLabel(sample.reasoning_profile_id, language)}</span>
-        <span>{branch === 'smart_saving' ? qualityGroupLabel(branch, sample.branch_execution?.group, language) : sample.branch_execution?.policy.name ?? qualityBranchLabel(branch, language)} · {text('轮次 ' + sample.first_turn_ordinal + '–' + sample.last_observed_turn_ordinal, 'Turns ' + sample.first_turn_ordinal + '–' + sample.last_observed_turn_ordinal)}</span>
+        <span>{branch === 'smart_saving' ? qualityGroupLabel(branch, sample.branch_execution?.group, language) : sample.branch_execution?.policy.name ?? qualityBranchLabel(branch, language)} · {text('第 ' + sample.first_turn_ordinal + ' 轮', 'Turn ' + sample.first_turn_ordinal)}</span>
       </div>
       <div className="quality-score"><strong>{reliable ? assessment.score.toFixed(2) + ' / 1' : text('未评分', 'Unrated')}</strong><span>{text('胜任度', 'Competence')}</span></div>
     </div>
@@ -66,10 +66,10 @@ export function PlanQualityStage({ sample, modelName, activeRevision, language, 
     <div className="quality-stage-meta">{new Date(sample.last_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}{activeRevision != null && sample.plan_revision !== activeRevision && <> · {text('历史版本 ' + sample.plan_revision, 'Earlier version ' + sample.plan_revision)}</>}</div>
     {sample.branch_execution && <p className="quality-coverage">{text('实际执行', 'Actual execution')} · {qualityGroupLabel(branch, sample.branch_execution.group, language)} · {text('候选 ', 'Candidate ')}{sample.branch_execution.candidate_index + 1}{sample.branch_execution.policy.floor_millis != null && <> · {text('当时胜任下限 ', 'Execution competence floor ')}{sample.branch_execution.policy.floor_millis / 1000}</>}</p>}
     {sample.upgrade && <div className="callout"><UiIcon name="route" /><span>{text(`已触发主力保护 · 当时评分 ${sample.upgrade.decision.score} 低于下限 ${sample.upgrade.decision.floor_millis / 1000}`, `Triggered primary protection · score ${sample.upgrade.decision.score} below floor ${sample.upgrade.decision.floor_millis / 1000}`)}</span></div>}
-    <Disclosure className="quality-assessment-details" label={assessment ? text('查看评分依据', 'View assessment evidence') : text('阶段详情', 'Stage details')} language={language}>
+    <Disclosure className="quality-assessment-details" label={assessment ? text('查看评分依据', 'View assessment evidence') : text('轮次详情', 'Turn details')} language={language}>
       {sample.selection && <div className="quality-selection">
-        <strong>{text('阶段开始时的模型选择', 'Model selection at the start of this stage')}</strong>
-        <p>{({ extension_decision: text('由决策扩展选择', 'Selected by the decision extension'), decision_unavailable: text('扩展未提供有效模型组', 'Extension group unavailable'), simple_task: text('简单任务', 'Simple task'), complex_task: text('复杂任务', 'Complex task'), low_competence: text('上一阶段低分保护', 'Protection after a low stage score'), degree_unavailable: text('程度判断失败', 'Degree decision unavailable'), single_group: text('本分支仅常规组', 'Regular group only'), decision_fallback: text('决策失败兜底', 'Decision failure fallback'), availability_relay: text('沿用本轮故障接力', 'Continue this turn’s fallback'), heuristic: text('启发式规则', 'Heuristic rules') })[sample.selection.selection_reason]} → {qualityGroupLabel(branch, sample.selection.execution_group, language)}</p>
+        <strong>{text('轮次开始时的模型选择', 'Model selection at the start of this turn')}</strong>
+        <p>{({ extension_decision: text('由决策扩展选择', 'Selected by the decision extension'), decision_unavailable: text('扩展未提供有效模型组', 'Extension group unavailable'), simple_task: text('简单任务', 'Simple task'), complex_task: text('复杂任务', 'Complex task'), low_competence: text('上一轮次低分保护', 'Protection after a low turn score'), degree_unavailable: text('程度判断失败', 'Degree decision unavailable'), single_group: text('本分支仅常规组', 'Regular group only'), decision_fallback: text('决策失败兜底', 'Decision failure fallback'), availability_relay: text('沿用本轮故障接力', 'Continue this turn’s fallback'), heuristic: text('启发式规则', 'Heuristic rules') })[sample.selection.selection_reason]} → {qualityGroupLabel(branch, sample.selection.execution_group, language)}</p>
         {sample.selection.extension_reason && <p>{sample.selection.extension_reason}</p>}
         {sample.selection.simple_probability != null && <p>{text('本次简单概率', 'Simple probability')} {sample.selection.simple_probability.toFixed(3)} · {text('当时阈值', 'Threshold')} {sample.selection.simple_threshold_millis == null ? '—' : sample.selection.simple_threshold_millis / 1000}</p>}
         {sample.selection.competence_trigger && <p>{text('触发评分', 'Trigger score')} {sample.selection.competence_trigger.score} &lt; {sample.selection.competence_trigger.floor_millis / 1000}</p>}
@@ -77,9 +77,9 @@ export function PlanQualityStage({ sample, modelName, activeRevision, language, 
         {sample.branch_execution && sample.selection.execution_group !== sample.branch_execution.group && <p>{text('经候选故障接力后执行', 'Executed after candidate failover')} · {qualityGroupLabel(branch, sample.branch_execution.group, language)} · {text('候选 ', 'Candidate ')}{sample.branch_execution.candidate_index + 1}</p>}
         {sample.first_request_id && sample.execution_evidence_available && <button type="button" className="btn btn-quiet" disabled={!onOpenEvidence} onClick={() => onOpenEvidence?.(sample.session_id, sample.first_request_id!)}>{text('查看选择请求', 'View selection request')}</button>}
       </div>}
-      {!assessment && <p className="quality-coverage">{text('尚未产生该阶段的胜任度评分；后续评估触发后才会显示。', 'No competence assessment has been recorded for this stage. A score appears after a subsequent assessment is triggered.')}</p>}
+      {!assessment && <p className="quality-coverage">{text('尚未产生该轮次的胜任度评分；后续评估触发后才会显示。', 'No competence assessment has been recorded for this turn. A score appears after a subsequent assessment is triggered.')}</p>}
       {assessment && <>
-        <p className="quality-coverage">{text('评分覆盖轮次 ' + assessment.target_from_ordinal + '–' + assessment.target_through_ordinal, 'Assessed turns ' + assessment.target_from_ordinal + '–' + assessment.target_through_ordinal)}</p>
+        <p className="quality-coverage">{text('评分对象：第 ' + assessment.target_from_ordinal + ' 轮', 'Assessed turn ' + assessment.target_from_ordinal)}</p>
         <p className="quality-coverage">{text('原始评分', 'Raw score')} · {assessment.score}{assessment.assessed_at_ms != null && <> · {new Date(assessment.assessed_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}</>}</p>
         {assessment.partial && assessment.reason && <p className="quality-reason">{assessment.reason}</p>}
       </>}
@@ -88,7 +88,7 @@ export function PlanQualityStage({ sample, modelName, activeRevision, language, 
         {assessment?.partial && <span className="badge warn no-dot">{text('评分证据不完整', 'Partial assessment evidence')}</span>}
         {sample.attribution !== 'single' && <span className="badge warn no-dot">{sample.attribution === 'mixed' ? text('无法归因于单一模型', 'Not attributable to one model') : text('模型归属未确认', 'Model attribution unknown')}</span>}
       </div>
-      <p className="quality-coverage">{text('阶段评分用于观察该阶段的执行表现。', 'The score describes execution of this stage.')}</p>
+      <p className="quality-coverage">{text('轮次评分用于观察该轮次的执行表现。', 'The score describes execution of this turn.')}</p>
       <div className="quality-diagnostic-identity">
         {sample.executed_branch_id ?? sample.selected_branch_id} · {sample.model_configuration_id ?? 'unknown'} · {sample.profile_digest ?? 'unknown'}
         {sample.native_model && sample.native_model !== modelName && <div>{text('原始模型标识', 'Original model ID')} · {sample.native_model}</div>}

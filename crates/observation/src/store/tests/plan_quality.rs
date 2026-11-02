@@ -11,6 +11,7 @@ use super::support::{Fixture, fact_channel, offer_fact, open_store, writer};
 
 mod composite;
 mod history_membership;
+mod per_turn;
 mod routing_observations;
 mod routing_observations_released;
 mod routing_timeline_protection;
@@ -398,7 +399,7 @@ fn assessment_and_execution_cannot_rebind_a_segment_to_another_model() {
 }
 
 #[test]
-fn latest_assessment_overwrites_without_extending_itself_and_branch_switch_starts_unscored() {
+fn latest_assessment_updates_only_its_own_turn_and_branch_switch_starts_unscored() {
     let directory = tempfile::tempdir().unwrap();
     let store = open_store(directory.path());
     let writer = writer(&store);
@@ -441,7 +442,7 @@ fn latest_assessment_overwrites_without_extending_itself_and_branch_switch_start
             3,
             finished(
                 &fixtures[1],
-                "segment-a",
+                "segment-a2",
                 "agent-turn-2",
                 2,
                 "smart_saving_simple",
@@ -453,8 +454,8 @@ fn latest_assessment_overwrites_without_extending_itself_and_branch_switch_start
             4,
             assessment(
                 &fixtures[2],
-                "segment-a",
-                ("agent-turn-1", "agent-turn-2", 1, 2),
+                "segment-a2",
+                ("agent-turn-2", "agent-turn-2", 2, 2),
                 1500,
                 0.3,
             ),
@@ -464,8 +465,8 @@ fn latest_assessment_overwrites_without_extending_itself_and_branch_switch_start
             5,
             assessment(
                 &fixtures[3],
-                "segment-a",
-                ("agent-turn-1", "agent-turn-2", 1, 2),
+                "segment-a2",
+                ("agent-turn-2", "agent-turn-2", 2, 2),
                 1600,
                 0.2,
             ),
@@ -494,11 +495,17 @@ fn latest_assessment_overwrites_without_extending_itself_and_branch_switch_start
     let page = store
         .observed_plan_quality_samples(&reader(), &query(None), 5_000)
         .unwrap();
-    assert_eq!(page.samples.len(), 2);
+    assert_eq!(page.samples.len(), 3);
+    let first_score = page
+        .samples
+        .iter()
+        .find(|s| s.segment_id == "segment-a")
+        .unwrap();
+    assert_eq!(first_score.assessment.as_ref().unwrap().score, 0.6);
     let old = page
         .samples
         .iter()
-        .find(|sample| sample.segment_id == "segment-a")
+        .find(|sample| sample.segment_id == "segment-a2")
         .unwrap();
     assert_eq!(old.last_observed_turn_ordinal, 2);
     let score = old.assessment.as_ref().unwrap();
@@ -531,17 +538,15 @@ fn latest_assessment_overwrites_without_extending_itself_and_branch_switch_start
     );
     let mut high = query(None);
     high.score_gt = Some(0.2);
-    assert!(
-        store
-            .observed_plan_quality_samples(&reader(), &high, 5_000)
-            .unwrap()
-            .samples
-            .is_empty()
-    );
+    let high = store
+        .observed_plan_quality_samples(&reader(), &high, 5_000)
+        .unwrap();
+    assert_eq!(high.samples.len(), 1);
+    assert_eq!(high.samples[0].segment_id, "segment-a");
 }
 
 #[test]
-fn request_retention_drops_expired_score_and_marks_a_continuing_segment_partial() {
+fn request_retention_drops_expired_score_without_marking_a_new_turn_partial() {
     let directory = tempfile::tempdir().unwrap();
     let store = open_store(directory.path());
     let writer = writer(&store);
@@ -582,7 +587,7 @@ fn request_retention_drops_expired_score_and_marks_a_continuing_segment_partial(
             3,
             finished(
                 &recent,
-                "segment-retained",
+                "segment-recent",
                 "agent-turn-recent",
                 2,
                 "smart_saving_simple",
@@ -615,14 +620,17 @@ fn request_retention_drops_expired_score_and_marks_a_continuing_segment_partial(
         .unwrap();
     assert_eq!(page.samples.len(), 1);
     let sample = &page.samples[0];
-    assert_eq!(sample.segment_id, "segment-retained");
-    assert!(sample.history_partial);
-    assert!(sample.first_request_id.is_none());
+    assert_eq!(sample.segment_id, "segment-recent");
+    assert!(!sample.history_partial);
+    assert_eq!(
+        sample.first_request_id.as_deref(),
+        Some(recent.request.as_str())
+    );
     assert_eq!(
         sample.last_request_id.as_deref(),
         Some(recent.request.as_str())
     );
-    assert!(!sample.execution_evidence_available);
+    assert!(sample.execution_evidence_available);
     assert!(sample.assessment.is_none());
 }
 

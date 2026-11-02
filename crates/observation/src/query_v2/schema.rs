@@ -55,7 +55,9 @@ pub(crate) fn migrate(transaction: &Connection) -> Result<(), ObservationStoreEr
          CREATE INDEX IF NOT EXISTS plan_quality_by_session
             ON plan_quality_segments(workspace_id,session_id,last_at_ms DESC,segment_id);
          CREATE INDEX IF NOT EXISTS plan_quality_by_model
-            ON plan_quality_segments(workspace_id,model_configuration_id,last_at_ms DESC,segment_id);"
+            ON plan_quality_segments(workspace_id,model_configuration_id,last_at_ms DESC,segment_id);
+         CREATE INDEX IF NOT EXISTS plan_quality_by_turn
+            ON plan_quality_segments(workspace_id,session_id,first_turn_id,execution_sequence DESC);"
     ).map_err(|_|ObservationStoreError::ActivityUnavailable)?;
     let columns = transaction
         .prepare("PRAGMA table_info(plan_quality_segments)")
