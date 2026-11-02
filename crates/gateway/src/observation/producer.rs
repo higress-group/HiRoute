@@ -45,6 +45,11 @@ pub(super) struct ChannelProducer {
 
 impl ChannelProducer {
     #[cfg(test)]
+    pub(super) fn flush(&self, timeout: Duration) {
+        self.inner.as_ref().unwrap().flush(timeout).unwrap();
+    }
+
+    #[cfg(test)]
     pub(super) fn work_state(&self) -> Option<(usize, usize, usize)> {
         self.inner.as_ref().map(|producer| producer.work_state())
     }
