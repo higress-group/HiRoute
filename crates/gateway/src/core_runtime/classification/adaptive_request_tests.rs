@@ -240,9 +240,13 @@ fn larger_window_admits_above_legacy_ceiling_and_small_window_keeps_whole_latest
             json!([{ "role":"user", "content":"Execute the current requirement exactly." }]),
         );
         let original = r.clone();
-        let steps = (0..24)
+        let mut steps = (0..23)
             .map(|i| format!("step {i}: {}", "中文😀\\\"".repeat(1200)))
             .collect::<Vec<_>>();
+        // Keep the history above the legacy ceiling, with a complete short tail
+        // that fits beside the current frozen questions in the small window.
+        // Large latest steps that cannot fit are covered separately below.
+        steps.push("Latest complete execution step: 中文😀\\\"".repeat(8));
         let large = authority(codec, 1_050_000, 1_050_000);
         let mut h = c_history(&large);
         h.visible_conversation = vec![turn("Full prior user requirement", steps.clone())];
@@ -272,13 +276,17 @@ fn larger_window_admits_above_legacy_ceiling_and_small_window_keeps_whole_latest
             s["assessment_stage"][0]["steps"][0][0]["source_kind"],
             "context_budget"
         );
+        let retained = s["assessment_stage"][0]["steps"].as_array().unwrap();
+        let retained_execution = &retained[1..];
+        assert!(!retained_execution.is_empty());
+        assert!(retained_execution.len() < steps.len());
         assert_eq!(
-            s["assessment_stage"][0]["steps"]
-                .as_array()
-                .unwrap()
-                .last()
-                .unwrap()[0]["text"],
-            *steps.last().unwrap()
+            Value::Array(retained_execution.to_vec()),
+            serde_json::to_value(
+                &h.visible_conversation[0].steps[steps.len() - retained_execution.len()..]
+            )
+            .unwrap(),
+            "{codec:?}: retained steps must be an exact whole suffix"
         );
         assert_eq!(
             s["latest_user"][0]["text"],
@@ -377,17 +385,27 @@ fn newest_oversized_step_is_not_skipped_and_user_only_capture_cannot_request_ass
         DecisionWireProtocolV2::OpenaiDecisions,
     ] {
         let a = authority(codec, 32_000, 32_000);
+        let r = request(json!([{ "role":"user", "content":"Keep the current requirement." }]));
+        let original = r.clone();
         let mut h = c_history(&a);
         h.visible_conversation = vec![turn(
             "whole user",
             vec!["small older step".into(), "x".repeat(100_000)],
         )];
-        let p = request_template(&a, &diagnostic_request(), &h, false).unwrap();
+        let p = request_template(&a, &r, &h, false).unwrap();
         assert_wire_budgets(codec, &a, &p);
+        assert!(p.target_partial);
         assert_eq!(state(codec, &p)["assessment_stage"], json!([]));
         assert!(p.bindings.as_ref().unwrap().assessment.is_none());
+        assert!(p.bindings.as_ref().unwrap().applicability.is_none());
+        assert_eq!(
+            state(codec, &p)["latest_user"][0]["text"],
+            "Keep the current requirement."
+        );
+        assert_eq!(h.visible_conversation[0].steps.len(), 2);
+        assert_eq!(r, original);
         h.visible_conversation = vec![turn("user-only is not execution", vec![])];
-        let p = request_template(&a, &diagnostic_request(), &h, false).unwrap();
+        let p = request_template(&a, &r, &h, false).unwrap();
         assert!(p.bindings.as_ref().unwrap().assessment.is_none());
         assert!(p.bindings.as_ref().unwrap().applicability.is_none());
         assert!(!p.routing_observation.as_ref().unwrap().target_complete);
