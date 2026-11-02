@@ -10,7 +10,7 @@ fn same_executor_scores_each_turn_and_cancellation_cannot_poison_other_turns() {
     let mut completed = Vec::<CompletedAgentTurn>::new();
     let mut frozen = Vec::new();
     for ordinal in 1..=5 {
-        messages.push(text(MessageRole::User, &format!("work {ordinal}")));
+        messages.push(text(MessageRole::User, format!("work {ordinal}")));
         let (ticket, history) = new_turn(
             store
                 .begin(
