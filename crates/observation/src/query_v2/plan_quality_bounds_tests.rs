@@ -29,13 +29,17 @@ pub(super) fn seed() -> (
     }
     {
         let db = store.connection.lock();
-        // Many stages can share one request across compaction boundaries. Keep
+        // Distinct turn samples share the same retained request fixture. Keep
         // native-name and reasoning attribution in the aggregate being measured.
         db.execute("WITH RECURSIVE n(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM n WHERE i<128)
             INSERT INTO plan_quality_segments(workspace_id,segment_id,session_id,plan_id,plan_revision,
               selected_branch_id,executed_branch_id,model_configuration_id,profile_digest,attribution,
-              first_at_ms,last_at_ms,first_request_id,last_request_id,score,assessment_partial)
-            SELECT ?1,'stage-'||i,?2,?3,17,'writing','writing','model-a',?4,'single',1000,1100,?5,?5,0.8,0 FROM n",
+              first_at_ms,last_at_ms,first_request_id,last_request_id,score,assessment_partial,
+              first_turn_id,last_observed_turn_id,first_turn_ordinal,last_observed_turn_ordinal,
+              target_from_turn_id,target_through_turn_id,target_from_ordinal,target_through_ordinal,
+              execution_sequence)
+            SELECT ?1,'stage-'||i,?2,?3,17,'writing','writing','model-a',?4,'single',1000,1100,?5,?5,0.8,0,
+              'turn-'||i,'turn-'||i,i,i,'turn-'||i,'turn-'||i,i,i,i FROM n",
             rusqlite::params![fixture.workspace.as_str(),fixture.session.as_str(),PLAN,
                 CanonicalDigest::of_bytes(b"profile-a").to_string(),fixture.request.as_str()]).unwrap();
         // Retained execution facts need not all have a safe projection. They

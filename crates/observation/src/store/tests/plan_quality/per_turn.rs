@@ -142,7 +142,11 @@ fn legacy_multi_turn_scores_are_not_migrated_or_counted_and_raw_facts_survive_re
                 5000,
             )
             .unwrap();
-        assert_eq!(timeline.turns.len(), 2);
+        assert_eq!(
+            timeline.turns.len(),
+            3,
+            "both completed turns and the assessment-trigger request remain visible"
+        );
         assert!(timeline.turns.iter().all(|turn| turn.assessment.is_none()));
     }
     let reopened = open_store(directory.path());
@@ -166,12 +170,14 @@ fn a_reopened_turn_with_changed_attribution_has_one_current_quality_sample() {
     let mut mixed = finished(&first, "mixed-unit", "turn-1", 1, "code", 1200);
     if let ExecutionFactV1::AgentTurnFinished {
         attribution,
+        executed_branch_id,
         model_configuration_id,
         profile_digest,
         ..
     } = &mut mixed
     {
         *attribution = AgentTurnAttributionV1::Mixed;
+        *executed_branch_id = None;
         *model_configuration_id = None;
         *profile_digest = None;
     }
