@@ -166,8 +166,11 @@ def decision(fixture, body):
             return dict(kind='text', text=json.dumps({'title': 'Native context receipt'}),
                         request_kind='title', continued=False)
     messages = body.get('messages', [])
+    last_content = messages[-1].get('content', []) if messages else []
+    # Native Messages may merge consecutive user messages into multiple blocks.
+    last_text = native_text(last_content[-1]) if isinstance(last_content, list) and last_content else native_text(last_content)
     if (harness == 'claude' and messages and messages[-1].get('role') == 'user'
-            and native_text(messages[-1]).startswith(
+            and last_text.startswith(
                 '[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]')):
         # Native suggestions fork the complete history after a turn's result.
         # Seeing prior tool receipts here does not prove another Continue.
