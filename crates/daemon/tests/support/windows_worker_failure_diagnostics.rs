@@ -84,6 +84,7 @@ mod tests {
     fn terminal_facts_publish_typed_states_and_correlations_without_result_or_locator_text() {
         let private = "private-native-text-or-path";
         let data = WorkerCommandDataV1 {
+            failure: None,
             schema: WORKER_COMMAND_DATA_SCHEMA_V1.into(),
             operation: "result".into(),
             submission_state: WorkerSubmissionStateV1::Accepted,

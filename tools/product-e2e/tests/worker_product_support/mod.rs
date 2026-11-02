@@ -15,6 +15,20 @@ const REQUIRED_INSTALLATIONS: [&str; 5] = [
 ];
 
 pub fn run_real_worker_scenario(mode: &str, expected_scenario: &str) {
+    if mode == "HIROUTE_PRODUCT_CLAUDE_CORE" {
+        run_scenario(
+            "native_context_product.py",
+            mode,
+            expected_scenario,
+            &["claude"],
+            &[
+                "HIROUTE_WORKER_CLAUDE_BINARY",
+                "HIROUTE_WORKER_CLAUDE_ACP_ADAPTER",
+                "HIROUTE_WORKER_NODE",
+            ],
+        );
+        return;
+    }
     let opencode_script = match mode {
         "HIROUTE_PRODUCT_OPENCODE_CORE" | "HIROUTE_PRODUCT_OPENCODE_MESSAGES" => {
             Some("native_context_product.py")

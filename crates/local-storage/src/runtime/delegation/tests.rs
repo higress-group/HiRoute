@@ -1,6 +1,7 @@
 use super::*;
 use hiroute_domain::{AgentPlanId, CanonicalDigest};
 
+mod execution_failure;
 mod listing;
 mod native_lifecycle;
 
@@ -57,6 +58,7 @@ fn sample(task_id: &str, run_id: &str, root: &str) -> DelegationAcceptanceV1 {
             native_history_paths: vec![],
         },
         run: DelegationRunV1 {
+            execution_failure: None,
             workspace_id,
             task_id: task_id.into(),
             run_id: run_id.into(),

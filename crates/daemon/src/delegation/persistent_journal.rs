@@ -41,6 +41,7 @@ struct JournalState {
     completed: bool,
     failed: bool,
     pending_failure: Option<DelegationErrorV1>,
+    failure_stage: hiroute_domain::delegation::WorkerExecutionStageV1,
     qoder_config_dir: Option<String>,
 }
 
@@ -118,6 +119,7 @@ impl PersistentWorkerRunJournal {
                 completed: false,
                 failed: false,
                 pending_failure: None,
+                failure_stage: hiroute_domain::delegation::WorkerExecutionStageV1::Preparation,
                 qoder_config_dir: None,
             }),
         })
@@ -368,40 +370,27 @@ impl PersistentWorkerRunJournal {
             DelegationErrorV1::PromptFailed | DelegationErrorV1::DeadlineExceeded
         ) && state.run.progress.state == RunStateV1::Running
         {
-            (
-                "prompt-failed",
-                DelegationCheckpointV1::Progress {
-                    event: RunEventV1::PromptFailed,
-                },
-            )
+            ("prompt-failed", RunEventV1::PromptFailed)
         } else if state.run.process.is_some() {
-            (
-                "execution-failed",
-                DelegationCheckpointV1::Progress {
-                    event: RunEventV1::ConnectionLost,
-                },
-            )
+            ("execution-failed", RunEventV1::ConnectionLost)
         } else {
-            (
-                "execution-failed",
-                DelegationCheckpointV1::Progress {
-                    event: RunEventV1::LaunchFailedBeforeSpawn,
-                },
-            )
+            ("execution-failed", RunEventV1::LaunchFailedBeforeSpawn)
         };
-        self.checkpoint(state, stage, &event)?;
+        let failure = hiroute_domain::delegation::WorkerExecutionFailureV1 {
+            stage: state.failure_stage,
+            error,
+        };
+        self.checkpoint(
+            state,
+            stage,
+            &DelegationCheckpointV1::ExecutionFailed { event, failure },
+        )?;
         state.failed = true;
-        if state.run.process.is_none()
-            && state.run.progress.state == RunStateV1::Failed
-            && let DelegationErrorV1::DependencyCheckFailed(failure) = error
-            && let Ok(now) = now_ms().and_then(to_i64)
-        {
-            self.progress_writer.dependency_failure(failure, now);
-        } else if state.run.process.is_some() {
+        if state.run.process.is_some() {
             state.pending_failure = Some(error);
         } else if let Ok(now) = now_ms().and_then(to_i64) {
             self.progress_writer.execution_failure(
-                error,
+                failure,
                 self.verifier.last_request_failure(),
                 state.qoder_config_dir.as_deref(),
                 now,
@@ -421,6 +410,12 @@ impl PersistentWorkerRunJournal {
 }
 
 impl AcpRunJournal for PersistentWorkerRunJournal {
+    fn phase_started(&self, stage: hiroute_domain::delegation::WorkerExecutionStageV1) {
+        if let Ok(mut state) = self.lock_state() {
+            state.failure_stage = stage;
+        }
+    }
+
     fn session_bound(&self, binding: &AcpSessionBinding) -> Result<(), DelegationErrorV1> {
         let mut state = self.lock_state()?;
         self.check_current(&state.run)?;
@@ -491,10 +486,14 @@ impl WorkerRunJournal for PersistentWorkerRunJournal {
             return;
         };
         let config_dir = state.qoder_config_dir.clone();
+        let failure = hiroute_domain::delegation::WorkerExecutionFailureV1 {
+            stage: state.failure_stage,
+            error,
+        };
         drop(state);
         if let Ok(now) = now_ms().and_then(to_i64) {
             self.progress_writer.execution_failure(
-                error,
+                failure,
                 self.verifier.last_request_failure(),
                 config_dir.as_deref(),
                 now,

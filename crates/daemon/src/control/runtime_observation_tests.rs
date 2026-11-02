@@ -794,6 +794,7 @@ pub(super) fn worker_list_acceptance(
             native_history_paths: vec![],
         },
         run: DelegationRunV1 {
+            execution_failure: None,
             workspace_id,
             task_id: task_id.into(),
             run_id: run_id.into(),

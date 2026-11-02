@@ -174,7 +174,7 @@ fn try_request_in_context(
     let harness_binary = if harness == WorkerHarnessV1::ClaudeCode && context.is_borrowed() {
         std::fs::write(
             &fixture_cli,
-            b"#!/bin/sh\n[ \"$1\" = --version ] || exit 23\nprintf '2.1.231 (Claude Code)\\n'\n",
+            include_bytes!("../../../../integrations/src/agents/test_fixtures/claude_provider.py"),
         )
         .unwrap();
         #[cfg(unix)]

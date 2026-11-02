@@ -230,6 +230,8 @@ pub struct DelegationRunV1 {
     pub result_body: Option<DelegationBodyRefV1>,
     #[serde(default)]
     pub result_incomplete: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_failure: Option<super::WorkerExecutionFailureV1>,
 }
 
 impl DelegationRunV1 {
@@ -250,6 +252,10 @@ pub struct DelegationAcceptanceV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DelegationCheckpointV1 {
+    ExecutionFailed {
+        event: RunEventV1,
+        failure: super::WorkerExecutionFailureV1,
+    },
     Progress {
         event: RunEventV1,
     },

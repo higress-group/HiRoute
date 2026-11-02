@@ -119,6 +119,10 @@ pub(super) fn transition_checkpoint(
         }
         DelegationCheckpointV1::Progress {
             event: RunEventV1::LaunchFailedBeforeSpawn,
+        }
+        | DelegationCheckpointV1::ExecutionFailed {
+            event: RunEventV1::LaunchFailedBeforeSpawn,
+            ..
         } if matches!(
             usage.state,
             DelegationNativeUseStateV1::Accepted | DelegationNativeUseStateV1::MayHaveSpawned

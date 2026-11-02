@@ -19,9 +19,14 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
+const PROBE_TIMEOUT: Duration = Duration::from_secs(45);
+const MAX_PROBE_REQUESTS: usize = 8;
+
 use super::collaboration_probe as collaboration;
 #[path = "native_claude_probe_http.rs"]
 mod http;
+#[path = "claude_worker_capability.rs"]
+mod worker;
 
 const CONTRACT: &str = "hiroute.claude-native-messages/v1";
 const MARKER: &str = "hiroute-native-probe-no-authority";
@@ -31,6 +36,15 @@ const CONNECTION: &str = "agent-connection/claude/native-probe";
 pub struct ClaudeNativeIngressProbe;
 
 impl ClaudeNativeIngressProbe {
+    /// Verify the required native behavior with a local noncredential and conflicting
+    /// disposable settings, independently of --version or the caller's daily account.
+    pub fn check_host_managed_provider(
+        executable: &Path,
+        search_path: &str,
+    ) -> Result<(), hiroute_domain::delegation::NativeDependencyFailureV1> {
+        worker::check(executable, search_path)
+    }
+
     pub fn run(executable: &Path) -> Result<ClaudeIngressEvidence, NativeIngressProbeError> {
         Self::run_isolated(executable, None)
     }
@@ -199,7 +213,7 @@ impl ClaudeNativeIngressProbe {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
                         requests += 1;
-                        if requests > 8 {
+                        if requests > MAX_PROBE_REQUESTS {
                             return Err(fail("request bound"));
                         }
                         authenticated_message |=
@@ -219,7 +233,7 @@ impl ClaudeNativeIngressProbe {
                         Err(fail("authenticated native completion"))
                     };
                 }
-                if started.elapsed() > Duration::from_secs(45) {
+                if started.elapsed() > PROBE_TIMEOUT {
                     return Err(fail("deadline"));
                 }
                 if observer

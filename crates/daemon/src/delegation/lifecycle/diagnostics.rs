@@ -12,13 +12,23 @@ impl WorkerProgressWriter {
 
     pub(crate) fn execution_failure(
         &self,
-        error: DelegationErrorV1,
+        failure: hiroute_domain::delegation::WorkerExecutionFailureV1,
         gateway: Option<RunRequestFailure>,
         config_dir: Option<&str>,
         now_ms: i64,
     ) {
         let mut text = config_dir.map(qoder_context_text).unwrap_or_default();
-        text.push_str(&execution_failure_text(error, gateway));
+        text.push_str(&format!(
+            "[HiRoute] Worker failure: {}.\n",
+            failure.message_key()
+        ));
+        text.push_str(&format!("[HiRoute] {}\n", failure.next_action_hint()));
+        if let DelegationErrorV1::DependencyCheckFailed(check) = failure.error {
+            text.push_str(&format!(
+                "[HiRoute] Worker dependency check failed: {check}.\n"
+            ));
+        }
+        text.push_str(&execution_failure_text(failure.error, gateway));
         let _ = self.0.write_batch(&text, false, now_ms);
     }
 }

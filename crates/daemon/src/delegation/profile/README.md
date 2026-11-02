@@ -49,9 +49,10 @@ discovered CLI or replaces a missing explicit selection with another candidate.
   daemon's internal `app-server` entry and a token-free descriptor binding the selected
   native executable and any npm script prefix to held file identities. The native argv
   contains every exact `-c` override before `app-server`, without a shell. The private
-  Windows adapter bootstrap admits frozen npm bundle hashes for codex-acp 2.1.1 and
-  2.2.2; it only rewrites 2.1.1's known shell launch into native argv. Unknown producers
-  fail explicitly and require a new audited compatibility gate.
+  Windows adapter bootstrap checks the actual selected-launcher/app-server spawn
+  shape. A literal shell command with those exact operands is normalized into
+  native argv; other programs, extra arguments and shell semantics are refused.
+  Adapter version labels and bundle hashes do not authorize execution.
 - [Claude](claude.rs) loads user/project/local setting sources and exposes `Skill`
   in the default approve-all tool set. Its selected Node runs a private
   [adapter bootstrap](claude_adapter_bootstrap.mjs) before importing the selected
@@ -129,13 +130,14 @@ the adapter's program text. Existing isolated tasks/probes retain their direct
 adapter launch behavior.
 
 At a borrowed Claude launch, the [runtime capability check](claude_runtime.rs)
-executes only the selected CLI's bounded `--version` with the selected command
-search path and disposable HOME/native/XDG roots and cwd, without inherited run
-credentials or user configuration. The owned Unix process group or Windows Job is stopped before
-those temporary roots are removed. This narrowly requires
-the known Claude 2.x host-managed-provider capability (2.1.231 or later); it is not
-an installation readiness probe or a compatibility guarantee. An unsupported,
-unknown, failed or timed-out response rejects this launch before model execution.
+uses a disposable HOME/configuration/workspace and a bounded local Messages
+challenge. Conflicting settings name another local endpoint and noncredential;
+the selected CLI must instead deliver the host's exact model and noncredential
+to the host endpoint. No version subprocess, daily settings, provider or account
+is used. The owned Unix group or Windows Job must stop before those roots are
+removed. Missing behavior, timeout and uncertain cleanup remain distinct failures.
+Worker admission shares the existing native Claude probe's bounded startup and
+request budget, so native startup is not subjected to a second, shorter deadline.
 
 Native client effort preferences may still affect client-side behavior. They are
 not the authority for the frozen Plan's upstream reasoning settings: AgentPlan
