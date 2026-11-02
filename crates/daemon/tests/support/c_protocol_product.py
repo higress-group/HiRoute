@@ -31,8 +31,8 @@ def native_protocol(repository):
     wrapper, suffix = stock['q1']['instructions'].split(' Distinguish those meanings', 1)
     guidance = json.loads((repository / 'assets/decision-services/default-assessment-guidance.json').read_text())
     return {'prior_context_max_turns': 8}, {
-            'instructions': 'Distinguish those meanings' + suffix + ' ' + guidance['feedback'],
-            'criteria': stock['q1']['criteria'][:2] + [guidance['highest_criterion']]}
+            'instructions': 'Distinguish those meanings' + suffix + ' ' + guidance['progress'] + ' ' + guidance['feedback'],
+            'criteria': [guidance[key] for key in ['lowest_criterion', 'middle_criterion', 'highest_criterion']]}
 
 
 

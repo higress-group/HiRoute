@@ -2652,6 +2652,18 @@
         "crates/local-storage/src/runtime/delegation/tests/execution_failure.rs",
         "crates/local-storage/src/runtime/delegation/tests/fixtures/v0.3.1-failed-run.json"
       ]
+    },
+    {
+      "contract": "hiroute.system-one-c/v4",
+      "mode": "frozen_fixture",
+      "owner": "decision-foundation",
+      "reason": "Retain the preceding editable C4 default assessment across current-default wording updates. The fixture pins prior logical question text; its test reconstructs a synthetic authenticated publication and does not claim an old binary or raw wire capture. No new protocol, reader or migration is introduced.",
+      "removal_condition": "Retire only when the retained C4 publication/default-content preservation regression is explicitly replaced with equivalent or stronger supported-source evidence; never regenerate the prior text from current defaults.",
+      "allowed_paths": [
+        "crates/domain/src/routing/fixtures/preceding-c-v4-default-assessment.json",
+        "crates/domain/src/routing/assessment_feedback_tests.rs"
+      ],
+      "field": "scopes[*].assessment: preceding default instructions and criteria under unchanged C4 format"
     }
   ]
 }

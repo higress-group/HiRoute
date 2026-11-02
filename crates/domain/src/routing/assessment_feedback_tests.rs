@@ -96,7 +96,7 @@ fn prior_c_v2_branch_defaults_validate_against_their_original_scope_text() {
 }
 
 #[test]
-fn current_default_seals_positive_feedback_and_changes_only_its_assessment_identity() {
+fn current_default_seals_progress_and_feedback_and_changes_only_assessment_identity() {
     let (old, frozen) = prior_default();
     let selection = NativeProtocolSelectionV1::default();
     let current = old.resolve_assessment(Some(&selection)).unwrap();
@@ -108,9 +108,14 @@ fn current_default_seals_positive_feedback_and_changes_only_its_assessment_ident
     );
     assert!(current.competence.criteria[2].contains("Clear user acceptance"));
     assert!(current.competence.criteria[2].contains("specific unresolved contradiction"));
-    assert_eq!(
-        current.competence.criteria[..2],
-        old.competence.criteria[..2]
+    assert_ne!(current.competence.criteria[0], old.competence.criteria[0]);
+    assert_ne!(current.competence.criteria[1], old.competence.criteria[1]);
+    assert!(current.competence.criteria[1].contains("concrete, usable progress"));
+    assert!(
+        current
+            .competence
+            .instructions
+            .contains("Distinguish work still in progress")
     );
     assert_eq!(current.degree, old.degree);
     assert_eq!(current.competence.floor_millis, old.competence.floor_millis);
@@ -159,4 +164,82 @@ fn frozen_default_resolution_preserves_old_text_but_not_changed_thresholds_or_cu
             .unwrap(),
         custom
     );
+}
+
+#[test]
+fn preceding_c_v4_default_remains_frozen_when_current_criteria_change() {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "fixtures/preceding-c-v4-default-assessment.json"
+    ))
+    .unwrap();
+    let selection = NativeProtocolSelectionV1::default();
+    let protocol = selection.resolve().unwrap();
+    let mut previous = JudgmentSettingsV1::default();
+    previous.competence.instructions = fixture["assessment"]["instructions"]
+        .as_str()
+        .unwrap()
+        .strip_prefix(&(protocol.fixed.assessment_wrapper.clone() + " "))
+        .unwrap()
+        .into();
+    previous.competence.criteria = std::array::from_fn(|i| {
+        fixture["assessment"]["criteria"][i]
+            .as_str()
+            .unwrap()
+            .into()
+    });
+    // Reconstruct a synthetic prior default with exact preceding texts. Custom
+    // intent prevents the current producer from refreshing the retained texts;
+    // only its recorded intent and authenticated envelope are then set to default.
+    previous.competence.standard = Some(AssessmentStandardV1::Custom);
+    let mut retained = FrozenNativeProtocolV1::freeze(
+        &protocol,
+        previous.degree.definition().into(),
+        [(SMART_SAVING_SCOPE_ID.into(), previous.clone())],
+    )
+    .unwrap();
+    previous.competence.standard = Some(AssessmentStandardV1::Default);
+    retained
+        .scopes
+        .get_mut(SMART_SAVING_SCOPE_ID)
+        .unwrap()
+        .standard = "default".into();
+    retained.digest = CanonicalDigest::of(&(
+        &retained.protocol,
+        &retained.context_layout,
+        &retained.decision,
+        &retained.scopes,
+    ))
+    .unwrap();
+    let bytes = serde_json::to_vec(&retained).unwrap();
+    let reopened: FrozenNativeProtocolV1 = serde_json::from_slice(&bytes).unwrap();
+    reopened.validate_smart(&previous).unwrap();
+    assert_eq!(serde_json::to_vec(&reopened).unwrap(), bytes);
+    assert_eq!(
+        previous
+            .resolve_assessment_for_frozen(Some(&selection), Some(&previous))
+            .unwrap(),
+        previous
+    );
+    let current = previous.resolve_assessment(Some(&selection)).unwrap();
+    assert_ne!(current.competence.criteria, previous.competence.criteria);
+    assert_ne!(
+        current.competence.instructions,
+        previous.competence.instructions
+    );
+    assert_eq!(current.degree, previous.degree);
+    assert_eq!(
+        current.competence.floor_millis,
+        previous.competence.floor_millis
+    );
+    assert!(reopened.validate_smart(&current).is_err());
+    let published = FrozenNativeProtocolV1::freeze(
+        &protocol,
+        current.degree.definition().into(),
+        [(SMART_SAVING_SCOPE_ID.into(), current.clone())],
+    )
+    .unwrap();
+    published.validate_smart(&current).unwrap();
+    assert_eq!(published.protocol, reopened.protocol);
+    assert_eq!(published.decision, reopened.decision);
+    assert_ne!(published.digest, reopened.digest);
 }
