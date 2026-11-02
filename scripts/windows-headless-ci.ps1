@@ -545,6 +545,7 @@ if ($Scope -eq 'components') {
     ($toolDiagnostic + 'header_rejects_partial_duplicate_overflow_and_embedded_receipts'),
     ($toolDiagnostic + 'only_pinned_prelaunch_captions_establish_handler_preflight'),
     ($toolDiagnostic + 'facets_are_closed_and_shape_counts_do_not_invent_parsed_text'),
+    ($toolDiagnostic + 'bash_failure_diagnostics_keep_only_closed_exit_and_cwd_facts'),
     ($toolDiagnostic + 'terminal_script_checkpoint_retains_failure_facts_without_proving_denial'))
   $qoderSkill = 'agents::qoder_probe::skill_diagnostic::tests::'
   Invoke-RequiredTests 'agent-qoder-skill-load-diagnostic' @('-p','hiroute-integrations','--lib',$qoderSkill) @(

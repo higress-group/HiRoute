@@ -724,6 +724,7 @@ pub(super) fn command(
 ) -> Value {
     let (exit, value) = command_outcome(product, args, payload, deadline);
     if exit != 0 && args.starts_with(&["agents", "collaboration", "configure"]) {
+        failure_diagnostics::collaboration_preview(&value);
         // Read-only failure localization: transport health and the same intent's
         // preview distinguish daemon loss from the CLI's frozen receipt boundary.
         for (stage, probe) in [
@@ -748,6 +749,7 @@ pub(super) fn command(
                 dependency_selection::error_code(&observed),
                 observed["data"]["applicable"].as_bool()
             );
+            failure_diagnostics::collaboration_preview(&observed);
         }
     }
     assert_eq!(
