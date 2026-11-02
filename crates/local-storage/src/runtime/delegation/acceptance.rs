@@ -168,6 +168,7 @@ fn validate(input: &DelegationAcceptanceV1) -> Result<()> {
         || r.stop_evidence.is_some()
         || r.result_body.is_some()
         || r.result_incomplete
+        || r.execution_failure.is_some()
         || r.accepted_at_ms.is_some()
         || r.process.is_some()
         || r.session.is_some()

@@ -44,6 +44,9 @@ pub struct WorkerExecutionFailureV1 {
 impl WorkerExecutionFailureV1 {
     pub const fn next_action_hint(self) -> &'static str {
         match self.error {
+            DelegationErrorV1::DependencyCheckFailed(failure) if failure.reason.retryable() => {
+                "Retry the same dependency selection after the temporary check failure. Inspect this run before submitting another task."
+            }
             DelegationErrorV1::DependencyCheckFailed(failure) => match failure.check {
                 super::NativeDependencyCheckV1::ClaudeHostManagedProvider => {
                     "The selected Claude CLI must retain the host route and credential when settings conflict. Check its host-managed provider capability; a version label does not establish support."

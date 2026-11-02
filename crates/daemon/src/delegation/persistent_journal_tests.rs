@@ -559,7 +559,18 @@ fn prelaunch_dependency_failure_keeps_host_reason_in_progress_after_reopen() {
     else {
         panic!("host failure must be available through ordinary Worker progress");
     };
-    assert_eq!(page.text.matches("[HiRoute]").count(), 1);
+    assert_eq!(
+        page.text
+            .matches("Worker failure: worker.execution.preparation.claude_version.timeout")
+            .count(),
+        1
+    );
+    assert_eq!(
+        page.text
+            .matches("Worker dependency check failed: claude_version: timeout")
+            .count(),
+        1
+    );
     assert!(page.text.contains("claude_version: timeout"));
     assert!(page.text.contains("Retry the same dependency selection"));
 }

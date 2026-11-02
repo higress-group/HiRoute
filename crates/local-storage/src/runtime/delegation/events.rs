@@ -43,6 +43,13 @@ pub(super) fn checkpoint(
                 | RunEventV1::ConnectionLost
                 | RunEventV1::PromptFailed
         ) || run.execution_failure.is_some()
+            || !matches!(
+                run.progress.state,
+                RunStateV1::Accepted
+                    | RunStateV1::Preparing
+                    | RunStateV1::Running
+                    | RunStateV1::Cancelling
+            )
             || (run.progress.cancel_requested && failure.error != DelegationErrorV1::Cancelled)
         {
             return Err(DelegationErrorV1::Conflict);

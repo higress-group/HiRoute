@@ -23,6 +23,11 @@ impl WorkerProgressWriter {
             failure.message_key()
         ));
         text.push_str(&format!("[HiRoute] {}\n", failure.next_action_hint()));
+        if let DelegationErrorV1::DependencyCheckFailed(check) = failure.error {
+            text.push_str(&format!(
+                "[HiRoute] Worker dependency check failed: {check}.\n"
+            ));
+        }
         text.push_str(&execution_failure_text(failure.error, gateway));
         let _ = self.0.write_batch(&text, false, now_ms);
     }

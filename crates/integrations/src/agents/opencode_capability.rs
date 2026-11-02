@@ -23,6 +23,8 @@ pub fn opencode_native_format(
     let binary = super::opencode_installation::opencode_native_executable(selected)
         .map_err(|_| failure(Reason::Unsupported))?
         .ok_or_else(|| failure(Reason::Unavailable))?;
+    let identity = super::native_ingress_probe::binary_identity(&binary)
+        .map_err(|_| failure(Reason::Unavailable))?;
     let root = super::probe_files::temporary("hiroute-opencode-format-")
         .map_err(|_| failure(Reason::Unavailable))?;
     let root_path = std::fs::canonicalize(root.path()).map_err(|_| failure(Reason::Unavailable))?;
@@ -66,6 +68,12 @@ pub fn opencode_native_format(
         let _ = root.keep();
     }
     let bytes = result.map_err(failure)?;
+    if super::native_ingress_probe::binary_identity(&binary)
+        .map_err(|_| failure(Reason::Unavailable))?
+        != identity
+    {
+        return Err(failure(Reason::Unavailable));
+    }
     let rows: Vec<Migration> =
         serde_json::from_slice(&bytes).map_err(|_| failure(Reason::InvalidOutput))?;
     if rows.is_empty()
