@@ -276,8 +276,11 @@ product fixes and retain each result at its actual source revision.
    verifies tag/package identity and digests, then publishes OSS/site links and
    proposes the [release contract snapshot](release-contracts.md).
    Windows Desktop also attaches its `INSTALLER.exe.identity.json`; publication
-   verifies the installer digest, source revision and complete native case evidence.
-   An incomplete or misbound sidecar cannot publish a Windows Desktop artifact.
+   verifies the installer digest, source revision and native case evidence. Complete
+   acceptance is the default. An explicit maintainer-directed deferral must match
+   the exact version/source/installer in the existing Windows acceptance policy,
+   retain `not_assessed` verdicts, and still prove standard-user installation and
+   console readiness for both selections. A mismatched or undeclared omission fails.
 
 The build workflow only stores Actions artifacts. It does not publish a GitHub
 Release, alter the stable catalog, or replace any immutable distribution object.

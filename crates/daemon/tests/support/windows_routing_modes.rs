@@ -69,53 +69,63 @@ impl Modes {
             let body = request.body.as_object().unwrap();
             assert_eq!(body.len(), 5);
             for field in [
-                "decision",
+                "route",
                 "latest_user",
                 "visible_conversation",
                 "history_partial",
-                "assessment_target",
+                "preceding_stage",
             ] {
                 assert!(
                     body.contains_key(field),
-                    "custom decision must use its released five-field protocol"
+                    "custom extension must use its current five-field protocol"
                 );
             }
             let marker = latest_marker(&request.body["latest_user"]);
-            let has_target = request.body["assessment_target"].is_object();
+            let has_target = request.body["preceding_stage"].is_object();
             if marker.contains("low") {
                 assert!(
                     has_target,
-                    "low-competence judgment must address an actually executed preceding stage"
+                    "optional assessment must address an actually executed preceding stage"
                 );
             }
-            let degree = if marker.contains("complex") {
-                json!({"kind":"ordinal","probabilities":{"simple":0.1,"complex":0.9}})
+            let group = if marker.contains("complex")
+                || (marker.contains("low") && !marker.contains("regular"))
+            {
+                "primary"
             } else {
-                json!({"kind":"ordinal","probabilities":{"simple":0.9,"complex":0.1}})
+                "regular"
             };
-            let decision = match request.body["decision"]["kind"].as_str() {
-                Some("ordinal") => degree,
-                Some("categorical") => {
+            let mut response = match request.body["route"]["kind"].as_str() {
+                Some("smart_saving") => {
+                    assert_eq!(
+                        request.body["route"],
+                        json!({"kind":"smart_saving","groups":["regular","primary"]})
+                    );
+                    json!({"group":group})
+                }
+                Some("branches") => {
                     let choice = if marker.contains("docs") {
                         "docs"
                     } else {
                         "code"
                     };
-                    let selected = request.body["decision"]["options"]
+                    let selected = request.body["route"]["categories"]
                         .as_array()
                         .unwrap()
                         .iter()
                         .find(|option| option["id"] == choice)
                         .unwrap();
                     if choice == "docs" {
-                        assert!(
-                            selected["refinement"].is_null(),
-                            "a single-group category must not ask for a degree"
+                        assert_eq!(
+                            selected["groups"],
+                            json!(["regular"]),
+                            "the route declares only the published available groups"
                         );
-                        json!({"kind":"categorical","choice":choice})
+                        // A single-group category ignores even an explicit primary.
+                        json!({"category":choice,"group":"primary"})
                     } else {
-                        assert_eq!(selected["refinement"]["kind"], "ordinal");
-                        json!({"kind":"categorical","choice":choice,"refinement":degree})
+                        assert_eq!(selected["groups"], json!(["regular", "primary"]));
+                        json!({"category":choice,"group":group})
                     }
                 }
                 _ => panic!("published route sent an unsupported decision kind"),
@@ -125,12 +135,11 @@ impl Modes {
                 marker: marker.clone(),
                 has_target,
             });
-            let mut response = json!({"decision":decision});
-            // No score is emitted for absent targets or other turns. Missing
-            // scores cannot become a zero or preserve an earlier primary floor.
+            response["reason"] = json!("windows-native-extension-choice");
+            // Scores describe prior work only; the extension chooses each group.
+            // low-regular proves a low score cannot apply a built-in floor.
             if marker.contains("low") {
-                response["assessment"] =
-                    json!({"score":0.1,"partial":false,"reason":"windows-native-actual-stage-low"});
+                response["assessment"] = json!({"score":0.1,"partial":false});
             }
             http::Reply::json(200, response)
         });
@@ -212,7 +221,7 @@ impl Modes {
             ("windows-modes-smart-simple", "economy"),
             ("windows-modes-smart-low", "primary"),
             ("windows-modes-smart-complex", "primary"),
-            ("windows-modes-smart-simple-again", "economy"),
+            ("windows-modes-smart-low-regular", "economy"),
         ] {
             self.send(
                 product,
@@ -230,7 +239,7 @@ impl Modes {
             ("windows-modes-custom-code-simple", "economy"),
             ("windows-modes-custom-code-low", "primary"),
             ("windows-modes-custom-docs", "primary"),
-            ("windows-modes-custom-code-simple-again", "economy"),
+            ("windows-modes-custom-code-low-regular", "economy"),
         ] {
             self.send(
                 product,
