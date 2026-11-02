@@ -83,8 +83,8 @@ def run(repository):
                       {'change': change}, 'save-fixed-reasoning')
         assert request('xhigh')[0] == 200
         assert upstreams[2].requests[-1]['body']['reasoning']['effort'] == 'high'
-        product.stop()
-        product.start()
+        # HTTP completion does not acknowledge asynchronous observation writes.
+        # Observe all four complete receipts before testing their exact reopen.
         deadline = time.monotonic() + 15
         while True:
             sessions = product.public_cli('sessions list --include-unlinked --limit 50')[1]['data']['sessions']
@@ -108,11 +108,17 @@ def run(repository):
         assert None in controls, controls
         efforts = {value['value']['effort']['value'] for value in controls if value is not None}
         assert {'xhigh', 'unsupported-future-level'} <= efforts, efforts
+        product.stop()
+        product.start()
+        for receipt_id, receipt in receipts.items():
+            reopened = product.public_cli('sessions receipt ' + receipt_id)[1]['data']
+            assert reopened == receipt, 'committed reasoning receipt changed after restart'
         product.plan_id = previous_id
         assert read_content(product) == previous
         print(json.dumps({'scenario': 'follow-request-reasoning', 'state': 'green',
             'fallback_efforts': ['xhigh', 'medium', 'xhigh'], 'saved_defaults_preserved': True,
             'restart_preserved': True, 'malformed_rejected_without_upstream': True,
+            'committed_receipts_exact_after_restart': len(receipts),
             'existing_route_unchanged': True}), flush=True)
     finally:
         product.close()
