@@ -214,3 +214,32 @@ fn revoking_last_grant_preserves_the_independent_plan_publication() {
     assert!(revoked_projection.grants.is_empty());
     revoked.validate_transition_from(&one_grant).unwrap();
 }
+
+#[test]
+fn codex_parallel_preference_is_preserved_by_the_gateway_publication_projection() {
+    let publication: GatewayPublicationV1 = serde_json::from_slice(include_bytes!(
+        "../../../../e2e/product/fixtures/routing/current-publication.v3.json"
+    ))
+    .unwrap();
+    let original = publication.plans[0].clone().into_current().unwrap();
+    for setting in [None, Some(false), Some(true)] {
+        let mut body = original.body.as_ref().clone();
+        body.materialized
+            .attempt_owned
+            .limits
+            .codex_parallel_tool_calls = setting;
+        body.materialized_route_digest = body.materialized.route_digest().unwrap();
+        let plan = CompiledAgentPlanV1::seal_current(body).unwrap();
+        let aliases =
+            materialize_aliases(std::slice::from_ref(&plan), &publication.grants).unwrap();
+        let routing = aliases[0].routing.as_ref().unwrap();
+        assert_eq!(routing.codex_parallel_tool_calls, setting);
+        let serialized = serde_json::to_value(routing).unwrap();
+        assert_eq!(
+            serialized.get("codex_parallel_tool_calls"),
+            setting.map(serde_json::Value::Bool).as_ref()
+        );
+        let reopened: GatewayExecutableRoutingV2 = serde_json::from_value(serialized).unwrap();
+        assert_eq!(reopened, *routing);
+    }
+}
