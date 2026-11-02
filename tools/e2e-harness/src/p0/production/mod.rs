@@ -31,9 +31,12 @@ mod legacy_inputs;
 #[cfg(test)]
 mod tests {
     use super::collector::CURRENT_EXECUTION_FACT_COUNT;
-    use super::types::{CURRENT_AGGREGATE_PORT_DIGEST, CURRENT_EXECUTION_SCHEMA_DIGEST};
+    use super::types::{
+        CURRENT_AGGREGATE_PORT_DIGEST, CURRENT_CONTENT_SCHEMA, CURRENT_CONTENT_SCHEMA_DIGEST,
+        CURRENT_EXECUTION_SCHEMA_DIGEST,
+    };
     use hiroute_gateway::server::core_runtime::observation::{
-        EXECUTION_FACT_PORT_DIGEST, GATEWAY_PORT_SET_DIGEST,
+        CONVERSATION_CONTENT_PORT_DIGEST, EXECUTION_FACT_PORT_DIGEST, GATEWAY_PORT_SET_DIGEST,
     };
     use serde_json::Value;
 
@@ -41,11 +44,22 @@ mod tests {
     fn current_oracle_pins_match_producer_and_json_schemas() {
         assert_eq!(CURRENT_EXECUTION_SCHEMA_DIGEST, EXECUTION_FACT_PORT_DIGEST);
         assert_eq!(CURRENT_AGGREGATE_PORT_DIGEST, GATEWAY_PORT_SET_DIGEST);
+        assert_eq!(
+            CURRENT_CONTENT_SCHEMA_DIGEST,
+            CONVERSATION_CONTENT_PORT_DIGEST
+        );
         let schema_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../e2e/schema");
         let read = |name| -> Value {
             serde_json::from_slice(&std::fs::read(schema_root.join(name)).unwrap()).unwrap()
         };
         let collector = read("current-production-collector.schema.json");
+        let content = &collector["properties"]["conversation_content"]["properties"]["records"]["items"]
+            ["properties"];
+        assert_eq!(content["schema_version"]["const"], CURRENT_CONTENT_SCHEMA);
+        assert_eq!(
+            content["schema_digest"]["const"],
+            CURRENT_CONTENT_SCHEMA_DIGEST
+        );
         let execution = &collector["properties"]["execution_fact"]["properties"];
         assert_eq!(
             execution["records"]["items"]["properties"]["schema_digest"]["const"],

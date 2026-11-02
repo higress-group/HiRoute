@@ -161,9 +161,9 @@ fn core_upgrade_reuses_current_history_and_snapshots_only_authority() {
 }
 
 #[test]
-fn production_startup_seals_old_history_and_preserves_the_new_generation_on_restart() {
+fn production_startup_resets_old_observation_and_preserves_the_new_generation_on_restart() {
     if crate::test_support::isolated_agent_home(
-        "control::runtime::history_cutover_tests::production_startup_seals_old_history_and_preserves_the_new_generation_on_restart",
+        "control::runtime::history_cutover_tests::production_startup_resets_old_observation_and_preserves_the_new_generation_on_restart",
     ) {
         return;
     }
@@ -189,6 +189,10 @@ fn production_startup_seals_old_history_and_preserves_the_new_generation_on_rest
             "agent_codex_default",
         )
         .unwrap();
+    original
+        .observation
+        .set_capacity_limit(Some(10_000_000_000))
+        .unwrap();
     drop(original);
     let key = fs::read(root.join("observation-hmac-key")).unwrap();
     let old_db = root.join("observation/activity.db");
@@ -211,28 +215,20 @@ fn production_startup_seals_old_history_and_preserves_the_new_generation_on_rest
         b"unmodified old contents",
     )
     .unwrap();
-    let package = temporary.path().join("old-package");
-    fs::create_dir(&package).unwrap();
-    fs::write(package.join("old-program"), b"synthetic matching package").unwrap();
-    let runtime = open(hiroute_local_storage::StorageStartupOptions {
-        recovery_package: Some(package),
-        ..Default::default()
-    })
-    .unwrap();
-    let link: serde_json::Value =
-        serde_json::from_slice(&fs::read(root.join("observation-source-backup.json")).unwrap())
+    let runtime = open(Default::default()).unwrap();
+    assert!(!root.join("observation-source-backup.json").exists());
+    let progress: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join(".observation.format6-reset.json")).unwrap())
             .unwrap();
-    let source = hiroute_local_storage::upgrade_backup_root(&root)
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join(link["backup_name"].as_str().unwrap())
-        .join("source/storage");
+    let source = root.join(format!(
+        ".observation.retired-{}",
+        progress["token"].as_str().unwrap()
+    ));
     assert_eq!(
-        fs::read(source.join("observation/original-object")).unwrap(),
+        fs::read(source.join("original-object")).unwrap(),
         b"unmodified old contents"
     );
-    let db = Connection::open(source.join("observation/activity.db")).unwrap();
+    let db = Connection::open(source.join("activity.db")).unwrap();
     assert_eq!(
         db.query_row(
             "SELECT value FROM observation_meta WHERE key='generation_probe'",
@@ -268,7 +264,7 @@ fn production_startup_seals_old_history_and_preserves_the_new_generation_on_rest
             .capacity_status()
             .unwrap()
             .max_active_bytes,
-        Some(20_000_000_000)
+        Some(10_000_000_000)
     );
     runtime
         .observation
@@ -283,7 +279,7 @@ fn production_startup_seals_old_history_and_preserves_the_new_generation_on_rest
             |row| row.get::<_, String>(0)
         )
         .unwrap(),
-        "5"
+        "6"
     );
     assert_eq!(
         db.query_row(

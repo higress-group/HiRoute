@@ -172,6 +172,40 @@ It never overrides `keep`, missing evidence confirmation, Pilot ownership, sourc
 changes, generated files outside target, or a changed/missing directory identity.
 Automatic low-space GC retains its existing seven-day threshold.
 
+### Explicit timed retention
+
+When the operator requests automatic expiry, a user scheduler may run the same
+bounded wrapper with a retention window, independently of free disk space:
+
+```sh
+python3 scripts/local-rust-gc.py --expire-after-hours 3 --limit 10
+python3 scripts/local-rust-gc.py --expire-after-hours 3 --limit 10 --apply
+```
+
+This explicit mode expires `keep` for terminal **managed** checkouts three hours
+after completion or the latest `local-rust.py keep RUN_ID` renewal, whichever is
+later. Preview does not renew or change the record. Ordinary age-based GC keeps
+its 48-hour minimum and never overrides `keep`; the two options are mutually
+exclusive. Running/preparing records, developer worktrees, open Pilot ownership,
+source changes, unknown generated files and changed filesystem identities remain
+protected. It does not stop applications or invent scenario verdicts.
+
+New managed records export unique evidence through the existing exporter before
+expiry deletion, including failed or unassessed runs. Compiler profiles remain
+disposable: save investigation files outside them or renew retention before the
+deadline. Legacy records without the current retention metadata still require
+their original evidence confirmation. Failed exports retain the checkout and
+record a reason in the sweep report.
+
+For macOS, an explicitly requested existing user LaunchAgent can invoke
+`--expire-after-hours 3 --limit 10 --apply` every 600 seconds. Use a tested copy of
+the repository's `local-rust-gc.py`, `local-rust.py`, `remote-rust.py` and
+`validation-report.py` together; do not maintain a separate deletion policy in
+HOME. Keep the scheduler definition, absolute interpreter/tool paths and logs in
+HOME. Expiry is eligibility, not a forced deadline: the next pass retries busy or
+protected resources and reports why they remain. No custom cleanup daemon is
+needed, and the runner does not silently install a scheduler.
+
 After a volume remount, a changed device number still refuses automatic deletion.
 Do not infer identity from an inode alone or rewrite the old run's identity.
 After the owner confirms the exact checkout is no longer in use and exports unique

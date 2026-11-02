@@ -104,7 +104,7 @@ direction.
 ## Storage upgrade recovery
 
 Before replacing an installed program, the verified candidate performs read-only
-preflight. When Core conversion or a history-format cutover needs recovery
+preflight. When Core conversion needs recovery
 workspace, the installer retains the
 complete original program/resources and installation records in private service
 state; the daemon receives that handoff directly, including under systemd.
@@ -131,7 +131,15 @@ registration at their recorded locations. Reload the manager and verify actual
 Control/Gateway readiness and a real request. Installation-command success alone
 is insufficient.
 
-Compatible Observation stays in place during a Core upgrade and is excluded from
+Known Observation formats 1–5 are replaced by format 6 without converting or copying
+their bodies. The saved capacity setting is preserved, including an explicit disabled
+limit. Startup uses same-filesystem renames; after actual service readiness, existing
+maintenance removes the retired generation in bounded batches. This Observation-only
+reset does not require an old program package. Hermes and other Agents keep their
+native conversation history; new HiRoute history and statistics start at the cutover.
+Unknown or corrupt formats and prior interrupted conversion material require diagnosis.
+
+Compatible current Observation stays in place during a Core upgrade and is excluded from
 its v3 recovery snapshot, including space sizing, copying and hashing. Its guide
 requires fresh Observation on matching-version Core restoration; newer storage,
 including history and observation-local settings, remains separately preserved.

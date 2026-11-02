@@ -37,22 +37,20 @@ pending and contribute to existing maintenance errors. Caller-supplied packages
 and installed version directories keep their installer/operator lifecycle.
 Keep an independent backup if post-success rollback is required.
 
-Observation format 5 changes the physical protocol carriers. On a supported
-format 1–4 upgrade, startup preserves the original three-store group, keys,
-auxiliary state and matching old package, then seals the stopped Observation
-DB/WAL/SHM/object/staging directory with a same-filesystem rename. It starts a
-fresh format-5 store with current configuration, credentials and routing. Old
-observations are not converted or merged into current queries; history and
-statistics begin at cutover. Current-format stores and their capacity policy are
-preserved on ordinary restart.
+Observation format 6 retains semantic activity instead of complete request snapshots
+and permanent protocol replay. Recognized stopped formats 1–5 are replaced without
+row conversion, body copying or full-history verification. Startup preserves the exact
+saved capacity choice (including explicit disable) and current Core configuration,
+credentials, native Agent history and routing. A tiny journal binds the parent, retired
+and fresh directory identities and generation. Interruption resumes that transition;
+ordinary current-format reopen never resets new data or reapplies an older setting.
 
-Desktop reuses the verified previous package from its installation handoff. A
-headless operator must retain the old package and provide its absolute directory
-through `HIROUTE_RECOVERY_PACKAGE` on the first sealing startup. Missing keys or
-recovery material stop startup without clearing data. Interrupted publication
-resumes the original batch; missing or replaced archive material is not permission
-to initialize an empty store. Unfinished older conversion generations remain
-preserved for whole-group recovery.
+An Observation-only reset requires no matching old package or complete Core snapshot.
+After Gateway/Control/publication are actually ready, existing bounded maintenance
+reclaims its retired namespace. The discarded Observation is not a promised recovery
+snapshot. Unknown/corrupt formats and unrelated old conversion/recovery material are
+preserved for diagnosis. Core format changes and previously protected whole-group
+recovery retain their separate verified-package contract.
 
 Installers retain the matching old program/resources through a protected handoff bound
 to the storage root and target daemon image. Linux managed services and Windows Tasks

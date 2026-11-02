@@ -110,8 +110,8 @@
             "type": "object", "additionalProperties": false,
             "required": ["schema_version", "schema_digest", "channel", "producer", "sequence", "event_id", "correlation", "direction", "phase", "attempt_id", "fork_id", "parent_transcript_root", "result_transcript_root", "message_instance_id", "message_role", "content_kind", "content_id", "content_blob_digest", "message_ordinal", "part_ordinal", "chunk_ordinal", "transport_frame_id", "canonical_media_type", "canonical_bytes_base64", "content_ref", "downstream_delivery", "abort_reason", "occurred_at_unix_nanos", "loss_watermark", "completeness_delta"],
             "properties": {
-              "schema_version": {"const": "hiroute.observation.conversation-content-envelope/v2"},
-              "schema_digest": {"const": "sha256:6f17cd772a0fb322d25dd31dc95e34325cbabbd68912b32f5bb9bed526adfe44"},
+              "schema_version": {"const": "hiroute.observation.conversation-content-envelope/v3"},
+              "schema_digest": {"const": "sha256:f5fdbf151bca7289192fc64427dcacc313693837ddc926ec8d282193321852ff"},
               "channel": {"const": "conversation_content"}, "producer": {"type": "object"},
               "sequence": {"type": "integer", "minimum": 1}, "event_id": {"type": "string", "minLength": 1},
               "correlation": {"type": "object"}, "direction": {"enum": ["request_input", "response_delivered"]},
@@ -134,6 +134,7 @@
               "downstream_delivery": {"anyOf": [{"type": "null"}, {"type": "string"}]},
               "abort_reason": {"anyOf": [{"type": "null"}, {"type": "string"}]},
               "occurred_at_unix_nanos": {"type": "integer", "minimum": 0}, "loss_watermark": {"const": null},
+              "capture": {"type": "object", "additionalProperties": false, "required": ["context_only", "boundary_verified"], "properties": {"context_only": {"type": "boolean"}, "boundary_verified": {"type": "boolean"}, "input_anchor_id": {"anyOf": [{"type": "null"}, {"type": "string"}]}}},
               "completeness_delta": {"anyOf": [{"type": "null"}, {"type": "string"}]}
             }
           }

@@ -90,10 +90,15 @@ def activity_database(product):
     return sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
 
 
-def content_rows(product, request_id):
+def capture_boundaries(product, request_id):
+    # Durable begin/terminal summaries prove the capture boundary without a
+    # permanent fragment/event journal. At most two directions are involved.
     with activity_database(product) as db:
-        return db.execute('SELECT sequence, phase FROM conversation_content_events_v2 '
-                          'WHERE request_id=? ORDER BY sequence', (request_id,)).fetchall()
+        return db.execute("SELECT begin_sequence, 'begin' FROM conversation_content_streams_v2 "
+                          "WHERE request_id=? UNION ALL "
+                          "SELECT terminal_sequence, state FROM conversation_content_streams_v2 "
+                          "WHERE request_id=? AND terminal_sequence IS NOT NULL ORDER BY 1",
+                          (request_id, request_id)).fetchall()
 
 
 def accepted_requests(product):
@@ -137,7 +142,9 @@ def run(repository):
             since = time.time_ns()
             request(product, [], 'legacy-collector-does-not-inject')
             legacy = native_decision_receipt(product, since)
-            legacy_rows = content_rows(product, legacy['request_id'])
+            wait_for(lambda: complete_content(product, legacy['request_id']),
+                     'legacy negative control did not complete both semantic captures')
+            legacy_rows = capture_boundaries(product, legacy['request_id'])
             assert legacy_rows[0] == (1, 'begin'), legacy_rows
             assert not content_nacks(product), 'legacy collector variable affected Product storage'
 
@@ -166,7 +173,7 @@ def run(repository):
             fault_requests = accepted_requests(product) - prior_requests
             assert len(fault_requests) == 1, fault_requests
             fault_request_id = next(iter(fault_requests))
-            assert all(sequence != 1 for sequence, _ in content_rows(product, fault_request_id)), \
+            assert all(sequence != 1 for sequence, _ in capture_boundaries(product, fault_request_id)), \
                 'the injected delivery unexpectedly reached persistence'
 
             since = time.time_ns()

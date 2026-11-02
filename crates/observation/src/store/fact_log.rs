@@ -111,6 +111,41 @@ pub(crate) fn load_request(
     Ok(facts)
 }
 
+/// An exact current/business retry checks one authoritative fact, independent
+/// of the number of other facts accumulated by this request or its session.
+pub(crate) fn verify_retry(
+    db: &Connection,
+    expected: &ExecutionFactEnvelopeV1,
+) -> Result<(), ObservationStoreError> {
+    let stream = &expected.producer.stream;
+    let row:(String,String,String,String,String,String,String)=db.query_row(
+        "SELECT workspace_id,session_id,turn_id,request_id,event_id,envelope_json,envelope_digest
+         FROM execution_fact_events WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND sequence=?4",
+        params![stream.producer_id.as_str(),stream.producer_epoch.as_str(),stream.stream_id.as_str(),sql_u64(expected.sequence)?],
+        |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?,r.get(6)?)))
+        .map_err(|_|ObservationStoreError::Corrupt)?;
+    let raw = super::sensitive::hydrate(db, "fact", &row.6, &row.5)?;
+    let actual: ExecutionFactEnvelopeV1 =
+        serde_json::from_str(&raw).map_err(|_| ObservationStoreError::Corrupt)?;
+    actual
+        .validate_persisted_contract()
+        .map_err(|_| ObservationStoreError::Corrupt)?;
+    if &actual != expected
+        || CanonicalDigest::of(&actual)
+            .map_err(|_| ObservationStoreError::Corrupt)?
+            .as_str()
+            != row.6
+        || actual.correlation.workspace_id.as_str() != row.0
+        || actual.correlation.conversation_id.as_str() != row.1
+        || actual.correlation.turn_id.as_str() != row.2
+        || actual.correlation.request_id.as_str() != row.3
+        || actual.event_id.as_str() != row.4
+    {
+        return Err(ObservationStoreError::Corrupt);
+    }
+    Ok(())
+}
+
 pub(crate) fn load_session(
     connection: &Connection,
     workspace_id: &WorkspaceId,

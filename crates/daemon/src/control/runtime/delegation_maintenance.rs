@@ -37,6 +37,10 @@ impl ObservationMaintenanceHook for LocalControlAdapter {
         failed |= self.scan_native_cleanup(now_ms).is_err();
         failed |= self.scan_subscription_maintenance(now_ms).is_err();
         failed |= self.upgrade_cleanup.cycle().is_err();
+        failed |= self
+            .delegation_observation
+            .cleanup_retired_format()
+            .is_err();
         if failed {
             Err(ObservationMaintenanceHookError)
         } else {

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use hiroute_domain::{
     FactsCompleteness, ObservationQueryPort, SEVEN_DAYS_MILLIS, VALUE_LEDGER_SCHEMA_V1,
     ValueGroupByV1,
@@ -150,7 +148,7 @@ fn value_query_uses_required_half_open_range() {
 }
 
 #[test]
-fn legacy_value_normalizer_preserves_frozen_amounts_without_conflated_rollups() {
+fn legacy_value_data_is_untouched_by_current_format_admission() {
     let temporary = tempdir().unwrap();
     let fixture = Fixture::new("migration");
     let activity_path = temporary.path().join("activity.db");
@@ -232,40 +230,16 @@ fn legacy_value_normalizer_preserves_frozen_amounts_without_conflated_rollups() 
         .unwrap();
     drop(connection);
 
-    // Keep the historical ledger normalization arithmetic regression as a
-    // component check. Production upgrade archives old observations unchanged.
     let mut historical = Connection::open(&activity_path).unwrap();
-    super::super::schema::migrate_legacy(&mut historical).unwrap();
-    super::super::schema::migrate(&mut historical).unwrap();
+    assert!(super::super::schema::migrate(&mut historical).is_err());
+    let retained: String = historical
+        .query_row("SELECT body_json FROM value_ledger_entries", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(retained, body);
     drop(historical);
-    let store = Arc::new(LocalObservationStore::open(temporary.path(), authority()).unwrap());
-    let migrated = store
-        .get_value(
-            &fixture.workspace,
-            &value_query("legacy/unknown", "USD", None),
-        )
-        .unwrap();
-    assert_eq!(migrated.entries.len(), 1);
-    assert!(migrated.daily_aggregates.is_empty());
-    assert_eq!(migrated.baseline_api_equivalent_cost_micros, None);
-    assert_eq!(migrated.chosen_api_equivalent_cost_micros, Some(900));
-    assert_eq!(migrated.actual_incremental_cost_micros, Some(300));
-    assert_eq!(migrated.routing_savings_micros, None);
-    assert_eq!(migrated.entitlement_savings_micros, Some(600));
-    assert_eq!(migrated.estimated_total_savings_micros, None);
-    assert_eq!(schema_version(&store), "5");
-    drop(store);
-
-    let reopened = open_store(temporary.path());
-    assert_eq!(schema_version(&reopened), "5");
-    let after_restart = reopened
-        .get_value(
-            &fixture.workspace,
-            &value_query("legacy/unknown", "USD", None),
-        )
-        .unwrap();
-    assert_eq!(after_restart.entries.len(), 1);
-    assert!(after_restart.daily_aggregates.is_empty());
+    assert!(LocalObservationStore::open(temporary.path(), authority()).is_err());
 }
 
 fn daily_row_count(store: &LocalObservationStore) -> u64 {
@@ -276,15 +250,4 @@ fn daily_row_count(store: &LocalObservationStore) -> u64 {
         })
         .unwrap();
     count.try_into().unwrap()
-}
-
-fn schema_version(store: &LocalObservationStore) -> String {
-    let connection = store.connection.lock();
-    connection
-        .query_row(
-            "SELECT value FROM observation_meta WHERE key='schema_version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap()
 }

@@ -567,17 +567,20 @@ impl LocalObservationStore {
                         sql(tx.execute("UPDATE observation_capacity_pending_v5 SET step=2 WHERE workspace=?1 AND request=?2",params![w,r]))?;
                     }
                 } else if let Some(table) = CLEANUP.get((step - 2) as usize) {
-                    let feedback = sql(super::records::retire_request_feedback(
-                        &tx, &w, &r, table, true,
-                    ))?;
-                    if feedback == 0 {
-                        let order = super::records::retirement_order(table)
-                            .map(|order| format!(" ORDER BY {order}"))
-                            .unwrap_or_default();
-                        let n=sql(tx.execute(&format!("DELETE FROM {table} WHERE rowid IN(SELECT e.rowid FROM {table} e WHERE e.workspace_id=?1 AND e.request_id=?2{order} LIMIT {ROWS})"),params![w,r]))?;
-                        if n == 0 {
-                            sql(tx.execute("UPDATE observation_capacity_pending_v5 SET step=step+1 WHERE workspace=?1 AND request=?2",params![w,r]))?;
-                        }
+                    // The fact event identity remains a business invariant;
+                    // content no longer has a permanent event/reply ledger.
+                    if *table == "execution_fact_events" {
+                        super::fact_identity::retire_request(&tx, &w, &r, Some(ROWS))
+                            .map_err(|_| Error::Unavailable)?;
+                    }
+                    let order = if *table == "execution_fact_events" {
+                        " ORDER BY e.sequence,e.rowid"
+                    } else {
+                        ""
+                    };
+                    let n=sql(tx.execute(&format!("DELETE FROM {table} WHERE rowid IN(SELECT e.rowid FROM {table} e WHERE e.workspace_id=?1 AND e.request_id=?2{order} LIMIT {ROWS})"),params![w,r]))?;
+                    if n == 0 {
+                        sql(tx.execute("UPDATE observation_capacity_pending_v5 SET step=step+1 WHERE workspace=?1 AND request=?2",params![w,r]))?;
                     }
                 } else {
                     sql(tx.execute("DELETE FROM plan_quality_segments WHERE rowid IN(SELECT rowid FROM plan_quality_segments WHERE workspace_id=?1 AND last_request_id=?2 LIMIT 128)",params![w,r]))?;
@@ -657,9 +660,8 @@ impl LocalObservationStore {
 const CLEANUP: &[&str] = &[
     "observation_sensitive_payloads_v2",
     "content_message_instances_v2",
-    "request_content_refs_v2",
+    "observation_input_anchors_v6",
     "conversation_content_streams_v2",
-    "conversation_content_events_v2",
     "transcript_roots_v2",
     "observation_run_links",
     "observation_link_events",

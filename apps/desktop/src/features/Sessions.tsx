@@ -17,7 +17,7 @@ type Page<T> = { next_cursor: string | null } & T;
 type Summary = { session_id: string; agent_id: string; request_count: number; fallback_request_count: number; last_request_at_ms: number; correlation_kind: CorrelationKind; content_completeness: string };
 type RoutingContext = { state: 'recorded' | 'unavailable' | 'conflicted'; display_name: string | null; name_state: 'recorded' | 'unavailable'; plan_id?: string | null; plan_revision?: string | null };
 type Request = { request_id: string; started_at_ms: number; outcome: string | null; native_turn_id: string | null; within_request_fallback: boolean | null; final_native_model: string | null; between_turn_model_change: boolean | null; previous_native_turn_id: string | null; previous_turn_model: string | null; turn_final_native_model: string | null; routing_context?: RoutingContext; native_auxiliary?: boolean | null };
-type Content = { content_id: string; role: string; kind: string; state: string; direction: string; media_type: string; message_occurrence_id: string; message_ordinal?: number; part_ordinal?: number; fork_id?: string; downstream_delivery?: string | null };
+type Content = { content_id: string; role: string; kind: string; state: string; direction: string; media_type: string; message_occurrence_id: string; message_ordinal?: number; part_ordinal?: number; fork_id?: string; downstream_delivery?: string | null; attempt_id?: string; capture?: { context_only: boolean; boundary_verified: boolean } };
 type Hit = { session_id: string; request_id: string; content_id: string; original_text_offset: number };
 type Ancestry = { roots: { state: string }[]; gap: string | null };
 type ContentState = 'recorded' | 'partial' | 'cleared';
@@ -415,7 +415,7 @@ function RequestBody({ request, contentCleared, summary, attemptModels, anchor, 
     const epoch = ++generation.current; setBusy(true); setError('');
     if (!next) setCatalogLoaded(false);
     try {
-      const readCatalog = (cursor: string | null) => read<Page<{ contents: Content[]; transcript_roots: string[]; roots_partial: boolean }>>('catalog', { request_id: request, limit: 20, cursor }, controller.current.signal);
+      const readCatalog = (cursor: string | null) => read<Page<{ contents: Content[]; transcript_roots: string[]; roots_partial: boolean }>>('catalog', { request_id: request, limit: 20, cursor, include_semantic_metadata: true }, controller.current.signal);
       let page = await readCatalog(next);
       if (epoch !== generation.current) return;
       const contents = [...page.contents];
@@ -547,13 +547,14 @@ function MessageOccurrence({ request, items, anchor, language, modelLabel, techn
     if (event.kind === 'tool') onEvent?.(id, event);
   }, [onEvent]);
   const role = items[0]?.role ?? '';
-  const contextOnly = role === 'user' && !anchor && items.length > 0 && items.every(item => contextParts[item.content_id] === true);
-  const roleLabel = technical ? (language === 'zh' ? '工具上下文' : 'Tool context') : contextOnly ? (language === 'zh' ? 'Agent 附加上下文' : 'Agent-added context') : role === 'assistant' ? (language === 'zh' ? 'Agent 回答' : 'Agent answer') : role === 'user' ? (language === 'zh' ? '你的问题' : 'Your question') : role;
-  const potential = items.some(item => !item.media_type.includes('hiroute.model-stream-event'));
+  const importedContext = items.length > 0 && items.every(item => item.capture?.context_only === true);
+  const contextOnly = importedContext || role === 'user' && !anchor && items.length > 0 && items.every(item => contextParts[item.content_id] === true);
+  const roleLabel = importedContext ? (language === 'zh' ? '历史上下文 · 执行模型未知' : 'Historical context · execution model unknown') : technical ? (language === 'zh' ? '工具上下文' : 'Tool context') : contextOnly ? (language === 'zh' ? 'Agent 附加上下文' : 'Agent-added context') : role === 'assistant' ? (language === 'zh' ? 'Agent 回答' : 'Agent answer') : role === 'user' ? (language === 'zh' ? '你的问题' : 'Your question') : role;
+  const potential = items.some(item => !item.media_type.includes('hiroute.model-stream-event') && !item.media_type.includes('hiroute.semantic-terminal'));
   const responseText = coalesceResponseText(Object.values(events));
   const visible = potential || responseText.some(part => part.text.length > 0) || Object.values(visibility).some(Boolean);
   const incomplete = items.some(item => !['available', 'complete'].includes(item.state)) || Object.values(partIncomplete).some(Boolean);
-  return <article hidden={!visible} aria-hidden={!visible} className={`message ${!technical && role === 'assistant' ? 'assistant' : !technical && role === 'user' && !contextOnly ? 'user' : 'system'}`}><span className="message-avatar">{technical ? '·' : role === 'assistant' ? 'AI' : role === 'user' && !contextOnly ? 'YOU' : '·'}</span><div><div className="message-role">{roleLabel}{modelLabel && <span className="badge info no-dot">{modelLabel}</span>}{incomplete && <span className="badge warn no-dot">{language === 'zh' ? '内容不完整' : 'Incomplete'}</span>}</div>{items.map(item => <MessagePart key={item.content_id} request={request} item={item} anchor={anchor?.contentId === item.content_id ? anchor.offset : undefined} language={language} onEvent={reportEvent} onVisibility={reportVisibility} onIncomplete={reportIncomplete} onContext={reportContext} />)}{responseText.map(part => <div className="message-content" key={`${part.kind}-${part.index}`}>{part.text}</div>)}</div></article>;
+  return <article hidden={!visible} aria-hidden={!visible} className={`message ${!technical && role === 'assistant' ? 'assistant' : !technical && role === 'user' && !contextOnly ? 'user' : 'system'}`}><span className="message-avatar">{technical ? '·' : role === 'assistant' ? 'AI' : role === 'user' && !contextOnly ? 'YOU' : '·'}</span><div><div className="message-role">{roleLabel}{modelLabel && !importedContext && <span className="badge info no-dot">{modelLabel}</span>}{incomplete && <span className="badge warn no-dot">{language === 'zh' ? '内容不完整' : 'Incomplete'}</span>}</div>{items.map(item => <MessagePart key={item.content_id} request={request} item={item} anchor={anchor?.contentId === item.content_id ? anchor.offset : undefined} language={language} onEvent={reportEvent} onVisibility={reportVisibility} onIncomplete={reportIncomplete} onContext={reportContext} />)}{responseText.map(part => <div className="message-content" key={`${part.kind}-${part.index}-${part.version ?? ''}`}>{part.version && <span className="oc-meta">{language === 'zh' ? (part.version === 'accepted' ? '已接受的内容' : '有冲突的结束版本') : (part.version === 'accepted' ? 'Accepted content' : 'Conflicting final version')}</span>}{part.text}</div>)}</div></article>;
 }
 
 function MessagePart({ request, item, anchor, language, onEvent, onVisibility, onIncomplete, onContext }: { onEvent?: (id: string, event: ReadableEvent) => void; onVisibility(id: string, visible: boolean): void; onIncomplete(id: string, incomplete: boolean): void; onContext(id: string, contextOnly: boolean): void; request: string; item: Content; anchor?: number; language: 'zh' | 'en' }) {
@@ -577,7 +578,7 @@ function MessagePart({ request, item, anchor, language, onEvent, onVisibility, o
   useEffect(() => { marker.current?.scrollIntoView({ block: 'center' }); }, [text]);
   const event = readableEvent(text, item.media_type, item.direction);
   useEffect(() => { if (event && event.kind !== 'reasoning' && onEvent) onEvent(item.content_id, event); }, [text, item.content_id, onEvent]);
-  const structuredPending = item.media_type.includes('hiroute.model-stream-event') && !text && !error;
+  const structuredPending = (item.media_type.includes('hiroute.model-stream-event') || item.media_type.includes('hiroute.semantic-terminal')) && !text && !error;
   const hiddenEvent = Boolean((structuredPending || (event && (event.kind === 'block' || event.kind === 'reasoning' || ((event.kind === 'tool' || event.kind === 'text' || event.kind === 'refusal') && onEvent)))) && anchor === undefined && !error && !cursor);
   useEffect(() => { onVisibility(item.content_id, !hiddenEvent); }, [hiddenEvent, item.content_id, onVisibility]);
   useEffect(() => { onIncomplete(item.content_id, state !== 'available' && state !== 'complete'); }, [item.content_id, onIncomplete, state]);
@@ -667,9 +668,11 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
   const seen = new Set<string>();
   let selection: InputSelection | undefined;
   let firstPage = true;
+  let inputAnchor: { source_request_id: string; message_occurrence_id: string } | undefined;
+  let sourceRequest = requestId;
   do {
-    const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null; input_selection?: InputSelection } = await read('catalog', { request_id: requestId, limit: 200, cursor, ...(latest ? { include_input_selection: true } : {}) }, signal);
-    if (firstPage) selection = page.input_selection;
+    const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null; input_selection?: InputSelection; input_anchor?: { source_request_id: string; message_occurrence_id: string } } = await read('catalog', { request_id: requestId, limit: 200, cursor, ...(latest ? { include_input_selection: true, include_semantic_metadata: true } : {}) }, signal);
+    if (firstPage) { selection = page.input_selection; inputAnchor = page.input_anchor; }
     firstPage = false;
     contents.push(...page.contents);
     state.sawContent ||= page.contents.length > 0;
@@ -689,10 +692,30 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
     return null;
   }
 
+  if (latest && inputAnchor && inputAnchor.source_request_id !== requestId && !contents.some(item => item.message_occurrence_id === inputAnchor?.message_occurrence_id)) {
+    // The server returns a one-hop source only while it remains authorized and
+    // live. Never choose a different User message when that source disappears.
+    contents.length = 0;
+    sourceRequest = inputAnchor.source_request_id;
+    const sourceSeen = new Set<string>();
+    do {
+      const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null } = await read('catalog', { request_id: sourceRequest, limit: 200, cursor, include_semantic_metadata: true }, signal);
+      const selected = page.contents.filter(item => item.message_occurrence_id === inputAnchor?.message_occurrence_id);
+      contents.push(...selected);
+      state.sawContent ||= selected.length > 0;
+      state.allDeleted &&= selected.every(item => ['deleted', 'expired'].includes(item.state));
+      state.incomplete ||= Boolean(page.roots_partial) || selected.some(item => !['available', 'complete', 'deleted', 'expired'].includes(item.state));
+      cursor = page.next_cursor ?? null;
+      if (cursor && sourceSeen.has(cursor)) { state.incomplete = true; break; }
+      if (cursor) sourceSeen.add(cursor);
+    } while (cursor && !signal.aborted);
+    state.incomplete ||= contents.length === 0;
+  }
+
   const groups = new Map<string, Content[]>();
   for (const content of contents) {
     if (content.role !== 'user' || content.kind !== 'text' || ['deleted', 'expired', 'unavailable'].includes(content.state)) continue;
-    if (latest && (content.direction !== 'request_input' || content.message_ordinal !== selection?.message_ordinal)) continue;
+    if (latest && (content.direction !== 'request_input' || (sourceRequest === requestId ? content.message_ordinal !== selection?.message_ordinal : content.message_occurrence_id !== inputAnchor?.message_occurrence_id))) continue;
     const key = `${content.direction}\u0000${content.fork_id ?? ''}\u0000${content.message_occurrence_id || content.content_id}`;
     const group = groups.get(key) ?? [];
     group.push(content);
@@ -704,7 +727,7 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
     const parts: string[] = [];
     let readable = true;
     for (const content of message) {
-      const part = await completeTitlePart(requestId, content.content_id, signal);
+      const part = await completeTitlePart(sourceRequest, content.content_id, signal);
       state.incomplete ||= part.incomplete;
       if (part.text === null) { readable = false; break; }
       parts.push(part.text);

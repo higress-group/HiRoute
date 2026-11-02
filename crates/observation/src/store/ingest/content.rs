@@ -1,4 +1,4 @@
-//! Bounded content group commit. Original envelopes and per-record feedback stay unchanged.
+//! Bounded content group commit; bytes are durable before the small commit ACK.
 use super::*;
 use crate::content::durability::ContentDurability;
 use rusqlite::Transaction;
@@ -92,6 +92,22 @@ impl LocalObservationStore {
                 },
             )));
         }
+        if let Err(error) = envelope.validate() {
+            let expected = load_checkpoint(transaction, ObservationChannel::Content, stream)?
+                .accounted
+                .saturating_add(1);
+            let outcome = IngestOutcome::Nack(content_validation_nack(envelope, expected, error));
+            persist_feedback(
+                transaction,
+                stream,
+                envelope.sequence,
+                envelope.event_id.as_str(),
+                payload_digest.as_str(),
+                &outcome,
+                envelope.occurred_at_unix_nanos,
+            )?;
+            return Ok(outcome);
+        }
         if let Some(outcome) = load_feedback(
             transaction,
             "conversation_content",
@@ -119,22 +135,6 @@ impl LocalObservationStore {
                     Err(_) => return Err(ObservationStoreError::Corrupt),
                 }
             }
-            return Ok(outcome);
-        }
-        if let Err(error) = envelope.validate() {
-            let expected = load_checkpoint(transaction, ObservationChannel::Content, stream)?
-                .accounted
-                .saturating_add(1);
-            let outcome = IngestOutcome::Nack(content_validation_nack(envelope, expected, error));
-            persist_feedback(
-                transaction,
-                stream,
-                envelope.sequence,
-                envelope.event_id.as_str(),
-                payload_digest.as_str(),
-                &outcome,
-                envelope.occurred_at_unix_nanos,
-            )?;
             return Ok(outcome);
         }
         let envelope_losses = envelope.reported_losses();
@@ -218,15 +218,6 @@ impl LocalObservationStore {
             }
         };
         release_projection(transaction, "content_projection")?;
-        insert_content_event(transaction, envelope, &payload_digest, &projection)?;
-        insert_event(
-            transaction,
-            ObservationChannel::Content,
-            stream,
-            envelope.sequence,
-            envelope.event_id.as_str(),
-            payload_digest.as_str(),
-        )?;
         let next = advance_checkpoint(
             transaction,
             ObservationChannel::Content,
@@ -235,21 +226,7 @@ impl LocalObservationStore {
             envelope.sequence,
             had_gap,
         )?;
-        let content_ack = ObservationContentAcknowledgementV1 {
-            request_id: envelope.correlation.request_id.to_string(),
-            direction: envelope.direction,
-            fork_id: envelope.fork_id.clone(),
-            next_chunk_ordinal: projection.next_chunk_ordinal,
-            transcript_root: projection.transcript_root.clone(),
-            delta_parent_transcript_root: projection.delta_parent_transcript_root.clone(),
-            acknowledged_blobs: projection.acknowledged_blobs.clone(),
-        };
-        let outcome = IngestOutcome::Ack(ack(
-            ObservationChannel::Content,
-            stream,
-            next,
-            Some(content_ack),
-        ));
+        let outcome = IngestOutcome::Ack(ack(ObservationChannel::Content, stream, next, None));
         persist_feedback(
             transaction,
             stream,

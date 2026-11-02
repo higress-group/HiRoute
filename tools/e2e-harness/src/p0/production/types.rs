@@ -25,12 +25,15 @@ pub const LIFECYCLE_SCHEMA: &str = "hiroute.gateway.lifecycle-fact-envelope/v2";
 pub const LEGACY_EXECUTION_SCHEMA: &str = "hiroute.observation.execution-fact-envelope/v2";
 pub const LEGACY_PRICED_EXECUTION_SCHEMA: &str = "hiroute.observation.execution-fact-envelope/v3";
 pub const CURRENT_EXECUTION_SCHEMA: &str = "hiroute.observation.execution-fact-envelope/v3";
-pub const CONTENT_SCHEMA: &str = "hiroute.observation.conversation-content-envelope/v2";
+pub const LEGACY_CONTENT_SCHEMA: &str = "hiroute.observation.conversation-content-envelope/v2";
+pub const CURRENT_CONTENT_SCHEMA: &str = "hiroute.observation.conversation-content-envelope/v3";
+pub const CURRENT_CONTENT_SCHEMA_DIGEST: &str =
+    "sha256:f5fdbf151bca7289192fc64427dcacc313693837ddc926ec8d282193321852ff";
 pub const OTEL_SCHEMA: &str = "hiroute.otel.gen-ai-mapping/v1";
 pub const LEGACY_AGGREGATE_PORT_DIGEST: &str =
     "sha256:05755b4351c7c7bc3c33fbd2e8406c313b4231e50e28cce1b3e1f57c47f43cfa";
 pub const CURRENT_AGGREGATE_PORT_DIGEST: &str =
-    "sha256:d48a1ad86e1a12001a2176c4b705f0ca3def3ef61fbb844b76b26e0e5c45846a";
+    "sha256:72bb25d2434e34023e08f9258e3ab641b4698b0b14e526d3b1fe3d9e5236d8e1";
 pub const SEALED_SUT_REVISION: &str = "8af977300795c467894371055f7fbfc9716252fa";
 pub const SEALED_SUT_TREE: &str = "5ed527f53fa4e8ba9395b5a89b155a1b67228e6e";
 pub const SEALED_SUT_BUILD_INPUT_DIGEST: &str =
@@ -43,7 +46,7 @@ pub const LEGACY_PRICED_EXECUTION_SCHEMA_DIGEST: &str =
     "sha256:a22fc62f35454021f1df21b2b9f0ce54cde325b3fc7b3aa2e990ab9ecba71292";
 pub const CURRENT_EXECUTION_SCHEMA_DIGEST: &str =
     "sha256:374e53b2740098bf82fb445e15b40f2c61f12e4bff0948a45178de56582afec0";
-pub const CONTENT_SCHEMA_DIGEST: &str =
+pub const LEGACY_CONTENT_SCHEMA_DIGEST: &str =
     "sha256:6f17cd772a0fb322d25dd31dc95e34325cbabbd68912b32f5bb9bed526adfe44";
 pub const OTEL_SCHEMA_DIGEST: &str =
     "sha256:d730badfd13c19d1c464c5a0c871a35a3e72a0f9c662d13d1997f066bf762e33";

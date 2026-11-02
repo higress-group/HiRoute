@@ -398,6 +398,19 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
     assert_eq!(downstream_logical_id, "call-22008");
     assert_eq!(rejected.calls(), 1);
     assert_eq!(accepted.calls(), 1);
+    for wire in rejected.requests().into_iter().chain(accepted.requests()) {
+        let body_start = wire
+            .windows(4)
+            .position(|bytes| bytes == b"\r\n\r\n")
+            .unwrap()
+            + 4;
+        let upstream: Value = serde_json::from_slice(&wire[body_start..]).unwrap();
+        assert_eq!(
+            upstream["instructions"],
+            "disk-backed instruction ".repeat(4_000)
+        );
+        assert_eq!(upstream["input"], request_secret);
+    }
     wait_replay_empty(&fixture.replay_root);
 
     let root = fixture.observation_root.as_deref().unwrap();
@@ -639,23 +652,26 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
         request_appends.len() >= 3,
         "canonical request content must be delivered incrementally"
     );
-    assert!(request_content.contains(&"disk-backed instruction ".repeat(4_000)));
-    for role in ["system", "user"] {
-        let parts = request_appends
+    assert!(!request_content.contains(&"disk-backed instruction ".repeat(4_000)));
+    assert!(
+        request_appends
             .iter()
-            .filter(|event| event["message_role"] == role)
-            .collect::<Vec<_>>();
-        assert_eq!(parts.len(), if role == "system" { 2 } else { 3 });
-        let content_id = &parts[0]["content_id"];
-        let blob_digest = &parts[0]["content_blob_digest"];
-        assert!(content_id.is_string() && blob_digest.is_string());
-        assert!(parts.iter().all(|event| {
-            event["content_id"] == *content_id
-                && event["content_blob_digest"] == *blob_digest
-                && event["content_ref"]["content_id"] == *content_id
-                && event["content_ref"]["digest"] == *blob_digest
-        }));
-    }
+            .all(|event| event["message_role"] != "system")
+    );
+    let parts = request_appends
+        .iter()
+        .filter(|event| event["message_role"] == "user")
+        .collect::<Vec<_>>();
+    assert_eq!(parts.len(), 3);
+    let content_id = &parts[0]["content_id"];
+    let blob_digest = &parts[0]["content_blob_digest"];
+    assert!(content_id.is_string() && blob_digest.is_string());
+    assert!(parts.iter().all(|event| {
+        event["content_id"] == *content_id
+            && event["content_blob_digest"] == *blob_digest
+            && event["content_ref"]["content_id"] == *content_id
+            && event["content_ref"]["digest"] == *blob_digest
+    }));
     assert!(response_content.contains("accepted-response-22008"));
     assert!(response_content.contains("\"kind\":\"text_delta\""));
     assert!(response_content.contains("\"kind\":\"tool_call_started\""));
@@ -702,12 +718,21 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
             && event.get("parent_transcript_root").and_then(Value::as_str)
                 == Some(request_transcript_root)
     }));
-    let committed_frame = facts
+    let committed = facts
         .iter()
         .find(|fact| fact.pointer("/fact/kind").and_then(Value::as_str) == Some("semantic_commit"))
-        .and_then(|fact| fact.pointer("/fact/frame_id"))
+        .expect("semantic commit fact");
+    assert!(
+        !committed
+            .pointer("/fact/frame_id")
+            .and_then(Value::as_str)
+            .unwrap()
+            .is_empty()
+    );
+    let committed_attempt = committed
+        .get("attempt_id")
         .and_then(Value::as_str)
-        .expect("semantic commit frame identity");
+        .expect("actual accepted Attempt identity");
     assert!(
         content
             .iter()
@@ -716,8 +741,11 @@ fn real_hirouted_emits_request_route_attempt_commit_usage_and_accepted_only_cont
                     && event.get("phase").and_then(Value::as_str) == Some("append")
             })
             .all(|event| {
-                event.get("transport_frame_id").and_then(Value::as_str) == Some(committed_frame)
+                event.get("transport_frame_id").is_none_or(Value::is_null)
                     && event.get("message_ordinal").and_then(Value::as_u64) == Some(0)
+                    && event.get("attempt_id").and_then(Value::as_str) == Some(committed_attempt)
+                    && event.get("downstream_delivery").and_then(Value::as_str)
+                        == Some("full_frame_transport_accepted")
             })
     );
 

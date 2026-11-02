@@ -19,17 +19,15 @@ defaults. Bindings are supplied on every execution. Parameter evaluation, error
 classification, validation, transaction commits, durable ACKs and recovery remain
 unchanged. No queue, content cache or storage format is introduced.
 
-Content persistence can group an already queued ordered prefix of at most 32
-envelopes into one transaction. The Gateway does not wait to fill a batch and
-keeps its existing byte admission. Newly written staging and blob files retain
-their handles through a bounded eight-worker file-sync barrier; only after every
-file barrier and the SQL commit succeed are the original per-envelope ACKs
-returned. A NACK ends the prefix, and later records stay queued until its gap is
-accounted. A file or transaction failure returns no ACK for the transaction.
-Original envelope bytes, digests, feedback identities, replay validation and
-on-disk paths remain unchanged. See `store/ingest/content` and
-`content/durability`; the real-process pressure case covers consecutive streamed
-turns, exact content, complete roots and reopen without a plaintext collector.
+Content persistence groups an already queued prefix of at most 32 envelopes;
+it never waits to fill a batch. Owned files pass the existing bounded sync
+barrier before visible SQL references commit. Replies are small commit outcomes,
+not stored historical ACKs. A bounded current-batch identity/digest window resolves
+lost replies, and retained business facts prove exact business retries. Minimal
+retired business identities prevent reuse after payload retirement; they contain
+no request/session, envelope or reply. Content-fragment identities are not archived.
+Completed chunk rows and staging are reclaimed after publication. See
+`store/{current_commit,fact_identity,ingest/content}` and `content/durability`.
 
 `store/gap` resolves an arriving sequence within its exact channel, producer,
 epoch and stream. The stream/end-sequence index skips unrelated streams and
@@ -79,11 +77,13 @@ Focused package checks use `cargo test -p hiroute-observation`.
 
 ## Compact storage and capacity retention
 
-The current physical layout is format 5. Only the three repeated protocol
-carriers share a stream descriptor; content metadata and frozen feedback use
-independent checksummed level-1 zstd records with an identity fallback. Content
-objects keep their existing digest and file representation. No segment-file
-format or small-object database is introduced.
+The current physical layout is format 6. Existing message/part/blob tables retain
+semantic activity, explicit output Attempt and capture provenance. Verified carried
+prefixes do not create new occurrences. A first trusted scope can import context
+once with unknown execution attribution; persisted claims prevent restart reseeding.
+Setup snapshots, opaque provider state, permanent content-envelope/feedback records,
+redundant request-part maps and completed assembly journals are absent. Bodies keep
+the existing HMAC integrity and file representation; no segment-file engine is used.
 
 A Core-only upgrade keeps compatible current Observation in place. Its recovery
 snapshot explicitly excludes this directory: startup does not enumerate, size,
@@ -96,17 +96,16 @@ Core/Observation/publication/Gateway/Control readiness, product-owned upgrade
 recovery material expires and is deleted in bounded, resumable maintenance batches.
 SQL migration completion alone never authorizes deletion; active history is untouched.
 
-`store/upgrade` admits only fresh/current writers and classifies supported old
-formats for sealing. Production startup preserves the complete original group,
-keys and matching old package, seals the old Observation directory by a
-same-filesystem rename, then initializes a fresh format-5 generation privately
-before publishing it. It does not scan, copy, hash or convert old history.
-Original DB/WAL/SHM, object and staging files remain together and unchanged;
-current history/statistics begin at cutover. Current-format data and policy are
-never reset on ordinary restart. Interrupted namespace publication uses the same
-original recovery batch; unknown partial conversion generations remain preserved
-with actionable whole-group recovery. See
-[release recovery](../../docs/release-contracts.md#upgrade-and-manual-recovery).
+`store/{upgrade,reset}` admits fresh/current writers and replaces recognized old
+formats 1–5 under the daemon's existing startup writer lock. Only the format marker
+and exact saved capacity choice are read. A tiny identity-bound journal publishes
+a private format-6 generation through same-filesystem directory renames; old
+DB/WAL/SHM, objects and staging are never copied, hashed or converted. No old package
+is required solely for this Observation reset. Core upgrade/recovery remains separate.
+After full service readiness, the existing maintenance hook removes only the bound
+retired namespace, at most 128 entries/10 ms with completion-based cooling. Interrupted
+replacement resumes its same generation; a later capacity choice or new data is never
+reset. Unknown/corrupt formats, substituted paths and unrelated recovery remain protected.
 
 `store/capacity` uses the existing maintenance owner. Its optional positive byte
 limit is installation-wide and defaults to 20 GB (20,000,000,000 bytes).

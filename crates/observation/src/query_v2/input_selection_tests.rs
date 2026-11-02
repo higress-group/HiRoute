@@ -32,6 +32,7 @@ fn catalog_selection_is_opt_in_scope_bound_retained_and_authenticated() {
         request_id: fixture.request.clone(),
         limit: 10,
         cursor: None,
+        include_semantic_metadata: false,
         include_input_selection: false,
     };
     let legacy = store.observed_catalog(&reader(true), &query, 5000).unwrap();
@@ -152,6 +153,7 @@ fn reopened_input_position_honors_content_deletion_and_retention() {
         request_id: fixture.request.clone(),
         limit: 10,
         cursor: None,
+        include_semantic_metadata: false,
         include_input_selection: true,
     };
     assert_eq!(

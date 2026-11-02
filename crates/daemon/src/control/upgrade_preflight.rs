@@ -17,7 +17,7 @@ pub(super) fn run_if_requested() -> Option<i32> {
         return Some(2);
     }
     let result = (|| {
-        let seal = hiroute_observation::LocalObservationStore::legacy_history_requires_seal(
+        hiroute_observation::LocalObservationStore::validate_startup_format(
             root.join("observation"),
         )
         .map_err(|_| {
@@ -27,9 +27,9 @@ pub(super) fn run_if_requested() -> Option<i32> {
             ))
         })?;
         let required =
-            hiroute_local_storage::LocalStorageSet::preflight_upgrade(&root, &package, seal)
+            hiroute_local_storage::LocalStorageSet::preflight_upgrade(&root, &package, false)
                 .map_err(|e| Box::new(e.recovery()))?;
-        Ok::<_, Box<StorageRecovery>>((seal, required))
+        Ok::<_, Box<StorageRecovery>>((false, required))
     })();
     let available = fs2::available_space(if root.exists() {
         &root

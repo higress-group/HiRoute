@@ -2,14 +2,14 @@ export type ReadableEvent = { kind: 'text' | 'reasoning' | 'refusal'; text: stri
 
 // These names come from the canonical Gateway content contract, not text patterns.
 export function isPrivateContentKind(kind: string): boolean {
-  return kind === 'provider_state' || kind === 'reasoning_delta' || kind === 'reasoning_finished';
+  return kind === 'provider_state' || kind === 'reasoning' || kind === 'reasoning_delta' || kind === 'reasoning_finished';
 }
 
 export function isTechnicalContentKind(kind: string): boolean {
   return kind === 'message_name' || kind.startsWith('tool_');
 }
 
-export function coalesceResponseText(events: readonly ReadableEvent[]): { kind: 'text' | 'refusal'; index: number; text: string }[] {
+export function coalesceResponseText(events: readonly ReadableEvent[]): { kind: 'text' | 'refusal'; index: number; text: string; version?: 'accepted' | 'final' }[] {
   const parts = new Map<string, Extract<ReadableEvent, { kind: 'text' | 'reasoning' | 'refusal' }>[]>();
   for (const event of events) {
     if (event.kind !== 'text' && event.kind !== 'refusal') continue;
@@ -18,10 +18,16 @@ export function coalesceResponseText(events: readonly ReadableEvent[]): { kind: 
     group.push(event);
     parts.set(key, group);
   }
-  return [...parts.values()].map(group => {
+  return [...parts.values()].flatMap(group => {
     group.sort((a, b) => a.sequence - b.sequence);
     const finished = group.filter(event => event.phase === 'finished').at(-1);
-    return { kind: group[0].kind as 'text' | 'refusal', index: group[0].index, text: finished?.text ?? group.filter(event => event.phase === 'delta').map(event => event.text).join('') };
+    const accepted = group.filter(event => event.phase === 'delta').map(event => event.text).join('');
+    const identity = { kind: group[0].kind as 'text' | 'refusal', index: group[0].index };
+    if (accepted && finished?.text && accepted !== finished.text) return [
+      { ...identity, text: accepted, version: 'accepted' as const },
+      { ...identity, text: finished.text, version: 'final' as const },
+    ];
+    return [{ ...identity, text: finished?.text || accepted }];
   }).sort((a, b) => a.index - b.index);
 }
 
@@ -37,12 +43,14 @@ export function contentDisplayRuns(messages: readonly { role: string; technical?
 }
 
 export function readableEvent(raw: string, mediaType: string, direction: string): ReadableEvent | null {
-  if (mediaType !== 'application/vnd.hiroute.model-stream-event+json;version=1' || direction !== 'response_delivered') return null;
+  const terminal = mediaType === 'application/vnd.hiroute.semantic-terminal+json;version=1';
+  if ((!terminal && mediaType !== 'application/vnd.hiroute.model-stream-event+json;version=1') || direction !== 'response_delivered') return null;
   try {
     const value = JSON.parse(raw);
-    if (value?.schema_version !== 'hiroute.model-stream-event/v1' || !Number.isSafeInteger(value.sequence) || value.sequence < 0) return null;
+    if (value?.schema_version !== (terminal ? 'hiroute.semantic-terminal/v1' : 'hiroute.model-stream-event/v1') || !Number.isSafeInteger(value.sequence) || value.sequence < 0) return null;
     const event = value.event;
     if (!event || typeof event !== 'object') return null;
+    if (terminal) return value.text_source === 'accepted_segments' && !('text' in event) && ['text_finished', 'reasoning_finished', 'refusal_finished'].includes(event.kind) ? { kind: 'block', block: event.kind } : null;
     const kinds: Record<string, 'text' | 'reasoning' | 'refusal'> = { text_delta: 'text', text_finished: 'text', reasoning_delta: 'reasoning', reasoning_finished: 'reasoning', refusal_delta: 'refusal', refusal_finished: 'refusal' };
     if (kinds[event.kind] && typeof event.text === 'string') return { kind: kinds[event.kind], text: event.text, sequence: value.sequence, index: Number.isSafeInteger(event.index) && event.index >= 0 ? event.index : 0, phase: event.kind.endsWith('_finished') ? 'finished' : 'delta' };
     if (event.kind === 'content_block_started' && typeof event.block_kind === 'string') return { kind: 'block', block: event.block_kind };

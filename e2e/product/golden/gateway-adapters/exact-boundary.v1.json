@@ -8,7 +8,7 @@
   "runtime_state_schema": "hiroute.gateway.port.runtime-state/v1",
   "lifecycle_schema": "hiroute.gateway.port.lifecycle-fact/v2",
   "execution_schema": "hiroute.gateway.port.execution-fact/v3",
-  "content_schema": "hiroute.gateway.port.conversation-content/v2",
+  "content_schema": "hiroute.gateway.port.conversation-content/v3",
   "native_credential_schema": "hiroute.native-credential-lease-request/v1",
   "target_schema": "hiroute.gateway-operational-target/v1",
   "adapter_time_join": false,

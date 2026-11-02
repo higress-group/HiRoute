@@ -1,4 +1,4 @@
-use super::{ACKNOWLEDGED_BLOBS_SQL, MISSING_BLOBS_SQL};
+use super::MISSING_BLOBS_SQL;
 use crate::{DigestAuthority, LocalObservationStore};
 use hiroute_domain::WorkspaceId;
 use rusqlite::{Connection, StatementStatus, params};
@@ -138,11 +138,6 @@ fn terminal_stream_query(sql: &str, complete: bool) {
         broad_work > work * 20,
         "unrelated content must not be visited: {work}/{broad_work}"
     );
-}
-
-#[test]
-fn terminal_acknowledged_blobs_only_visit_the_selected_stream() {
-    terminal_stream_query(ACKNOWLEDGED_BLOBS_SQL, true);
 }
 
 #[test]
