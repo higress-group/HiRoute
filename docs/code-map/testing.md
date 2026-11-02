@@ -20,6 +20,9 @@ reclaiming their managed checkout/TMPDIR, including failed or blocked runs.
 Explicit retention covers diagnosis and consumers that still need build artifacts;
 [local lifecycle regressions](../../scripts/test-local-rust.py) and
 [SSH worker regressions](../../scripts/test-remote-rust.py) protect both paths.
+Explicit scheduled retention uses the [bounded local GC wrapper](../../scripts/local-rust-gc.py)
+and its [expiry, renewal and protected-owner regressions](../../scripts/test-local-rust-gc.py);
+the shared local runner owns deletion checks and evidence export.
 The SSH cleanup owner preserves original run exports while the shared exporter
 publishes independent cleanup generations; its filesystem regressions cover
 same-revision reuse, source continuation, immutable manifests and refusal exits.
