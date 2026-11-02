@@ -55,7 +55,9 @@ impl ControlStore {
         self.decision_service_record(workspace, id, revision)?
             .map(|value| match value {
                 DecisionServiceRecord::V1(service) => Ok(service),
-                DecisionServiceRecord::V2(_) => Err(client_version_required()),
+                DecisionServiceRecord::V2(_) | DecisionServiceRecord::V3(_) => {
+                    Err(client_version_required())
+                }
             })
             .transpose()
     }
@@ -89,7 +91,9 @@ impl ControlStore {
             .into_iter()
             .map(|value| match value {
                 DecisionServiceRecord::V1(service) => Ok(service),
-                DecisionServiceRecord::V2(_) => Err(client_version_required()),
+                DecisionServiceRecord::V2(_) | DecisionServiceRecord::V3(_) => {
+                    Err(client_version_required())
+                }
             })
             .collect()
     }
@@ -166,7 +170,10 @@ fn check(
     if let Some(encoded) = latest {
         let current: DecisionServiceRecord =
             serde_json::from_str(&encoded).map_err(|_| invalid())?;
-        if matches!(current, DecisionServiceRecord::V2(_)) {
+        if matches!(
+            current,
+            DecisionServiceRecord::V2(_) | DecisionServiceRecord::V3(_)
+        ) {
             return Err(client_version_required());
         }
     }

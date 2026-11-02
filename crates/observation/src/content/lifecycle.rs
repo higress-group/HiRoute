@@ -10,11 +10,12 @@ use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::store::LocalObservationStore;
 
+use super::durability::ContentDurability;
 use super::projection::{
-    accumulated_actual_str, accumulated_expected, accumulated_expected_str, acknowledged_blobs,
-    content_digest, coordinate_params, ensure_scope, enum_json, event_file_key, i64_from_u64,
-    insert_or_verify, insert_transcript_root, load_stream, missing_blobs, projection_digest,
-    terminal_phase, touch_content_session, validate_stream_coordinates,
+    accumulated_actual_str, accumulated_expected, accumulated_expected_str, content_digest,
+    coordinate_params, ensure_scope, enum_json, event_file_key, i64_from_u64, insert_or_verify,
+    insert_transcript_root, load_stream, missing_blobs, projection_digest, terminal_phase,
+    touch_content_session, validate_stream_coordinates,
 };
 use super::storage::{decode_base64, finalize_content};
 
@@ -63,12 +64,15 @@ pub(crate) fn apply_content(
     store: &LocalObservationStore,
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
+    durability: &mut ContentDurability,
 ) -> Result<ContentProjectionAck, ContentProjectionError> {
     match envelope.phase {
         ConversationContentPhaseV2::Begin => apply_begin(transaction, envelope),
-        ConversationContentPhaseV2::Append => apply_append(store, transaction, envelope),
+        ConversationContentPhaseV2::Append => {
+            apply_append(store, transaction, envelope, durability)
+        }
         ConversationContentPhaseV2::Finish | ConversationContentPhaseV2::Abort => {
-            apply_terminal(store, transaction, envelope)
+            apply_terminal(store, transaction, envelope, durability)
         }
     }
 }
@@ -134,6 +138,7 @@ fn apply_begin(
             rejected: ConversationContentPhaseV2::Begin,
         });
     }
+    super::capture::begin(transaction, envelope)?;
     touch_content_session(transaction, envelope)?;
     Ok(ContentProjectionAck {
         delta_parent_transcript_root: envelope
@@ -148,6 +153,7 @@ fn apply_append(
     store: &LocalObservationStore,
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
+    durability: &mut ContentDurability,
 ) -> Result<ContentProjectionAck, ContentProjectionError> {
     let mut stream = load_stream(transaction, envelope)?;
     if stream.state != "open" {
@@ -175,13 +181,25 @@ fn apply_append(
     if let Some(active) = stream.active_content_id.as_deref()
         && active != content_id.as_str()
     {
-        let acknowledgement = finalize_content(store, transaction, envelope, active)?;
+        let acknowledgement = finalize_content(store, transaction, envelope, active, durability)?;
         cleanup_content_ids.push(
             ContentId::parse(active.to_owned())
                 .map_err(|_| ContentProjectionError::ContentCorrupt)?,
         );
         acknowledged_blobs.push(acknowledgement);
         stream.active_content_id = None;
+    }
+    if super::capture::skip_context(transaction, envelope, false)? {
+        let next = rejected
+            .checked_add(1)
+            .ok_or(ContentProjectionError::Invalid("chunk_ordinal"))?;
+        cached_sql::execute(transaction,"UPDATE conversation_content_streams_v2 SET next_chunk_ordinal=?7,active_content_id=NULL,updated_at_unix_nanos=?8 WHERE producer_id=?1 AND producer_epoch=?2 AND stream_id=?3 AND request_id=?4 AND direction=?5 AND fork_id=?6",
+            params![envelope.producer.stream.producer_id.as_str(),envelope.producer.stream.producer_epoch.as_str(),envelope.producer.stream.stream_id.as_str(),envelope.correlation.request_id.as_str(),envelope.direction.as_str(),envelope.fork_id,i64::from(next),i64_from_u64(envelope.occurred_at_unix_nanos)?]).map_err(|_|ContentProjectionError::ActivityStorage)?;
+        return Ok(ContentProjectionAck {
+            next_chunk_ordinal: next,
+            cleanup_content_ids,
+            ..Default::default()
+        });
     }
     ensure_message_and_content(transaction, envelope)?;
     let (prior_byte_count, expected_byte_count, content_state) = cached_sql::query_row(
@@ -219,11 +237,14 @@ fn apply_append(
         "{rejected:010}-{}.chunk",
         event_file_key(envelope.event_id.as_str())
     ));
+    #[cfg(test)]
+    let writing = crate::store::ingest_profile::span("staging_write_sync");
     match OpenOptions::new().write(true).create_new(true).open(&path) {
-        Ok(mut file) => file
-            .write_all(&bytes)
-            .and_then(|()| file.sync_all())
-            .map_err(|_| ContentProjectionError::ContentStorage)?,
+        Ok(mut file) => {
+            file.write_all(&bytes)
+                .map_err(|_| ContentProjectionError::ContentStorage)?;
+            durability.retain(file);
+        }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
             let existing = fs::read(&path).map_err(|_| ContentProjectionError::ContentStorage)?;
             if existing != bytes {
@@ -232,9 +253,18 @@ fn apply_append(
                     rejected,
                 });
             }
+            durability.retain(
+                OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&path)
+                    .map_err(|_| ContentProjectionError::ContentStorage)?,
+            );
         }
         Err(_) => return Err(ContentProjectionError::ContentStorage),
     }
+    #[cfg(test)]
+    drop(writing);
     store.note_object_path(&path);
     cached_sql::execute(
         transaction,
@@ -307,6 +337,7 @@ fn apply_append(
             transaction,
             envelope,
             content_id.as_str(),
+            durability,
         )?);
         cleanup_content_ids.push(content_id.clone());
         cached_sql::execute(
@@ -339,6 +370,7 @@ fn apply_terminal(
     store: &LocalObservationStore,
     transaction: &Transaction<'_>,
     envelope: &ConversationContentEnvelopeV1,
+    durability: &mut ContentDurability,
 ) -> Result<ContentProjectionAck, ContentProjectionError> {
     let stream = load_stream(transaction, envelope)?;
     if stream.state != "open" {
@@ -361,7 +393,7 @@ fn apply_terminal(
                 },
             ]));
         }
-        finalize_content(store, transaction, envelope, active)?;
+        finalize_content(store, transaction, envelope, active, durability)?;
         cleanup_content_ids.push(
             ContentId::parse(active.to_owned())
                 .map_err(|_| ContentProjectionError::ContentCorrupt)?,
@@ -404,11 +436,12 @@ fn apply_terminal(
         ],
     )
     .map_err(|_| ContentProjectionError::ActivityStorage)?;
+    super::capture::terminal(transaction, envelope)?;
     touch_content_session(transaction, envelope)?;
     Ok(ContentProjectionAck {
         transcript_root: Some(result.to_string()),
         delta_parent_transcript_root: stream.parent_root,
-        acknowledged_blobs: acknowledged_blobs(transaction, envelope)?,
+        acknowledged_blobs: Vec::new(),
         next_chunk_ordinal: stream.next_chunk_ordinal,
         cleanup_content_ids,
         ..ContentProjectionAck::default()
@@ -527,6 +560,18 @@ fn ensure_message_and_content(
         )
         },
     )?;
+    let coordinate:Option<(String,String)>=cached_sql::query_row(transaction,
+        "SELECT content_id,content_blob_digest FROM content_instances_v2 WHERE workspace_id=?1 AND message_instance_id=?2 AND part_ordinal=?3",
+        params![envelope.correlation.workspace_id.as_str(),message.as_str(),i64::from(part_ordinal)],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(|_|ContentProjectionError::ActivityStorage)?;
+    if let Some((existing_id, existing_digest)) = coordinate
+        && (existing_id != content.as_str() || existing_digest != digest.as_str())
+    {
+        return Err(ContentProjectionError::ImmutableConflict {
+            key: format!("message_part:{message}:{part_ordinal}"),
+            existing: existing_digest,
+            rejected: digest.to_string(),
+        });
+    }
     let expected_count = envelope.content_ref.as_ref().map(|value| value.byte_count);
     let expected_count_sql = expected_count.map(i64_from_u64).transpose()?;
     let has_content_ref = envelope.content_ref.is_some();
@@ -535,6 +580,13 @@ fn ensure_message_and_content(
         .as_ref()
         .map(enum_json)
         .transpose()?;
+    let capture = envelope
+        .capture
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|_| ContentProjectionError::ContentCorrupt)?;
+    let attempt = envelope.attempt_id.as_ref().map(|id| id.as_str());
     let content_projection = serde_json::json!([
         message.as_str(),
         envelope.correlation.request_id.as_str(),
@@ -547,7 +599,9 @@ fn ensure_message_and_content(
         expected_count,
         has_content_ref,
         envelope.transport_frame_id,
-        delivery
+        delivery,
+        attempt,
+        capture
     ]);
     insert_or_verify(
         transaction,
@@ -561,10 +615,10 @@ fn ensure_message_and_content(
                 "INSERT INTO content_instances_v2
              (workspace_id, content_id, message_instance_id, request_id, direction, fork_id,
               part_ordinal, content_kind, canonical_media_type, content_blob_digest,
-              expected_byte_count, has_content_ref, transport_frame_id, downstream_delivery,
+              expected_byte_count, has_content_ref, transport_frame_id, downstream_delivery, attempt_id, semantic_metadata_json,
               accumulated_byte_count, state, created_at_unix_nanos)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                     0, 'installing', ?15)",
+                     ?15, ?16, 0, 'installing', ?17)",
                 params![
                     envelope.correlation.workspace_id.as_str(),
                     content.as_str(),
@@ -580,6 +634,8 @@ fn ensure_message_and_content(
                     has_content_ref,
                     envelope.transport_frame_id,
                     delivery,
+                    attempt,
+                    capture,
                     occurred_at
                 ],
             )
@@ -589,7 +645,7 @@ fn ensure_message_and_content(
                 transaction,
                 "SELECT message_instance_id, request_id, direction, fork_id, part_ordinal,
                     content_kind, canonical_media_type, content_blob_digest, expected_byte_count,
-                    has_content_ref, transport_frame_id, downstream_delivery
+                    has_content_ref, transport_frame_id, downstream_delivery, attempt_id, semantic_metadata_json
              FROM content_instances_v2 WHERE workspace_id=?1 AND content_id=?2",
                 params![envelope.correlation.workspace_id.as_str(), content.as_str()],
                 |row| {
@@ -605,65 +661,9 @@ fn ensure_message_and_content(
                         row.get::<_, Option<i64>>(8)?,
                         row.get::<_, bool>(9)?,
                         row.get::<_, Option<String>>(10)?,
-                        row.get::<_, Option<String>>(11)?
-                    ]))
-                },
-            )
-        },
-    )?;
-    let reference_projection =
-        serde_json::json!([message.as_str(), content.as_str(), digest.as_str()]);
-    let reference_key = format!(
-        "{}:{}:{}:{message_ordinal}:{part_ordinal}",
-        envelope.correlation.request_id,
-        envelope.direction.as_str(),
-        envelope.fork_id,
-    );
-    insert_or_verify(
-        transaction,
-        "request_content_refs_v2",
-        envelope.correlation.workspace_id.as_str(),
-        &reference_key,
-        &reference_projection,
-        || {
-            cached_sql::execute(
-                transaction,
-                "INSERT INTO request_content_refs_v2
-             (workspace_id, request_id, direction, fork_id, message_instance_id, content_id,
-              message_ordinal, part_ordinal, blob_digest)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    envelope.correlation.workspace_id.as_str(),
-                    envelope.correlation.request_id.as_str(),
-                    envelope.direction.as_str(),
-                    envelope.fork_id,
-                    message.as_str(),
-                    content.as_str(),
-                    i64::from(message_ordinal),
-                    i64::from(part_ordinal),
-                    digest.as_str()
-                ],
-            )
-        },
-        || {
-            cached_sql::query_row(
-                transaction,
-                "SELECT message_instance_id, content_id, blob_digest FROM request_content_refs_v2
-             WHERE workspace_id=?1 AND request_id=?2 AND direction=?3 AND fork_id=?4
-               AND message_ordinal=?5 AND part_ordinal=?6",
-                params![
-                    envelope.correlation.workspace_id.as_str(),
-                    envelope.correlation.request_id.as_str(),
-                    envelope.direction.as_str(),
-                    envelope.fork_id,
-                    i64::from(message_ordinal),
-                    i64::from(part_ordinal)
-                ],
-                |row| {
-                    Ok(serde_json::json!([
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?
+                        row.get::<_, Option<String>>(11)?,
+                        row.get::<_, Option<String>>(12)?,
+                        row.get::<_, Option<String>>(13)?
                     ]))
                 },
             )

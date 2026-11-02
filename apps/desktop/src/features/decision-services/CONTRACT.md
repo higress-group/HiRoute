@@ -1,7 +1,8 @@
 # Decision connection product calls
 
 The backend owns `contracts.ts`, its Rust Domain and Application API DTOs, and
-the deterministic [host examples](../../../tests/decision-services-v2-contract.json).
+the deterministic [current host examples](../../../tests/decision-services-v3-contract.json)
+and unchanged [V2 examples](../../../tests/decision-services-v2-contract.json).
 The examples describe Product Session arguments and returned values; they do
 not implement a provider or replace a production-path test. Both native Tauri
 and the web console use the same argument wrappers. Empty reads pass `{}`;
@@ -10,7 +11,7 @@ payload, not a daemon machine envelope. Host failures retain the existing
 `DesktopFailure` native, transport or backend-envelope representation.
 
 `services` contains the latest saved revision of each service. Each entry keeps
-the exact untagged V1 or tagged V2 service and its canonical configuration
+the exact untagged V1 or tagged V2/V3 service and its canonical configuration
 digest. `source` is the current shared source or null for independent/custom
 services. `related_sources` contains the safe current summaries for sources
 referenced by retained revisions, including the current source; it supplies
@@ -41,6 +42,11 @@ or accepts the independent secret. Save does not make an upstream request.
 After acknowledgement, read back before testing the exact ID, revision and
 configuration digest. Conflict and uncertain outcomes require refresh while
 retaining non-secret edits; do not blindly resubmit.
+
+Deletion must reject references from any retained V1/V2/V3 Plan version or draft
+before revoking shared consumers or deleting saved connection revisions. The
+server's keyed reference projection owns that guard; the visible current-route
+list is not its complete reference authority.
 
 The test response uses `DecisionFailureCode` for a failed synthetic provider
 call. Request/host failures can also use the existing native, transport and
@@ -78,3 +84,33 @@ The confirmation keeps the captured service revision: refreshed state cannot
 silently replace its target. Current visible references block confirmation and
 offer their route/draft entries. A backend reference rejection stays in the dialog
 and disables resubmission until it is closed and reopened.
+
+Current hosts use `decision_services_v3`, `preview_decision_context` and
+`save_decision_service_v3`. The preview takes the exact endpoint, model, codec
+and context policy and returns the server-resolved request and per-question
+windows, independent sources, metadata provenance and digest. It performs local
+metadata work only. A native V3 save contains that exact policy and resolved
+snapshot; a custom extension omits context. Metadata changing before acceptance
+causes a refresh conflict, never an unseen replacement snapshot. Execution and
+recovery consume accepted content without re-resolution.
+
+Automatic uses exact maintained endpoint/model metadata or the conservative
+32,000-token fallback. Custom requires a positive u32 request window, with an
+optional positive question cap no greater than it. A request override preserves
+an independent provider question cap. Automatic clears applied overrides while
+the editor retains parked custom values per source/mode. TypeSafe automatic/off
+is scoped to its exact official HTTPS System One destination; destination or
+provider labels never authorize arbitrary headers. Preview responses are tied to
+the exact draft signature and superseded reads cannot enable a different save.
+Cross-field limit errors remain visible outside collapsed advanced settings.
+A new question-limit conflict opens its field without moving typing focus; an
+explicit repair action focuses the field and scrolls it above the sticky actions.
+Inputs associate their error/help text for assistive technology. Invalid limits
+do not offer a metadata refresh as a substitute for correcting the values.
+
+Saving an old revision explicitly produces V3. Passive reads and opening an
+editor preserve the old budget; active/prepared publications remain frozen until
+explicit route selection and publication. Test freshness compares the entire
+saved configuration digest, including context. The fixed connection test does
+not certify maximum capacity. The old V1/V2 command entrypoints keep their shapes;
+the V2 list excludes unrepresentable V3 latest records rather than stripping policy.

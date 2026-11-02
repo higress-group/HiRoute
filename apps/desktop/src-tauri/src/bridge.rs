@@ -1,10 +1,10 @@
 use hiroute_application_api::*;
 use hiroute_product_session::commands::{
     ClassifierDecisionTestInput, ClassifierHeaderSecretSaveInput, DecisionServiceSaveInput,
-    DecisionServiceSaveInputV2, ObservationDeleteInput, ProtectedModelInputRegistration,
-    WebComputeCandidateViewV2, WebComputeConnectionApplyRequestV1, WebComputeDiscoveryRefV1,
-    WebComputeManagementChangeV2, WebComputeSavePreviewV2, WebComputeSaveResultV2,
-    WebComputeScanResultV2, WebComputeSubscriptionCandidatesV2,
+    DecisionServiceSaveInputV2, DecisionServiceSaveInputV3, ObservationDeleteInput,
+    ProtectedModelInputRegistration, WebComputeCandidateViewV2, WebComputeConnectionApplyRequestV1,
+    WebComputeDiscoveryRefV1, WebComputeManagementChangeV2, WebComputeSavePreviewV2,
+    WebComputeSaveResultV2, WebComputeScanResultV2, WebComputeSubscriptionCandidatesV2,
     WebComputeSubscriptionCheckResultV2, WebValidationRefV2, WorkerDependencyConfirmationInput,
     WorkerDependencyConfirmationState, WorkerDependencyConfirmationV1,
 };
@@ -766,6 +766,9 @@ pub fn run() {
             save_decision_service,
             decision_connection_sources,
             decision_services_v2,
+            decision_services_v3,
+            preview_decision_context,
+            save_decision_service_v3,
             save_decision_service_v2,
             test_decision_service_v2,
             test_decision_service_v3,

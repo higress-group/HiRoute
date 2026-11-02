@@ -7,7 +7,7 @@ import '../../../src/occami/styles.css';
 const params = new URLSearchParams(location.search), language = params.get('lang') === 'en' ? 'en' : 'zh';
 const source = structuredClone(readyManagement.sources[1]);
 source.connection_identity = { ...source.connection_identity!, access_kind: 'api', connection_option_id: 'openai.platform.global.v1', product_label: 'OpenAI API' };
-source.keys = [{ key_id: 'key/budget', generation: 2, fingerprint_hint: 'budget', ordinal: 1, enabled: true, model_statuses: [] }];
+source.keys = [{ key_id: 'key/budget', generation: 2, ordinal: 0, fingerprint_hint: 'budget', enabled: true, model_statuses: [] }];
 const snapshot = { ...structuredClone(readyManagement), sources: [source] };
 const budget = { definition: { budget_id: 'budget/monthly', revision: 3, display_name: 'Monthly API credits with a long recognizable name', policy: { currency: 'USD', amount_micros: 100_000_000, renewal: { period: 'monthly', mode: 'reset', anchor_local: '2026-11-30T09:00:00', timezone: 'America/Los_Angeles', balance_cap_micros: null } } }, balance_micros: 75_000_000, available_micros: 70_000_000, reserved_micros: 5_000_000, spent_micros: 25_000_000, lifetime_spent_micros: 125_000_000, next_renewal_at_ms: Date.UTC(2026, 10, 30, 17), key_count: 2 };
 if (params.has('seconds')) budget.definition.policy.renewal.anchor_local = '2026-11-30T09:00:30.123456789';

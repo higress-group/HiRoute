@@ -13,28 +13,28 @@ use crate::server::core_runtime::adapters::{
 };
 
 #[derive(Serialize)]
-struct OpenaiRequest<'a> {
+struct OpenaiRequest<'a, S: Serialize> {
     model: &'a str,
-    input: [OpenaiMessage<'a>; 1],
+    input: [OpenaiMessage<'a, S>; 1],
     questions: Vec<Value>,
 }
 
 #[derive(Serialize)]
-struct OpenaiMessage<'a> {
+struct OpenaiMessage<'a, S: Serialize> {
     role: &'static str,
-    content: [OpenaiInputPart<'a>; 1],
+    content: [OpenaiInputPart<'a, S>; 1],
 }
 
 #[derive(Serialize)]
-struct OpenaiInputPart<'a> {
+struct OpenaiInputPart<'a, S: Serialize> {
     #[serde(rename = "type")]
     kind: &'static str,
-    data: OpenaiState<'a>,
+    data: OpenaiState<'a, S>,
 }
 
 #[derive(Serialize)]
-struct OpenaiState<'a> {
-    state: &'a Value,
+struct OpenaiState<'a, S: Serialize> {
+    state: &'a S,
 }
 
 /// Convert only the bounded questions. The state and Replay-owned text are borrowed.
@@ -61,6 +61,35 @@ pub(super) fn prepare_template(
         .get("questions")
         .and_then(Value::as_object)
         .ok_or(CallFailure::RejectedInput)?;
+    prepare_native_state(codec, model, questions, state, refs)
+}
+
+/// Adaptive allocation borrows admitted turn slices instead of cloning their text into Value.
+/// Its caller validates the typed state shape while admitting each fragment.
+pub(super) fn prepare_native_state<S: Serialize>(
+    codec: DecisionWireProtocolV2,
+    model: &str,
+    questions: &Map<String, Value>,
+    state: &S,
+    refs: Vec<RequestedReplacement>,
+) -> Result<PreparedReplayTemplate, CallFailure> {
+    if codec == DecisionWireProtocolV2::SystemOne {
+        #[derive(Serialize)]
+        struct Request<'a, S: Serialize> {
+            model: &'a str,
+            questions: &'a Map<String, Value>,
+            state: &'a S,
+        }
+        return prepare_replay_json_template(
+            &Request {
+                model,
+                questions,
+                state,
+            },
+            refs,
+        )
+        .map_err(|_| CallFailure::RejectedInput);
+    }
     if !(1..=400).contains(&questions.len()) {
         return Err(CallFailure::RejectedInput);
     }
@@ -141,6 +170,12 @@ fn check_json_limits(value: &Value, depth: usize, count: &mut usize) -> Result<(
         _ => {}
     }
     Ok(())
+}
+
+pub(super) fn state_value_count(value: &Value) -> Result<usize, CallFailure> {
+    let mut count = 1;
+    check_json_limits(value, 2, &mut count)?;
+    Ok(count)
 }
 
 #[derive(Deserialize)]

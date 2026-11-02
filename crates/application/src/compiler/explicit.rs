@@ -119,7 +119,8 @@ pub fn compile_agent_plan_v2(
                                 branches.iter().map(|b| {
                                     (b.id.clone(), b.judgment.clone().expect("built-in judgment"))
                                 }),
-                            )
+                            )?
+                            .with_context(routing.classifier.resolved_context())
                         })
                         .transpose()
                         .map_err(|_| AgentPlanCompilerError::InvalidDesiredPlan)?,
@@ -155,7 +156,8 @@ pub fn compile_agent_plan_v2(
                                 &p.resolve()?,
                                 judgment.degree.definition().into(),
                                 [(SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
-                            )
+                            )?
+                            .with_context(classifier.resolved_context())
                         })
                         .transpose()
                         .map_err(|_| AgentPlanCompilerError::InvalidDesiredPlan)?,

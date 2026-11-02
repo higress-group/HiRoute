@@ -416,6 +416,19 @@ Source SPEC comments:
 
 For the Quickstart and its supported branches, HiRoute SHALL expose navigable family help, complete installed request/response schema definitions including supported wrapper variants, valid input examples and bounded field-level input errors. Dynamic IDs and model choices SHALL come from current queries rather than examples or invented references. The fixed-model and smart-saving convenience paths SHALL obtain initial settings from a common product-owned defaults/capability projection also consumed by Desktop, including judgment settings, request limits, context bounds and valid native reasoning choices. Querying defaults SHALL NOT save, publish, import credentials or invoke models. Existing Plan edits SHALL retain unmodified settings. A supported decision service and local rules SHALL remain explicit distinct choices; a normal Chat execution binding SHALL NOT be silently treated as a compatible decision service. Existing released machine output, exit semantics, protected channels and request interpretation SHALL remain compatible; new explanatory fields SHALL use a compatible or explicitly selected contract.
 
+Static semantic input diagnostics SHALL use the same domain rules as publication
+and Agent settings validation. Routing publication SHALL explain missing Worker
+configuration or purpose when delegation is enabled, unsupported Worker protocol syntax and
+judgment threshold/floor values outside the inclusive integer-thousandth range
+`0..1000`, including shared and per-branch custom judgment settings. Installed
+schemas SHALL publish these numeric bounds. Branch diagnostics SHALL use wildcard
+paths instead of branch identities. Additional-model
+protocol errors SHALL use bounded wildcard paths without echoing context or Plan
+identities. Ordinary JSON error shape and exit semantics SHALL remain compatible;
+structured input diagnostics retain the existing explicit opt-in. These checks
+SHALL NOT make incomplete draft storage require a publishable editor or infer
+native login, account entitlement or dynamic Plan capability.
+
 #### Scenario: Discover a valid request offline
 
 - **WHEN** a caller has the installed CLI but no source checkout or validation artifacts and requests help/schema for a Quickstart command
@@ -438,6 +451,18 @@ For the Quickstart and its supported branches, HiRoute SHALL expose navigable fa
 - **WHEN** a request contains a missing required member, wrong wrapper, unsupported enum, wrong type or unknown field
 - **THEN** the failure identifies the bounded field location and expected correction, retains usage failure semantics and does not expose credentials or echo the raw request.
 
+#### Scenario: Explain a static publication requirement
+
+- **WHEN** the CLI receives a typed publication with enabled delegation but no work/purpose, an unsupported work protocol, or an out-of-range smart/shared-custom/per-branch judgment value
+- **THEN** it reports the field and allowed correction before submission, with the same usage code and no model, publication or configuration side effect.
+
+#### Scenario: Configure a Worker Plan with convenience flags
+
+- **WHEN** the caller enables or disables delegation with explicit Worker Harness/protocol choices through routing Preview
+- **THEN** those choices enter the existing editor and exact Preview/Apply workflow; missing choices stay unresolved, omitted work retains its saved value, disabling retains the selection, and unrelated model/reasoning/limit settings remain unchanged.
+- **AND** Preview does not publish, install dependencies, configure standing collaboration or invoke a model; existing Apply identity and complete Plan recovery remain authoritative.
+- **AND** enabling a routing-only Plan with an empty purpose reports the missing purpose choice after the delegation edit; disabling delegation removes only that now-inapplicable purpose requirement.
+
 #### Scenario: Unsupported decision binding
 
 - **WHEN** a caller requests an ordinary Chat model as the decision service
@@ -452,7 +477,33 @@ Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/125#issuecomment-6206259606
 - https://github.com/higress-group/HiRoute/issues/162
 
+### Requirement: Installed binaries identify their own build offline
+
+The CLI SHALL provide an offline version command and conventional version aliases.
+Its JSON data SHALL identify the CLI component, package version, compiled source
+revision when available, OS and architecture. The daemon version entry SHALL
+identify the daemon binary independently. These entries SHALL initialize no
+service, storage, native configuration or network request. Missing/invalid compiled
+source metadata SHALL remain explicitly unknown, never inferred from runtime
+environment or current-directory Git. Identifying a file SHALL NOT claim it is the
+currently running daemon.
+On Windows, version output from the GUI daemon SHALL attach to the existing parent
+console while preserving redirected standard handles.
+
+#### Scenario: Identify binaries without a working service
+
+- **WHEN** the installed CLI or daemon is asked for its version with no available runtime/HOME
+- **THEN** its own compiled identity remains available without creating state, and runtime source-revision variables cannot replace the embedded identity.
+- **AND** the Windows daemon's version aliases produce the same JSON through the parent console and redirected pipes.
+
 ### Requirement: One canonical management Skill guides complete generic CLI journeys
+
+The shared Skill SHALL explain that an individually requested Worker task does not
+require the separate collaboration Skill. Standing explicit/delegate-by-default
+collaboration remains an independent user choice and facet, with its own Preview,
+status and owned removal. It SHALL guide Plan delegation setup, dependency
+selection and public execution in order, without making ordinary model routing a
+prerequisite for management or standing collaboration.
 
 HiRoute SHALL ship one canonical management Skill for all supported management Agent families, with the core Quickstart and bounded references for important branches: absent service/target/source, ambiguous scope, unavailable models or decision service, existing/partial setup, adjustment, effective-state diagnosis, observation and owned restoration. The Skill SHALL separate the caller from the managed target and consume installed public CLI capabilities, generated defaults and machine results rather than assuming Hermes, a particular filesystem layout or repository access. It SHALL explain how to obtain prerequisite CLI/Skill availability without coupling management to model routing or delegation. Instructions SHALL capture stdout, stderr and the CLI exit status separately when the native terminal merges them, inspect business/Operation results, preserve submission identity and avoid first-line JSON parsing or treating accepted as complete. Generated configuration and personal experience notes SHALL NOT be written into the product-managed Skill. Existing independent facet ownership, user-authorized effects, protected credentials and collaboration trigger policy remain authoritative. Before a restoration, reconnect or credential replacement that may revoke the current caller's own HiRoute access, the Skill SHALL establish an independent continuation path or leave that effect pending for an external operator. Verification SHALL distinguish saved state, native loading, request outcomes and actual classifier/group selection; manual model substitution or missing observations cannot establish a semantic decision branch or native activation. Before changing an existing Plan, the Skill SHALL retain its complete prior effective configuration and provide fully resolved recovery commands to the user, usable from an independent terminal if the caller fails. Plan restoration SHALL be distinguished from owned Agent-facet restoration. Restoring candidate names alone is not full configuration recovery; compare all effective settings after restoration.
  The same Skill SHALL guide a complete read-only analysis path for transition explanations, linked conversations, session/request spending ranking and recent savings using installed public commands. It SHALL resolve an unambiguous requested scope, reference and saved rates from current public facts, ask only for genuinely ambiguous/missing choices, and show basis/coverage with the answer. It SHALL distinguish retrying uncertain delivery from a new later restoration: after a completed restoration and subsequent edits, recovery uses a fresh current-head Preview and new Apply identity; replaying the old completed operation is not a new restore. The canonical Skill SHALL remain installable within the existing managed Skill resource limit and ownership contract; detailed options, enums, units and examples SHALL come from installed command help and schemas rather than an enlarged, copied or second Skill resource.

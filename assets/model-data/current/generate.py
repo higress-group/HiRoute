@@ -112,8 +112,8 @@ def project_metadata_catalog(catalog, client_runs):
             ),
             "max_output_scope": optional(value, "max_output_scope"),
             "max_output_note": optional(value, "max_output_note"),
-            "modalities": value["modalities"],
-            "capabilities": value["capabilities"],
+            "modalities": {key: project_state(state) for key, state in value["modalities"].items()},
+            "capabilities": {key: project_state(state) for key, state in value["capabilities"].items()},
             "reasoning": {
                 "kind": value["reasoning"]["kind"],
                 "profiles": value["reasoning"].get("profiles", []),
@@ -140,6 +140,9 @@ def project_metadata_catalog(catalog, client_runs):
         "capability_overrides": value.get("capability_overrides", {}),
         "evidence_refs": value["evidence_refs"],
     } for value in catalog["endpoint_bindings"]]
+    for projected, value in zip(endpoint_bindings, catalog["endpoint_bindings"]):
+        if value.get("decision_constraints"):
+            projected["decision_constraints"] = copy.deepcopy(value["decision_constraints"])
     dynamic_routes = [copy.deepcopy(value) for value in catalog["dynamic_routes"]]
     provider_records = []
     for value in catalog["provider_metadata_records"]:

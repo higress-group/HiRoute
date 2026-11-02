@@ -861,6 +861,7 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
             "hiroute.change-preview-or-apply-request/v1"
         }
         "decision.services.test" => "hiroute.classifier-decision-test/v1",
+        "decision.context.preview" => "hiroute.decision-context-preview-request/v1",
         "decision.connections.test" | "decision.network.test" => {
             "hiroute.decision-service-test-request/v2"
         }
@@ -945,7 +946,8 @@ pub(crate) fn command_response_schema(command_id: &str) -> &'static str {
         "routing.apply" => "hiroute.operation-view/v1",
         "decision.services.list" => "hiroute.decision-services/v1",
         "decision.sources.list" => "hiroute.decision-connection-sources/v1",
-        "decision.connections.list" => "hiroute.decision-services/v2",
+        "decision.connections.list" => "hiroute.decision-services/v3",
+        "decision.context.preview" => "hiroute.resolved-decision-context/v1",
         "decision.services.apply" | "decision.connections.apply" => {
             "hiroute.change-preview-or-operation/v1"
         }
@@ -1132,7 +1134,7 @@ pub(crate) fn staged_coverage(command_id: &str, positive: bool) -> Option<Covera
 pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
     match command_id {
         "decision.services.apply" => return "hiroute decision services apply (--id ID [--name NAME] [--provider bailian-token-plan|bailian-workspace|openrouter|typesafe|compatible|custom] [--endpoint URL] [--model MODEL] [--timeout-ms MS] [--candidate REF [--header NAME] | --no-auth] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
-        "decision.connections.apply" => return "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        "decision.connections.apply" => return "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] [--context-window-tokens N | --context-window-auto] [--context-question-tokens N] [--typesafe-long-context auto|off] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
         "decision.services.test" => return "hiroute decision services test (--service ID@REVISION | --request-file PATH | --request-stdin)".into(),
         "decision.connections.test" => return "hiroute decision connections test (--service ID@REVISION | --request-file PATH | --request-stdin)".into(),
         "routing.preview" => return "hiroute routing preview (--name NAME --purpose PURPOSE --mode fixed_model --model BINDING | --name NAME --purpose PURPOSE --mode smart_saving --economy BINDING --primary BINDING --decision local_rules | --plan ID <changes> | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
@@ -1148,14 +1150,14 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
         "worker.dependencies.select" => "hiroute worker dependencies select --request-stdin [--output <json|text|quiet>]".into(),
         "worker.plans" => "hiroute worker plans [--output <json|text|quiet>]".into(),
         "worker.list" => "hiroute worker list [--title <TITLE>] [--cursor <OPAQUE>] [--limit <1..200>] [--output <json|text|quiet>]".into(),
-        "worker.exec" => "hiroute worker exec --plan <ID> --cwd <PATH> [--title <TITLE>] [--permission-policy <approve-all|approve-reads|deny-all>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)".into(),
+        "worker.exec" => "hiroute worker exec --plan <ID> --cwd <PATH> [--title <TITLE>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)".into(),
         "worker.status" => "hiroute worker status (--run <ID> | --task <ID> [--run <ID>] | --submission <KEY> --operation <start|continue>)".into(),
         "worker.wait" => "hiroute worker wait --run <ID> [--after-revision <N>] [--wait-timeout <1..30>]".into(),
         "worker.result" => "hiroute worker result --run <ID> [--offset <N>] [--max-bytes <N>]".into(),
         "worker.read" => "hiroute worker read --run <ID> [--cursor <OPAQUE>] [--max-bytes <1..32768>]".into(),
         "worker.cleanup.confirm" => "hiroute worker cleanup confirm --run <ID> --expected-revision <REVISION> --handled [--idempotency-key <KEY>]".into(),
         "worker.cancel" => "hiroute worker cancel --run <ID> [--reason <REFERENCE>] [--idempotency-key <KEY>]".into(),
-        "worker.continue" => "hiroute worker continue --task <ID> --expected-latest-run <ID> [--cwd <PATH>] [--permission-policy <approve-all|approve-reads|deny-all>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)".into(),
+        "worker.continue" => "hiroute worker continue --task <ID> --expected-latest-run <ID> [--cwd <PATH>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)".into(),
         "tasks.list" => "hiroute tasks list --request-stdin (--agent <codex|claude-code> | --capability-fd <FD>) --json".into(),
         "tasks.show" => "hiroute tasks show (--task <ID> [--run <ID>] | --submission-key <KEY> --operation <start|continue>) --request-stdin (--agent <codex|claude-code> | --capability-fd <FD>) --json".into(),
         "tasks.start" => "hiroute tasks start --request-stdin (--agent <codex|claude-code> | --capability-fd <FD>) --json".into(),
@@ -1216,14 +1218,14 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "worker.dependencies.select" => "Same-UID local management only. --request-stdin reads one strict JSON object with harness (codex_cli, claude_code, qoder_cli, pi, deepseek_harness, or opencode), absolute cli_path, and expected_selection_revision copied from the matching selection_revisions entry returned by worker dependencies discover --output json. codex_cli and claude_code require absolute adapter_path and accept optional absolute node_path. pi requires absolute node_path and forbids adapter_path. qoder_cli, deepseek_harness and opencode accept only cli_path and forbid adapter_path and node_path. All paths and the revision are validated again before an atomic selection update; the command never installs software or accepts an Apply capability.".into(),
         "worker.plans" => "Lists every currently published and delegation-enabled Worker Plan in this daemon instance; no main-Agent selector or allowlist participates.".into(),
         "worker.list" => "Pages the daemon instance's durable tasks newest-first. --title is normalized exact matching; the signed opaque cursor is bound to that filter. Default 50, maximum 200, and no total count.".into(),
-        "worker.exec" => "Plan, cwd, and exactly one text source are required. Permission policy defaults to approve-all; approve-reads and deny-all are explicit run restrictions and fail unavailable unless the exact Harness mapping proves them. cwd is scheduling context, not directory authorization. Submits directly to the daemon without a local receipt. Choose a unique --submission-key before sending; after uncertain delivery, query or retry with that original key and the identical request.".into(),
+        "worker.exec" => "Plan, cwd, and exactly one text source are required. Worker runs use approve-all without per-tool approval. cwd is scheduling context, not directory authorization. Submits directly to the daemon without a local receipt. Choose a unique --submission-key before sending; after uncertain delivery, query or retry with that original key and the identical request.".into(),
         "worker.status" => "Select exactly a run, a task (and optional historical run), or an original submission key plus start|continue. The daemon instance is the task namespace; no caller, Agent, grant, permit, or workspace-root identity is accepted.".into(),
         "worker.read" => "Reads a bounded best-effort public assistant-message progress window. It is not a complete log or completion proof; cursors are opaque, signed and run-bound.".into(),
         "worker.wait" => "Wait is bounded to 1..30 seconds and never cancels the run. A timeout is a pending observation with a reusable run locator.".into(),
         "worker.result" => "Reads the actual persisted result, optionally by UTF-8 byte page. Query success can honestly report a failed, cancelled, active, incomplete, or unavailable run.".into(),
         "worker.cleanup.confirm" => "Use only after the user handles remaining processes/resources. Requires the observed revision and explicit --handled; known-live or stale runs are rejected. Exact retries reuse the idempotency key. Only the local occupied slot is released; task result and file changes remain.".into(),
         "worker.cancel" => "Cancellation is idempotent for one exact run. Omitting the idempotency key creates one; only the owned Worker scope is stopped.".into(),
-        "worker.continue" => "Task and expected latest run are mandatory. cwd is optional but, when present, must canonicalize to the persisted task root. Permission policy defaults to approve-all and configures only this run; Continue never falls back to a new task, newest Plan, or session/new.".into(),
+        "worker.continue" => "Task and expected latest run are mandatory. cwd is optional but, when present, must canonicalize to the persisted task root. Worker runs use approve-all without per-tool approval; Continue never falls back to a new task, newest Plan, or session/new.".into(),
         "tasks.list" => "Required identity: --agent or --capability-fd. stdin carries the typed caller plus optional cursor/limit; default 50, maximum 200. Only tasks visible to the current verified collaboration grant are returned.".into(),
         "tasks.show" => "Required identity: --agent or --capability-fd. Select exactly one task (and optional historical run) or the original submission key plus start|continue. A missing key is not permission to retry with a replacement key.".into(),
         "tasks.start" => "Required identity: --agent reads the private sealed installation, or --capability-fd supplies an inherited collaboration pipe; never both. stdin schema: hiroute.delegation-start-request/v1. Start returns accepted promptly. Retry the identical request with the original idempotency key; never replace the key after uncertain delivery. A result query does not cancel, and Continue is a separate operation, not a new Start.".into(),

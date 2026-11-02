@@ -730,6 +730,7 @@ mod tests {
         );
         delegation_safety.finish_startup_recovery();
         let adapter = LocalControlAdapter {
+        upgrade_cleanup: hiroute_local_storage::backup::UpgradeCleanup::new(&storage),
             native_network: Arc::new(hiroute_domain::NativeNetworkRegistryV1::new(
                 hiroute_domain::NativeProxyEnvironmentV1::from_variables("test-network".into(), std::iter::empty::<(String, String)>()),
             )),
@@ -796,6 +797,7 @@ mod tests {
             startup_recovery_complete: std::sync::atomic::AtomicBool::new(true),
             delegation_native_cleanup_cursor: Mutex::new(None),
             delegation_task_maintenance_cursor: Mutex::new(None),
+            delegation_text_reader: Mutex::new(None),
         };
         let plan = publication
             .published_agent_plans()

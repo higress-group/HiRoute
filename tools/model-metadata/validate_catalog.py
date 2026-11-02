@@ -999,6 +999,31 @@ def main() -> int:
         ):
             errors.append(f"binding {binding_key} has invalid replacement upstream ID")
         check_evidence_refs(f"binding {binding_key}", binding.get("evidence_refs"))
+        constraints = binding.get("decision_constraints", [])
+        if not isinstance(constraints, list) or len(constraints) > 16:
+            errors.append(f"binding {binding_key} has invalid decision constraints")
+            continue
+        constraint_keys = [c.get("constraint_key") for c in constraints if isinstance(c, dict)]
+        if len(constraint_keys) != len(constraints) or any(not isinstance(k, str) or not k for k in constraint_keys):
+            errors.append(f"binding {binding_key} has invalid decision constraint keys")
+            continue
+        if constraint_keys != sorted(set(constraint_keys)):
+            errors.append(f"binding {binding_key} decision constraints are not sorted/unique")
+        product_interfaces = {i["interface_key"]: i for i in products[product_key]["interfaces"]}
+        for c in constraints:
+            i = product_interfaces.get(c.get("interface_key"), {})
+            request = c.get("request_tokens")
+            question = c.get("per_question_tokens")
+            if (set(c) != {"constraint_key", "interface_key", "condition", "request_tokens", "per_question_tokens", "basis", "note", "evidence_refs"}
+                or c.get("interface_key") not in candidate_interfaces
+                or i.get("protocol") not in {"system-one", "openai-decisions"}
+                or c.get("condition") not in {"always", "typesafe_default", "typesafe_long_context"}
+                or c.get("basis") not in {"documented", "inferred", "maintainer_policy"}
+                or type(request) is not int or not 0 < request <= 2**32-1
+                or question is not None and (type(question) is not int or not 0 < question <= request)
+                or not isinstance(c.get("note"), str) or not 0 < len(c["note"]) <= 2048):
+                errors.append(f"binding {binding_key} has invalid decision constraint")
+            check_evidence_refs(f"decision constraint {c.get('constraint_key')}", c.get("evidence_refs"))
 
     for route in catalog.get("dynamic_routes", []):
         route_key = route.get("route_key")

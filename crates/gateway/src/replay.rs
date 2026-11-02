@@ -16,6 +16,7 @@ use thiserror::Error;
 
 use crate::content_ref::ContentRef;
 
+mod overflow;
 mod secure_path;
 mod stream;
 #[cfg(windows)]
@@ -25,12 +26,16 @@ mod stream;
 #[allow(unsafe_code)]
 mod windows_acl;
 
+pub(crate) use overflow::{
+    OverflowFactory, OverflowQuota, OverflowRange, OverflowStats, OverflowWriter,
+};
 pub use stream::ReplayReader;
 use stream::{ReplayStream, ReplayStreamBuilder};
 pub(crate) use stream::{write_canonical_json, write_canonical_object};
 
-// Spill before a single large JSON string and serde's decode scratch can
-// compete for the same 8 MiB request memory budget.
+// Raw Replay backing has its own unchanged residency policy. This is separate
+// from the encoded Content overflow queue and from forwarding accounting; the
+// latter records allocations instead of enforcing a fixed 8 MiB request cap.
 const DEFAULT_MEMORY_THRESHOLD: usize = 1024 * 1024;
 const DEFAULT_RECORD_BYTES: usize = 16 * 1024;
 const DEFAULT_ORPHAN_TTL: Duration = Duration::from_secs(24 * 60 * 60);
@@ -202,28 +207,32 @@ impl ReplayManager {
 
 impl ReplayStore {
     /// A read-only view for asynchronous content capture. It shares charged
-    /// semantic streams and metadata, never the raw request stream. Only the
+    /// selected semantic streams, never raw ingress or unrelated IR metadata. Only the
     /// final owning view removes the request directory on every platform.
-    pub(crate) fn content_lease(&self) -> Result<Self, ReplayError> {
+    pub(crate) fn content_lease(&self, references: &[ContentRef]) -> Result<Self, ReplayError> {
         if !self.is_prevalidated() {
             return Err(ReplayError::Integrity);
         }
         let source = lock(&self.inner.streams);
-        let streams = source
-            .iter()
-            .filter(|(_, stream)| !stream.is_raw())
-            .map(|(id, stream)| (*id, Arc::clone(stream)))
-            .collect();
-        // The capture job admits its view allocation through the Content
-        // channel. Shared backing keeps its original reservations alive.
-        let metadata = lock(&self.inner.metadata).clone();
+        let mut streams = BTreeMap::new();
+        for reference in references {
+            let stream = source
+                .get(&reference.stream_ordinal())
+                .filter(|stream| !stream.is_raw() && stream.contains(reference))
+                .ok_or(ReplayError::UnknownContentRef)?;
+            streams.insert(reference.stream_ordinal(), Arc::clone(stream));
+        }
+        // The original IR owns its structure charges; retaining those would
+        // pin unrelated setup metadata. The caller's Content reservation covers
+        // this view and retained indexes, never the forwarding stream budget.
+        // Payload segments keep their original charged owners.
         Ok(Self {
             inner: Arc::new(StoreInner {
                 manager: Arc::clone(&self.inner.manager),
                 directory: Arc::clone(&self.inner.directory),
                 budget: self.inner.budget.clone(),
                 streams: Mutex::new(streams),
-                metadata: Mutex::new(metadata),
+                metadata: Mutex::new(Vec::new()),
                 cleanup: Arc::clone(&self.inner.cleanup),
                 next_stream: AtomicU64::new(0),
                 memory_live: Arc::clone(&self.inner.memory_live),
@@ -238,28 +247,26 @@ impl ReplayStore {
 
     /// Queue-admission footprint of a semantic lease. Disk payload length is
     /// not resident memory; shared RAM remains charged by its original owner.
-    pub(crate) fn content_lease_memory_bytes(&self) -> usize {
-        let charges = lock(&self.inner.metadata);
-        let metadata = charges
-            .iter()
-            .map(|charge| charge.bytes())
-            .sum::<usize>()
-            .saturating_add(std::mem::size_of::<StoreInner>() + 512)
-            .saturating_add(
-                charges
-                    .len()
-                    .saturating_add(1)
-                    .saturating_mul(2 * std::mem::size_of::<Arc<Reservation>>()),
-            );
-        drop(charges);
-        lock(&self.inner.streams)
-            .values()
-            .filter(|stream| !stream.is_raw())
-            .fold(metadata, |bytes, stream| {
-                bytes
-                    .saturating_add(128)
-                    .saturating_add(stream.retained_memory_bytes())
-            })
+    pub(crate) fn content_lease_memory_bytes(&self, references: &[ContentRef]) -> usize {
+        let streams = lock(&self.inner.streams);
+        let mut previous = None;
+        references.iter().fold(
+            std::mem::size_of::<StoreInner>() + 512,
+            |bytes, reference| {
+                let id = reference.stream_ordinal();
+                // message_content_refs supplies sorted references, including when
+                // several selected fields share the same backing pool.
+                if previous == Some(id) {
+                    return bytes;
+                }
+                previous = Some(id);
+                streams.get(&id).map_or(bytes, |stream| {
+                    bytes
+                        .saturating_add(stream.metadata_bytes())
+                        .saturating_add(stream.retained_memory_bytes())
+                })
+            },
+        )
     }
 
     pub(crate) fn runtime_fingerprint(

@@ -23,6 +23,9 @@ pub(super) fn test(
         DecisionServiceRecord::V2(service) => ComplexityClassifierModeV1::DecisionServiceV2 {
             service: Box::new(service.clone()),
         },
+        DecisionServiceRecord::V3(service) => ComplexityClassifierModeV1::DecisionServiceV3 {
+            service: Box::new(service.clone()),
+        },
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

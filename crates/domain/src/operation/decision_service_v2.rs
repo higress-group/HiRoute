@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::*;
 use crate::{
     ComputeManagementSourceV2, DecisionAuthenticationV2, DecisionConnectionV2,
-    DecisionServiceChangeV2, register_decision_consumer, remove_decision_consumers,
+    DecisionServiceChangeV2, register_decision_consumer_record, remove_decision_consumers,
 };
 
 pub const DECISION_SERVICE_OPERATION_SCHEMA_V2: &str = "hiroute.decision-service-operation/v2";
@@ -61,6 +61,15 @@ pub(super) fn validate_plan(
     {
         return Err(invalid());
     }
+    validate_effects(&operation.into_state(), secrets)
+}
+
+pub(super) fn validate_effects(
+    operation: &DecisionServiceOperationState,
+    secrets: &[SecretMutationV1],
+) -> Result<(), OperationValidationError> {
+    let invalid = || OperationValidationError::UnregisteredEffectPlan;
+    let input = &operation.input;
     if let Some(slot) = &input.input_slot {
         validate_scope_identifier(slot)?;
     }
@@ -69,11 +78,11 @@ pub(super) fn validate_plan(
             .change
             .service
             .as_ref()
-            .and_then(|service| match &service.connection {
-                DecisionConnectionV2::Native {
+            .and_then(|service| match service.versioned_connection() {
+                Some(DecisionConnectionV2::Native {
                     authentication: DecisionAuthenticationV2::SharedSource { source_id, .. },
                     ..
-                } => Some(source_id.as_str()),
+                }) => Some(source_id.as_str()),
                 _ => None,
             });
     if shared_source.is_some() && input.input_slot.is_some()
@@ -105,7 +114,7 @@ pub(super) fn validate_plan(
         }
         let expected = match &input.change.service {
             Some(service) if shared_source == Some(source.before.source_id.as_str()) => {
-                register_decision_consumer(&source.before, service).map_err(|_| invalid())?
+                register_decision_consumer_record(&source.before, service).map_err(|_| invalid())?
             }
             None => remove_decision_consumers(&source.before, &input.change.id)
                 .map_err(|_| invalid())?
@@ -149,7 +158,7 @@ pub(super) fn validate_plan(
                 .change
                 .service
                 .as_ref()
-                .and_then(|service| service.connection.transport().2)
+                .and_then(|service| service.auth_header())
                 .ok_or_else(invalid)?;
             let secret_spec = ChangeSpecV1 {
                 schema_version: crate::CHANGE_SPEC_SCHEMA_V1,

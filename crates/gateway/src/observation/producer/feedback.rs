@@ -419,13 +419,11 @@ fn validate_ranges(
 fn validate_blobs(
     blobs: &[ObservationBlobAcknowledgementV1],
 ) -> Result<(), ObservationFeedbackValidationError> {
-    for (index, blob) in blobs.iter().enumerate() {
+    let mut identities = std::collections::BTreeSet::new();
+    for blob in blobs {
         nonempty(&blob.content_id, "blob.content_id")?;
         nonempty(&blob.digest, "blob.digest")?;
-        if blobs[..index]
-            .iter()
-            .any(|prior| prior.content_id == blob.content_id)
-        {
+        if !identities.insert(blob.content_id.as_str()) {
             return Err(ObservationFeedbackValidationError::DuplicateBlobAcknowledgement);
         }
     }

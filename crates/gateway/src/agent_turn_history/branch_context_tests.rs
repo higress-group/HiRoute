@@ -403,6 +403,7 @@ fn retrying_or_reclassifying_a_turn_cannot_launder_a_partial_segment() {
             entry.active.agent_turn_id = "reclassified-same-input".into();
             entry.active.opening_cause = Cause::Other;
             AgentTurnTicket {
+                capture_input_start: None,
                 agent_turn_id: entry.active.agent_turn_id.clone(),
                 ..ticket
             }

@@ -7,6 +7,8 @@ pub(crate) mod capacity;
 mod extensions;
 mod unified_retention;
 
+mod current_commit;
+mod fact_identity;
 pub(crate) mod fact_log;
 #[cfg(test)]
 mod field_replay_tests;
@@ -14,12 +16,16 @@ mod field_replay_tests;
 mod field_tests;
 mod gap;
 mod ingest;
+#[cfg(test)]
+pub(crate) mod ingest_profile;
 mod protocol;
-pub(crate) mod records;
 mod request_retention;
+mod reset;
 mod retention;
 mod safe_facts;
 mod schema;
+#[cfg(test)]
+mod semantic_field;
 pub(crate) mod sensitive;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -47,20 +53,22 @@ pub struct LocalObservationStore {
     pub(crate) query_workers: std::sync::atomic::AtomicUsize,
     pub(crate) connection: Mutex<Connection>,
     pub(crate) activity_path: PathBuf,
+    pub(crate) cursor_generation: String,
     pub(crate) staging_root: PathBuf,
     pub(crate) blob_root: PathBuf,
     pub(crate) authority: DigestAuthority,
     pub(crate) retention: RetentionPolicyV1,
     pub(crate) capacity: Mutex<capacity::State>,
+    reset_cleanup: Mutex<reset::Cleanup>,
     #[cfg(test)]
     pub(crate) session_read_test_hook: Mutex<Option<SessionReadTestHook>>,
 }
 
 impl LocalObservationStore {
-    pub fn legacy_history_requires_seal(
-        root: impl AsRef<Path>,
-    ) -> Result<bool, ObservationStoreError> {
-        upgrade::required(root.as_ref())
+    /// Format admission remains read-only during installer preflight. A known
+    /// old observation format is disposable and requires no sealed copy.
+    pub fn validate_startup_format(root: impl AsRef<Path>) -> Result<(), ObservationStoreError> {
+        upgrade::required(root.as_ref()).map(|_| ())
     }
 
     /// Called only after the startup coordinator has published the complete
@@ -114,6 +122,18 @@ impl LocalObservationStore {
         fs::create_dir_all(&blob_root).map_err(|_| ObservationStoreError::Io)?;
         let activity_path = root.join("activity.db");
         let fresh = !activity_path.exists();
+        if fresh {
+            // SQLite otherwise inherits process defaults, which need not name
+            // the actual user as owner on Windows. This store must be able to
+            // reopen its own database through private-file admission.
+            drop(
+                hiroute_platform::private_fs::create_file(
+                    &activity_path,
+                    hiroute_platform::private_fs::FileMode::Data,
+                )
+                .map_err(|_| ObservationStoreError::Io)?,
+            );
+        }
         let mut connection = Connection::open(&activity_path)
             .map_err(|_| ObservationStoreError::ActivityUnavailable)?;
         if fresh {
@@ -132,7 +152,15 @@ impl LocalObservationStore {
         // Cover the fixed content/protocol SQL working set without retaining
         // an unbounded collection of programs. Read workers keep their defaults.
         connection.set_prepared_statement_cache_capacity(64);
+        let cursor_generation = connection
+            .query_row(
+                "SELECT value FROM observation_meta WHERE key='format_generation'",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| ObservationStoreError::Corrupt)?;
         Ok(Self {
+            cursor_generation,
             timeline_cache: Default::default(),
             maintenance_running: Default::default(),
             index_running: Default::default(),
@@ -145,6 +173,7 @@ impl LocalObservationStore {
             authority,
             retention: RetentionPolicyV1::default(),
             capacity: Mutex::default(),
+            reset_cleanup: Mutex::default(),
             #[cfg(test)]
             session_read_test_hook: Mutex::default(),
         })

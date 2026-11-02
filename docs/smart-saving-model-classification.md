@@ -12,6 +12,14 @@ conversations, executing a task or producing competence samples. Editing the con
 a new immutable revision; a published route keeps its selected revision until explicitly republished.
 The list shows the latest revision, while an already saved historical revision remains publishable.
 
+Native V3 connections show Automatic/Custom context windows and a separate per-question limit.
+Automatic resolves exact model/endpoint metadata, otherwise a conservative 32,000 tokens.
+Custom request windows retain any independent provider question limit unless explicitly overridden.
+The TypeSafe long-context control applies only to its official HTTPS System One endpoint.
+Saving freezes the displayed policy and resolved limits into a new immutable revision; adopting
+new metadata or custom limits requires selecting and publishing that revision. Old connections
+and publications keep their original budget until explicitly replaced.
+
 Difficulty routing defaults to the decision-model choice; users may explicitly choose heuristic rules or
 a custom extension. Regular and Primary groups retain the existing candidate picker, ordering and
 reasoning controls. For built-in connections, judgment settings start collapsed: simple probability defaults to 0.8, competence
@@ -51,6 +59,18 @@ The complete stage can be longer. Wire-budget trimming marks the target partial 
 omits the applicability judgment without refilling history; partial scores cannot trigger
 historical protection. Current input is never silently truncated; tool-result bodies
 are excluded.
+
+Adaptive publications estimate one token per escaped UTF-8 wire byte and reserve 5% with a
+1,024-token floor, once per constraint. The complete current input and current questions have
+priority. Retain the newest contiguous whole target turns and steps first, with an explicit
+partial marker at a cropped boundary; background is admitted only if the whole target fits.
+Captured background keeps at most eight whole turns. C v4 replayed User/Assistant text uses
+only the remaining original allowance and cannot prove captured execution or completeness.
+Removing historical questions never refills evidence. A mandatory no-fit falls back locally
+without calling the decision provider. Safe diagnostics show windows, sources, estimates,
+retained/removed counts and unknown unscanned counts, never raw text. This conservative estimate
+and fixed connection tests do not certify maximum provider capacity. Context-free frozen
+publications retain the original 262,144-byte allocator and original protocol identities.
 
 For an otherwise eligible historical low-score protection opportunity, applicability
 at least 0.5 retains protection and a lower value suppresses it. Unavailable answers

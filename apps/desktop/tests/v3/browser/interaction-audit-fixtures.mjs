@@ -25,7 +25,7 @@ export async function seedInteractionAudit(c, { language = 'zh', theme = 'light'
       : { kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model: 'gpt-6-luna',
         endpoint: 'https://api.openai.test/v1/decisions', timeout_ms: 10000,
         authentication: { kind: 'shared_source', source_id: sourceId, source_lineage_digest: source.lineage_digest } } };
-  c.handlers.decision_services_v2 = () => ({ services: [c.decisionView(service, [source])] });
+  c.handlers.decision_services_v3 = () => ({ services: [c.decisionView(service, [source])] });
   c.handlers.decision_connection_sources = () => ({ sources: [source] });
   const task = { task_id: 'task/review', title: language === 'zh' ? '检查路由边界' : 'Review routing boundaries',
     brief: language === 'zh' ? '检查路由配置，整理发现和测试结果。' : 'Review routing configuration and report findings and tests.',

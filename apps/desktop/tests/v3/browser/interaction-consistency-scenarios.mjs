@@ -17,7 +17,7 @@ export const interactionConsistencyScenarios = [
   scenario('desktop.interactions.route-save-isolation', ['interaction-consistency'], 'A pending route save locks draft replacement but retains read-only performance navigation', async () => {
     const c=window.productShell;
     await seedInteractionAudit(c,{state:'routing',language:'en'});
-    c.desktop.catalog.plans[0].desired.strategy.classifier={kind:'decision_service',service:structuredClone(c.handlers.decision_services_v2().services[0].service)};
+    c.desktop.catalog.plans[0].desired.strategy.classifier={kind:'decision_service',service:structuredClone(c.handlers.decision_services_v3().services[0].service)};
     await openInteractionAudit('routing','en');
     all('.quality-view-tabs button').find(n=>n.textContent==='Model performance').click();
     await until(()=>all('.quality-footer-links button').length,'Division entry before save');

@@ -19,9 +19,48 @@ const CONTENT_CHUNK_BYTES: usize = 64 * 1024;
 const CANONICALIZATION_VERSION: &str = "hiroute.model-request-ir/v1";
 const CANONICAL_RESPONSE_EVENT_MEDIA_TYPE: &str =
     "application/vnd.hiroute.model-stream-event+json;version=1";
+const SEMANTIC_TERMINAL_MEDIA_TYPE: &str =
+    "application/vnd.hiroute.semantic-terminal+json;version=1";
+
+/// Finish an already admitted part if later optional work loses its queue slot.
+/// Otherwise a failure between two chunks would strand a complete accepted
+/// semantic segment as unreadable assembly. Drop restores nested terminal drain.
+struct PartDrain<'a> {
+    request: &'a RequestObservation,
+    response: bool,
+    previous: bool,
+}
+impl<'a> PartDrain<'a> {
+    fn new(request: &'a RequestObservation, response: bool) -> Self {
+        let mut state = request.lock_state();
+        let flag = if response {
+            &mut state.response_content_draining
+        } else {
+            &mut state.request_content_draining
+        };
+        let previous = std::mem::replace(flag, true);
+        Self {
+            request,
+            response,
+            previous,
+        }
+    }
+}
+impl Drop for PartDrain<'_> {
+    fn drop(&mut self) {
+        let mut state = self.request.lock_state();
+        if self.response {
+            state.response_content_draining = self.previous;
+        } else {
+            state.request_content_draining = self.previous;
+        }
+    }
+}
 
 #[path = "content/request.rs"]
 mod request;
+#[path = "content/semantic.rs"]
+pub(super) mod semantic;
 
 #[derive(Default)]
 pub(super) struct CanonicalFrameDelivery {
@@ -48,10 +87,38 @@ impl CanonicalFrameDelivery {
 }
 
 impl RequestObservation {
+    pub(super) fn content_capture_failed(&self) -> bool {
+        self.content_background
+            && self
+                .inner
+                .async_content
+                .get()
+                .is_some_and(|status| status.failed())
+    }
+
+    pub(super) fn terminal_content(
+        &self,
+        direction: &'static str,
+        phase: &'static str,
+        reason: Option<&str>,
+    ) {
+        super::content_work::inline(self.terminal_content_run(direction, phase, reason));
+    }
+
     pub(super) fn begin_content(
         &self,
         direction: &'static str,
         attempt: Option<&AttemptObservation>,
+    ) {
+        super::content_work::inline(
+            self.begin_content_at_run(direction, attempt.map(|value| value.attempt_id.as_str())),
+        );
+    }
+
+    pub(super) async fn begin_content_at_run(
+        &self,
+        direction: &'static str,
+        attempt_id: Option<&str>,
     ) {
         if !self.captures_content() {
             return;
@@ -66,7 +133,7 @@ impl RequestObservation {
                 return;
             }
             *started = true;
-            let fork_id = self.fork_id(direction, attempt);
+            let fork_id = self.fork_id(direction, attempt_id);
             match direction {
                 "request_input" => state.request_content_fork = Some(fork_id.clone()),
                 _ => state.response_content_fork = Some(fork_id.clone()),
@@ -93,10 +160,10 @@ impl RequestObservation {
             (true, fork_id, parent_transcript_root)
         };
         if should_emit {
-            self.emit_content(ContentEvent {
+            self.emit_content_run(ContentEvent {
                 direction,
                 phase: "begin",
-                attempt_id: attempt.map(|value| value.attempt_id.clone()),
+                attempt_id: attempt_id.map(str::to_owned),
                 fork_id,
                 parent_transcript_root,
                 result_transcript_root: None,
@@ -110,16 +177,17 @@ impl RequestObservation {
                 chunk_ordinal: None,
                 transport_frame_id: None,
                 canonical_media_type: None,
-                canonical_bytes_base64: None,
+                canonical_bytes: None,
                 content_ref: None,
                 downstream_delivery: None,
                 abort_reason: None,
                 completeness_delta: None,
-            });
+            })
+            .await;
         }
     }
 
-    fn append_content_chunk(&self, chunk: ContentChunk<'_>) {
+    async fn append_content_chunk_run(&self, chunk: ContentChunk<'_>) {
         if !self.captures_content() {
             return;
         }
@@ -163,7 +231,7 @@ impl RequestObservation {
             stats.note_chunk(chunk.bytes.len());
             (
                 current,
-                chunk.attempt.map(|attempt| attempt.attempt_id.clone()),
+                chunk.attempt_id.map(str::to_owned),
                 if chunk.direction == "request_input" {
                     state.request_content_fork.clone()
                 } else {
@@ -172,7 +240,7 @@ impl RequestObservation {
                 .expect("content capture begins before appending"),
             )
         };
-        self.emit_content(ContentEvent {
+        self.emit_content_run(ContentEvent {
             direction: chunk.direction,
             phase: "append",
             attempt_id,
@@ -189,15 +257,16 @@ impl RequestObservation {
             chunk_ordinal: Some(chunk_ordinal),
             transport_frame_id: chunk.transport_frame_id.map(Into::into),
             canonical_media_type: Some(chunk.media_type.into()),
-            canonical_bytes_base64: Some(base64_encode(chunk.bytes)),
+            canonical_bytes: Some(chunk.bytes),
             content_ref: chunk.public_ref,
             downstream_delivery: chunk.downstream_delivery.map(Into::into),
             abort_reason: None,
             completeness_delta: None,
-        });
+        })
+        .await;
     }
 
-    pub(super) fn terminal_content(
+    pub(super) async fn terminal_content_run(
         &self,
         direction: &'static str,
         phase: &'static str,
@@ -205,6 +274,25 @@ impl RequestObservation {
     ) {
         if !self.captures_content() {
             return;
+        }
+        if direction == "response_delivered" {
+            let semantic = self.lock_state().semantic_response.take();
+            if let Some(mut semantic) = semantic {
+                self.lock_state().response_content_draining = true;
+                for event in semantic.finish() {
+                    self.append_response_event_run(&semantic.attempt, "semantic-terminal", event)
+                        .await;
+                }
+                self.lock_state().response_content_draining = false;
+                if semantic.partial && phase == "finish" {
+                    return Box::pin(self.terminal_content_run(
+                        direction,
+                        "abort",
+                        Some("conflicting_semantic_output"),
+                    ))
+                    .await;
+                }
+            }
         }
         let (started, already_terminal, transcript, attempt) = {
             let mut state = self.lock_state();
@@ -227,7 +315,10 @@ impl RequestObservation {
                         started,
                         terminal,
                         state.response_transcript.take(),
-                        state.accepted_attempt.clone(),
+                        state
+                            .accepted_attempt
+                            .as_ref()
+                            .map(|attempt| attempt.attempt_id.clone()),
                     )
                 }
             }
@@ -262,11 +353,11 @@ impl RequestObservation {
         if direction == "request_input" {
             self.lock_state().request_result_transcript_root = result_transcript_root.clone();
         }
-        self.emit_content(ContentEvent {
+        self.emit_content_run(ContentEvent {
             direction,
             phase,
-            attempt_id: attempt.as_ref().map(|value| value.attempt_id.clone()),
-            fork_id: self.fork_id(direction, attempt.as_ref()),
+            attempt_id: attempt.clone(),
+            fork_id: self.fork_id(direction, attempt.as_deref()),
             parent_transcript_root: self.content_parent_root(direction),
             result_transcript_root,
             message_instance_id: None,
@@ -279,7 +370,7 @@ impl RequestObservation {
             chunk_ordinal: None,
             transport_frame_id: None,
             canonical_media_type: None,
-            canonical_bytes_base64: None,
+            canonical_bytes: None,
             content_ref: None,
             downstream_delivery: (direction == "response_delivered")
                 .then(|| "full_frame_transport_accepted".into()),
@@ -289,7 +380,8 @@ impl RequestObservation {
             } else {
                 "partial".into()
             }),
-        });
+        })
+        .await;
     }
 
     fn content_blob_digest(&self, media_type: &str, bytes: &[u8]) -> String {
@@ -301,6 +393,24 @@ impl RequestObservation {
     }
 
     fn message_instance_id(&self, direction: &str, message_ordinal: u32, role: &str) -> String {
+        if direction == "request_input"
+            && let Some(selection) = self.inner.input_capture.get()
+            && let Some(current) = selection.current_ordinal
+            && message_ordinal >= current
+            && let Some(turn) = &selection.turn_anchor
+        {
+            return stable_id(
+                "message",
+                &self.inner.key,
+                b"semantic-input-instance",
+                &[
+                    self.metadata().conversation_id.as_bytes(),
+                    turn.as_bytes(),
+                    &(message_ordinal - current).to_be_bytes(),
+                    role.as_bytes(),
+                ],
+            );
+        }
         let parent_transcript_root = self.content_parent_root(direction);
         stable_id(
             "message",
@@ -318,6 +428,27 @@ impl RequestObservation {
                 role.as_bytes(),
             ],
         )
+    }
+
+    fn capture_metadata(
+        &self,
+        direction: &str,
+        ordinal: Option<u32>,
+    ) -> Option<hiroute_domain::ObservationCaptureMetadataV1> {
+        if direction != "request_input" {
+            return None;
+        }
+        let selection = self.inner.input_capture.get()?;
+        Some(hiroute_domain::ObservationCaptureMetadataV1 {
+            context_only: ordinal.is_some_and(|n| n < selection.activity_ordinal),
+            boundary_verified: selection.boundary_verified,
+            input_anchor_id: selection.current_ordinal.and_then(|ordinal| {
+                hiroute_domain::MessageInstanceId::parse(
+                    self.message_instance_id(direction, ordinal, "user"),
+                )
+                .ok()
+            }),
+        })
     }
 
     fn content_parent_root(&self, direction: &str) -> Option<String> {
@@ -359,7 +490,7 @@ impl RequestObservation {
         }
     }
 
-    fn fork_id(&self, direction: &str, attempt: Option<&AttemptObservation>) -> String {
+    fn fork_id(&self, direction: &str, attempt_id: Option<&str>) -> String {
         stable_id(
             "fork",
             &self.inner.key,
@@ -367,13 +498,18 @@ impl RequestObservation {
             &[
                 self.metadata().request_id.as_bytes(),
                 direction.as_bytes(),
-                attempt.map_or(b"request".as_slice(), |value| value.attempt_id.as_bytes()),
+                attempt_id.map_or(b"request".as_slice(), str::as_bytes),
             ],
         )
     }
 
-    fn emit_content(&self, event: ContentEvent) {
-        if self.content_credit_wait.is_some()
+    async fn emit_content_run(&self, event: ContentEvent<'_>) {
+        if self.content_background
+            && !matches!(event.phase, "begin" | "abort")
+            && !{
+                let state = self.lock_state();
+                state.response_content_draining || state.request_content_draining
+            }
             && self
                 .inner
                 .async_content
@@ -386,72 +522,79 @@ impl RequestObservation {
         let request_id = self.metadata().request_id.clone();
         let key = self.inner.key;
         let event_kind = event.phase;
+        let capture = self.capture_metadata(event.direction, event.message_ordinal);
         let occurred_at_unix_nanos = self.content_occurred_at.unwrap_or_else(unix_nanos);
-        let credit_bytes = self
-            .content_credit_wait
-            .map_or(0, |_| event.record_credit_bytes(&correlation));
-        let published = self.inner.channels.content.publish_with_credit(
-            self.inner.latency.clone(),
-            self.content_credit_wait
-                .map(|limit| std::time::Instant::now() + limit),
-            credit_bytes,
-            move |producer, sequence, loss| {
-                let sequence_bytes = sequence.to_be_bytes();
-                ConversationContentEnvelopeV1 {
-                    schema_version: CONVERSATION_CONTENT_SCHEMA.into(),
-                    schema_digest: CONVERSATION_CONTENT_PORT_DIGEST.into(),
-                    channel: "conversation_content".into(),
-                    producer,
-                    sequence,
-                    event_id: stable_id(
-                        "content-event",
-                        &key,
-                        b"conversation-content-event",
-                        &[
-                            request_id.as_bytes(),
-                            event.direction.as_bytes(),
-                            event_kind.as_bytes(),
-                            &sequence_bytes,
-                        ],
-                    ),
-                    correlation,
-                    direction: event.direction.into(),
-                    phase: event.phase.into(),
-                    attempt_id: event.attempt_id,
-                    fork_id: event.fork_id,
-                    parent_transcript_root: event.parent_transcript_root,
-                    result_transcript_root: event.result_transcript_root,
-                    message_instance_id: event.message_instance_id,
-                    message_role: event.message_role,
-                    content_kind: event.content_kind,
-                    content_id: event.content_id,
-                    content_blob_digest: event.content_blob_digest,
-                    message_ordinal: event.message_ordinal,
-                    part_ordinal: event.part_ordinal,
-                    chunk_ordinal: event.chunk_ordinal,
-                    transport_frame_id: event.transport_frame_id,
-                    canonical_media_type: event.canonical_media_type,
-                    canonical_bytes_base64: event.canonical_bytes_base64,
-                    content_ref: event.content_ref,
-                    downstream_delivery: event.downstream_delivery,
-                    abort_reason: event.abort_reason,
-                    occurred_at_unix_nanos,
-                    completeness_delta: loss
-                        .as_ref()
-                        .map(|_| "partial".into())
-                        .or(event.completeness_delta),
-                    loss_watermark: loss,
-                }
-            },
-        );
-        if !published
-            && self.content_credit_wait.is_some()
+        let credit_bytes = event.record_credit_bytes(&correlation);
+        let control = event.phase != "append";
+        let published = self
+            .inner
+            .channels
+            .content
+            .publish_content(
+                self.inner.latency.clone(),
+                credit_bytes,
+                self.content_background,
+                control,
+                &self.inner.content_spool,
+                move |producer, sequence, loss| {
+                    let sequence_bytes = sequence.to_be_bytes();
+                    ConversationContentEnvelopeV1 {
+                        schema_version: CONVERSATION_CONTENT_SCHEMA.into(),
+                        schema_digest: CONVERSATION_CONTENT_PORT_DIGEST.into(),
+                        channel: "conversation_content".into(),
+                        producer,
+                        sequence,
+                        event_id: stable_id(
+                            "content-event",
+                            &key,
+                            b"conversation-content-event",
+                            &[
+                                request_id.as_bytes(),
+                                event.direction.as_bytes(),
+                                event_kind.as_bytes(),
+                                &sequence_bytes,
+                            ],
+                        ),
+                        correlation,
+                        direction: event.direction.into(),
+                        phase: event.phase.into(),
+                        attempt_id: event.attempt_id,
+                        fork_id: event.fork_id,
+                        parent_transcript_root: event.parent_transcript_root,
+                        result_transcript_root: event.result_transcript_root,
+                        message_instance_id: event.message_instance_id,
+                        message_role: event.message_role,
+                        content_kind: event.content_kind,
+                        content_id: event.content_id,
+                        content_blob_digest: event.content_blob_digest,
+                        message_ordinal: event.message_ordinal,
+                        part_ordinal: event.part_ordinal,
+                        chunk_ordinal: event.chunk_ordinal,
+                        capture,
+                        transport_frame_id: event.transport_frame_id,
+                        canonical_media_type: event.canonical_media_type,
+                        canonical_bytes_base64: event.canonical_bytes.map(base64_encode),
+                        content_ref: event.content_ref,
+                        downstream_delivery: event.downstream_delivery,
+                        abort_reason: event.abort_reason,
+                        occurred_at_unix_nanos,
+                        completeness_delta: loss
+                            .as_ref()
+                            .map(|_| "partial".into())
+                            .or(event.completeness_delta),
+                        loss_watermark: loss,
+                    }
+                },
+            )
+            .await;
+        if let Err(reason) = published
             && let Some(status) = self.inner.async_content.get()
         {
-            // The producer has already declared the exact lost sequence.
-            // Suppress dependent terminal roots after this failed command.
-            status.stop();
+            // Allocated sequence loss is already owned by the publisher.
+            // Queue only the dependent abort; never invent a finish root.
+            status.note_failure(reason);
         }
+        self.content_checkpoint(credit_bytes, false).await;
     }
 }
 
@@ -536,10 +679,17 @@ impl RequestObservation {
         if let Some((store, ticket)) = self.inner.agent_turn_output.get() {
             store.accept_output(ticket, &delivery.events);
         }
-        let usage = delivery.usage.take();
-        self.defer_response_content(attempt, frame_id, delivery);
-        if let Some(usage) = usage {
+        if let Some(usage) = delivery.usage.take() {
             self.usage_model(&usage);
+        }
+        // Accepted history and usage belong to the critical capture lane.
+        // Empty or metadata-only delivery has no optional Content work to do.
+        if delivery
+            .events
+            .iter()
+            .any(|event| canonical_response_content_kind(&event.event).is_some())
+        {
+            self.defer_response_content(attempt, frame_id, delivery);
         }
     }
 
@@ -549,56 +699,136 @@ impl RequestObservation {
         frame_id: &str,
         delivery: CanonicalFrameDelivery,
     ) {
-        if self.captures_content() {
-            for event in delivery.events {
-                let Some(kind) = canonical_response_content_kind(&event.event) else {
-                    continue;
-                };
-                let Ok(bytes) = serialize_observed_response_event(&event) else {
-                    self.terminal_content(
+        super::content_work::inline(self.emit_response_content_at_run(
+            &attempt.attempt_id,
+            frame_id,
+            delivery,
+        ));
+    }
+
+    pub(super) async fn emit_response_content_at_run(
+        &self,
+        attempt_id: &str,
+        frame_id: &str,
+        delivery: CanonicalFrameDelivery,
+    ) {
+        if !self.captures_content() {
+            return;
+        }
+        let existing_semantic = self.lock_state().semantic_response.take();
+        let mut semantic = match existing_semantic {
+            Some(value) => value,
+            None => {
+                let Some(mut reservation) = self
+                    .inner
+                    .channels
+                    .content
+                    .reserve_work(semantic::RESERVATION_BYTES)
+                else {
+                    self.terminal_content_run(
                         "response_delivered",
                         "abort",
-                        Some("canonical_response_serialization_failed"),
-                    );
+                        Some("content_capture_queue_unavailable"),
+                    )
+                    .await;
                     return;
                 };
-                let part_ordinal = {
-                    let mut state = self.lock_state();
-                    let ordinal = state.response_part_ordinal;
-                    state.response_part_ordinal = ordinal.saturating_add(1);
-                    ordinal
-                };
-                let whole_digest =
-                    self.content_blob_digest(CANONICAL_RESPONSE_EVENT_MEDIA_TYPE, &bytes);
-                let message_instance_id =
-                    self.message_instance_id("response_delivered", 0, "assistant");
-                let content_ref = ContentRefV1 {
-                    content_id: self.content_id(&message_instance_id, part_ordinal, &whole_digest),
-                    digest: whole_digest.clone(),
-                    byte_count: bytes.len() as u64,
-                    media_type: CANONICAL_RESPONSE_EVENT_MEDIA_TYPE.into(),
-                };
-                emit_content_ref(self, "response_delivered", content_ref.clone());
-                for (index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {
-                    self.append_content_chunk(ContentChunk {
-                        direction: "response_delivered",
-                        attempt: Some(attempt),
-                        message_ordinal: 0,
-                        part_ordinal,
-                        role: "assistant",
-                        kind,
-                        media_type: CANONICAL_RESPONSE_EVENT_MEDIA_TYPE,
-                        bytes: chunk,
-                        public_ref: Some(content_ref.clone()),
-                        whole_digest: &whole_digest,
-                        message_instance_id: &message_instance_id,
-                        content_id: &content_ref.content_id,
-                        starts_content: index == 0,
-                        transport_frame_id: Some(frame_id),
-                        downstream_delivery: Some("full_frame_transport_accepted"),
-                    });
-                }
+                // This is active coalescing state, not another queued source.
+                // Keep it charged without consuming the pending job credits.
+                self.inner
+                    .channels
+                    .content
+                    .activate_content_work(&mut reservation, 0)
+                    .await;
+                semantic::SemanticResponse::new(attempt_id, self.inner.key, reservation)
             }
+        };
+        if semantic.attempt != attempt_id {
+            // Output from distinct actual attempts cannot share a semantic block.
+            for event in semantic.finish() {
+                self.append_response_event_run(&semantic.attempt, frame_id, event)
+                    .await;
+            }
+            self.terminal_content_run(
+                "response_delivered",
+                "abort",
+                Some("content_attempt_changed"),
+            )
+            .await;
+            return;
+        }
+        for event in delivery.events {
+            for event in semantic.accept(event) {
+                self.append_response_event_run(attempt_id, frame_id, event)
+                    .await;
+            }
+        }
+        self.lock_state().semantic_response = Some(semantic);
+    }
+
+    async fn append_response_event_run(
+        &self,
+        attempt_id: &str,
+        _frame_id: &str,
+        semantic: semantic::SemanticEvent,
+    ) {
+        let draining = self.lock_state().response_content_draining;
+        if self.content_capture_failed() && !draining {
+            return;
+        }
+        let event = &semantic.event;
+        let Some(kind) = canonical_response_content_kind(&event.event) else {
+            return;
+        };
+        let media_type = if semantic.text_omitted {
+            SEMANTIC_TERMINAL_MEDIA_TYPE
+        } else {
+            CANONICAL_RESPONSE_EVENT_MEDIA_TYPE
+        };
+        let Ok(bytes) = serialize_observed_response_event(event, semantic.text_omitted) else {
+            Box::pin(self.terminal_content_run(
+                "response_delivered",
+                "abort",
+                Some("canonical_response_serialization_failed"),
+            ))
+            .await;
+            return;
+        };
+        let _drain = PartDrain::new(self, true);
+        let part_ordinal = {
+            let mut state = self.lock_state();
+            let ordinal = state.response_part_ordinal;
+            state.response_part_ordinal = ordinal.saturating_add(1);
+            ordinal
+        };
+        let whole_digest = self.content_blob_digest(media_type, &bytes);
+        let message_instance_id = self.message_instance_id("response_delivered", 0, "assistant");
+        let content_ref = ContentRefV1 {
+            content_id: self.content_id(&message_instance_id, part_ordinal, &whole_digest),
+            digest: whole_digest.clone(),
+            byte_count: bytes.len() as u64,
+            media_type: media_type.into(),
+        };
+        emit_content_ref(self, "response_delivered", content_ref.clone());
+        for (index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {
+            self.append_content_chunk_run(ContentChunk {
+                direction: "response_delivered",
+                attempt_id: Some(attempt_id),
+                message_ordinal: 0,
+                part_ordinal,
+                role: "assistant",
+                kind,
+                media_type,
+                bytes: chunk,
+                public_ref: Some(content_ref.clone()),
+                whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_ref.content_id,
+                starts_content: index == 0,
+                transport_frame_id: None,
+                downstream_delivery: Some("full_frame_transport_accepted"),
+            })
+            .await;
         }
     }
 }
@@ -608,8 +838,17 @@ impl RequestObservation {
 /// runtime ledger but never cross the conversation-content port.
 fn serialize_observed_response_event(
     event: &ModelStreamEventV1,
+    text_omitted: bool,
 ) -> Result<Vec<u8>, serde_json::Error> {
     let mut projected = serde_json::to_value(event)?;
+    if text_omitted {
+        projected["schema_version"] = "hiroute.semantic-terminal/v1".into();
+        projected["text_source"] = "accepted_segments".into();
+        projected["event"]
+            .as_object_mut()
+            .expect("serialized model event")
+            .remove("text");
+    }
     if matches!(
         event.event,
         ModelEvent::ToolCallStarted { .. } | ModelEvent::WebSearch { .. }
@@ -666,7 +905,7 @@ impl Drop for AcceptedResponseCapture {
 
 struct ContentChunk<'a> {
     direction: &'static str,
-    attempt: Option<&'a AttemptObservation>,
+    attempt_id: Option<&'a str>,
     message_ordinal: u32,
     part_ordinal: u32,
     role: &'a str,
@@ -682,7 +921,7 @@ struct ContentChunk<'a> {
     downstream_delivery: Option<&'a str>,
 }
 
-struct ContentEvent {
+struct ContentEvent<'a> {
     direction: &'static str,
     phase: &'static str,
     attempt_id: Option<String>,
@@ -699,14 +938,14 @@ struct ContentEvent {
     chunk_ordinal: Option<u32>,
     transport_frame_id: Option<String>,
     canonical_media_type: Option<String>,
-    canonical_bytes_base64: Option<String>,
+    canonical_bytes: Option<&'a [u8]>,
     content_ref: Option<ContentRefV1>,
     downstream_delivery: Option<String>,
     abort_reason: Option<String>,
     completeness_delta: Option<String>,
 }
 
-impl ContentEvent {
+impl ContentEvent<'_> {
     fn record_credit_bytes(&self, correlation: &super::schema::CorrelationV1) -> usize {
         // Fixed keys, producer IDs, event ID, numbers and accounting fit 4 KiB.
         // Variable metadata gets JSON's worst-case six bytes per input byte;
@@ -754,7 +993,10 @@ impl ContentEvent {
                 bytes.saturating_add(text.len().saturating_mul(6))
             })
         });
-        metadata.saturating_add(self.canonical_bytes_base64.as_ref().map_or(0, String::len))
+        metadata.saturating_add(
+            self.canonical_bytes
+                .map_or(0, |bytes| bytes.len().div_ceil(3).saturating_mul(4)),
+        )
     }
 }
 

@@ -109,9 +109,11 @@ pub(crate) fn preview_command(
             ));
         }
         let descriptor = command_by_id(command).ok_or_else(|| error(ErrorCode::UnknownCommand))?;
+        let operation =
+            crate::control_plane::operation_id(command, &descriptor.operation_id, &payload);
         let mut response = call_with_id(
             &client,
-            &descriptor.operation_id,
+            operation,
             payload.clone(),
             globals.request_id.clone(),
         )?;

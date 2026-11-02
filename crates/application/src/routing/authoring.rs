@@ -19,6 +19,7 @@ pub struct PlanAuthoringSnapshotV2 {
     /// Exact saved connection revision selected by the effective editor, not its latest version.
     pub decision_service: Option<DecisionServiceV1>,
     pub decision_service_v2: Option<DecisionServiceV2>,
+    pub decision_service_v3: Option<DecisionServiceV3>,
     pub decision_source: Option<ComputeManagementSourceV2>,
     pub expected_revisions: RevisionSetV1,
 }
@@ -71,8 +72,23 @@ pub fn preview_plan_content(
     {
         return Err(PlanPreviewError::InvalidDecisionService);
     }
-    if let Some(service) = configuration.decision_service_v2()
-        && let DecisionConnectionV2::Native {
+    if let Some(service) = configuration.decision_service_v3()
+        && state.decision_service_v3.as_ref() != Some(service)
+    {
+        return Err(PlanPreviewError::InvalidDecisionService);
+    }
+    let selected = configuration
+        .decision_service_v3()
+        .map(|s| (&s.id, s.revision, &s.connection))
+        .or_else(|| {
+            configuration
+                .decision_service_v2()
+                .map(|s| (&s.id, s.revision, &s.connection))
+        });
+    if let Some((
+        service_id,
+        revision,
+        DecisionConnectionV2::Native {
             endpoint,
             model,
             wire_protocol,
@@ -82,7 +98,8 @@ pub fn preview_plan_content(
                     source_lineage_digest,
                 },
             ..
-        } = &service.connection
+        },
+    )) = selected
     {
         let source = state
             .decision_source
@@ -94,8 +111,8 @@ pub fn preview_plan_content(
             .consumer(
                 source_id,
                 source_lineage_digest,
-                &service.id,
-                service.revision,
+                service_id,
+                revision,
                 model,
             )
             .map_err(|_| PlanPreviewError::InvalidDecisionService)?;

@@ -54,6 +54,8 @@ pub enum ProtectionEligibilityV1 {
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoutingObservationV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_budget: Option<super::DecisionContextObservationV1>,
     pub protocol: String,
     pub content_digest: CanonicalDigest,
     pub bundle_digest: CanonicalDigest,
@@ -84,6 +86,7 @@ impl RoutingObservationV1 {
     pub fn not_dispatched(p: &super::FrozenNativeProtocolV1, scope: &str) -> Self {
         let settings = p.scopes.get(scope);
         Self {
+            context_budget: None,
             protocol: p.protocol.schema.clone(),
             content_digest: p.digest.clone(),
             bundle_digest: CanonicalDigest::of(&p.protocol.fixed).expect("validated bundle"),
@@ -125,7 +128,10 @@ impl RoutingObservationV1 {
             .is_some_and(|s| s < f64::from(self.competence_floor_millis) / 1000.0);
         matches!(
             self.protocol.as_str(),
-            super::SYSTEM_ONE_C_V1 | super::SYSTEM_ONE_C_V2 | super::SYSTEM_ONE_C_V3
+            super::SYSTEM_ONE_C_V1
+                | super::SYSTEM_ONE_C_V2
+                | super::SYSTEM_ONE_C_V3
+                | super::SYSTEM_ONE_C_V4
         ) && CanonicalDigest::parse(self.content_digest.as_str()).is_ok()
             && CanonicalDigest::parse(self.bundle_digest.as_str()).is_ok()
             && text(&self.provider, 128)
@@ -135,7 +141,18 @@ impl RoutingObservationV1 {
             && self.simple_threshold_millis <= 1000
             && self.competence_floor_millis <= 1000
             && self.applicability_boundary_millis == 500
-            && self.request_bytes <= 262_144
+            && match &self.context_budget {
+                None => self.request_bytes <= 262_144,
+                Some(budget) => {
+                    budget.validate()
+                        && u64::from(self.request_bytes) == budget.encoded_bytes.unwrap_or(0)
+                        && budget.target_turns_retained == self.stage_retained
+                        && budget.target_turns_removed == self.stage_removed
+                        && budget.prior_turns_retained == self.prior_retained
+                        && budget.prior_turns_removed == self.prior_removed
+                        && !(self.target_complete && budget.target_partial)
+                }
+            }
             && self.prior_retained <= 8
             && self.applicability_probability.is_some() == valid
             && self

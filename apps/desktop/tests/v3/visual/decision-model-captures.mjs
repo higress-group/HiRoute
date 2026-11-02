@@ -26,9 +26,9 @@ const driver = `(() => {
       keys: native.keys.map((key, index) => ({ ...key, key_id: source.source_id + '/key/' + index, model_statuses: [] })),
         target: { ...native.target, authority: source.endpoint_host } });
     }
-    c.handlers.decision_services_v2 = () => ({ services: state.services.map(service => c.decisionView(service, state.sources)) });
+    c.handlers.decision_services_v3 = () => ({ services: state.services.map(service => c.decisionView(service, state.sources)) });
     c.handlers.decision_connection_sources = () => ({ sources: structuredClone(state.sources) });
-    c.handlers.save_decision_service_v2 = ({ input }) => {
+    c.handlers.save_decision_service_v3 = ({ input }) => {
       state.services = state.services.filter(item => item.id !== input.change.id);
       if (input.change.service) state.services.push(structuredClone(input.change.service));
       return { operation_id: 'operation/decision', accepted_digest: 'sha256:' + '5'.repeat(64), state: 'succeeded' };
@@ -37,6 +37,43 @@ const driver = `(() => {
     return state;
   }
   const setInput = (element, value) => { Object.getOwnPropertyDescriptor(element.constructor.prototype, 'value').set.call(element, value); element.dispatchEvent(new Event('input', { bubbles: true })); };
+  async function contextForm(kind) {
+    store([], []);
+    if (kind === 'error') c.handlers.preview_decision_context = () => { throw { code: 'MODEL_METADATA_UNAVAILABLE' }; };
+    if (kind === 'loading') c.handlers.preview_decision_context = () => new Promise(() => {});
+    c.remount(); await open(); await click(label('添加决策模型', 'Add decision model'));
+    await until(() => all('.decision-mode')[1]?.getAttribute('aria-pressed') === 'true', 'independent context form');
+    const provider = all('.decision-provider').find(item => item.lastElementChild?.textContent === (kind === 'typesafe' ? 'TypeSafe' : 'OpenAI'));
+    provider.click(); await until(() => provider.getAttribute('aria-pressed') === 'true', 'context provider');
+    const box = () => document.querySelector('.decision-context');
+    const contextControl = name => [...box().querySelectorAll('button,summary')].find(item => (item.querySelector('.disclosure-label')?.textContent ?? item.textContent).trim() === name);
+    if (kind === 'typesafe') {
+      setInput(field('model'), 'jev-1.14.0'); await until(() => box().textContent.includes('262,144'), 'TypeSafe long context');
+      box().querySelector('input[type="checkbox"]').click(); await until(() => box().textContent.includes('64,000'), 'TypeSafe smaller cap');
+    } else if (kind === 'custom' || kind === 'question' || kind === 'invalid' || kind === 'conflict') {
+      contextControl(label('自定义', 'Custom')).click(); await pause(40);
+      setInput(field('context_window'), kind === 'invalid' ? '4294967296' : kind === 'conflict' ? '65536' : '4294967295');
+      contextControl(label('高级：单个问题上限', 'Advanced: per-question limit')).click(); await pause(40);
+      setInput(field('context_question'), '32000');
+      await until(() => kind === 'invalid' ? box().querySelector('[role="alert"]') : box().textContent.includes(kind === 'conflict' ? '65,536' : '4,294,967,295'), 'custom context state');
+      if (kind === 'conflict') {
+        contextControl(label('高级：单个问题上限', 'Advanced: per-question limit')).click(); await pause(40);
+        setInput(field('context_window'), '16000');
+        await until(() => box().querySelector('.decision-context-validation') && box().querySelector('details').open, 'visible cross-field conflict');
+      }
+    } else if (kind === 'unknown') {
+      document.querySelector('.decision-address-value button').click(); await pause(40);
+      setInput(field('endpoint'), 'https://proxy.example.test/v1/decisions');
+      await until(() => box().textContent.includes('32,000'), 'unknown context fallback');
+    } else {
+      await until(() => box().textContent.includes(kind === 'loading' ? label('正在解析', 'Resolving') : kind === 'error' ? label('无法解析', 'could not be resolved') : '1,050,000'), 'context status');
+    }
+    box().scrollIntoView({ block: 'center' });
+    if (kind === 'question') field('context_question').scrollIntoView({ block: 'center' });
+    if (kind === 'custom' || kind === 'invalid' || kind === 'conflict') field('context_window').scrollIntoView({ block: 'center' });
+    if (kind === 'typesafe') box().querySelector('input[type="checkbox"]').scrollIntoView({ block: 'center' });
+    return '.decision-context';
+  }
   // Route -> decision model -> API connection -> decision model -> route, stopping at the requested step.
   async function nested(step) {
     store([], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
@@ -88,7 +125,7 @@ const driver = `(() => {
     },
     async 'removal-blocked'() {
       store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
-      c.handlers.save_decision_service_v2 = () => { throw { code: 'DECISION_IN_USE' }; };
+      c.handlers.save_decision_service_v3 = () => { throw { code: 'DECISION_IN_USE' }; };
       await open(); await click(label('移除模型', 'Remove model'));
       await until(() => document.querySelector('[role="dialog"] .btn-danger'), 'removal confirmation');
       document.querySelector('[role="dialog"] .btn-danger').click();
@@ -101,6 +138,15 @@ const driver = `(() => {
       await until(() => field('model'), 'saved shared editor');
       return '.decision-connection-form';
     },
+    'context-known': () => contextForm('known'),
+    'context-unknown': () => contextForm('unknown'),
+    'context-custom': () => contextForm('custom'),
+    'context-question': () => contextForm('question'),
+    'context-invalid': () => contextForm('invalid'),
+    'context-conflict': () => contextForm('conflict'),
+    'context-typesafe': () => contextForm('typesafe'),
+    'context-error': () => contextForm('error'),
+    'context-loading': () => contextForm('loading'),
     async shared() {
       store([], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
       await open(); await click(label('添加决策模型', 'Add decision model'));
@@ -138,7 +184,7 @@ const driver = `(() => {
       await until(() => document.querySelector('.decision-test-result.passed'), 'passed');
       await click(label('编辑', 'Edit')); await click(label('管理 API 接入', 'Manage API connection'));
       await until(() => document.querySelector('.decision-detour button'), 'detour');
-      c.handlers.decision_services_v2 = () => { throw { code: 'DAEMON_UNAVAILABLE' }; };
+      c.handlers.decision_services_v3 = () => { throw { code: 'DAEMON_UNAVAILABLE' }; };
       document.querySelector('.decision-detour button').click(); await pause(120);
       await click(label('取消', 'Cancel'));
       await until(() => document.querySelector('.decision-test-result[data-test-state="unverified"]'), 'unverified detail');
@@ -162,7 +208,7 @@ const driver = `(() => {
 
 export async function decisionModelCaptures(client, baseUrl, output) {
   const results = [];
-  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 840, height: 975 }, { width: 755, height: 600 }]) for (const state of ['detail', 'removal-entry', 'removal', 'removal-blocked', 'shared-edit', 'shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent']) {
+  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 840, height: 975 }, { width: 755, height: 600 }]) for (const state of ['detail', 'removal-entry', 'removal', 'removal-blocked', 'shared-edit', 'shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-question', 'context-invalid', 'context-conflict', 'context-typesafe', 'context-error', 'context-loading']) {
     if (viewport.width === 840 && state !== 'shared-edit') continue;
     await navigate(client, new URL('product-shell.html', baseUrl).href, viewport);
     await waitFor(client, 'Boolean(window.productShell)');
@@ -173,6 +219,7 @@ export async function decisionModelCaptures(client, baseUrl, output) {
       await writeFile(path.join(output, `failed-${state}.txt`), await evaluate(client, `document.body.innerText`));
       throw new Error(`Decision model capture ${state} (${language}/${theme}/${viewport.width}): ${cause.message}`);
     });
+    await waitFor(client, `Boolean(document.querySelector(${JSON.stringify(anchor)}))`, { timeout: 7000 });
     // Test results and the route selector sit below the fold; centring keeps it clear of the sticky list header.
     if (['stale', 'unverified', 'nested-parent'].includes(state)) await evaluate(client, `document.querySelector(${JSON.stringify(anchor)}).scrollIntoView({ block: 'center' })`);
     await new Promise(resolve => setTimeout(resolve, 120));

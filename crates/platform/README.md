@@ -2,6 +2,13 @@
 
 This crate owns shared filesystem primitives and Windows kernel handles/FFI. It does
 not select an Agent, authorize a business command, or own business state.
+`private_fs::DirectoryRemoval` incrementally removes a caller-authorized retired
+directory with retained iterators, native identity checks and entry/time budgets.
+It does not select expired data. Unix unlink and Windows handle deletion remain
+separate; links/mounts cannot redirect recursive cleanup into another tree.
+On macOS, `private_fs::open_running_executable` compares a no-follow file handle
+against the kernel vnode for the main Mach-O mapping. An executable pathname
+replaced by hot installation cannot establish that the new image has started.
 `file_security::macos` provides safe, read-only descriptor calls for native ACL/flags
 and extended attributes, including compression attributes. Callers supply bounded
 buffers and own snapshot validation, hashing and diagnostic policy; these opaque
@@ -46,6 +53,11 @@ descriptor check; it is not a repair or blanket admission rule for native files.
 every ancestor denies deletion and the regular, single-link file denies data
 writes and deletion. Reopening uses the final held parent; readers compare
 metadata, identity and native permission facts without adopting external ACLs.
+`open_installed_image_lease` is the explicit installed-image alternative: after
+the caller admits the exact installation, it retains its initial positive hardlink
+count as well as the same FileID, reparse-free pathname and write/delete fences.
+Callers still authenticate original ACLs and bytes. Private configuration and
+diagnostic readers continue to require the original single-link lease.
 `open_read_write` opens an existing regular file without create, truncate or
 DELETE permission and denies deletion while it is held. Storage lock owners use
 it to preserve the admitted object's identity and native permissions.

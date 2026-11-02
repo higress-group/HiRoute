@@ -156,6 +156,10 @@ pub struct AuthenticatedRequest {
 }
 
 impl AuthenticatedRequest {
+    pub(crate) fn run_diagnostics(&self) -> Option<VerifiedRunRequestAuthority> {
+        self.run.clone()
+    }
+
     pub fn authorize_alias(
         &self,
         served_model_id: &str,

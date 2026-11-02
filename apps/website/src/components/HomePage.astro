@@ -29,7 +29,7 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
       <h1>{en ? <><span>Pay for your strongest model</span><span class="hero-accent">only where the work needs it.</span></> : <><span>只在需要的地方，</span><span class="hero-accent">为最强的模型付费。</span></>}</h1>
       <p class="intro">{t('常规工作交给经济模型，复杂任务交给主力；经济模型没做好，主力随时接手。继续用你熟悉的 Agent，组合订阅、API 和本地模型。', 'Routine work goes to economical models and complex work to your primary model, which steps in when an economical model falls short. Keep your Agent and combine subscriptions, APIs and local models.')}</p>
       <div class="actions"><a class="button" href={en ? '/en/download/' : '/download/'}>{t('下载 HiRoute', 'Download HiRoute')} <span>↗</span></a><a class="button outline" href="#tour">{t('观看 3 分钟介绍', 'Watch the 3-minute tour')} <span>▶</span></a></div>
-      <p class="small-note">{t('支持 Codex、Claude Code、Qoder、Pi、OpenCode、Hermes 和 DeepSeek Harness · 0.5.0：macOS / Windows 桌面版，Linux Web UI + CLI', 'Works with Codex, Claude Code, Qoder, Pi, OpenCode, Hermes and DeepSeek Harness · 0.5.0: macOS / Windows Desktop, Linux Web UI + CLI')}</p>
+      <p class="small-note">{t('支持 Codex、Claude Code、Qoder、OpenCode 等 Agent · macOS / Windows 桌面版 · Linux Web UI + CLI', 'Works with Codex, Claude Code, Qoder, OpenCode and more · macOS / Windows Desktop · Linux Web UI + CLI')}</p>
     </div>
     <div class="journey-art" aria-label={t('一个长任务中的模型分工示意', 'How models share one long task')}>
       <div class="journey-goal"><span>{t('一个长任务 · 每个阶段选对模型', 'ONE LONG TASK · THE RIGHT MODEL FOR EACH STAGE')}</span><strong>{t('大部分工作很常规，少数决策才需要最强的模型。', 'Most of the work is routine. Only a few decisions need your strongest model.')}</strong></div>
@@ -42,7 +42,7 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
   <div class="trust-line stat-line wrap">
     <a href="#savings"><b>~90%</b><span>{t('真实任务中的成本降幅，验收标准不变', 'lower cost on a real task at the same acceptance standard')}</span></a>
     <a href="#trial"><b>{t('低分保护', 'Low-score protection')}</b><span>{t('经济模型没做好，主力接手下一轮', 'primary takes the next turn when an economical model falls short')}</span></a>
-    <a href="#ecosystem"><b>{t('7 种 Agent', '7 Agents')}</b><span>{t('照常使用 Codex、Claude Code 等', 'keep using Codex, Claude Code and more')}</span></a>
+    <a href="#ecosystem"><b>{t('多种 Agent', 'Many Agents')}</b><span>{t('Codex、Claude Code、Qoder、OpenCode 等', 'Codex, Claude Code, Qoder, OpenCode and more')}</span></a>
   </div>
 
   <section class="section wrap tour-section" id="tour">
@@ -53,7 +53,7 @@ const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Deskto
 
   <section class="section wrap savings-section" id="savings">
     <div class="section-title"><div><div class="eyebrow section-label">{t('真实场景的成本节省', 'Real-world cost savings')}</div><h2>{t('相同验收标准，', 'Same acceptance standard.')}<br>{t('成本降低约 90%。', 'About 90% lower cost.')}</h2></div><p>{t('在一次真实的技术调研与架构评审任务中，Qwen 3.8 Flash 负责调研，GPT-6 Astra 负责关键决策。达到同样的验收标准，成本比全部使用 Astra 降低约 90%。', 'In a real research and architecture-review task, Qwen 3.8 Flash did the research and GPT-6 Astra made the critical decision. At the same acceptance standard, the task cost about 90% less than running everything on Astra.')}</p></div>
-    <figure class="product-shot chart-shot"><img src={`/news-assets/research-cost-${en ? 'en' : 'zh'}.svg`} alt={t('相同验收标准下的整单成本：HiRoute 混合约为全 Astra 的十二分之一', 'Cost of the same task at the same acceptance standard: HiRoute mixed costs about one twelfth of all Astra')} loading="lazy"></figure>
+    <figure class="product-shot chart-shot"><img src={`/news-assets/cost-savings-${en ? 'en' : 'zh'}.svg`} alt={t('相同验收标准下的整单成本降低 91%：HiRoute（Qwen 调研 + Astra 决策）$0.150–0.162，全部使用 GPT-6 Astra $1.953–1.987', '91% lower whole-task cost at the same acceptance standard: HiRoute with Qwen research and Astra decisions $0.150–0.162 versus all GPT-6 Astra $1.953–1.987')} loading="lazy"></figure>
     <div class="proof-bottom">
       <article><h3>{t('切换模型，省下的钱不会丢', 'Switching models keeps the savings')}</h3><p>{t('HiRoute 只在明确的边界切换模型：用户发送新消息，或上下文压缩、重建时。同一轮内的工具调用始终使用同一个模型，切换后只有第一次请求丢失缓存。', 'HiRoute changes models only at clear boundaries: a new user message, or context compaction and rebuild. Tool calls within a turn stay on one model, so a switch misses the cache only once.')}</p><a class="text-link" href={en ? '/en/news/routing-cache-cost/' : '/news/routing-cache-cost/'}>{t('缓存与整单成本分析', 'Cache and whole-task cost analysis')} →</a></article>
       <article><h3>{t('关键决策交给更强的模型', 'Critical decisions stay with the stronger model')}</h3><p>{t('只用 Qwen 时，三次关键决策只有一次没有重大错误；混合模式把关键判断留给 Astra，三次都通过评审。费用为 API 等价估算。', 'Qwen alone avoided major errors in only one of three critical decisions; the mixed setup kept those judgments on Astra and passed all three reviews. Costs are API-equivalent estimates.')}</p><a class="text-link" href={en ? '/en/news/astra-qwen-smart-routing/' : '/news/astra-qwen-smart-routing/'}>{t('完整案例', 'Full case study')} →</a></article>

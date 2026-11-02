@@ -15,6 +15,25 @@ fn real_process_versioned_decision_connections_use_exact_source_keys() {
     run_script("decision_connections_v2_product.py");
 }
 
+#[test]
+fn real_process_adaptive_decision_context_preserves_publication_and_fallback() {
+    run_script("decision_context_product.py");
+}
+
+#[test]
+#[ignore = "exact-binary resource comparison requires a separately built baseline checkout"]
+fn measure_adaptive_decision_context_resources() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    assert!(
+        std::env::var_os("HIROUTE_DECISION_CONTEXT_BASELINE_CHECKOUT").is_some()
+            || root
+                .join("artifacts/decision-context-resources/input.json")
+                .is_file(),
+        "set the separately built baseline checkout through the resource input file"
+    );
+    run_script("decision_context_resources.py");
+}
+
 /// Route actual model requests and inspect C facts through the existing product query.
 #[test]
 fn real_process_c_routing_execution_and_retained_observations() {
@@ -25,6 +44,16 @@ fn real_process_c_routing_execution_and_retained_observations() {
 #[test]
 fn real_process_content_sink_failure_is_consumed_once_and_recovers() {
     run_script("observation_content_fault_product.py");
+}
+
+#[test]
+fn real_process_streamed_content_pressure_preserves_every_accepted_delta() {
+    run_script("content_pressure_product.py");
+}
+
+#[test]
+fn real_process_failed_native_retry_preserves_semantic_history_and_attribution() {
+    run_script("observation_native_retry_product.py");
 }
 
 /// Current released CLI point scan/preparation shares the native multi-model exact-save boundary.

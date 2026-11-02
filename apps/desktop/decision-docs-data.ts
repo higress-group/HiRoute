@@ -67,7 +67,7 @@ export function decisionDocsData(language: 'zh' | 'en', now = Date.now()) {
     assessment: s.score == null ? null : { trigger_request_id: s.id === 'review-start' ? 'req-review-main-first' : `req-${s.id}-next`, assessed_at_ms: clock - (s.id === 'review-start' ? 32 : s.age - 1) * 60000,
       target_from_ordinal: s.from, target_through_ordinal: s.through, score: s.score, partial: s.partial, evidence_available: false },
   }));
-  const options: Options = { context_window: { maximum_tokens: 272000, default_tokens: 272000 }, suggested_alias: null,
+  const options: Options = { context_window: { maximum_tokens: 400000, default_tokens: 400000 }, suggested_alias: null,
     free_suggestions: null, codex_capabilities: null, candidates: models.map(m => ({ ...m, binding_id: m.model_configuration_id,
       reasoning: { kind: 'discrete', parameter: 'reasoning_effort', profiles: ['low', 'medium', 'high', 'max'] },
       billing_class: 'paid', routable: true, ingress_protocols: ['responses', 'messages', 'chat_completions'] })) };

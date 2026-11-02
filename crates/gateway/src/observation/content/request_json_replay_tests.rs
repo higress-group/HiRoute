@@ -290,25 +290,27 @@ fn production_request(wire: &Value, replay: &ReplayStore, inline_limit: usize) -
 
 fn state_request(values: impl IntoIterator<Item = Value>) -> ModelRequestIRV1 {
     use crate::server::core_runtime::adapters::decode_ingress_request;
-    use crate::server::core_runtime::model_ir::OpaqueProviderState;
-    let mut request = decode_ingress_request(IngressProtocol::Responses, &json!({
-        "model":"route", "input":[{"type":"reasoning","summary":[],"encrypted_content":"placeholder"}]
-    })).unwrap();
+    use crate::server::core_runtime::model_ir::{ToolKindV1, ToolOutput, ToolResultStatusV1};
+    let mut request = decode_ingress_request(
+        IngressProtocol::Responses,
+        &json!({"model":"route","input":"placeholder"}),
+    )
+    .unwrap();
     request.messages[0].content = values
         .into_iter()
-        .map(|value| ContentPart::ProviderState {
-            state: Box::new(OpaqueProviderState {
-                block_index: None,
-                kind: "encrypted_content".into(),
-                value,
-            }),
+        .enumerate()
+        .map(|(index, value)| ContentPart::ToolResult {
+            logical_id: format!("call-{index}"),
+            tool_kind: ToolKindV1::Function,
+            output: ToolOutput::Json(value),
+            status: ToolResultStatusV1::Unknown,
         })
         .collect();
     request
 }
 
 #[test]
-fn request_json_capture_expands_production_reasoning_string_leaves() {
+fn request_capture_excludes_opaque_provider_state_and_setup_without_changing_ingress() {
     for threshold in [64, 2 * 1024 * 1024] {
         for inline_limit in [0, 8 * 1024, 64 * 1024] {
             let fixture = ReplayFixture::new(threshold);
@@ -322,9 +324,13 @@ fn request_json_capture_expands_production_reasoning_string_leaves() {
                 inline_limit,
             );
             let captured = capture(&request, &fixture.store);
-            assert_eq!(
-                captured_json(&captured, "provider_state"),
-                vec![json!(opaque)]
+            assert!(captured_json(&captured, "provider_state").is_empty());
+            assert!(
+                captured
+                    .records
+                    .iter()
+                    .all(|record| record["message_role"] != "system"
+                        && record["message_role"] != "developer")
             );
         }
     }
@@ -364,7 +370,7 @@ fn request_json_capture_preserves_typed_nested_replay_and_all_json_consumers() {
         *output = ToolOutput::Json(value.clone());
         request.tools[0].input_schema = Some(value.clone());
         let captured = capture(&request, &fixture.store);
-        for kind in ["tool_call_arguments", "tool_result_json", "tool_schema"] {
+        for kind in ["tool_call_arguments", "tool_result_json"] {
             assert_eq!(
                 captured_json(&captured, kind),
                 vec![expected.clone()],
@@ -376,7 +382,7 @@ fn request_json_capture_preserves_typed_nested_replay_and_all_json_consumers() {
             &fixture.store,
         );
         assert_eq!(
-            captured_json(&captured, "provider_state"),
+            captured_json(&captured, "tool_result_json"),
             vec![expected, nested]
         );
     }
@@ -390,7 +396,7 @@ fn request_json_capture_keeps_small_inline_values_without_new_replay_ranges() {
         .collect();
     assert_eq!(fixture.store.snapshot().live_streams, 0);
     let captured = capture(&state_request(expected.clone()), &fixture.store);
-    assert_eq!(captured_json(&captured, "provider_state"), expected);
+    assert_eq!(captured_json(&captured, "tool_result_json"), expected);
     assert_eq!(fixture.store.snapshot().live_streams, 0);
 }
 
@@ -404,15 +410,15 @@ fn request_json_capture_preserves_a_literal_locator_after_production_ingress_iso
     let literal = live.wire_marker();
     let request = production_request(
         &json!({"model":"route","input":[
-            {"type":"reasoning","summary":[],"encrypted_content":literal}
+            {"type":"function_call_output","call_id":"literal-call","output":{"literal":literal}}
         ]}),
         &fixture.store,
         0,
     );
     let captured = capture(&request, &fixture.store);
     assert_eq!(
-        captured_json(&captured, "provider_state"),
-        vec![json!(literal)]
+        captured_json(&captured, "tool_result_json"),
+        vec![json!({"literal":literal})]
     );
 }
 
@@ -525,7 +531,12 @@ fn async_content_keeps_the_request_root_before_fast_response_after_foreground_dr
         // handoff have completed. The original IR/backing can now disappear.
         assert!(receiver.try_recv().is_err());
         drop((input, store));
-        assert!(budget.snapshot().unwrap().live > 0);
+        assert!(observation.inner.channels.content.work_state().unwrap().1 > 0);
+        assert_eq!(
+            budget.snapshot().unwrap().live > 0,
+            threshold == 1024 * 1024,
+            "disk-backed capture must not retain unrelated forwarding metadata"
+        );
         gate.release();
         let mut records = Vec::new();
         loop {
@@ -576,9 +587,67 @@ fn async_content_keeps_the_request_root_before_fast_response_after_foreground_dr
 }
 
 #[test]
+fn empty_and_metadata_delivery_preserve_content_work_capacity() {
+    use super::super::content::CanonicalFrameDelivery;
+    use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
+
+    let fixture = ReplayFixture::new(1024 * 1024);
+    let input = state_request([json!({"text":"real input"})]);
+    fixture.store.prevalidate(&[]).unwrap();
+    let (observation, receiver, gate) = asynchronous_observation();
+    observation.capture_request_async(&input, &fixture.store);
+    let attempt = content_attempt();
+    observation.begin_response_content(&attempt);
+    observation.lock_state().accepted_attempt = Some(attempt.clone());
+    let before = observation.inner.channels.content.work_state();
+    assert!(
+        before.unwrap().1 > 0,
+        "a paused admitted source, not a synchronous fallback"
+    );
+    for sequence in 0..4096 {
+        observation.emit_canonical_response_delivery(
+            &attempt,
+            "empty-accepted-frame",
+            CanonicalFrameDelivery::default(),
+        );
+        observation.emit_canonical_response_delivery(
+            &attempt,
+            "metadata-accepted-frame",
+            CanonicalFrameDelivery {
+                events: vec![ModelStreamEventV1::new(
+                    sequence,
+                    ModelEvent::ResponsesMetadata {
+                        metadata: BTreeMap::new(),
+                    },
+                )],
+                ..CanonicalFrameDelivery::default()
+            },
+        );
+    }
+    assert_eq!(observation.inner.channels.content.work_state(), before);
+    assert!(!observation.inner.async_content.get().unwrap().failed());
+    observation.finish_response_content("finish", None);
+    gate.release();
+    observation.inner.channels.content_work.flush(&observation);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let mut finished = 0;
+    while finished < 2 {
+        let record = receiver
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap();
+        assert_ne!(
+            record["schema_version"],
+            "hiroute.observation.gap-heartbeat/v1"
+        );
+        finished += usize::from(record["phase"] == "finish");
+    }
+}
+
+#[test]
 fn full_content_work_queue_declares_loss_without_waiting_and_next_request_recovers() {
     use super::super::content::CanonicalFrameDelivery;
     use crate::content_ref::model_content_refs;
+    use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1};
     let fixture = ReplayFixture::new(1024 * 1024);
     let mut input = state_request([json!({"text":"bounded captured input"})]);
     externalize_model_request(&mut input, &fixture.store, 0).unwrap();
@@ -590,11 +659,20 @@ fn full_content_work_queue_declares_loss_without_waiting_and_next_request_recove
     observation.capture_request_async(&input, &fixture.store);
     let attempt = content_attempt();
     observation.begin_response_content(&attempt);
-    for _ in 0..512 {
+    for index in 0..512 {
         observation.emit_canonical_response_delivery(
             &attempt,
             "accepted-frame",
-            CanonicalFrameDelivery::default(),
+            CanonicalFrameDelivery {
+                events: vec![ModelStreamEventV1::new(
+                    index,
+                    ModelEvent::TextDelta {
+                        index: 0,
+                        text: "real captured text".repeat(1024),
+                    },
+                )],
+                ..CanonicalFrameDelivery::default()
+            },
         );
     }
     // The independent producer must report loss while the encoder is still
@@ -649,10 +727,14 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
     observation.finish_response_content("finish", None);
     // The original content was validated at admission. Simulate backing loss
     // only after the optional worker owns its lease and before it reads.
-    let ContentPart::ProviderState { state } = &input.messages[0].content[0] else {
-        panic!("canonical state fixture")
+    let ContentPart::ToolResult {
+        output: crate::server::core_runtime::model_ir::ToolOutput::Json(value),
+        ..
+    } = &input.messages[0].content[0]
+    else {
+        panic!("canonical tool result fixture")
     };
-    let reference = state.value.content_ref().unwrap();
+    let reference = value.content_ref().unwrap();
     fixture.store.truncate_stream_last_byte(&reference).unwrap();
     assert!(
         std::io::copy(
@@ -684,7 +766,7 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
 }
 
 #[test]
-fn queued_snapshot_pressure_falls_back_before_async_content_ownership() {
+fn queued_archive_pressure_marks_optional_loss_without_synchronous_history_fallback() {
     use crate::server::core_runtime::adapters::decode_ingress_request;
     let fixture = ReplayFixture::new(1024 * 1024);
     let text = "x".repeat(20 * 1024);
@@ -696,7 +778,7 @@ fn queued_snapshot_pressure_falls_back_before_async_content_ownership() {
     fixture.store.prevalidate(&[]).unwrap();
     let before = fixture.store.budget().snapshot().unwrap().live;
     let (sender, receiver) = mpsc::channel();
-    let observation = request_with_sinks_capacity(
+    let mut observation = request_with_sinks_capacity(
         OtelContentPolicy::Disabled,
         DiagnosticsPort::default(),
         true,
@@ -706,32 +788,41 @@ fn queued_snapshot_pressure_falls_back_before_async_content_ownership() {
         },
         512 * 1024,
     );
-    // A different request's queued snapshot fits, but leaves too little work
-    // credit for this one. The encoded original content still fits the channel.
+    let (worker, gate) = super::super::content_work::ContentWorkProducer::paused();
+    Arc::get_mut(&mut observation.inner)
+        .unwrap()
+        .channels
+        .content_work = worker;
+    // Fill the current data allowance, leaving one descriptor quantum but
+    // less room than this 20KiB snapshot. Controls may retain their independent
+    // metadata; no queued/active payload may be invented for the refused input.
+    let other_bytes = 512 * 1024
+        - super::super::producer::ContentQueueLimits::for_capacity(512 * 1024).control
+        - 4096;
     let _other = observation
         .inner
         .channels
         .content
-        .reserve_work(400 * 1024)
+        .reserve_work(other_bytes)
         .unwrap();
     observation.capture_request_async(&input, &fixture.store);
-    assert!(observation.inner.async_content.get().is_none());
+    assert_eq!(
+        observation.inner.channels.content.work_state().unwrap().1,
+        other_bytes
+    );
+    assert!(observation.inner.async_content.get().unwrap().failed());
     assert_eq!(fixture.store.budget().snapshot().unwrap().live, before);
-    let mut captured = Vec::new();
-    loop {
-        let record = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert!(record["loss_watermark"].is_null(), "{record}");
-        assert_ne!(record["phase"], "abort");
-        if record["phase"] == "append" {
-            captured.extend(decoded_base64(
-                record["canonical_bytes_base64"].as_str().unwrap(),
-            ));
-        }
-        if record["phase"] == "finish" {
-            break;
-        }
-    }
-    assert_eq!(captured, text.as_bytes());
+    assert!(
+        receiver.try_recv().is_err(),
+        "no archive traversal in the foreground"
+    );
+    drop(_other);
+    gate.release();
+    observation.inner.channels.content_work.flush(&observation);
+    assert_eq!(
+        observation.inner.channels.content.work_state().unwrap().1,
+        0
+    );
 }
 
 #[test]
@@ -949,7 +1040,7 @@ fn dense_async_history_waits_for_record_credit_and_keeps_every_original_byte() {
         .inner
         .channels
         .content
-        .wait_until_credit_blocked();
+        .wait_until_content_pressure();
     assert!(receiver.try_recv().is_err());
     drop(input);
     drop(gate);

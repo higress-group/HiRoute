@@ -66,11 +66,14 @@ pub struct RequestObservation {
     // A worker-local view freezes the enqueue boundary without mutating shared
     // request state or changing lifecycle/execution timestamps.
     pub(super) content_occurred_at: Option<u64>,
-    pub(super) content_credit_wait: Option<std::time::Duration>,
+    pub(super) content_background: bool,
+    pub(super) content_run: Option<Arc<super::content_work::CaptureRun>>,
 }
 
 pub(super) struct RequestObservationInner {
+    pub(super) input_capture: OnceLock<super::content_work::InputCaptureSelection>,
     pub(super) async_content: OnceLock<Arc<super::content_work::ContentStatus>>,
+    pub(super) content_spool: Arc<super::producer::ContentSpool>,
     pub(super) agent_turn_output: OnceLock<(
         Arc<crate::agent_turn_history::AgentTurnHistoryStore>,
         crate::agent_turn_history::AgentTurnTicket,
@@ -91,6 +94,10 @@ pub(super) struct RequestObservationInner {
 
 #[derive(Default)]
 pub(super) struct RequestObservationState {
+    pub(super) canonical_request_recorded: bool,
+    pub(super) response_content_draining: bool,
+    pub(super) request_content_draining: bool,
+    pub(super) semantic_response: Option<super::content::semantic::SemanticResponse>,
     pub(super) managed_cpa: bool,
     #[cfg(all(unix, debug_assertions))]
     pub(super) private_capture: Option<(
@@ -226,9 +233,12 @@ impl RequestObservation {
         }
         let value = Self {
             content_occurred_at: None,
-            content_credit_wait: None,
+            content_background: false,
+            content_run: None,
             inner: Arc::new(RequestObservationInner {
+                input_capture: OnceLock::new(),
                 async_content: OnceLock::new(),
+                content_spool: Arc::new(super::producer::ContentSpool::default()),
                 agent_turn_output: OnceLock::new(),
                 prices,
                 enabled: capture.enabled,

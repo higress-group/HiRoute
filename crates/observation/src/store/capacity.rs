@@ -6,6 +6,8 @@ pub(super) mod probe;
 #[cfg(test)]
 mod quality_tests;
 #[cfg(test)]
+mod request_index_tests;
+#[cfg(test)]
 mod tests;
 use hiroute_domain::{ObservationCapacityStatusV1 as Status, ObservationQueryError as Error};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -24,6 +26,9 @@ const ROWS: usize = 128;
 pub(crate) const SCHEMA: &str = r#"
 CREATE INDEX IF NOT EXISTS observation_capacity_oldest_v5 ON logical_requests(started_at_ms,workspace_id,request_id) WHERE finished_at_ms IS NOT NULL;
 CREATE INDEX IF NOT EXISTS observation_capacity_turn_v5 ON logical_requests(workspace_id,turn_id);
+CREATE INDEX IF NOT EXISTS observation_capacity_sensitive_request_v5 ON observation_sensitive_payloads_v2(workspace_id,request_id);
+CREATE INDEX IF NOT EXISTS observation_capacity_link_request_v5 ON observation_link_events(workspace_id,request_id);
+CREATE INDEX IF NOT EXISTS observation_capacity_native_request_v5 ON observation_native_roots_v1(workspace_id,request_id);
 CREATE TABLE IF NOT EXISTS observation_capacity_pending_v5(workspace TEXT NOT NULL,request TEXT NOT NULL,session TEXT NOT NULL,step INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(workspace,request));
 CREATE TABLE IF NOT EXISTS observation_capacity_blobs_v5(workspace TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(workspace,digest));
 CREATE INDEX IF NOT EXISTS observation_capacity_quality_assessment_v5 ON plan_quality_segments(workspace_id,assessment_trigger_request_id);
@@ -562,17 +567,20 @@ impl LocalObservationStore {
                         sql(tx.execute("UPDATE observation_capacity_pending_v5 SET step=2 WHERE workspace=?1 AND request=?2",params![w,r]))?;
                     }
                 } else if let Some(table) = CLEANUP.get((step - 2) as usize) {
-                    let feedback = sql(super::records::retire_request_feedback(
-                        &tx, &w, &r, table, true,
-                    ))?;
-                    if feedback == 0 {
-                        let order = super::records::retirement_order(table)
-                            .map(|order| format!(" ORDER BY {order}"))
-                            .unwrap_or_default();
-                        let n=sql(tx.execute(&format!("DELETE FROM {table} WHERE rowid IN(SELECT e.rowid FROM {table} e WHERE e.workspace_id=?1 AND e.request_id=?2{order} LIMIT {ROWS})"),params![w,r]))?;
-                        if n == 0 {
-                            sql(tx.execute("UPDATE observation_capacity_pending_v5 SET step=step+1 WHERE workspace=?1 AND request=?2",params![w,r]))?;
-                        }
+                    // The fact event identity remains a business invariant;
+                    // content no longer has a permanent event/reply ledger.
+                    if *table == "execution_fact_events" {
+                        super::fact_identity::retire_request(&tx, &w, &r, Some(ROWS))
+                            .map_err(|_| Error::Unavailable)?;
+                    }
+                    let order = if *table == "execution_fact_events" {
+                        " ORDER BY e.sequence,e.rowid"
+                    } else {
+                        ""
+                    };
+                    let n=sql(tx.execute(&format!("DELETE FROM {table} WHERE rowid IN(SELECT e.rowid FROM {table} e WHERE e.workspace_id=?1 AND e.request_id=?2{order} LIMIT {ROWS})"),params![w,r]))?;
+                    if n == 0 {
+                        sql(tx.execute("UPDATE observation_capacity_pending_v5 SET step=step+1 WHERE workspace=?1 AND request=?2",params![w,r]))?;
                     }
                 } else {
                     sql(tx.execute("DELETE FROM plan_quality_segments WHERE rowid IN(SELECT rowid FROM plan_quality_segments WHERE workspace_id=?1 AND last_request_id=?2 LIMIT 128)",params![w,r]))?;
@@ -652,9 +660,8 @@ impl LocalObservationStore {
 const CLEANUP: &[&str] = &[
     "observation_sensitive_payloads_v2",
     "content_message_instances_v2",
-    "request_content_refs_v2",
+    "observation_input_anchors_v6",
     "conversation_content_streams_v2",
-    "conversation_content_events_v2",
     "transcript_roots_v2",
     "observation_run_links",
     "observation_link_events",

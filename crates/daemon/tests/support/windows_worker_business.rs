@@ -779,7 +779,7 @@ fn command_outcome(
     }
     args.extend(["--output", "json"].map(OsString::from));
     let input = payload.map(|value| serde_json::to_vec(value).unwrap());
-    let (exit, output, _error) = run(
+    let (exit, output, error) = run(
         &product.stable,
         &args,
         product.stable.parent(),
@@ -789,6 +789,12 @@ fn command_outcome(
     let value: Value = serde_json::from_slice(&output)
         .expect("actual public Worker business CLI must return its JSON envelope");
     if exit != 0 {
+        for line in String::from_utf8_lossy(&error)
+            .lines()
+            .filter(|line| line.starts_with("HiRoute collaboration diagnostic: "))
+        {
+            println!("{line}");
+        }
         println!(
             "Windows public Worker failure: command={label}, code={}, key={}",
             dependency_selection::error_code(&value),
@@ -804,7 +810,10 @@ fn run(
     input: Option<&[u8]>,
     bound: Duration,
 ) -> (i32, Vec<u8>, Vec<u8>) {
-    let environment: Vec<_> = std::env::vars_os().collect();
+    let mut environment: Vec<_> = std::env::vars_os()
+        .filter(|(key, _)| key != "HIROUTE_TEST_COLLABORATION_DIAGNOSTICS")
+        .collect();
+    environment.push(("HIROUTE_TEST_COLLABORATION_DIAGNOSTICS".into(), "1".into()));
     let mut child = Child::spawn(Launch {
         program,
         args,

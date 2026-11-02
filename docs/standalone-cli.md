@@ -106,7 +106,8 @@ direction.
 ## Storage upgrade recovery
 
 Before replacing an installed program, the verified candidate performs read-only
-preflight. When a history-format cutover is required, the installer retains the
+preflight. When Core conversion needs recovery
+workspace, the installer retains the
 complete original program/resources and installation records in private service
 state; the daemon receives that handoff directly, including under systemd.
 Current-format repair skips this archival copy and its extra space reserve.
@@ -125,11 +126,29 @@ downgrade. Preserve data, keys, programs and journals; follow diagnostic/support
 steps when necessary material is unavailable. A resumable batch uses the current
 program. Whole-group recovery uses that batch's `RECOVERY.md`, `恢复说明.md` and,
 when present, `PROGRAM-LOCATIONS.md`: stop the service and automatic restarts,
-preserve newer data/program separately, restore all stores/keys/Observation and
-recorded auxiliary files, then restore the matching program/resources and service
+preserve newer data/program separately, restore the original Core stores/keys,
+native restoration material and recorded auxiliary files, then restore the matching
+program/resources and service
 registration at their recorded locations. Reload the manager and verify actual
 Control/Gateway readiness and a real request. Installation-command success alone
 is insufficient.
+
+Known Observation formats 1–5 are replaced by format 6 without converting or copying
+their bodies. The saved capacity setting is preserved, including an explicit disabled
+limit. Startup uses same-filesystem renames; after actual service readiness, existing
+maintenance removes the retired generation in bounded batches. This Observation-only
+reset does not require an old program package. Hermes and other Agents keep their
+native conversation history; new HiRoute history and statistics start at the cutover.
+Unknown or corrupt formats and prior interrupted conversion material require diagnosis.
+
+Compatible current Observation stays in place during a Core upgrade and is excluded from
+its v3 recovery snapshot, including space sizing, copying and hashing. Its guide
+requires fresh Observation on matching-version Core restoration; newer storage,
+including history and observation-local settings, remains separately preserved.
+Reapply a custom capacity setting after that restoration. Older full-history or
+sealed-history backups retain their original scope: restore their Observation
+DB/WAL/SHM/content with the matching old group. Archival only changes a completed
+batch's location and does not verify or automatically delete its contents.
 
 Explicit headless operators may still provide the absolute complete old-package
 directory via `HIROUTE_RECOVERY_PACKAGE` on the daemon's first sealing startup.
@@ -212,6 +231,29 @@ reuses the saved snapshot. To change proxies, update your shell and run
 To clear a saved proxy, unset all six variables and restart. Proxy failure does not
 fall back to direct connections. Do not share the private snapshot: proxy URLs may
 contain credentials. This does not change native Codex login or token refresh ownership.
+
+## Identify the installed build
+
+```sh
+hiroute version --output json
+hiroute --version
+hirouted --version
+```
+
+These commands work offline and initialize no service, storage or native account.
+`hiroute version` defaults to one ordinary machine envelope containing a
+`hiroute.build-identity/v1` record; `--version` and `-V` default to text, with
+`--output json|text|quiet` available on the CLI. The record identifies the component,
+package version, compiled source revision, OS and architecture. The daemon's
+`--version`/`-V` prints its own identity as one JSON document. Use the actual installed
+daemon executable when the CLI and service may have different installations.
+On Windows, the daemon attaches to the existing parent console for version output
+and preserves redirected stdout/stderr.
+
+The source revision comes only from the build's `HIROUTE_BUILD_SOURCE_SHA` input.
+Missing or invalid build metadata is `null` in JSON and `unknown` in text. Runtime
+environment variables and Git in the current directory cannot replace it. A CLI
+identity does not establish which daemon process is currently serving requests.
 
 ## CLI Quickstart: connect, inspect, and adjust
 
@@ -830,6 +872,20 @@ for a surface that supports only Messages.
 
 ## JSON request input
 
+Input diagnostics include static semantic requirements as well as JSON syntax.
+Use `--error-details --output json` to obtain the existing bounded diagnostic data;
+ordinary errors keep their machine shape and usage exit code. The explanation is
+also written to stderr. Keep stderr separate from the complete stdout JSON.
+
+Routing publication reports missing `work` when delegation is enabled, unsupported
+Worker protocols, and judgment threshold/floor values outside `0..1000` integer
+thousandths. Additional-model entries report unsupported protocols at a wildcard
+field path rather than copying context or Plan IDs. These facts come from the same
+domain rules as publication/settings validation. Incomplete draft storage remains
+separate from publication. Dynamic Plan capability, current account access and
+native login remain authoritative at their existing checks; a syntax diagnostic
+does not infer an account entitlement.
+
 Every command that accepts `--request-stdin` also accepts `--request-file PATH`:
 
 ```sh
@@ -930,8 +986,11 @@ after contention or ineffective work. Initial inventory, pending cleanup or prot
 data can delay physical release. `show` reports the saved limit, measured active
 allocated bytes, measurement time and pending/blocked reason. Reusable SQLite
 pages are not reported as released disk space. Protected source directories and
-recovery packages have separate retention; their space must be budgeted for an
-upgrade. See [whole-group recovery](release-contracts.md#upgrade-and-manual-recovery).
+recovery packages need temporary upgrade space. After the complete service starts
+successfully, product-owned upgrade recovery material is automatically retired and
+removed in bounded background batches, with no rollback retention window. Failed
+startup keeps it; interrupted cleanup resumes after a successful restart. External
+packages and installed version directories keep their existing owner lifecycle. See [whole-group recovery](release-contracts.md#upgrade-and-manual-recovery).
 
 ## Configure a Worker and delegate a task
 
@@ -944,6 +1003,29 @@ hiroute worker dependencies discover --harness codex_cli --output json \
 
 Copy `selection_revisions[].revision` for the same Harness and select complete absolute paths
 whose state is `found`:
+
+| Harness | Required selection fields | Other fields |
+| --- | --- | --- |
+| `codex_cli`, `claude_code` | `cli_path`, `adapter_path` | `node_path` is optional in the tuple; script/protected adapter launch may require it |
+| `qoder_cli`, `deepseek_harness`, `opencode` | `cli_path` | Omit `adapter_path` and `node_path` |
+| `pi` | `cli_path`, `node_path` | Omit `adapter_path`; Node alone is incomplete |
+
+Pi's CLI component is its installed official CLI/SDK entry, for example an absolute
+`dist/cli.js` path. It is separate from the Node executable. Claude's ordinary CLI
+is also separate from its ACP adapter. Missing components remain installation
+prerequisites; discovery never downloads them.
+
+Text discovery shows candidate reason codes and installation hints. For npm
+OpenCode, copy the canonical native candidate path. If multiple official platform
+variants are installed, choose explicitly from the listed paths; the ambiguous
+wrapper is marked `worker.dependencies.platform_selection_required`. Discovery
+does not select a variant, and an `.exe` suffix alone does not identify Windows
+code. Selection success still does not prove the native version/history format is
+supported for Worker execution.
+
+Use `--error-details --output json` on selection to inspect bounded invalid-input
+details such as a missing `cli_path` or an adapter field forbidden for that Harness.
+Submitted paths and other request values are not copied into those explanations.
 
 ```json
 {
@@ -973,9 +1055,29 @@ the task again. Use a new submission key for a new run; replaying the previous
 key returns the existing failed run. Discovery/selection is not a compatibility
 preflight and does not install or update the adapter.
 
-Set routing-editor `delegation_enabled` to `true`, add
-`"work":{"harness":"codex_cli","protocol":"responses"}`, and publish again. Then submit,
-locate, wait for, and read the task:
+Enable delegation through the same public Preview/Apply workflow:
+
+```sh
+hiroute routing preview --plan PLAN_ID --delegation enable \
+  --worker-harness codex_cli --worker-protocol responses \
+  --apply-file worker-plan-apply.json
+hiroute routing apply --request-file worker-plan-apply.json
+```
+
+For a new Plan, combine these flags with the ordinary name, purpose, mode and
+model/group choices. The complete selection is stored in the existing editor as
+`delegation_enabled` and `work`. Supply both Worker flags together; omitting both
+preserves an existing selection. Enabling a Plan without a selection returns
+explicit required choices. A routing-only Plan may have no purpose; enabling its
+delegation then asks for `--purpose`. `--delegation disable` keeps the selection but disables
+the published Plan's delegation eligibility. Unrelated edits retain its delegation
+state and work. Inspect the Preview and exact Apply file; Preview does not publish,
+install a native CLI, enable collaboration or call a model.
+
+`responses` and `messages` are the supported Worker Plan protocol syntax; actual
+Harness/Plan capability remains subject to normal admission and native checks.
+The typed routing-editor JSON remains available. Then submit, locate, wait for,
+and read the task:
 
 ```sh
 hiroute worker exec --plan PLAN_ID --cwd /absolute/project \
@@ -988,6 +1090,17 @@ hiroute worker wait --run RUN_ID --wait-timeout 30 --output json
 hiroute worker result --run RUN_ID --output json
 hiroute worker list --output json
 ```
+
+An explicit request to execute a Worker does not require an installed collaboration
+Skill. Standing delegation policy is separate. When the user requests it, use
+`agents collaboration configure AGENT_ID --trigger explicit --preview`, review the
+effect, then configure without `--preview` and with one stable `--idempotency-key`.
+The `explicit` trigger delegates only when asked; `delegate-by-default` permits
+suitable delegation within the user's task. This installs `hiroute-collaboration`
+independently of model routing and the management Skill. Use collaboration status
+to inspect the result and collaboration disable or owned facet Restore to remove
+it. Native Skill loading may require a fresh session. See
+[the collaboration workflow](#configure-agent-collaboration) for complete commands.
 
 A wait timeout means only that work is still running and does not cancel it. After an
 uncertain response, query with the original submission key or replay that exact JSON unchanged
@@ -1183,6 +1296,37 @@ provider request. For an arbitrary `compatible` connection, select the protocol 
 Choose the appropriate Bailian Token Plan or workspace endpoint; a preset does not establish
 access. Use `--candidate` with protected input for an independent Key instead of `--source`.
 Typesafe can continue to use independent configuration. The source API never returns Key values.
+
+Native connections resolve context windows automatically from exact endpoint, codec and model
+metadata. Unknown windows use a conservative **32,000 tokens**. The Preview and saved V3 record
+show the request and independent per-question limits, their sources and the frozen context digest.
+Use `--context-window-tokens N` for a custom request window and optionally
+`--context-question-tokens N` for an explicit question override. Both require positive u32
+integers; the question cap cannot exceed the request window. A request override alone preserves
+any independent provider question cap. `--context-window-auto` clears both custom overrides.
+Omitted edit flags preserve saved intent.
+
+To inspect a draft without saving it, run `hiroute decision context preview --request-file
+context-draft.json --output json`. The file contains `endpoint`, `model`, `wire_protocol` and
+`policy`; inspect the exact installed request with `hiroute schema show --command-id
+decision.context.preview --include-schema --output json`. The response includes the effective
+limits and their metadata, user or fallback sources. This operation uses local metadata and
+does not contact the decision provider.
+
+`--typesafe-long-context auto|off` defaults to automatic. Only the exact official HTTPS
+TypeSafe System One destination receives the typed long-context header; compatible proxies and
+other providers do not. Turning it off selects the smaller maintained provider limits.
+Preview/save performs no provider call. A metadata change before acceptance requires refresh;
+accepted Operations and published routes keep the approved snapshot across recovery and restart.
+Save a new connection revision and explicitly publish the route to adopt another window.
+
+The allocator conservatively counts escaped UTF-8 request bytes as estimated tokens, including
+every decision question and each independent single-question envelope. It reserves 5% with a
+1,024-token floor once, protects the complete current user input and decision questions, and
+then retains whole recent target steps/turns before captured background and bounded replayed
+text. Mandatory input that cannot fit produces a local fallback without a decision provider
+attempt. Ordinary model requests remain complete. A fixed connection test does not prove
+maximum provider context capacity.
 
 After saving and testing, attach the returned revision through the existing route authoring flow:
 

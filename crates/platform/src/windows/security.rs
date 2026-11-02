@@ -5,7 +5,7 @@ use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 use std::ptr::{addr_of, null, null_mut};
 
-pub use super::read_lease::{ReadLease, open_read_lease};
+pub use super::read_lease::{ReadLease, open_installed_image_lease, open_read_lease};
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, GENERIC_ALL, GENERIC_READ, GENERIC_WRITE, HANDLE, LocalFree,
@@ -449,6 +449,24 @@ pub fn open_delete(path: &Path, directory: bool) -> io::Result<File> {
     )
 }
 
+/// Incremental directory removal keeps ancestor handles across batches. Share
+/// deletion so revalidation and the eventual child disposition can coexist.
+pub fn open_shared_delete_at(
+    parent: &File,
+    name: &std::ffi::OsStr,
+    directory: bool,
+) -> io::Result<File> {
+    super::path::relative(
+        parent,
+        name,
+        directory,
+        GENERIC_READ | DELETE,
+        super::path::SHARE_ALL,
+        false,
+        None,
+    )
+}
+
 /// Writable identity for payload flush and handle-relative namespace changes.
 pub fn open_write_through(path: &Path, directory: bool) -> io::Result<File> {
     super::path::open(
@@ -471,6 +489,31 @@ pub fn delete_by_handle(file: &File) -> io::Result<()> {
             FileDispositionInfo,
             (&disposition as *const FILE_DISPOSITION_INFO).cast(),
             size_of_u32::<FILE_DISPOSITION_INFO>()?,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Retired, caller-owned copies may retain a native read-only attribute. Remove
+/// that copy without changing the original object's permissions or attributes.
+pub fn delete_owned_by_handle(file: &File) -> io::Result<()> {
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_DISPOSITION_FLAG_DELETE, FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE,
+        FILE_DISPOSITION_INFO_EX, FileDispositionInfoEx,
+    };
+    let disposition = FILE_DISPOSITION_INFO_EX {
+        Flags: FILE_DISPOSITION_FLAG_DELETE | FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE,
+    };
+    // SAFETY: the live handle has DELETE access; the buffer matches the class.
+    if unsafe {
+        SetFileInformationByHandle(
+            file.as_raw_handle().cast(),
+            FileDispositionInfoEx,
+            (&disposition as *const FILE_DISPOSITION_INFO_EX).cast(),
+            size_of_u32::<FILE_DISPOSITION_INFO_EX>()?,
         )
     } == 0
     {

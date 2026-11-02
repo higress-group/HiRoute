@@ -81,6 +81,7 @@ mod model_feed;
 mod mutation;
 mod native_additional_model;
 mod native_claude_model;
+mod native_context_guidance;
 mod native_hermes;
 mod native_model;
 mod native_network;
@@ -180,6 +181,12 @@ fn windows_agent_discovery_uses_the_private_isolated_test_home() {
 }
 
 impl ProductionControlRuntime {
+    /// Recovery material expires only once the whole serving composition is ready.
+    pub(crate) fn service_ready(&self) {
+        self.adapter.upgrade_cleanup.service_ready();
+        self.adapter.delegation_observation.service_ready();
+    }
+
     pub(crate) fn upgrade_active_tasks(&self) -> Result<u64, String> {
         let occupied = self
             .adapter
@@ -349,16 +356,12 @@ impl ProductionControlRuntime {
             error.to_string()
         })?;
         let mut startup = overrides.storage_startup.clone();
+        LocalObservationStore::validate_startup_format(storage_root.join("observation"))
+            .map_err(|error| error.to_string())?;
+        // Resume previously published whole-group recovery only. A new
+        // Observation format reset does not create a copy or require old code.
         startup.preserve_observation_source =
-            LocalObservationStore::legacy_history_requires_seal(storage_root.join("observation"))
-                .map_err(|error| {
-                    startup.report_failure(hiroute_host_runtime::StorageRecovery::new(
-                        hiroute_host_runtime::StorageRecoveryCause::UnsupportedFormat,
-                        hiroute_host_runtime::StorageRecoveryAction::PreserveAndDiagnose,
-                    ));
-                    format!("{error}; preserve all storage generations and use the original whole-group recovery guide")
-                })?
-                || LocalStorageSet::observation_cutover_pending(storage_root);
+            LocalStorageSet::observation_cutover_pending(storage_root);
         if startup.preserve_observation_source
             && let Some(progress) = &startup.upgrade_progress
         {
@@ -654,7 +657,10 @@ impl ProductionControlRuntime {
                             .map_err(|e| e.to_string())?;
                         continue;
                     }
-                    return Err(error.to_string());
+                    return Err(native_context_guidance::managed_artifact_error(
+                        &error,
+                        &scanner.qoder_user_config_target(),
+                    ));
                 }
             }
         };
@@ -662,14 +668,10 @@ impl ProductionControlRuntime {
         let digest_authority = DigestAuthority::new(*observation_workspace_key);
         let observation_root = storage_root.join("observation");
         let observation = Arc::new(
-            if startup.preserve_observation_source {
-                LocalObservationStore::open_fresh_after_seal(
-                    observation_root,
-                    digest_authority.clone(),
-                )
-            } else {
-                LocalObservationStore::open(observation_root, digest_authority.clone())
-            }
+            LocalObservationStore::open_for_daemon_startup(
+                observation_root,
+                digest_authority.clone(),
+            )
             .map_err(|error| {
                 startup.report_failure(stores.record_observation_startup_failure(
                     storage_root,
@@ -695,6 +697,7 @@ impl ProductionControlRuntime {
             .open_launcher_capability_registrar()
             .map_err(|error| error.to_string())?;
         let adapter = Arc::new(LocalControlAdapter {
+            upgrade_cleanup: hiroute_local_storage::backup::UpgradeCleanup::new(storage_root),
             native_network: Arc::new(hiroute_domain::NativeNetworkRegistryV1::new(
                 native_network::capture(),
             )),
@@ -747,6 +750,7 @@ impl ProductionControlRuntime {
             startup_recovery_complete: AtomicBool::new(false),
             delegation_native_cleanup_cursor: Mutex::new(None),
             delegation_task_maintenance_cursor: Mutex::new(None),
+            delegation_text_reader: Mutex::new(None),
         });
         let worker_platform = Arc::new(LocalWorkerPlatform::default());
         let delegation_executor = Arc::new(DelegationRunExecutor::new(
@@ -1027,6 +1031,7 @@ fn delegation_epoch() -> Result<String, String> {
 }
 
 struct LocalControlAdapter {
+    upgrade_cleanup: hiroute_local_storage::backup::UpgradeCleanup,
     native_network: Arc<hiroute_domain::NativeNetworkRegistryV1>,
     publication_diagnostics: Mutex<DiagnosticsPort>,
     publication_marker_cache: Mutex<Option<publication::DecodedMarker>>,
@@ -1075,6 +1080,7 @@ struct LocalControlAdapter {
         Mutex<Option<hiroute_observation::managed_text::ManagedTextNativeCleanupCursor>>,
     delegation_task_maintenance_cursor:
         Mutex<Option<hiroute_domain::delegation::DelegationTaskMaintenanceCursorV1>>,
+    delegation_text_reader: Mutex<Option<hiroute_observation::managed_text::ManagedTextReader>>,
 }
 
 impl LocalControlAdapter {

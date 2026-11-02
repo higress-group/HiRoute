@@ -63,8 +63,8 @@ pub use otel::{
 pub use ports::{ObservedCredentialResolver, ObservedRuntimeStateStore};
 pub use pricing::{RequestPriceSnapshot, RequestPriceSource};
 pub use producer::{
-    GatewayObservationSinks, ObservationAck, ObservationNack, ObservationRecord,
-    ObservationRecordSink, accounted_acknowledgement,
+    ContentResourceSnapshot, GatewayObservationSinks, ObservationAck, ObservationNack,
+    ObservationRecord, ObservationRecordSink, accounted_acknowledgement,
 };
 pub use provider::ObservedProductionProvider;
 pub use request::{RequestObservation, RequestObservationMetadata};
@@ -309,14 +309,22 @@ impl GatewayObservation {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = diagnostics;
     }
+    /// Read current resource accounting without inspecting content or taking a
+    /// database snapshot. Callers measure RSS/CPU independently.
+    pub fn content_resource_snapshot(&self) -> Option<ContentResourceSnapshot> {
+        self.channels.content.content_resource_snapshot()
+    }
+
     pub fn from_environment() -> Self {
         let environment = EnvironmentObservation::load();
-        Self::with_sinks_and_policy(
+        let observation = Self::with_sinks_and_policy(
             environment.enabled,
             environment.queue_bytes,
             environment.sinks,
             OtelContentPolicy::Disabled,
-        )
+        );
+        observation.prepare_content_worker();
+        observation
     }
 
     pub fn with_sinks(queue_bytes: usize, sinks: GatewayObservationSinks) -> Self {
@@ -352,9 +360,55 @@ impl GatewayObservation {
         )
     }
 
+    /// Product defaults size independent workloads independently. Explicit
+    /// capacity constructors above retain their original caller-owned ceiling.
+    pub fn with_runtime_sinks_and_workspace_key(
+        sinks: GatewayObservationSinks,
+        content_policy: OtelContentPolicy,
+        workspace_hmac_key: [u8; 32],
+    ) -> Self {
+        let observation = Self::build_with_capacities(
+            true,
+            16 * 1024 * 1024,
+            128 * 1024 * 1024,
+            32 * 1024 * 1024,
+            sinks,
+            content_policy,
+            Some(workspace_hmac_key),
+        );
+        observation.prepare_content_worker();
+        observation
+    }
+
+    fn prepare_content_worker(&self) {
+        if self.enabled {
+            self.channels.content_work.prepare(&self.channels.content);
+        }
+    }
+
     fn build(
         enabled: bool,
         queue_bytes: usize,
+        sinks: GatewayObservationSinks,
+        content_policy: OtelContentPolicy,
+        key: Option<[u8; 32]>,
+    ) -> Self {
+        Self::build_with_capacities(
+            enabled,
+            queue_bytes,
+            queue_bytes,
+            queue_bytes,
+            sinks,
+            content_policy,
+            key,
+        )
+    }
+
+    fn build_with_capacities(
+        enabled: bool,
+        queue_bytes: usize,
+        content_queue_bytes: usize,
+        canonical_queue_bytes: usize,
         sinks: GatewayObservationSinks,
         content_policy: OtelContentPolicy,
         key: Option<[u8; 32]>,
@@ -399,7 +453,11 @@ impl GatewayObservation {
                         &[name.as_bytes(), &instance_nonce, &started_at],
                     )),
                 },
-                queue_bytes,
+                if channel_kind == ObservationChannel::Content {
+                    content_queue_bytes
+                } else {
+                    queue_bytes
+                },
                 sink,
                 Arc::clone(&diagnostics),
                 channel_kind,
@@ -449,7 +507,7 @@ impl GatewayObservation {
                 ),
                 // In-memory agent history also uses this bounded canonical decoder;
                 // disabling persistent observation must not disable turn history.
-                response_capture: CanonicalCaptureProducer::new(true, queue_bytes),
+                response_capture: CanonicalCaptureProducer::new(true, canonical_queue_bytes),
                 content_work: Default::default(),
             },
             next_request: AtomicU64::new(1),

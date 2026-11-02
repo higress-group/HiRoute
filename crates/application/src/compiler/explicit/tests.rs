@@ -612,7 +612,7 @@ fn context_window_is_bounded_persisted_and_changes_the_route_digest() {
         .unwrap();
     assert_eq!(
         default.body.materialized.context_window_tokens().unwrap(),
-        upper.min(272_000)
+        upper.min(400_000)
     );
     desired.limits.context_window_tokens = Some(64_000);
     let custom = compile(&desired, &facts).unwrap();

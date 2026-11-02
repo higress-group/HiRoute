@@ -500,8 +500,8 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .stat-line a b{font-size:26px;letter-spacing:-.5px;color:#3d52c9}
 .stat-line a span{font-size:14px;color:#596174}
 .stat-line a:hover b{color:#6b5cbb}
-.chart-shot{background:#fff;padding:24px}
-.chart-shot img{max-width:880px;margin:auto}
+.chart-shot{background:none;border:0;box-shadow:none;padding:0}
+.chart-shot img{width:100%;border-radius:20px}
 .dark-shot{background:#0d1018;border-color:#232838;padding:10px}
 .dark-shot figcaption{color:#9aa3bd;font-size:13px;padding:12px 6px 4px}
 .savings-section .proof-bottom .text-link,.ecosystem-planned .text-link{display:inline-block;margin-top:12px;margin-right:14px}
@@ -514,4 +514,4 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .question-grid h3{font-size:20px;margin:14px 0 10px;color:var(--paper)}
 .question-grid p{font-size:14px;color:#aab3cc}
 @media(max-width:1000px){.evidence-grid{grid-template-columns:1fr}.question-grid{grid-template-columns:1fr}}
-@media(max-width:760px){.stat-line a{min-width:0}.chart-shot{padding:12px}}
+@media(max-width:760px){.stat-line a{min-width:0}.chart-shot img{border-radius:12px}}

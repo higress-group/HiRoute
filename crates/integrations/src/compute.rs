@@ -14,9 +14,10 @@ mod control_plane;
 mod defaults;
 pub use control_plane::*;
 pub use defaults::{
-    ApiCapabilityCompletion, ApiReasoningDefault, complete_missing_api_capabilities,
-    matching_endpoint_metadata, missing_api_reasoning_default, official_capability_defaults,
-    resolve_managed_defaults, saved_native_capability_digest, without_current_defaults,
+    ApiCapabilityCompletion, ApiReasoningDefault, DecisionContextResolutionError,
+    complete_missing_api_capabilities, matching_endpoint_metadata, missing_api_reasoning_default,
+    official_capability_defaults, resolve_managed_defaults, saved_native_capability_digest,
+    without_current_defaults,
 };
 
 #[derive(Clone, Debug)]
@@ -34,6 +35,8 @@ pub struct TrustedReleaseCatalog {
     pub(crate) current_release_model_data: hiroute_domain::ReleaseModelDataBundleV2,
     pub(crate) feed_facts: Option<Box<crate::model_feed::FeedCatalogFacts>>,
     pub(crate) official_snapshot: Option<Box<hiroute_domain::OfficialModelSnapshotV1>>,
+    pub(crate) decision_context_index:
+        std::sync::OnceLock<defaults::decision_context::DecisionContextIndex>,
 }
 
 impl TrustedReleaseCatalog {

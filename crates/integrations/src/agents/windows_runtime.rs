@@ -268,6 +268,37 @@ pub(super) fn bounded(
     timeout: Duration,
     limit: usize,
 ) -> io::Result<zeroize::Zeroizing<Vec<u8>>> {
+    bounded_inner(command, inherit, timeout, limit, None)
+}
+
+#[cfg(test)]
+pub(super) fn bounded_diagnose_error(
+    command: &Command,
+    inherit: bool,
+    timeout: Duration,
+    limit: usize,
+    observe: impl FnOnce(&[u8]),
+) -> io::Result<zeroize::Zeroizing<Vec<u8>>> {
+    let root = tempfile::tempdir()?;
+    let error =
+        hiroute_platform::windows::security::create_owner_only_file(&root.path().join("stderr"))?;
+    let result = bounded_inner(command, inherit, timeout, limit, Some(&error));
+    if result.is_err() {
+        observe(&read_held_capture(&error, limit).unwrap_or_default());
+    }
+    if result.as_ref().is_err_and(cleanup_unknown) {
+        let _ = root.keep();
+    }
+    result
+}
+
+fn bounded_inner(
+    command: &Command,
+    inherit: bool,
+    timeout: Duration,
+    limit: usize,
+    error: Option<&std::fs::File>,
+) -> io::Result<zeroize::Zeroizing<Vec<u8>>> {
     let capture =
         tempfile::tempdir().map_err(|error| native_probe_stage("capture-create", error))?;
     // The tempfile container may inherit an administrator TokenOwner. The file
@@ -281,7 +312,7 @@ pub(super) fn bounded(
         inherit,
         Stream::Null,
         Stream::File(&writer),
-        Stream::Null,
+        error.map_or(Stream::Null, Stream::File),
     )
     .map_err(|error| {
         let error = native_probe_stage("job-spawn", error);
@@ -290,7 +321,10 @@ pub(super) fn bounded(
     let start = Instant::now();
     let result = (|| {
         loop {
-            if writer
+            if error.is_some_and(|file| {
+                file.metadata()
+                    .map_or(true, |metadata| metadata.len() > limit as u64)
+            }) || writer
                 .metadata()
                 .map_err(|error| native_probe_stage("capture-metadata", error))?
                 .len()

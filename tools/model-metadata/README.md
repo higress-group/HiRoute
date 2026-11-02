@@ -18,3 +18,20 @@ The validator checks the date and the generated provenance against the same rule
 
 Client-repository discovery and editorial maintenance workflows are not required to build or
 validate the published catalog.
+
+Native decision windows are `decision_constraints` on exact endpoint bindings in
+the same source catalog. Each constraint names a decision interface, a positive
+unsigned 32-bit request limit, an optional independent question limit, its header
+condition, evidence references and `documented`, `inferred` or `maintainer_policy`
+basis. Decision-only canonical identities leave ordinary generation limits
+not applicable; these records do not create inference capabilities or offers.
+Rounded-value normalization and product-selected defaults retain an explanatory
+note instead of claiming measured endpoint capacity. Unknown bindings receive the
+runtime product fallback; never add a fabricated catalog fact for that fallback.
+
+The decision resolver uses exact canonical HTTPS URL, wire protocol and callable
+model identity. Business-space URL templates accept one WorkspaceId DNS label on
+the documented official suffix. Provider names and unlisted aliases do not match.
+The TypeSafe header destination remains an installed typed transport policy;
+remote metadata cannot authorize a new header destination. A saved resolved
+snapshot retains its catalog identity and is not refreshed at publication/runtime.

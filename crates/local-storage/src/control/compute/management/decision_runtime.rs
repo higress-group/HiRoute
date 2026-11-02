@@ -1,10 +1,10 @@
 //! Transactionally maintained, keyed projection of current decision membership.
 use hiroute_domain::{
-    CanonicalDigest, ComputeManagementSourceV2, DecisionAuthenticationV2, DecisionConnectionV2,
-    DecisionCredentialAdmissionV1, DecisionCredentialBindingV1, DecisionCredentialKeyV1,
-    DecisionCredentialLeaseRequestV1, DecisionServiceV2, MaterializationState,
-    NativeCredentialAccessDeniedV1, NativeCredentialLeaseErrorV1, NativeCredentialLeaseV1,
-    PortError, PortErrorCode, PortResult, WorkspaceId,
+    CanonicalDigest, ComputeManagementSourceV2, DecisionCredentialAdmissionV1,
+    DecisionCredentialBindingV1, DecisionCredentialKeyV1, DecisionCredentialLeaseRequestV1,
+    DecisionServiceRecord, MaterializationState, NativeCredentialAccessDeniedV1,
+    NativeCredentialLeaseErrorV1, NativeCredentialLeaseV1, PortError, PortErrorCode, PortResult,
+    WorkspaceId,
 };
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
@@ -201,21 +201,16 @@ impl crate::LocalStorageSet {
             "SELECT service_json FROM decision_services WHERE workspace_id=?1 AND service_id=?2 AND revision=?3",
             params![workspace.as_str(), binding.service_id, binding.service_revision], |row| row.get(0),
         ).optional().map_err(|_| port("decision.runtime.read_service"))?;
-        let service: DecisionServiceV2 = serde_json::from_str(
+        let service: DecisionServiceRecord = serde_json::from_str(
             &service.ok_or_else(|| denied("decision.runtime.service_missing"))?,
         )
         .map_err(|_| denied("decision.runtime.service_invalid"))?;
-        let matches = matches!(&service.connection,
-            DecisionConnectionV2::Native { model, endpoint, wire_protocol,
-                authentication: DecisionAuthenticationV2::SharedSource { source_id, source_lineage_digest }, .. }
-                if model == &binding.model && *wire_protocol == binding.wire_protocol && source_id == &binding.source_id
-                    && source_lineage_digest == &binding.source_lineage_digest
-                    && hiroute_domain::canonical_decision_endpoint(endpoint).is_ok_and(|url| url == binding.endpoint)
-        );
         if !service.validate()
-            || service.id != binding.service_id
-            || service.revision != binding.service_revision
-            || !matches
+            || service
+                .credential_binding()
+                .map_err(|_| denied("decision.runtime.service_invalid"))?
+                .as_ref()
+                != Some(binding)
         {
             return Err(denied("decision.runtime.service_binding"));
         }

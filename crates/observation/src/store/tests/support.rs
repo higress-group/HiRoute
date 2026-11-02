@@ -99,6 +99,7 @@ impl Fixture {
             message_ordinal: None,
             part_ordinal: None,
             chunk_ordinal: None,
+            capture: None,
             transport_frame_id: None,
             canonical_media_type: None,
             canonical_bytes_base64: None,

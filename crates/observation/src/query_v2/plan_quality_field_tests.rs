@@ -457,7 +457,7 @@ fn request_field_indexes_reopen_without_rewriting_source_rows() {
                 |r| r.get::<_, String>(0)
             )
             .unwrap(),
-            "5"
+            "6"
         );
         assert_eq!(
             measured(&db, &summary_sql()).0[0][7],

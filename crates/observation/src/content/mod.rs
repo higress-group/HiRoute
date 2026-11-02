@@ -1,6 +1,8 @@
 //! Exact Gateway v2 content-blob verification and streaming installation helpers.
 
+mod capture;
 pub(crate) mod completeness;
+pub(crate) mod durability;
 pub(crate) mod lifecycle;
 pub(crate) mod projection;
 pub(crate) mod storage;
@@ -20,13 +22,19 @@ pub struct DigestAuthority {
 }
 
 impl DigestAuthority {
-    pub(crate) fn query_cursor_signature(&self, bytes: &[u8]) -> String {
-        let mut mac = self.mac(b"observation-query-cursor/v2");
+    pub(crate) fn query_cursor_signature(&self, generation: &str, bytes: &[u8]) -> String {
+        let mut mac = self.mac(b"observation-query-cursor/v3");
+        update_field(&mut mac, generation.as_bytes());
         update_field(&mut mac, bytes);
         hex(mac.finalize().into_bytes().as_slice())
     }
 
-    pub(crate) fn verify_query_cursor_signature(&self, bytes: &[u8], signature: &str) -> bool {
+    pub(crate) fn verify_query_cursor_signature(
+        &self,
+        generation: &str,
+        bytes: &[u8],
+        signature: &str,
+    ) -> bool {
         if signature.len() != 64 {
             return false;
         }
@@ -45,7 +53,8 @@ impl DigestAuthority {
         let Some(decoded) = decoded else {
             return false;
         };
-        let mut mac = self.mac(b"observation-query-cursor/v2");
+        let mut mac = self.mac(b"observation-query-cursor/v3");
+        update_field(&mut mac, generation.as_bytes());
         update_field(&mut mac, bytes);
         mac.verify_slice(&decoded).is_ok()
     }

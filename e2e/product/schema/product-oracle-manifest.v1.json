@@ -1,5 +1,5 @@
 {
-  "descriptor_digest": "sha256:8869b6c9460ddadec7c71213aae16ec9d7d3fcebc30fbcd9cd013e22a11ae04c",
+  "descriptor_digest": "sha256:dc43cd321b0c2c0597801020c63b6d4fd702687a984b4718748b4066f474921d",
   "expected_red_reasons": [],
   "planned_commands": [
     "console.open",
@@ -79,6 +79,7 @@
     "decision.sources.list",
     "decision.connections.list",
     "decision.connections.apply",
+    "decision.context.preview",
     "decision.connections.test",
     "decision.network.test",
     "decision.services.test",
@@ -188,6 +189,7 @@
     "decision.sources.list",
     "decision.connections.list",
     "decision.connections.apply",
+    "decision.context.preview",
     "decision.connections.test",
     "decision.network.test",
     "decision.services.test",

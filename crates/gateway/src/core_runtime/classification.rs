@@ -21,10 +21,20 @@ mod diagnostic;
 use diagnostic::classifier_status_failure;
 use diagnostic::{CallDiagnostic, classifier_response_failure, diagnostic_request};
 
+#[path = "classification/adaptive_history.rs"]
+mod adaptive_history;
+#[path = "classification/adaptive_replay.rs"]
+mod adaptive_replay;
+#[path = "classification/adaptive_request.rs"]
+mod adaptive_request;
 #[path = "classification/c_capability.rs"]
 mod c_capability;
 #[path = "classification/c_request.rs"]
 mod c_request;
+#[path = "classification/context_budget.rs"]
+mod context_budget;
+#[path = "classification/request_context.rs"]
+mod request_context;
 pub use c_capability::CClassifierDiagnosticOutcome;
 #[path = "classification/extension.rs"]
 mod extension;
@@ -128,6 +138,7 @@ pub(super) struct ClassificationRequest<'a> {
     pub(super) admitted_network: Option<&'a mut Option<ClassifierNetworkDiagnostic>>,
     pub(super) request: &'a ModelRequestIRV1,
     pub(super) current_input: Option<&'a [ContentPart]>,
+    pub(super) current_input_position: Option<crate::agent_turn_history::CurrentInputPosition>,
     /// A recognized auxiliary call or continuation has no independent current input.
     pub(super) native_user_unavailable: bool,
     /// Missing source evidence is disclosed to judgment; usable input stays enabled.
@@ -150,6 +161,7 @@ pub(super) struct ClassificationRequest<'a> {
 pub(super) struct DecisionInput<'a> {
     request: &'a ModelRequestIRV1,
     current: Option<&'a [ContentPart]>,
+    position: Option<crate::agent_turn_history::CurrentInputPosition>,
 }
 
 impl<'a> From<&'a ModelRequestIRV1> for DecisionInput<'a> {
@@ -157,6 +169,7 @@ impl<'a> From<&'a ModelRequestIRV1> for DecisionInput<'a> {
         Self {
             request,
             current: None,
+            position: None,
         }
     }
 }
@@ -200,6 +213,7 @@ enum CallFailure {
     SourceDisabled,
     NoUsableCredentials,
     RejectedInput,
+    BudgetRejected(context_budget::BudgetRejection),
     AuthenticationRejected,
     RateLimited,
     EndpointRejected,
@@ -212,7 +226,7 @@ impl CallFailure {
         match self {
             Self::Timeout => R::Timeout,
             Self::Unavailable | Self::SourceDisabled | Self::NoUsableCredentials => R::Unavailable,
-            Self::RejectedInput => R::RejectedInput,
+            Self::RejectedInput | Self::BudgetRejected(_) => R::RejectedInput,
             Self::AuthenticationRejected => R::AuthenticationRejected,
             Self::RateLimited => R::RateLimited,
             Self::EndpointRejected => R::EndpointRejected,
@@ -307,6 +321,7 @@ impl ProductionGatewayRuntime {
                 ["local", "general"]
                     .map(|id| (id.to_owned(), hiroute_domain::JudgmentSettingsV1::default())),
             )
+            .and_then(|protocol| protocol.with_context(mode.resolved_context()))
             .map_err(|_| ClassifierDiagnosticError::InvalidConfig)?;
             Arc::make_mut(&mut classifier).native_protocol = Some(protocol);
         }
@@ -366,6 +381,7 @@ impl ProductionGatewayRuntime {
                     admitted_network: Some(network),
                     request: &request,
                     current_input: None,
+                    current_input_position: None,
                     native_user_unavailable: false,
                     current_input_origin_unverified: false,
                     replay: &replay,
@@ -441,6 +457,7 @@ impl ProductionGatewayRuntime {
                 DecisionInput {
                     request: request.request,
                     current: request.current_input,
+                    position: request.current_input_position,
                 },
                 request.replay,
             ) {
@@ -486,6 +503,7 @@ impl ProductionGatewayRuntime {
                             DecisionInput {
                                 request: request.request,
                                 current: request.current_input,
+                                position: request.current_input_position,
                             },
                             request.history,
                             request.current_input_origin_unverified,
@@ -495,6 +513,7 @@ impl ProductionGatewayRuntime {
                             DecisionInput {
                                 request: request.request,
                                 current: request.current_input,
+                                position: request.current_input_position,
                             },
                             request.history,
                             classifier,
@@ -503,7 +522,16 @@ impl ProductionGatewayRuntime {
                         .map_err(|_| CallFailure::RejectedInput)
                     };
                     match prepared {
-                        Err(error) => Err(error),
+                        Err(error) => {
+                            if let CallFailure::BudgetRejected(rejection) = error {
+                                routing_observation = adaptive_request::rejected_observation(
+                                    classifier,
+                                    request.history,
+                                    rejection,
+                                );
+                            }
+                            Err(error)
+                        }
                         Ok(prepared) => {
                             routing_observation = prepared.routing_observation.clone();
                             if let Some(o) = routing_observation.as_mut()
@@ -659,9 +687,9 @@ impl ProductionGatewayRuntime {
                     | CallFailure::NoUsableCredentials
                     | CallFailure::AuthenticationRejected
                     | CallFailure::RateLimited => ClassifierFallbackReasonV1::Unavailable,
-                    CallFailure::RejectedInput | CallFailure::EndpointRejected => {
-                        ClassifierFallbackReasonV1::RejectedInput
-                    }
+                    CallFailure::RejectedInput
+                    | CallFailure::BudgetRejected(_)
+                    | CallFailure::EndpointRejected => ClassifierFallbackReasonV1::RejectedInput,
                     CallFailure::InvalidOutput => ClassifierFallbackReasonV1::InvalidOutput,
                 });
                 Ok(ClassificationOutcome {
@@ -1005,6 +1033,22 @@ impl ProductionGatewayRuntime {
                 .map_err(|_| ClassificationError::Integrity)?,
         );
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if classifier
+            .context_budget
+            .as_ref()
+            .is_some_and(|context| context.typesafe_long_context_header)
+        {
+            if !hiroute_domain::official_typesafe_long_context_destination(
+                &classifier.endpoint,
+                classifier.wire_protocol,
+            ) {
+                return Err(ClassificationError::Integrity);
+            }
+            headers.insert(
+                http::HeaderName::from_static("typesafe-danger-zone-long-context"),
+                HeaderValue::from_static("true"),
+            );
+        }
         headers.insert(
             CONTENT_LENGTH,
             HeaderValue::from(

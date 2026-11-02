@@ -63,11 +63,11 @@ try {
  Reject {Get-WindowsReplayRecipes $captures (@($product)+@($product[0]))}
  Reject {Get-WindowsReplayRecipes $captures (@($product)+@(''))}
  $required=@(Get-WindowsRequiredRecipes background)
- Require ($required.Count -eq 5)
+ Require ($required.Count -eq 6)
  $runtime=@(Get-WindowsAssessmentNames background hosted execute)
  $deferred=@(Get-WindowsAssessmentNames background hosted compile-only)
- Require ($runtime.Count -eq 3 -and $deferred.Count -eq 2)
- Require (@(Get-WindowsAssessmentNames background full execute).Count -eq 5)
+ Require ($runtime.Count -eq 3 -and $deferred.Count -eq 3)
+ Require (@(Get-WindowsAssessmentNames background full execute).Count -eq 6)
  Require (@(Get-WindowsAssessmentNames background full compile-only).Count -eq 0)
  Reject {Get-WindowsRuntimeDisposition background unknown-new-recipe hosted}
  Reject {Get-WindowsRuntimeDisposition background unknown-new-recipe full}
@@ -107,14 +107,16 @@ try {
 
 
 class NativeFeedback(unittest.TestCase):
-    def test_core_timing_and_field_exclusions_remain_source_declared_opt_ins(self):
+    def test_core_opt_ins_match_source_declared_ignored_tests(self):
         repo = Path(__file__).resolve().parent.parent
         driver = (repo / 'scripts/windows-headless-ci.ps1').read_text()
-        for package in ('application', 'observation', 'gateway'):
+        for package in ('application', 'observation', 'gateway', 'cpa-bridge'):
             with self.subTest(package=package):
                 marker = "if ($Package -eq 'hiroute-" + package + "') {"
                 block = driver.split(marker, 1)[1].split('\n    }', 1)[0]
-                names = re.findall(r"'([^']+::[^']+)'", block)
+                opt_ins = re.search(r'\$optIn\s*=\s*@\((.*?)\)', block, re.S)
+                self.assertIsNotNone(opt_ins)
+                names = re.findall(r"'([^']+::[^']+)'", opt_ins.group(1))
                 self.assertTrue(names)
                 self.assertEqual(len(names), len(set(names)))
                 sources = '\n'.join(path.read_text() for path in
@@ -125,6 +127,13 @@ class NativeFeedback(unittest.TestCase):
                         r'#\[test\]\s*#\[ignore\s*=\s*"([^"\n]+)"\]\s*fn\s+'
                         + function + r'\s*\(', sources)
                     self.assertEqual(len(explicit), 1, name)
+                if package == 'cpa-bridge':
+                    ignored = re.findall(
+                        r'#\[test\]\s*#\[ignore\s*=\s*"[^"\n]+"\]\s*fn\s+(\w+)\s*\(',
+                        sources)
+                    self.assertCountEqual(
+                        [name.rsplit('::', 1)[1] for name in names], ignored,
+                        'Every source-declared CPA opt-in must be registered in the native inventory')
 
     def fixture(self, root, scenario="green", revision="a" * 40):
         provenance = dict(source_revision="a" * 40, host_architecture="X64", cargo="cargo fixed",

@@ -440,7 +440,7 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
     let window = launch_descriptor["context_window_tokens"]
         .as_u64()
         .expect("Claude launch carries plan window");
-    assert!((100_000..=272_000).contains(&window));
+    assert!((100_000..=400_000).contains(&window));
     assert_eq!(
         native["env"]["CLAUDE_CODE_AUTO_COMPACT_WINDOW"],
         window.to_string()

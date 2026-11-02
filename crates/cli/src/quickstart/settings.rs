@@ -175,6 +175,7 @@ pub(super) fn prepare(
     }
     let spec: AgentSettingsSpecV2 =
         serde_json::from_value(spec).map_err(|_| error(ErrorCode::InvalidArguments))?;
+    crate::request_input::semantics::agent(&spec).map_err(error)?;
     Ok(json!(AgentSettingsPreviewRequestV2 { spec }))
 }
 

@@ -25,6 +25,7 @@ impl From<HistoryRelation> for hiroute_domain::HistoryRelationV1 {
 }
 
 pub(super) struct BranchAdmission {
+    capture_input_start: Option<usize>,
     pub(super) key: AgentTurnHistoryKey,
     pub(super) scope: AgentTurnHistoryKey,
     pub(super) relation: HistoryRelation,
@@ -298,6 +299,28 @@ impl AgentTurnHistoryStore {
                 segment = None;
             }
         }
+        let capture_input_start = if reusable && retry {
+            // Native retry admission already verified the complete request and
+            // setup against a unique failed-before-output checkpoint. Its input
+            // belongs to the original occurrence; the capture keeps that anchor.
+            Some(analyzed.message_count)
+        } else if reusable && exact && !ambiguous && !projected {
+            selected_entry.and_then(|entry| {
+                analyzed
+                    .boundaries
+                    .iter()
+                    .find(|(position, _)| *position == entry.checkpoint.message_count)
+                    .filter(|(_, incoming)| {
+                        entry
+                            .response_boundary
+                            .and_then(|accepted| accepted.matches(*incoming))
+                            == Some(false)
+                    })
+                    .map(|(_, incoming)| incoming.consumed_end)
+            })
+        } else {
+            None
+        };
         let key = if reusable {
             selected.expect("reusable candidate").0.clone()
         } else if candidates.is_empty() && !inner.entries.contains_key(scope) {
@@ -316,6 +339,7 @@ impl AgentTurnHistoryStore {
             inputs.history_continuity = HistoryContinuity::NoCheckpoint;
         }
         Ok(BranchAdmission {
+            capture_input_start,
             key,
             scope: scope.clone(),
             relation,
@@ -388,6 +412,7 @@ impl AgentTurnHistoryStore {
         };
         // A visible projection is enough for actual-stage capture, never for
         // provider affinity or provider-state cleanup authorization.
+        ticket.capture_input_start = selection.capture_input_start;
         ticket.allow_affinity = !selection.projected && !selection.retry;
         if !selection.forked || selection.seed.is_empty() {
             return Ok(());

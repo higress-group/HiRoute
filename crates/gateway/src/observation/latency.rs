@@ -130,7 +130,13 @@ impl RequestLatency {
         }))
     }
 
-    pub(super) fn capture_completed(&self, queued: Instant, started: Instant, dropped: bool) {
+    pub(super) fn capture_completed(
+        &self,
+        queued: Instant,
+        started: Instant,
+        work: std::time::Duration,
+        dropped: bool,
+    ) {
         self.0.capture_jobs.fetch_add(1, Relaxed);
         self.0.capture_queue_wait_max_us.fetch_max(
             started
@@ -141,7 +147,7 @@ impl RequestLatency {
         );
         self.0
             .capture_work_us
-            .fetch_add(elapsed_us(started), Relaxed);
+            .fetch_add(work.as_micros().min(u128::from(u64::MAX)) as u64, Relaxed);
         if dropped {
             self.0.capture_dropped_jobs.fetch_add(1, Relaxed);
         }
@@ -253,15 +259,18 @@ impl AsyncRecordTiming {
         Instant::now()
     }
 
+    #[cfg(test)]
     pub(super) fn end_delivery(&self, started: Instant, delivered: bool) {
+        self.end_delivery_work(elapsed_us(started), delivered);
+    }
+
+    /// A shared batch barrier's elapsed work is apportioned once across its
+    /// processed records, rather than counted in full for every envelope.
+    pub(super) fn end_delivery_work(&self, work_us: u64, delivered: bool) {
         if self.0.resolved.swap(true, Relaxed) {
             return;
         }
-        self.0
-            .request
-            .0
-            .sink_work_us
-            .fetch_add(elapsed_us(started), Relaxed);
+        self.0.request.0.sink_work_us.fetch_add(work_us, Relaxed);
         let count = if delivered {
             &self.0.request.0.delivered
         } else {

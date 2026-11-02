@@ -482,8 +482,9 @@ def publish_plan_and_agent(product, binding_id, native_model_mode='preserve_avai
         product.editor['limits']['maximum_attempts'] = 3
     if branch_service is not None:
         assert economy_binding is None
-        classifier_kind = ('decision_service_v2' if branch_service.get('schema') ==
-                           'hiroute.decision-service/v2' else 'decision_service')
+        classifier_kind = {'hiroute.decision-service/v2': 'decision_service_v2',
+                           'hiroute.decision-service/v3': 'decision_service_v3'}.get(
+                               branch_service.get('schema'), 'decision_service')
         product.editor.update(mode='custom_branches', candidates=[], branch_routing={
             'classifier': {'kind': classifier_kind, 'service': branch_service},
             'branches': [{'id': key, 'name': key, 'condition': 'Choose ' + key,

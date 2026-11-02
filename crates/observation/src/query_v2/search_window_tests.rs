@@ -6,7 +6,7 @@ use rusqlite::{StatementStatus, params};
 
 fn copies(db: &rusqlite::Connection, count: u32) {
     db.execute("WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<?1)
-        INSERT INTO content_instances_v2 SELECT workspace_id,'copy-'||n,message_instance_id,request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2,ids WHERE content_id='content'", [count]).unwrap();
+        INSERT INTO content_instances_v2(workspace_id,content_id,message_instance_id,request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos) SELECT workspace_id,'copy-'||n,message_instance_id,request_id,direction,fork_id,part_ordinal+n,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2,ids WHERE content_id='content'", [count]).unwrap();
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn search_pages_preserve_index_gaps_and_freeze_late_content_and_publication() {
         .unwrap();
         db.execute("INSERT INTO observation_text_blocks_v2 SELECT workspace,'pending',ordinal,original_start,primary_start,folded,offsets,original FROM observation_text_blocks_v2", []).unwrap();
         db.execute("INSERT INTO logical_requests(workspace_id,request_id,session_id,turn_id,started_at_ms) VALUES(?1,'late','session','internal',100)", [WorkspaceId::DEFAULT]).unwrap();
-        db.execute("INSERT INTO content_instances_v2 SELECT workspace_id,'late',message_instance_id,'late',direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2 WHERE content_id='content'", []).unwrap();
+        db.execute("INSERT INTO content_instances_v2(workspace_id,content_id,message_instance_id,request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos) SELECT workspace_id,'late','late-message','late',direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2 WHERE content_id='content'", []).unwrap();
     }
     let mut ids = first
         .hits

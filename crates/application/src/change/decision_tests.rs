@@ -35,7 +35,11 @@ fn independent_header_reuse_matches_effective_origin_and_exact_authentication() 
     ] {
         let new = service(endpoint);
         assert!(
-            decision_header_is_reusable(&old, &new, new.connection.transport().2.unwrap()),
+            decision_header_is_reusable(
+                &old,
+                &new.connection,
+                new.connection.transport().2.unwrap()
+            ),
             "{endpoint}"
         );
     }
@@ -46,7 +50,11 @@ fn independent_header_reuse_matches_effective_origin_and_exact_authentication() 
     ] {
         let new = service(endpoint);
         assert!(
-            !decision_header_is_reusable(&old, &new, new.connection.transport().2.unwrap()),
+            !decision_header_is_reusable(
+                &old,
+                &new.connection,
+                new.connection.transport().2.unwrap()
+            ),
             "{endpoint}"
         );
     }
@@ -60,14 +68,14 @@ fn independent_header_reuse_matches_effective_origin_and_exact_authentication() 
     }
     assert!(!decision_header_is_reusable(
         &old,
-        &replacement,
+        &replacement.connection,
         replacement.connection.transport().2.unwrap()
     ));
     let old_http = DecisionServiceRecord::V2(service("http://127.0.0.1/v1/decisions"));
     let new_http = service("http://127.0.0.1:80/other");
     assert!(decision_header_is_reusable(
         &old_http,
-        &new_http,
+        &new_http.connection,
         new_http.connection.transport().2.unwrap()
     ));
 }

@@ -18,8 +18,8 @@ fn legacy(root: &Path, version: &str) {
 }
 
 #[test]
-fn old_formats_are_classified_for_sealing_without_conversion_or_new_files() {
-    for version in ["1", "2", "3", "4"] {
+fn old_formats_are_classified_for_reset_without_conversion_or_new_files() {
+    for version in ["1", "2", "3", "4", "5"] {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join("observation");
         legacy(&root, version);
@@ -138,7 +138,7 @@ fn fresh_initialization_preserves_unpublished_material_and_publishes_only_curren
     let authority = crate::DigestAuthority::new([7; 32]);
     let store =
         crate::LocalObservationStore::open_fresh_after_seal(&root, authority.clone()).unwrap();
-    assert_eq!(version(&root).unwrap().as_deref(), Some("5"));
+    assert_eq!(version(&root).unwrap().as_deref(), Some("6"));
     assert_eq!(
         fs::read(interrupted.join("partial-db")).unwrap(),
         b"unpublished initialization"

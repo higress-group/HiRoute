@@ -222,6 +222,7 @@ function Invoke-LibraryTests {
     if ($Package -eq 'hiroute-cpa-bridge') {
       $optIn = @(
         'accounts::stock::pin_tests::live_managed_cpa_pin_reads',
+        'accounts::stock::pin_tests::diagnostic_tests::live_managed_cpa_discovery_diagnostics',
         'runtime::tests::borrowed_stock::stock_cpa_v7_2_140_accepts_managed_auth_ready_and_shutdown_contract',
         'runtime::tests::borrowed_stock::stock_cpa_v7_2_140_real_borrowed_codex_responses_smoke')
       foreach ($case in @(
@@ -248,6 +249,11 @@ function Invoke-LibraryTests {
     $required = @([regex]::Matches($inventory, '(?m)^(\S+): test\r?$') | ForEach-Object { $_.Groups[1].Value } | Where-Object { $_ -notin $optIn })
     if ($required.Count -eq 0) { throw "$Package selected no native library tests" }
     $harness = @($optIn | ForEach-Object { '--skip'; $_ })
+    if ($Package -eq 'hiroute-cpa-bridge') {
+      # Preserve a failed assertion even if a later native test aborts the process
+      # before libtest can print its captured-failure summary.
+      $harness += '--nocapture'
+    }
     @{ source_revision = $ExpectedSha; package = $Package; explicit_opt_in_or_child_fixtures = $optIn;
        reason = 'Real selected installation inputs and helper children have separate explicit native gates; any unregistered ignored case still fails this inventory.'
     } | ConvertTo-Json -Depth 5 | Out-File -Encoding utf8 "$evidence/$name-selection.json"
@@ -290,10 +296,13 @@ if ($Scope -eq 'components') {
     'private_fs::tests::private_materials_are_exclusive_and_read_without_permission_adoption',
     'private_fs::tests::storage_preparation_reopens_without_adopting_a_file',
     'private_fs::tests::windows_owned_root_stays_pinned_and_private_read_does_not_repair_borrowed_acl',
+    'windows::read_lease::tests::admitted_installed_hardlinks_keep_identity_and_write_delete_fences',
     'windows::background::tests::native_argv_quotes_spaces_quotes_and_trailing_slashes_without_shell',
     'windows::background::tests::profile_is_absolute_and_definition_rejects_unknown_or_foreign_owner',
     'windows::lifecycle::tests::lifecycle_payload_is_closed_and_does_not_accept_extra_authority',
     'windows::service::token::tests::restricted_business_child_runs_with_owner_medium_token',
+    'windows::shell_login::tests::fixed_login_command_is_quoted_even_for_paths_without_spaces',
+    'windows::shell_registration::tests::inherited_export_is_published_privately_and_changed_material_is_not_overwritten',
     'windows::task::tests::registration_preserves_demand_start_and_logon_policy_across_reopen') @('--nocapture')
   Invoke-RequiredTests 'jobs' @('-p','hiroute-platform','--test','job_windows') @(
     'job_stops_surviving_tool_after_leader_exit_and_preserves_neighbor',
@@ -351,6 +360,8 @@ if ($Scope -eq 'components') {
   $foregroundBreak = 'windows_foreground_console::actual_windows_service_run_ctrl_break_drains_the_gui_daemon_and_preserves_pipes'
   Invoke-RequiredTests 'foreground-ctrl-c' @('-p','hiroute-daemon','--test','windows_headless',$foregroundC) @($foregroundC) @('--exact','--nocapture')
   Invoke-RequiredTests 'foreground-ctrl-break' @('-p','hiroute-daemon','--test','windows_headless',$foregroundBreak) @($foregroundBreak) @('--exact','--nocapture')
+  $version = 'windows_version_console::actual_windows_daemon_version_uses_parent_console_and_preserves_pipes'
+  Invoke-RequiredTests 'daemon-version' @('-p','hiroute-daemon','--test','build_identity',$version) @($version) @('--exact','--nocapture')
   Invoke-RequiredTests 'credential-options' @('-p','hiroute-cli','--lib','windows_handle_carrier_') @(
     'args::tests::windows_handle_carrier_rejects_missing_invalid_and_conflicting_authority',
     'args::tests::windows_handle_carrier_is_separate_from_a_typed_request_source')
@@ -599,7 +610,8 @@ if ($Scope -eq 'components') {
   Invoke-RequiredTests 'agent-business-oracle' @('-p','hiroute-daemon','--test','windows_headless','windows_worker_business::oracle::tests::') @(
     'windows_worker_business::oracle::tests::a_prompt_or_unrelated_or_error_tool_result_cannot_supply_a_native_receipt',
     'windows_worker_business::oracle::tests::a_running_native_shell_does_not_complete_even_after_printing_json',
-    'windows_worker_business::oracle::tests::ambiguous_native_cli_stdout_is_rejected')
+    'windows_worker_business::oracle::tests::ambiguous_native_cli_stdout_is_rejected',
+    'windows_worker_business::oracle::tests::shell_timeout_follows_declared_units_without_a_description_argument')
   $httpOracle = 'windows_business_http::tests::windows_loopback_oracle_reads_delayed_header_and_body_from_nonblocking_listener'
   Invoke-RequiredTests 'agent-http' @('-p','hiroute-daemon','--test','windows_headless',$httpOracle) @($httpOracle) @('--exact')
   $nativeSourceOracle = 'windows_headless_business::upstream::tests::native_source_oracle_reads_delayed_header_and_body_from_nonblocking_stream'

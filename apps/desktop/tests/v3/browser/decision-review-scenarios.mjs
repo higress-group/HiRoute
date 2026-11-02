@@ -39,21 +39,21 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
           assert(button && !button.disabled, 'The explicit removal confirmation is missing'); button.click();
         };
         removal().click(); await until(() => all('[role="dialog"]').length, 'removal confirmation');
-        assert(calls('save_decision_service_v2').length === 0 && text().includes(t('仅移除这个决策模型，保留 API 接入及其 Key。', 'Remove only this decision model; retain its API connection and keys.')), 'Opening removal mutates state or fails to explain shared credential retention');
+        assert(calls('save_decision_service_v3').length === 0 && text().includes(t('仅移除这个决策模型，保留 API 接入及其 Key。', 'Remove only this decision model; retain its API connection and keys.')), 'Opening removal mutates state or fails to explain shared credential retention');
         await click(t('取消', 'Cancel'));
-        assert(store.services.length === 1 && calls('save_decision_service_v2').length === 0, 'Cancel removed the decision configuration');
-        const save = c().handlers.save_decision_service_v2;
-        c().handlers.save_decision_service_v2 = () => { throw { code: 'DECISION_IN_USE' }; };
+        assert(store.services.length === 1 && calls('save_decision_service_v3').length === 0, 'Cancel removed the decision configuration');
+        const save = c().handlers.save_decision_service_v3;
+        c().handlers.save_decision_service_v3 = () => { throw { code: 'DECISION_IN_USE' }; };
         removal().click(); await until(() => all('[role="dialog"]').length, 'blocked removal confirmation'); confirm();
         await until(() => text().includes(t('仍被引用，请先调整引用再移除', 'Still referenced. Update references before removing')), 'reference rejection');
         assert(store.services.length === 1 && text().includes(record.name), 'A rejected removal hid the existing configuration');
         assert(all('[role="dialog"] .btn-danger')[0]?.disabled, 'A rejected removal still allows resubmitting the same unconfirmed intent');
         await click(t('取消', 'Cancel'));
-        c().handlers.save_decision_service_v2 = save;
+        c().handlers.save_decision_service_v3 = save;
         const sourceBefore = JSON.stringify(store.sources), managedBefore = JSON.stringify(c().management.sources);
         removal().click(); await until(() => all('[role="dialog"]').length, 'successful removal confirmation'); confirm();
         await until(() => store.services.length === 0 && text().includes(t('已移除。', 'Removed.')), 'removed configuration readback');
-        const input = calls('save_decision_service_v2').at(-1).payload.input;
+        const input = calls('save_decision_service_v3').at(-1).payload.input;
         assert(input.change.id === record.id && input.change.expected_revision === 3 && input.change.service === null && input.secret === null, 'Removal changed its exact revision transaction or submitted a secret');
         assert(JSON.stringify(store.sources) === sourceBefore && JSON.stringify(c().management.sources) === managedBefore, 'Removing a decision configuration modified its API source or keys');
         assert(calls('test_decision_service_v3').length === 2 && calls('preview_plan_editor').length === 0, 'Removal implicitly tested or published');
@@ -67,7 +67,7 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       const removal = all('.decision-removal button').find(item => item.textContent.trim() === '移除扩展');
       assert(removal && !removal.disabled && !removal.closest('details'), 'The extension detail has no standalone removal action'); removal.scrollIntoView({ block: 'center' }); removal.click();
       await until(() => all('[role="dialog"]').length, 'extension removal confirmation');
-      assert(text().includes('移除「Review extension」？') && calls('save_decision_service_v2').length === 0, 'Extension removal is not separately identified or confirmed');
+      assert(text().includes('移除「Review extension」？') && calls('save_decision_service_v3').length === 0, 'Extension removal is not separately identified or confirmed');
       await click('取消'); assert(store.services.length === 1, 'Cancel removed an extension');
     }),
     scenario('desktop.decisions.removal-references', ['decision-services', 'routing-editor'], 'Removal blocks visible references and never adopts a newer revision behind an open confirmation', async () => {
@@ -80,7 +80,7 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       await click('模型'); await click('决策模型'); await click('移除模型');
       await until(() => all('[role="dialog"]').length, 'referenced removal');
       assert(all('[role="dialog"] .btn-danger')[0]?.disabled && all('[role="dialog"] .callout.warn button').some(item => item.textContent.includes('日常编码')), 'Current route references are not explained and blocking');
-      assert(calls('save_decision_service_v2').length === 0, 'A referenced confirmation submitted a removal');
+      assert(calls('save_decision_service_v3').length === 0, 'A referenced confirmation submitted a removal');
       await click('取消');
       let store, releaseTest;
       await fresh(() => {
@@ -96,7 +96,7 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       store.services[0] = { ...store.services[0], revision: 4 };
       releaseTest();
       await until(() => text().includes('这份配置已发生变化'), 'new revision invalidates removal confirmation');
-      assert(all('[role="dialog"] .btn-danger')[0]?.disabled && calls('save_decision_service_v2').length === 0, 'An open confirmation adopted the newer revision');
+      assert(all('[role="dialog"] .btn-danger')[0]?.disabled && calls('save_decision_service_v3').length === 0, 'An open confirmation adopted the newer revision');
       await click('取消'); assert(store.services[0].revision === 4, 'Cancelling the stale confirmation modified the newer configuration');
     }),
     scenario('desktop.decisions.suggested-origin-key', ['decision-services'], 'Restoring suggested settings clears a pending key only when the independent origin changes', async () => {
@@ -111,15 +111,15 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       assert(nativeField('credential').value === '', 'Suggested settings carried a pending key across origins');
       await click('仅保存');
       await until(() => text().includes('请填写 API Key'), 'credential required after an origin reset');
-      assert(calls('save_decision_service_v2').length === 0, 'An origin reset persisted the old pending key');
+      assert(calls('save_decision_service_v3').length === 0, 'An origin reset persisted the old pending key');
 
       setInput(nativeField('credential'), 'official-fixture-key');
       setInput(nativeField('model'), 'model-edited-within-the-same-origin'); await pause(40);
       await click('使用建议设置');
       assert(nativeField('credential').value === 'official-fixture-key', 'A same-origin suggestion reset discarded its key');
       await click('仅保存');
-      await until(() => calls('save_decision_service_v2').length === 1, 'explicit same-origin save');
-      const input = calls('save_decision_service_v2')[0].payload.input;
+      await until(() => calls('save_decision_service_v3').length === 1, 'explicit same-origin save');
+      const input = calls('save_decision_service_v3')[0].payload.input;
       assert(input.secret === 'official-fixture-key' && input.change.service.connection.endpoint === 'https://api.openai.com/v1/decisions', 'The new key was not paired with the intended origin');
       assert(calls('test_decision_service_v3').length === 0, 'Save-only tested implicitly');
     }),
@@ -167,9 +167,9 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       await until(() => nativeField('source'), 'second decision draft');
       choose(nativeField('source'), sourceId); await pause(40);
       setInput(nativeField('name'), 'Second unsaved decision'); await pause(40);
-      const reads = calls('decision_services_v2').length;
+      const reads = calls('decision_services_v3').length;
       releaseTest();
-      await until(() => calls('decision_services_v2').length > reads, 'late test readback');
+      await until(() => calls('decision_services_v3').length > reads, 'late test readback');
       await pause(120);
       assert(nativeField('name')?.value === 'Second unsaved decision', 'A late test selected the old service or closed the new draft');
       assert(!all('dialog.discard-dialog[open]').length, 'A stale completion tried to navigate through the new draft');

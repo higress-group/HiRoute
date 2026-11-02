@@ -20,6 +20,15 @@ pub(super) fn request_template<'a>(
     history: &AgentTurnHistorySnapshot,
     current_input_origin_unverified: bool,
 ) -> Result<PreparedDecisionRequest, CallFailure> {
+    let request = request.into();
+    if authority.context_budget.is_some() {
+        return super::adaptive_request::request_template(
+            authority,
+            request,
+            history,
+            current_input_origin_unverified,
+        );
+    }
     let protocol = authority
         .native_protocol
         .as_ref()
@@ -62,6 +71,10 @@ pub(super) fn request_template<'a>(
     let mut body = json!({"model":authority.system_one_model,"questions":questions,"state":{
         "latest_user":latest,"prior_context":[],"assessment_stage":[],"history_partial":false
     }});
+    let replay_context = protocol.protocol.schema == hiroute_domain::SYSTEM_ONE_C_V4;
+    if replay_context {
+        body["state"]["request_context"] = super::request_context::empty();
+    }
     let base =
         super::openai_decisions::prepare_template(authority.wire_protocol, &body, refs.clone())?;
     let from = target.as_ref().map(|t| t.from);
@@ -105,12 +118,16 @@ pub(super) fn request_template<'a>(
             .map_err(|_| CallFailure::RejectedInput)?;
     body["state"]["history_partial"] =
         json!(history.history_partial || admitted_prior < background.len() || target_partial);
+    if replay_context {
+        super::request_context::append(authority, request, &mut body, &mut refs, budget)?;
+    }
     let template = super::openai_decisions::prepare_template(authority.wire_protocol, &body, refs)?;
     if template.wire_len > MAX_REQUEST_BYTES {
         return Err(CallFailure::RejectedInput);
     }
     let requested = bindings.applicability.is_some();
     let observation = RoutingObservationV1 {
+        context_budget: None,
         protocol: protocol.protocol.schema.clone(),
         content_digest: protocol.digest.clone(),
         bundle_digest: hiroute_domain::CanonicalDigest::of(&protocol.protocol.fixed)

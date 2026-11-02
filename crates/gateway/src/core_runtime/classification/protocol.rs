@@ -167,7 +167,7 @@ pub(super) fn latest_user_wire_value<'a>(
     Ok(Value::Array(values))
 }
 
-fn project_text(value: &str, refs: &mut Vec<RequestedReplacement>) -> Value {
+pub(super) fn project_text(value: &str, refs: &mut Vec<RequestedReplacement>) -> Value {
     if let Some(content) = value.content_ref() {
         refs.push(RequestedReplacement {
             content,

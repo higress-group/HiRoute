@@ -155,7 +155,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     const generation = ++serviceGeneration.current;
     setServicesLoading(true); setServicesError(false);
     try {
-      const result = await invoke<DecisionServices>('decision_services_v2', {});
+      const result = await invoke<DecisionServices>('decision_services_v3', {});
       if (!live.current || generation !== serviceGeneration.current) return;
       setServices(result.services);
       if (!serviceInitialized.current) {

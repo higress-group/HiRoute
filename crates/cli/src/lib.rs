@@ -20,6 +20,7 @@ mod request_input;
 mod routing_timeline;
 mod service;
 mod trust;
+mod version;
 mod worker;
 
 use std::ffi::OsString;
@@ -108,6 +109,9 @@ where
         } else {
             failure(ErrorCode::InvalidArguments, globals.request_id)
         };
+    }
+    if let Some(execution) = version::execute(&path_and_options, &globals) {
+        return execution;
     }
     if let Some(execution) = host_commands::execute(&path_and_options, &globals) {
         return execution;
@@ -340,7 +344,12 @@ fn execute_control(
     let request = LocalControlWireRequestV2 {
         schema_version: LOCAL_CONTROL_SCHEMA_V2,
         request_id: request_id.clone(),
-        operation_id: descriptor.operation_id,
+        operation_id: control_plane::operation_id(
+            &descriptor.command_id,
+            &descriptor.operation_id,
+            &payload,
+        )
+        .to_owned(),
         payload,
         protected_grant: mutation_capability.map(|capability| ProtectedClientGrantV2 {
             principal_kind,
@@ -765,7 +774,7 @@ pub fn root_help() -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "HiRoute headless product CLI\n\nUsage\n  hiroute <command> [options]\n\nPublic command families\n{commands}\n\nStart or resume: run 'hiroute quickstart --help'.\nDecision connections: run 'hiroute decision services options --help' for installed presets and reusable saved connections.\nHost management: run 'hiroute service --help', 'hiroute gateway --help', 'hiroute protected-input --help', 'hiroute subscription-proxy --help', or 'hiroute console --help'.\nAgent collaboration workflow: run 'hiroute agents collaboration --help' to enable, edit, disable or inspect collaboration independently of model settings.\nApplication/Local Control: run 'hiroute schema list --output json' and 'hiroute schema show --command-id <ID> --output json', then append '--help' to a complete command path, for example 'hiroute worker dependencies discover --help'.\n"
+        "HiRoute headless product CLI\n\nUsage\n  hiroute <command> [options]\n\nPublic command families\n{commands}\n\nBuild identity (offline): run 'hiroute version --output json' or 'hiroute --version'.\nStart or resume: run 'hiroute quickstart --help'.\nDecision connections: run 'hiroute decision services options --help' for installed presets and reusable saved connections.\nHost management: run 'hiroute service --help', 'hiroute gateway --help', 'hiroute protected-input --help', 'hiroute subscription-proxy --help', or 'hiroute console --help'.\nAgent collaboration workflow: run 'hiroute agents collaboration --help' to enable, edit, disable or inspect collaboration independently of model settings.\nApplication/Local Control: run 'hiroute schema list --output json' and 'hiroute schema show --command-id <ID> --output json', then append '--help' to a complete command path, for example 'hiroute worker dependencies discover --help'.\n"
     )
 }
 
@@ -897,7 +906,7 @@ mod tests {
         assert_eq!(execution.exit_code, 0);
         assert_eq!(execution.stdout.lines().count(), 1);
         let value: Value = serde_json::from_str(&execution.stdout).unwrap();
-        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 89);
+        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 90);
         assert!(!execution.stdout.contains(HIDDEN_AGENT_GRANT_HELPER_VERB_V1));
     }
 

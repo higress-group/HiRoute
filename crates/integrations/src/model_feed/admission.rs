@@ -207,6 +207,7 @@ impl TrustedReleaseCatalog {
             ));
         }
         self.official_snapshot = Some(Box::new(snapshot));
+        self.decision_context_index = std::sync::OnceLock::new();
         Ok(self)
     }
 
@@ -291,6 +292,7 @@ impl TrustedReleaseCatalog {
             );
         }
         effective.official_snapshot = Some(Box::new(admission.payload.snapshot()));
+        effective.decision_context_index = std::sync::OnceLock::new();
         effective.feed_facts = Some(Box::new(facts));
         Ok(effective)
     }

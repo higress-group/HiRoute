@@ -22,16 +22,20 @@ fn undersized_capture_queue_reports_loss_without_waiting_or_poisoning_the_next_r
     assert_eq!(response.status, 200);
     assert_eq!(response_tool_logical_id(&response.body), "call-22008");
     let root = fixture.observation_root.as_deref().unwrap();
-    // This ceiling cannot fit even one envelope. Slot saturation and stalled
-    // sinks have separate cases; intrinsic size refusal must stay explicit.
-    for file in ["lifecycle.jsonl", "conversation-content.jsonl"] {
+    // Lifecycle envelopes exceed this ceiling; optional content work cannot
+    // reserve even its bounded preparation. Both losses stay explicit, with
+    // no synchronous archive traversal to bypass the work limit.
+    for (file, reason) in [
+        ("lifecycle.jsonl", "event_too_large"),
+        ("conversation-content.jsonl", "queue_bytes_exceeded"),
+    ] {
         let records = wait_for_gap(root, file);
         assert!(
             records.iter().any(|record| {
                 record
                     .pointer("/loss_watermark/reason")
                     .and_then(Value::as_str)
-                    == Some("event_too_large")
+                    == Some(reason)
             }),
             "{file}: {records:#?}"
         );

@@ -2,6 +2,7 @@ use sha2::{Digest, Sha256};
 
 const SHA256_BLOCK_BYTES: usize = 64;
 
+#[derive(Clone)]
 pub(super) struct WorkspaceHmac {
     inner: Sha256,
     outer_pad: [u8; SHA256_BLOCK_BYTES],

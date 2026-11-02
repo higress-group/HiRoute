@@ -54,7 +54,7 @@ const seed = `async ({language, theme, state}) => {
     connection:state==='decision-extension'?{kind:'custom',endpoint:'https://decisions.example.test/route',timeout_ms:10000,auth_header:null}
     :{kind:'native',provider:'openai',wire_protocol:'openai_decisions',model:'gpt-6-luna',endpoint:'https://api.openai.test/v1/decisions',timeout_ms:10000,
       authentication:{kind:'shared_source',source_id:id,source_lineage_digest:source.lineage_digest}}};
-  c.handlers.decision_services_v2=()=>({services:[c.decisionView(service,[source])]});
+  c.handlers.decision_services_v3=()=>({services:[c.decisionView(service,[source])]});
   c.handlers.decision_connection_sources=()=>({sources:[source]});
   c.remount();
 }`;

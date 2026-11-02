@@ -128,6 +128,15 @@ pub(super) fn base_questions(
             instructions,
             options,
         } => {
+            let instructions = if authority
+                .native_protocol
+                .as_ref()
+                .is_some_and(|p| p.protocol.schema == hiroute_domain::SYSTEM_ONE_C_V4)
+            {
+                format!("{prefix} {instructions}")
+            } else {
+                instructions.clone()
+            };
             let id = question_id(&questions);
             let criteria: Map<String, Value> = options
                 .iter()

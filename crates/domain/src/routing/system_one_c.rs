@@ -12,6 +12,7 @@ use crate::{CanonicalDigest, DecisionDefinitionV1};
 pub const SYSTEM_ONE_C_V1: &str = "hiroute.system-one-c/v1";
 pub const SYSTEM_ONE_C_V2: &str = "hiroute.system-one-c/v2";
 pub const SYSTEM_ONE_C_V3: &str = "hiroute.system-one-c/v3";
+pub const SYSTEM_ONE_C_V4: &str = "hiroute.system-one-c/v4";
 pub const SYSTEM_ONE_LEGACY: &str = "hiroute.system-one-legacy/v1";
 pub const C_CONTEXT_LAYOUT: &str = "hiroute.partitioned-history/v1";
 pub const C_FULL_CHECKSUM: &str =
@@ -20,6 +21,8 @@ pub const C_V2_FULL_CHECKSUM: &str =
     "a545e497ae5478150790c29f17c041c02a77a29cd825ce2c5fd849b6e4b68efc";
 pub const C_V3_FULL_CHECKSUM: &str =
     "8c0a15a8883f32733c3f9f7840dffa7f16c525ec833dfa8e82f99e81fb3ff2e0";
+pub const C_V4_FULL_CHECKSUM: &str =
+    "47b2e31fb77ac4a9e12476633e5ea57024ddd2252a78f1fc42487f818f70daed";
 pub const LEGACY_ASSESSMENT_WRAPPER: &str = "Evaluate only the completed stage from state.visible_conversation[state.assessment_from] through the end. state.latest_user may supply explicit feedback, but is not yet executed.";
 
 pub fn stock_c_questions() -> Value {
@@ -37,9 +40,15 @@ pub fn stock_c_v3_questions() -> Value {
         .expect("frozen C v3 fixture")
 }
 
+pub fn stock_c_v4_questions() -> Value {
+    serde_json::from_str(include_str!("fixtures/system_one_c_v4.json"))
+        .expect("frozen C v4 fixture")
+}
+
 pub fn native_mode(mode: &super::ComplexityClassifierModeV1) -> bool {
     matches!(mode, super::ComplexityClassifierModeV1::DecisionService { service } if matches!(service.connection, super::DecisionConnectionV1::SystemOne { .. }))
         || matches!(mode, super::ComplexityClassifierModeV1::DecisionServiceV2 { service } if matches!(service.connection, super::DecisionConnectionV2::Native { .. }))
+        || matches!(mode, super::ComplexityClassifierModeV1::DecisionServiceV3 { service } if matches!(service.connection, super::DecisionConnectionV2::Native { .. }))
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -95,6 +104,27 @@ impl NativeFixedContentV1 {
         fixed.applicability = crate::canonicalize_json(stock_c_v3_questions()["q2"].clone());
         fixed
     }
+
+    pub fn c_v4() -> Self {
+        let stock = stock_c_v4_questions();
+        Self {
+            degree_prefix: stock["q0"]["instructions"]
+                .as_str()
+                .unwrap()
+                .split_once(" Judge the degree")
+                .unwrap()
+                .0
+                .into(),
+            assessment_wrapper: stock["q1"]["instructions"]
+                .as_str()
+                .unwrap()
+                .split_once(" Distinguish those meanings")
+                .unwrap()
+                .0
+                .into(),
+            applicability: crate::canonicalize_json(stock["q2"].clone()),
+        }
+    }
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -107,7 +137,7 @@ pub struct NativeProtocolV1 {
 
 impl Default for NativeProtocolV1 {
     fn default() -> Self {
-        Self::c_v3()
+        Self::c_v4()
     }
 }
 
@@ -136,11 +166,20 @@ impl NativeProtocolV1 {
         }
     }
 
+    pub fn c_v4() -> Self {
+        Self {
+            schema: SYSTEM_ONE_C_V4.into(),
+            fixed: NativeFixedContentV1::c_v4(),
+            prior_context_max_turns: 8,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), NativeProtocolError> {
         let expected = match self.schema.as_str() {
             SYSTEM_ONE_C_V1 => NativeFixedContentV1::c_v1(),
             SYSTEM_ONE_C_V2 => NativeFixedContentV1::c_v2(),
             SYSTEM_ONE_C_V3 => NativeFixedContentV1::c_v3(),
+            SYSTEM_ONE_C_V4 => NativeFixedContentV1::c_v4(),
             _ => return Err(NativeProtocolError::Unsupported),
         };
         if self.fixed != expected {
@@ -153,7 +192,11 @@ impl NativeProtocolV1 {
     }
 
     pub fn stock_assessment(&self, judgment: &mut JudgmentSettingsV1) {
-        let stock = stock_c_questions();
+        let stock = if self.schema == SYSTEM_ONE_C_V4 {
+            stock_c_v4_questions()
+        } else {
+            stock_c_questions()
+        };
         judgment.competence.instructions = stock["q1"]["instructions"]
             .as_str()
             .unwrap()
@@ -258,6 +301,8 @@ pub struct FrozenNativeProtocolV1 {
     pub context_layout: String,
     pub decision: DecisionDefinitionV1,
     pub scopes: BTreeMap<String, FrozenAssessmentScopeV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_budget: Option<super::ResolvedDecisionContextV1>,
     pub digest: CanonicalDigest,
 }
 
@@ -329,12 +374,24 @@ impl FrozenNativeProtocolV1 {
             context_layout: C_CONTEXT_LAYOUT.into(),
             decision,
             scopes,
+            context_budget: None,
             digest: CanonicalDigest::of_bytes(&[]),
         };
         value.digest = value.content_digest()?;
         Ok(value)
     }
     fn content_digest(&self) -> Result<CanonicalDigest, NativeProtocolError> {
+        if let Some(context) = &self.context_budget {
+            return CanonicalDigest::of(&(
+                "hiroute.native-execution-context/v1",
+                &self.protocol,
+                &self.context_layout,
+                &self.decision,
+                &self.scopes,
+                context,
+            ))
+            .map_err(|_| NativeProtocolError::Encoding);
+        }
         CanonicalDigest::of(&(
             &self.protocol,
             &self.context_layout,
@@ -345,6 +402,13 @@ impl FrozenNativeProtocolV1 {
     }
     pub fn validate(&self) -> Result<(), NativeProtocolError> {
         self.protocol.validate()?;
+        if self
+            .context_budget
+            .as_ref()
+            .is_some_and(|context| !context.validate())
+        {
+            return Err(NativeProtocolError::ContentMismatch);
+        }
         if self.content_digest()? != self.digest {
             return Err(NativeProtocolError::DigestMismatch);
         }
@@ -417,7 +481,8 @@ impl FrozenNativeProtocolV1 {
             &self.protocol,
             judgment.degree.definition().into(),
             [(super::SMART_SAVING_SCOPE_ID.into(), judgment.clone())],
-        )?;
+        )?
+        .with_context(self.context_budget.as_ref())?;
         if *self != expected {
             return Err(NativeProtocolError::ContentMismatch);
         }
@@ -438,7 +503,8 @@ impl FrozenNativeProtocolV1 {
             branches
                 .iter()
                 .map(|b| (b.id.clone(), b.judgment.clone().unwrap_or_default())),
-        )?;
+        )?
+        .with_context(self.context_budget.as_ref())?;
         if *self != expected {
             return Err(NativeProtocolError::ContentMismatch);
         }
@@ -452,9 +518,31 @@ impl FrozenNativeProtocolV1 {
     ) -> BranchExecutionPolicyV1 {
         let mut policy = judgment.execution_policy(name);
         policy.criteria_digest = self.scopes.get(scope).and_then(|s| {
+            if let Some(context) = &self.context_budget {
+                return CanonicalDigest::of(&(
+                    "hiroute.assessment-context/v1",
+                    &self.protocol.schema,
+                    &self.protocol.fixed,
+                    &s.assessment,
+                    &context.context_digest,
+                ))
+                .ok();
+            }
             CanonicalDigest::of(&(&self.protocol.schema, &self.protocol.fixed, &s.assessment)).ok()
         });
         policy
+    }
+
+    pub fn with_context(
+        mut self,
+        context: Option<&super::ResolvedDecisionContextV1>,
+    ) -> Result<Self, NativeProtocolError> {
+        if context.is_some_and(|context| !context.validate()) {
+            return Err(NativeProtocolError::ContentMismatch);
+        }
+        self.context_budget = context.cloned();
+        self.digest = self.content_digest()?;
+        Ok(self)
     }
 }
 

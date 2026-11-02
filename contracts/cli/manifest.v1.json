@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:8869b6c9460ddadec7c71213aae16ec9d7d3fcebc30fbcd9cd013e22a11ae04c",
+  "descriptor_digest": "sha256:dc43cd321b0c2c0597801020c63b6d4fd702687a984b4718748b4066f474921d",
   "visibility": "release",
   "commands": [
     {
@@ -554,7 +554,7 @@
         "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. --request-stdin accepts only the strict v1 connection or v2 managed-settings request. Model, management_skill and collaboration each support independent keep/configure/restore, including both Skills in one request. Omitted facets keep their state. Apply uses local OS socket access and is revision-checked and idempotent; it and writes only owned Agent fields; restore refuses concurrent ownership drift.",
         "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
         "network_and_model_use": "No model use and no non-fixture network access.",
-        "automation": "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.",
+        "automation": "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Worker Plan setup: use --delegation enable with --worker-harness codex_cli|claude_code|qoder_cli|pi|deepseek_harness|opencode and --worker-protocol responses|messages. Supply both Worker flags together; omit both to retain an existing selection. --delegation disable retains work but stops new delegation through the Plan. Ordinary worker exec needs no standing collaboration Skill; agents collaboration configures that separate user policy. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
         "examples": [
@@ -709,7 +709,7 @@
         "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. --request-stdin accepts only the strict v1 connection or v2 managed-settings request. Model, management_skill and collaboration each support independent keep/configure/restore, including both Skills in one request. Omitted facets keep their state. Apply uses local OS socket access and is revision-checked and idempotent; it and writes only owned Agent fields; restore refuses concurrent ownership drift.",
         "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
         "network_and_model_use": "No model use and no non-fixture network access.",
-        "automation": "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.",
+        "automation": "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Worker Plan setup: use --delegation enable with --worker-harness codex_cli|claude_code|qoder_cli|pi|deepseek_harness|opencode and --worker-protocol responses|messages. Supply both Worker flags together; omit both to retain an existing selection. --delegation disable retains work but stops new delegation through the Plan. Ordinary worker exec needs no standing collaboration Skill; agents collaboration configures that separate user policy. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
         "examples": [
@@ -1149,7 +1149,7 @@
         "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. --request-stdin accepts exactly one registered v1 projection, compute-management v2 save/edit, or subscription-check v2 preview request. The optional edit action is rename (display_name), append_models (checked candidate; preserves existing models), remove_models (saved source; selected refs are removals), or delete (saved source; no selected refs). Omitting edit retains released save semantics. Referenced models, including disabled routes and retained versions, cannot be deleted. Preview has no durable side effect and returns the exact digest and revisions required by Apply.",
         "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
         "network_and_model_use": "No model use and no non-fixture network access.",
-        "automation": "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.",
+        "automation": "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Worker Plan setup: use --delegation enable with --worker-harness codex_cli|claude_code|qoder_cli|pi|deepseek_harness|opencode and --worker-protocol responses|messages. Supply both Worker flags together; omit both to retain an existing selection. --delegation disable retains work but stops new delegation through the Plan. Ordinary worker exec needs no standing collaboration Skill; agents collaboration configures that separate user policy. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
         "examples": [
@@ -1724,11 +1724,11 @@
       ],
       "idempotency": "required",
       "help": {
-        "purpose": "Submit one local Worker task with an explicit cwd and run-scoped permission policy.",
-        "usage": "hiroute worker exec --plan <ID> --cwd <PATH> [--title <TITLE>] [--permission-policy <approve-all|approve-reads|deny-all>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)",
-        "arguments_and_options": "Plan, cwd, and exactly one text source are required. Permission policy defaults to approve-all; approve-reads and deny-all are explicit run restrictions and fail unavailable unless the exact Harness mapping proves them. cwd is scheduling context, not directory authorization. Submits directly to the daemon without a local receipt. Choose a unique --submission-key before sending; after uncertain delivery, query or retry with that original key and the identical request.",
+        "purpose": "Submit one local Worker task with an explicit cwd and autonomous tool execution.",
+        "usage": "hiroute worker exec --plan <ID> --cwd <PATH> [--title <TITLE>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)",
+        "arguments_and_options": "Plan, cwd, and exactly one text source are required. Worker runs use approve-all without per-tool approval. cwd is scheduling context, not directory authorization. Submits directly to the daemon without a local receipt. Choose a unique --submission-key before sending; after uncertain delivery, query or retry with that original key and the identical request.",
         "effects": "Durably admits one bounded Worker run after current Plan eligibility, exact Plan, canonical cwd, idempotency, and resource checks.",
-        "network_and_model_use": "The selected Worker may send model traffic only through its run-bound numeric-loopback Gateway route; native tools follow the run-scoped permission policy.",
+        "network_and_model_use": "The selected Worker may send model traffic only through its run-bound numeric-loopback Gateway route; native tools run without per-tool approval.",
         "automation": "The command durably admits a bounded Worker run; that Worker may make model requests only through its exact run-bound loopback Gateway route.",
         "output": "Default text renders the response for people. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints only a completed result and sends pending locators to stderr.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
@@ -1952,11 +1952,11 @@
       ],
       "idempotency": "required",
       "help": {
-        "purpose": "Continue one exact task/session with a run-scoped permission policy.",
-        "usage": "hiroute worker continue --task <ID> --expected-latest-run <ID> [--cwd <PATH>] [--permission-policy <approve-all|approve-reads|deny-all>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)",
-        "arguments_and_options": "Task and expected latest run are mandatory. cwd is optional but, when present, must canonicalize to the persisted task root. Permission policy defaults to approve-all and configures only this run; Continue never falls back to a new task, newest Plan, or session/new.",
+        "purpose": "Continue one exact task/session with autonomous tool execution.",
+        "usage": "hiroute worker continue --task <ID> --expected-latest-run <ID> [--cwd <PATH>] [--run-timeout <1..86400>] [--no-wait | --wait-timeout <1..30>] [--submission-key <KEY>] (-- <TEXT> | --file <PATH> | < stdin)",
+        "arguments_and_options": "Task and expected latest run are mandatory. cwd is optional but, when present, must canonicalize to the persisted task root. Worker runs use approve-all without per-tool approval; Continue never falls back to a new task, newest Plan, or session/new.",
         "effects": "Durably admits one bounded Worker run after current Plan eligibility, exact Plan, canonical cwd, idempotency, and resource checks.",
-        "network_and_model_use": "The selected Worker may send model traffic only through its run-bound numeric-loopback Gateway route; native tools follow the run-scoped permission policy.",
+        "network_and_model_use": "The selected Worker may send model traffic only through its run-bound numeric-loopback Gateway route; native tools run without per-tool approval.",
         "automation": "The command durably admits a bounded Worker run; that Worker may make model requests only through its exact run-bound loopback Gateway route.",
         "output": "Default text renders the response for people. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints only a completed result and sends pending locators to stderr.",
         "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
@@ -2199,7 +2199,7 @@
         "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. --request-stdin accepts only the existing strict draft, content, or lifecycle schema. Apply must reproduce Preview and carry its exact revisions, digest, and idempotency key; publication remains one recoverable Operation.",
         "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
         "network_and_model_use": "No model use and no non-fixture network access.",
-        "automation": "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.",
+        "automation": "Convenience flags and JSON input are alternatives. --apply-file creates a new private exact Apply request, never overwrites, and performs no Apply. Review effects, then submit that file with the matching Apply command. After uncertain submission, use submission.operation_lookup with operations find or resend the identical file. Core supported variants are compute save, Plan content v2 and Agent settings v2. Routing recovery: retain a successful private routing show response before changes; use routing preview --plan ID --restore-from BEFORE_JSON --apply-file NEW_FILE, review and routing apply --request-file NEW_FILE. This restores complete effective configuration with the current head revision, exclusively from the same Plan/workspace; do not mix with edit flags or typed request inputs. Compare all desired fields after recovery; revisions advance and native facet restoration is separate. Worker Plan setup: use --delegation enable with --worker-harness codex_cli|claude_code|qoder_cli|pi|deepseek_harness|opencode and --worker-protocol responses|messages. Supply both Worker flags together; omit both to retain an existing selection. --delegation disable retains work but stops new delegation through the Plan. Ordinary worker exec needs no standing collaboration Skill; agents collaboration configures that separate user policy. Routing: repeat economy/primary flags to preserve order; select --decision local_rules or --decision-service ID@REVISION explicitly for a new smart Plan. Native choices: Hermes requires --protocol; Codex requires --native-models preserve_available|hiroute_only and --native-default preserve_native|plan; Claude requires explicit --preset opus|sonnet|haiku; Qoder/Pi/DSH require --protocol and add entries without claiming a native default. Missing choices remain unresolved. --facet may repeat to restore selected facets; other facets stay untouched. Desktop resident-service evidence must come from Desktop, never a fabricated CLI declaration.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
         "examples": [
@@ -2422,13 +2422,13 @@
         "connections",
         "list"
       ],
-      "operation_id": "ListDecisionServicesV2",
+      "operation_id": "ListDecisionServicesV3",
       "trace_ids": [],
       "scope": "p0",
       "lifecycle": "released",
       "kind": "query",
       "request_schema": "hiroute.empty-request/v1",
-      "response_schema": "hiroute.decision-services/v2",
+      "response_schema": "hiroute.decision-services/v3",
       "effect": "none",
       "network": "local_control_only",
       "model_call": "never",
@@ -2468,7 +2468,7 @@
         "connections",
         "apply"
       ],
-      "operation_id": "ApplyDecisionServiceV2",
+      "operation_id": "ApplyDecisionServiceV3",
       "trace_ids": [],
       "scope": "p0",
       "lifecycle": "released",
@@ -2485,11 +2485,11 @@
       "idempotency": "required",
       "help": {
         "purpose": "Save a versioned decision connection with exact source and credential revisions.",
-        "usage": "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]",
+        "usage": "hiroute decision connections apply (--id ID [--name NAME] [--provider ID] [--endpoint URL] [--model MODEL] [--wire-protocol system_one|openai_decisions] [--source ID | --candidate REF [--header NAME] | --no-auth] [--timeout-ms MS] [--context-window-tokens N | --context-window-auto] [--context-question-tokens N] [--typesafe-long-context auto|off] | --id ID --delete | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]",
         "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
         "effects": "Same-UID Application-owned journaled operation after exact spec, digest, revision, and idempotency checks.",
         "network_and_model_use": "No model inference; external access, when required, is limited to registered typed ports.",
-        "automation": "Use decision connections options for the current presets and decision sources list for reusable managed sources. Choose --source ID or register an independent credential with protected-input and pass --candidate REF. Native presets carry an explicit wire protocol; --wire-protocol can select system_one or openai_decisions. Preview first; --apply-file creates a private exact request without saving. Save does not contact a provider. Test the saved ID@REVISION explicitly after reading it back.",
+        "automation": "Use decision connections options for current presets and decision sources list for reusable managed sources. Choose --source ID or protected-input --candidate REF. --wire-protocol selects system_one or openai_decisions. Native context defaults to automatic metadata resolution, otherwise 32000 tokens. --context-window-tokens N selects a positive u32 custom request window; --context-question-tokens N overrides the independent question cap and requires custom mode. --context-window-auto clears both custom caps. --typesafe-long-context auto|off controls only the exact official TypeSafe System One endpoint. Omitted edit flags preserve saved intent. Preview displays the resolved snapshot; --apply-file seals a private exact Apply request. Save never contacts a provider; explicit route publication adopts the saved revision. Test the saved ID@REVISION after readback; a pass does not certify maximum capacity.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
         "examples": [
@@ -2506,6 +2506,52 @@
       },
       "negative": {
         "scenario_id": "p0.decision.connections.apply.negative",
+        "polarity": "negative",
+        "state": "executable"
+      }
+    },
+    {
+      "command_id": "decision.context.preview",
+      "path": [
+        "decision",
+        "context",
+        "preview"
+      ],
+      "operation_id": "PreviewDecisionContextV1",
+      "trace_ids": [],
+      "scope": "p0",
+      "lifecycle": "released",
+      "kind": "query",
+      "request_schema": "hiroute.decision-context-preview-request/v1",
+      "response_schema": "hiroute.resolved-decision-context/v1",
+      "effect": "none",
+      "network": "local_control_only",
+      "model_call": "never",
+      "stdin_channels": [],
+      "idempotency": "not_applicable",
+      "help": {
+        "purpose": "Resolve a native decision context draft locally without saving or contacting a provider.",
+        "usage": "hiroute decision context preview [typed options] --non-interactive --output json",
+        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "effects": "Read-only; no product side effect.",
+        "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
+        "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
+        "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
+        "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
+        "examples": [
+          "hiroute decision context preview --non-interactive --output json"
+        ],
+        "see_also": [
+          "hiroute schema show --command-id decision.context.preview"
+        ]
+      },
+      "positive": {
+        "scenario_id": "p0.decision.context.preview.positive",
+        "polarity": "positive",
+        "state": "executable"
+      },
+      "negative": {
+        "scenario_id": "p0.decision.context.preview.negative",
         "polarity": "negative",
         "state": "executable"
       }

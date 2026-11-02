@@ -35,6 +35,9 @@ reclaiming their managed checkout/TMPDIR, including failed or blocked runs.
 Explicit retention covers diagnosis and consumers that still need build artifacts;
 [local lifecycle regressions](../../scripts/test-local-rust.py) and
 [SSH worker regressions](../../scripts/test-remote-rust.py) protect both paths.
+Explicit scheduled retention uses the [bounded local GC wrapper](../../scripts/local-rust-gc.py)
+and its [expiry, renewal and protected-owner regressions](../../scripts/test-local-rust-gc.py);
+the shared local runner owns deletion checks and evidence export.
 The SSH cleanup owner preserves original run exports while the shared exporter
 publishes independent cleanup generations; its filesystem regressions cover
 same-revision reuse, source continuation, immutable manifests and refusal exits.
@@ -114,6 +117,21 @@ Its ordinary four-request regression verifies the same listener path, and the
 requires each follow-up assessment to name its own actual predecessor, with no
 partial capture. Negative controls reject cross-session, self, duplicate and
 missing identities even when the number of assessment members is correct.
+
+For adaptive decision windows, the [real process regression](../../crates/daemon/tests/support/decision_context_product.py)
+covers saved snapshots, both decision codecs, large inputs, zero-attempt local fallback and retained diagnostics.
+The [resource driver](../../crates/daemon/tests/support/decision_context_resources.py) runs against exact built
+daemon/CLI binaries: pass the repository checkout and `--output PATH`, adding `--legacy` only for the
+pre-adaptive baseline. Run baseline and candidate sequentially on the same idle host. It measures cold/warm
+foreground time including fallback, CPU through capture drain, sampled daemon RSS, tool-heavy/concurrent
+requests and unrelated-state growth. Its numeric evidence records revisions and binary hashes; the sample
+does not certify provider capacity, allocator bounds or performance on other hosts.
+For a managed comparison, select the ignored `measure_adaptive_decision_context_resources`
+test in `publication_process` with `integration-test-hooks` and reserve the backend host with
+`--exclusive`. Stage `artifacts/decision-context-resources/input.json` with
+`{"baseline_checkout":"/path/to/baseline"}` in the retained candidate checkout before admission.
+The test keeps the runner lease for both revisions and saves numeric results under
+`artifacts/decision-context-resources/`; candidate binary overrides are removed for the baseline.
 
 | Layer | Appropriate assertion | Evidence limit |
 | --- | --- | --- |

@@ -83,7 +83,9 @@ impl CallDiagnostic {
             CallFailure::Unavailable
             | CallFailure::SourceDisabled
             | CallFailure::NoUsableCredentials => WireProviderError::UpstreamUnavailable,
-            CallFailure::RejectedInput => WireProviderError::InputRejected,
+            CallFailure::RejectedInput | CallFailure::BudgetRejected(_) => {
+                WireProviderError::InputRejected
+            }
             CallFailure::AuthenticationRejected => WireProviderError::AuthenticationRejected,
             CallFailure::RateLimited => WireProviderError::RateLimited,
             CallFailure::EndpointRejected => WireProviderError::EndpointRejected,
@@ -189,7 +191,9 @@ impl CallFailure {
             Self::Unavailable => ClassifierDiagnosticError::Unavailable,
             Self::SourceDisabled => ClassifierDiagnosticError::SourceDisabled,
             Self::NoUsableCredentials => ClassifierDiagnosticError::NoUsableCredentials,
-            Self::RejectedInput => ClassifierDiagnosticError::RejectedInput,
+            Self::RejectedInput | Self::BudgetRejected(_) => {
+                ClassifierDiagnosticError::RejectedInput
+            }
             Self::InvalidOutput => ClassifierDiagnosticError::InvalidOutput,
             Self::AuthenticationRejected => ClassifierDiagnosticError::AuthenticationRejected,
             Self::RateLimited => ClassifierDiagnosticError::RateLimited,

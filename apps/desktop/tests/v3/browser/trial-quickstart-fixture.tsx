@@ -184,7 +184,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   return value;
  }
  if(command==='plugin:clipboard-manager|write_text') return null;
- if(command==='decision_services_v2') {
+ if(command==='decision_services_v3') {
   if (setupControl.holdNextDecision) { setupControl.holdNextDecision=false; await new Promise<void>(release=>setupControl.pendingDecision.push(release)); }
   const native=params.has('native')?{...decision,connection:{kind:'system_one',provider:'compatible',model:'fixture',endpoint:'https://decision.example.test',timeout_ms:10000,auth_header:{name:'Authorization',value_secret_ref:'fixture'}}}:decision;
   return {services:(params.has('custom-service')?[native,{...decision,id:'decision/custom-fixture',name:'Saved extension'}]:[native]).map(service=>fixtureDecisionView(service as any))};

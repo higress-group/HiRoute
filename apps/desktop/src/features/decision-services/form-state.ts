@@ -1,13 +1,14 @@
 import type { NativeNetworkFailure, NativeNetworkRoute } from "../model-connections/native-network";
 import type {
-  DecisionAuthHeader, DecisionExpectedSourceRevision, DecisionServiceRecord, DecisionServiceTestResult, DecisionServiceNetworkTestResult, DecisionServiceV2,
+  DecisionAuthHeader, DecisionExpectedSourceRevision, DecisionServiceRecord, DecisionServiceTestResult, DecisionServiceNetworkTestResult, DecisionServiceV2, DecisionServiceV3, ResolvedDecisionContext,
   DecisionServiceView, DecisionSourceSummary, DecisionWireProtocol,
 } from './contracts.ts';
 import { providers } from './types.ts';
+import { contextErrors, contextFromPolicy, contextPolicy, type DecisionContextDraft } from './context-state.ts';
 
 /** Native decision-model authoring state. Plaintext Keys never enter this state. */
 export type DecisionMode = 'shared' | 'independent';
-export type DecisionBundle = { model: string; endpoint: string; wire_protocol: DecisionWireProtocol | null };
+export type DecisionBundle = { model: string; endpoint: string; wire_protocol: DecisionWireProtocol | null; context?: DecisionContextDraft };
 export type IndependentPreset = { id: string; endpoint: string; model: string; wire_protocol: DecisionWireProtocol | null };
 /** A failed refresh keeps the last successful list only as unavailable state, never as missing. */
 export type SourceRead = { status: 'loading'; previous?: DecisionSourceSummary[] } | { status: 'ready'; sources: DecisionSourceSummary[] } | { status: 'error'; code?: string; previous?: DecisionSourceSummary[] };
@@ -52,7 +53,7 @@ export function presetName(id: string, language: 'zh' | 'en'): string {
 export function isNativeRecord(record: DecisionServiceRecord): boolean {
   return record.connection.kind === 'system_one' || record.connection.kind === 'native';
 }
-export function isV2(record: DecisionServiceRecord): record is DecisionServiceV2 { return 'schema' in record; }
+export function isV2(record: DecisionServiceRecord): record is DecisionServiceV2 { return 'schema' in record && record.schema === 'hiroute.decision-service/v2'; }
 export function recordModel(record: DecisionServiceRecord): string | null {
   return record.connection.kind === 'system_one' || record.connection.kind === 'native' ? record.connection.model : null;
 }
@@ -121,7 +122,8 @@ export function draftFromRecord(record: DecisionServiceRecord): NativeDraft {
       savedIndependent: { provider: connection.provider, endpoint: connection.endpoint, auth_header: connection.auth_header } };
   }
   if (connection.kind !== 'native') throw new Error('custom extensions use their own form');
-  const bundle = { model: connection.model, endpoint: connection.endpoint, wire_protocol: connection.wire_protocol };
+  const bundle = { model: connection.model, endpoint: connection.endpoint, wire_protocol: connection.wire_protocol,
+    ...('context' in record && record.context ? { context: contextFromPolicy(record.context.policy) } : {}) };
   if (connection.authentication.kind === 'shared_source') {
     const sourceId = connection.authentication.source_id;
     return { ...base, mode: 'shared', sourceId, provider: independentPresets[0].id, timeout_ms: connection.timeout_ms,
@@ -209,7 +211,7 @@ export function comparable(draft: NativeDraft, source: DecisionSourceSummary | n
 
 export function sharedProvider(protocol: DecisionWireProtocol): string { return protocol === 'openai_decisions' ? 'openai' : 'compatible'; }
 
-export type NativeIssueKey = 'mode' | 'source' | 'model' | 'endpoint' | 'wire_protocol' | 'name' | 'timeout' | 'credential';
+export type NativeIssueKey = 'mode' | 'source' | 'model' | 'endpoint' | 'wire_protocol' | 'name' | 'timeout' | 'credential' | 'context_window' | 'context_question';
 export function nativeIssues(draft: NativeDraft, source: DecisionSourceSummary | null, hasSecret: boolean, replacing: boolean, language: 'zh' | 'en'): Partial<Record<NativeIssueKey, string>> {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   const issues: Partial<Record<NativeIssueKey, string>> = {};
@@ -228,6 +230,7 @@ export function nativeIssues(draft: NativeDraft, source: DecisionSourceSummary |
       if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash) throw new Error();
     } catch { issues.endpoint = t('请填写完整 HTTP 或 HTTPS 地址，不含用户名、密码或片段。', 'Enter a complete HTTP or HTTPS URL without user info or a fragment.'); }
     if (!bundle.wire_protocol) issues.wire_protocol = t('请选择这个地址使用的协议。', 'Choose the protocol this address uses.');
+    Object.assign(issues, contextErrors(bundle, language));
   }
   if (!displayName(draft, source, language).trim()) issues.name = t('请填写名称。', 'Enter a name.');
   if (!Number.isInteger(draft.timeout_ms) || draft.timeout_ms < 1 || draft.timeout_ms > 3_600_000) issues.timeout = t('超时需在 0.001 到 3600 秒之间。', 'The timeout must be between 0.001 and 3600 seconds.');
@@ -236,7 +239,7 @@ export function nativeIssues(draft: NativeDraft, source: DecisionSourceSummary |
 }
 
 /** Builds the next immutable V2 revision. Call only after nativeIssues is empty. */
-export function nativeService(draft: NativeDraft, source: DecisionSourceSummary | null, revision: number, replacing: boolean, language: 'zh' | 'en'): DecisionServiceV2 {
+export function nativeService(draft: NativeDraft, source: DecisionSourceSummary | null, revision: number, replacing: boolean, language: 'zh' | 'en', resolved: ResolvedDecisionContext): DecisionServiceV3 {
   const bundle = currentBundle(draft, source)!;
   const wire_protocol = bundle.wire_protocol!;
   const retained = replacing ? null : retainedIndependentAuth(draft, source);
@@ -244,7 +247,8 @@ export function nativeService(draft: NativeDraft, source: DecisionSourceSummary 
     ? { kind: 'shared_source' as const, source_id: draft.sourceId!, source_lineage_digest: source?.lineage_digest ?? draft.savedShared!.lineage_digest }
     : { kind: 'independent' as const, auth_header: retained ?? { name: 'Authorization', value_secret_ref: '' } };
   return {
-    schema: 'hiroute.decision-service/v2', id: draft.id, revision, name: displayName(draft, source, language).trim(),
+    schema: 'hiroute.decision-service/v3', id: draft.id, revision, name: displayName(draft, source, language).trim(),
+    context: { policy: contextPolicy(bundle)!, resolved },
     connection: {
       kind: 'native', provider: draft.mode === 'shared' ? sharedProvider(wire_protocol) : draft.provider, wire_protocol,
       model: bundle.model.trim(), endpoint: bundle.endpoint.trim(), timeout_ms: draft.timeout_ms, authentication,

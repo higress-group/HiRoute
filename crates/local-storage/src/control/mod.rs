@@ -456,6 +456,7 @@ impl ControlStore {
                 "control.capability.binding",
             ));
         }
+        decision_services_v2::admit(&transaction, operation)?;
         let claimed = transaction
             .execute(
                 "INSERT INTO writer_claim(singleton, operation_id, admitted_at)
@@ -1418,6 +1419,11 @@ impl ControlRepositoryPort for ControlStore {
             .control()
             .get("decision_service_operation_v2")
             .is_some()
+            || operation
+                .plan
+                .control()
+                .get("decision_service_operation_v3")
+                .is_some()
         {
             decision_services_v2::reconcile_compensation(self, operation, references)
         } else {

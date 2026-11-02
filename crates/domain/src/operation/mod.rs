@@ -4,6 +4,8 @@ mod decision_service;
 pub use decision_service::DecisionServiceChangeV1;
 mod decision_service_v2;
 pub use decision_service_v2::*;
+mod decision_service_v3;
+pub use decision_service_v3::*;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
@@ -966,6 +968,16 @@ fn validate_registered_plan(
             runtime,
             external,
         ),
+        "decision.connections.apply" if spec.desired_state.get("schema").is_some() => {
+            decision_service_v3::validate_plan(
+                spec,
+                control,
+                credential_pool,
+                secrets,
+                runtime,
+                external,
+            )
+        }
         "decision.connections.apply" => decision_service_v2::validate_plan(
             spec,
             control,

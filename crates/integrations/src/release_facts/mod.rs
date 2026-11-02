@@ -100,6 +100,7 @@ impl TrustedReleaseCatalog {
             current_release_model_data: data,
             feed_facts: None,
             official_snapshot: None,
+            decision_context_index: std::sync::OnceLock::new(),
         })
     }
 }

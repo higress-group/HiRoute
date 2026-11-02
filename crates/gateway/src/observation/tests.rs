@@ -337,7 +337,7 @@ fn assert_pre_attempt_failure_diagnostic(terminal: bool) {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-fn request_with_sinks_capacity(
+pub(super) fn request_with_sinks_capacity(
     policy: OtelContentPolicy,
     diagnostics: DiagnosticsPort,
     enabled: bool,
@@ -1403,16 +1403,13 @@ fn content_ref_opt_in_is_hiroute_extension_without_inline_bytes() {
 
 #[test]
 fn mapper_and_envelope_versions_are_explicit() {
+    assert!(CONVERSATION_CONTENT_SCHEMA.ends_with("/v3"));
     assert!(EXECUTION_FACT_SCHEMA.ends_with("/v3"));
     assert_eq!(OTEL_MAPPER_VERSION, "hiroute.otel-gen-ai-mapper/1");
     assert_eq!(OTEL_SEMANTIC_CONVENTIONS_VERSION, "1.37.0");
     assert!(OTEL_MAPPING_DIGEST.starts_with("sha256:"));
     assert_eq!(schema_digest(OTEL_MAPPING_CONTRACT), OTEL_MAPPING_DIGEST);
-    for schema in [
-        LIFECYCLE_FACT_SCHEMA,
-        CONVERSATION_CONTENT_SCHEMA,
-        OBSERVATION_ACK_SCHEMA,
-    ] {
+    for schema in [LIFECYCLE_FACT_SCHEMA, OBSERVATION_ACK_SCHEMA] {
         assert!(schema.ends_with("/v2"));
     }
     assert!(EXECUTION_FACT_SCHEMA.ends_with("/v3"));

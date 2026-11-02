@@ -11,7 +11,7 @@ from publication_process import plan_change
 from publication_product import encoded
 
 C_V1 = 'hiroute.system-one-c/v1'
-C = 'hiroute.system-one-c/v3'
+C = 'hiroute.system-one-c/v4'
 LEGACY = 'hiroute.system-one-legacy/v1'
 
 
@@ -25,6 +25,9 @@ def native_protocol(repository):
     current = json.loads((repository / 'crates/domain/src/routing/fixtures/system_one_c_v3.json').read_text())
     assert digest(current) == 'sha256:8c0a15a8883f32733c3f9f7840dffa7f16c525ec833dfa8e82f99e81fb3ff2e0'
     assert current['q0'] == stock['q0'] and current['q1'] == stock['q1']
+    current = json.loads((repository / 'crates/domain/src/routing/fixtures/system_one_c_v4.json').read_text())
+    assert digest(current) == 'sha256:47b2e31fb77ac4a9e12476633e5ea57024ddd2252a78f1fc42487f818f70daed'
+    assert all('state.request_context' in current[q]['instructions'] for q in ['q0', 'q1', 'q2'])
     wrapper, suffix = stock['q1']['instructions'].split(' Distinguish those meanings', 1)
     guidance = json.loads((repository / 'assets/decision-services/default-assessment-guidance.json').read_text())
     return {'prior_context_max_turns': 8}, {
@@ -88,7 +91,7 @@ def exercise(product, cli, service, endpoint, selection):
     preview, saved = publish(editor, 'native-current-default')
     frozen = frozen_from(preview)
     assert frozen['protocol']['schema'] == C and frozen['protocol']['prior_context_max_turns'] == 8
-    current_questions = json.loads((product.repo / 'crates/domain/src/routing/fixtures/system_one_c_v3.json').read_text())
+    current_questions = json.loads((product.repo / 'crates/domain/src/routing/fixtures/system_one_c_v4.json').read_text())
     assert frozen['protocol']['fixed']['applicability'] == current_questions['q2']
     assert frozen['scopes']['smart_saving']['standard'] == 'default'
     assessment = frozen['scopes']['smart_saving']['assessment']
@@ -122,7 +125,7 @@ def exercise(product, cli, service, endpoint, selection):
     calls += 1
     assert connectivity['outcome'] == 'passed' and 'state' not in connectivity
     connection_body = endpoint.requests[-1][1]
-    assert set(connection_body['state']) == {'latest_user', 'prior_context', 'assessment_stage', 'history_partial'}
+    assert set(connection_body['state']) == {'latest_user', 'prior_context', 'assessment_stage', 'history_partial', 'request_context'}
     assert connection_body['state']['assessment_stage'] == []
     request = {'schema': 'hiroute.historical-applicability-test/v1', 'service_id': service['id'],
                'service_revision': service['revision'], 'protocol': frozen, 'shape': 'standard'}
@@ -135,7 +138,7 @@ def exercise(product, cli, service, endpoint, selection):
     assert positive['service_revision'] == service['revision'] and positive['protocol_digest'] == frozen['digest']
     assert positive['endpoint_digest'] == digest(service['connection']['endpoint'])
     body = endpoint.requests[-1][1]
-    assert set(body['state']) == {'latest_user', 'prior_context', 'assessment_stage', 'history_partial'}
+    assert set(body['state']) == {'latest_user', 'prior_context', 'assessment_stage', 'history_partial', 'request_context'}
     assert body['state']['assessment_stage'] and len(body['questions']) == 3
     assert body['questions']['q2'] == frozen['protocol']['fixed']['applicability']
     baselines = []

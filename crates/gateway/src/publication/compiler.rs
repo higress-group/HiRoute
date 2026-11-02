@@ -415,6 +415,13 @@ fn compile_classifier_authority(
             native_protocol,
             ..
         } => {
+            if native_protocol
+                .as_ref()
+                .and_then(|p| p.context_budget.as_ref())
+                != value.context_budget.as_ref()
+            {
+                return Err(PublicationInstallError::InvalidPlannerPolicy);
+            }
             if let Some(p) = native_protocol {
                 p.validate_smart(
                     judgment
@@ -453,6 +460,13 @@ fn compile_classifier_authority(
             native_protocol,
             ..
         } => {
+            if native_protocol
+                .as_ref()
+                .and_then(|p| p.context_budget.as_ref())
+                != value.context_budget.as_ref()
+            {
+                return Err(PublicationInstallError::InvalidPlannerPolicy);
+            }
             if let Some(p) = native_protocol {
                 p.validate_branches(branches, default_branch_id)
                     .map_err(PublicationInstallError::NativeProtocol)?;
@@ -508,9 +522,10 @@ pub(crate) fn compile_classifier_mode_authority(
                 hiroute_domain::DecisionWireProtocolV2::SystemOne,
             )
         }
-        hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { service } => {
-            let (endpoint, timeout, auth) = service.connection.transport();
-            match &service.connection {
+        _ if mode.versioned_connection().is_some() => {
+            let (_, _, connection) = mode.versioned_connection().expect("versioned connection");
+            let (endpoint, timeout, auth) = connection.transport();
+            match connection {
                 hiroute_domain::DecisionConnectionV2::Native {
                     model,
                     wire_protocol,
@@ -609,49 +624,14 @@ pub(crate) fn compile_classifier_mode_authority(
     target
         .validate()
         .map_err(|_| PublicationInstallError::InvalidEndpoint(endpoint.to_owned()))?;
-    let shared = match mode {
-        hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { service } => match &service
-            .connection
-        {
-            hiroute_domain::DecisionConnectionV2::Native {
-                model,
-                endpoint,
-                wire_protocol,
-                authentication:
-                    hiroute_domain::DecisionAuthenticationV2::SharedSource {
-                        source_id,
-                        source_lineage_digest,
-                    },
-                ..
-            } => {
-                let target = hiroute_domain::ComputeDecisionTargetV4::new(endpoint, *wire_protocol)
-                    .map_err(|_| PublicationInstallError::InvalidPlannerPolicy)?;
-                let consumer = target
-                    .consumer(
-                        source_id,
-                        source_lineage_digest,
-                        &service.id,
-                        service.revision,
-                        model,
-                    )
-                    .map_err(|_| PublicationInstallError::InvalidPlannerPolicy)?;
-                Some(hiroute_domain::DecisionCredentialBindingV1 {
-                    source_id: source_id.clone(),
-                    source_lineage_digest: source_lineage_digest.clone(),
-                    service_id: service.id.clone(),
-                    service_revision: service.revision,
-                    consumer_binding_id: consumer.consumer_binding_id,
-                    model: model.clone(),
-                    endpoint: target.endpoint,
-                    wire_protocol: *wire_protocol,
-                    authentication: target.authentication,
-                    destination_id: target.destination_id,
-                })
-            }
-            _ => None,
-        },
-        _ => None,
-    };
+    let shared = mode
+        .versioned_connection()
+        .map(|(id, revision, connection)| {
+            hiroute_domain::DecisionCredentialBindingV1::for_connection(id, revision, connection)
+                .map_err(|_| PublicationInstallError::InvalidPlannerPolicy)
+        })
+        .transpose()?
+        .flatten();
     let authentication = match (auth_header, shared) {
         (None, Some(binding)) => ClassifierAuthenticationAuthorityV1::SharedDecision { binding },
         (None, None) => ClassifierAuthenticationAuthorityV1::None,
@@ -674,8 +654,8 @@ pub(crate) fn compile_classifier_mode_authority(
                     _ => "custom".into(),
                 }
             }
-            hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { service } => {
-                match &service.connection {
+            _ if mode.versioned_connection().is_some() => {
+                match mode.versioned_connection().expect("versioned connection").2 {
                     hiroute_domain::DecisionConnectionV2::Native { provider, .. } => {
                         provider.clone()
                     }
@@ -686,6 +666,7 @@ pub(crate) fn compile_classifier_mode_authority(
         },
         wire_protocol,
         native_protocol: None,
+        context_budget: mode.resolved_context().cloned(),
         endpoint: normalized_endpoint.into(),
         http_authority: normalized_authority.into(),
         request_path: Arc::from(path_and_query),
@@ -1046,7 +1027,8 @@ fn compile_routing(
                     (CompiledClassifierKindV1::LocalRules, None)
                 }
                 hiroute_domain::ComplexityClassifierModeV1::DecisionService { .. }
-                | hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { .. } => (
+                | hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV2 { .. }
+                | hiroute_domain::ComplexityClassifierModeV1::DecisionServiceV3 { .. } => (
                     CompiledClassifierKindV1::Rest,
                     Some(
                         CanonicalDigest::of(&routing.request_owned)

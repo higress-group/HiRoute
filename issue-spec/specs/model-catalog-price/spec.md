@@ -556,6 +556,38 @@ Network failure or disabled automatic retrieval SHALL retain the usable selected
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/191#issuecomment-6295415513
 
+### Requirement: Decision metadata resolves native input windows
+
+The maintained model metadata SHALL represent decision input constraints on the exact product/model/interface binding, including separate request and question limits and conditional header modes where applicable. Resolution SHALL prefer an explicit user value, then applicable decision metadata, then 32,000 tokens for an unknown request window. A separately applicable per-question limit remains effective unless explicitly overridden, and cannot exceed the selected request window. User overrides must be positive integers in the supported unsigned 32-bit domain. The initial Bailian decision-model-preview window is 65,536; TypeSafe Jev 1.13/1.14 long-context windows are 262,144 for request and question with disclosed normalization provenance; TypeSafe header-off conservative limits are 64,000/32,000; the corresponding OpenRouter bindings use 262,144; and OpenAI gpt-6-luna Decisions uses the explicitly selected 1,050,000 maintainer policy. Documented facts, inferred normalization, maintainer policy and product fallback SHALL remain distinguishable. Ordinary generation context, a provider label, an unmatched endpoint or an unlisted alias cannot establish decision-endpoint capacity. Decision-only metadata must not invent ordinary inference eligibility.
+
+#### Scenario: Unknown compatible model
+
+- **WHEN** a native decision connection has no matching decision binding and no override
+- **THEN** its request window resolves to 32,000 with fallback provenance, without a remote discovery call
+
+#### Scenario: Custom window wins
+
+- **WHEN** a user saves 100,000 for a binding whose request metadata says 65,536
+- **THEN** the request window is 100,000 with user provenance; any separate question cap remains visible and can be explicitly overridden within the request limit
+
+#### Scenario: Known policy is not a provider measurement
+
+- **WHEN** the official OpenAI Decisions gpt-6-luna binding is selected automatically
+- **THEN** the window is 1,050,000 with maintainer-policy provenance, without claiming a successful maximum-capacity test
+
+#### Scenario: No capability borrowing
+
+- **WHEN** an unknown endpoint uses the same model ID as a known provider binding or a rolling alias has no applicable entry
+- **THEN** the known window is not borrowed; automatic mode uses the fallback
+
+#### Scenario: Invalid custom input
+
+- **WHEN** an override is zero, negative, fractional, overflowing or inconsistent with its mode or request limit
+- **THEN** saving fails with an actionable field error and leaves the saved revision unchanged
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/319#issuecomment-6558825348
+
 ## Implementation references
 
 - [Metadata records](../../../crates/domain/src/compute/model_metadata_records.rs) and

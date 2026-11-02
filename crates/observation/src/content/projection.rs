@@ -346,13 +346,6 @@ pub(super) fn validate_stream_coordinates(
     Ok(())
 }
 
-// Finish only visits its request/direction/fork before sorting the small result.
-// The workspace/content-ID ordering index otherwise makes some planner estimates
-// scan all retained content while holding the ingestion writer.
-const ACKNOWLEDGED_BLOBS_SQL: &str =
-    "SELECT content_id, content_blob_digest FROM content_instances_v2 INDEXED BY content_instances_v2_request
-     WHERE workspace_id=?1 AND request_id=?2 AND direction=?3 AND fork_id=?4 AND state='complete'
-     ORDER BY content_id";
 const MISSING_BLOBS_SQL: &str = "SELECT content_id, content_blob_digest FROM content_instances_v2 INDEXED BY content_instances_v2_request
      WHERE workspace_id=?1 AND request_id=?2 AND direction=?3 AND fork_id=?4 AND state!='complete'
      ORDER BY content_id";
@@ -360,33 +353,6 @@ const MISSING_BLOBS_SQL: &str = "SELECT content_id, content_blob_digest FROM con
 #[cfg(test)]
 #[path = "projection_tests.rs"]
 mod tests;
-
-pub(super) fn acknowledged_blobs(
-    transaction: &Transaction<'_>,
-    envelope: &ConversationContentEnvelopeV1,
-) -> Result<Vec<ObservationBlobAcknowledgementV1>, ContentProjectionError> {
-    let mut statement = transaction
-        .prepare_cached(ACKNOWLEDGED_BLOBS_SQL)
-        .map_err(|_| ContentProjectionError::ActivityStorage)?;
-    statement
-        .query_map(
-            params![
-                envelope.correlation.workspace_id.as_str(),
-                envelope.correlation.request_id.as_str(),
-                envelope.direction.as_str(),
-                envelope.fork_id
-            ],
-            |row| {
-                Ok(ObservationBlobAcknowledgementV1 {
-                    content_id: row.get(0)?,
-                    digest: row.get(1)?,
-                })
-            },
-        )
-        .map_err(|_| ContentProjectionError::ActivityStorage)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| ContentProjectionError::ActivityStorage)
-}
 
 pub(super) fn missing_blobs(
     transaction: &Transaction<'_>,

@@ -44,27 +44,43 @@ identity keeps only the original `metadata` and `client_metadata` roots so
 externalizing native content cannot change Claude/Codex identity enrichment.
 
 [Optional content encoding](src/observation/content_work.rs) uses one ordered,
-bounded worker per observation channel set. Its immutable snapshot retains only
-instructions, messages, tools and charged semantic Replay backing. It does not
+bounded worker per observation channel set. After existing continuity admission,
+its immutable source retains only selected semantic messages and charged Replay
+backing. Setup/tool-definition snapshots and opaque provider state are excluded. It does not
 retain the raw ingress body. Request capture closes before response capture so
 their transcript roots remain related. Accepted-output history and usage update
 at delivery; neither waits for content encoding or SQLite. Capacity or capture
 failure reports a gap and stops dependent capture for that request. The final
 Replay owner releases files and reservations on all paths.
-The existing content queue admits snapshots, lease metadata and retained shared
-RAM within its byte ceiling; disk payload length is not RAM. Queued jobs share
-that ceiling with encoded records. The single active source was admitted under
-the same ceiling, bounding source plus queue residency by twice that ceiling.
-Model-proxy allocation counters record ownership and peaks without rejecting an
-admitted request at stream, worker or process accounting targets. The input
-read quantum remains independent of these targets. Fixed slots hold pointers; each admitted job's existing charge
-covers its allocated header, rather than preallocating 256 maximum-size tasks.
-Only the content worker can park on record credit, with a
-bounded stalled-record wait; foreground producers remain nonblocking. Encoded
-bursts leave room for concurrent foreground jobs; queued work still leaves room
-for one complete chunk record. Both use the same unchanged byte ceiling. Delivery
-releases credit through a condition variable, and a stalled job reports loss
-without publishing dependent completion roots.
+Product composition gives Content a 128 MiB queue allowance, independent of
+32 MiB canonical capture and the other five channels' unchanged 16 MiB allowances.
+Explicit-capacity test/library constructors keep their caller-provided ceilings.
+Queue admission counts retained sources, record metadata and resident encoded
+payloads; active source/cursor ownership is charged separately before traversal.
+A single Content thread cooperatively resumes per-request serial futures. A
+borrowed JSON cursor preserves canonical key order, Replay provenance, escaping,
+chunk boundaries and HMAC bytes without copying the semantic tree. The borrowed
+foreground fallback runs that same traversal synchronously and never waits for
+background credit, encoded-overflow IO or SQLite; include its full local
+encoding/Replay-read cost in performance measurements.
+
+Content prefers RAM. Above its 96 MiB high watermark it can retain already encoded
+records in private segmented temporary backing; below 64 MiB it resumes RAM after
+outstanding spilled ownership drains. That overflow has independent 512 MiB
+unreclaimed-disk admission, held-handle range verification and consumed-segment
+cleanup. It retains no raw ingress owner and never acknowledges durability.
+The existing Replay threshold/TTL, final file barriers, transaction commit,
+per-record ACK/NACK and exact loss-prefix behavior are unchanged.
+
+Queue credit and encoder/drain workspaces are independent. Before a sequence is
+allocated, publication acquires its metadata slot and encoding workspace. A
+reserved progress record can advance even when queued sources occupy all ordinary
+data credit; durable delivery needs no second queue admission. Background waits
+are reactive suspension, not a one-second loss deadline or polling. Normal
+cancellation fences accepted canonical data without competing for a payload slot.
+Fixed channel slots retain pointers; source, scratch, temporary disk and actual
+process RSS are separate measurements. Accounting targets do not reject a legal
+model request, and a healthy HTTP finish alone never proves capture completeness.
 
 Ordinary Responses, Chat Completions, Messages and model-catalog clients may carry
 their HiRoute connection token as `Authorization: Bearer <token>`. The current
@@ -394,7 +410,11 @@ locators. [Observation regressions](src/observation/content/request_json_replay_
 cover nested strings, tool JSON, literal-marker isolation and missing backing.
 Content-part owners compute message/content identities once and pass them to their
 chunks; the capture lifetime owns its fixed fork identity. Digest algorithms,
-transcript ordering and queued envelope shapes remain unchanged.
+transcript ordering and body-integrity algorithms remain unchanged. The matched private content port
+is v3; semantic response segments preserve status/annotations and conflicting final
+versions without keeping every protocol delta. Queue pressure never falls back to
+synchronous full-history traversal; an admitted part finishes before optional capture
+aborts. First-seen context and current-input anchors do not become scoring authority.
 Response ciphertext remains excluded from retained observation content.
 The response tracker retains accepted lifecycle evidence separately from that
 presentation policy. Converted responses use the protocol renderer's omission
@@ -412,7 +432,11 @@ independently, so this does not promise lossless capture under every resource fa
 Same-scope actual completed stages remain contextual candidates with disclosed
 association uncertainty when no unique predecessor is established. Unknown association
 never grants provider-prefix affinity. Unsupported response shapes may lose an exact
-edge while retaining capture and evaluation.
+edge while retaining capture and evaluation. Matching complete text is represented by explicit
+`hiroute.semantic-terminal/v1` metadata (`text_source=accepted_segments`, with no
+`event.text`), never an empty canonical final answer. Full transport acceptance and
+the actual Attempt remain required; semantic segments do not require a single
+transport frame ID.
 
 The store retains a 500 MB total budget and a one-hour idle lifetime, with 32 live
 requests/heads and 128 retained terminal records per scope. Snapshot pins and indexes

@@ -1163,9 +1163,99 @@ const scenarios = [
     await until(() => document.querySelector('.routing-quote')?.textContent.includes('The real opening question'), 'actual opening excerpt');
   }],
 
+
+  ['semantic captures show imported context without attributing it and keep accepted final text', async () => {
+    await fresh(control => {
+      const session = 'observation-session/semantic-archive';
+      const request = control.makeRequest(session, 0, Date.now() - 1000, { final_native_model: 'actual-primary-model' });
+      control.requests[session] = [request];
+      seedUserText(control, request, 'Current semantic question');
+      const item = (id, ordinal, role, kind, direction, media, capture) => ({ content_id: id, message_occurrence_id: String(ordinal), message_ordinal: ordinal, part_ordinal: 0, role, kind, direction, media_type: media, state: 'complete', capture });
+      const context = `${request.request_id}/context`;
+      const delta = `${request.request_id}/delta`;
+      const terminal = `${request.request_id}/terminal`;
+      control.catalog[request.request_id].unshift(item(context, 0, 'assistant', 'text', 'request_input', 'text/plain', { context_only: true, boundary_verified: false }));
+      control.catalog[request.request_id].push(item(delta, 2, 'assistant', 'text_delta', 'response_delivered', 'application/vnd.hiroute.model-stream-event+json;version=1'));
+      control.catalog[request.request_id].push({ ...item(terminal, 2, 'assistant', 'text_finished', 'response_delivered', 'application/vnd.hiroute.semantic-terminal+json;version=1'), part_ordinal: 1 });
+      control.texts[context] = 'Imported answer without executor evidence';
+      control.texts[delta] = JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence: 1, event: { kind: 'text_delta', index: 0, text: 'SEMANTIC-ACCEPTED-FINAL' } });
+      control.texts[terminal] = JSON.stringify({ schema_version: 'hiroute.semantic-terminal/v1', sequence: 2, text_source: 'accepted_segments', event: { kind: 'text_finished', index: 0, status: 'completed', annotations: [] } });
+    });
+    await until(() => rows().length === 1, 'semantic archive session'); rows()[0].click();
+    await until(() => document.querySelector('.transcript-body')?.innerText.includes('SEMANTIC-ACCEPTED-FINAL'), 'accepted semantic text');
+    const messages = [...document.querySelectorAll('.transcript-body .message')];
+    const imported = messages.find(item => item.textContent.includes('Imported answer'));
+    assert(imported?.textContent.includes('历史上下文 · 执行模型未知'), 'Imported context claims an executing model');
+    assert(!imported.querySelector('.badge.info'), 'Current executor leaked onto imported history');
+    assert(document.querySelector('.transcript-body').innerText.match(/SEMANTIC-ACCEPTED-FINAL/g)?.length === 1, 'Terminal metadata erased or duplicated accepted text');
+    assert(!document.querySelector('.transcript-body').innerText.includes('accepted_segments'), 'Terminal metadata leaked as an answer');
+    assert(reads('catalog').some(call => queryOf(call).include_semantic_metadata), 'Reader did not opt in to semantic provenance');
+  }],
+
+
+  ['continuation excerpt reads the proven one-hop input owner without guessing another user message', async () => {
+    let source;
+    const continuation = 'request/semantic-tool-continuation';
+    await fresh(control => {
+      seedSimple(control);
+      source = control.requests['observation-session/simple'][0].request_id;
+      seedUserText(control, control.requests['observation-session/simple'][0], 'The retained opening question');
+      control.views.catalog = query => query.request_id !== continuation ? control.defaultRead('catalog', query) : {
+        contents: [], roots_partial: false, next_cursor: null,
+        input_selection: { version: 1, evidence: 'native_matched', message_ordinal: 8, source_unverified: true },
+        input_anchor: { source_request_id: source, message_occurrence_id: '1' },
+      };
+    });
+    c().showRequestExcerpt(continuation);
+    await until(() => document.querySelector('.routing-quote')?.textContent.includes('The retained opening question'), 'one-hop retained opening excerpt');
+    const calls = reads('catalog').map(queryOf);
+    assert(calls.some(query => query.request_id === continuation && query.include_semantic_metadata), 'Continuation lookup omitted semantic metadata');
+    assert(calls.some(query => query.request_id === source && query.include_semantic_metadata), 'Source lookup did not follow the retained input owner');
+  }],
+
+  ['referenced partial input stays pending and refreshes until its source is complete', async () => {
+    for (const partial of ['root', 'part', 'missing', 'source-race']) {
+      let source, complete = false;
+      const continuation = `request/partial-input-${partial}`;
+      await fresh(control => {
+        seedSimple(control);
+        const original = control.requests['observation-session/simple'][0];
+        source = original.request_id;
+        seedUserText(control, original, 'Retained input prefix');
+        control.views.catalog = query => {
+          if (query.request_id === continuation) return {
+            contents: [{ content_id: 'retry-answer', role: 'assistant', kind: 'text_delta', state: 'complete', direction: 'response_delivered', media_type: 'text/plain', message_occurrence_id: 'reply' }], roots_partial: !complete && partial === 'missing', next_cursor: null,
+            input_selection: { version: 1, evidence: 'native_matched', message_ordinal: 8, source_unverified: true },
+            ...(!complete && partial === 'missing' ? {} : { input_anchor: { source_request_id: source, message_occurrence_id: '1' } }),
+          };
+          const page = control.defaultRead('catalog', query);
+          if (query.request_id !== source) return page;
+          return { ...page, roots_partial: !complete && partial === 'root',
+            contents: !complete && partial === 'source-race' ? [] : page.contents.map(item => ({ ...item, state: !complete && partial === 'part' ? 'partial' : item.state })) };
+        };
+      });
+      const sourceReads = reads('catalog').filter(call => queryOf(call).request_id === source).length;
+      c().showRequestExcerpt(continuation);
+      if (partial === 'missing') await until(() => document.querySelector('.routing-quote [data-content-state]')?.dataset.contentState === 'pending', 'unavailable source remains incomplete');
+      else await until(() => reads('catalog').filter(call => queryOf(call).request_id === source).length > sourceReads, `${partial} source lookup`);
+      if (!['missing', 'source-race'].includes(partial)) await until(() => document.querySelector('.routing-quote')?.textContent.includes('Retained input prefix'), `${partial} source prefix`);
+      assert(document.querySelector('.routing-quote [data-content-state]')?.dataset.contentState === 'pending', `${partial} source was falsely complete`);
+      const before = reads('catalog').filter(call => queryOf(call).request_id === continuation).length;
+      complete = true;
+      await until(() => reads('catalog').filter(call => queryOf(call).request_id === continuation).length > before, `${partial} source refresh`);
+      await until(() => document.querySelector('.routing-quote [data-content-state]')?.dataset.contentState === 'ready', `${partial} source resolves after completion`);
+    }
+  }],
+
 ];
 
 export const sessionWindowScenarioCount = scenarios.length;
+
+export function runSemanticCaptureScenario() {
+  const index = scenarios.findIndex(([name]) => name.startsWith('semantic captures show imported context'));
+  if (index < 0) throw new Error('Semantic capture scenario is missing');
+  return runSessionWindowScenarios(index, index + 1);
+}
 
 export async function runSessionWindowScenarios(start = 0, end = Infinity) {
   const results = [];

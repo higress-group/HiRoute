@@ -62,6 +62,20 @@ pub(crate) fn accepts_capability(command_id: &str) -> bool {
     )
 }
 
+/// Retained request files keep the strict reader that originally accepted their content.
+pub(crate) fn operation_id<'a>(command: &str, declared: &'a str, payload: &Value) -> &'a str {
+    if command == "decision.connections.apply"
+        && payload
+            .get("spec")
+            .and_then(|spec| spec.get("desired_state"))
+            .is_some_and(|desired| desired.get("schema").is_none())
+    {
+        "ApplyDecisionServiceV2"
+    } else {
+        declared
+    }
+}
+
 pub(crate) fn command_payload(
     command_id: &str,
     options: &[String],
@@ -71,6 +85,9 @@ pub(crate) fn command_payload(
             empty::<hiroute_application_api::ClientEmptyRequestV1>(options),
         ),
         "decision.services.apply" | "decision.connections.apply" => Some(preview_or_apply(options)),
+        "decision.context.preview" => Some(request::<
+            hiroute_application_api::DecisionContextPreviewRequestV1,
+        >(options)),
         "decision.services.test" => Some(classifier_request(options)),
         "decision.connections.test" | "decision.network.test" => Some(request::<
             hiroute_application_api::DecisionServiceTestRequestV2,
@@ -278,9 +295,15 @@ fn routing_request(options: &[String], apply: bool) -> Result<Value, ErrorCode> 
         return Err(ErrorCode::InvalidArguments);
     }
     if apply {
-        typed_value::<hiroute_application_api::PlanContentApplyRequestV2>(value)
+        let request: hiroute_application_api::PlanContentApplyRequestV2 =
+            request_input::deserialize(value)?;
+        request_input::semantics::plan(&request.change)?;
+        serde_json::to_value(request).map_err(|_| ErrorCode::Internal)
     } else {
-        typed_value::<hiroute_application_api::PlanContentPreviewRequestV2>(value)
+        let request: hiroute_application_api::PlanContentPreviewRequestV2 =
+            request_input::deserialize(value)?;
+        request_input::semantics::plan(&request.change)?;
+        serde_json::to_value(request).map_err(|_| ErrorCode::Internal)
     }
 }
 
@@ -324,6 +347,11 @@ fn validate_agent_request(value: Value, apply: bool) -> Result<Value, ErrorCode>
             }
         };
     if valid {
+        if v2 {
+            let spec: hiroute_application_api::AgentSettingsSpecV2 =
+                request_input::deserialize(value["spec"].clone())?;
+            request_input::semantics::agent(&spec)?;
+        }
         Ok(value)
     } else {
         Err(ErrorCode::InvalidArguments)
@@ -462,6 +490,59 @@ mod tests {
             )
             .unwrap_err(),
             ErrorCode::InvalidArguments
+        );
+    }
+
+    #[test]
+    fn decision_context_preview_has_an_executable_strict_request_codec() {
+        use serde_json::json;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("context.json");
+        let value = json!({"endpoint":"https://example.test/v1/decisions",
+            "wire_protocol":"openai_decisions","model":"custom",
+            "policy":{"mode":"automatic","typesafe_long_context":"automatic"}});
+        std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+        let options = vec!["--request-file".into(), path.to_str().unwrap().into()];
+        assert_eq!(
+            command_payload("decision.context.preview", &options),
+            Some(Ok(value.clone()))
+        );
+        let mut injected = value;
+        injected["secret"] = json!("not-a-request-field");
+        std::fs::write(&path, serde_json::to_vec(&injected).unwrap()).unwrap();
+        assert_eq!(
+            command_payload("decision.context.preview", &options),
+            Some(Err(ErrorCode::InvalidArguments))
+        );
+    }
+
+    #[test]
+    fn retained_decision_request_files_select_the_original_reader() {
+        use serde_json::json;
+        let old = json!({"spec":{"desired_state":{"change":{"service":{"schema":"hiroute.decision-service/v2"}}}}});
+        assert_eq!(
+            operation_id("decision.connections.apply", "ApplyDecisionServiceV3", &old),
+            "ApplyDecisionServiceV2"
+        );
+        for schema in [
+            json!("hiroute.decision-service-operation-input/v3"),
+            json!("unknown"),
+            Value::Null,
+        ] {
+            let mut current = old.clone();
+            current["spec"]["desired_state"]["schema"] = schema;
+            assert_eq!(
+                operation_id(
+                    "decision.connections.apply",
+                    "ApplyDecisionServiceV3",
+                    &current
+                ),
+                "ApplyDecisionServiceV3"
+            );
+        }
+        assert_eq!(
+            operation_id("decision.services.apply", "ApplyDecisionServiceV1", &old),
+            "ApplyDecisionServiceV1"
         );
     }
 

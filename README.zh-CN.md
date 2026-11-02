@@ -30,7 +30,7 @@
 在一次真实的技术调研与架构评审任务中，Qwen 3.8 Flash 负责调研，GPT-6 Astra 负责关键决策。
 达到同样的验收标准，成本比全部使用 Astra **降低约 90%**。
 
-[![相同验收标准下的整单成本：HiRoute 混合约为全 Astra 的十二分之一](news/assets/research-cost-zh.svg)](news/2026-10-04-astra-qwen.zh-CN.md)
+[![相同验收标准下的整单成本降低 91%：HiRoute（Qwen 调研 + Astra 决策）$0.150–0.162，全部使用 GPT-6 Astra $1.953–1.987，约为十二分之一](news/assets/cost-savings-zh.svg)](news/2026-10-04-astra-qwen.zh-CN.md)
 
 <sub>费用为 API 等价估算。[完整案例](news/2026-10-04-astra-qwen.zh-CN.md)</sub>
 

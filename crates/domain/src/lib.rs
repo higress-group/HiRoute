@@ -61,8 +61,11 @@ pub use operation::{
     validate_settings_model_publication_intent,
 };
 pub use operation::{
-    DECISION_SERVICE_OPERATION_SCHEMA_V2, DecisionServiceOperationInputV2,
-    DecisionServiceOperationV2, DecisionSourceMutationV1,
+    DECISION_SERVICE_OPERATION_INPUT_SCHEMA_V3, DECISION_SERVICE_OPERATION_SCHEMA_V2,
+    DECISION_SERVICE_OPERATION_SCHEMA_V3, DecisionServiceInputState, DecisionServiceMutationState,
+    DecisionServiceOperationInputV2, DecisionServiceOperationInputV3,
+    DecisionServiceOperationState, DecisionServiceOperationV2, DecisionServiceOperationV3,
+    DecisionSourceMutationV1,
 };
 pub use publication::*;
 pub use revision::{RevisionMismatch, compare_revisions};

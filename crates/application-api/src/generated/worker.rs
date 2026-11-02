@@ -29,16 +29,8 @@ fn task_input() -> Value {
     })
 }
 
-fn permission_policy() -> Value {
-    json!({
-        "enum": ["approve_all", "approve_reads", "deny_all"],
-        "default": "approve_all"
-    })
-}
-
 fn execution_properties() -> Value {
     json!({
-        "permission_policy": permission_policy(),
         "run_timeout_secs": {"type": "integer", "minimum": 1, "maximum": 86400}
     })
 }

@@ -5,8 +5,8 @@ use serde_json::Value;
 use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt};
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
-    CanonicalInstruction, CanonicalMessage, CanonicalTool, ContentPart, ImageSource,
-    InstructionRole, MessageRole, ModelRequestIRV1, ToolOutput, ToolResultStatusV1,
+    CanonicalMessage, ContentPart, ImageSource, MessageRole, ModelRequestIRV1, ToolOutput,
+    ToolResultStatusV1,
 };
 
 use super::super::crypto::WorkspaceHmac;
@@ -62,32 +62,52 @@ impl RequestObservation {
         );
     }
 
-    /// Copies canonical request fields into the content producer before core
-    /// execution starts. Replay references are opened and dropped inside this
-    /// call; no observation task or queued envelope retains ReplayStore.
+    pub(crate) fn canonical_request_accepted(&self) {
+        if !self.is_enabled() {
+            return;
+        }
+        let already = {
+            let mut state = self.lock_state();
+            std::mem::replace(&mut state.canonical_request_recorded, true)
+        };
+        if !already {
+            self.emit_lifecycle(LifecycleFactV1::CanonicalRequestAccepted {
+                canonicalization_version: CANONICALIZATION_VERSION.into(),
+            });
+        }
+    }
+
+    /// Records selected semantic activity after the existing continuity owner
+    /// has selected its boundary. This does not snapshot setup or tool schemas.
     pub fn capture_request(&self, request: &ModelRequestIRV1, replay: &ReplayStore) {
         if !self.is_enabled() {
             return;
         }
-        self.emit_lifecycle(LifecycleFactV1::CanonicalRequestAccepted {
-            canonicalization_version: CANONICALIZATION_VERSION.into(),
-        });
+        self.canonical_request_accepted();
         if !self.captures_content() {
             return;
         }
-        self.capture_request_payload(
-            &request.instructions,
-            &request.messages,
-            &request.tools,
-            replay,
+        self.inner.content_spool.bind(replay.overflow_factory());
+        if self.inner.input_capture.get().is_none() {
+            self.select_input_capture(
+                request,
+                None,
+                request
+                    .messages
+                    .iter()
+                    .rposition(|m| m.role == MessageRole::User),
+                None,
+            );
+        }
+        let start = self.inner.input_capture.get().map_or(0, |s| s.start);
+        super::super::content_work::inline(
+            self.capture_request_payload_run(&request.messages[start..], replay),
         );
     }
 
-    pub(in crate::server::core_runtime::observation) fn capture_request_payload(
+    pub(in crate::server::core_runtime::observation) async fn capture_request_payload_run(
         &self,
-        instructions: &[CanonicalInstruction],
         messages: &[CanonicalMessage],
-        tools: &[CanonicalTool],
         replay: &ReplayStore,
     ) -> bool {
         let snapshot = replay.snapshot();
@@ -98,36 +118,41 @@ impl RequestObservation {
                 StorageMode::Memory
             },
         }));
-        self.begin_content("request_input", None);
-        let result = self.capture_request_fields(instructions, messages, tools, replay);
+        self.begin_content_at_run("request_input", None).await;
+        let result = self.capture_request_fields_run(messages, replay).await;
         match result {
-            Ok(()) => self.terminal_content("request_input", "finish", None),
-            Err(()) => self.terminal_content(
-                "request_input",
-                "abort",
-                Some("canonical_content_unavailable"),
-            ),
+            Ok(()) => {
+                self.terminal_content_run("request_input", "finish", None)
+                    .await
+            }
+            Err(()) => {
+                self.terminal_content_run(
+                    "request_input",
+                    "abort",
+                    Some("canonical_content_unavailable"),
+                )
+                .await
+            }
         }
         result.is_ok()
     }
 
-    fn capture_request_fields(
+    async fn capture_request_fields_run(
         &self,
-        instructions: &[CanonicalInstruction],
         messages: &[CanonicalMessage],
-        tools: &[CanonicalTool],
         replay: &ReplayStore,
     ) -> Result<(), ()> {
-        let mut message_ordinal = 0_u32;
-        for instruction in instructions {
-            let role = match instruction.role {
-                InstructionRole::System => "system",
-                InstructionRole::Developer => "developer",
-            };
-            self.capture_parts(replay, message_ordinal, role, &instruction.content)?;
-            message_ordinal = message_ordinal.saturating_add(1);
-        }
+        let mut message_ordinal = self
+            .inner
+            .input_capture
+            .get()
+            .and_then(|s| u32::try_from(s.ordinal_base).ok())
+            .unwrap_or(0);
         for message in messages {
+            if matches!(message.role, MessageRole::System | MessageRole::Developer) {
+                message_ordinal = message_ordinal.saturating_add(1);
+                continue;
+            }
             let role = match message.role {
                 MessageRole::User => "user",
                 MessageRole::Assistant => "assistant",
@@ -136,7 +161,7 @@ impl RequestObservation {
             };
             let mut part_ordinal = 0_u32;
             if let Some(name) = &message.name {
-                self.append_value(
+                self.append_value_run(
                     replay,
                     message_ordinal,
                     part_ordinal,
@@ -144,68 +169,24 @@ impl RequestObservation {
                     "message_name",
                     "text/plain; charset=utf-8",
                     name,
-                )?;
+                )
+                .await?;
                 part_ordinal = part_ordinal.saturating_add(1);
             }
-            self.capture_parts_from(
+            self.capture_parts_from_run(
                 replay,
                 message_ordinal,
                 role,
                 part_ordinal,
                 &message.content,
-            )?;
-            message_ordinal = message_ordinal.saturating_add(1);
-        }
-        for tool in tools {
-            let mut part_ordinal = 0_u32;
-            self.append_value(
-                replay,
-                message_ordinal,
-                part_ordinal,
-                "tool_definition",
-                "tool_name",
-                "text/plain; charset=utf-8",
-                &tool.name,
-            )?;
-            part_ordinal = part_ordinal.saturating_add(1);
-            if let Some(description) = &tool.description {
-                self.append_value(
-                    replay,
-                    message_ordinal,
-                    part_ordinal,
-                    "tool_definition",
-                    "tool_description",
-                    "text/plain; charset=utf-8",
-                    description,
-                )?;
-                part_ordinal = part_ordinal.saturating_add(1);
-            }
-            if let Some(schema) = &tool.input_schema {
-                self.append_json(
-                    replay,
-                    message_ordinal,
-                    part_ordinal,
-                    "tool_definition",
-                    "tool_schema",
-                    schema,
-                )?;
-            }
+            )
+            .await?;
             message_ordinal = message_ordinal.saturating_add(1);
         }
         Ok(())
     }
 
-    fn capture_parts(
-        &self,
-        replay: &ReplayStore,
-        message_ordinal: u32,
-        role: &str,
-        parts: &[ContentPart],
-    ) -> Result<(), ()> {
-        self.capture_parts_from(replay, message_ordinal, role, 0, parts)
-    }
-
-    fn capture_parts_from(
+    async fn capture_parts_from_run(
         &self,
         replay: &ReplayStore,
         message_ordinal: u32,
@@ -214,38 +195,50 @@ impl RequestObservation {
         parts: &[ContentPart],
     ) -> Result<(), ()> {
         for part in parts {
+            if self.content_capture_failed() {
+                return Err(());
+            }
             match part {
-                ContentPart::Text { text } => self.append_value(
-                    replay,
-                    message_ordinal,
-                    part_ordinal,
-                    role,
-                    "text",
-                    "text/plain; charset=utf-8",
-                    text,
-                )?,
+                ContentPart::Text { text } => {
+                    self.append_value_run(
+                        replay,
+                        message_ordinal,
+                        part_ordinal,
+                        role,
+                        "text",
+                        "text/plain; charset=utf-8",
+                        text,
+                    )
+                    .await?
+                }
                 ContentPart::Image {
                     source: ImageSource::Url { url },
-                } => self.append_value(
-                    replay,
-                    message_ordinal,
-                    part_ordinal,
-                    role,
-                    "image_url",
-                    "text/uri-list; charset=utf-8",
-                    url,
-                )?,
+                } => {
+                    self.append_value_run(
+                        replay,
+                        message_ordinal,
+                        part_ordinal,
+                        role,
+                        "image_url",
+                        "text/uri-list; charset=utf-8",
+                        url,
+                    )
+                    .await?
+                }
                 ContentPart::Image {
                     source: ImageSource::Base64 { media_type, data },
-                } => self.append_value(
-                    replay,
-                    message_ordinal,
-                    part_ordinal,
-                    role,
-                    "image_base64",
-                    media_type,
-                    data,
-                )?,
+                } => {
+                    self.append_value_run(
+                        replay,
+                        message_ordinal,
+                        part_ordinal,
+                        role,
+                        "image_base64",
+                        media_type,
+                        data,
+                    )
+                    .await?
+                }
                 ContentPart::ToolCall {
                     logical_id,
                     namespace,
@@ -254,17 +247,18 @@ impl RequestObservation {
                     raw_arguments,
                     ..
                 } => {
-                    self.append_inline(
+                    self.append_inline_run(
                         message_ordinal,
                         part_ordinal,
                         role,
                         "tool_call_id",
                         "text/plain; charset=utf-8",
                         logical_id.as_bytes(),
-                    );
+                    )
+                    .await;
                     part_ordinal = part_ordinal.saturating_add(1);
                     if let Some(namespace) = namespace {
-                        self.append_value(
+                        self.append_value_run(
                             replay,
                             message_ordinal,
                             part_ordinal,
@@ -272,10 +266,11 @@ impl RequestObservation {
                             "tool_call_namespace",
                             "text/plain; charset=utf-8",
                             namespace,
-                        )?;
+                        )
+                        .await?;
                         part_ordinal = part_ordinal.saturating_add(1);
                     }
-                    self.append_value(
+                    self.append_value_run(
                         replay,
                         message_ordinal,
                         part_ordinal,
@@ -283,10 +278,11 @@ impl RequestObservation {
                         "tool_call_name",
                         "text/plain; charset=utf-8",
                         name,
-                    )?;
+                    )
+                    .await?;
                     part_ordinal = part_ordinal.saturating_add(1);
                     if let Some(raw) = raw_arguments {
-                        self.append_value(
+                        self.append_value_run(
                             replay,
                             message_ordinal,
                             part_ordinal,
@@ -294,16 +290,18 @@ impl RequestObservation {
                             "tool_call_arguments",
                             "text/plain; charset=utf-8",
                             raw,
-                        )?;
+                        )
+                        .await?;
                     } else {
-                        self.append_json(
+                        self.append_json_run(
                             replay,
                             message_ordinal,
                             part_ordinal,
                             role,
                             "tool_call_arguments",
                             arguments,
-                        )?;
+                        )
+                        .await?;
                     }
                 }
                 ContentPart::ToolResult {
@@ -312,54 +310,81 @@ impl RequestObservation {
                     status,
                     ..
                 } => {
-                    self.append_inline(
+                    self.append_inline_run(
                         message_ordinal,
                         part_ordinal,
                         role,
                         "tool_result_id",
                         "text/plain; charset=utf-8",
                         logical_id.as_bytes(),
-                    );
+                    )
+                    .await;
                     part_ordinal = part_ordinal.saturating_add(1);
                     if *status == ToolResultStatusV1::Failed {
-                        self.append_inline(
+                        self.append_inline_run(
                             message_ordinal,
                             part_ordinal,
                             role,
                             "tool_result_error",
                             "text/plain; charset=utf-8",
                             b"true",
-                        );
+                        )
+                        .await;
                         part_ordinal = part_ordinal.saturating_add(1);
                     }
                     match output {
-                        ToolOutput::Text(text) => self.append_value(
-                            replay,
-                            message_ordinal,
-                            part_ordinal,
-                            role,
-                            "tool_result_text",
-                            "text/plain; charset=utf-8",
-                            text,
-                        )?,
-                        ToolOutput::Json(value) => self.append_json(
-                            replay,
-                            message_ordinal,
-                            part_ordinal,
-                            role,
-                            "tool_result_json",
-                            value,
-                        )?,
+                        ToolOutput::Text(text) => {
+                            self.append_value_run(
+                                replay,
+                                message_ordinal,
+                                part_ordinal,
+                                role,
+                                "tool_result_text",
+                                "text/plain; charset=utf-8",
+                                text,
+                            )
+                            .await?
+                        }
+                        ToolOutput::Json(value) => {
+                            self.append_json_run(
+                                replay,
+                                message_ordinal,
+                                part_ordinal,
+                                role,
+                                "tool_result_json",
+                                value,
+                            )
+                            .await?
+                        }
                     }
                 }
-                ContentPart::ProviderState { state } => self.append_json(
-                    replay,
-                    message_ordinal,
-                    part_ordinal,
-                    role,
-                    "provider_state",
-                    &state.value,
-                )?,
+                ContentPart::ProviderState { state } => {
+                    if state.kind == "reasoning_content" {
+                        self.append_json_run(
+                            replay,
+                            message_ordinal,
+                            part_ordinal,
+                            role,
+                            "reasoning",
+                            &state.value,
+                        )
+                        .await?;
+                    } else if let Some(text) =
+                        crate::content_ref::unsigned_messages_thinking_text(state)
+                    {
+                        self.append_value_run(
+                            replay,
+                            message_ordinal,
+                            part_ordinal,
+                            role,
+                            "reasoning",
+                            "text/plain; charset=utf-8",
+                            text,
+                        )
+                        .await?;
+                    }
+                    // Opaque provider state is forwarding material, not history.
+                }
             }
             part_ordinal = part_ordinal.saturating_add(1);
         }
@@ -367,7 +392,7 @@ impl RequestObservation {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn append_value(
+    async fn append_value_run(
         &self,
         replay: &ReplayStore,
         message_ordinal: u32,
@@ -378,7 +403,7 @@ impl RequestObservation {
         value: &str,
     ) -> Result<(), ()> {
         if let Some(reference) = value.content_ref() {
-            self.append_reference(
+            self.append_reference_run(
                 replay,
                 message_ordinal,
                 part_ordinal,
@@ -387,21 +412,23 @@ impl RequestObservation {
                 media_type,
                 &reference,
             )
+            .await
         } else {
-            self.append_inline(
+            self.append_inline_run(
                 message_ordinal,
                 part_ordinal,
                 role,
                 kind,
                 media_type,
                 value.as_bytes(),
-            );
+            )
+            .await;
             Ok(())
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn append_json(
+    async fn append_json_run(
         &self,
         replay: &ReplayStore,
         message_ordinal: u32,
@@ -411,7 +438,7 @@ impl RequestObservation {
         value: &Value,
     ) -> Result<(), ()> {
         if let Some(reference) = value.content_ref() {
-            self.append_reference(
+            self.append_reference_run(
                 replay,
                 message_ordinal,
                 part_ordinal,
@@ -420,13 +447,15 @@ impl RequestObservation {
                 "application/json",
                 &reference,
             )
+            .await
         } else {
-            self.append_replay_json(replay, message_ordinal, part_ordinal, role, kind, value)
+            self.append_replay_json_run(replay, message_ordinal, part_ordinal, role, kind, value)
+                .await
         }
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn append_reference(
+    async fn append_reference_run(
         &self,
         replay: &ReplayStore,
         message_ordinal: u32,
@@ -436,11 +465,15 @@ impl RequestObservation {
         media_type: &str,
         reference: &ContentRef,
     ) -> Result<(), ()> {
+        if self.content_capture_failed() {
+            return Err(());
+        }
+        let _drain = super::PartDrain::new(self, false);
         let mut digest = WorkspaceHmac::new(&self.inner.key, b"conversation-content-blob");
         digest.update(CANONICALIZATION_VERSION.as_bytes());
         digest.update(media_type.as_bytes());
         let mut reader = replay.reader(reference).map_err(|_| ())?;
-        let mut bytes = [0_u8; CONTENT_CHUNK_BYTES];
+        let mut bytes = vec![0_u8; CONTENT_CHUNK_BYTES];
         let mut read_calls = 0_u64;
         let mut short_reads = 0_u64;
         loop {
@@ -453,6 +486,7 @@ impl RequestObservation {
                 short_reads = short_reads.saturating_add(1);
             }
             digest.update_stream(&bytes[..read]);
+            self.content_checkpoint(read, false).await;
         }
         let whole_digest = format!("blob-{}", digest.finish().trim_start_matches("sha256:"));
         let message_instance_id = self.message_instance_id("request_input", message_ordinal, role);
@@ -473,9 +507,9 @@ impl RequestObservation {
             if read.filled == 0 {
                 break;
             }
-            self.append_content_chunk(ContentChunk {
+            self.append_content_chunk_run(ContentChunk {
                 direction: "request_input",
-                attempt: None,
+                attempt_id: None,
                 message_ordinal,
                 part_ordinal,
                 role,
@@ -489,14 +523,15 @@ impl RequestObservation {
                 starts_content: !emitted,
                 transport_frame_id: None,
                 downstream_delivery: None,
-            });
+            })
+            .await;
             emitted = true;
         }
         self.note_content_reads("request_input", read_calls, short_reads);
         if !emitted {
-            self.append_content_chunk(ContentChunk {
+            self.append_content_chunk_run(ContentChunk {
                 direction: "request_input",
-                attempt: None,
+                attempt_id: None,
                 message_ordinal,
                 part_ordinal,
                 role,
@@ -510,12 +545,13 @@ impl RequestObservation {
                 starts_content: true,
                 transport_frame_id: None,
                 downstream_delivery: None,
-            });
+            })
+            .await;
         }
         Ok(())
     }
 
-    fn append_inline(
+    async fn append_inline_run(
         &self,
         message_ordinal: u32,
         part_ordinal: u32,
@@ -524,7 +560,18 @@ impl RequestObservation {
         media_type: &str,
         bytes: &[u8],
     ) {
-        let whole_digest = self.content_blob_digest(media_type, bytes);
+        if self.content_capture_failed() {
+            return;
+        }
+        let _drain = super::PartDrain::new(self, false);
+        let mut digest = WorkspaceHmac::new(&self.inner.key, b"conversation-content-blob");
+        digest.update(CANONICALIZATION_VERSION.as_bytes());
+        digest.update(media_type.as_bytes());
+        for chunk in bytes.chunks(CONTENT_CHUNK_BYTES) {
+            digest.update_stream(chunk);
+            self.content_checkpoint(chunk.len(), false).await;
+        }
+        let whole_digest = format!("blob-{}", digest.finish().trim_start_matches("sha256:"));
         let message_instance_id = self.message_instance_id("request_input", message_ordinal, role);
         let content_id = self.content_id(&message_instance_id, part_ordinal, &whole_digest);
         emit_content_ref(
@@ -538,9 +585,9 @@ impl RequestObservation {
             },
         );
         if bytes.is_empty() {
-            self.append_content_chunk(ContentChunk {
+            self.append_content_chunk_run(ContentChunk {
                 direction: "request_input",
-                attempt: None,
+                attempt_id: None,
                 message_ordinal,
                 part_ordinal,
                 role,
@@ -554,13 +601,14 @@ impl RequestObservation {
                 starts_content: true,
                 transport_frame_id: None,
                 downstream_delivery: None,
-            });
+            })
+            .await;
             return;
         }
         for (index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {
-            self.append_content_chunk(ContentChunk {
+            self.append_content_chunk_run(ContentChunk {
                 direction: "request_input",
-                attempt: None,
+                attempt_id: None,
                 message_ordinal,
                 part_ordinal,
                 role,
@@ -574,10 +622,15 @@ impl RequestObservation {
                 starts_content: index == 0,
                 transport_frame_id: None,
                 downstream_delivery: None,
-            });
+            })
+            .await;
         }
     }
 }
+
+#[cfg(test)]
+#[path = "semantic_field.rs"]
+mod field;
 
 #[cfg(test)]
 mod tests {

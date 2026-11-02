@@ -60,7 +60,7 @@ impl CapabilityRequirementsV1 {
     }
 }
 
-pub const DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS: u64 = 272_000;
+pub const DEFAULT_PLAN_CONTEXT_WINDOW_TOKENS: u64 = 400_000;
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]

@@ -18,7 +18,7 @@ fn seed_live(store: &LocalObservationStore, count: usize) {
          (workspace_id,content_id,message_instance_id,request_id,direction,fork_id,
           part_ordinal,content_kind,canonical_media_type,content_blob_digest,
           has_content_ref,accumulated_byte_count,state,created_at_unix_nanos)
-         SELECT workspace_id,blob_digest,'message',blob_digest,'response','fork',0,
+         SELECT workspace_id,blob_digest,blob_digest,blob_digest,'response','fork',0,
           'text','text/plain',blob_digest,1,7,'complete',1 FROM content_blobs_v2;",
     )
     .unwrap();

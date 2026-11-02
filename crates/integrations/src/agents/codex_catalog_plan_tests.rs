@@ -684,8 +684,9 @@ fn context_window_default_custom_and_worker_catalog_agree() {
         1_050_000
     );
     for (setting, expected) in [
-        (None, 272_000),
+        (None, 400_000),
         (Some(128_000), 128_000),
+        (Some(272_000), 272_000),
         (Some(500_000), 500_000),
         (Some(1_050_000), 1_050_000),
     ] {

@@ -22,6 +22,29 @@
 .decision-heading .model-avatar { width: 42px; height: 42px; flex-shrink: 0; }
 .decision-neutral-icon { color: var(--accent); background: var(--accent-soft); }
 .decision-form-fields { display: flex; flex-direction: column; gap: 20px; }
+.decision-context { --context-muted: color-mix(in srgb, var(--text-muted) 85%, var(--text)); --context-error: color-mix(in srgb, var(--red) 85%, var(--text)); display: flex; flex-direction: column; gap: 12px; min-width: 0; border-top: 1px solid var(--divider); padding-top: 18px; }
+.decision-context > .field { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.decision-context-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.decision-context-heading h3 { margin: 0; font-size: calc(14px * var(--hr-text-scale)); font-weight: 600; }
+.decision-context .segmented { width: max-content; max-width: 100%; }
+.decision-context .field-label { flex: none; width: auto; white-space: normal; }
+.decision-context-effective { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 12px; min-width: 0; }
+.decision-context-effective > .field-help { flex: 1; min-width: 180px; }
+.decision-context-effective > .decision-context-basis { flex-basis: 100%; order: 1; }
+.decision-context-effective > .btn { flex: none; }
+.decision-context-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; flex: 1; min-width: 0; }
+.decision-context-summary > div { min-width: 0; }
+.decision-context-summary dt { color: var(--context-muted); font-size: calc(12px * var(--hr-text-scale)); overflow-wrap: break-word; }
+.decision-context-summary dd { margin: 4px 0 0; color: var(--text); font-size: calc(18px * var(--hr-text-scale)); font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.decision-context-summary small { display: block; color: var(--context-muted); font-size: calc(12px * var(--hr-text-scale)); font-weight: 400; margin-top: 3px; }
+.decision-context .field-help { color: var(--context-muted); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; }
+.decision-context .input::placeholder { color: var(--context-muted); }
+.decision-context .field-error { color: var(--context-error); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; }
+.decision-context-validation { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.decision-context-validation p { margin: 0; flex: 1; min-width: 180px; color: var(--context-error); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.6; }
+.decision-context-toggle { display: flex; align-items: flex-start; gap: 10px; min-width: 0; cursor: pointer; }
+.decision-context-toggle > input { flex: none; margin-top: 3px; }
+.decision-context-toggle .field-help { display: block; margin-top: 5px; }
 .decision-form-fields .field, .decision-selector .field { margin: 0; }
 .decision-form-fields .disclosure-body > .field + .field { margin-top: 16px; }
 .decision-providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
@@ -93,6 +116,7 @@
 .decision-detour { display: flex; align-items: center; gap: 12px; padding: 8px 20px; background: var(--accent-soft); }
 .trial-dialog .decision-detour { margin: 0 0 12px; padding: 8px 12px; border-radius: 8px; }
 @container detail-pane (max-width: 460px) {
+  .decision-context-summary { grid-template-columns: 1fr; }
   .decision-modes { grid-template-columns: 1fr; }
   .decision-shared-credential { flex-wrap: wrap; }
   .decision-providers { grid-template-columns: 1fr; }

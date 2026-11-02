@@ -22,7 +22,7 @@ fn checked_in_contracts_are_exact_generator_output() {
 #[test]
 fn each_p0_leaf_has_stable_positive_and_negative_plans() {
     let commands = planned_commands();
-    assert_eq!(commands.len(), 122); // Includes versioned decisions, source policy operations and explicit network probes.
+    assert_eq!(commands.len(), 123); // Includes versioned decisions, context preview and explicit network probes.
     for command in commands {
         assert!(command.positive.scenario_id.ends_with(".positive"));
         assert!(command.negative.scenario_id.ends_with(".negative"));
@@ -93,6 +93,7 @@ fn release_manifest_is_a_strict_subset_of_planned_registry() {
             "decision.sources.list",
             "decision.connections.list",
             "decision.connections.apply",
+            "decision.context.preview",
             "decision.connections.test",
             "decision.network.test",
             "decision.services.test",
@@ -145,6 +146,41 @@ fn released_worker_dependency_selection_declares_both_json_sources() {
     assert!(!command.help.usage.contains("capability"));
     assert!(!command.help.effects.contains("capability"));
     assert!(!command.help_document().contains("--capability-fd"));
+}
+
+#[test]
+fn worker_submission_discovery_uses_autonomous_execution_without_permission_options() {
+    for command_id in ["worker.exec", "worker.continue"] {
+        let command = release_manifest()
+            .commands
+            .into_iter()
+            .find(|command| command.command_id == command_id)
+            .unwrap();
+        let help = command.help_document();
+        assert!(help.contains("approve-all"));
+        for hidden in ["--permission-policy", "approve-reads", "deny-all"] {
+            assert!(!help.contains(hidden), "{command_id} advertises {hidden}");
+        }
+        let output = Command::new(env!("CARGO_BIN_EXE_hiroute"))
+            .args(["schema", "show", "--command-id", command_id])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(
+            !String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("--permission-policy")
+        );
+    }
+    for file in generated_contract_files().into_iter().filter(|file| {
+        matches!(
+            file.relative_path,
+            "worker-exec-request.v1.schema.json" | "worker-continue-request.v1.schema.json"
+        )
+    }) {
+        let schema: serde_json::Value = serde_json::from_str(&file.contents).unwrap();
+        assert!(schema["properties"].get("permission_policy").is_none());
+    }
 }
 
 #[test]

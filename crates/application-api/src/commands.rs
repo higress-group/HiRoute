@@ -694,7 +694,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         [],
         Released,
         Apply,
-        "Submit one local Worker task with an explicit cwd and run-scoped permission policy."
+        "Submit one local Worker task with an explicit cwd and autonomous tool execution."
     ),
     command!(
         "worker.status",
@@ -739,7 +739,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         [],
         Released,
         Apply,
-        "Continue one exact task/session with a run-scoped permission policy."
+        "Continue one exact task/session with autonomous tool execution."
     ),
     command!(
         "worker.cancel",
@@ -897,7 +897,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
     command!(
         "decision.connections.list",
         ["decision", "connections", "list"],
-        "ListDecisionServicesV2",
+        "ListDecisionServicesV3",
         [],
         Released,
         Query,
@@ -906,11 +906,20 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
     command!(
         "decision.connections.apply",
         ["decision", "connections", "apply"],
-        "ApplyDecisionServiceV2",
+        "ApplyDecisionServiceV3",
         [],
         Released,
         Apply,
         "Save a versioned decision connection with exact source and credential revisions."
+    ),
+    command!(
+        "decision.context.preview",
+        ["decision", "context", "preview"],
+        "PreviewDecisionContextV1",
+        [],
+        Released,
+        Query,
+        "Resolve a native decision context draft locally without saving or contacting a provider."
     ),
     command!(
         "decision.connections.test",
@@ -1392,6 +1401,20 @@ pub fn command_by_id(command_id: &str) -> Option<CommandDescriptorV1> {
 }
 
 pub fn command_by_operation(operation_id: &str) -> Option<CommandDescriptorV1> {
+    // Retained clients keep their strict V2 entry points and idempotency namespace.
+    let legacy = match operation_id {
+        "ApplyDecisionServiceV2" => Some("decision.connections.apply"),
+        "ListDecisionServicesV2" => Some("decision.connections.list"),
+        _ => None,
+    };
+    if let Some(command) = legacy {
+        let mut descriptor = command_by_id(command)?;
+        descriptor.operation_id = operation_id.into();
+        if operation_id == "ListDecisionServicesV2" {
+            descriptor.response_schema = "hiroute.decision-services/v2".into();
+        }
+        return Some(descriptor);
+    }
     COMMANDS
         .iter()
         .copied()

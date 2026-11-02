@@ -27,11 +27,13 @@ test('canonical kinds keep provider state and reasoning private while classifyin
  assert.equal(isTechnicalContentKind('message_name'), true);
  assert.equal(isTechnicalContentKind('text'), false);
 });
-test('delta fragments are contiguous and a finished snapshot replaces them once', () => {
+test('semantic segments retain accepted text, empty finals and conflicting versions', () => {
  const parse = (sequence, kind, text, index = 0) => readableEvent(JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence, event: { kind, index, text } }), media, 'response_delivered');
  const fragments = [parse(3, 'text_delta', 'R-'), parse(1, 'text_delta', 'HI'), parse(4, 'text_delta', 'OK'), parse(2, 'text_delta', '-')];
  assert.deepEqual(coalesceResponseText(fragments), [{ kind: 'text', index: 0, text: 'HI-R-OK' }]);
- assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', 'HIR-TOOL-OK-SEP21')]), [{ kind: 'text', index: 0, text: 'HIR-TOOL-OK-SEP21' }]);
+ assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', '')]), [{ kind: 'text', index: 0, text: 'HI-R-OK' }]);
+ assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', 'HI-R-OK')]), [{ kind: 'text', index: 0, text: 'HI-R-OK' }]);
+ assert.deepEqual(coalesceResponseText([...fragments, parse(5, 'text_finished', 'different')]), [{ kind: 'text', index: 0, text: 'HI-R-OK', version: 'accepted' }, { kind: 'text', index: 0, text: 'different', version: 'final' }]);
  assert.deepEqual(coalesceResponseText([parse(5, 'text_finished', 'Only final')]), [{ kind: 'text', index: 0, text: 'Only final' }]);
  assert.deepEqual(coalesceResponseText([parse(1, 'reasoning_finished', 'private'), parse(2, 'refusal_finished', 'Cannot do that')]), [{ kind: 'refusal', index: 0, text: 'Cannot do that' }]);
 });
@@ -63,4 +65,16 @@ test('search excerpt centers on the original UTF-8 anchor', () => {
  const before = '前'.repeat(300);
  const result = excerptAround(before + '命中内容' + '后'.repeat(300), new TextEncoder().encode(before).length);
  assert.match(result, /命中内容/); assert.ok(result.length <= 162); assert.ok(!result.includes('�'));
+});
+
+test('semantic terminal metadata never replaces accepted segments with an empty final', () => {
+ const terminalMedia = 'application/vnd.hiroute.semantic-terminal+json;version=1';
+ const raw = JSON.stringify({ schema_version: 'hiroute.semantic-terminal/v1', sequence: 2, text_source: 'accepted_segments', event: { kind: 'text_finished', index: 0, status: 'completed', annotations: [] } });
+ const terminal = readableEvent(raw, terminalMedia, 'response_delivered');
+ assert.deepEqual(terminal, { kind: 'block', block: 'text_finished' });
+ const delta = readableEvent(encode({ kind: 'text_delta', index: 0, text: 'retained' }), media, 'response_delivered');
+ assert.deepEqual(coalesceResponseText([delta, terminal]), [{ kind: 'text', index: 0, text: 'retained' }]);
+ assert.equal(readableEvent(raw, media, 'response_delivered'), null);
+ assert.equal(readableEvent(raw.replace('accepted_segments', 'unknown'), terminalMedia, 'response_delivered'), null);
+ assert.equal(readableEvent(raw.replace('"annotations":[]', '"text":"","annotations":[]'), terminalMedia, 'response_delivered'), null);
 });

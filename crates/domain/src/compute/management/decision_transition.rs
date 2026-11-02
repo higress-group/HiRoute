@@ -21,8 +21,33 @@ pub fn register_decision_consumer(
     source: &ComputeManagementSourceV2,
     service: &DecisionServiceV2,
 ) -> Result<DecisionSourceTransitionV1, ComputeManagementErrorV2> {
+    if !service.validate() {
+        return Err(ComputeManagementErrorV2::InvalidTarget);
+    }
+    register_decision_connection(source, &service.id, service.revision, &service.connection)
+}
+
+pub fn register_decision_consumer_record(
+    source: &ComputeManagementSourceV2,
+    service: &crate::DecisionServiceRecord,
+) -> Result<DecisionSourceTransitionV1, ComputeManagementErrorV2> {
+    if !service.validate() {
+        return Err(ComputeManagementErrorV2::InvalidTarget);
+    }
+    let connection = service
+        .versioned_connection()
+        .ok_or(ComputeManagementErrorV2::InvalidTarget)?;
+    register_decision_connection(source, service.id(), service.revision(), connection)
+}
+
+fn register_decision_connection(
+    source: &ComputeManagementSourceV2,
+    service_id: &str,
+    revision: u64,
+    connection: &DecisionConnectionV2,
+) -> Result<DecisionSourceTransitionV1, ComputeManagementErrorV2> {
     source.validate()?;
-    if !service.validate() || !source.provenance.is_native() {
+    if !connection.validate() || !source.provenance.is_native() {
         return Err(ComputeManagementErrorV2::InvalidTarget);
     }
     let DecisionConnectionV2::Native {
@@ -35,7 +60,7 @@ pub fn register_decision_consumer(
                 source_lineage_digest,
             },
         ..
-    } = &service.connection
+    } = connection
     else {
         return Err(ComputeManagementErrorV2::InvalidTarget);
     };
@@ -52,15 +77,15 @@ pub fn register_decision_consumer(
     let consumer = target.consumer(
         source_id,
         source_lineage_digest,
-        &service.id,
-        service.revision,
+        service_id,
+        revision,
         model,
     )?;
     if next.decision_targets.iter().any(|target| {
         target
             .consumers
             .iter()
-            .any(|old| old.service_id == service.id && old.revision == service.revision)
+            .any(|old| old.service_id == service_id && old.revision == revision)
     }) {
         return Err(ComputeManagementErrorV2::DuplicateIdentity);
     }

@@ -435,7 +435,7 @@ pub fn install(request: InstallRequest) -> io::Result<Value> {
         let source = retained_source(&layout, previous, &target)?;
         let report = crate::checked_upgrade_preflight(&target, &layout.storage_root(), &source)
             .map_err(io::Error::other)?;
-        report.history_cutover_required.then_some(source)
+        (report.history_cutover_required || report.required_bytes != 0).then_some(source)
     } else {
         None
     };

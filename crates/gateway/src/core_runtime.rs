@@ -438,16 +438,20 @@ impl ProductionGatewayRuntime {
             Ok(authorized) => authorized,
             Err(error) => return write_dispatch_error(session, error).await,
         };
+        let run_diagnostics = authenticated.run_diagnostics();
         drop(authenticated);
-        self.process_authorized(
-            session,
-            Box::new(request),
-            protocol,
-            declared_content_length,
-            ingress,
-            authorized,
-            budget,
-            native_network,
+        super::dispatch::with_run_diagnostics(
+            run_diagnostics,
+            self.process_authorized(
+                session,
+                Box::new(request),
+                protocol,
+                declared_content_length,
+                ingress,
+                authorized,
+                budget,
+                native_network,
+            ),
         )
         .await
     }
@@ -738,10 +742,13 @@ impl ProductionGatewayRuntime {
                 externalize_elapsed,
                 prevalidate_elapsed,
             );
-            request_observation.record_input_selection(
-                routing_view.excerpt_selection(&canonical_request, current_input_origin_unverified),
-            );
-            request_observation.capture_request_async(&canonical_request, &replay);
+            let input_selection =
+                routing_view.excerpt_selection(&canonical_request, current_input_origin_unverified);
+            let input_capture_current = input_selection.message_ordinal.and_then(|ordinal| {
+                (ordinal as usize).checked_sub(canonical_request.instructions.len())
+            });
+            request_observation.record_input_selection(input_selection);
+            request_observation.canonical_request_accepted();
             let mut hold_ticket;
             let mut agent_turn_guard = None;
             let mut correlated_branch = None;
@@ -817,6 +824,7 @@ impl ProductionGatewayRuntime {
                         admitted_network: None,
                         request: routing_request,
                         current_input: routing_view.current_input(),
+                        current_input_position: routing_view.current_input_position(),
                         native_user_unavailable: native_user_unavailable
                             || routing_view.current_input_unavailable(),
                         current_input_origin_unverified,
@@ -904,6 +912,17 @@ impl ProductionGatewayRuntime {
                     .map(Box::new);
                 None
             };
+            request_observation.select_input_capture(
+                &canonical_request,
+                agent_turn_guard
+                    .as_ref()
+                    .and_then(|guard| guard.ticket().capture_input_start),
+                input_capture_current,
+                agent_turn_guard
+                    .as_ref()
+                    .map(|guard| guard.ticket().agent_turn_id.clone()),
+            );
+            request_observation.capture_request_async(&canonical_request, &replay);
             drop(routing_view);
             set_phase(LocalPhase::Prepare);
             let prepared_planner_input =
@@ -1742,6 +1761,7 @@ impl GatewaySession for ReplayBodySession<'_> {
         let captured = head.clone();
         self.response_started = true;
         timing::write_head(self.inner, head).await?;
+        super::dispatch::note_run_http_failure(captured.status.as_u16());
         self.response_capture.accepted_head(&captured);
         Ok(())
     }
@@ -1910,6 +1930,7 @@ async fn write_typed_error_phase(
     code: &'static str,
     phase: &'static str,
 ) -> Result<SessionReuse, TransportError> {
+    super::dispatch::note_run_request_failure(status.as_u16(), code);
     let body = serialize_body(serde_json::json!({
         "schema_version": "hiroute.gateway.error/v1",
         "code": code,

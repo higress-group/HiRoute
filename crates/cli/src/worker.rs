@@ -4,8 +4,8 @@ use std::time::Duration;
 use hiroute_application_api::{
     DelegationAcceptedV1, DelegationTaskInputV1, ErrorCode, ErrorV1, MachineEnvelopeV2,
     MachineStatus, RunStateV1, WORKER_CONTINUE_SCHEMA_V1, WORKER_EXEC_SCHEMA_V1,
-    WorkerContinueRequestV1, WorkerExecRequestV1, WorkerListRequestV1, WorkerPlansRequestV1,
-    WorkerResultRequestV1, WorkerWaitRequestV1,
+    WorkerContinueRequestV1, WorkerExecRequestV1, WorkerListRequestV1, WorkerPermissionPolicyV1,
+    WorkerPlansRequestV1, WorkerResultRequestV1, WorkerWaitRequestV1,
 };
 use hiroute_client_core::{ClientFailure, FailureCode};
 
@@ -31,6 +31,15 @@ pub(crate) fn input_failure(code: ErrorCode, globals: Globals) -> CliExecution {
 }
 
 fn failure(code: ErrorCode, output: OutputMode, request_id: Option<String>) -> CliExecution {
+    if code == ErrorCode::InvalidArguments {
+        let diagnostic = crate::request_input::diagnostics::failure(code, request_id.clone());
+        if output == OutputMode::Json {
+            return diagnostic;
+        }
+        let mut result = failure_error(ErrorV1::new(code), output, request_id);
+        result.stderr.push_str(&diagnostic.stderr);
+        return result;
+    }
     failure_error(ErrorV1::new(code), output, request_id)
 }
 
@@ -44,6 +53,19 @@ fn failure_error(error: ErrorV1, output: OutputMode, request_id: Option<String>)
 }
 
 pub(crate) fn execute(command: &str, options: &[String], globals: Globals) -> CliExecution {
+    let _diagnostics =
+        crate::request_input::diagnostics::Scope::enter(command, globals.error_details);
+    if matches!(command, "worker.exec" | "worker.continue")
+        && input::has_permission_policy_option(options)
+    {
+        let mut error = ErrorV1::new(ErrorCode::InvalidArguments);
+        error.message_key = "worker.error.permission_policy_unsupported_remove_argument".into();
+        let mut result = failure_error(error, globals.output, globals.request_id);
+        result.stderr.push_str(
+            "--permission-policy is temporarily unsupported. Remove this argument; Worker runs use approve-all by default.\n",
+        );
+        return result;
+    }
     let request_id = globals
         .request_id
         .clone()
@@ -217,7 +239,7 @@ fn exec(
         schema: WORKER_EXEC_SCHEMA_V1.into(),
         plan_id: parsed.plan.expect("exec parser requires Plan"),
         cwd: parsed.cwd.expect("exec parser requires cwd"),
-        permission_policy: parsed.permission_policy,
+        permission_policy: WorkerPermissionPolicyV1::ApproveAll,
         run_timeout_secs: parsed.run_timeout_secs,
         input: DelegationTaskInputV1 {
             goal: parsed.prompt,
@@ -289,7 +311,7 @@ fn continue_task(
             .expected_latest_run
             .expect("continue parser requires latest run"),
         cwd: parsed.cwd,
-        permission_policy: parsed.permission_policy,
+        permission_policy: WorkerPermissionPolicyV1::ApproveAll,
         run_timeout_secs: parsed.run_timeout_secs,
         input: DelegationTaskInputV1 {
             goal: parsed.prompt,
