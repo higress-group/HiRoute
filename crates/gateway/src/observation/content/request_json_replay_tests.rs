@@ -812,9 +812,13 @@ fn queued_archive_pressure_marks_optional_loss_without_synchronous_history_fallb
     );
     assert!(observation.inner.async_content.get().unwrap().failed());
     assert_eq!(fixture.store.budget().snapshot().unwrap().live, before);
+    // The encoder is still paused; drain only the independent record producer
+    // so the observation below cannot depend on OS thread scheduling.
+    observation.inner.channels.content.flush(Duration::from_secs(5));
+    let received = receiver.try_recv();
     assert!(
-        receiver.try_recv().is_err(),
-        "no archive traversal in the foreground"
+        received.is_err(),
+        "no archive traversal in the foreground: {received:?}"
     );
     drop(_other);
     gate.release();
