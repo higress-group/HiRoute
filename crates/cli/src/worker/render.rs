@@ -142,7 +142,7 @@ pub(super) fn render_cancel(
 }
 
 pub(super) struct CommandData<'a> {
-    pub(super) failure: Option<hiroute_domain::delegation::WorkerExecutionFailureV1>,
+    pub(super) failure: Option<hiroute_application_api::WorkerExecutionFailureV1>,
     pub(super) operation: &'a str,
     pub(super) submission_key: Option<&'a str>,
     pub(super) task_id: Option<&'a str>,

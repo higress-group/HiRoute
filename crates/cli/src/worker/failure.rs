@@ -1,7 +1,7 @@
+use hiroute_application_api::RunStateV1;
 use hiroute_application_api::{
     ErrorCode, ErrorV1, MachineEnvelopeV2, MachineStatus, NextActionV1, WorkerCommandDataV1,
 };
-use hiroute_domain::delegation::RunStateV1;
 
 pub(super) fn classify_terminal(response: &mut MachineEnvelopeV2<WorkerCommandDataV1>) {
     let Some(data) = response.data.as_ref() else {

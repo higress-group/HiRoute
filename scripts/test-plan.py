@@ -48,6 +48,7 @@ WORKER_FIXTURE_TOOLING = {"scripts/test-agent-product-support.py",
                           "scripts/test-native-context-product.py",
                           "scripts/test-native-context-boundaries.py",
                           "scripts/test-qoder-product.py"}
+CODEX_WORKER_BOOTSTRAP_TEST = "crates/daemon/src/delegation/profile/codex_adapter_bootstrap.test.mjs"
 WORKER_BOOTSTRAP_TEST = "crates/daemon/src/delegation/profile/claude_adapter_bootstrap.test.mjs"
 PI_WORKER_BRIDGE_TEST = "crates/daemon/src/delegation/profile/pi_worker_bridge.test.mjs"
 PI_SDK_CONTRACT_TEST = "crates/integrations/src/agents/pi_sdk_contract.test.mjs"
@@ -631,6 +632,7 @@ def select(paths, full=False):
         commands.append(["python3", "scripts/test-qoder-product.py"])
     if full or any(path.startswith("crates/daemon/src/delegation/profile/") for path in paths):
         commands.append(["node", "--test", WORKER_BOOTSTRAP_TEST])
+        commands.append(["node", "--test", CODEX_WORKER_BOOTSTRAP_TEST])
     if full or any(path.startswith(("crates/integrations/src/agents/pi_",
                                    "crates/daemon/src/delegation/profile/pi")) for path in paths):
         commands.append(["node", "--test", PI_SDK_CONTRACT_TEST])

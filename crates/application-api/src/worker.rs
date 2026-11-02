@@ -7,6 +7,7 @@ use hiroute_domain::delegation::{
     MAX_RUN_DURATION_MS, MAX_WORKER_CONCURRENCY, RunStateV1, WorkerExecutionIntentV1,
     WorkerHarnessV1, WorkerNetworkV1, WorkerPermissionPolicyV1, WorkerToolV1, WorkspaceAccessV1,
 };
+pub use hiroute_domain::delegation::{WorkerExecutionFailureV1, WorkerExecutionStageV1};
 use hiroute_domain::{
     AgentPlanId, CHANGE_SPEC_SCHEMA_V1, CanonicalDigest, ChangeSpecV1, RevisionSetV1,
     WorkerDependencySelectionChangeV1, WorkerDependencySelectionRecordV1,

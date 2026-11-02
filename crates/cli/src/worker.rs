@@ -399,7 +399,12 @@ fn finish_submission(
             timed_out: false,
         })
     }));
-    if no_wait {
+    if no_wait
+        || matches!(
+            accepted.state,
+            RunStateV1::Failed | RunStateV1::Cancelled | RunStateV1::Unknown
+        )
+    {
         let mut response = initial.take().expect("initial response is present");
         failure::classify_terminal(&mut response);
         return render_worker_data(response, output, true);

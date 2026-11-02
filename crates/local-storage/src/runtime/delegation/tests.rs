@@ -1,6 +1,7 @@
 use super::*;
 use hiroute_domain::{AgentPlanId, CanonicalDigest};
 
+mod execution_failure;
 mod listing;
 mod native_lifecycle;
 

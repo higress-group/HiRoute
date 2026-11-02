@@ -24,6 +24,7 @@ use std::time::Duration;
 #[derive(Default)]
 struct Tasks {
     calls: Mutex<Vec<(bool, String, Value)>>,
+    failure: Mutex<Option<hiroute_domain::delegation::WorkerExecutionFailureV1>>,
 }
 
 impl Tasks {
@@ -43,13 +44,18 @@ impl Tasks {
         if conflict {
             return Err(DelegationErrorV1::Conflict);
         }
+        let failure = *self.failure.lock().unwrap();
         Ok(DelegationAcceptedV1 {
-            failure: None,
+            failure,
             schema: "hiroute.delegation-accepted/v1".into(),
             task_id: "task/fixture".into(),
             run_id: format!("run/{}", index + 1),
             title: Some("Recovery task".into()),
-            state: RunStateV1::Accepted,
+            state: if failure.is_some() {
+                RunStateV1::Failed
+            } else {
+                RunStateV1::Accepted
+            },
             state_revision: 1,
             replayed: previous.is_some(),
         })
@@ -229,6 +235,50 @@ fn response(output: &Output) -> Value {
             String::from_utf8_lossy(&output.stderr)
         )
     })
+}
+
+#[test]
+fn terminal_failure_and_submission_replay_keep_the_actual_cause_and_locators() {
+    with_control(|fixture, tasks| {
+        let failure = hiroute_domain::delegation::WorkerExecutionFailureV1 {
+            stage: hiroute_domain::delegation::WorkerExecutionStageV1::ModelSelection,
+            error: DelegationErrorV1::CapabilityUnavailable,
+        };
+        *tasks.failure.lock().unwrap() = Some(failure);
+        for replay in [false, true] {
+            let output = fixture
+                .command()
+                .args(fixture.exec_args(Some("submission/failure"), "goal"))
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(1));
+            let json = response(&output);
+            assert_eq!(json["error"]["code"], "WORKER_EXECUTION_FAILED");
+            assert_eq!(
+                json["error"]["message_key"],
+                "worker.execution.model_selection.capability_unavailable"
+            );
+            assert_eq!(json["data"]["failure"]["stage"], "model_selection");
+            assert_eq!(json["data"]["run_id"], "run/1");
+            assert_eq!(json["data"]["replayed"], replay);
+            assert!(
+                json["next_actions"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|action| action["command_id"] == "worker.read")
+            );
+        }
+        let mut args = fixture.exec_args(Some("submission/failure"), "goal");
+        args.retain(|arg| arg != "--no-wait");
+        let index = args.iter().position(|arg| arg == "json").unwrap();
+        args[index] = "text".into();
+        let output = fixture.command().args(args).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("model_selection.capability_unavailable"));
+        assert!(stderr.contains("No task prompt was sent"));
+    });
 }
 
 #[test]

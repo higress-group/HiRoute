@@ -64,3 +64,39 @@ print(json.dumps([{'id':'native-format-a'}, {'id':'native-format-b'}]))
         assert_eq!(failure.check, Check::OpenCodeDatabase);
     }
 }
+
+#[test]
+#[ignore = "requires the explicitly selected native Claude CLI; isolated local challenge only"]
+fn actual_claude_host_provider_capability() {
+    let binary =
+        std::env::var_os("HIROUTE_WORKER_CLAUDE_BINARY").expect("selected native Claude binary");
+    ClaudeNativeIngressProbe::check_host_managed_provider(
+        std::path::Path::new(&binary),
+        "/usr/bin:/bin",
+    )
+    .unwrap();
+}
+
+#[test]
+#[ignore = "requires an explicitly selected negative native Claude control"]
+fn actual_claude_without_host_provider_capability_is_refused() {
+    let binary = std::env::var_os("HIROUTE_WORKER_CLAUDE_NEGATIVE_BINARY")
+        .expect("selected negative native Claude binary");
+    let error = ClaudeNativeIngressProbe::check_host_managed_provider(
+        std::path::Path::new(&binary),
+        "/usr/bin:/bin",
+    )
+    .unwrap_err();
+    assert_eq!(error.check, Check::ClaudeHostManagedProvider);
+    assert_eq!(error.reason, Reason::Unsupported);
+}
+
+#[test]
+#[ignore = "requires the explicitly selected native OpenCode binary; disposable database only"]
+fn actual_opencode_reports_its_database_capability() {
+    let binary = std::env::var_os("HIROUTE_WORKER_OPENCODE_BINARY")
+        .expect("selected native OpenCode binary");
+    let migrations =
+        opencode_native_format(std::path::Path::new(&binary), "/usr/bin:/bin").unwrap();
+    assert!(!migrations.is_empty());
+}
