@@ -25,6 +25,10 @@ fn assessment_is_exactly_the_preceding_turn_while_older_history_remains_context(
     ));
     // No historical score/applicability questions can be emitted for an old range.
     let prepared = request_template(&authority, &diagnostic_request(), &history, false).unwrap();
+    assert_eq!(
+        prepared.routing_observation.as_ref().unwrap().eligibility,
+        ProtectionEligibilityV1::InvalidBoundary
+    );
     let bindings = prepared.bindings.unwrap();
     assert!(bindings.assessment.is_none());
     assert!(bindings.applicability.is_none());

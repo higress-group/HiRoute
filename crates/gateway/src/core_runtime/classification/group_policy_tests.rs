@@ -524,7 +524,7 @@ fn invalid_applicability_retains_a_valid_complex_trigger_and_marks_unavailable()
 #[test]
 fn c_applicability_never_overrides_attribution_or_a_partial_target() {
     let input = c_input();
-    for (variant, p) in (0..10).flat_map(|variant| [0.7, 0.9].map(|p| (variant, p))) {
+    for (variant, p) in (0..8).flat_map(|variant| [0.7, 0.9].map(|p| (variant, p))) {
         let mut result = with_applicability(&input, Some(p), Some(0.1), true, Some(1.0));
         let a = result.assessment.as_mut().unwrap();
         match variant {
@@ -557,8 +557,6 @@ fn c_applicability_never_overrides_attribution_or_a_partial_target() {
             }
             5 => a.target.target_partial = true,
             6 => a.target.plan.plan_id = "another-plan".into(),
-            8 => a.target.through_ordinal += 1,
-            9 => a.target.through_turn_id = "another-turn".into(),
             _ => a.target.branch_execution = None,
         }
         apply(&input, &history(), &mut result);

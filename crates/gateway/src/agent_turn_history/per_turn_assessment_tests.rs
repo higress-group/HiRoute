@@ -45,6 +45,9 @@ fn same_executor_scores_each_turn_and_cancellation_cannot_poison_other_turns() {
         let request_id = format!("request-{ordinal}");
         store.commit_decision(&ticket, decision("code")).unwrap();
         accepted_output::text_output(&store, &ticket, &answer);
+        if ordinal == 3 {
+            store.mark_output_partial(&ticket);
+        }
         let turn = store
             .finish_request(
                 &ticket,

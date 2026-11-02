@@ -221,11 +221,7 @@ fn new_text_pair(capture_prior: bool) {
         json!({"role":"user", "content":"real new question C"}),
     ]);
     let c = retained_begin(&fixture, &authorized, &items, "c-turn", "c-question");
-    let expected: &[&str] = if capture_prior {
-        &["opaque-request", "b-final"]
-    } else {
-        &["b-final"]
-    };
+    let expected: &[&str] = &["b-final"];
     assert_actual_b_target(&c, expected, capture_prior);
 }
 
@@ -300,11 +296,7 @@ fn complete_new_tool_stage_with_capture(old_item: Value, capture_prior: bool) {
         json!({"role":"user", "content":"real new question C"}),
     ]);
     let c = retained_begin(&fixture, &authorized, &items, "c-turn", "c-question");
-    let expected: &[&str] = if capture_prior && complete_prior {
-        &["opaque-request", "b-tool", "b-final"]
-    } else {
-        &["b-tool", "b-final"]
-    };
+    let expected: &[&str] = &["b-tool", "b-final"];
     assert_actual_b_target(&c, expected, capture_prior);
     if capture_prior && !complete_prior {
         let visible = serde_json::to_string(&c.history.visible_conversation).unwrap();

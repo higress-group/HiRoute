@@ -444,7 +444,7 @@ fn released_canonicalization_capacity_recovers_after_raw_prefix_representation_c
         "recovered-model",
         "recovered-profile",
     );
-    assert_eq!(a_completed.segment_id, b_completed.segment_id);
+    assert_ne!(a_completed.segment_id, b_completed.segment_id);
     assert_eq!(
         b_history
             .assessment_target
@@ -464,7 +464,7 @@ fn released_canonicalization_capacity_recovers_after_raw_prefix_representation_c
     assert!(!extended.target_partial);
     assert_eq!(
         extended.history_membership.as_ref().unwrap().request_ids,
-        ["recovered-a", "recovered-b"]
+        ["recovered-b"]
     );
     assert_eq!(
         b_history

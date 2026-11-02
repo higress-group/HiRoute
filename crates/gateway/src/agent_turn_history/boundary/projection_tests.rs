@@ -227,7 +227,7 @@ fn finish_output(
 }
 
 #[test]
-fn visible_projection_uncertainty_survives_later_full_edges_in_the_same_stage() {
+fn within_turn_projection_uncertainty_is_retained_without_tainting_a_new_turn() {
     let (_dir, replay) = replay();
     let store = AgentTurnHistoryStore::default();
     let scope = store.scope_key("workspace", "sticky-projection").unwrap();
@@ -282,8 +282,8 @@ fn visible_projection_uncertainty_survives_later_full_edges_in_the_same_stage() 
             .unwrap()
             .contains("private reasoning")
     );
-    // A new fully matched user turn can share the same model segment. Its
-    // exact edge must not launder uncertainty in the earlier segment members.
+    // A new fully matched user turn gets its own target. The earlier turn's
+    // uncertainty remains in that turn, not in the new target.
     let b_completed = finish_output(&store, &b, "", "B DONE", "r4", true).unwrap();
     assert!(
         !b_completed
@@ -310,12 +310,10 @@ fn visible_projection_uncertainty_survives_later_full_edges_in_the_same_stage() 
         .history_membership
         .as_ref()
         .unwrap();
-    assert_eq!(mixed.request_ids, ["r1", "r2", "r3", "r4"]);
-    assert!(mixed.association_unverified);
-    assert_eq!(
-        mixed.relation,
-        hiroute_domain::HistoryRelationV1::Contextual
-    );
+    assert_eq!(mixed.request_ids, ["r4"]);
+    assert!(!mixed.association_unverified);
+    assert_eq!(Some(mixed), b_completed.history_membership.as_ref());
+    assert!(membership.association_unverified);
     assert!(!mixed.capture_partial);
     store.abort(&c);
 }

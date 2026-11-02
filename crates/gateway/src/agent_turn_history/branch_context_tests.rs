@@ -379,9 +379,11 @@ fn retrying_or_reclassifying_a_turn_cannot_launder_a_partial_segment() {
         );
         drop(history);
         accepted_output::text_output(&store, &ticket, "accepted execution");
+        store.mark_output_partial(&ticket);
         let original = close_branch_turn(&store, &ticket, now);
-        // Evict actual earlier execution without losing the current turn's
-        // output. A fully captured retry must not wash that missing prefix away.
+        assert!(original.history_partial);
+        // The target itself has a real capture gap. Evicting older context and
+        // then retrying must not wash that target-specific gap away.
         assert!(trim_oldest_closed_turn(&mut store.inner.lock(), &key).unwrap());
         let AgentTurnBegin::Continuation { ticket, .. } = store
             .begin(key.clone(), plan(1), &request(messages), &replay, now)
@@ -407,7 +409,7 @@ fn retrying_or_reclassifying_a_turn_cannot_launder_a_partial_segment() {
         accepted_output::text_output(&store, &ticket, "retry output");
         let retry = close_branch_turn(&store, &ticket, now);
         assert!(retry.history_partial);
-        assert_eq!(retry.segment_id, original.segment_id);
+        assert_eq!(retry.segment_id == original.segment_id, !new_execution_id);
         assert_eq!(
             retry.agent_turn_id != original.agent_turn_id,
             new_execution_id

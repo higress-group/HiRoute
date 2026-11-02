@@ -159,8 +159,9 @@ fn oversized_current_input_is_rejected_and_history_removal_marks_only_affected_t
         text: "x".repeat(MAX_REQUEST_BYTES),
     }];
     h.visible_conversation.insert(0, Arc::new(oversized));
+    h.assessment_from = Some(1);
     let prepared = request_template(&a, &diagnostic_request(), &h, false).unwrap();
-    assert!(prepared.bindings.as_ref().unwrap().assessment.is_some() && prepared.target_partial);
+    assert!(prepared.bindings.as_ref().unwrap().assessment.is_some() && !prepared.target_partial);
     let body: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
     assert_eq!(
         body["state"]["visible_conversation"]
@@ -650,13 +651,9 @@ fn c_reserves_q3_then_never_refills_a_budget_partial_target() {
         .wire_len;
     let mut large = (*h.visible_conversation[0]).clone();
     large.user = vec![VisibleContentPart::Text {
-        text: "x".repeat(256 * 1024 - base + "Previous work".len() - 100),
+        text: "x".repeat(256 * 1024 - base + "Previous work".len() + 8),
     }];
-    let mut first = (*h.visible_conversation[0]).clone();
-    first.user = vec![VisibleContentPart::Text {
-        text: "a".repeat(1024),
-    }];
-    h.visible_conversation = vec![Arc::new(first), Arc::new(large)];
+    h.visible_conversation = vec![Arc::new(large)];
     let p = request_template(&a, &diagnostic_request(), &h, false).unwrap();
     let repeat = request_template(&a, &diagnostic_request(), &h, false).unwrap();
     assert_eq!(p.template.bytes, repeat.template.bytes);
@@ -664,7 +661,8 @@ fn c_reserves_q3_then_never_refills_a_budget_partial_target() {
     assert!(p.target_partial);
     assert!(!o.applicability_requested);
     assert_eq!(o.stage_removed, 1);
-    assert_eq!(o.stage_retained, 1);
+    assert_eq!(o.stage_retained, 0);
+    assert!(p.bindings.as_ref().unwrap().assessment.is_none());
     assert!(p.template.wire_len + 1024 < 256 * 1024);
 }
 
