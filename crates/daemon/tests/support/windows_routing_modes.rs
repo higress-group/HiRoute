@@ -116,7 +116,7 @@ impl Modes {
                         .find(|option| option["id"] == choice)
                         .unwrap();
                     if choice == "docs" {
-                        assert!(
+                        assert_eq!(
                             selected["groups"],
                             json!(["regular"]),
                             "the route declares only the published available groups"
