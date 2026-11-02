@@ -3,6 +3,7 @@
 use hiroute_platform::windows::security;
 use std::{
     fs::File,
+    io,
     path::{Path, PathBuf},
 };
 
