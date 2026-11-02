@@ -158,36 +158,6 @@ fn platform_matches(meta: &Value) -> bool {
         }
 }
 
-/// Bounded audited format evidence, independent of general discovery/selection availability.
-pub fn opencode_native_format(
-    selected: &Path,
-) -> Result<&'static [&'static str], QoderNativeError> {
-    let path = opencode_native_executable(selected)?
-        .ok_or_else(|| qoder_error("OpenCode executable missing"))?;
-    let root = path
-        .parent()
-        .and_then(Path::parent)
-        .ok_or_else(|| qoder_error("OpenCode package root"))?;
-    let meta = package(root)?.ok_or_else(|| qoder_error("OpenCode format metadata unavailable"))?;
-    let name = meta["name"]
-        .as_str()
-        .ok_or_else(|| qoder_error("OpenCode package name"))?;
-    if !official_package(&meta)
-        || root.file_name().and_then(|s| s.to_str()) != Some(name)
-        || path.file_name().and_then(|s| s.to_str())
-            != Some(if cfg!(windows) {
-                "opencode.exe"
-            } else {
-                "opencode"
-            })
-        || meta["version"] != "1.19.3"
-        || !platform_matches(&meta)
-    {
-        return Err(qoder_error("OpenCode format metadata unsupported"));
-    }
-    Ok(super::opencode_migrations::IDS)
-}
-
 fn official_package(meta: &Value) -> bool {
     matches!(
         meta["name"].as_str(),

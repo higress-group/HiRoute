@@ -231,6 +231,14 @@ retains only bounded lexical state and the alias; canonical JSON/protocol valida
 still runs before Provider admission. [Real listener regressions](../../tools/e2e-harness/tests/p0_gateway_replay/ingress.rs)
 cover large model-last bodies across all ingress protocols and partial-owner cleanup.
 
+Responses-to-Chat tool projection retains a namespace description as a labeled
+prefix on each child description. The existing reversible names continue to bind
+declarations, forced choices, historical calls and returned tool identities.
+Replay-backed descriptions remain compact during candidate sizing; sequential
+delivery expands them once per child and charges the full repeated wire length.
+[Listener regressions](../../tools/e2e-harness/tests/p0_gateway_protocol/responses_chat_tools.rs)
+cover described namespaces, tool continuation and unsupported-tool fallback.
+
 Same-protocol Responses forwarding preserves provider tool names and namespaces
 even when they disagree across snapshots of the same call. The call ID and
 native carrier (function, custom or provider-run web search) must remain stable.

@@ -447,6 +447,10 @@ fn request_content_refs(
             collect_string_ref(namespace.description.as_deref(), &mut refs);
         }
         for tool in &namespace.tools {
+            if target == IngressProtocol::ChatCompletions {
+                // Namespace descriptions are prefixed to every projected child.
+                collect_string_ref(namespace.description.as_deref(), &mut refs);
+            }
             collect_string_ref(tool.description.as_deref(), &mut refs);
             if let Some(schema) = &tool.input_schema {
                 collect_nested_json_refs(schema, &mut refs);

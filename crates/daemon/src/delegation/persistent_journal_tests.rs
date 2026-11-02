@@ -82,6 +82,11 @@ impl DelegationRuntimePort for MemoryRuntime {
             return Err(DelegationErrorV1::Conflict);
         }
         match event {
+            DelegationCheckpointV1::ExecutionFailed { event, failure } => {
+                assert!(run.execution_failure.is_none());
+                run.execution_failure = Some(*failure);
+                run.progress.advance(*event)?;
+            }
             DelegationCheckpointV1::Progress { event } => run.progress.advance(*event)?,
             DelegationCheckpointV1::ProcessSpawned { binding } => {
                 run.process = Some(binding.clone());
@@ -150,6 +155,7 @@ impl DelegationRuntimePort for MemoryRuntime {
 
 fn run(deadline_ms: u64) -> DelegationRunV1 {
     DelegationRunV1 {
+        execution_failure: None,
         workspace_id: WorkspaceId::default(),
         task_id: "task/one".into(),
         run_id: "run/one".into(),
@@ -553,7 +559,18 @@ fn prelaunch_dependency_failure_keeps_host_reason_in_progress_after_reopen() {
     else {
         panic!("host failure must be available through ordinary Worker progress");
     };
-    assert_eq!(page.text.matches("[HiRoute]").count(), 1);
+    assert_eq!(
+        page.text
+            .matches("Worker failure: worker.execution.preparation.claude_version.timeout")
+            .count(),
+        1
+    );
+    assert_eq!(
+        page.text
+            .matches("Worker dependency check failed: claude_version: timeout")
+            .count(),
+        1
+    );
     assert!(page.text.contains("claude_version: timeout"));
     assert!(page.text.contains("Retry the same dependency selection"));
 }

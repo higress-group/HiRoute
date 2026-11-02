@@ -24,6 +24,8 @@ use std::time::Duration;
 #[derive(Default)]
 struct Tasks {
     calls: Mutex<Vec<(bool, String, Value)>>,
+    failure: Mutex<Option<hiroute_domain::delegation::WorkerExecutionFailureV1>>,
+    pending_then_failure: Mutex<bool>,
 }
 
 impl Tasks {
@@ -43,12 +45,23 @@ impl Tasks {
         if conflict {
             return Err(DelegationErrorV1::Conflict);
         }
+        let failure = *self.failure.lock().unwrap();
+        let failure = if *self.pending_then_failure.lock().unwrap() && previous.is_none() {
+            None
+        } else {
+            failure
+        };
         Ok(DelegationAcceptedV1 {
+            failure,
             schema: "hiroute.delegation-accepted/v1".into(),
             task_id: "task/fixture".into(),
             run_id: format!("run/{}", index + 1),
             title: Some("Recovery task".into()),
-            state: RunStateV1::Accepted,
+            state: if failure.is_some() {
+                RunStateV1::Failed
+            } else {
+                RunStateV1::Accepted
+            },
             state_revision: 1,
             replayed: previous.is_some(),
         })
@@ -75,6 +88,40 @@ impl Tasks {
 }
 
 impl DelegationTaskPort for Tasks {
+    fn worker_cancel(
+        &self,
+        request: &hiroute_application_api::WorkerCancelRequestV1,
+    ) -> Result<hiroute_application_api::DelegationCancelV1, DelegationErrorV1> {
+        assert_eq!(request.run_id, "run/1");
+        let mut run = self.task().run;
+        run.failure = *self.failure.lock().unwrap();
+        run.state = RunStateV1::Failed;
+        run.result_available = false;
+        Ok(hiroute_application_api::DelegationCancelV1 {
+            schema: "hiroute.delegation-cancel/v1".into(),
+            operation_id: "operation/cancel-fixture".into(),
+            run,
+        })
+    }
+
+    fn worker_wait(
+        &self,
+        request: &hiroute_application_api::WorkerWaitRequestV1,
+    ) -> Result<hiroute_application_api::DelegationWaitV1, DelegationErrorV1> {
+        assert_eq!(request.run_id, "run/1");
+        let mut run = self.task().run;
+        run.failure = *self.failure.lock().unwrap();
+        run.state = RunStateV1::Failed;
+        run.state_revision = 2;
+        run.result_available = false;
+        Ok(hiroute_application_api::DelegationWaitV1 {
+            schema: "hiroute.delegation-wait/v1".into(),
+            run,
+            changed: true,
+            timed_out: false,
+        })
+    }
+
     fn worker_exec(
         &self,
         request: &WorkerExecRequestV1,
@@ -228,6 +275,137 @@ fn response(output: &Output) -> Value {
             String::from_utf8_lossy(&output.stderr)
         )
     })
+}
+
+#[test]
+fn waited_native_failure_keeps_its_stage_and_does_not_become_an_internal_error() {
+    with_control(|fixture, tasks| {
+        *tasks.pending_then_failure.lock().unwrap() = true;
+        *tasks.failure.lock().unwrap() =
+            Some(hiroute_domain::delegation::WorkerExecutionFailureV1 {
+                stage: hiroute_domain::delegation::WorkerExecutionStageV1::Initialize,
+                error: DelegationErrorV1::ProtocolFailed,
+            });
+        let mut args = fixture.exec_args(Some("submission/waited-failure"), "goal");
+        args.retain(|arg| arg != "--no-wait");
+        let output = fixture.command().args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let json = response(&output);
+        assert_eq!(json["error"]["code"], "WORKER_EXECUTION_FAILED");
+        assert_eq!(
+            json["error"]["message_key"],
+            "worker.execution.initialize.protocol_failed"
+        );
+        assert_eq!(json["data"]["failure"]["stage"], "initialize");
+        assert_eq!(json["data"]["run_id"], "run/1");
+        assert_eq!(json["data"]["run_state"], "failed");
+    });
+}
+
+#[test]
+fn terminal_failure_and_submission_replay_keep_the_actual_cause_and_locators() {
+    with_control(|fixture, tasks| {
+        let failure = hiroute_domain::delegation::WorkerExecutionFailureV1 {
+            stage: hiroute_domain::delegation::WorkerExecutionStageV1::ModelSelection,
+            error: DelegationErrorV1::CapabilityUnavailable,
+        };
+        *tasks.failure.lock().unwrap() = Some(failure);
+        for replay in [false, true] {
+            let output = fixture
+                .command()
+                .args(fixture.exec_args(Some("submission/failure"), "goal"))
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(1));
+            let json = response(&output);
+            assert_eq!(json["error"]["code"], "WORKER_EXECUTION_FAILED");
+            assert_eq!(
+                json["error"]["message_key"],
+                "worker.execution.model_selection.capability_unavailable"
+            );
+            assert_eq!(json["data"]["failure"]["stage"], "model_selection");
+            assert_eq!(json["data"]["run_id"], "run/1");
+            assert_eq!(json["data"]["replayed"], replay);
+            assert!(
+                json["next_actions"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|action| action["command_id"] == "worker.read")
+            );
+        }
+        let mut args = fixture.exec_args(Some("submission/failure"), "goal");
+        args.retain(|arg| arg != "--no-wait");
+        let index = args.iter().position(|arg| arg == "json").unwrap();
+        args[index] = "text".into();
+        let output = fixture.command().args(args).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("model_selection.capability_unavailable"));
+        assert!(stderr.contains("No task prompt was sent"));
+    });
+}
+
+#[test]
+fn cancel_failed_run_preserves_recorded_cause_in_json_and_text() {
+    with_control(|fixture, tasks| {
+        let recorded = hiroute_domain::delegation::WorkerExecutionFailureV1 {
+            stage: hiroute_domain::delegation::WorkerExecutionStageV1::Initialize,
+            error: DelegationErrorV1::ProtocolFailed,
+        };
+        for failure in [Some(recorded), None] {
+            *tasks.failure.lock().unwrap() = failure;
+            for mode in ["json", "text"] {
+                let output = fixture
+                    .command()
+                    .args([
+                        "worker",
+                        "cancel",
+                        "--run",
+                        "run/1",
+                        "--idempotency-key",
+                        "cancel:failed-run",
+                        "--output",
+                        mode,
+                    ])
+                    .output()
+                    .unwrap();
+                assert!(output.status.success(), "{output:?}");
+                if mode == "json" {
+                    let json = response(&output);
+                    assert_eq!(json["data"]["operation"], "cancel");
+                    assert_eq!(json["data"]["task_id"], "task/fixture");
+                    assert_eq!(json["data"]["run_id"], "run/1");
+                    assert_eq!(json["data"]["run_state"], "failed");
+                    if let Some(failure) = failure {
+                        assert_eq!(
+                            json["data"]["failure"],
+                            serde_json::to_value(failure).unwrap()
+                        );
+                    } else {
+                        assert!(json["data"].get("failure").is_none());
+                    }
+                } else {
+                    let stdout = String::from_utf8(output.stdout).unwrap();
+                    let stderr = String::from_utf8(output.stderr).unwrap();
+                    assert!(stdout.contains("run_id: run/1"));
+                    assert!(stdout.contains("state: failed"));
+                    if failure.is_some() {
+                        assert!(stderr.contains("worker.execution.initialize.protocol_failed"));
+                        assert!(stderr.contains("No task prompt was sent"));
+                        assert!(!stderr.contains("no recorded failure cause"));
+                    } else {
+                        assert!(stderr.contains("no recorded failure cause"));
+                        assert!(!stderr.contains("worker.execution."));
+                    }
+                }
+            }
+        }
+        assert!(
+            tasks.calls.lock().unwrap().is_empty(),
+            "cancellation never resubmits work"
+        );
+    });
 }
 
 #[test]

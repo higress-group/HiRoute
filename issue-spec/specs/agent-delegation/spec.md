@@ -312,6 +312,17 @@ Execution deadlines MUST retain their cause when ACP cancellation is used for sh
 Owned-process cleanup MUST NOT turn a known failure or uncertain connection into
 a user cancellation. Existing historical states are not reclassified without evidence.
 
+Accepted Worker failures MUST retain a closed execution stage and reason atomically
+with their failure transition, independently of process cleanup and result content.
+Status, wait, result, cancellation and exact submission replay MUST expose the same
+recorded cause. Cancelling a terminal failed run MUST preserve its failed state
+and recorded cause.
+The public CLI MUST return a specific Worker execution failure with task/run locators,
+its stage/reason and an actionable progress/capability hint. It MUST NOT replace a
+known cause with an unclassified internal error or imply automatic prompt replay.
+Older records without a cause remain explicitly unrecorded; neither progress prose
+nor today's installed client may invent or reclassify their cause.
+
 Marked host explanations in ordinary Worker progress MUST preserve closed execution
 failure reasons. They MAY include the last fixed typed Gateway rejection and HTTP
 status observed for the same authenticated run, labelled as request evidence rather
@@ -327,6 +338,12 @@ failure. Invalid extension kind/version fails closed. Codex adapter must adverti
 required AIR sessionFailure at initialize before New/Load/prompt; absence gives a
 fixed marked `[HiRoute]` actionable explanation in progress, without native text/
 paths/secrets, and normal owned cleanup rather than a software-version allowlist.
+
+#### Scenario: Capability admission survives a client release update
+
+- **WHEN** the selected Agent or adapter changes its release label while retaining the required route, launch, ACP and history capabilities
+- **THEN** new work and an otherwise eligible exact Continue remain admissible without adding that label to a support list.
+- **AND** a client lacking a required capability is refused with the missing check and next action even if its release label was previously tested.
 
 #### Scenario: Qoder reports a protocol failure as cancellation
 
@@ -407,11 +424,23 @@ task rather than blocking startup, and may conservatively retain durable occupan
 Real Exec/Continue reports actual spawn/handshake/model/mode/load/timeout stages.
 Environment variables or a successful installation query are not execution evidence.
 
-OpenCode Worker/Continue format admission is a separate bounded capability. Its
-initial supported producer is the official npm platform package for 1.19.3, identified
-through adjacent package/layout/platform metadata without launching a shim or
-fingerprinting a binary. Standalone, unknown or ambiguous installations remain
-unavailable for this action without disabling independent model/Skill configuration.
+Worker admission MUST use the selected installation's actual required interfaces and
+behavior, never an Agent or adapter release allowlist or a fixed bundle hash.
+Installation discovery remains passive and does not promise live Worker capability.
+Claude borrowed-context work MUST prove that a native request retains the host route
+and credential despite conflicting disposable settings, without daily configuration
+or provider access. Windows Codex adapters MUST use the selected native app-server
+launcher with exact arguments; an observed literal shell form may be normalized to
+native argv without evaluating shell text. Unknown invocation semantics fail before
+native launch, independently of the adapter release label.
+
+OpenCode Worker/Continue format admission is a separate bounded capability. The
+selected native executable reports its migration identifiers through its public
+JSON database command in disposable HOME/XDG/database roots. Existing borrowed
+history MUST match that actual format before launch; HiRoute MUST NOT migrate,
+repair or replace it. A missing native database is admissible only for new work.
+Ambiguous installation selection and missing required commands remain unavailable
+for the affected action without disabling independent model/Skill configuration.
 
 #### Scenario: OpenCode has two matching native packages
 

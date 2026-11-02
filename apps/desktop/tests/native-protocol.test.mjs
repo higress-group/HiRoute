@@ -5,20 +5,23 @@ import guidance from '../../../assets/decision-services/default-assessment-guida
 import { defaultJudgment } from '../src/features/decision-services/types.ts';
 import { stockAssessment, resolveAssessment, assessmentStandard } from '../src/features/decision-services/native-protocol.ts';
 
-test('native default adds feedback guidance without mutating old input or thresholds', () => {
+test('native default credits usable progress without mutating old input or thresholds', () => {
   const original = structuredClone(defaultJudgment);
   original.degree.simple_threshold_millis = 819;
   original.competence.floor_millis = 317;
   const before = structuredClone(original), current = resolveAssessment(original, true);
   assert.equal(assessmentStandard(current), 'default');
-  assert.deepEqual(current.competence.criteria.slice(0, 2), stock.q1.criteria.slice(0, 2));
+  assert.deepEqual(current.competence.criteria, [guidance.lowest_criterion, guidance.middle_criterion, guidance.highest_criterion]);
+  assert.notDeepEqual(current.competence.criteria.slice(0, 2), stock.q1.criteria.slice(0, 2));
+  assert.match(current.competence.criteria[1], /concrete, usable progress/);
+  assert.ok(current.competence.instructions.includes(guidance.progress));
   assert.equal(current.competence.criteria[2], guidance.highest_criterion);
   assert.match(current.competence.criteria[2], /Clear user acceptance/);
   assert.match(current.competence.criteria[2], /specific unresolved contradiction/);
   assert.match(current.competence.instructions, /Generic courtesy, tentative or partial approval/);
   assert.ok(current.competence.instructions.endsWith(guidance.feedback));
   const wrapper = stock.q1.instructions.split(' Distinguish those meanings')[0];
-  assert.equal(current.competence.instructions, `${stock.q1.instructions.slice(wrapper.length + 1)} ${guidance.feedback}`);
+  assert.equal(current.competence.instructions, `${stock.q1.instructions.slice(wrapper.length + 1)} ${guidance.progress} ${guidance.feedback}`);
   assert.equal(current.degree.simple_threshold_millis, 819);
   assert.equal(current.competence.floor_millis, 317);
   assert.deepEqual(original, before);
@@ -40,6 +43,6 @@ test('reset restores the native default; custom extensions retain their existing
   const custom = structuredClone(defaultJudgment); custom.competence.instructions = 'custom'; custom.competence.standard = 'custom';
   const current = stockAssessment(custom, true);
   assert.equal(current.competence.standard, 'default');
-  assert.deepEqual(current.competence.criteria, [...stock.q1.criteria.slice(0, 2), guidance.highest_criterion]);
+  assert.deepEqual(current.competence.criteria, [guidance.lowest_criterion, guidance.middle_criterion, guidance.highest_criterion]);
   assert.deepEqual(stockAssessment(custom).competence.criteria, defaultJudgment.competence.criteria);
 });

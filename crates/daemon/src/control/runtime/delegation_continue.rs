@@ -161,6 +161,7 @@ impl LocalControlAdapter {
         task.body_refs.push(body);
         let execution_owner_ref = format!("delegation-run/{run_id}");
         let run = DelegationRunV1 {
+            execution_failure: None,
             workspace_id: workspace.clone(),
             task_id: task.task_id.clone(),
             run_id: run_id.clone(),
@@ -376,6 +377,7 @@ fn accepted_view(
     title: Option<String>,
 ) -> DelegationAcceptedV1 {
     DelegationAcceptedV1 {
+        failure: run.execution_failure,
         schema: DELEGATION_ACCEPTED_SCHEMA_V1.into(),
         task_id: run.task_id,
         run_id: run.run_id,

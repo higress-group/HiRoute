@@ -7,7 +7,7 @@ use agent_client_protocol::schema::v1::{
     ResumeSessionRequest, SelectedPermissionOutcome, SessionNotification, SetSessionModeRequest,
 };
 use agent_client_protocol::{Agent, ConnectionTo};
-use hiroute_domain::delegation::DelegationErrorV1;
+use hiroute_domain::delegation::{DelegationErrorV1, WorkerExecutionStageV1 as Stage};
 use serde_json::{Map, Value, json};
 use std::future::Future;
 use std::path::PathBuf;
@@ -73,6 +73,7 @@ pub struct AcpRunInput {
 }
 
 pub trait AcpRunJournal: Send + Sync {
+    fn phase_started(&self, _stage: hiroute_domain::delegation::WorkerExecutionStageV1) {}
     /// Transient startup receipt after a successful, version-checked initialize.
     /// It does not imply session/model readiness or permission to send a prompt.
     fn initialized(&self) {}
@@ -153,6 +154,7 @@ where
     if !input.cwd.is_absolute() || input.prompt.is_empty() || input.prompt.len() > 256 * 1024 {
         return Err(DelegationErrorV1::InvalidArguments);
     }
+    journal.phase_started(Stage::Initialize);
     let updates = Arc::new(Mutex::new(Updates::default()));
     let notifications = updates.clone();
     let notification_journal = journal.clone();
@@ -299,6 +301,7 @@ async fn run_session(
     }
     journal.initialized();
     if let Some(authentication) = input.authentication {
+        journal.phase_started(Stage::Authentication);
         let request: AuthenticateRequest = serde_json::from_value(authentication)
             .map_err(|_| DelegationErrorV1::InvalidArguments)?;
         phase(
@@ -311,6 +314,7 @@ async fn run_session(
     }
     let (binding, modes, config_options) = match input.session {
         AcpSessionStart::New => {
+            journal.phase_started(Stage::SessionNew);
             let request: NewSessionRequest = serde_json::from_value(json!({
                 "cwd":input.cwd,"mcpServers":[],"_meta":input.session_meta,
             }))
@@ -336,6 +340,7 @@ async fn run_session(
             )
         }
         AcpSessionStart::Resume(expected) => {
+            journal.phase_started(Stage::SessionResume);
             if initialized
                 .agent_capabilities
                 .session_capabilities
@@ -370,6 +375,7 @@ async fn run_session(
             (expected, response.modes, response.config_options)
         }
         AcpSessionStart::Load(expected) => {
+            journal.phase_started(Stage::SessionLoad);
             let prerequisites_ready = initialized.agent_capabilities.load_session
                 && expected.native_session_id.is_some()
                 && !expected.acp_session_id.is_empty()
@@ -413,6 +419,7 @@ async fn run_session(
     journal.session_bound(&binding)?;
     let typed_mode = input.identity_contract == AcpNativeIdentityContract::OpenCodeSessionV1;
     let config_options = if typed_mode {
+        journal.phase_started(Stage::ModeSelection);
         let expected = input
             .native_session_mode
             .as_deref()
@@ -432,6 +439,7 @@ async fn run_session(
         config_options
     };
     if let Some(expected_model) = input.expected_model.as_deref() {
+        journal.phase_started(Stage::ModelSelection);
         model::ensure_model(
             &connection,
             &binding.acp_session_id,
@@ -443,6 +451,7 @@ async fn run_session(
         .await?;
     }
     if let Some(native_session_mode) = input.native_session_mode.filter(|_| !typed_mode) {
+        journal.phase_started(Stage::ModeSelection);
         let mode_available = modes.as_ref().is_some_and(|modes| {
             modes
                 .available_modes
@@ -482,6 +491,7 @@ async fn run_session(
         "sessionId":binding.acp_session_id,"prompt":[{"type":"text","text":input.prompt}],
     }))
     .map_err(|_| DelegationErrorV1::InvalidArguments)?;
+    journal.phase_started(Stage::Prompt);
     journal.before_prompt()?;
     updates
         .lock()

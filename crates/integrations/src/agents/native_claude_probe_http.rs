@@ -33,7 +33,8 @@ pub(super) fn serve(
                 .split('?')
                 .next()
                 .ok_or("path")?;
-            if method == "HEAD" && path == "/api/hello" {
+            // Readiness reads vary between native clients. They are not model evidence.
+            if matches!(method, "HEAD" | "GET") {
                 stream
                     .write_all(
                         b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
@@ -109,11 +110,23 @@ pub(super) fn serve(
         .map_err(|_| "response")?;
         return Ok(false);
     }
-    let (content, stop_reason) = if let Some(challenge) = challenge {
+    let model_probe = request["stream"] == false && request["max_tokens"] == 1;
+    let (content, stop_reason) = if model_probe {
+        (json!({"type":"text", "text":"OK"}), "max_tokens")
+    } else if let Some(challenge) = challenge {
         challenge.reply_claude(&request)?
     } else {
         (json!({"type":"text", "text":"OK"}), "end_turn")
     };
+    if request["stream"] == false {
+        let body = json!({"id":"msg_probe", "type":"message", "role":"assistant",
+            "model":model, "content":[content], "stop_reason":stop_reason,
+            "stop_sequence":null, "usage":{"input_tokens":1,"output_tokens":1}})
+        .to_string();
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+            .map_err(|_| "response")?;
+        return Ok(!model_probe);
+    }
     let (start_content, delta) = if content["type"] == "tool_use" {
         (
             json!({"type":"tool_use", "id":content["id"], "name":content["name"], "input":{}}),
@@ -149,4 +162,54 @@ pub(super) fn serve(
     )
     .map_err(|_| "response")?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn exchange(request: &[u8]) -> (Result<bool, &'static str>, String) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            serve(&mut stream, "local-challenge", "frozen-model", None)
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client.write_all(request).unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        (server.join().unwrap(), response)
+    }
+
+    #[test]
+    fn readiness_reads_never_count_as_an_authenticated_model_request() {
+        for target in ["HEAD /", "HEAD /api/hello", "GET /api/hello"] {
+            let (evidence, response) =
+                exchange(format!("{target} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes());
+            assert_eq!(evidence, Ok(false));
+            assert!(response.starts_with("HTTP/1.1 404"));
+        }
+        let body = "{\"model\":\"frozen-model\"}";
+        let (evidence, response) = exchange(format!("POST /v1/messages HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer local-challenge\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes());
+        assert_eq!(evidence, Ok(true));
+        assert!(response.starts_with("HTTP/1.1 200"));
+        let (evidence, _) = exchange(format!("POST /v1/messages HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer other\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes());
+        assert_eq!(evidence, Err("wrong authentication"));
+    }
+
+    #[test]
+    fn nonstreaming_token_probes_receive_json_without_model_capability_evidence() {
+        for (max_tokens, expected) in [(1, false), (32, true)] {
+            let body = json!({"model":"frozen-model", "stream":false, "max_tokens":max_tokens})
+                .to_string();
+            let (evidence, response) = exchange(format!("POST /v1/messages HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer local-challenge\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes());
+            assert_eq!(evidence, Ok(expected));
+            assert!(response.contains("Content-Type: application/json\r\n"));
+            let (_, body) = response.split_once("\r\n\r\n").unwrap();
+            let body: serde_json::Value = serde_json::from_str(body).unwrap();
+            assert_eq!(body["type"], "message");
+            assert_eq!(body["model"], "frozen-model");
+        }
+    }
 }

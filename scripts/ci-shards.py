@@ -103,6 +103,7 @@ INTEGRATION_SHARDS = {
     "integration-product": {
         ("hiroute-product-e2e", "agent_connection"),
         ("hiroute-product-e2e", "bundled_release_data"),
+        ("hiroute-product-e2e", "claude_delegation"),
         ("hiroute-product-e2e", "compute_pool"),
         ("hiroute-product-e2e", "control_shell"),
         ("hiroute-product-e2e", "cpa_connector"),

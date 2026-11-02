@@ -84,10 +84,11 @@ export function cProtocolScenarios({ fresh, routing, click, until, all, text, ca
       const t=(zh,en)=>language==='zh'?zh:en;await open(language);
       assertCopy();geometry();
       for(const field of all('.decision-judgment-fields'))for(const detail of field.querySelectorAll('details'))if(!detail.open)detail.querySelector('summary').click();
-      const criteria=stock.q1.criteria;
-      assert(document.querySelector('[data-decision-field="smart-criterion-0"]').value===criteria[0],'Released default did not resolve to current native default');
+      const criteria=[guidance.lowest_criterion,guidance.middle_criterion,guidance.highest_criterion];
+      assert(document.querySelector('[data-decision-field="smart-criterion-0"]').value===criteria[0],'Released default did not resolve to current progress criterion');
       assert(document.querySelector('[data-decision-field="smart-criterion-2"]').value===guidance.highest_criterion,'Positive-feedback criterion missing');
       const instructions=document.querySelector('[data-decision-field="smart-competence-instructions"]').value;
+      assert(instructions.includes(guidance.progress),'Progress guidance missing from displayed model instructions');
       assert(instructions.endsWith(guidance.feedback),'Feedback guidance missing from displayed model instructions');
       setInput(document.querySelector('[data-decision-field="smart-floor"]'),'0.51');
       await until(()=>document.querySelector('[data-decision-field="smart-floor"]').value==='0.51','ordinary edit');
@@ -110,7 +111,7 @@ export function cProtocolScenarios({ fresh, routing, click, until, all, text, ca
       const disclosure=field.closest('details');const reset=[...disclosure.querySelectorAll('button')].find(b=>b.textContent===t('恢复默认','Reset to default'));assert(reset,'Reset missing');reset.click();
       await until(()=>document.querySelector(selector).value!==original,'reset current default');assertCopy();geometry();
       const input=await publish(t);const j=branches?input.editor.branch_routing.branches[0].judgment:input.editor.smart.judgment;
-      assert(j.competence.standard==='default','Reset did not record intent');assert(JSON.stringify(j.competence.criteria)===JSON.stringify([...stock.q1.criteria.slice(0,2),guidance.highest_criterion]),'Reset returned legacy defaults');
+      assert(j.competence.standard==='default','Reset did not record intent');assert(JSON.stringify(j.competence.criteria)===JSON.stringify([guidance.lowest_criterion,guidance.middle_criterion,guidance.highest_criterion]),'Reset returned legacy defaults');
       assert(!calls('test_decision_service_v3').length,'Edit implicitly probed');
     }
   }),scenario('desktop.decisions.connectivity-test',['decision-services','c-protocol'],'The connection page runs one connectivity test of the read-back V1 record by digest',async()=>{

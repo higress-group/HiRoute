@@ -151,6 +151,31 @@ def decision(fixture, body):
     assert harness != 'qoder' or not is_native_compaction(body), \
         'unexpected Qoder compaction in the ordinary Skill journey; check the native context budget'
     rendered = json.dumps(body)
+    if harness == 'claude' and body.get('max_tokens') == 1 and body.get('stream') is False:
+        # Fallback token estimation probes system fragments and tool definitions.
+        # Its non-streaming response cannot prove task tools or continued history.
+        return dict(kind='text', text='OK', request_kind='model-probe', continued=False)
+    if harness == 'claude' and not body.get('tools'):
+        output = body.get('output_config', {}).get('format', {})
+        title_schema = {'type': 'object', 'properties': {'title': {'type': 'string'}},
+                        'required': ['title'], 'additionalProperties': False}
+        system = body.get('system', [])
+        if (output == {'type': 'json_schema', 'schema': title_schema}
+                and any(block.get('type') == 'text' and block.get('text', '').startswith(
+                    'Generate a concise, sentence-case title') for block in system)):
+            return dict(kind='text', text=json.dumps({'title': 'Native context receipt'}),
+                        request_kind='title', continued=False)
+    messages = body.get('messages', [])
+    last_content = messages[-1].get('content', []) if messages else []
+    # Native Messages may merge consecutive user messages into multiple blocks.
+    last_text = native_text(last_content[-1]) if isinstance(last_content, list) and last_content else native_text(last_content)
+    if (harness == 'claude' and messages and messages[-1].get('role') == 'user'
+            and last_text.startswith(
+                '[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]')):
+        # Native suggestions fork the complete history after a turn's result.
+        # Seeing prior tool receipts here does not prove another Continue.
+        return dict(kind='text', text='Continue the task', request_kind='prompt-suggestion',
+                    continued=False)
     if harness=='opencode' and any(signature in native_text(body).lower() for signature in ('title generator','generate a concise title','generate a short title')):
         return dict(kind='text',text='Native context receipt',request_kind='title',continued=False)
     results = tool_results(body, harness)
@@ -280,9 +305,9 @@ def handle(handler, body, controls, lock, reply=decision):
     except AssertionError as error:
         # Bounded controlled-source evidence stays private for native protocol diagnosis.
         failed = controls / 'last-failed-request.json'
-        failed.write_text(json.dumps(body))
-        failed.chmod(0o600)
         with lock, (controls / 'native-context-events.jsonl').open('a') as stream:
+            failed.write_text(json.dumps(body))
+            failed.chmod(0o600)
             stream.write(json.dumps({'state': 'red', 'reason': str(error)}) + '\n')
         handler.send({'error': {'message': str(error), 'type': 'invalid_request_error'}}, 400)
         return True
@@ -291,7 +316,13 @@ def handle(handler, body, controls, lock, reply=decision):
                                 'call_id': action.get('id'), 'continued': action.get('continued'),
                                 'model': body['model'], 'protocol': protocol,
                                 **({'request_kind': action['request_kind']} if 'request_kind' in action else {})}) + '\n')
-    handler.send_messages_stream(events(body, action, protocol))
+    if action.get('request_kind') == 'model-probe':
+        handler.send({'id': 'msg_native_model_probe', 'type': 'message', 'role': 'assistant',
+                      'model': body['model'], 'content': [{'type': 'text', 'text': action['text']}],
+                      'stop_reason': 'max_tokens', 'stop_sequence': None,
+                      'usage': {'input_tokens': 1, 'output_tokens': 1}})
+    else:
+        handler.send_messages_stream(events(body, action, protocol))
     return True
 
 
