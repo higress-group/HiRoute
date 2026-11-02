@@ -227,6 +227,16 @@ WORKER_PRODUCT_CHECKS = {
         "automated_cases": ["worker.context.native-skills", "worker.context.exact-continue",
                             "worker.context.concurrent-routing", "worker.context.cancel-owned-work"],
     },
+    "claude_delegation": {
+        "id": "claude.delegation", "harnesses": ["claude"],
+        "guide": "tools/product-e2e/tests/WORKER_NATIVE_CONTEXT.md",
+        "required_tests": ["claude_worker_capability_admission_preserves_native_skills_and_exact_continue"],
+        "required_environment": ["HIROUTE_PRODUCT_CANDIDATE_SHA", "HIROUTE_WORKER_CLAUDE_BINARY",
+                                 "HIROUTE_WORKER_CLAUDE_ACP_ADAPTER", "HIROUTE_WORKER_NODE"],
+        "missing_environment": "fail",
+        "business_cases": ["worker.context.native-skills", "worker.context.exact-continue"],
+        "automated_cases": ["worker.context.native-skills", "worker.context.exact-continue"],
+    },
     "worker_delegation": {
         "id": "worker.lifecycle", "harnesses": ["codex", "claude"],
         "guide": "docs/code-map/worker-context.md",
