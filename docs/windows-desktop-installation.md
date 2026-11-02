@@ -234,7 +234,7 @@ be bypassed by it. Retry the installer to recover an interrupted installation.
 
 ## Evidence and release claims
 
-The native acceptance inventory is
+The native acceptance policy and inventory are
 [`windows-desktop-cases.json`](../scripts/windows-desktop-cases.json). Windows 11
 x64 and Server selections require real standard-user execution, the candidate SHA,
 installer digest, OS/build and architecture. For 0.5.0, the maintainer explicitly
@@ -246,5 +246,11 @@ Windows 11 execution. Browser fixtures, Cargo checks and package construction do
 installation, native authorization, upgrade recovery or a live model call.
 
 The [release builder](release-builds.md) keeps a Desktop installer separate from
-the headless archive. Release publication requires both native selections and
-refuses an identity sidecar that is incomplete or bound to another artifact.
+the headless archive. Publication normally requires every case in both native
+selections. A maintainer-directed release can record an explicit deferral in the
+same acceptance policy, bound to the full source revision, installer SHA-256 and
+public Issue decision. The sidecar then says `native_runtime: deferred` and keeps
+each named unexecuted case `not_assessed`; it must not claim complete acceptance.
+Both selections still require actual standard-user installation and console
+readiness. Missing decisions, different artifacts, undeclared omissions and failed
+cases are rejected. Remaining acceptance stays with the linked Issue.

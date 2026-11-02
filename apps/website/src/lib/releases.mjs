@@ -1,5 +1,5 @@
 import manifest from '../../data/releases.json' with { type: 'json' };
-import windowsDesktopCases from '../../../../scripts/windows-desktop-cases.json' with { type: 'json' };
+import windowsAcceptance from '../../../../scripts/windows-desktop-cases.json' with { type: 'json' };
 
 export const RELEASE_SCHEMA = 'hiroute.website.releases/v3';
 export const LEGACY_RELEASE_SCHEMA = 'hiroute.website.releases/v2';
@@ -135,23 +135,48 @@ export function artifactAssets(release, artifact) {
   return assets;
 }
 
+export function verifyWindowsNativeAcceptance(identity, policy = windowsAcceptance) {
+  if (policy.schema !== 'hiroute.windows-desktop-acceptance/v1') throw new Error('unknown Windows native acceptance policy');
+  const cases = policy.platforms;
+  const runs = identity.native_evidence?.runs;
+  if (!Array.isArray(runs) || runs.length !== Object.keys(cases).length
+      || new Set(runs.map(run => run?.platform)).size !== runs.length
+      || runs.some(run => !cases[run?.platform])) throw new Error('Windows Desktop native selections are incomplete');
+  let deferred = Object.fromEntries(Object.keys(cases).map(platform => [platform, []]));
+  if (identity.native_runtime !== 'green') {
+    const decisions = policy.release_decisions.filter(entry => ['version', 'revision', 'installer_sha256'].every(key => entry[key] === identity[key]));
+    if (identity.native_runtime !== 'deferred' || decisions.length !== 1
+        || identity.acceptance_decision !== decisions[0].decision_url
+        || !/^https:\/\/github\.com\/higress-group\/HiRoute\/issues\/[1-9][0-9]*#issuecomment-[1-9][0-9]*$/.test(decisions[0].decision_url)) {
+      throw new Error('Windows native deferral lacks an exact committed release decision');
+    }
+    deferred = decisions[0].deferred_cases ?? {};
+    if (Object.keys(deferred).length !== Object.keys(cases).length || Object.keys(cases).some(key => !Object.hasOwn(deferred, key))
+        || !Object.values(deferred).some(list => Array.isArray(list) && list.length)
+        || Object.entries(deferred).some(([platform, list]) => !Array.isArray(list) || new Set(list).size !== list.length
+          || list.some(id => !cases[platform]?.includes(id) || ['install.standard-user', 'install.console-ready'].includes(id)))) {
+      throw new Error('native deferral cannot omit actual standard-user installation and console readiness');
+    }
+  }
+  if (runs.some(run => run.revision !== identity.revision || run.installer_sha256 !== identity.installer_sha256
+      || run.standard_user !== true || run.architecture !== 'AMD64' || !run.os_version
+      || !run.scenarios || Array.isArray(run.scenarios) || Object.keys(run.scenarios).length !== cases[run.platform].length
+      || cases[run.platform].some(id => run.scenarios[id] !== (deferred[run.platform].includes(id) ? 'not_assessed' : 'green')))) {
+    throw new Error('Windows Desktop native acceptance is incomplete or belongs to another artifact');
+  }
+  return identity;
+}
+
 export function verifyDesktopIdentity(release, artifact, identity, expectedRevision) {
   if (artifact.kind !== 'desktop' || !REVISION.test(expectedRevision ?? '')) {
     throw new Error('desktop identity verification inputs are invalid');
   }
   if (artifact.platform === 'Windows') {
     const expected = { schema: 'hiroute.windows-desktop-package/v1', version: release.version, revision: expectedRevision,
-      architecture: 'x86_64', distribution: 'unsigned', installer_sha256: artifact.sha256, integrity: 'green', embedded_components: 'green', native_runtime: 'green' };
+      architecture: 'x86_64', distribution: 'unsigned', installer_sha256: artifact.sha256, installer_size: artifact.size, integrity: 'green', embedded_components: 'green' };
     if (!identity || typeof identity !== 'object' || Object.entries(expected).some(([key, value]) => identity[key] !== value)
         || artifact.filename !== `HiRoute-${release.version}-${expectedRevision.slice(0, 12)}-windows-x86_64-setup.exe`) throw new Error('Windows Desktop identity or native acceptance differs from the release');
-    const runs = identity.native_evidence?.runs;
-    if (!Array.isArray(runs) || runs.length !== Object.keys(windowsDesktopCases).length
-        || new Set(runs.map(run => run?.platform)).size !== runs.length
-        || runs.some(run => !windowsDesktopCases[run?.platform] || run.revision !== expectedRevision
-          || run.installer_sha256 !== artifact.sha256 || run.standard_user !== true || run.architecture !== 'AMD64' || !run.os_version
-          || windowsDesktopCases[run.platform].some(id => run.scenarios?.[id] !== 'green')
-          || Object.values(run.scenarios ?? {}).some(value => value !== 'green'))) throw new Error('Windows Desktop native acceptance is incomplete or belongs to another artifact');
-    return identity;
+    return verifyWindowsNativeAcceptance(identity);
   }
   const expectedDistribution = artifact.distribution === 'self-signed' ? 'controlled-trial' : 'developer-id';
   const expected = {

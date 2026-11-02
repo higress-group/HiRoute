@@ -345,7 +345,7 @@ class CandidateTests(unittest.TestCase):
                     "installer_size": installer.stat().st_size}
         with self.assertRaisesRegex(ValueError, "Windows 11"):
             packager.verify(installer, identity, "a" * 40)
-        required = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())
+        required = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())["platforms"]
         identity["native_evidence"] = {"runs": [{"platform": platform_name, "revision": "a" * 40,
             "installer_sha256": packager.digest(installer), "standard_user": True, "architecture": "AMD64",
             "os_version": "fixture-only", "scenarios": dict.fromkeys(cases, "green")} for platform_name, cases in required.items()]}
@@ -457,6 +457,60 @@ class NativeCompilerContextTests(unittest.TestCase):
         self.assertNotEqual(process.returncode, 0)
         self.assertEqual(process.stdout, b'')
         self.assertIn(b'compiler overrides must be absent', process.stderr)
+
+
+class NativeAcceptanceDecisionTests(unittest.TestCase):
+    def fixture(self):
+        # Validator fixtures only, never native installation evidence.
+        policy = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())
+        policy["release_decisions"] = []
+        identity = {"version": "1.2.3", "revision": "a" * 40, "installer_sha256": "c" * 64,
+                    "native_runtime": "green", "native_evidence": {"runs": [
+                        {"platform": platform, "revision": "a" * 40, "installer_sha256": "c" * 64,
+                         "standard_user": True, "architecture": "AMD64", "os_version": "fixture-only",
+                         "scenarios": dict.fromkeys(cases, "green")}
+                        for platform, cases in policy["platforms"].items()]}}
+        decision = {key: identity[key] for key in ("version", "revision", "installer_sha256")}
+        decision.update(decision_url="https://github.com/higress-group/HiRoute/issues/193#issuecomment-123",
+                        deferred_cases={platform: [case for case in cases if case not in
+                                        ("install.standard-user", "install.console-ready")]
+                                        for platform, cases in policy["platforms"].items()})
+        return policy, identity, decision
+
+    def test_full_acceptance_remains_default_and_partial_without_decision_is_rejected(self):
+        verify = MODULES["package-windows-shell"].verify_native_acceptance
+        policy, identity, _ = self.fixture()
+        verify(identity, policy)
+        identity["native_evidence"]["runs"][0]["scenarios"]["update.killed-resume"] = "not_assessed"
+        with self.assertRaisesRegex(ValueError, "all standard-user"):
+            verify(identity, policy)
+        identity["native_runtime"] = "deferred"
+        with self.assertRaisesRegex(ValueError, "exact committed release decision"):
+            verify(identity, policy)
+
+    def test_exact_decision_retains_unexecuted_states_and_rejects_drift_failure_or_waived_install(self):
+        verify = MODULES["package-windows-shell"].verify_native_acceptance
+        policy, identity, decision = self.fixture()
+        policy["release_decisions"].append(decision)
+        identity.update(native_runtime="deferred", acceptance_decision=decision["decision_url"])
+        for run in identity["native_evidence"]["runs"]:
+            for case in decision["deferred_cases"][run["platform"]]:
+                run["scenarios"][case] = "not_assessed"
+        verify(identity, policy)
+        for key, value in (("revision", "b" * 40), ("version", "1.2.4"),
+                           ("installer_sha256", "d" * 64), ("acceptance_decision", "unrecorded")):
+            changed = json.loads(json.dumps(identity)); changed[key] = value
+            with self.subTest(field=key), self.assertRaises(ValueError):
+                verify(changed, policy)
+        for state in ("failed", "green", None):
+            changed = json.loads(json.dumps(identity))
+            changed["native_evidence"]["runs"][0]["scenarios"]["update.killed-resume"] = state
+            with self.subTest(verdict=state), self.assertRaises(ValueError):
+                verify(changed, policy)
+        decision["deferred_cases"]["windows11"].append("install.console-ready")
+        identity["native_evidence"]["runs"][0]["scenarios"]["install.console-ready"] = "not_assessed"
+        with self.assertRaisesRegex(ValueError, "cannot omit actual standard-user"):
+            verify(identity, policy)
 
 
 class HostedReleasePolicyTests(unittest.TestCase):

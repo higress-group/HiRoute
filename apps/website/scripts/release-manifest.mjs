@@ -91,7 +91,8 @@ if (command === 'validate') {
   if (!artifact) throw new Error(`desktop artifact is not declared by ${tag}: ${args[filenameIndex + 1]}`);
   const identity = JSON.parse(fs.readFileSync(path.resolve(args[identityIndex + 1]), 'utf8'));
   verifyDesktopIdentity(release, artifact, identity, revision);
-  process.stdout.write(`${artifact.filename} identity verified\n`);
+  const scope = identity.native_runtime === 'deferred' ? ' (native cases remain deferred by the recorded release decision)' : '';
+  process.stdout.write(`${artifact.filename} identity verified${scope}\n`);
 } else {
   throw new Error(`unknown command: ${command}`);
 }

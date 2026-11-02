@@ -1,20 +1,24 @@
 {
-  "windows11": [
-    "install.standard-user",
-    "install.console-ready",
-    "console.source-plan-agent",
-    "update.success",
-    "update.digest-before-stop",
-    "update.cancel-active-worker",
-    "update.replace-rollback",
-    "update.killed-resume",
-    "update.manual-installer",
-    "uninstall.restore-agent"
-  ],
-  "server": [
-    "install.standard-user",
-    "install.console-ready",
-    "console.source-plan-agent",
-    "uninstall.restore-agent"
-  ]
+  "schema": "hiroute.windows-desktop-acceptance/v1",
+  "platforms": {
+    "windows11": [
+      "install.standard-user",
+      "install.console-ready",
+      "console.source-plan-agent",
+      "update.success",
+      "update.digest-before-stop",
+      "update.cancel-active-worker",
+      "update.replace-rollback",
+      "update.killed-resume",
+      "update.manual-installer",
+      "uninstall.restore-agent"
+    ],
+    "server": [
+      "install.standard-user",
+      "install.console-ready",
+      "console.source-plan-agent",
+      "uninstall.restore-agent"
+    ]
+  },
+  "release_decisions": []
 }
