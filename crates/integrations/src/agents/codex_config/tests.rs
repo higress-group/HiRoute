@@ -467,3 +467,102 @@ fn managed_profile_rejects_added_auth_fields_and_headers_but_preserves_them_on_r
         }));
     }
 }
+
+#[test]
+fn codex_inline_provider_map_round_trips_and_reconfigures_losslessly() {
+    for providers in [
+        "model_providers = {} # keep empty map\n",
+        "model_providers  =  { original = { name = 'Original', base_url = 'https://original.example', env_key = 'EXISTING_KEY', unknown = 3 } } # keep provider\n",
+    ] {
+        let original = format!(
+            "# native preferences\nmodel = 'original' # keep choice\ncustom = 3\n{providers}"
+        );
+        let edit = configure(&original, CodexSelectionTarget::Root)
+            .unwrap()
+            .with_model_catalog(&crate::agents::test_absolute_path("/owned/first.json"))
+            .unwrap();
+        assert!(edit.restore.managed_fields_are_applied(&edit.rendered));
+        assert!(edit.rendered.parse::<DocumentMut>().unwrap()["model_providers"].is_inline_table());
+        let record =
+            CodexNativeRestore::decode_protected(&edit.restore.encode_protected().unwrap())
+                .unwrap();
+        assert_eq!(
+            restore_codex_native(&edit.rendered, &record)
+                .unwrap()
+                .as_str(),
+            original
+        );
+
+        let changed = edit
+            .rendered
+            .replace("custom = 3", "custom = 4")
+            .replace("unknown = 3", "unknown = 4");
+        let updated = reconfigure_codex_native(
+            &changed,
+            &CanonicalDigest::of_bytes(changed.as_bytes()),
+            &record,
+            CodexSelectionTarget::Root,
+            "hiroute",
+            "http://127.0.0.1:5838/v1",
+            Some("hiroute-next"),
+            &AgentAccessGrantMaterial::from_csprng_entropy([5; 32]),
+        )
+        .unwrap()
+        .with_model_catalog(&crate::agents::test_absolute_path("/owned/next.json"))
+        .unwrap();
+        let record =
+            CodexNativeRestore::decode_protected(&updated.restore.encode_protected().unwrap())
+                .unwrap();
+        assert!(record.managed_fields_are_applied(&updated.rendered));
+        assert!(record.conflicting_fields(&updated.rendered).is_empty());
+        let restored = restore_codex_native(&updated.rendered, &record).unwrap();
+        assert_eq!(
+            restored.as_str(),
+            original
+                .replace("custom = 3", "custom = 4")
+                .replace("unknown = 3", "unknown = 4")
+        );
+        assert_eq!(restore_codex_native(&restored, &record).unwrap(), restored);
+    }
+}
+
+#[test]
+fn codex_inline_provider_map_never_claims_a_foreign_identity() {
+    assert!(matches!(
+        configure(
+            "model_providers = { hiroute = { name = 'User provider' } }\n",
+            CodexSelectionTarget::Root
+        ),
+        Err(CodexNativeError::ProviderAlreadyExists)
+    ));
+}
+
+#[test]
+fn codex_inline_provider_auth_edits_remain_conflicts_and_survive_restore() {
+    let edit = configure("model_providers = {}\n", CodexSelectionTarget::Root).unwrap();
+    let mut changed = edit.rendered.parse::<DocumentMut>().unwrap();
+    changed["model_providers"]["hiroute"]["http_headers"]["Authorization"] =
+        toml_edit::value("user-owned");
+    let changed = changed.to_string();
+    assert!(!edit.restore.managed_fields_are_applied(&changed));
+    assert!(matches!(
+        reconfigure_codex_native(
+            &changed,
+            &CanonicalDigest::of_bytes(changed.as_bytes()),
+            &edit.restore,
+            CodexSelectionTarget::Root,
+            "hiroute",
+            "http://127.0.0.1:5837/v1",
+            None,
+            &AgentAccessGrantMaterial::from_csprng_entropy([5; 32])
+        ),
+        Err(CodexNativeError::FieldConflict)
+    ));
+    let restored = restore_codex_native(&changed, &edit.restore).unwrap();
+    let parsed = restored.parse::<DocumentMut>().unwrap();
+    assert_eq!(
+        parsed["model_providers"]["hiroute"]["http_headers"]["Authorization"].as_str(),
+        Some("user-owned")
+    );
+    assert!(!restored.contains("X-HiRoute-Token"));
+}
