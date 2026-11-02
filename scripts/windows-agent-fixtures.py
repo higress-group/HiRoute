@@ -10,6 +10,7 @@ import struct
 import subprocess
 import sys
 import urllib.request
+import uuid
 import zipfile
 
 REPO = Path(__file__).resolve().parent.parent
@@ -18,11 +19,42 @@ QODER_MANIFEST = "https://qoder-ide.oss-accelerate.aliyuncs.com/qodercli/channel
 QODER_MANIFEST_SHA = "c88c7f159a95aed57071636b867bc588276f762aaed4640d880dd3cfd062b61e"
 QODER_ZIP = "https://qoder-ide.oss-accelerate.aliyuncs.com/qodercli/releases/1.1.65/qodercli-windows-x64.zip"
 QODER_SHA = "7094b1b57e72f4fe351c516bbff7089ad5d6b62bef49c27df2738804ba611038"
+# The committed Claude npm pin ships this placeholder before its postinstall
+# links/copies the matching optional platform package. npm ci ignores scripts.
+CLAUDE_PLACEHOLDER_SHA = "6d7abae055d3b598281300a6c835086dec81bf3048f8a2294c5d3e50c8830d7b"
 
 
 def digest(path):
+    result = hashlib.sha256()
     with path.open("rb") as handle:
-        return hashlib.file_digest(handle, "sha256").hexdigest()
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            result.update(block)
+    return result.hexdigest()
+
+
+def materialize_native_entry(source, destination, placeholder_sha):
+    """Reproduce only the reviewed native-entry link/copy; refuse other material."""
+    expected = digest(source)
+    if destination.is_symlink() or not destination.is_file():
+        raise ValueError("Native npm entry must be an existing regular placeholder")
+    observed = digest(destination)
+    if observed == expected:
+        return destination
+    if observed != placeholder_sha:
+        raise ValueError("Native npm entry is neither the pinned placeholder nor native image")
+    temporary = destination.with_name(".hiroute-native-entry-" + uuid.uuid4().hex)
+    try:
+        try:
+            os.link(source, temporary)
+        except OSError:
+            shutil.copyfile(source, temporary)
+        if digest(temporary) != expected or digest(destination) != placeholder_sha:
+            raise ValueError("Native npm preparation changed before publication")
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return destination
 
 
 def native(path, host_helper=False):
@@ -89,6 +121,15 @@ def prepare(output, daemon):
     claude = list((modules / "@anthropic-ai/claude-code-win32-x64").rglob("claude.exe"))
     if any(len(items) != 1 for items in (qoder, codex, claude)):
         raise ValueError("Pinned native producer must have one exact executable")
+    claude_manifest = json.loads((modules / "@anthropic-ai/claude-code/package.json").read_text())
+    claude_bin = lock["packages"]["node_modules/@anthropic-ai/claude-code"]["bin"]["claude"]
+    platform_manifest = json.loads((modules / "@anthropic-ai/claude-code-win32-x64/package.json").read_text(encoding="utf-8"))
+    if (claude_bin != "bin/claude.exe" or claude_manifest["bin"]["claude"] != claude_bin
+            or platform_manifest["name"] != "@anthropic-ai/claude-code-win32-x64"
+            or platform_manifest["version"] != declarations["@anthropic-ai/claude-code"]):
+        raise ValueError("Claude declared native producer differs from the locked installation")
+    materialize_native_entry(native(claude[0]), modules / "@anthropic-ai/claude-code" / claude_bin,
+                             CLAUDE_PLACEHOLDER_SHA)
     env = {
         "HIROUTE_WORKER_NODE": str(node),
         "HIROUTE_WORKER_DAEMON_BINARY": str(native(daemon)),
