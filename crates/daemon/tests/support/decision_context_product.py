@@ -87,7 +87,8 @@ def run(repository):
         _, result = product.public_cli('decision connections apply', {'schema_version': V1,
             'spec': preview['normalized_spec'], 'accept_digest': preview['change_digest'],
             'expected_revisions': preview['expected_revisions'], 'idempotency_key': key}, success=False)
-        assert result.get('data', {}).get('state') == ('failed' if referenced else 'succeeded'), result
+        # The existing journal reports a refused Control activation as needs_attention.
+        assert result.get('data', {}).get('state') == ('needs_attention' if referenced else 'succeeded'), result
 
     def publish(service, key):
         editor = copy.deepcopy(product.editor)

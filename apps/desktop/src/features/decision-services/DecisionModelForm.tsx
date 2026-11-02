@@ -159,7 +159,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
 
   return <form ref={form} noValidate className="decision-connection-form" onSubmit={event => { event.preventDefault(); void submit(true); }}>
     <fieldset className="detail-fieldset" disabled={!mutable || busy}>
-      <header className="editor-section decision-heading"><DecisionIcon provider={preset ?? undefined} language={language} /><div><h1>{title}</h1><p>{t('HiRoute 提供决策逻辑，只需连接模型。', 'HiRoute supplies the decision logic. Connect a model to get started.')}</p></div></header>
+      <header className="editor-section decision-heading"><DecisionIcon provider={preset ?? undefined} language={language} /><div><h2>{title}</h2><p>{t('HiRoute 提供决策逻辑，只需连接模型。', 'HiRoute supplies the decision logic. Connect a model to get started.')}</p></div></header>
       <section className="editor-section decision-form-fields">
         <div className="field"><span className="field-label">{t('凭据', 'Credentials')}</span>
           <div className="decision-modes" role="group" aria-label={t('凭据来源', 'Credential source')} data-native-field="mode" tabIndex={-1}>
