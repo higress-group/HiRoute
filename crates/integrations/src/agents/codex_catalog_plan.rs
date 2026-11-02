@@ -156,6 +156,14 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
     if plan.validate().is_err() {
         return unavailable(CodexCapabilityIssueKindV1::InvalidCompiledPlan, None);
     }
+    let parallel_tools = plan
+        .body
+        .materialized
+        .attempt_owned
+        .limits
+        .codex_parallel_tool_calls_enabled();
+    let mut required = requirements(false);
+    required.parallel_tools = parallel_tools;
     let mut candidates = Vec::new();
     for candidate in plan
         .body
@@ -196,14 +204,7 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
                 Some(&candidate.binding_id),
             );
         }
-        if let Err(error) = executable.validate(&requirements(
-            false,
-            plan.body
-                .materialized
-                .attempt_owned
-                .limits
-                .codex_parallel_tool_calls_enabled(),
-        )) {
+        if let Err(error) = executable.validate(&required) {
             return unavailable(
                 if matches!(
                     error,
@@ -311,13 +312,7 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
             CodexReasoningControlV1::FollowRequest
         },
         limitations,
-        fixed_limits: if plan
-            .body
-            .materialized
-            .attempt_owned
-            .limits
-            .codex_parallel_tool_calls_enabled()
-        {
+        fixed_limits: if parallel_tools {
             Vec::new()
         } else {
             vec![CodexFixedCapabilityLimitV1::ParallelToolCallsDisabled]
@@ -403,7 +398,8 @@ fn unavailable(
     }
 }
 
-pub(super) fn requirements(image: bool, parallel_tools: bool) -> RequestCapabilityRequirementsV1 {
+// Shared baseline; each native client applies its own parallel-tool policy.
+pub(super) fn requirements(image: bool) -> RequestCapabilityRequirementsV1 {
     RequestCapabilityRequirementsV1 {
         ingress_protocol: IngressProtocol::Responses,
         text: true,
@@ -421,7 +417,7 @@ pub(super) fn requirements(image: bool, parallel_tools: bool) -> RequestCapabili
         function_tools: true,
         strict_tools: false,
         tool_choice: ToolChoice::Auto,
-        parallel_tools,
+        parallel_tools: false,
         tool_roundtrip: true,
         tool_result_text: true,
         tool_result_json: true,

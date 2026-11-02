@@ -187,7 +187,21 @@ fn route_can_disable_and_reenable_parallel_tools_for_user_and_worker_catalogs() 
             panic!("valid route must have a Codex preview");
         };
         assert_eq!(fixed_limits.is_empty(), enabled);
-        assert_eq!(requirements(false, enabled).parallel_tools, enabled);
+        if let Some(directory) = std::env::var_os("HIROUTE_CODEX_CATALOG_PROBE_DIR") {
+            // Synthetic output for a separately selected real-client consumption probe.
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            let name = match setting {
+                None => "default",
+                Some(false) => "disabled",
+                Some(true) => "enabled",
+            };
+            std::fs::write(
+                directory.join(format!("{name}.json")),
+                serde_json::to_vec(&private).unwrap(),
+            )
+            .unwrap();
+        }
     }
     assert_eq!(serde_json::to_value(&original).unwrap(), before);
 }
