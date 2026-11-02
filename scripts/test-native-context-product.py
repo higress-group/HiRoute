@@ -186,6 +186,18 @@ with patch('publication_product.secrets.SystemRandom') as chooser:
             with self.subTest(change=change), self.assertRaises(AssertionError):
                 fixture.decision(value, dict(body, **change))
 
+    def test_native_prompt_suggestion_with_complete_history_cannot_count_as_continue(self):
+        value = self.context('claude')
+        body = self.body(value, {'native_context_execute': self.receipt(value)}, fixture.CONTINUE_PROMPT)
+        self.assertTrue(fixture.decision(value, body)['continued'])
+        body['messages'].append({'role': 'user', 'content': [
+            {'type': 'text', 'text': '[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]'}]})
+        action = fixture.decision(value, body)
+        self.assertEqual(action['request_kind'], 'prompt-suggestion')
+        self.assertFalse(action['continued'])
+        with self.assertRaisesRegex(AssertionError, 'resumed native history'):
+            assert_frozen_route([{'state': 'green', **action}], 0, Mock())
+
     def test_actual_fixture_scripts_produce_the_independent_receipts(self):
         value = self.context('codex')
         action = fixture.decision(value, self.body(value))

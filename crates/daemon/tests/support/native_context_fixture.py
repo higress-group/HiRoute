@@ -165,6 +165,14 @@ def decision(fixture, body):
                     'Generate a concise, sentence-case title') for block in system)):
             return dict(kind='text', text=json.dumps({'title': 'Native context receipt'}),
                         request_kind='title', continued=False)
+    messages = body.get('messages', [])
+    if (harness == 'claude' and messages and messages[-1].get('role') == 'user'
+            and native_text(messages[-1]).startswith(
+                '[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]')):
+        # Native suggestions fork the complete history after a turn's result.
+        # Seeing prior tool receipts here does not prove another Continue.
+        return dict(kind='text', text='Continue the task', request_kind='prompt-suggestion',
+                    continued=False)
     if harness=='opencode' and any(signature in native_text(body).lower() for signature in ('title generator','generate a concise title','generate a short title')):
         return dict(kind='text',text='Native context receipt',request_kind='title',continued=False)
     results = tool_results(body, harness)
