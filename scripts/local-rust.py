@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import importlib.util
 import json
+import math
 import os
 import platform
 from pathlib import Path
@@ -64,6 +65,25 @@ def identity(path):
     if path.is_symlink() or not path.is_dir() or info.st_uid != os.geteuid():
         raise ValueError("Not an owned real directory: " + str(path))
     return [info.st_dev, info.st_ino]
+
+
+def expiry_hours(value):
+    if (isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or value <= 0):
+        raise ValueError("Expiry hours must be finite and positive")
+    return value
+
+
+def expiry_deadline(row, hours):
+    seconds = expiry_hours(hours) * 3600
+    anchors = (row.get("finished_at"), row.get("retained_at", row.get("finished_at")))
+    if any(isinstance(value, bool) or not isinstance(value, (int, float))
+           or not math.isfinite(value) or value < 0 for value in anchors):
+        raise ValueError("Missing or invalid retention timestamp")
+    deadline = max(anchors) + seconds
+    if not math.isfinite(deadline):
+        raise ValueError("Invalid expiry deadline")
+    return deadline
 
 
 def fingerprint(path):
@@ -160,22 +180,44 @@ class Store:
             raise ValueError("Target contains tracked files")
         return checkout, debug
 
-    def preview_one(self, row, *, lease=None):
+    def cleanup_policy(self, row, expire_after_hours=None):
+        policy = {}
+        if row.get("removed") or row["status"] not in ("terminal", "retired"):
+            raise ValueError("Active, kept, removed, or unknown lifecycle")
+        if expire_after_hours is None:
+            if row.get("keep"):
+                raise ValueError("Active, kept, removed, or unknown lifecycle")
+        else:
+            if row.get("kind") != "managed" or row["status"] != "terminal":
+                raise ValueError("Expiry only applies to terminal managed checkouts")
+            deadline = expiry_deadline(row, expire_after_hours)
+            if deadline > time.time():
+                raise ValueError("Retention has not expired")
+            policy = dict(expire_after_hours=expire_after_hours, expires_at=deadline)
+        if row.get("pilot_reuse") and not row.get("pilot_cleanup_ready"):
+            raise ValueError("Pilot owners have not finished their registered sessions")
+        if any(owner.get("state") != "closed" for owner in row.get("pilot_leases", {}).values()):
+            raise ValueError("Pilot owners have not finished their registered sessions")
+        # New managed runs already define which compiler outputs are disposable.
+        # An explicitly requested expiry can export their evidence at deletion,
+        # without inventing an assessment. Legacy records keep their confirmation rule.
+        if not row.get("evidence_saved") and not (
+                policy and row.get("retention") in ("always", "never")):
+            raise ValueError("Evidence not confirmed/exported")
+        return policy
+
+    def preview_one(self, row, *, lease=None, expire_after_hours=None):
         report = {"id": row["id"], "checkout": row["checkout"], "state": "skipped"}
         try:
             with self.locked(row["checkout"]) if lease is None else contextlib.nullcontext(lease):
-                if row.get("removed") or row.get("keep") or row["status"] not in ("terminal", "retired"):
-                    raise ValueError("Active, kept, removed, or unknown lifecycle")
-                if row.get("pilot_reuse") and not row.get("pilot_cleanup_ready"):
-                    raise ValueError("Pilot owners have not finished their registered sessions")
-                if not row.get("evidence_saved"):
-                    raise ValueError("Evidence not confirmed/exported")
+                policy = self.cleanup_policy(row, expire_after_hours)
                 checkout, debug = self.verify(row)
                 artifact = checkout / "target" if row["kind"] == "managed" and "retention" in row else debug
                 stamp, size = fingerprint(artifact)
-                token = hashlib.sha256((json.dumps(row, sort_keys=True) + stamp).encode()).hexdigest()
+                payload = [row, policy] if policy else row
+                token = hashlib.sha256((json.dumps(payload, sort_keys=True) + stamp).encode()).hexdigest()
                 report.update(state="candidate", token=token, bytes=size,
-                              target=str(artifact), sha=row["sha"], kind=row["kind"])
+                              target=str(artifact), sha=row["sha"], kind=row["kind"], **policy)
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
             report["reason"] = str(error)
         return report
@@ -184,7 +226,7 @@ class Store:
         return [self.preview_one(self.load(p.parent.name))
                 for p in sorted((self.root / "runs").glob("*/result.json"))]
 
-    def apply(self, key, token, *, lease=None):
+    def apply(self, key, token, *, lease=None, expire_after_hours=None):
         row = self.load(key)
         # Hold locks throughout revalidation and deletion, including snapshot comparison.
         with self.locked(row["checkout"]) if lease is None else contextlib.nullcontext(lease):
@@ -192,16 +234,12 @@ class Store:
             if current_row["checkout"] != row["checkout"]:
                 raise ValueError("Record checkout changed")
             row = current_row
-            if row.get("keep") or row.get("removed") or row["status"] not in ("terminal", "retired"):
-                raise ValueError("Not an inactive cleanup candidate")
-            if row.get("pilot_reuse") and not row.get("pilot_cleanup_ready"):
-                raise ValueError("Pilot owners have not finished their registered sessions")
-            if not row.get("evidence_saved"):
-                raise ValueError("Evidence not saved")
+            policy = self.cleanup_policy(row, expire_after_hours)
             checkout, debug = self.verify(row)
             artifact = checkout / "target" if row["kind"] == "managed" and "retention" in row else debug
             stamp, size = fingerprint(artifact)
-            current = hashlib.sha256((json.dumps(row, sort_keys=True) + stamp).encode()).hexdigest()
+            payload = [row, policy] if policy else row
+            current = hashlib.sha256((json.dumps(payload, sort_keys=True) + stamp).encode()).hexdigest()
             if token != current:
                 raise ValueError("Candidate changed; preview again")
             if row["kind"] == "managed":
@@ -212,8 +250,10 @@ class Store:
             else:
                 shutil.rmtree(debug)  # Never remove a developer worktree or its release/evidence.
             row.update(removed=True, cleaned_at=time.time(), reclaimed_debug_bytes=size)
-            if "retention" in row:
-                row["cleanup"] = dict(state="removed", bytes=size)
+            if policy:
+                row.update(keep=False, evidence_saved=True)
+            if "retention" in row or policy:
+                row["cleanup"] = dict(state="removed", bytes=size, **policy)
             if row.get("temporary_directory"):
                 row["temporary_cleanup"] = remote.cleanup_temp_directory(row["temporary_directory"])
             self.save(row)
@@ -453,7 +493,7 @@ def argument_parser():
     p.add_argument("--apply", action="store_true")
     p.add_argument("--older-than", type=int, default=7)
     for action in ("keep", "release"):
-        sub.add_parser(action).add_argument("id")
+        sub.add_parser(action, help="Renew retention or release it; configured timed expiry still applies").add_argument("id")
     p = sub.add_parser("finish", help="Record actual scenario verdict after exporting unique debug evidence")
     p.add_argument("id")
     p.add_argument("--verdict", choices=("green", "expected_red", "red"), required=True)
@@ -495,6 +535,8 @@ def main():
                 row.update(scenario=args.verdict, evidence_saved=True)
             else:
                 row["keep"] = args.action == "keep"
+                if args.action == "keep":
+                    row["retained_at"] = time.time()
             store.save(row)
         result = row
     print(json.dumps(result, indent=2))
