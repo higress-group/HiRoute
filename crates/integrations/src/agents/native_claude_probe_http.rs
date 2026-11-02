@@ -33,7 +33,8 @@ pub(super) fn serve(
                 .split('?')
                 .next()
                 .ok_or("path")?;
-            if method == "HEAD" && path == "/api/hello" {
+            // Readiness reads vary between native clients. They are not model evidence.
+            if matches!(method, "HEAD" | "GET") {
                 stream
                     .write_all(
                         b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
@@ -149,4 +150,39 @@ pub(super) fn serve(
     )
     .map_err(|_| "response")?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn exchange(request: &[u8]) -> (Result<bool, &'static str>, String) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            serve(&mut stream, "local-challenge", "frozen-model", None)
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client.write_all(request).unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        (server.join().unwrap(), response)
+    }
+
+    #[test]
+    fn readiness_reads_never_count_as_an_authenticated_model_request() {
+        for target in ["HEAD /", "HEAD /api/hello", "GET /api/hello"] {
+            let (evidence, response) =
+                exchange(format!("{target} HTTP/1.1\r\nHost: localhost\r\n\r\n").as_bytes());
+            assert_eq!(evidence, Ok(false));
+            assert!(response.starts_with("HTTP/1.1 404"));
+        }
+        let body = "{\"model\":\"frozen-model\"}";
+        let (evidence, response) = exchange(format!("POST /v1/messages HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer local-challenge\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes());
+        assert_eq!(evidence, Ok(true));
+        assert!(response.starts_with("HTTP/1.1 200"));
+        let (evidence, _) = exchange(format!("POST /v1/messages HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer other\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes());
+        assert_eq!(evidence, Err("wrong authentication"));
+    }
 }
