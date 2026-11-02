@@ -81,6 +81,7 @@ impl Fixture {
         let version = Arc::new(version(harness));
         let now = now_ms().unwrap();
         let run = DelegationRunV1 {
+            execution_failure: None,
             workspace_id: WorkspaceId::default(),
             task_id: "task/one".into(),
             run_id: "run/one".into(),

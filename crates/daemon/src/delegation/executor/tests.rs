@@ -221,6 +221,7 @@ impl WorkerPlatformPort for UnusedPlatform {
 
 fn accepted_run() -> DelegationRunV1 {
     DelegationRunV1 {
+        execution_failure: None,
         workspace_id: WorkspaceId::default(),
         task_id: "task/one".into(),
         run_id: "run/one".into(),

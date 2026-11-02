@@ -9,7 +9,7 @@ pub(super) const MODE: &str = "hiroute-worker";
 pub(super) struct StartupAdmission {
     native: hiroute_integrations::OpenCodeNativeContext,
     config_digest: hiroute_domain::CanonicalDigest,
-    migrations: &'static [&'static str],
+    migrations: Vec<String>,
     search_path: String,
 }
 
@@ -33,7 +33,7 @@ impl StartupAdmission {
         {
             return Err(DelegationErrorV1::ResumeUnavailable);
         }
-        validate_database(&self.native.database, self.migrations)?;
+        validate_database(&self.native.database, &self.migrations)?;
         let config = self
             .native
             .read_config(Some((workspace, &self.search_path)))
@@ -57,8 +57,8 @@ pub(super) fn render(
 ) -> Result<RenderedHarnessProfile, DelegationErrorV1> {
     let unavailable = || DelegationErrorV1::CapabilityUnavailable;
     let native = input.native_context.opencode().ok_or_else(unavailable)?;
-    let ids = hiroute_integrations::opencode_native_format(input.harness_binary)
-        .map_err(|_| unavailable())?;
+    let ids = hiroute_integrations::opencode_native_format(input.harness_binary, search_path)
+        .map_err(DelegationErrorV1::DependencyCheckFailed)?;
     let config = native
         .read_config(Some((input.workspace, search_path)))
         .map_err(|_| unavailable())?;
@@ -204,7 +204,7 @@ pub(super) fn render(
     Ok(rendered)
 }
 
-fn validate_database(path: &Path, expected: &[&str]) -> Result<(), DelegationErrorV1> {
+fn validate_database(path: &Path, expected: &[impl AsRef<str>]) -> Result<(), DelegationErrorV1> {
     let unavailable = || DelegationErrorV1::CapabilityUnavailable;
     match std::fs::symlink_metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -242,7 +242,7 @@ fn validate_database(path: &Path, expected: &[&str]) -> Result<(), DelegationErr
         return Err(unavailable());
     }
     let actual = rows.iter().map(String::as_str).collect::<BTreeSet<_>>();
-    if actual.len() != rows.len() || actual != expected.iter().copied().collect() {
+    if actual.len() != rows.len() || actual != expected.iter().map(AsRef::as_ref).collect() {
         return Err(unavailable());
     }
     Ok(())
@@ -286,7 +286,7 @@ mod tests {
             let admission = StartupAdmission {
                 native: native.clone(),
                 config_digest: config.digest.clone(),
-                migrations: &["known"],
+                migrations: vec!["known".into()],
                 search_path: search_path.clone(),
             };
             assert_eq!(
@@ -319,7 +319,7 @@ mod tests {
             let admission = StartupAdmission {
                 native: native.clone(),
                 config_digest: config.digest.clone(),
-                migrations: &["known"],
+                migrations: vec!["known".into()],
                 search_path: search_path.clone(),
             };
             let deep = (0..65).fold(project, |path, _| path.join("d"));
@@ -389,7 +389,7 @@ mod tests {
             let mut admission = StartupAdmission {
                 native: native.clone(),
                 config_digest: config.digest.clone(),
-                migrations: &["known"],
+                migrations: vec!["known".into()],
                 search_path: path.clone(),
             };
             if kind == "late-corruption" {
@@ -431,7 +431,7 @@ mod tests {
         let admission = StartupAdmission {
             native: native.clone(),
             config_digest: config.digest.clone(),
-            migrations: &["known"],
+            migrations: vec!["known".into()],
             search_path: search_path.clone(),
         };
         assert_eq!(admission.root(), native.database);

@@ -139,6 +139,8 @@ impl DelegationStartRequestV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DelegationAcceptedV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<hiroute_domain::delegation::WorkerExecutionFailureV1>,
     pub schema: String,
     pub task_id: String,
     pub run_id: String,
@@ -353,6 +355,8 @@ impl DelegationFeedbackRequestV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DelegationRunViewV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<hiroute_domain::delegation::WorkerExecutionFailureV1>,
     pub task_id: String,
     pub run_id: String,
     pub ordinal: u64,

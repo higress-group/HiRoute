@@ -566,6 +566,7 @@ pub enum ErrorCode {
     RevisionConflict,
     ControlWaitCapacityExceeded,
     WorkerCapacityExceeded,
+    WorkerExecutionFailed,
     ChangePreviewStale,
     IdempotencyKeyReused,
     AgentAuthPrecedenceConflict,
@@ -624,7 +625,7 @@ impl ErrorCode {
             | Self::WorkerCapacityExceeded => MachineStatus::Unavailable,
             Self::ActionRequired => MachineStatus::ActionRequired,
             Self::OperationNeedsAttention => MachineStatus::NeedsAttention,
-            Self::Internal => MachineStatus::InternalError,
+            Self::Internal | Self::WorkerExecutionFailed => MachineStatus::InternalError,
         }
     }
 
@@ -639,6 +640,7 @@ impl ErrorCode {
             Self::RevisionConflict => "application.error.revision_conflict",
             Self::ControlWaitCapacityExceeded => "control.error.wait_capacity_exceeded",
             Self::WorkerCapacityExceeded => "worker.error.capacity_exceeded",
+            Self::WorkerExecutionFailed => "worker.error.execution_failed",
             Self::ChangePreviewStale => "application.error.change_preview_stale",
             Self::IdempotencyKeyReused => "application.error.idempotency_key_reused",
             Self::AgentAuthPrecedenceConflict => "agent.error.auth_precedence_conflict",

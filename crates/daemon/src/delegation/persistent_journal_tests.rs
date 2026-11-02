@@ -150,6 +150,7 @@ impl DelegationRuntimePort for MemoryRuntime {
 
 fn run(deadline_ms: u64) -> DelegationRunV1 {
     DelegationRunV1 {
+        execution_failure: None,
         workspace_id: WorkspaceId::default(),
         task_id: "task/one".into(),
         run_id: "run/one".into(),

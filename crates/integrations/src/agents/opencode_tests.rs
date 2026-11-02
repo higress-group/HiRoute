@@ -213,7 +213,11 @@ fn opencode_format_metadata_is_bounded_and_does_not_execute_the_selected_binary(
     }
     let path = package.join("package.json");
     std::fs::write(&path, metadata.to_string()).unwrap();
-    assert_eq!(super::opencode_native_format(&native).unwrap().len(), 38);
+    assert!(
+        super::opencode_native_executable(&native)
+            .unwrap()
+            .is_some()
+    );
     metadata["version"] = "unaudited".into();
     std::fs::write(&path, metadata.to_string()).unwrap();
     assert!(
@@ -221,7 +225,11 @@ fn opencode_format_metadata_is_bounded_and_does_not_execute_the_selected_binary(
             .unwrap()
             .is_some()
     );
-    assert!(super::opencode_native_format(&native).is_err());
+    assert!(
+        super::opencode_native_executable(&native)
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]

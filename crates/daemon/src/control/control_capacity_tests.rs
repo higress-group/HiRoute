@@ -69,6 +69,7 @@ impl BlockingWorkerTasks {
 
     fn view(state: &WorkerState) -> DelegationRunViewV1 {
         DelegationRunViewV1 {
+            failure: None,
             task_id: "task/control-capacity".into(),
             run_id: RUN_ID.into(),
             ordinal: 1,

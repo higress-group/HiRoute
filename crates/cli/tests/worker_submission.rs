@@ -44,6 +44,7 @@ impl Tasks {
             return Err(DelegationErrorV1::Conflict);
         }
         Ok(DelegationAcceptedV1 {
+            failure: None,
             schema: "hiroute.delegation-accepted/v1".into(),
             task_id: "task/fixture".into(),
             run_id: format!("run/{}", index + 1),

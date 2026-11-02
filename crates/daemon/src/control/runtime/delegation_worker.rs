@@ -169,6 +169,7 @@ impl LocalControlAdapter {
             native_history_paths: vec![],
         };
         let run = hiroute_domain::delegation::DelegationRunV1 {
+            execution_failure: None,
             workspace_id: workspace.clone(),
             task_id,
             run_id: run_id.clone(),
@@ -264,6 +265,7 @@ impl LocalControlAdapter {
         });
         match admitted {
             Ok(accepted) if accepted.run_id == run_id => Ok(DelegationAcceptedV1 {
+                failure: accepted.execution_failure,
                 schema: DELEGATION_ACCEPTED_SCHEMA_V1.to_owned(),
                 task_id: accepted.task_id,
                 run_id: accepted.run_id,
@@ -424,6 +426,7 @@ fn replay_or_conflict(
         return Err(DelegationErrorV1::Conflict);
     }
     Ok(DelegationAcceptedV1 {
+        failure: run.execution_failure,
         schema: DELEGATION_ACCEPTED_SCHEMA_V1.to_owned(),
         task_id: run.task_id,
         run_id: run.run_id,

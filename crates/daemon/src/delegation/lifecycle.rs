@@ -243,6 +243,7 @@ pub(crate) async fn execute(
     }
     // Dropped launch futures must finitely release acquired resources in the platform backend.
     let launch_nonce = request.launch_nonce.clone();
+    journal.phase_started(hiroute_domain::delegation::WorkerExecutionStageV1::Spawn);
     let worker = tokio::select! {
         biased;
         _ = input.cancellation.cancelled() => {

@@ -36,8 +36,22 @@ pub(super) fn checkpoint(
     if run.progress.revision != revision {
         return Err(DelegationErrorV1::Conflict);
     }
+    if let DelegationCheckpointV1::ExecutionFailed { event, failure } = event {
+        if !matches!(
+            event,
+            RunEventV1::LaunchFailedBeforeSpawn
+                | RunEventV1::ConnectionLost
+                | RunEventV1::PromptFailed
+        ) || run.execution_failure.is_some()
+            || (run.progress.cancel_requested && failure.error != DelegationErrorV1::Cancelled)
+        {
+            return Err(DelegationErrorV1::Conflict);
+        }
+        run.execution_failure = Some(*failure);
+    }
     match event {
-        DelegationCheckpointV1::Progress { event } => {
+        DelegationCheckpointV1::ExecutionFailed { event, .. }
+        | DelegationCheckpointV1::Progress { event } => {
             if *event == RunEventV1::ResidualAcknowledged {
                 return Err(DelegationErrorV1::PermissionDenied);
             }

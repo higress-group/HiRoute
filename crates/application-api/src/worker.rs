@@ -607,6 +607,8 @@ impl WorkerContinueRequestV1 {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkerCommandDataV1 {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<hiroute_domain::delegation::WorkerExecutionFailureV1>,
     pub schema: String,
     pub operation: String,
     pub submission_state: WorkerSubmissionStateV1,

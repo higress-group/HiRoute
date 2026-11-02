@@ -94,6 +94,7 @@ fn fixture(allowed: bool) -> Fixture {
         allowed,
         calls: RefCell::new(vec![]),
         run: DelegationRunV1 {
+            execution_failure: None,
             workspace_id: WorkspaceId::default(),
             task_id: "task".into(),
             run_id: "run".into(),

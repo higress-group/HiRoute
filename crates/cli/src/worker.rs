@@ -12,6 +12,7 @@ use hiroute_client_core::{ClientFailure, FailureCode};
 use crate::args::{Globals, OutputMode};
 use crate::{CliExecution, LocalControlClient};
 
+mod failure;
 mod input;
 mod render;
 #[cfg(windows)]
@@ -386,6 +387,7 @@ fn finish_submission(
         .clone();
     let mut initial = Some(accepted_response.map_data(|accepted| {
         command_data(CommandData {
+            failure: accepted.failure,
             operation,
             submission_key: Some(submission_key),
             task_id: Some(&accepted.task_id),
@@ -399,13 +401,7 @@ fn finish_submission(
     }));
     if no_wait {
         let mut response = initial.take().expect("initial response is present");
-        if matches!(
-            accepted.state,
-            RunStateV1::Failed | RunStateV1::Cancelled | RunStateV1::Unknown
-        ) {
-            response.status = MachineStatus::InternalError;
-            response.error = Some(ErrorV1::new(ErrorCode::Internal));
-        }
+        failure::classify_terminal(&mut response);
         return render_worker_data(response, output, true);
     }
     let wait_request = WorkerWaitRequestV1 {
@@ -458,6 +454,7 @@ fn finish_submission(
         {
             let projected = result_response.map_data(|result| {
                 command_data(CommandData {
+                    failure: None,
                     operation,
                     submission_key: Some(submission_key),
                     task_id: Some(&accepted.task_id),
@@ -474,6 +471,7 @@ fn finish_submission(
     }
     let mut projected = waited_response.map_data(|waited| {
         command_data(CommandData {
+            failure: waited.run.failure,
             operation,
             submission_key: Some(submission_key),
             task_id: Some(&accepted.task_id),
@@ -485,13 +483,7 @@ fn finish_submission(
             timed_out: waited.timed_out,
         })
     });
-    if matches!(
-        waited.run.state,
-        RunStateV1::Failed | RunStateV1::Cancelled | RunStateV1::Unknown
-    ) {
-        projected.status = MachineStatus::InternalError;
-        projected.error = Some(ErrorV1::new(ErrorCode::Internal));
-    }
+    failure::classify_terminal(&mut projected);
     render_worker_data(projected, output, true)
 }
 

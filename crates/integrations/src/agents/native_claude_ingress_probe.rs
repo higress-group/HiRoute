@@ -22,6 +22,8 @@ use std::time::{Duration, Instant};
 use super::collaboration_probe as collaboration;
 #[path = "native_claude_probe_http.rs"]
 mod http;
+#[path = "claude_worker_capability.rs"]
+mod worker;
 
 const CONTRACT: &str = "hiroute.claude-native-messages/v1";
 const MARKER: &str = "hiroute-native-probe-no-authority";
@@ -31,6 +33,15 @@ const CONNECTION: &str = "agent-connection/claude/native-probe";
 pub struct ClaudeNativeIngressProbe;
 
 impl ClaudeNativeIngressProbe {
+    /// Verify the required native behavior with a local noncredential and conflicting
+    /// disposable settings, independently of --version or the caller's daily account.
+    pub fn check_host_managed_provider(
+        executable: &Path,
+        search_path: &str,
+    ) -> Result<(), hiroute_domain::delegation::NativeDependencyFailureV1> {
+        worker::check(executable, search_path)
+    }
+
     pub fn run(executable: &Path) -> Result<ClaudeIngressEvidence, NativeIngressProbeError> {
         Self::run_isolated(executable, None)
     }

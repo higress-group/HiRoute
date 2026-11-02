@@ -6,6 +6,9 @@ use std::fmt;
 #[serde(rename_all = "snake_case")]
 pub enum NativeDependencyCheckV1 {
     ClaudeVersion,
+    ClaudeHostManagedProvider,
+    OpenCodeDatabase,
+    OpenCodeConfiguration,
     PiPackage,
     PiNodeVersion,
     PiSdk,
@@ -15,6 +18,9 @@ impl NativeDependencyCheckV1 {
     pub const fn key(self) -> &'static str {
         match self {
             Self::ClaudeVersion => "claude_version",
+            Self::ClaudeHostManagedProvider => "claude_host_managed_provider",
+            Self::OpenCodeDatabase => "opencode_database",
+            Self::OpenCodeConfiguration => "opencode_configuration",
             Self::PiPackage => "pi_package",
             Self::PiNodeVersion => "pi_node_version",
             Self::PiSdk => "pi_sdk",

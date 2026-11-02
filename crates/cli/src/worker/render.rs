@@ -29,6 +29,7 @@ pub(super) fn render_status(
         {
             let projected = envelope.map_data(|data| {
                 command_data(CommandData {
+                    failure: data.task.run.failure,
                     operation: operation.strip_prefix("worker.").unwrap_or(operation),
                     submission_key: None,
                     task_id: Some(&data.task.task_id),
@@ -60,6 +61,7 @@ pub(super) fn render_wait(
         {
             let projected = envelope.map_data(|data| {
                 command_data(CommandData {
+                    failure: data.run.failure,
                     operation: "wait",
                     submission_key: None,
                     task_id: Some(&data.run.task_id),
@@ -90,6 +92,7 @@ pub(super) fn render_result(
         {
             let projected = envelope.map_data(|data| {
                 command_data(CommandData {
+                    failure: data.run.failure,
                     operation: "result",
                     submission_key: None,
                     task_id: Some(&data.run.task_id),
@@ -120,6 +123,7 @@ pub(super) fn render_cancel(
         {
             let projected = envelope.map_data(|data| {
                 command_data(CommandData {
+                    failure: None,
                     operation: "cancel",
                     submission_key: None,
                     task_id: Some(&data.run.task_id),
@@ -138,6 +142,7 @@ pub(super) fn render_cancel(
 }
 
 pub(super) struct CommandData<'a> {
+    pub(super) failure: Option<hiroute_domain::delegation::WorkerExecutionFailureV1>,
     pub(super) operation: &'a str,
     pub(super) submission_key: Option<&'a str>,
     pub(super) task_id: Option<&'a str>,
@@ -151,6 +156,7 @@ pub(super) struct CommandData<'a> {
 
 pub(super) fn command_data(data: CommandData<'_>) -> WorkerCommandDataV1 {
     WorkerCommandDataV1 {
+        failure: data.failure,
         schema: WORKER_COMMAND_DATA_SCHEMA_V1.into(),
         operation: data.operation.into(),
         submission_state: WorkerSubmissionStateV1::Accepted,
@@ -173,6 +179,7 @@ pub(super) fn uncertain_submission(
     request_id: String,
 ) -> CliExecution {
     let mut data = command_data(CommandData {
+        failure: None,
         operation,
         submission_key: Some(key),
         task_id: None,
@@ -542,6 +549,18 @@ pub(super) fn render_worker_data<T: Serialize>(
     let mut stdout = String::new();
     let mut stderr = String::new();
     if let Some(data) = data {
+        if let Some(failure) = data.failure {
+            stderr.push_str(&format!(
+                "Failure: {}\n{}\n",
+                failure.message_key(),
+                failure.next_action_hint()
+            ));
+        } else if matches!(
+            data.run_state,
+            Some(RunStateV1::Failed | RunStateV1::Unknown)
+        ) {
+            stderr.push_str("This run has no recorded failure cause. Read its saved progress and inspect its state before retrying.\n");
+        }
         if let Some(result) = data.result {
             stdout.push_str(&display_text(&result));
             if !result.ends_with('\n') {

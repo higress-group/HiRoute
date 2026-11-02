@@ -64,8 +64,11 @@ mod dsh_tests;
 mod native_points;
 mod observed_capabilities;
 mod opencode;
+mod opencode_capability;
 mod opencode_installation;
-mod opencode_migrations;
+pub use opencode_capability::opencode_native_format;
+#[cfg(all(test, unix))]
+mod native_worker_capability_tests;
 mod opencode_project;
 mod opencode_resources;
 mod opencode_sources;
@@ -74,9 +77,7 @@ mod opencode_tests;
 pub use opencode::{
     OpenCodeConfig, OpenCodeNativeContext, opencode_provider, validate_opencode_composition,
 };
-pub use opencode_installation::{
-    opencode_native_candidates, opencode_native_executable, opencode_native_format,
-};
+pub use opencode_installation::{opencode_native_candidates, opencode_native_executable};
 mod pi_runtime;
 mod pi_sources;
 pub use native_points::*;

@@ -180,10 +180,6 @@ fn opencode_npm_discovery_offers_canonical_choices_and_keeps_ambiguous_selection
                 request,
                 "discovered paths must survive exact tuple admission"
             );
-            assert!(
-                hiroute_integrations::opencode_native_format(&native).is_err(),
-                "selection does not waive the version/format gate"
-            );
         }
         if count == 2 {
             let original = view

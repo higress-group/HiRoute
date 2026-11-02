@@ -262,6 +262,7 @@ pub(super) fn run_view(task: &DelegationTaskV1, run: &DelegationRunV1) -> Delega
         hiroute_domain::delegation::WorkerHarnessV1::OpenCode => "OpenCode",
     };
     DelegationRunViewV1 {
+        failure: run.execution_failure,
         task_id: run.task_id.clone(),
         run_id: run.run_id.clone(),
         ordinal: run.ordinal,
