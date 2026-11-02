@@ -4,7 +4,8 @@ use serde_json::{Map, Value, json};
 
 use crate::content_ref::JsonValueExt;
 use crate::server::core_runtime::model_ir::{
-    CanonicalTool, ModelRequestIRV1, ResponsesToolOrderEntryV1, ToolChoice, ToolKindV1,
+    CanonicalTool, CanonicalToolNamespaceV1, ModelRequestIRV1, ResponsesToolOrderEntryV1,
+    ToolChoice, ToolKindV1,
 };
 
 use super::ProtocolAdapterError;
@@ -42,23 +43,14 @@ impl ChatToolProjection {
                 "Responses hosted tools cannot be projected to Chat Completions",
             ));
         }
-        if request
-            .tool_namespaces
-            .iter()
-            .any(|namespace| namespace.description.is_some())
-        {
-            return Err(unrepresentable(
-                "Responses namespace descriptions cannot be projected to Chat Completions",
-            ));
-        }
-
         let declarations = ordered_declarations(request)?;
 
         let mut entries = Vec::with_capacity(declarations.len());
         let mut emitted_names = BTreeSet::new();
         for (namespace, tool) in declarations {
             validate_declaration(tool)?;
-            let emitted_name = match namespace {
+            let namespace_name = namespace.map(|namespace| namespace.name.as_str());
+            let emitted_name = match namespace_name {
                 Some(namespace) => format!("{namespace}__{}", tool.name),
                 None => tool.name.clone(),
             };
@@ -66,7 +58,7 @@ impl ChatToolProjection {
             let identity = ChatToolIdentity {
                 emitted_name: emitted_name.clone(),
                 kind: tool.kind,
-                namespace: namespace.map(str::to_owned),
+                namespace: namespace_name.map(str::to_owned),
                 local_name: tool.name.clone(),
             };
             if !emitted_names.insert(emitted_name) {
@@ -98,14 +90,15 @@ impl ChatToolProjection {
             .zip(&self.entries)
             .map(|((namespace, tool), identity)| {
                 if identity.kind != tool.kind
-                    || identity.namespace.as_deref() != namespace
+                    || identity.namespace.as_deref()
+                        != namespace.map(|namespace| namespace.name.as_str())
                     || identity.local_name != tool.name
                 {
                     return Err(unrepresentable(
                         "Chat tool projection changed after construction",
                     ));
                 }
-                Ok(Self::render_chat_tool(identity, tool))
+                Ok(Self::render_chat_tool(identity, tool, namespace))
             })
             .collect()
     }
@@ -198,11 +191,33 @@ impl ChatToolProjection {
         }
     }
 
-    pub(crate) fn render_chat_tool(identity: &ChatToolIdentity, tool: &CanonicalTool) -> Value {
+    fn render_chat_tool(
+        identity: &ChatToolIdentity,
+        tool: &CanonicalTool,
+        namespace: Option<&CanonicalToolNamespaceV1>,
+    ) -> Value {
         let mut function = Map::new();
         function.insert("name".into(), Value::String(identity.emitted_name.clone()));
-        if let Some(description) = &tool.description {
-            function.insert("description".into(), Value::String(description.clone()));
+        let description = match namespace.and_then(|namespace| {
+            namespace
+                .description
+                .as_deref()
+                .map(|description| (namespace.name.as_str(), description))
+        }) {
+            Some((name, description)) => {
+                // ContentRef markers remain embedded in this compact string;
+                // the sequential encoder expands each occurrence without reads here.
+                let mut description = format!("[{name}]\n{description}");
+                if let Some(child) = &tool.description {
+                    description.push_str("\n\n");
+                    description.push_str(child);
+                }
+                Some(description)
+            }
+            None => tool.description.clone(),
+        };
+        if let Some(description) = description {
+            function.insert("description".into(), Value::String(description));
         }
         match tool.kind {
             ToolKindV1::Function => {
@@ -235,7 +250,7 @@ impl ChatToolProjection {
 
 fn ordered_declarations(
     request: &ModelRequestIRV1,
-) -> Result<Vec<(Option<&str>, &CanonicalTool)>, ProtocolAdapterError> {
+) -> Result<Vec<(Option<&CanonicalToolNamespaceV1>, &CanonicalTool)>, ProtocolAdapterError> {
     let mut declarations = Vec::new();
     if request.responses_tool_order.is_empty() {
         if !request.tool_namespaces.is_empty() {
@@ -271,12 +286,7 @@ fn ordered_declarations(
                 if std::mem::replace(&mut namespace_seen[index], true) {
                     return Err(unrepresentable("Responses tool order repeats a namespace"));
                 }
-                declarations.extend(
-                    namespace
-                        .tools
-                        .iter()
-                        .map(|tool| (Some(namespace.name.as_str()), tool)),
-                );
+                declarations.extend(namespace.tools.iter().map(|tool| (Some(namespace), tool)));
             }
             ResponsesToolOrderEntryV1::WebSearch => {
                 return Err(unrepresentable(

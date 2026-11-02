@@ -237,6 +237,25 @@ candidates do not need the conversion proof. A projection failure excludes only
 that candidate, not all legal alternatives. Named function/custom identity is
 preserved through the [execution-fact boundary](../p0-gateway-execution-plane/spec.md).
 
+A namespace description MUST NOT by itself exclude a representable Chat candidate.
+Each projected child retains that description as a labeled namespace prefix before
+its own description, including children with no description. Undescribed namespaces
+keep their existing child descriptions. Declaration order, schemas, explicit strict
+values, forced choices and reversible call identities remain intact. Candidate
+context sizing and sequential delivery account for the full repeated description
+on every child, including Replay-backed strings, without loading their contents
+during candidate sizing. Native Responses forwarding retains the original namespace.
+
+#### Scenario: Described namespace selects the configured Chat candidate
+
+- **WHEN** a Responses request declares representable function tools in a namespace with a description and an earlier Chat candidate precedes a native Responses fallback
+- **THEN** the Chat candidate remains eligible, receives both namespace and child descriptions, and its streamed or nonstreamed calls recover the original namespace/name for a subsequent tool-result turn.
+
+#### Scenario: Replay-backed namespace description is repeated accurately
+
+- **WHEN** several children share a namespace description externalized to Replay
+- **THEN** each child receives the full escaped description, actual wire length participates in context eligibility, and delivery neither exposes internal locators nor truncates or materializes the shared description during sizing.
+
 ### Requirement: Responses function encoding is negotiated in both directions
 
 An explicitly selected standard Responses JSON adapter SHALL own outbound tool-schema

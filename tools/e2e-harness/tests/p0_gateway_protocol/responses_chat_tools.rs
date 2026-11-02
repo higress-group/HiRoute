@@ -14,6 +14,7 @@ data: [DONE]
 "#;
 
 const CHAT_FINAL_PROVIDER_JSON: &[u8] = br#"{"id":"chat-final","object":"chat.completion","model":"chat-native","choices":[{"index":0,"message":{"role":"assistant","content":"tools complete"},"finish_reason":"stop"}],"usage":{"prompt_tokens":29,"completion_tokens":3,"total_tokens":32,"prompt_tokens_details":{"cached_tokens":2,"cache_write_tokens":0}}}"#;
+const CHAT_NAMESPACE_PROVIDER_JSON: &[u8] = br#"{"id":"chat-namespace","object":"chat.completion","model":"chat-native","choices":[{"index":0,"message":{"role":"assistant","tool_calls":[{"id":"chat-described-call","type":"function","function":{"name":"records__lookup","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}"#;
 const RESPONSES_GRAMMAR_FALLBACK_JSON: &[u8] = br#"{"id":"grammar-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"grammar fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
 const RESPONSES_COLLISION_FALLBACK_JSON: &[u8] = br#"{"id":"collision-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"collision fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
 const RESPONSES_OPTIONS_FALLBACK_JSON: &[u8] = br#"{"id":"options-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"options fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
@@ -25,7 +26,7 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
     let chat_provider = ContinuationProvider::start(vec![
         ProviderReply::Sse(CHAT_TOOL_PROVIDER_STREAM),
         ProviderReply::Json(CHAT_FINAL_PROVIDER_JSON),
-        ProviderReply::Json(CHAT_FINAL_PROVIDER_JSON),
+        ProviderReply::Json(CHAT_NAMESPACE_PROVIDER_JSON),
     ]);
     let responses_fallback = ContinuationProvider::start(vec![
         ProviderReply::Json(RESPONSES_GRAMMAR_FALLBACK_JSON),
@@ -347,6 +348,7 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
         &json!({
             "model":"responses-chat-tools",
             "input":"described namespace request",
+            "tool_choice":{"type":"function","name":"lookup"},
             "tools":[{"type":"namespace","name":"records","description":"record tools","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}]
         }),
     );
@@ -365,6 +367,14 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
         projected_description["tools"][0]["function"]["description"],
         "[records]\nrecord tools"
     );
+    assert_eq!(
+        projected_description["tool_choice"]["function"]["name"],
+        "records__lookup"
+    );
+    let described_response: Value = serde_json::from_slice(&described_namespace.body).unwrap();
+    assert_eq!(described_response["output"][0]["type"], "function_call");
+    assert_eq!(described_response["output"][0]["namespace"], "records");
+    assert_eq!(described_response["output"][0]["name"], "lookup");
     let fallback_requests = responses_fallback.requests();
     let forwarded_options: Value =
         serde_json::from_slice(http_body(&fallback_requests[2])).unwrap();
