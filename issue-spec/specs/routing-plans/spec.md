@@ -198,7 +198,9 @@ Editor and generated Codex catalog MUST use the same aggregation and identify wh
 candidate narrows context/vision. Codex parallel tool calls default to enabled;
 the optional `limits.codex_parallel_tool_calls` boolean can disable the declaration.
 Its switch is in the capability preview's Advanced settings, collapsed by default.
-Draft save/reopen, publication and Worker catalogs retain the same preference.
+Draft save/reopen, publication and new Worker catalogs retain the same preference.
+The published opt-out also disables parallel calls in Responses requests forwarded
+to any candidate; enabling leaves the incoming request preference intact.
 Changing it requires publishing, saving the Agent model settings again and restarting
 Codex; it does not rewrite a running client's catalog or force tool scheduling.
 Unknown required window/protocol facts

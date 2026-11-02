@@ -284,6 +284,14 @@ no such missing default. Appended Plan entries allow parallel tool calls by defa
 An optional boolean `limits.codex_parallel_tool_calls` controls this Codex catalog
 declaration; false disables it for both user-target and private Worker catalogs.
 Omission permits parallel calls and preserves the original serialized Plan bytes.
+A retained Worker task whose frozen Plan omitted this policy may continue with its
+exact previous serial catalog; new tasks use the current default. Explicit overrides
+and unrelated catalog drift do not receive that exception.
+On Responses ingress, the published route opt-out also sets the forwarded request
+flag to false, including native and cross-protocol candidates, because some Codex
+clients always send true regardless of their catalog. The default never changes a
+client request from false to true. Fixed models and other ingress protocols retain
+their original behavior.
 The preview validates the selected tool capability and reports an explicit disable
 as a route setting, not a fixed implementation limit or a candidate defect. Existing
 installed catalogs change only after model settings are saved again and Codex restarts.

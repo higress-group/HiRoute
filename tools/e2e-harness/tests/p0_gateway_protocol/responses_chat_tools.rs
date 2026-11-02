@@ -551,6 +551,7 @@ fn responses_chat_tools_snapshot(
             overall_timeout_ms: 10_000,
             max_attempts: 2,
             routing: Some(AliasRoutingV1 {
+                codex_parallel_tool_calls: None,
                 agent_plan_id: "responses-chat-tools-plan".into(),
                 plan_display_name: Some("Responses Chat tools".into()),
                 request_owned: AliasRequestOwnedRouteV1::Classified {

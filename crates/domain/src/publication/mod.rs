@@ -127,6 +127,9 @@ pub struct GatewayExecutableRoutingV2 {
     /// Safe plan display text frozen into new publications; absent on legacy snapshots.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_display_name: Option<String>,
+    /// Codex Responses policy; absence preserves the client's parallel preference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_parallel_tool_calls: Option<bool>,
     pub request_owned: RequestOwnedRouteV1,
     pub groups: Vec<GatewayExecutableGroupV2>,
 }

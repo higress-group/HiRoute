@@ -180,7 +180,7 @@ impl AuthenticatedRequest {
         if self.grant.protocol_for(served_model_id) != self.protocol {
             return Err(DispatchError::AgentPlanProtocolUnsupported);
         }
-        let (execution, provenance, plan_display_name) = match route {
+        let (execution, provenance, plan_display_name, parallel_tools_allowed) = match route {
             CompiledGrantRoute::Plan { alias } => {
                 let alias = self
                     .publication
@@ -198,6 +198,7 @@ impl AuthenticatedRequest {
                         semantic_digest: digest,
                     },
                     alias.plan_display_name.clone(),
+                    alias.codex_parallel_tool_calls_allowed,
                 )
             }
             CompiledGrantRoute::Fixed {
@@ -209,6 +210,7 @@ impl AuthenticatedRequest {
                     binding_digest: binding_digest.clone(),
                 },
                 None,
+                true,
             ),
         };
         if !execution.protocols.contains(&self.protocol) {
@@ -256,6 +258,7 @@ impl AuthenticatedRequest {
             core,
         )
         .with_native_consumer(self.grant.consumer)
+        .with_codex_parallel_tools_allowed(parallel_tools_allowed)
         .with_web_search_allowed(self.run.as_ref().is_none_or(|run| run.network_allowed())))
     }
 

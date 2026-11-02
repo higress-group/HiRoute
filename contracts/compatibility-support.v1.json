@@ -1655,7 +1655,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2650,6 +2650,23 @@
       "allowed_paths": [
         "crates/local-storage/src/migrations/mod.rs",
         "crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.codex-catalog/v1",
+      "field": "retained private Worker catalog serial projection before the default-on policy",
+      "mode": "recovery_read_only",
+      "owner": "agent-worker/codex",
+      "reason": "A retained task from the preceding installed 0.5.0 development candidate has an immutable serial catalog. Only when its frozen Plan omits codex_parallel_tool_calls, Continue admits the exact current projection with only supports_parallel_tool_calls changed back to false, preserving the original file. Explicit settings and all unrelated catalog drift still fail. Fresh tasks always use the current producer.",
+      "removal_condition": "Remove when retained pre-default-on Worker tasks and their supported recovery copies have expired or been retired; do not regenerate the frozen intermediate input with the current producer.",
+      "allowed_paths": [
+        "crates/daemon/src/delegation/installation.rs",
+        "crates/daemon/src/delegation/profile/mod.rs",
+        "crates/daemon/src/delegation/profile/codex.rs",
+        "crates/daemon/src/delegation/profile/materials.rs",
+        "crates/daemon/src/delegation/profile/parallel_tools_tests.rs",
+        "crates/daemon/src/delegation/profile/fixtures/codex-worker-serial-546.json",
+        "crates/daemon/src/delegation/profile/fixtures/README.md"
       ]
     }
   ]

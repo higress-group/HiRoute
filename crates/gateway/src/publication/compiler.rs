@@ -52,6 +52,7 @@ pub(crate) struct CompiledAlias {
     pub plan_display_name: Option<Arc<str>>,
     pub agent_plan_revision: u64,
     pub agent_plan_semantic_digest: Arc<str>,
+    pub codex_parallel_tool_calls_allowed: bool,
     pub execution: CompiledModelExecution,
 }
 
@@ -361,6 +362,11 @@ fn compile_alias(
             .map(Arc::from),
         agent_plan_revision: alias.agent_plan_revision,
         agent_plan_semantic_digest: agent_plan_semantic_digest(alias)?.into(),
+        codex_parallel_tool_calls_allowed: alias
+            .routing
+            .as_ref()
+            .and_then(|routing| routing.codex_parallel_tool_calls)
+            .unwrap_or(true),
         execution: compile_execution(
             &alias.candidates,
             &alias.protocols,

@@ -68,7 +68,7 @@ pub struct RoutingLimitsV1 {
     /// None follows the bounded default; omission preserves historical signed digests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window_tokens: Option<u64>,
-    /// Codex catalog policy. Omission allows parallel calls without rewriting old signed data.
+    /// Codex catalog/Responses opt-out. Omission preserves old signed bytes and client preferences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_parallel_tool_calls: Option<bool>,
     pub maximum_attempts: u16,

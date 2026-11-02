@@ -27,6 +27,10 @@ protocol and receipt authority across publication/restart. `work.protocol` is th
 independent frozen Worker choice. [Publication budget guards](../../crates/daemon/src/control/runtime/additional_model_budget.rs)
 report the actual installed consumers; [safe conflict facts](../../crates/domain/src/agents/model_budget_conflict.rs)
 retain rejection identity through compensation and client observation.
+The published Codex parallel-tool opt-out is enforced before native/IR request
+projection in [Gateway authority](../../crates/gateway/src/request_plan/mod.rs);
+[listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/parallel_tools.rs)
+cover native and cross-protocol forwarding.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
 [Native routing resources](../../crates/integrations/src/agents/routing_adapters.rs)

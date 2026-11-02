@@ -50,6 +50,8 @@ pub struct ProfileInput<'a> {
     pub alias: &'a str,
     /// One alias entry derived from the exact frozen Plan, stored in the owned task root.
     pub codex_catalog: Option<&'a [u8]>,
+    /// An omitted policy may reuse the previous serial projection without changing its bytes.
+    pub preserve_legacy_serial_catalog: bool,
     pub native_effort: Option<&'a str>,
     pub gateway: SocketAddr,
     pub permit: &'a WorkspaceExecutionPermitV1,

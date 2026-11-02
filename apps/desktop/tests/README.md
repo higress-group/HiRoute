@@ -219,7 +219,8 @@ the combined trial custom-connection path needs its own integration acceptance.
 Task-route save scenarios also cover Pi and Qoder executor reselection: an explicit
 Messages choice survives clicking the selected executor and reaches the saved draft.
 They reuse the real Plan editor and existing IPC trace, without launching a native Agent.
-The Plan editor also checks default-on Codex parallel tool calls, the initially
+The Plan editor (`plan-editor-ux.html?checks=parallel`) also checks default-on
+Codex parallel tool calls, the initially
 collapsed advanced switch, explicit disable through draft save/reopen, and restoring
 the default. Native catalog production and client tool roundtrips retain their own
 integration evidence; browser IPC does not establish either.

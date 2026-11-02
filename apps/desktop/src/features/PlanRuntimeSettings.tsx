@@ -129,7 +129,7 @@ export function PlanRuntimeSettings({ limits, options, previewAgent: fixedPrevie
         {previewAgent === 'codex' && <div data-plan-parallel-tools>
           <div className="option-panel"><button className="option-row" type="button" role="switch" aria-checked={parallelTools}
             onClick={() => onChange({ ...limits, codex_parallel_tool_calls: parallelTools ? false : undefined })}>
-            <div><strong>{text('允许 Codex 并行工具调用', 'Allow parallel tool calls in Codex')}</strong><span>{text('默认开启。模型不支持时可关闭；实际执行方式由 Codex 决定。', 'On by default. Turn off for models without support. Codex decides how tools execute.')}</span></div>
+            <div><strong>{text('允许 Codex 并行工具调用', 'Allow parallel tool calls in Codex')}</strong><span>{text('默认开启；模型不支持时可关闭。关闭后，HiRoute 会在请求中禁用并行调用。', 'On by default. Turn off for unsupported models; HiRoute then disables parallel calls in requests.')}</span></div>
             <span className={`switch${parallelTools ? ' on' : ''}`} aria-hidden="true" />
           </button></div>
         </div>}
