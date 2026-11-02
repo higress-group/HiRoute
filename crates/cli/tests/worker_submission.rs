@@ -25,6 +25,7 @@ use std::time::Duration;
 struct Tasks {
     calls: Mutex<Vec<(bool, String, Value)>>,
     failure: Mutex<Option<hiroute_domain::delegation::WorkerExecutionFailureV1>>,
+    pending_then_failure: Mutex<bool>,
 }
 
 impl Tasks {
@@ -45,6 +46,11 @@ impl Tasks {
             return Err(DelegationErrorV1::Conflict);
         }
         let failure = *self.failure.lock().unwrap();
+        let failure = if *self.pending_then_failure.lock().unwrap() && previous.is_none() {
+            None
+        } else {
+            failure
+        };
         Ok(DelegationAcceptedV1 {
             failure,
             schema: "hiroute.delegation-accepted/v1".into(),
@@ -82,6 +88,23 @@ impl Tasks {
 }
 
 impl DelegationTaskPort for Tasks {
+    fn worker_wait(
+        &self,
+        request: &hiroute_application_api::WorkerWaitRequestV1,
+    ) -> Result<hiroute_application_api::DelegationWaitV1, DelegationErrorV1> {
+        assert_eq!(request.run_id, "run/1");
+        let mut run = self.task().run;
+        run.failure = *self.failure.lock().unwrap();
+        run.state = RunStateV1::Failed;
+        run.state_revision = 2;
+        run.result_available = false;
+        Ok(hiroute_application_api::DelegationWaitV1 {
+            schema: "hiroute.delegation-wait/v1".into(),
+            run,
+            timed_out: false,
+        })
+    }
+
     fn worker_exec(
         &self,
         request: &WorkerExecRequestV1,
@@ -235,6 +258,31 @@ fn response(output: &Output) -> Value {
             String::from_utf8_lossy(&output.stderr)
         )
     })
+}
+
+#[test]
+fn waited_native_failure_keeps_its_stage_and_does_not_become_an_internal_error() {
+    with_control(|fixture, tasks| {
+        *tasks.pending_then_failure.lock().unwrap() = true;
+        *tasks.failure.lock().unwrap() =
+            Some(hiroute_domain::delegation::WorkerExecutionFailureV1 {
+                stage: hiroute_domain::delegation::WorkerExecutionStageV1::Initialize,
+                error: DelegationErrorV1::ProtocolFailed,
+            });
+        let mut args = fixture.exec_args(Some("submission/waited-failure"), "goal");
+        args.retain(|arg| arg != "--no-wait");
+        let output = fixture.command().args(&args).output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let json = response(&output);
+        assert_eq!(json["error"]["code"], "WORKER_EXECUTION_FAILED");
+        assert_eq!(
+            json["error"]["message_key"],
+            "worker.execution.initialize.protocol_failed"
+        );
+        assert_eq!(json["data"]["failure"]["stage"], "initialize");
+        assert_eq!(json["data"]["run_id"], "run/1");
+        assert_eq!(json["data"]["run_state"], "failed");
+    });
 }
 
 #[test]

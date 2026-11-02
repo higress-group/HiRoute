@@ -82,6 +82,11 @@ impl DelegationRuntimePort for MemoryRuntime {
             return Err(DelegationErrorV1::Conflict);
         }
         match event {
+            DelegationCheckpointV1::ExecutionFailed { event, failure } => {
+                assert!(run.execution_failure.is_none());
+                run.execution_failure = Some(*failure);
+                run.progress.advance(*event)?;
+            }
             DelegationCheckpointV1::Progress { event } => run.progress.advance(*event)?,
             DelegationCheckpointV1::ProcessSpawned { binding } => {
                 run.process = Some(binding.clone());
