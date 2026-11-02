@@ -16,10 +16,12 @@ fn queued_archive_pressure_marks_optional_loss_without_synchronous_history_fallb
         background[1]["abort_reason"],
         "content_capture_queue_unavailable"
     );
+    assert!(background[0]["result_transcript_root"].is_null());
+    assert_eq!(background[1]["completeness_delta"], "partial");
     assert!(
         background
             .iter()
-            .all(|record| record["result_transcript_root"].is_null())
+            .all(|record| record["canonical_bytes_base64"].is_null())
     );
 }
 
@@ -34,7 +36,7 @@ fn assert_only_gap_before_encoder(records: &[Value]) {
     assert_eq!(
         records.len(),
         1,
-        "only the asynchronous gap heartbeat may precede the encoder: {records:?}"
+        "only the asynchronous gap heartbeat may precede the encoder"
     );
     let gap = &records[0];
     assert_eq!(
