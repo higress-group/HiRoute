@@ -113,13 +113,7 @@ Repeated history retains its original accepted-model attribution instead of bein
 signed by the latest request's model. Namespace/group/name/call identity, parameters,
 and actual results distinguish equal-named tools in different namespaces.
 
-Body is the primary view. Canonical content kind is preserved: user-visible text is
-question/answer, tool fields are tool context, provider state and reasoning events
-are not final answer text. `text_delta` plus `text_finished` for one block composes
-one continuous result rather than duplicate snapshots or fragmented words. Request
-`accepted` after termination means response delivered, not still-processing admission
-or entire Agent task completed. Missing model/usage/value/body facts remain explicit.
-Recorded plan identity follows [route history](../request-routing-history/spec.md).
+HiRoute SHALL retain authorized semantic conversation history: logical input messages and tool results, coalesced text/reasoning/refusal blocks, tool calls and their identity/arguments/results, with original semantic order and proven request/Attempt/model attribution. A proven already-recorded prefix SHALL NOT acquire a new archived occurrence merely because another request carries it. Equal text alone SHALL NOT identify a message. First-seen carried history may be retained once as input context with unknown execution provenance; it SHALL NOT become a captured execution, usage contribution or competence sample. Unproven continuation, rewriting, shortening and forks remain explicit and cannot borrow another branch's attribution. Canonical model requests and actual delivery remain unchanged. The archive does not retain complete per-request input snapshots, system/developer/tool-definition snapshots, opaque protocol state or original streaming-fragment/frame boundaries. Three-question decisions, frozen assessment rubrics/membership, real execution models and request accounting SHALL retain their existing meaning. Partial accepted output and missing capture SHALL remain distinguishable from complete content, expiry and deletion. Different actual Attempts SHALL NOT be merged merely because they reuse a block index or logical tool ID.
 
 #### Scenario: Tool response is followed by a later final answer
 
@@ -146,7 +140,37 @@ Recorded plan identity follows [route history](../request-routing-history/spec.m
   from user-turn projection. Historical records without that marker remain
   unclassified; missing purpose evidence cannot hide an ordinary request.
 
+#### Scenario: Repeated carried history is not another execution
+
+- **WHEN** a verified conversation repeatedly carries an unchanged prefix and appends new activity
+- **THEN** the archive retains the logical history without per-request prefix copies, retains each new input/output and every actual request receipt, and does not duplicate usage or score membership
+
+#### Scenario: First-seen context and identical new messages
+
+- **WHEN** an initial request carries old assistant context and later two distinct turns send identical text
+- **THEN** old context is available without invented executing-model attribution; both distinct new turns remain visible, ordered and independently attributed
+
+#### Scenario: Verified failed native request is retried
+
+- **WHEN** a unique failed-before-output native request is retried with the same verified activation, complete input and setup
+- **THEN** its already observed input remains one occurrence referenced by the retry, both actual requests retain their receipts and execution membership, and content ingestion does not create an immutable-identity conflict; changed or ambiguous requests cannot use this shortcut
+
+#### Scenario: Accepted output survives semantic coalescing
+
+- **WHEN** streaming text/reasoning, tool arguments and a final snapshot arrive or delivery is interrupted
+- **THEN** semantic text and tool identity/order remain exact without duplicate final text; contradictory snapshots or missing accepted ranges remain partial and no upstream-only content becomes accepted output
+
+#### Scenario: Scores do not depend on request snapshots
+
+- **WHEN** a verified multi-request stage is later assessed while its body is represented semantically
+- **THEN** the same frozen selection/rubric, exact covered membership, competence score and actual execution-model attribution are retained; imported history does not extend the score
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/322#issuecomment-6559416085
+
 ### Requirement: Titles and folded context do not rewrite recorded content
+
+HiRoute SHALL derive titles and fold retained context without modifying captured semantic bytes.
 
 Session title comes from the first readable real user input in request/message
 order. Empty messages and standalone fully matched trimmed
@@ -177,12 +201,20 @@ complete environment block may be consumed with that setup prefix, while remaini
 real text supplies the title. Mere mentions or malformed/unclosed setup cannot hide
 a user question. Captured bytes remain expandable and unchanged.
 
-Body may initially fold standalone Agent context, complete leading reminders,
-consecutive system/developer content, and tool definitions at their original location.
-Users can expand captured original text. Real user/assistant messages cannot be
-hidden by partial-tag guesses. Incomplete pagination/search-anchor context keeps raw
-text until safe interpretation is possible. Folding/title extraction changes neither
-model request, search offsets, nor audit data.
+Body may initially fold retained standalone Agent context and complete leading reminders. Users can expand captured semantic text. Unarchived setup, tool definitions and opaque protocol state are not fabricated as available or classified as accidental capture loss. Real user/assistant messages cannot be hidden by partial-tag guesses. Incomplete pagination/search-anchor context keeps raw text until safe interpretation is possible. Folding/title extraction changes neither model request, retained semantic bytes, nor search offsets. A request body view represents recorded new activity and any explicit first-seen input context, not its complete historical model input.
+
+#### Scenario: Fold only retained semantic context
+
+- **WHEN** a retained message begins with setup context or a request omits unarchived setup
+- **THEN** title extraction retains its current conservative matching rules; captured semantic text remains expandable and no complete request snapshot or missing unarchived setup is invented
+
+#### Scenario: Referenced input is incomplete
+
+- **WHEN** an excerpt follows a retained input reference whose source capture, selected part or pagination is incomplete or no longer readable
+- **THEN** readable prefixes do not establish complete recorded content; the excerpt preserves the incomplete state and existing refresh behavior until complete or explicit deletion evidence is available
+
+Source SPEC comments:
+- https://github.com/higress-group/HiRoute/issues/322#issuecomment-6559416085
 
 ### Requirement: Turn changes and request relay have different identities
 

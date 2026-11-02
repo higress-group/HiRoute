@@ -9,7 +9,7 @@ pub const LIFECYCLE_FACT_SCHEMA: &str = "hiroute.gateway.lifecycle-fact-envelope
 /// its presence is state, not a second wire version.
 pub const EXECUTION_FACT_SCHEMA: &str = "hiroute.observation.execution-fact-envelope/v3";
 pub const CONVERSATION_CONTENT_SCHEMA: &str =
-    "hiroute.observation.conversation-content-envelope/v2";
+    "hiroute.observation.conversation-content-envelope/v3";
 pub const OTEL_GEN_AI_SCHEMA: &str = "hiroute.otel.gen-ai-mapping/v1";
 pub const OBSERVATION_ACK_SCHEMA: &str = "hiroute.observation.ack/v2";
 pub const OBSERVATION_NACK_SCHEMA: &str = "hiroute.observation.nack/v1";
@@ -384,6 +384,8 @@ pub struct ConversationContentEnvelopeV1 {
     pub message_ordinal: Option<u32>,
     pub part_ordinal: Option<u32>,
     pub chunk_ordinal: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture: Option<hiroute_domain::ObservationCaptureMetadataV1>,
     pub transport_frame_id: Option<String>,
     pub canonical_media_type: Option<String>,
     pub canonical_bytes_base64: Option<String>,

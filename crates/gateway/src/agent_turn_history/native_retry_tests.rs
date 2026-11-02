@@ -66,6 +66,11 @@ fn failed_native_retry_reuses_decision_and_captures_both_actual_requests_for_nex
     };
     assert_eq!(retry.key, first.key);
     assert_eq!(retry.agent_turn_id, first.agent_turn_id);
+    assert_eq!(
+        retry.capture_input_start,
+        Some(input.messages.len()),
+        "a verified retry refers to its original input instead of capturing it again"
+    );
     assert_eq!(inherited.branch_id, "regular");
     assert!(
         !retry.allow_affinity,
@@ -182,6 +187,7 @@ fn equal_input_does_not_merge_new_activations_changed_setup_or_unproved_delivery
             panic!("{case} must remain an independent classification")
         };
         assert_ne!(ticket.key, first.key, "{case}");
+        assert_eq!(ticket.capture_input_start, None, "{case}");
         store.abort(&ticket);
         if case == "pending" {
             store.abort(&first);

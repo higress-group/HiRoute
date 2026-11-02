@@ -47,6 +47,10 @@ impl RequestObservation {
         kind: &str,
         value: &Value,
     ) -> Result<(), ()> {
+        if self.content_capture_failed() {
+            return Err(());
+        }
+        let _drain = super::super::PartDrain::new(self, false);
         let mut measured = DigestWriter::new(&self.inner.key);
         {
             let mut cursor = CanonicalJsonReplayCursor::new(value, replay);

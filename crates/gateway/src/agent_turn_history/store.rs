@@ -514,6 +514,7 @@ impl AgentTurnHistoryStore {
             }
             inner.note_peak();
             let ticket = AgentTurnTicket {
+                capture_input_start: None,
                 key,
                 entry_token,
                 revision: 1,
@@ -676,6 +677,7 @@ impl AgentTurnHistoryStore {
                     retry_setup: analyzed.retry_setup,
                 };
                 let ticket = AgentTurnTicket {
+                    capture_input_start: None,
                     key: key.clone(),
                     entry_token: entry.entry_token,
                     revision: entry.revision,
@@ -834,6 +836,7 @@ impl AgentTurnHistoryStore {
                 retry_setup: analyzed.retry_setup,
             };
             let ticket = AgentTurnTicket {
+                capture_input_start: None,
                 key: key.clone(),
                 entry_token: entry.entry_token,
                 revision: entry.revision,

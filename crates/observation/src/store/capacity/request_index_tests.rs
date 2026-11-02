@@ -149,7 +149,7 @@ fn current_store_reopen_installs_request_seek_indexes_without_changing_rows_or_p
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(version, "5");
+    assert_eq!(version, "6");
 }
 
 #[test]

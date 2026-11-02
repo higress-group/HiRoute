@@ -1,5 +1,5 @@
-//! Format admission only. Production startup seals legacy history before opening
-//! the fresh current writer; historical rows and objects are never converted here.
+//! Read-only format admission. Known old observations are reset by startup;
+//! historical rows and objects are never converted here.
 #[cfg(test)]
 mod tests;
 use crate::writer::ObservationStoreError as Error;
@@ -13,6 +13,11 @@ pub(crate) fn version(root: &Path) -> Result<Option<String>, Error> {
     if !root.join("activity.db").exists() {
         return Ok(None);
     }
+    // SQLite storage admits regular, reparse-free files. Existing Windows SQL
+    // files may inherit their parent's private DACL rather than carry an atomic
+    // private-file descriptor; reading a format marker must not adopt/repair it.
+    hiroute_platform::private_fs::open_regular_file(&root.join("activity.db"))
+        .map_err(|_| Error::Corrupt)?;
     let db =
         Connection::open_with_flags(root.join("activity.db"), OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|_| Error::Corrupt)?;
@@ -89,28 +94,32 @@ pub(crate) fn required(root: &Path) -> Result<bool, Error> {
             }
             Ok(false)
         }
-        Some("5") => {
-            validate_tables(root, true)?;
+        Some("6") => {
+            let db = Connection::open_with_flags(
+                root.join("activity.db"),
+                OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .map_err(|_| Error::Corrupt)?;
+            super::schema::validate_current(&db)?;
             Ok(false)
         }
         Some("4") => {
-            validate_tables(root, false)?;
+            validate_legacy_tables(root)?;
             Ok(true)
         }
-        Some("1" | "2" | "3") => Ok(true),
+        Some("1" | "2" | "3" | "5") => Ok(true),
         _ => Err(Error::Corrupt),
     }
 }
 
-fn validate_tables(root: &Path, current: bool) -> Result<(), Error> {
+fn validate_legacy_tables(root: &Path) -> Result<(), Error> {
     let db =
         Connection::open_with_flags(root.join("activity.db"), OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|_| Error::Corrupt)?;
-    let count:u64=db.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name IN('logical_requests','observation_events','observation_checkpoints','observation_feedback_v2','conversation_content_events_v2','content_blobs_v2','content_instances_v2')",[],|r|r.get(0)).map_err(|_|Error::Corrupt)?;
-    if count != 7 {
+    let count:u64=db.query_row("SELECT COUNT(*) FROM sqlite_schema WHERE type='table' AND name IN('logical_requests','observation_checkpoints','content_blobs_v2','content_instances_v2')",[],|r|r.get(0)).map_err(|_|Error::Corrupt)?;
+    if count != 4 {
         return Err(Error::Corrupt);
     }
-    if current && !db.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name='observation_streams_v5')",[],|r|r.get::<_,bool>(0)).map_err(|_|Error::Corrupt)?{return Err(Error::Corrupt);}
     Ok(())
 }
 

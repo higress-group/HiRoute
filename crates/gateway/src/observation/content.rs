@@ -19,9 +19,48 @@ const CONTENT_CHUNK_BYTES: usize = 64 * 1024;
 const CANONICALIZATION_VERSION: &str = "hiroute.model-request-ir/v1";
 const CANONICAL_RESPONSE_EVENT_MEDIA_TYPE: &str =
     "application/vnd.hiroute.model-stream-event+json;version=1";
+const SEMANTIC_TERMINAL_MEDIA_TYPE: &str =
+    "application/vnd.hiroute.semantic-terminal+json;version=1";
+
+/// Finish an already admitted part if later optional work loses its queue slot.
+/// Otherwise a failure between two chunks would strand a complete accepted
+/// semantic segment as unreadable assembly. Drop restores nested terminal drain.
+struct PartDrain<'a> {
+    request: &'a RequestObservation,
+    response: bool,
+    previous: bool,
+}
+impl<'a> PartDrain<'a> {
+    fn new(request: &'a RequestObservation, response: bool) -> Self {
+        let mut state = request.lock_state();
+        let flag = if response {
+            &mut state.response_content_draining
+        } else {
+            &mut state.request_content_draining
+        };
+        let previous = std::mem::replace(flag, true);
+        Self {
+            request,
+            response,
+            previous,
+        }
+    }
+}
+impl Drop for PartDrain<'_> {
+    fn drop(&mut self) {
+        let mut state = self.request.lock_state();
+        if self.response {
+            state.response_content_draining = self.previous;
+        } else {
+            state.request_content_draining = self.previous;
+        }
+    }
+}
 
 #[path = "content/request.rs"]
 mod request;
+#[path = "content/semantic.rs"]
+pub(super) mod semantic;
 
 #[derive(Default)]
 pub(super) struct CanonicalFrameDelivery {
@@ -48,6 +87,15 @@ impl CanonicalFrameDelivery {
 }
 
 impl RequestObservation {
+    pub(super) fn content_capture_failed(&self) -> bool {
+        self.content_background
+            && self
+                .inner
+                .async_content
+                .get()
+                .is_some_and(|status| status.failed())
+    }
+
     pub(super) fn terminal_content(
         &self,
         direction: &'static str,
@@ -227,6 +275,25 @@ impl RequestObservation {
         if !self.captures_content() {
             return;
         }
+        if direction == "response_delivered" {
+            let semantic = self.lock_state().semantic_response.take();
+            if let Some(mut semantic) = semantic {
+                self.lock_state().response_content_draining = true;
+                for event in semantic.finish() {
+                    self.append_response_event_run(&semantic.attempt, "semantic-terminal", event)
+                        .await;
+                }
+                self.lock_state().response_content_draining = false;
+                if semantic.partial && phase == "finish" {
+                    return Box::pin(self.terminal_content_run(
+                        direction,
+                        "abort",
+                        Some("conflicting_semantic_output"),
+                    ))
+                    .await;
+                }
+            }
+        }
         let (started, already_terminal, transcript, attempt) = {
             let mut state = self.lock_state();
             match direction {
@@ -326,6 +393,24 @@ impl RequestObservation {
     }
 
     fn message_instance_id(&self, direction: &str, message_ordinal: u32, role: &str) -> String {
+        if direction == "request_input"
+            && let Some(selection) = self.inner.input_capture.get()
+            && let Some(current) = selection.current_ordinal
+            && message_ordinal >= current
+            && let Some(turn) = &selection.turn_anchor
+        {
+            return stable_id(
+                "message",
+                &self.inner.key,
+                b"semantic-input-instance",
+                &[
+                    self.metadata().conversation_id.as_bytes(),
+                    turn.as_bytes(),
+                    &(message_ordinal - current).to_be_bytes(),
+                    role.as_bytes(),
+                ],
+            );
+        }
         let parent_transcript_root = self.content_parent_root(direction);
         stable_id(
             "message",
@@ -343,6 +428,27 @@ impl RequestObservation {
                 role.as_bytes(),
             ],
         )
+    }
+
+    fn capture_metadata(
+        &self,
+        direction: &str,
+        ordinal: Option<u32>,
+    ) -> Option<hiroute_domain::ObservationCaptureMetadataV1> {
+        if direction != "request_input" {
+            return None;
+        }
+        let selection = self.inner.input_capture.get()?;
+        Some(hiroute_domain::ObservationCaptureMetadataV1 {
+            context_only: ordinal.is_some_and(|n| n < selection.activity_ordinal),
+            boundary_verified: selection.boundary_verified,
+            input_anchor_id: selection.current_ordinal.and_then(|ordinal| {
+                hiroute_domain::MessageInstanceId::parse(
+                    self.message_instance_id(direction, ordinal, "user"),
+                )
+                .ok()
+            }),
+        })
     }
 
     fn content_parent_root(&self, direction: &str) -> Option<String> {
@@ -399,7 +505,11 @@ impl RequestObservation {
 
     async fn emit_content_run(&self, event: ContentEvent<'_>) {
         if self.content_background
-            && event.phase != "abort"
+            && !matches!(event.phase, "begin" | "abort")
+            && !{
+                let state = self.lock_state();
+                state.response_content_draining || state.request_content_draining
+            }
             && self
                 .inner
                 .async_content
@@ -412,6 +522,7 @@ impl RequestObservation {
         let request_id = self.metadata().request_id.clone();
         let key = self.inner.key;
         let event_kind = event.phase;
+        let capture = self.capture_metadata(event.direction, event.message_ordinal);
         let occurred_at_unix_nanos = self.content_occurred_at.unwrap_or_else(unix_nanos);
         let credit_bytes = event.record_credit_bytes(&correlation);
         let control = event.phase != "append";
@@ -459,6 +570,7 @@ impl RequestObservation {
                         message_ordinal: event.message_ordinal,
                         part_ordinal: event.part_ordinal,
                         chunk_ordinal: event.chunk_ordinal,
+                        capture,
                         transport_frame_id: event.transport_frame_id,
                         canonical_media_type: event.canonical_media_type,
                         canonical_bytes_base64: event.canonical_bytes.map(base64_encode),
@@ -600,58 +712,123 @@ impl RequestObservation {
         frame_id: &str,
         delivery: CanonicalFrameDelivery,
     ) {
-        if self.captures_content() {
-            for event in delivery.events {
-                let Some(kind) = canonical_response_content_kind(&event.event) else {
-                    continue;
-                };
-                let Ok(bytes) = serialize_observed_response_event(&event) else {
+        if !self.captures_content() {
+            return;
+        }
+        let existing_semantic = self.lock_state().semantic_response.take();
+        let mut semantic = match existing_semantic {
+            Some(value) => value,
+            None => {
+                let Some(mut reservation) = self
+                    .inner
+                    .channels
+                    .content
+                    .reserve_work(semantic::RESERVATION_BYTES)
+                else {
                     self.terminal_content_run(
                         "response_delivered",
                         "abort",
-                        Some("canonical_response_serialization_failed"),
+                        Some("content_capture_queue_unavailable"),
                     )
                     .await;
                     return;
                 };
-                let part_ordinal = {
-                    let mut state = self.lock_state();
-                    let ordinal = state.response_part_ordinal;
-                    state.response_part_ordinal = ordinal.saturating_add(1);
-                    ordinal
-                };
-                let whole_digest =
-                    self.content_blob_digest(CANONICAL_RESPONSE_EVENT_MEDIA_TYPE, &bytes);
-                let message_instance_id =
-                    self.message_instance_id("response_delivered", 0, "assistant");
-                let content_ref = ContentRefV1 {
-                    content_id: self.content_id(&message_instance_id, part_ordinal, &whole_digest),
-                    digest: whole_digest.clone(),
-                    byte_count: bytes.len() as u64,
-                    media_type: CANONICAL_RESPONSE_EVENT_MEDIA_TYPE.into(),
-                };
-                emit_content_ref(self, "response_delivered", content_ref.clone());
-                for (index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {
-                    self.append_content_chunk_run(ContentChunk {
-                        direction: "response_delivered",
-                        attempt_id: Some(attempt_id),
-                        message_ordinal: 0,
-                        part_ordinal,
-                        role: "assistant",
-                        kind,
-                        media_type: CANONICAL_RESPONSE_EVENT_MEDIA_TYPE,
-                        bytes: chunk,
-                        public_ref: Some(content_ref.clone()),
-                        whole_digest: &whole_digest,
-                        message_instance_id: &message_instance_id,
-                        content_id: &content_ref.content_id,
-                        starts_content: index == 0,
-                        transport_frame_id: Some(frame_id),
-                        downstream_delivery: Some("full_frame_transport_accepted"),
-                    })
+                // This is active coalescing state, not another queued source.
+                // Keep it charged without consuming the pending job credits.
+                self.inner
+                    .channels
+                    .content
+                    .activate_content_work(&mut reservation, 0)
                     .await;
-                }
+                semantic::SemanticResponse::new(attempt_id, self.inner.key, reservation)
             }
+        };
+        if semantic.attempt != attempt_id {
+            // Output from distinct actual attempts cannot share a semantic block.
+            for event in semantic.finish() {
+                self.append_response_event_run(&semantic.attempt, frame_id, event)
+                    .await;
+            }
+            self.terminal_content_run(
+                "response_delivered",
+                "abort",
+                Some("content_attempt_changed"),
+            )
+            .await;
+            return;
+        }
+        for event in delivery.events {
+            for event in semantic.accept(event) {
+                self.append_response_event_run(attempt_id, frame_id, event)
+                    .await;
+            }
+        }
+        self.lock_state().semantic_response = Some(semantic);
+    }
+
+    async fn append_response_event_run(
+        &self,
+        attempt_id: &str,
+        _frame_id: &str,
+        semantic: semantic::SemanticEvent,
+    ) {
+        let draining = self.lock_state().response_content_draining;
+        if self.content_capture_failed() && !draining {
+            return;
+        }
+        let event = &semantic.event;
+        let Some(kind) = canonical_response_content_kind(&event.event) else {
+            return;
+        };
+        let media_type = if semantic.text_omitted {
+            SEMANTIC_TERMINAL_MEDIA_TYPE
+        } else {
+            CANONICAL_RESPONSE_EVENT_MEDIA_TYPE
+        };
+        let Ok(bytes) = serialize_observed_response_event(event, semantic.text_omitted) else {
+            Box::pin(self.terminal_content_run(
+                "response_delivered",
+                "abort",
+                Some("canonical_response_serialization_failed"),
+            ))
+            .await;
+            return;
+        };
+        let _drain = PartDrain::new(self, true);
+        let part_ordinal = {
+            let mut state = self.lock_state();
+            let ordinal = state.response_part_ordinal;
+            state.response_part_ordinal = ordinal.saturating_add(1);
+            ordinal
+        };
+        let whole_digest = self.content_blob_digest(media_type, &bytes);
+        let message_instance_id = self.message_instance_id("response_delivered", 0, "assistant");
+        let content_ref = ContentRefV1 {
+            content_id: self.content_id(&message_instance_id, part_ordinal, &whole_digest),
+            digest: whole_digest.clone(),
+            byte_count: bytes.len() as u64,
+            media_type: media_type.into(),
+        };
+        emit_content_ref(self, "response_delivered", content_ref.clone());
+        for (index, chunk) in bytes.chunks(CONTENT_CHUNK_BYTES).enumerate() {
+            self.append_content_chunk_run(ContentChunk {
+                direction: "response_delivered",
+                attempt_id: Some(attempt_id),
+                message_ordinal: 0,
+                part_ordinal,
+                role: "assistant",
+                kind,
+                media_type,
+                bytes: chunk,
+                public_ref: Some(content_ref.clone()),
+                whole_digest: &whole_digest,
+                message_instance_id: &message_instance_id,
+                content_id: &content_ref.content_id,
+                starts_content: index == 0,
+                transport_frame_id: None,
+                downstream_delivery: Some("full_frame_transport_accepted"),
+            })
+            .await;
         }
     }
 }
@@ -661,8 +838,17 @@ impl RequestObservation {
 /// runtime ledger but never cross the conversation-content port.
 fn serialize_observed_response_event(
     event: &ModelStreamEventV1,
+    text_omitted: bool,
 ) -> Result<Vec<u8>, serde_json::Error> {
     let mut projected = serde_json::to_value(event)?;
+    if text_omitted {
+        projected["schema_version"] = "hiroute.semantic-terminal/v1".into();
+        projected["text_source"] = "accepted_segments".into();
+        projected["event"]
+            .as_object_mut()
+            .expect("serialized model event")
+            .remove("text");
+    }
     if matches!(
         event.event,
         ModelEvent::ToolCallStarted { .. } | ModelEvent::WebSearch { .. }

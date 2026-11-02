@@ -292,10 +292,12 @@ pub(super) fn incoming_evidence(
     }
     let mut hash = BoundaryHasher::default();
     let mut count = 0;
+    let mut consumed_end = start;
     for (index, message) in request.messages.iter().enumerate().skip(start) {
         if message.role != MessageRole::Assistant {
             break;
         }
+        consumed_end = index.saturating_add(1);
         if native.is_some_and(|items| !items[index].modeled) {
             return None;
         }
@@ -433,6 +435,7 @@ pub(super) fn incoming_evidence(
     }
     hash.finish().map(|mut evidence| {
         evidence.contextual = request.native_only;
+        evidence.consumed_end = consumed_end;
         evidence
     })
 }
@@ -469,6 +472,7 @@ fn reasoning_text<'a>(
 /// exact; plaintext encoding and visible-only associations remain uncertain.
 #[derive(Clone, Copy)]
 pub(super) struct BoundaryEvidence {
+    pub(super) consumed_end: usize,
     full: [u8; 32],
     plaintext_full: [u8; 32],
     visible: Option<[u8; 32]>,
@@ -554,6 +558,7 @@ impl BoundaryHasher {
 
     fn finish(self) -> Option<BoundaryEvidence> {
         self.content.then(|| BoundaryEvidence {
+            consumed_end: 0,
             full: self.full.finalize(),
             plaintext_full: self.plaintext_full.finalize(),
             visible: self.visible_content.then(|| self.visible.finalize()),

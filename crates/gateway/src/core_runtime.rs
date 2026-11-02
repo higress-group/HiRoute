@@ -742,10 +742,13 @@ impl ProductionGatewayRuntime {
                 externalize_elapsed,
                 prevalidate_elapsed,
             );
-            request_observation.record_input_selection(
-                routing_view.excerpt_selection(&canonical_request, current_input_origin_unverified),
-            );
-            request_observation.capture_request_async(&canonical_request, &replay);
+            let input_selection =
+                routing_view.excerpt_selection(&canonical_request, current_input_origin_unverified);
+            let input_capture_current = input_selection.message_ordinal.and_then(|ordinal| {
+                (ordinal as usize).checked_sub(canonical_request.instructions.len())
+            });
+            request_observation.record_input_selection(input_selection);
+            request_observation.canonical_request_accepted();
             let mut hold_ticket;
             let mut agent_turn_guard = None;
             let mut correlated_branch = None;
@@ -909,6 +912,17 @@ impl ProductionGatewayRuntime {
                     .map(Box::new);
                 None
             };
+            request_observation.select_input_capture(
+                &canonical_request,
+                agent_turn_guard
+                    .as_ref()
+                    .and_then(|guard| guard.ticket().capture_input_start),
+                input_capture_current,
+                agent_turn_guard
+                    .as_ref()
+                    .map(|guard| guard.ticket().agent_turn_id.clone()),
+            );
+            request_observation.capture_request_async(&canonical_request, &replay);
             drop(routing_view);
             set_phase(LocalPhase::Prepare);
             let prepared_planner_input =

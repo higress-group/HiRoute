@@ -616,7 +616,15 @@ impl RuntimeFixture {
                 classified_route: true,
                 rest_classifier: true,
                 decision_branch_preset: Some(true),
-                observation: Some(ObservationFaults::healthy()),
+                // The complete-capture reference retains two initial histories
+                // in RAM. The 512 KiB fault-fixture ceiling cannot hold even one
+                // tool-rich source lease. Use 4 MiB here (production Content is
+                // 128 MiB); explicit pressure cases keep their small capacities
+                // and require a disclosed gap without blocking forwarding.
+                observation: Some(ObservationFaults {
+                    queue_bytes: 4 * 1024 * 1024,
+                    ..ObservationFaults::healthy()
+                }),
                 test_control: true,
                 diagnostic_level: Some("info"),
                 replay_threshold,

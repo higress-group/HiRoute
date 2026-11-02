@@ -9,6 +9,8 @@ pub struct ObservationCatalogQueryV2 {
     pub cursor: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub include_input_selection: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub include_semantic_metadata: bool,
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationCatalogPageV2 {
@@ -18,6 +20,8 @@ pub struct ObservationCatalogPageV2 {
     pub roots_partial: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_selection: Option<super::RequestInputSelectionV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_anchor: Option<ObservationInputAnchorV1>,
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObservationCatalogEntryV2 {
@@ -35,6 +39,10 @@ pub struct ObservationCatalogEntryV2 {
     pub byte_count: u64,
     pub state: String,
     pub downstream_delivery: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capture: Option<super::ObservationCaptureMetadataV1>,
 }
 #[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -56,4 +64,12 @@ pub struct ObservationTranscriptRootV2 {
     pub fork_id: String,
     pub direction: String,
     pub state: String,
+}
+
+/// An authorized, still-live input occurrence; never a transcript snapshot.
+#[derive(schemars::JsonSchema, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservationInputAnchorV1 {
+    pub source_request_id: LogicalRequestId,
+    pub message_occurrence_id: String,
 }

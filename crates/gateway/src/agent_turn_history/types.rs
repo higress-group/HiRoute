@@ -161,6 +161,8 @@ pub(crate) enum ExecutionAttribution {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AgentTurnTicket {
+    /// End of the exact, unambiguous accepted response in this request.
+    pub(crate) capture_input_start: Option<usize>,
     pub(crate) key: AgentTurnHistoryKey,
     pub(crate) entry_token: u64,
     pub(crate) revision: u64,

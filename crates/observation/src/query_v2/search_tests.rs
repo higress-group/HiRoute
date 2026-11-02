@@ -288,6 +288,7 @@ fn catalog_marks_aborted_capture_even_when_all_available_chunks_are_complete() {
         db.execute("INSERT INTO transcript_roots_v2 VALUES(?1,'aborted-root','session','request','response_delivered','fork',NULL,'abort',100000000)",[WorkspaceId::DEFAULT]).unwrap();
     }
     let query = ObservationCatalogQueryV2 {
+        include_semantic_metadata: false,
         include_input_selection: false,
         request_id: LogicalRequestId::parse("request").unwrap(),
         limit: 1,
@@ -338,6 +339,7 @@ fn catalog_and_session_require_each_completed_requests_input_and_delivered_respo
         db.execute("INSERT INTO transcript_roots_v2 VALUES(?1,'input-root','session','request','request_input','input-fork',NULL,'finish',100000000)",[WorkspaceId::DEFAULT]).unwrap();
     }
     let query = ObservationCatalogQueryV2 {
+        include_semantic_metadata: false,
         include_input_selection: false,
         request_id: LogicalRequestId::parse("request").unwrap(),
         limit: 1,
@@ -373,6 +375,7 @@ fn catalog_and_session_require_each_completed_requests_input_and_delivered_respo
     // the first request's finished roots. This also covers an empty catalog.
     store.connection.lock().execute("INSERT INTO logical_requests(workspace_id,request_id,session_id,turn_id,started_at_ms,finished_at_ms,outcome) VALUES(?1,'missing','session','internal',201,300,'accepted')",[WorkspaceId::DEFAULT]).unwrap();
     let missing = ObservationCatalogQueryV2 {
+        include_semantic_metadata: false,
         include_input_selection: false,
         request_id: LogicalRequestId::parse("missing").unwrap(),
         ..query
@@ -423,10 +426,11 @@ fn catalog_preserves_occurrences_and_ancestry_stops_at_cycles() {
         for (occurrence, ordinal) in [("occurrence", 0), ("again", 1)] {
             db.execute("INSERT INTO content_message_instances_v2(workspace_id,message_instance_id,conversation_id,request_id,direction,fork_id,message_ordinal,message_role,occurred_at_unix_nanos) VALUES(?1,?2,'session','request','request','fork',?3,'user',100000000)",params![WorkspaceId::DEFAULT,occurrence,ordinal]).unwrap();
         }
-        db.execute("INSERT INTO content_instances_v2 SELECT workspace_id,'content-again','again',request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2 WHERE content_id='content'",[]).unwrap();
+        db.execute("INSERT INTO content_instances_v2(workspace_id,content_id,message_instance_id,request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos) SELECT workspace_id,'content-again','again',request_id,direction,fork_id,part_ordinal,content_kind,canonical_media_type,content_blob_digest,expected_byte_count,has_content_ref,transport_frame_id,downstream_delivery,accumulated_byte_count,state,created_at_unix_nanos FROM content_instances_v2 WHERE content_id='content'",[]).unwrap();
         db.execute("INSERT INTO transcript_roots_v2 VALUES(?1,'root','session','request','request','fork','root','finish',100000000)",[WorkspaceId::DEFAULT]).unwrap();
     }
     let mut q = ObservationCatalogQueryV2 {
+        include_semantic_metadata: false,
         include_input_selection: false,
         request_id: LogicalRequestId::parse("request").unwrap(),
         limit: 1,
@@ -487,6 +491,7 @@ fn catalog_keeps_canonical_kind_but_search_excludes_internal_state() {
             .observed_catalog(
                 &reader(true),
                 &ObservationCatalogQueryV2 {
+                    include_semantic_metadata: false,
                     include_input_selection: false,
                     request_id: LogicalRequestId::parse("request").unwrap(),
                     limit: 10,

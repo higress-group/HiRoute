@@ -71,6 +71,7 @@ pub struct RequestObservation {
 }
 
 pub(super) struct RequestObservationInner {
+    pub(super) input_capture: OnceLock<super::content_work::InputCaptureSelection>,
     pub(super) async_content: OnceLock<Arc<super::content_work::ContentStatus>>,
     pub(super) content_spool: Arc<super::producer::ContentSpool>,
     pub(super) agent_turn_output: OnceLock<(
@@ -93,6 +94,10 @@ pub(super) struct RequestObservationInner {
 
 #[derive(Default)]
 pub(super) struct RequestObservationState {
+    pub(super) canonical_request_recorded: bool,
+    pub(super) response_content_draining: bool,
+    pub(super) request_content_draining: bool,
+    pub(super) semantic_response: Option<super::content::semantic::SemanticResponse>,
     pub(super) managed_cpa: bool,
     #[cfg(all(unix, debug_assertions))]
     pub(super) private_capture: Option<(
@@ -231,6 +236,7 @@ impl RequestObservation {
             content_background: false,
             content_run: None,
             inner: Arc::new(RequestObservationInner {
+                input_capture: OnceLock::new(),
                 async_content: OnceLock::new(),
                 content_spool: Arc::new(super::producer::ContentSpool::default()),
                 agent_turn_output: OnceLock::new(),

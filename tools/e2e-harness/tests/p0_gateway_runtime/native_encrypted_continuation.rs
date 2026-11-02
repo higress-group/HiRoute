@@ -308,28 +308,19 @@ fn assert_observed_retention(fixture: &RuntimeFixture, decisions: &[&Value], opa
         std::thread::sleep(Duration::from_millis(10));
     };
     let mut response_parts = BTreeMap::<String, Vec<(u64, Vec<u8>)>>::new();
-    let mut a2_opaque_parts = BTreeMap::<String, Vec<(u64, Vec<u8>)>>::new();
     for row in &records {
         assert_ne!(row["phase"], "abort", "content capture aborted: {row}");
         assert!(
             row["loss_watermark"].is_null(),
             "content capture lost records: {row}"
         );
-        if row["direction"] == "response_delivered" {
-            assert_ne!(row["content_kind"], "provider_state");
-            assert!(!row.to_string().contains(opaque));
-        }
+        assert_ne!(row["content_kind"], "provider_state");
+        assert!(!row.to_string().contains(opaque));
         if row["phase"] != "append" {
             continue;
         }
         let parts = if row["direction"] == "response_delivered" {
             &mut response_parts
-        } else if row["direction"] == "request_input"
-            && row["correlation"]["request_id"] == decisions[1]["correlation"]["request_id"]
-            && row["content_kind"] == "provider_state"
-        {
-            assert_eq!(row["canonical_media_type"], "application/json");
-            &mut a2_opaque_parts
         } else {
             continue;
         };
@@ -362,17 +353,8 @@ fn assert_observed_retention(fixture: &RuntimeFixture, decisions: &[&Value], opa
             "accepted private evidence leaked into response content: {text}"
         );
     }
-    assert_eq!(
-        a2_opaque_parts.len(),
-        1,
-        "A2 must capture its actual replayed input state"
-    );
-    let bytes = joined(a2_opaque_parts.into_values().next().unwrap());
-    assert_eq!(
-        serde_json::from_slice::<Value>(&bytes).unwrap(),
-        json!(opaque),
-        "request capture must resolve Replay bytes, not retain the locator"
-    );
+    // Exact opaque bytes are asserted on the forwarded native history above;
+    // format-6 semantic archives deliberately exclude that protocol state.
     assert!(records.iter().any(|row| row["direction"] == "request_input"
         && row["correlation"]["request_id"] == decisions[1]["correlation"]["request_id"]
         && row["phase"] == "finish"));

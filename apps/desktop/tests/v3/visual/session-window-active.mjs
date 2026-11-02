@@ -26,6 +26,25 @@ try {
         process.stdout.write(`${item.state === 'green' ? 'green' : 'red'}: ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
     }
+    const semanticCaptures = [];
+    for (const [width, height] of [[1200, 813], [755, 600]]) {
+      await navigate(client, new URL('session-window.html', baseUrl).href, { width, height });
+      await waitFor(client, 'Boolean(window.sessionWindow)');
+      const batch = await evaluate(client, `import('/session-window-scenarios.mjs').then(module => module.runSemanticCaptureScenario())`);
+      if (batch.failed) throw new Error('Semantic capture scenario failed before visual inspection');
+      for (const language of ['zh', 'en']) {
+        await evaluate(client, `window.sessionWindow.language = ${JSON.stringify(language)}; window.sessionWindow.bumpRefresh()`);
+        await waitFor(client, `document.querySelector('.transcript-body')?.innerText.includes(${JSON.stringify(language === 'zh' ? '历史上下文 · 执行模型未知' : 'Historical context · execution model unknown')})`);
+        const geometry = await evaluate(client, `(() => {
+          const elements = [...document.querySelectorAll('.transcript-body .message-role,.transcript-body .message-content')].filter(el => el.getClientRects().length);
+          return { count: elements.length, overflow: elements.some(el => el.scrollWidth > el.clientWidth + 1), outside: elements.some(el => { const r=el.getBoundingClientRect(); return r.left < -1 || r.right > innerWidth + 1; }) };
+        })()`);
+        const screenshot = `semantic-capture-${language}-${width}x${height}.png`;
+        const capture = await client.send('Page.captureScreenshot', { format: 'png' });
+        await writeFile(path.join(outputRoot, screenshot), Buffer.from(capture.data, 'base64'));
+        semanticCaptures.push({ screenshot, geometry, state: geometry.count > 0 && !geometry.overflow && !geometry.outside ? 'green' : 'red' });
+      }
+    }
     const agentLabels = [];
     for (const [width, height] of [[1200, 813], [755, 600]]) for (const language of ['zh', 'en']) {
       await navigate(client, new URL('session-window.html', baseUrl).href, { width, height });
@@ -115,11 +134,12 @@ try {
       evidence: 'React components + mock IPC (window and cursor binding mirrored) only; not native/Tauri and not the real daemon',
       checks,
       agentLabels,
+      semanticCaptures,
       layout,
       summary: { total: checks.length, green: checks.filter(check => check.state === 'green').length, red: checks.filter(check => check.state === 'red').length },
     };
     await writeFile(path.join(outputRoot, 'session-window-report.json'), `${JSON.stringify(report, null, 2)}\n`);
-    if (report.summary.total !== count || report.summary.red > 0 || [...layout, ...agentLabels].some(item => item.state !== 'green')) process.exitCode = 1;
+    if (report.summary.total !== count || report.summary.red > 0 || [...layout, ...agentLabels, ...semanticCaptures].some(item => item.state !== 'green')) process.exitCode = 1;
   } finally {
     client.close();
   }

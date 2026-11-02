@@ -276,27 +276,27 @@ released Windows-to-Windows upgrade.
 
 ### Requirement: Share repeated observation storage without changing logical evidence
 
-HiRoute SHALL store repeated retained content and common observation metadata through shared representations rather than independent complete copies for every occurrence. Equal content may share bytes only within the existing digest and authorization boundaries. Each request, message, content/event identity, original order, canonical digest, delivered-frame association, exact retained ACK/NACK meaning and actual model/usage attribution SHALL remain independently recoverable. Repeated input history SHALL retain distinct request references without inventing extra execution or usage. Physical sharing SHALL preserve the existing session-history, request-routing-history and usage-and-savings contracts, including authorized original-byte content access, tool identity/pairing, explicit gaps and provider-state visibility. Sharing SHALL NOT turn a partial observation into complete evidence or merge distinct conversations, attempts or workspaces.
+HiRoute SHALL retain shared semantic bodies and the compact committed identity/progress needed for idempotent current writes, crash recovery, deletion barriers and truthful completeness. It SHALL NOT retain every content envelope, original per-event ACK/NACK value, original stream-fragment association or completed assembly chunk merely to replay an old internal delivery. Files claimed as committed SHALL be durable before their visible SQLite reference commits. Active assembly/recovery material may remain until final publication; obsolete assembly and pending delivery state SHALL then be reclaimed through the existing bounded lifecycle. A duplicate current business identity cannot append twice or change committed bytes. A stale protocol sequence outside retained commit proof SHALL be rejected or reported obsolete without mutation, invented successful acknowledgement or duplicate charging. Retained current semantic content remains exact and integrity checked. Physical sharing cannot cross workspace/grant visibility or merge conversations, branches or attempts. Optional observation failures SHALL NOT reject an otherwise serviceable model request or delay it behind unrelated history/maintenance; bounded temporary disk overflow remains available. Small terminal per-request/direction capture summaries and actual output Attempt bindings SHALL remain retained after assembly cleanup; removing protocol replay evidence SHALL NOT remove completeness or model-attribution evidence.
 
-#### Scenario: Repeated history shares storage
+#### Scenario: Duplicate commit without frozen reply archives
 
-- **WHEN** many requests contain identical tool definitions, messages or tool results
-- **THEN** the shared values are stored once per applicable storage identity with compact per-occurrence references, while each request retains its original order, identities, attribution and inspectable content.
+- **WHEN** delivery repeats after SQL commit but before the producer observes success
+- **THEN** the same current business identity commits at most once; a mismatched identity/digest cannot replace committed bytes and no original historical ACK payload is required
 
-#### Scenario: Stream events preserve their logical boundaries
+#### Scenario: Interrupted assembly has honest visibility
 
-- **WHEN** a delivered response contains small text/reasoning deltas and tool events
-- **THEN** their physical representation may be shared or compacted but the original logical events, kinds, order, accepted-delivery associations and composed answer remain unchanged.
+- **WHEN** the process exits before file durability, after file sync, after SQL commit or during completion cleanup
+- **THEN** restart exposes only the committed verified prefix or completed body, marks unavailable tail explicitly and can finish bounded orphan cleanup without inventing complete content
 
-#### Scenario: Replay a retained event after compaction
+#### Scenario: Old replay cannot resurrect expired content
 
-- **WHEN** an accepted retained event is replayed after representation changes and restart
-- **THEN** the receiver returns the same committed acknowledgement and checks its original digest/sequence identity; conflicting replays remain rejected and do not add usage or occurrences.
+- **WHEN** a previously retired delivery arrives after content-only deletion, age expiry or capacity reclamation
+- **THEN** retirement barriers prevent restored bodies, model/usage duplication and fabricated successful content delivery
 
-#### Scenario: Do not merge equal content across authority
+#### Scenario: Capture pressure does not reject routing
 
-- **WHEN** equal bytes appear in distinct logical conversations or authorization scopes
-- **THEN** physical reuse does not merge identities, grant access, change visibility, or assign one occurrence the other occurrence's execution facts.
+- **WHEN** archive memory is occupied or staging/SQLite fails
+- **THEN** existing bounded spill is used where possible; unavailable capture is recorded truthfully while the original model request/delivery and runtime assessment remain independent
 
 #### Scenario: Resolve an incoming sequence without rescanning expired gap ranges
 
@@ -305,7 +305,7 @@ HiRoute SHALL store repeated retained content and common observation metadata th
 - **AND** reopening an existing current-format store may install a derived lookup index without rewriting historical evidence or changing its format version; repeated reopen preserves the index and historical receipts.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248901316
+- https://github.com/higress-group/HiRoute/issues/322#issuecomment-6559381394
 
 ### Requirement: Compressed observations remain losslessly and boundedly accessible
 
@@ -336,7 +336,7 @@ Source SPEC comments:
 
 ### Requirement: Reclaim obsolete observation representations through one lifecycle
 
-HiRoute SHALL apply the existing confirmed deletion and seven-day detail-retention scope to every obsolete representation introduced or retained by observation storage, including content objects, event metadata, feedback/deduplication payloads, dead physical ranges where introduced, and rebuildable indices. Compact tombstones, sequence/checkpoint and conflict evidence needed to prevent replay resurrection SHALL remain authoritative. Reclamation SHALL release eligible physical storage through bounded resumable maintenance without waiting for an otherwise live stream or shared physical container to become wholly obsolete. It SHALL preserve every live reference and lawful longer-lived non-content monetary aggregate, distinguish content-only from facts-and-content deletion, and retain replay evidence until a provable retirement boundary permits its removal. Ineligibility or failed reclamation SHALL NOT be reported as completed physical release. Age alone SHALL NOT make active or unproven protocol evidence disposable, and compaction/replay SHALL NOT restore deleted bodies, membership links or precise expired detail.
+HiRoute SHALL apply the existing confirmed deletion and seven-day detail-retention scope to every obsolete representation introduced or retained by observation storage, including content objects, event metadata, feedback/deduplication payloads, dead physical ranges where introduced, and rebuildable indices. Compact tombstones, sequence/checkpoint and conflict evidence needed to prevent replay resurrection SHALL remain authoritative. Reclamation SHALL release eligible physical storage through bounded resumable maintenance without waiting for an otherwise live stream or shared physical container to become wholly obsolete. It SHALL preserve every live reference and lawful longer-lived non-content monetary aggregate, distinguish content-only from facts-and-content deletion, and retain compact committed business identity and retirement barriers needed to prevent resurrection. Ineligibility or failed reclamation SHALL NOT be reported as completed physical release. Active uncommitted assembly remains protected until committed or explicitly aborted. Complete envelopes, frozen replies and completed chunk ledgers are not long-lived retention obligations. Compaction or stale delivery SHALL NOT restore deleted bodies, membership links or precise expired detail.
 
 #### Scenario: Delete one object in shared physical storage
 
@@ -364,7 +364,7 @@ HiRoute SHALL apply the existing confirmed deletion and seven-day detail-retenti
 - **THEN** logical visibility remains enforced and bounded maintenance resumes from durable state without deleting a live reference or falsely reporting released space.
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248902164
+- https://github.com/higress-group/HiRoute/issues/322#issuecomment-6559381394
 
 ### Requirement: Reuse compatible observations without copying them for Core upgrades
 
@@ -389,35 +389,25 @@ Existing full-history and sealed-history recovery batches SHALL retain their ori
 
 ### Requirement: Seal incompatible old observation history and start a fresh generation recoverably
 
-HiRoute SHALL preserve supported incompatible old Observation history unchanged in a protected local archive and start a fresh current-format Observation store during upgrade. Startup SHALL retain the complete original storage group, keys, auxiliary state and matching old program before the cutover, preserve current configuration, credentials and routing, and avoid work proportional to old observation rows, body bytes or file count: no full historical copy, hashing, recompression, normalization or index rebuilding. The original Observation DB, WAL/SHM, objects and staging SHALL stay together through a durable same-filesystem namespace transition. Current history and statistics begin at cutover; until complete service readiness, old observations are available by whole-group matching-version recovery rather than silently combined into current queries. Successful startup then expires the upgrade recovery material under the cleanup policy below. Current-format data and policy SHALL survive ordinary restart. Interrupted cutover SHALL resume the same original batch or expose actionable preserved-source recovery; missing recovery material, insufficient work space, unsupported/corrupt metadata or failed moves SHALL preserve the source and stop the affected startup. An old local archive is not an independent backup or freed disk space. Active capacity retention SHALL NOT reclaim it. Manual recovery SHALL preserve newer data separately and restore the complete corresponding old group with its matching old program.
+For a recognized incompatible old Observation format, HiRoute SHALL start one fresh current-format archive without converting, copying, hashing or indexing the old observations or requiring an old matching program solely to recover that disposable archive. Old observation history/statistics and content references are not imported into the new generation. The cutover SHALL preserve Core configuration, keys, grants, Plans/models, and the saved capacity choice including absent/default and explicit disable. Under the existing startup writer ownership, the old Observation DB/WAL/SHM/objects/staging SHALL be detached together by a durable same-filesystem namespace transition with minimal identity-bound progress; interrupted startup SHALL resume that transition without resetting an already active current generation. Detached old data SHALL be removed by existing bounded owned cleanup after successful activation. Unknown/future formats, corrupt admission metadata, substituted paths and unrelated recovery archives SHALL NOT be silently erased. Current-format reopen preserves current history. Existing Core migration, unfinished-operation recovery and independent backup contracts remain unchanged. Pre-cutover body references SHALL report unavailable rather than fabricate content or resumable Worker history.
 
-#### Scenario: Upgrade a large old history
+#### Scenario: Discard recognized old observations without bulk conversion
 
-- **WHEN** a supported instance with retained old-format observations upgrades
-- **THEN** the complete old history remains unchanged and recoverable until complete service readiness, current configuration/credentials/routing continue, and service starts with a fresh current-format history without processing all historical rows or files; current history/statistics start at cutover. Successful-upgrade cleanup subsequently releases the expired recovery material.
+- **WHEN** an authorized format-changing upgrade encounters a recognized old Observation store
+- **THEN** startup preserves configuration/authority and the exact saved capacity setting, starts fresh history, performs no historical copy/conversion or mandatory Observation recovery-package preparation, and later bounded cleanup releases the detached old namespace
 
-#### Scenario: Interrupt the directory cutover
+#### Scenario: Interrupt or repeat the cutover
 
-- **WHEN** the process stops before or after sealing the old directory or publishing its recovery material
-- **THEN** restart uses the same durable batch and complete source, never mistakes a missing/partial live root for permission to discard history, and finishes the cutover or supplies actionable recovery guidance.
+- **WHEN** startup stops before/after detachment, target publication or service readiness and later restarts
+- **THEN** the same identity-bound transition resumes; a published current store and new writes are not discarded, and owned cleanup cannot delete substituted/current material
 
-#### Scenario: Fail archive admission or publication
+#### Scenario: Reject unknown ownership and preserve current data
 
-- **WHEN** recovery material or keys are unavailable, small-work space is insufficient, an input/phase is unsupported or corrupt, or the same-filesystem move fails
-- **THEN** startup reports the failure, preserves existing source and progress, and does not fall back to a full historical copy or delete records/backups to proceed.
-
-#### Scenario: Reopen a current-format store
-
-- **WHEN** the upgraded instance restarts after recording new observations
-- **THEN** it preserves those records and its current capacity policy, without resealing or clearing the current generation or scanning old archives.
-
-#### Scenario: Recover old observations
-
-- **WHEN** startup has not succeeded and the owner chooses matching-version recovery
-- **THEN** the complete original group, original locations and matching old program are restored together while newer data remains separately preserved; the original observations retain their bytes, identities and monetary facts.
+- **WHEN** admission encounters an unknown/future format, corruption, substituted directory or an ordinary current-format reopen
+- **THEN** unknown/corrupt/substituted material remains protected with actionable failure; a valid current generation reopens unchanged without scanning historical rows/files
 
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/151#issuecomment-6248902605
+- https://github.com/higress-group/HiRoute/issues/322#issuecomment-6559382147
 
 ### Requirement: Successful upgrades automatically expire their recovery material
 

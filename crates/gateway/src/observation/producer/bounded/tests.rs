@@ -497,6 +497,7 @@ fn content_record(sequence: u64, chunk_ordinal: u32) -> ObservationRecord {
         message_ordinal: Some(1),
         part_ordinal: Some(0),
         chunk_ordinal: Some(chunk_ordinal),
+        capture: None,
         transport_frame_id: Some(format!("frame:test:{chunk_ordinal}")),
         canonical_media_type: Some("text/plain".into()),
         canonical_bytes_base64: Some("dGVzdA==".into()),

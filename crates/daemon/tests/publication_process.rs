@@ -32,6 +32,11 @@ fn real_process_streamed_content_pressure_preserves_every_accepted_delta() {
     run_script("content_pressure_product.py");
 }
 
+#[test]
+fn real_process_failed_native_retry_preserves_semantic_history_and_attribution() {
+    run_script("observation_native_retry_product.py");
+}
+
 /// Current released CLI point scan/preparation shares the native multi-model exact-save boundary.
 #[test]
 fn released_cli_connection_points_prepare_and_save_exact_models() {
