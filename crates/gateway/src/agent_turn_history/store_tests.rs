@@ -73,6 +73,9 @@ mod stage_closure;
 #[path = "composite_stage_tests.rs"]
 mod composite_stage;
 
+#[path = "per_turn_assessment_tests.rs"]
+mod per_turn_assessment;
+
 struct TestRoot(PathBuf);
 
 impl TestRoot {
@@ -396,7 +399,7 @@ fn appended_users_keep_distinct_history_when_reselection_is_off() {
     assert!(serialized.contains("second answer"));
     assert!(serialized.contains("\"text\":\"first\""));
     assert!(serialized.contains("\"text\":\"second\""));
-    assert_eq!(history.assessment_from, Some(0));
+    assert_eq!(history.assessment_from, Some(1));
 }
 
 #[test]
@@ -972,7 +975,7 @@ fn missing_candidate_preference_does_not_reselect_when_messages_continue() {
 }
 
 #[test]
-fn segment_extends_only_for_the_same_executed_identity() {
+fn successive_user_turns_have_independent_assessments_even_with_the_same_executor() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
     let key = store.scope_key("workspace", "segments").unwrap();
@@ -1029,7 +1032,7 @@ fn segment_extends_only_for_the_same_executed_identity() {
         "request-2",
         now + Duration::from_secs(1),
     );
-    assert_eq!(second.segment_id, first.segment_id);
+    assert_ne!(second.segment_id, first.segment_id);
 
     messages.extend([
         text(MessageRole::Assistant, "answer two"),
@@ -1046,7 +1049,8 @@ fn segment_extends_only_for_the_same_executed_identity() {
             )
             .unwrap(),
     );
-    assert_eq!(history.assessment_from, Some(0));
+    assert_eq!(history.assessment_from, Some(1));
+    assert_eq!(history.assessment_target.as_ref().unwrap().first_ordinal, 2);
     assert_eq!(
         history.assessment_target.as_ref().unwrap().through_ordinal,
         2
