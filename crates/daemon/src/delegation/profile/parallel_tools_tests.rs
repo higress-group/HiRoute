@@ -24,6 +24,21 @@ fn codex_parallel_default_preserves_a_previous_serial_task_on_continue() {
     let mut enabled = old.clone();
     enabled["models"][0]["supports_parallel_tool_calls"] = json!(true);
     let enabled = serde_json::to_vec(&enabled).unwrap();
+    let transcript = session
+        .path()
+        .join("sessions/2026/10/14/rollout-serial-session.jsonl");
+    #[cfg(windows)]
+    hiroute_platform::windows::security::ensure_private_directory(transcript.parent().unwrap())
+        .unwrap();
+    #[cfg(not(windows))]
+    std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+    hiroute_platform::durable::write_private_new(&transcript, b"original serial task history\n")
+        .unwrap();
+    let required = native_history(session.path(), WorkerHarnessV1::CodexCli, "serial-session")
+        .unwrap()
+        .into_iter()
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
     let continued = TaskSessionRoot::prepare(
         fixture.path(),
         &workspace,
@@ -31,7 +46,7 @@ fn codex_parallel_default_preserves_a_previous_serial_task_on_continue() {
         "task-serial",
         WorkerHarnessV1::CodexCli,
         SessionRootUse::Continue {
-            required_history: &[],
+            required_history: &required,
         },
     )
     .unwrap();
@@ -56,13 +71,21 @@ fn codex_parallel_default_preserves_a_previous_serial_task_on_continue() {
     // The only admitted drift is the previous false bit, not any other catalog data.
     for key in ["context_window", "display_name", "instructions"] {
         let mut drifted: Value = serde_json::from_slice(&enabled).unwrap();
-        drifted["models"][0][key] = json!("changed");
+        drifted["models"][0][key] = if key == "context_window" {
+            json!(drifted["models"][0][key].as_u64().unwrap() - 1)
+        } else {
+            json!("changed")
+        };
         assert_eq!(
             continued.prepare_codex_catalog(alias, &serde_json::to_vec(&drifted).unwrap(), true),
             Err(DelegationErrorV1::Conflict)
         );
     }
     assert_eq!(std::fs::read(&path).unwrap(), PREVIOUS);
+    assert_eq!(
+        std::fs::read(&transcript).unwrap(),
+        b"original serial task history\n"
+    );
     // New tasks get the current default; an explicit disable remains supported.
     for (task, bytes, expected) in [
         ("task-enabled", enabled.as_slice(), true),
