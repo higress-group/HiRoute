@@ -25,6 +25,7 @@ function Get-WindowsLiveHistoryCases {
     ($prefix + 'interrupted_terminal_checkpoint_retains_lease_completion_and_false_readiness'),
     ($prefix + 'terminal_publication_failure_does_not_wait_or_double_write'),
     ($prefix + 'execute_outer_cancel_and_deadline_after_completion_preserve_terminal_receipt'),
+    ($prefix + 'execution_deadline_is_not_replaced_by_its_acp_shutdown_cancellation'),
     ($prefix + 'claude_completed_settled_history_does_not_replace_failed_owned_stop_evidence'))
 }
 function Get-WindowsQoderAccountRecipes {
@@ -82,7 +83,7 @@ function Get-WindowsRequiredRecipes {
     'accounts' { return @(Get-WindowsQoderAccountRecipes | ForEach-Object { $_.name }) }
     'agents' {
       return @('agent-private-root','agent-private-node','agent-path-identity','agent-managed-path','agent-account-fixture','agent-pi-sdk',
-        'agent-acp-notifications','agent-cancel-oracle','agent-main-oracle','agent-launch-oracle','agent-launch-cause','agent-codex-readonly-control','agent-codex-tool-diagnostic','agent-qoder-skill-load-diagnostic','agent-qoder-skill-http-diagnostic','agent-qoder-cli-bash','agent-qoder-output-read-diagnostic','agent-qoder-tools-shell','agent-cli-selection','agent-npm-inspection','agent-pi-locator','agent-native-reader','agent-worker-profile-identity','agent-worker-directory-identity','agent-worker-failure-oracle','agent-history-oracle',
+        'agent-acp-notifications','agent-cancel-oracle','agent-main-oracle','agent-skill-only-settings','agent-launch-oracle','agent-launch-cause','agent-codex-readonly-control','agent-codex-tool-diagnostic','agent-qoder-skill-load-diagnostic','agent-qoder-skill-http-diagnostic','agent-qoder-cli-bash','agent-qoder-output-read-diagnostic','agent-qoder-tools-shell','agent-cli-selection','agent-npm-inspection','agent-pi-locator','agent-native-reader','agent-worker-profile-identity','agent-worker-directory-identity','agent-worker-failure-oracle','agent-history-oracle',
         'agent-retained-capture','agent-native-codex-ingress','agent-native-source-oracle','agent-worker-dependency-oracle','agent-worker-cancel-publication','agent-worker-residual-binding','agent-worker-residual-oracle','agent-business-oracle','agent-http','agent-public-business','agent-user-models','agent-user-model-oracle','agent-qoder-user-model-oracle','agent-management','agent-management-oracle','agent-live-history','agent-legacy-history') +
         @(Get-WindowsDaemonAgentCases | ForEach-Object { 'agent-' + (($_ -split 'actual_')[1] -replace '_','-') }) +
         @(Get-WindowsMainAgentCases | ForEach-Object { 'main-' + (($_ -split 'actual_windows_')[1] -replace '_','-') })

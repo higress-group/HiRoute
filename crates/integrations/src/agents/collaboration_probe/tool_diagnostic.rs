@@ -192,6 +192,8 @@ pub(super) struct ToolResultDiagnostic {
     pub(super) command_not_found: bool,
     pub(super) powershell_parser: bool,
     pub(super) dll_init: bool,
+    pub(super) bash_exit: Option<i32>,
+    pub(super) cwd_unavailable: bool,
     pub(super) header: ToolHeader,
     pub(super) receipts: Option<ReceiptFacts>,
     pub(super) launch: launch_diagnostic::NativeLaunchDiagnostic,
@@ -243,6 +245,16 @@ impl ToolResultDiagnostic {
             dll_init: ["0xc0000142", "0xC0000142", "-1073741502", "1114"]
                 .iter()
                 .any(|marker| text.contains(marker)),
+            bash_exit: text.lines().take(8).find_map(|line| {
+                let code = line
+                    .strip_prefix("Exit code: ")
+                    .or_else(|| line.strip_prefix("Exit code "))?;
+                let parsed = code.parse::<i32>().ok()?;
+                (parsed.to_string() == code).then_some(parsed)
+            }),
+            cwd_unavailable: text.contains("error retrieving current directory")
+                || text.contains("getcwd:")
+                || text.contains("getcwd() failed"),
             header: ToolHeader::capture(text),
             receipts,
             launch: launch_diagnostic::native_launch_diagnostic(text),
@@ -281,6 +293,33 @@ impl ToolResultDiagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bash_failure_diagnostics_keep_only_closed_exit_and_cwd_facts() {
+        let observe = |text| {
+            ToolResultDiagnostic::capture(
+                SelectedTool::Bash,
+                None,
+                Some(text),
+                "nonce",
+                "cli",
+                None,
+            )
+        };
+        let observed = observe(
+            "Exit code: 1\nshell-init: error retrieving current directory: private-path-and-token",
+        );
+        assert_eq!(observed.bash_exit, Some(1));
+        assert!(observed.cwd_unavailable);
+        assert!(!format!("{observed:?}").contains("private-path-and-token"));
+        for invalid in [
+            "Exit code 01",
+            "Exit code 1 private-token",
+            "Exit code 999999999999",
+        ] {
+            assert_eq!(observe(invalid).bash_exit, None);
+        }
+    }
 
     fn header(text: &str) -> ToolHeader {
         ToolHeader::capture(text)

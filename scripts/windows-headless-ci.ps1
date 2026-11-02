@@ -491,6 +491,8 @@ if ($Scope -eq 'components') {
   Invoke-RequiredTests 'agent-cancel-oracle' @('-p','hiroute-daemon','--lib',$cancelOracle) @($cancelOracle) @('--exact')
   $mainOracle = 'agents::collaboration_probe::tests::codex_collaboration_accepts_correlated_native_text_content_items_only'
   Invoke-RequiredTests 'agent-main-oracle' @('-p','hiroute-integrations','--lib',$mainOracle) @($mainOracle) @('--exact')
+  $skillSettings = 'agents::native_ingress_probe::windows_skill_settings_tests::windows_skill_only_settings_require_fresh_collaboration_not_authentication'
+  Invoke-RequiredTests 'agent-skill-only-settings' @('-p','hiroute-integrations','--lib',$skillSettings) @($skillSettings) @('--exact')
   $launchOracle = 'agents::collaboration_probe::tests::native_launch_diagnostic_'
   Invoke-RequiredTests 'agent-launch-oracle' @('-p','hiroute-integrations','--lib',$launchOracle) @(
     'agents::collaboration_probe::tests::native_launch_diagnostic_preserves_fixed_os_codes_and_api_stages',
@@ -545,6 +547,7 @@ if ($Scope -eq 'components') {
     ($toolDiagnostic + 'header_rejects_partial_duplicate_overflow_and_embedded_receipts'),
     ($toolDiagnostic + 'only_pinned_prelaunch_captions_establish_handler_preflight'),
     ($toolDiagnostic + 'facets_are_closed_and_shape_counts_do_not_invent_parsed_text'),
+    ($toolDiagnostic + 'bash_failure_diagnostics_keep_only_closed_exit_and_cwd_facts'),
     ($toolDiagnostic + 'terminal_script_checkpoint_retains_failure_facts_without_proving_denial'))
   $qoderSkill = 'agents::qoder_probe::skill_diagnostic::tests::'
   Invoke-RequiredTests 'agent-qoder-skill-load-diagnostic' @('-p','hiroute-integrations','--lib',$qoderSkill) @(
