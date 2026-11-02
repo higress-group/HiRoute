@@ -123,7 +123,7 @@ pub(super) fn render_cancel(
         {
             let projected = envelope.map_data(|data| {
                 command_data(CommandData {
-                    failure: None,
+                    failure: data.run.failure,
                     operation: "cancel",
                     submission_key: None,
                     task_id: Some(&data.run.task_id),

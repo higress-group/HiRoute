@@ -314,7 +314,9 @@ a user cancellation. Existing historical states are not reclassified without evi
 
 Accepted Worker failures MUST retain a closed execution stage and reason atomically
 with their failure transition, independently of process cleanup and result content.
-Status, wait, result and exact submission replay MUST expose the same recorded cause.
+Status, wait, result, cancellation and exact submission replay MUST expose the same
+recorded cause. Cancelling a terminal failed run MUST preserve its failed state
+and recorded cause.
 The public CLI MUST return a specific Worker execution failure with task/run locators,
 its stage/reason and an actionable progress/capability hint. It MUST NOT replace a
 known cause with an unclassified internal error or imply automatic prompt replay.
