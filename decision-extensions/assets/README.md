@@ -140,5 +140,12 @@ optional custom extension: category, degree and preceding-stage assessment are
 separate questions, while HiRoute owns thresholds and execution. They are editable
 vector diagrams, not measured traces.
 
+The bilingual `three-questions-*.svg` diagrams, used by the README and website homepage, present
+the same decision path along the task timeline: the previous stage's competence score, the
+current work's simple probability, and whether the previous problem carries into the work ahead.
+The decision model answers the questions independently; HiRoute applies the plan's default
+0.8 / 0.5 thresholds and selects the group. Wording follows the System One question criteria,
+which judge applicability to the remaining work rather than predicting execution success.
+
 The bilingual `readme-routing-comparison-*.svg` charts plot the reviewed-subset results of the
 [decision-interface comparison](../../experiments/system-one-routing-paper/supplements/decision-interface-transfer/README.md).

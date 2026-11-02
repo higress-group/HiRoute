@@ -59,16 +59,21 @@ or use a smaller and a stronger model from the same supported source.
 
 ## One task, the right model for each stage
 
-A difficulty-routing plan follows both the work ahead and what happened before:
+Each new message gets a fresh decision. A decision model answers three independent questions
+anchored on the task's timeline, and HiRoute combines the answers with your plan:
 
-- **Routine work:** use the economical group when the task meets your criteria.
-- **Relevant failure:** when a stage scores below the competence floor and its problem still affects
-  the work, low-score protection moves the next stage to your primary model.
-- **Problem resolved or task changed:** reassess the current work and whether the old problem still matters.
+<p align="center"><img src="decision-extensions/assets/three-questions-en.svg" alt="Look back, size up, look ahead: how did the last step go (competence score), how hard is this step (simple probability), and will the last step's problem carry into the next (earlier problem relevance). A decision model answers the three questions independently in one request; HiRoute applies your plan's thresholds to pick the economical or primary model" width="760"></p>
 
-**System One answers three questions: How demanding is the current work? How well did the
-previous stage go? Does its problem still affect the current task?** HiRoute combines these
-judgments with your plan to choose the executing model.
+- **Previous: how did the last step go?** A competence score, also used for model performance
+  reports and trust suggestions.
+- **Current: how hard is this step?** A simple probability. Only simple-enough work can go to the
+  economical model.
+- **Next: will the last step's problem carry into the next?** When a step scored below the
+  competence floor and its problem still applies to the work ahead, low-score protection hands the
+  next turn to your primary model. Once it no longer applies, protection is released.
+
+The decision model only answers; thresholds, model choice and execution stay in HiRoute, so you can
+retune routing without rewriting prompts. The first turn has no previous step, so only difficulty applies.
 
 <p align="center">
   <img src="decision-extensions/assets/readme-session-en.png" alt="HiRoute session timeline: a DeepSeek V4.1 Flash stage scores 0.24 and protects the next turn; the selected turn runs on the primary model GPT-6 Astra under low-score protection and scores 0.73; the following turns return to Flash, and the next one scores 0.94" width="760">

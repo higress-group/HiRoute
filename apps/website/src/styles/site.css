@@ -508,10 +508,12 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .trial-section .features{margin-top:34px}
 .evidence-grid{display:grid;grid-template-columns:.85fr 1.15fr;gap:22px;align-items:start;margin-top:38px}
 .evidence-grid .product-shot{margin:0}
-.question-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:46px}
+.how-figure{margin:46px 0 0}.how-figure img{width:100%;border-radius:22px}
+.question-grid{display:none;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:46px}
 .question-grid article{border:1px solid #2a3044;border-radius:14px;padding:26px 24px;background:#121622}
 .question-grid span{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--highlight)}
 .question-grid h3{font-size:20px;margin:14px 0 10px;color:var(--paper)}
 .question-grid p{font-size:14px;color:#aab3cc}
 @media(max-width:1000px){.evidence-grid{grid-template-columns:1fr}.question-grid{grid-template-columns:1fr}}
+@media(max-width:760px){.how-figure{display:none}.question-grid{display:grid}}
 @media(max-width:760px){.stat-line a{min-width:0}.chart-shot img{border-radius:12px}}
