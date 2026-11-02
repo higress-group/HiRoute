@@ -3,7 +3,7 @@
 use hiroute_domain::{
     AgentAccessGrantMaterial, CanonicalDigest, ModelAlias, valid_client_model_name,
 };
-use toml_edit::{DocumentMut, Item, Table};
+use toml_edit::{DocumentMut, Item, Table, TableLike};
 use zeroize::Zeroizing;
 
 #[path = "codex_restore_record.rs"]
@@ -192,7 +192,7 @@ fn configure_codex_base(
     };
     if let Some(providers) = document.get("model_providers") {
         let providers = providers
-            .as_table()
+            .as_table_like()
             .ok_or(CodexNativeError::UnsupportedLayout)?;
         if providers.contains_key(provider_id) && !owned_provider {
             return Err(CodexNativeError::ProviderAlreadyExists);
@@ -487,7 +487,7 @@ pub fn restore_codex_native_with_model(
     }
     // Newly added user keys keep their table alive. Only tables created by this edit can go.
     for path in restore.created_tables.iter().rev() {
-        if optional_table(&document, path)?.is_some_and(Table::is_empty) {
+        if optional_table(&document, path)?.is_some_and(|table| table.is_empty()) {
             let (key, parent) = path
                 .split_last()
                 .ok_or(CodexNativeError::UnsupportedLayout)?;
@@ -505,7 +505,12 @@ pub fn restore_codex_native_with_model(
             .split_last()
             .ok_or(CodexNativeError::UnsupportedLayout)?;
         let table = table_at_mut(&mut document, parent)?;
-        table["model"] = toml_edit::value(native_model);
+        let value = toml_edit::value(native_model);
+        if let Some(current) = table.get_mut("model") {
+            *current = value;
+        } else {
+            table.insert("model", value);
+        }
     }
     render_bounded(&document)
 }
@@ -553,22 +558,27 @@ fn fingerprint(item: &Item) -> CanonicalDigest {
 fn optional_table<'a>(
     document: &'a DocumentMut,
     path: &[String],
-) -> Result<Option<&'a Table>, CodexNativeError> {
-    let mut table = document.as_table();
+) -> Result<Option<&'a dyn TableLike>, CodexNativeError> {
+    let mut table: &dyn TableLike = document.as_table();
     for key in path {
         let Some(item) = table.get(key) else {
             return Ok(None);
         };
-        table = item.as_table().ok_or(CodexNativeError::UnsupportedLayout)?;
+        table = item
+            .as_table_like()
+            .ok_or(CodexNativeError::UnsupportedLayout)?;
     }
     Ok(Some(table))
 }
-fn table_at<'a>(document: &'a DocumentMut, path: &[String]) -> Result<&'a Table, CodexNativeError> {
-    let mut table = document.as_table();
+fn table_at<'a>(
+    document: &'a DocumentMut,
+    path: &[String],
+) -> Result<&'a dyn TableLike, CodexNativeError> {
+    let mut table: &dyn TableLike = document.as_table();
     for key in path {
         table = table
             .get(key)
-            .and_then(Item::as_table)
+            .and_then(Item::as_table_like)
             .ok_or(CodexNativeError::UnsupportedLayout)?;
     }
     Ok(table)
@@ -576,12 +586,12 @@ fn table_at<'a>(document: &'a DocumentMut, path: &[String]) -> Result<&'a Table,
 fn table_at_mut<'a>(
     document: &'a mut DocumentMut,
     path: &[String],
-) -> Result<&'a mut Table, CodexNativeError> {
-    let mut table = document.as_table_mut();
+) -> Result<&'a mut dyn TableLike, CodexNativeError> {
+    let mut table: &mut dyn TableLike = document.as_table_mut();
     for key in path {
         table = table
             .get_mut(key)
-            .and_then(Item::as_table_mut)
+            .and_then(Item::as_table_like_mut)
             .ok_or(CodexNativeError::UnsupportedLayout)?;
     }
     Ok(table)
@@ -596,6 +606,8 @@ fn create_tables(
         if !parent.contains_key(&path[index]) {
             let mut table = Table::new();
             table.set_implicit(true);
+            // TableLike inserts an inline child when the original parent is inline.
+            // Do not normalize borrowed maps or replace their comments and formatting.
             parent.insert(&path[index], Item::Table(table));
             created.push(path[..=index].to_vec());
         }
@@ -647,7 +659,7 @@ fn managed_provider_shape(document: &DocumentMut) -> bool {
     let Some(provider) = document
         .get("model_providers")
         .and_then(|v| v.get("hiroute"))
-        .and_then(Item::as_table)
+        .and_then(Item::as_table_like)
     else {
         return false;
     };
@@ -663,6 +675,6 @@ fn managed_provider_shape(document: &DocumentMut) -> bool {
         )
     }) && provider
         .get("http_headers")
-        .and_then(Item::as_table)
+        .and_then(Item::as_table_like)
         .is_some_and(|headers| headers.iter().all(|(key, _)| key == "X-HiRoute-Token"))
 }

@@ -237,6 +237,8 @@ prior ownership. An explicit first connection may merge a readable, valid native
 profile file when its reserved HiRoute provider/profile identities are unoccupied.
 Preserve existing preferences, comments, unrelated providers and unknown fields;
 record original values and file existence in the protected field-restoration journal.
+Both ordinary and inline TOML provider maps support the same configure, adjustment
+and restore lifecycle without normalizing the user's existing map representation.
 Restore removes only owned effects and preserves the original file and later unrelated
 edits. Preview/Apply still fence exact source bytes and reject concurrent changes.
 Malformed, inaccessible or same-name identity conflicts remain refused with actionable
