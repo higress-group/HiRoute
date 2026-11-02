@@ -1212,7 +1212,7 @@ const scenarios = [
   }],
 
   ['referenced partial input stays pending and refreshes until its source is complete', async () => {
-    for (const partial of ['root', 'part']) {
+    for (const partial of ['root', 'part', 'missing']) {
       let source, complete = false;
       const continuation = `request/partial-input-${partial}`;
       await fresh(control => {
@@ -1222,18 +1222,20 @@ const scenarios = [
         seedUserText(control, original, 'Retained input prefix');
         control.views.catalog = query => {
           if (query.request_id === continuation) return {
-            contents: [], roots_partial: false, next_cursor: null,
+            contents: [{ content_id: 'retry-answer', role: 'assistant', kind: 'text_delta', state: 'complete', direction: 'response_delivered', media_type: 'text/plain', message_occurrence_id: 'reply' }], roots_partial: false, next_cursor: null,
             input_selection: { version: 1, evidence: 'native_matched', message_ordinal: 8, source_unverified: true },
             input_anchor: { source_request_id: source, message_occurrence_id: '1' },
           };
           const page = control.defaultRead('catalog', query);
           if (query.request_id !== source) return page;
           return { ...page, roots_partial: !complete && partial === 'root',
-            contents: page.contents.map(item => ({ ...item, state: !complete && partial === 'part' ? 'partial' : item.state })) };
+            contents: !complete && partial === 'missing' ? [] : page.contents.map(item => ({ ...item, state: !complete && partial === 'part' ? 'partial' : item.state })) };
         };
       });
+      const sourceReads = reads('catalog').filter(call => queryOf(call).request_id === source).length;
       c().showRequestExcerpt(continuation);
-      await until(() => document.querySelector('.routing-quote')?.textContent.includes('Retained input prefix'), `${partial} source prefix`);
+      await until(() => reads('catalog').filter(call => queryOf(call).request_id === source).length > sourceReads, `${partial} source lookup`);
+      if (partial !== 'missing') await until(() => document.querySelector('.routing-quote')?.textContent.includes('Retained input prefix'), `${partial} source prefix`);
       assert(document.querySelector('.routing-quote [data-content-state]')?.dataset.contentState === 'pending', `${partial} source was falsely complete`);
       const before = reads('catalog').filter(call => queryOf(call).request_id === continuation).length;
       complete = true;

@@ -299,7 +299,12 @@ impl AgentTurnHistoryStore {
                 segment = None;
             }
         }
-        let capture_input_start = if reusable && exact && !ambiguous && !projected {
+        let capture_input_start = if reusable && retry {
+            // Native retry admission already verified the complete request and
+            // setup against a unique failed-before-output checkpoint. Its input
+            // belongs to the original occurrence; the capture keeps that anchor.
+            Some(analyzed.message_count)
+        } else if reusable && exact && !ambiguous && !projected {
             selected_entry.and_then(|entry| {
                 analyzed
                     .boundaries

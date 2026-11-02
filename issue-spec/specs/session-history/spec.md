@@ -150,6 +150,11 @@ HiRoute SHALL retain authorized semantic conversation history: logical input mes
 - **WHEN** an initial request carries old assistant context and later two distinct turns send identical text
 - **THEN** old context is available without invented executing-model attribution; both distinct new turns remain visible, ordered and independently attributed
 
+#### Scenario: Verified failed native request is retried
+
+- **WHEN** a unique failed-before-output native request is retried with the same verified activation, complete input and setup
+- **THEN** its already observed input remains one occurrence referenced by the retry, both actual requests retain their receipts and execution membership, and content ingestion does not create an immutable-identity conflict; changed or ambiguous requests cannot use this shortcut
+
 #### Scenario: Accepted output survives semantic coalescing
 
 - **WHEN** streaming text/reasoning, tool arguments and a final snapshot arrive or delivery is interrupted
@@ -202,6 +207,11 @@ Body may initially fold retained standalone Agent context and complete leading r
 
 - **WHEN** a retained message begins with setup context or a request omits unarchived setup
 - **THEN** title extraction retains its current conservative matching rules; captured semantic text remains expandable and no complete request snapshot or missing unarchived setup is invented
+
+#### Scenario: Referenced input is incomplete
+
+- **WHEN** an excerpt follows a retained input reference whose source capture, selected part or pagination is incomplete or no longer readable
+- **THEN** readable prefixes do not establish complete recorded content; the excerpt preserves the incomplete state and existing refresh behavior until complete or explicit deletion evidence is available
 
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/322#issuecomment-6559416085

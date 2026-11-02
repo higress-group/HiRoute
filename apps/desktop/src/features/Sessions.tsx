@@ -699,12 +699,17 @@ async function firstRequestTitle(requestId: string, signal: AbortSignal, state: 
     sourceRequest = inputAnchor.source_request_id;
     const sourceSeen = new Set<string>();
     do {
-      const page: { contents: Content[]; next_cursor?: string | null } = await read('catalog', { request_id: sourceRequest, limit: 200, cursor, include_semantic_metadata: true }, signal);
-      contents.push(...page.contents.filter(item => item.message_occurrence_id === inputAnchor?.message_occurrence_id));
+      const page: { contents: Content[]; roots_partial?: boolean; next_cursor?: string | null } = await read('catalog', { request_id: sourceRequest, limit: 200, cursor, include_semantic_metadata: true }, signal);
+      const selected = page.contents.filter(item => item.message_occurrence_id === inputAnchor?.message_occurrence_id);
+      contents.push(...selected);
+      state.sawContent ||= selected.length > 0;
+      state.allDeleted &&= selected.every(item => ['deleted', 'expired'].includes(item.state));
+      state.incomplete ||= Boolean(page.roots_partial) || selected.some(item => !['available', 'complete', 'deleted', 'expired'].includes(item.state));
       cursor = page.next_cursor ?? null;
       if (cursor && sourceSeen.has(cursor)) { state.incomplete = true; break; }
       if (cursor) sourceSeen.add(cursor);
     } while (cursor && !signal.aborted);
+    state.incomplete ||= contents.length === 0;
   }
 
   const groups = new Map<string, Content[]>();
