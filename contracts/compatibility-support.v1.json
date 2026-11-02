@@ -2639,6 +2639,18 @@
         "crates/domain/src/observation/fixtures/pre-context-contract.json",
         "crates/domain/src/observation/pricing.rs"
       ]
+    },
+    {
+      "contract": "hiroute.sqlite-backup-set/v2",
+      "field": "target_schema_version=30 with original schema29 control/runtime/secrets sources",
+      "mode": "recovery_read_only",
+      "owner": "local-storage/migrations",
+      "reason": "Retained schema29-to30 batches can stop before or after any store commit or phase publication. Verify the original three-store source digests, identities, secret binding and recorded phase; finish target30 under its original batch, archive it unchanged, then publish a distinct current-target batch. The historical SQL30 step extends Worker selection constraints without rewriting existing journals. Other sources and changed live data remain refused.",
+      "removal_condition": "Remove only after retained schema29-to30 incomplete batches have completed or been restored and their recovery support is explicitly retired.",
+      "allowed_paths": [
+        "crates/local-storage/src/migrations/mod.rs",
+        "crates/local-storage/src/migrations/upgrade_batch_recovery_tests.rs"
+      ]
     }
   ]
 }
