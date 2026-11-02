@@ -7,9 +7,16 @@ mod diagnostic;
 pub(super) fn project(bytes: &[u8]) {
     for line in bytes.split(|byte| *byte == b'\n') {
         let line = line.strip_suffix(b"\r").unwrap_or(line);
-        if let Some(reason) = line
+        let native = line
             .strip_prefix(b"native collaboration check: native ingress probe could not establish ")
-        {
+            .map(|reason| ("collaboration", reason))
+            .or_else(|| {
+                line.strip_prefix(
+                    b"native authentication check: native ingress probe could not establish ",
+                )
+                .map(|reason| ("authentication", reason))
+            });
+        if let Some((scope, reason)) = native {
             let stage = match reason {
                 b"trusted CLI baseline" => "cli-baseline",
                 b"trusted CLI contract" | b"CLI contract" => "cli-contract",
@@ -19,9 +26,12 @@ pub(super) fn project(bytes: &[u8]) {
                 b"native Skill discovery" => "skill-discovery",
                 b"native launch" => "native-launch",
                 b"deadline" => "deadline",
+                b"wrong authentication" => "authentication-header",
+                b"wrong model" => "model-selection",
+                b"stable executable" => "executable-changed",
                 _ => "other-native-check",
             };
-            eprintln!("Windows collaboration daemon failure: stage={stage}");
+            eprintln!("Windows native check daemon failure: scope={scope} stage={stage}");
         }
         if let Some(facts) = cli_diagnostic::Facts::parse(line) {
             facts.emit();

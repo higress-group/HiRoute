@@ -364,6 +364,19 @@ pub(super) fn binary_identity(
     let path = super::executable::resolve(executable)
         .map_err(|_| fail("trusted executable"))?
         .ok_or_else(|| fail("executable"))?;
+    #[cfg(windows)]
+    let path = {
+        let entry =
+            super::windows_runtime::command_entry(&path).map_err(|_| fail("trusted executable"))?;
+        if entry
+            .extension()
+            .is_some_and(|ext| ext.as_encoded_bytes().eq_ignore_ascii_case(b"exe"))
+        {
+            entry
+        } else {
+            path
+        }
+    };
     let meta = fs::metadata(&path).map_err(|_| fail("executable metadata"))?;
     #[cfg(unix)]
     return CanonicalDigest::of(&(
