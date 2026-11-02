@@ -32,7 +32,7 @@ In a real research and architecture-review task, Qwen 3.8 Flash did the research
 made the critical decision. At the same acceptance standard, the task cost **about 90% less**
 than running everything on Astra.
 
-[![Cost of the same task at the same acceptance standard: HiRoute mixed costs about one twelfth of all Astra](news/assets/research-cost-en.svg)](news/2026-10-04-astra-qwen.en.md)
+[![91% lower whole-task cost at the same acceptance standard: HiRoute with Qwen research and Astra decisions $0.150–0.162 versus all GPT-6 Astra $1.953–1.987, about one twelfth](news/assets/cost-savings-en.svg)](news/2026-10-04-astra-qwen.en.md)
 
 <sub>API-equivalent estimates. [Full case study](news/2026-10-04-astra-qwen.en.md)</sub>
 
