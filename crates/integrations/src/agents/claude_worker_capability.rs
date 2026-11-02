@@ -1,5 +1,5 @@
 //! An isolated native request must retain the host route despite conflicting settings.
-use super::{MARKER, MODEL, binary_identity, http};
+use super::{MODEL, binary_identity, http};
 use crate::agents::{NativeProbeProcess, probe_files};
 use hiroute_domain::delegation::{
     NativeDependencyCheckV1, NativeDependencyFailureReasonV1 as Reason, NativeDependencyFailureV1,
@@ -17,6 +17,12 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
         reason,
     };
     let before = binary_identity(binary).map_err(|_| failure(Reason::Unavailable))?;
+    let mut entropy = [0u8; 32];
+    getrandom::fill(&mut entropy).map_err(|_| failure(Reason::Unavailable))?;
+    let marker = entropy
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     let root = probe_files::temporary("hiroute-claude-provider-")
         .map_err(|_| failure(Reason::Unavailable))?;
     let root_path = std::fs::canonicalize(root.path()).map_err(|_| failure(Reason::Unavailable))?;
@@ -66,7 +72,6 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
     command
         .args([
             "--print",
-            "--no-session-persistence",
             "--setting-sources",
             "user,project,local",
             "--settings",
@@ -75,14 +80,6 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
         .args([
             "--tools",
             "",
-            "--strict-mcp-config",
-            "--mcp-config",
-            "{\"mcpServers\":{}}",
-            "--no-chrome",
-            "--permission-mode",
-            "dontAsk",
-            "--output-format",
-            "json",
             "--model",
             MODEL,
             "Reply with OK only. Do not use tools.",
@@ -97,8 +94,10 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
         .env("CLAUDE_CODE_TMPDIR", &workspace)
         .env("CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST", "1")
         .env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1")
+        .env("NO_PROXY", "127.0.0.1")
+        .env("no_proxy", "127.0.0.1")
         .env("ANTHROPIC_BASE_URL", endpoint)
-        .env("ANTHROPIC_AUTH_TOKEN", MARKER)
+        .env("ANTHROPIC_AUTH_TOKEN", &marker)
         .env("ANTHROPIC_MODEL", MODEL)
         .env("ANTHROPIC_CUSTOM_MODEL_OPTION", MODEL)
         .current_dir(&workspace);
@@ -140,7 +139,7 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
         let mut requests = 0;
         loop {
             if conflicting.accept().is_ok() {
-                return Err(Reason::Unsupported);
+                return Err(Reason::ConfigurationConflict);
             }
             match listener.accept() {
                 Ok((mut stream, _)) => {
@@ -148,14 +147,23 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
                     if requests > 4 {
                         return Err(Reason::InvalidOutput);
                     }
-                    observed |= http::serve(&mut stream, MARKER, MODEL, None)
-                        .map_err(|_| Reason::Unsupported)?;
+                    observed |=
+                        http::serve(&mut stream, &marker, MODEL, None).map_err(|reason| {
+                            match reason {
+                                "wrong authentication" | "wrong model" => {
+                                    Reason::ConfigurationConflict
+                                }
+                                _ => Reason::InvalidOutput,
+                            }
+                        })?;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(_) => return Err(Reason::Unavailable),
             }
             if let Some(success) = child.observe().map_err(|_| Reason::Unavailable)? {
-                return if success && observed {
+                return if !success {
+                    Err(Reason::ProcessFailed)
+                } else if observed {
                     Ok(())
                 } else {
                     Err(Reason::Unsupported)

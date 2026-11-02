@@ -30,7 +30,7 @@ fn claude_provider_admission_observes_behavior_independently_of_release_labels()
     let failure = ClaudeNativeIngressProbe::check_host_managed_provider(&binary, "/usr/bin:/bin")
         .unwrap_err();
     assert_eq!(failure.check, Check::ClaudeHostManagedProvider);
-    assert_eq!(failure.reason, Reason::Unsupported);
+    assert_eq!(failure.reason, Reason::ConfigurationConflict);
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn actual_claude_without_host_provider_capability_is_refused() {
     )
     .unwrap_err();
     assert_eq!(error.check, Check::ClaudeHostManagedProvider);
-    assert_eq!(error.reason, Reason::Unsupported);
+    assert_eq!(error.reason, Reason::ConfigurationConflict);
 }
 
 #[test]

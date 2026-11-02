@@ -37,6 +37,7 @@ pub enum NativeDependencyFailureReasonV1 {
     CleanupFailed,
     InvalidOutput,
     Unsupported,
+    ConfigurationConflict,
 }
 
 impl NativeDependencyFailureReasonV1 {
@@ -48,6 +49,7 @@ impl NativeDependencyFailureReasonV1 {
             Self::CleanupFailed => "cleanup_failed",
             Self::InvalidOutput => "invalid_output",
             Self::Unsupported => "unsupported",
+            Self::ConfigurationConflict => "configuration_conflict",
         }
     }
 
