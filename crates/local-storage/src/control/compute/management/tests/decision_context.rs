@@ -315,7 +315,8 @@ fn referenced_v3_deletion_is_refused_before_journaling_or_rebinding_shared_crede
         .err()
         .expect("referenced deletion must not be accepted");
     assert!(
-        matches!(&error, TransactionError::Port(port) if port.code == PortErrorCode::Conflict && port.context == "decision_service.in_use")
+        matches!(&error, TransactionError::Port(port) if port.code == PortErrorCode::Conflict && port.context == "decision_service.in_use"),
+        "unexpected deletion refusal: {error:?}"
     );
     assert_eq!(
         error.error_code(),
