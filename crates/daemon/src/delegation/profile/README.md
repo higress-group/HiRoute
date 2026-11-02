@@ -136,6 +136,8 @@ the selected CLI must instead deliver the host's exact model and noncredential
 to the host endpoint. No version subprocess, daily settings, provider or account
 is used. The owned Unix group or Windows Job must stop before those roots are
 removed. Missing behavior, timeout and uncertain cleanup remain distinct failures.
+Worker admission shares the existing native Claude probe's bounded startup and
+request budget, so native startup is not subjected to a second, shorter deadline.
 
 Native client effort preferences may still affect client-side behavior. They are
 not the authority for the frozen Plan's upstream reasoning settings: AgentPlan

@@ -1,5 +1,5 @@
 //! An isolated native request must retain the host route despite conflicting settings.
-use super::{MODEL, binary_identity, http};
+use super::{MAX_PROBE_REQUESTS, MODEL, PROBE_TIMEOUT, binary_identity, http};
 use crate::agents::{NativeProbeProcess, probe_files};
 use hiroute_domain::delegation::{
     NativeDependencyCheckV1, NativeDependencyFailureReasonV1 as Reason, NativeDependencyFailureV1,
@@ -144,7 +144,7 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
             match listener.accept() {
                 Ok((mut stream, _)) => {
                     requests += 1;
-                    if requests > 4 {
+                    if requests > MAX_PROBE_REQUESTS {
                         return Err(Reason::InvalidOutput);
                     }
                     observed |=
@@ -169,7 +169,7 @@ pub(super) fn check(binary: &Path, search_path: &str) -> Result<(), NativeDepend
                     Err(Reason::Unsupported)
                 };
             }
-            if started.elapsed() >= Duration::from_secs(10) {
+            if started.elapsed() >= PROBE_TIMEOUT {
                 return Err(Reason::Timeout);
             }
             if observer.metadata().map_err(|_| Reason::Unavailable)?.len() > 128 * 1024 {
