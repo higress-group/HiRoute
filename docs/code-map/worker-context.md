@@ -174,8 +174,12 @@ flags, credential delivery, native tool permissions and resource restrictions.
 Do not duplicate the shared admission, process or retention lifecycle for an ecosystem.
 
 On Windows, [native launch admission](../../crates/integrations/src/agents/windows_runtime.rs)
-resolves known npm producers to their declared JavaScript entry and selected Node;
-it never evaluates a `.cmd` shim. System shell selectors come from the actual
+resolves the declared entry of known npm producers. Native PE entries run directly;
+JavaScript entries use the selected Node. Both launch paths share this dispatch,
+and native authentication evidence binds the actual PE identity even while its npm
+shim stays unchanged. The [native npm regression](../../crates/integrations/src/agents/windows_native_npm_tests.rs)
+executes the declared image without Node and rejects a changed engine identity.
+The `.cmd` shim is never evaluated. System shell selectors come from the actual
 Windows system directory. Worker and CPA subscription-source HOME discovery use
 the same account native-profile selector in the daemon control runtime,
 while explicit ecosystem configuration roots retain their existing meaning.
