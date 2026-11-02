@@ -666,6 +666,7 @@ Timeline transition summaries SHALL distinguish a completed turn comparison from
 
 - **WHEN** a timeline within capacity limits temporarily exhausts its read deadline
 - **THEN** the response identifies a retryable timeout, Desktop retains its last successful view and retries while visible, and recovery resumes updates without manual navigation.
+- **AND** a generic SQLite error that masks an interrupt after the ordinary or an earlier caller deadline still reports a timeout. A database error while budget remains keeps its unavailable classification, and a fresh authorized read can recover without resetting stored history or relaxing the deadline.
 - **AND** a real request, fact or response-size limit still produces a capacity failure rather than an unbounded read.
 
 #### Scenario: Summary changes while a timeline is selected

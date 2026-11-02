@@ -5,6 +5,11 @@ V2 admission and deadline-aware composition carry one absolute deadline; nested 
 shorten it. Four reader permits, the 100 ms SQLite busy cap, row/byte limits and
 cancellation remain independent bounds. Gateway and maintenance budgets are separate.
 
+The timeline boundary retains retryable timeout semantics when SQLite wraps a
+deadline interrupt as a generic virtual-table construction error. Both the
+ordinary budget and a shorter caller deadline apply. The same database error
+with budget remaining stays unavailable; a fresh authorized query may recover.
+
 Current `hiroute.observation.query/v2` retains the optional
 `include_routing_observations` flag for facts and plan-quality reads. Omitted/false
 preserves released strict fields, authorization encoding and cursor bindings.
