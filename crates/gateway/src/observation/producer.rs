@@ -45,7 +45,7 @@ pub(super) struct ChannelProducer {
 
 impl ChannelProducer {
     #[cfg(test)]
-    pub(super) fn flush(&self, timeout: std::time::Duration) {
+    pub(super) fn flush(&self, timeout: Duration) {
         self.inner.as_ref().unwrap().flush(timeout).unwrap();
     }
 

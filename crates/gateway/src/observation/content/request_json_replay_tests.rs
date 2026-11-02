@@ -11,6 +11,8 @@ use crate::replay::{ReplayConfig, ReplayManager, ReplayStore};
 use crate::server::core_runtime::model_ir::{ContentPart, ModelRequestIRV1};
 use hiroute_gateway_core::runtime::body::BudgetTree;
 
+#[path = "archive_pressure_tests.rs"]
+mod archive_pressure;
 #[path = "forwarding_budget_tests.rs"]
 mod forwarding_budget;
 
@@ -763,70 +765,6 @@ fn unreadable_deferred_input_aborts_capture_without_a_complete_response_root() {
     records.extend(receiver.try_iter());
     assert!(records.iter().any(|record| record["phase"] == "abort"));
     assert!(!records.iter().any(|record| record["phase"] == "finish"));
-}
-
-#[test]
-fn queued_archive_pressure_marks_optional_loss_without_synchronous_history_fallback() {
-    use crate::server::core_runtime::adapters::decode_ingress_request;
-    let fixture = ReplayFixture::new(1024 * 1024);
-    let text = "x".repeat(20 * 1024);
-    let input = decode_ingress_request(
-        IngressProtocol::Responses,
-        &json!({"model":"route","input":text}),
-    )
-    .unwrap();
-    fixture.store.prevalidate(&[]).unwrap();
-    let before = fixture.store.budget().snapshot().unwrap().live;
-    let (sender, receiver) = mpsc::channel();
-    let mut observation = request_with_sinks_capacity(
-        OtelContentPolicy::Disabled,
-        DiagnosticsPort::default(),
-        true,
-        GatewayObservationSinks {
-            conversation_content: Arc::new(RecordSink(sender)),
-            ..GatewayObservationSinks::discard()
-        },
-        512 * 1024,
-    );
-    let (worker, gate) = super::super::content_work::ContentWorkProducer::paused();
-    Arc::get_mut(&mut observation.inner)
-        .unwrap()
-        .channels
-        .content_work = worker;
-    // Fill the current data allowance, leaving one descriptor quantum but
-    // less room than this 20KiB snapshot. Controls may retain their independent
-    // metadata; no queued/active payload may be invented for the refused input.
-    let other_bytes = 512 * 1024
-        - super::super::producer::ContentQueueLimits::for_capacity(512 * 1024).control
-        - 4096;
-    let _other = observation
-        .inner
-        .channels
-        .content
-        .reserve_work(other_bytes)
-        .unwrap();
-    observation.capture_request_async(&input, &fixture.store);
-    assert_eq!(
-        observation.inner.channels.content.work_state().unwrap().1,
-        other_bytes
-    );
-    assert!(observation.inner.async_content.get().unwrap().failed());
-    assert_eq!(fixture.store.budget().snapshot().unwrap().live, before);
-    // The encoder is still paused; drain only the independent record producer
-    // so the observation below cannot depend on OS thread scheduling.
-    observation.inner.channels.content.flush(Duration::from_secs(5));
-    let received = receiver.try_recv();
-    assert!(
-        received.is_err(),
-        "no archive traversal in the foreground: {received:?}"
-    );
-    drop(_other);
-    gate.release();
-    observation.inner.channels.content_work.flush(&observation);
-    assert_eq!(
-        observation.inner.channels.content.work_state().unwrap().1,
-        0
-    );
 }
 
 #[test]
