@@ -17,7 +17,6 @@ const CHAT_FINAL_PROVIDER_JSON: &[u8] = br#"{"id":"chat-final","object":"chat.co
 const RESPONSES_GRAMMAR_FALLBACK_JSON: &[u8] = br#"{"id":"grammar-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"grammar fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
 const RESPONSES_COLLISION_FALLBACK_JSON: &[u8] = br#"{"id":"collision-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"collision fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
 const RESPONSES_OPTIONS_FALLBACK_JSON: &[u8] = br#"{"id":"options-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"options fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
-const RESPONSES_DESCRIPTION_FALLBACK_JSON: &[u8] = br#"{"id":"description-fallback","model":"responses-native","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"description fallback"}]}],"usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}"#;
 
 #[test]
 fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_attempt() {
@@ -26,12 +25,12 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
     let chat_provider = ContinuationProvider::start(vec![
         ProviderReply::Sse(CHAT_TOOL_PROVIDER_STREAM),
         ProviderReply::Json(CHAT_FINAL_PROVIDER_JSON),
+        ProviderReply::Json(CHAT_FINAL_PROVIDER_JSON),
     ]);
     let responses_fallback = ContinuationProvider::start(vec![
         ProviderReply::Json(RESPONSES_GRAMMAR_FALLBACK_JSON),
         ProviderReply::Json(RESPONSES_COLLISION_FALLBACK_JSON),
         ProviderReply::Json(RESPONSES_OPTIONS_FALLBACK_JSON),
-        ProviderReply::Json(RESPONSES_DESCRIPTION_FALLBACK_JSON),
     ]);
     let publication_path = directory.path().join("publication.json");
     let credentials_path = directory.path().join("credentials.json");
@@ -138,17 +137,27 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
     assert_eq!(projected["stream_options"], json!({"include_usage":true}));
     assert_eq!(projected["parallel_tool_calls"], true);
     assert_eq!(projected["tool_choice"], "auto");
-    assert_eq!(projected["tools"].as_array().unwrap().len(), 2);
+    assert_eq!(projected["tools"].as_array().unwrap().len(), 3);
     assert_eq!(projected["tools"][0]["function"]["name"], "records__lookup");
+    assert_eq!(
+        projected["tools"][0]["function"]["description"],
+        format!("[records]\n{}\n\nlookup a record", namespace_description())
+    );
+    assert_eq!(projected["tools"][1]["function"]["name"], "records__list");
+    assert_eq!(
+        projected["tools"][1]["function"]["description"],
+        format!("[records]\n{}", namespace_description())
+    );
+    assert_eq!(projected["tools"][1]["function"]["strict"], false);
     assert_eq!(projected["tools"][0]["function"]["strict"], true);
     assert_eq!(
         projected["tools"][0]["function"]["parameters"]["properties"]["key"]["description"],
         "tool-schema-secret-121",
         "{projected:#}"
     );
-    assert_eq!(projected["tools"][1]["function"]["name"], "shell");
+    assert_eq!(projected["tools"][2]["function"]["name"], "shell");
     assert_eq!(
-        projected["tools"][1]["function"]["parameters"],
+        projected["tools"][2]["function"]["parameters"],
         json!({
             "type":"object",
             "properties":{"input":{"type":"string"}},
@@ -209,6 +218,7 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
     assert_eq!(responses_fallback.calls(), 0);
     let upstream = chat_provider.requests();
     let continued: Value = serde_json::from_slice(http_body(&upstream[1])).unwrap();
+    assert_eq!(continued["tools"], projected["tools"]);
     assert_eq!(continued["messages"].as_array().unwrap().len(), 4);
     assert_eq!(continued["messages"][0]["role"], "user");
     assert_eq!(continued["messages"][1]["role"], "assistant");
@@ -346,8 +356,15 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
         "{}",
         String::from_utf8_lossy(&described_namespace.body)
     );
-    wait_for_calls(&responses_fallback, 4);
-    assert_eq!(chat_provider.calls(), 2);
+    wait_for_calls(&chat_provider, 3);
+    assert_eq!(responses_fallback.calls(), 3);
+    let chat_requests = chat_provider.requests();
+    let projected_description: Value =
+        serde_json::from_slice(http_body(&chat_requests[2])).unwrap();
+    assert_eq!(
+        projected_description["tools"][0]["function"]["description"],
+        "[records]\nrecord tools"
+    );
     let fallback_requests = responses_fallback.requests();
     let forwarded_options: Value =
         serde_json::from_slice(http_body(&fallback_requests[2])).unwrap();
@@ -360,12 +377,6 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
     assert_eq!(
         forwarded_options["client_metadata"],
         json!({"session_id":"session-121"})
-    );
-    let forwarded_description: Value =
-        serde_json::from_slice(http_body(&fallback_requests[3])).unwrap();
-    assert_eq!(
-        forwarded_description["tools"][0]["description"],
-        "record tools"
     );
 
     let facts = wait_for_observation_requests(&observation_root, 6);
@@ -464,6 +475,15 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
     process.stop();
 }
 
+fn namespace_description() -> String {
+    // Exceed ingress inline retention and repeat one Replay-backed description
+    // across children, including JSON escaping and a literal locator lookalike.
+    format!(
+        "Records tools: {}",
+        "中文 \"quoted\" \\\n__hiroute_content_ref_v2_99_0_4_4__ ".repeat(256)
+    )
+}
+
 fn codex_tools_request(stream: bool) -> Value {
     json!({
         "model":"responses-chat-tools",
@@ -481,6 +501,7 @@ fn codex_tools_request(stream: bool) -> Value {
         "tools":[{
             "type":"namespace",
             "name":"records",
+            "description":namespace_description(),
             "tools":[{
                 "type":"function",
                 "name":"lookup",
@@ -492,6 +513,11 @@ fn codex_tools_request(stream: bool) -> Value {
                     "additionalProperties":false
                 },
                 "strict":true
+            }, {
+                "type":"function",
+                "name":"list",
+                "parameters":{"type":"object"},
+                "strict":false
             }]
         }]
     })

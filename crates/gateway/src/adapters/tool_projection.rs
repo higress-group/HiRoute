@@ -444,20 +444,50 @@ mod tests {
     }
 
     #[test]
-    fn namespace_description_fails_closed_instead_of_being_dropped() {
-        let mut request = request();
-        request.tool_namespaces = vec![
-            crate::server::core_runtime::model_ir::CanonicalToolNamespaceV1 {
-                name: "records".into(),
-                description: Some("record tools".into()),
-                tools: vec![function("lookup")],
-            },
-        ];
-        request.responses_tool_order = vec![ResponsesToolOrderEntryV1::Namespace { index: 0 }];
-        assert!(matches!(
-            ChatToolProjection::for_request(&request),
-            Err(ProtocolAdapterError::ClientUnrepresentable(_))
-        ));
+    fn namespace_descriptions_are_preserved_for_each_child() {
+        for (namespace_description, child_description, expected) in [
+            (
+                Some("record tools"),
+                Some("lookup a record"),
+                Some("[records]\nrecord tools\n\nlookup a record"),
+            ),
+            (Some("record tools"), None, Some("[records]\nrecord tools")),
+            (Some(""), Some(""), Some("[records]\n\n\n")),
+            (None, Some("lookup a record"), Some("lookup a record")),
+            (None, None, None),
+        ] {
+            let mut request = request();
+            let mut lookup = function("lookup");
+            lookup.description = child_description.map(str::to_owned);
+            let mut shell = custom("shell");
+            shell.description = child_description.map(str::to_owned);
+            request.tool_namespaces = vec![
+                crate::server::core_runtime::model_ir::CanonicalToolNamespaceV1 {
+                    name: "records".into(),
+                    description: namespace_description.map(str::to_owned),
+                    tools: vec![lookup, shell],
+                },
+            ];
+            request.responses_tool_order = vec![ResponsesToolOrderEntryV1::Namespace { index: 0 }];
+            let original = request.clone();
+            let projection = ChatToolProjection::for_request(&request).unwrap();
+            let tools = projection.render_tools(&request).unwrap();
+            for (index, name) in ["lookup", "shell"].iter().enumerate() {
+                assert_eq!(tools[index]["function"]["description"].as_str(), expected);
+                let emitted = format!("records__{name}");
+                assert_eq!(tools[index]["function"]["name"], emitted);
+                let identity = projection.resolve_emitted(&emitted).unwrap();
+                assert_eq!(identity.namespace.as_deref(), Some("records"));
+                assert_eq!(identity.local_name, *name);
+            }
+            assert_eq!(tools[0]["function"]["strict"], true);
+            assert_eq!(tools[0]["function"]["parameters"], json!({"type":"object"}));
+            assert_eq!(
+                tools[1]["function"]["parameters"]["properties"]["input"]["type"],
+                "string"
+            );
+            assert_eq!(request, original);
+        }
     }
 
     #[test]
@@ -506,7 +536,7 @@ mod tests {
         request.tool_namespaces = vec![
             crate::server::core_runtime::model_ir::CanonicalToolNamespaceV1 {
                 name: "records".into(),
-                description: None,
+                description: Some("record tools".into()),
                 tools: vec![function("lookup")],
             },
         ];
