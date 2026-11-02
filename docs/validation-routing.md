@@ -142,7 +142,10 @@ neither creates accounts nor logs users in, restarts Windows or changes RDP.
 
 Replace example locations with installed, pinned clients. The source root contains
 matching `tools/windows-agent-fixtures` declarations, lockfile and installed npm
-modules. `doctor` reports the actual OS and existing sessions; select the intended
+modules. Keep npm lifecycle scripts disabled. The fixture preparer materializes
+Claude's declared native entry from its locked Windows platform package, replacing
+only the reviewed placeholder; an unknown existing entry is preserved and rejected.
+`doctor` reports the actual OS and existing sessions; select the intended
 session in HOME rather than silently falling back to SSH service context. An
 administrator session is not standard-user evidence. The configured account must
 be able to read the bundles and register a task for its existing login session.

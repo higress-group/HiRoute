@@ -221,6 +221,7 @@ function Invoke-LibraryTests {
         'agents::windows_runtime::tests::windows_selected_node_version_uses_the_private_capture_and_held_job',
         'agents::windows_runtime::tests::windows_selected_pi_sdk_capabilities_load_the_actual_package',
         'agents::windows_collaboration_tests::actual_windows_codex_native_skill_executes_the_public_cli',
+        'agents::windows_collaboration_tests::actual_windows_claude_native_authentication_without_tools',
         'agents::windows_collaboration_tests::actual_windows_claude_native_skill_executes_the_public_cli',
         'agents::windows_collaboration_tests::actual_windows_qoder_native_skill_executes_the_public_cli_without_synthesized_account')
     }
@@ -592,6 +593,8 @@ if ($Scope -eq 'components') {
     ($selectionInput + 'ordinary_npm_shim_uses_the_shared_declared_bin_parser_and_rejects_reparse_bins'))
   $npmInspection = 'agents::windows_runtime::tests::windows_npm_inspection_runs_before_manifest_read_and_entry_canonicalization'
   Invoke-RequiredTests 'agent-npm-inspection' @('-p','hiroute-integrations','--lib',$npmInspection) @($npmInspection) @('--exact')
+  $nativeNpm = 'agents::windows_runtime::native_npm_tests::native_npm_pe_runs_without_node_and_invalidates_changed_engine_identity'
+  Invoke-RequiredTests 'agent-npm-native-entry' @('-p','hiroute-integrations','--lib',$nativeNpm) @($nativeNpm) @('--exact')
   $piLocator = 'agents::filesystem::pi_native::windows_tests::'
   Invoke-RequiredTests 'agent-pi-locator' @('-p','hiroute-integrations','--lib',$piLocator) @(
     ($piLocator + 'windows_pi_scanner_binds_local_npm_shim_to_declared_entry_without_evaluation'),

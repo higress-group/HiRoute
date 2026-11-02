@@ -125,6 +125,12 @@ fn actual_windows_codex_native_skill_executes_the_public_cli() {
 }
 
 #[test]
+#[ignore = "fixed actual Claude; isolated loopback authentication makes no provider call"]
+fn actual_windows_claude_native_authentication_without_tools() {
+    ClaudeNativeIngressProbe::run(&selected("HIROUTE_WORKER_CLAUDE_BINARY")).unwrap();
+}
+
+#[test]
 #[ignore = "fixed actual Claude and this candidate hiroute.exe; required CI selects exactly one case"]
 fn actual_windows_claude_native_skill_executes_the_public_cli() {
     ClaudeNativeIngressProbe::run_collaboration(
