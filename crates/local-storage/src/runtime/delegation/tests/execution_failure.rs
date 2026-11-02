@@ -1,8 +1,52 @@
 use super::*;
 use hiroute_domain::delegation::{WorkerExecutionFailureV1, WorkerExecutionStageV1};
 
+/// Frozen by the v0.3.1 RuntimeStore acceptance/checkpoint producer at
+/// 13856abd873da5b4373d39322493b4cc105c4867, using its existing sample fixture and
+/// LaunchFailedBeforeSpawn. The fixture bytes never pass through the current producer.
+#[cfg(unix)]
 #[test]
-fn failure_cause_is_atomic_immutable_and_survives_reopen_and_legacy_reads() {
+fn released_run_without_failure_cause_retains_its_facts_through_reopen_and_replay() {
+    let bytes = include_str!("fixtures/v0.3.1-failed-run.json");
+    let expected: DelegationRunV1 = serde_json::from_str(bytes).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let store = open(dir.path());
+    let run = store
+        .accept(&sample("released-task", "released-run", "/released"))
+        .unwrap();
+    advance(&store, &run, RunEventV1::LaunchFailedBeforeSpawn);
+    store
+        .connection
+        .borrow()
+        .execute(
+            "UPDATE delegation_runs SET record_json=?1 WHERE run_id=?2",
+            params![bytes, expected.run_id],
+        )
+        .unwrap();
+    drop(store);
+    let store = open(dir.path());
+    let actual = store
+        .run(&expected.workspace_id, &expected.run_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(actual, expected);
+    assert_eq!(actual.progress.state, RunStateV1::Failed);
+    assert!(!actual.progress.prompt_may_have_executed);
+    assert!(actual.execution_failure.is_none());
+    assert_eq!(
+        store
+            .find_submission(&actual.workspace_id, false, &actual.idempotency_key)
+            .unwrap(),
+        Some(actual.clone())
+    );
+    assert_eq!(
+        serde_json::to_value(actual).unwrap(),
+        serde_json::from_str::<serde_json::Value>(bytes).unwrap()
+    );
+}
+
+#[test]
+fn failure_cause_is_atomic_immutable_and_survives_reopen() {
     let dir = tempfile::tempdir().unwrap();
     let store = open(dir.path());
     let run = store
@@ -65,13 +109,5 @@ fn failure_cause_is_atomic_immutable_and_survives_reopen_and_legacy_reads() {
             .unwrap()
             .execution_failure,
         Some(failure)
-    );
-    let mut old = serde_json::to_value(&failed).unwrap();
-    old.as_object_mut().unwrap().remove("execution_failure");
-    assert!(
-        serde_json::from_value::<DelegationRunV1>(old)
-            .unwrap()
-            .execution_failure
-            .is_none()
     );
 }

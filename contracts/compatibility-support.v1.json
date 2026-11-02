@@ -1655,7 +1655,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2638,6 +2638,19 @@
         "crates/domain/src/observation/execution_tests.rs",
         "crates/domain/src/observation/fixtures/pre-context-contract.json",
         "crates/domain/src/observation/pricing.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.delegation-run/v1",
+      "field": "released run records without execution_failure",
+      "mode": "recovery_read_only",
+      "owner": "local-storage/runtime/delegation",
+      "reason": "The v0.3.1 producer at 13856abd873da5b4373d39322493b4cc105c4867 did not record execution failure causes. Its frozen Unix failed-run bytes must reopen and replay with all original facts and an absent cause; current code must not infer a historical cause from its terminal state.",
+      "removal_condition": "Retire only after supported retained run records and recovery backups no longer include producers without recorded failure causes.",
+      "allowed_paths": [
+        "crates/domain/src/delegation/records.rs",
+        "crates/local-storage/src/runtime/delegation/tests/execution_failure.rs",
+        "crates/local-storage/src/runtime/delegation/tests/fixtures/v0.3.1-failed-run.json"
       ]
     }
   ]
