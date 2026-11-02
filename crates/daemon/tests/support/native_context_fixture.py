@@ -155,6 +155,16 @@ def decision(fixture, body):
         # Fallback token estimation probes system fragments and tool definitions.
         # Its non-streaming response cannot prove task tools or continued history.
         return dict(kind='text', text='OK', request_kind='model-probe', continued=False)
+    if harness == 'claude' and not body.get('tools'):
+        output = body.get('output_config', {}).get('format', {})
+        title_schema = {'type': 'object', 'properties': {'title': {'type': 'string'}},
+                        'required': ['title'], 'additionalProperties': False}
+        system = body.get('system', [])
+        if (output == {'type': 'json_schema', 'schema': title_schema}
+                and any(block.get('type') == 'text' and block.get('text', '').startswith(
+                    'Generate a concise, sentence-case title') for block in system)):
+            return dict(kind='text', text=json.dumps({'title': 'Native context receipt'}),
+                        request_kind='title', continued=False)
     if harness=='opencode' and any(signature in native_text(body).lower() for signature in ('title generator','generate a concise title','generate a short title')):
         return dict(kind='text',text='Native context receipt',request_kind='title',continued=False)
     results = tool_results(body, harness)

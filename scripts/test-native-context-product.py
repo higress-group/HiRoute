@@ -167,6 +167,25 @@ with patch('publication_product.secrets.SystemRandom') as chooser:
         self.assertEqual(message['usage'], {'input_tokens': 1, 'output_tokens': 1})
         self.assertNotIn('completed-', json.dumps(message))
 
+    def test_claude_title_of_continue_is_not_native_history_proof(self):
+        value = self.context('claude')
+        body = {'model': 'gpt-5.4', 'max_tokens': 4096, 'stream': True, 'tools': [],
+                'system': [{'type': 'text', 'text': 'Generate a concise, sentence-case title'}],
+                'messages': [{'role': 'user', 'content': fixture.CONTINUE_PROMPT}],
+                'output_config': {'format': {'type': 'json_schema', 'schema': {
+                    'type': 'object', 'properties': {'title': {'type': 'string'}},
+                    'required': ['title'], 'additionalProperties': False}}}}
+        action = fixture.decision(value, body)
+        self.assertEqual(json.loads(action['text']), {'title': 'Native context receipt'})
+        self.assertEqual(action['request_kind'], 'title')
+        self.assertFalse(action['continued'])
+        with self.assertRaisesRegex(AssertionError, 'resumed native history'):
+            assert_frozen_route([{'state': 'green', **action}], 0, Mock())
+        for change in ({'tools': [{'name': 'Skill'}]}, {'output_config': {}},
+                       {'system': [{'type': 'text', 'text': 'Ordinary task'}]}):
+            with self.subTest(change=change), self.assertRaises(AssertionError):
+                fixture.decision(value, dict(body, **change))
+
     def test_actual_fixture_scripts_produce_the_independent_receipts(self):
         value = self.context('codex')
         action = fixture.decision(value, self.body(value))
