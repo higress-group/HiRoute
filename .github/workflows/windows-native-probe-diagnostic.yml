@@ -7,7 +7,7 @@ permissions:
 jobs:
   tool-free-claude:
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
       CARGO_INCREMENTAL: '0'
@@ -34,3 +34,21 @@ jobs:
         run: |
           cargo test --locked -p hiroute-integrations --lib agents::windows_collaboration_tests::actual_windows_claude_native_authentication_without_tools -- --ignored --exact --nocapture
           if ($LASTEXITCODE -ne 0) { throw 'Local native authentication diagnostic failed' }
+      - name: Actual installed daemon and pinned independent model fixtures
+        shell: pwsh
+        run: |
+          cargo build --locked -p hiroute-daemon --bin hirouted -p hiroute-cli --bin hiroute
+          if ($LASTEXITCODE -ne 0) { throw 'Actual CLI and daemon build failed' }
+          New-Item -ItemType Directory -Force artifacts/probe-diagnostic | Out-Null
+          python scripts/windows-agent-fixtures.py --daemon target/debug/hirouted.exe --output artifacts/probe-diagnostic/clients > artifacts/probe-diagnostic/clients.json
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned independent client fixture failed' }
+          $clients = Get-Content artifacts/probe-diagnostic/clients.json -Raw | ConvertFrom-Json
+          foreach ($property in $clients.environment.PSObject.Properties) {
+            "$($property.Name)=$($property.Value)" >> $env:GITHUB_ENV
+          }
+          foreach ($entry in $clients.discovery_path) { $entry >> $env:GITHUB_PATH }
+      - name: Actual installed public business with closed native failure classification
+        shell: pwsh
+        run: |
+          cargo test --locked -p hiroute-daemon --test windows_headless actual_windows_complete_public_headless_business -- --ignored --exact --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Installed public business diagnostic failed' }
