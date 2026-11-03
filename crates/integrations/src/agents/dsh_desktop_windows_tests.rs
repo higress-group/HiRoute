@@ -51,9 +51,12 @@ fn windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases() {
     let command = scanner.dsh_desktop_command().unwrap();
     let args: Vec<_> = command.get_args().collect();
     assert_eq!(args[0], "--expose-internals");
+    // GetTempPath can use an 8.3 account name. Production admission returns the
+    // actual ordinary drive path rather than retaining that alternate spelling.
+    let expected_archive = crate::agents::managed_launch::windows_executable_path(&archive).unwrap();
     assert_eq!(
         Path::new(args[1]),
-        archive.join("dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js")
+        expected_archive.join("dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js")
     );
     let proof = scanner.dsh_desktop_contract().unwrap();
     std::fs::write(&archive, b"a changed bundled runtime identity").unwrap();

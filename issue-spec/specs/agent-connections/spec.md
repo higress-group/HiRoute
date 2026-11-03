@@ -1126,6 +1126,7 @@ Source SPEC comments:
 
 ## Implementation references
 
+- [Windows DSH Desktop discovery and Web scan diagnostics](https://github.com/higress-group/HiRoute/issues/361).
 - [Shared settings transaction](../../../crates/application/src/agent_connection/settings/transaction.rs)
   and [native supplemental-provider guide](../../../crates/integrations/src/agents/additional_native/README.md).
 - [Codex slot/restore scenarios](../../../crates/daemon/src/control/runtime/settings_profile_tests.rs)
