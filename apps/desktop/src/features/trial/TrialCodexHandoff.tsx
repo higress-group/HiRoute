@@ -40,7 +40,7 @@ export function TrialCodexHandoff({ target, mutable, language }: { target: Trial
     {!access && !desktop ? <p className="field-help" role="status">{failed || !mutable
       ? t('启动方式尚未核实，请恢复连接后重读，或查看 Agent 配置。', 'Launch instructions are unconfirmed. Restore the connection and reload, or inspect Agent settings.')
       : t('正在读取 Codex 启动方式…', 'Reading Codex launch instructions…')}{failed && mutable && <button className="btn btn-quiet" onClick={() => setRetry(value => value + 1)}>{t('重读启动方式', 'Reload launch instructions')}</button>}</p>
-      : desktop ? <p className="field-help" data-trial-codex-desktop-start>{t('独立 Codex Desktop 的试用路由已配置。通过下方“查看 Agent 配置”进入此独立实例，启动独立窗口或复制本机启动命令。普通 Codex 与 CLI profile 保持原配置。', 'The trial route is configured for independent Codex Desktop. Use Inspect Agent settings below to open this connection, then start its separate window or copy the local launch command. Ordinary Codex and the CLI profile keep their settings.')}</p>
+      : desktop ? <p className="field-help" data-trial-codex-desktop-start>{t('通过下方“查看 Agent 配置”启动独立 Codex Desktop 窗口，或复制本机启动命令。', 'Use Inspect Agent settings below to start the independent Codex Desktop window or copy its local launch command.')}</p>
       : access && <>
         <p className="field-help">{access.selected_mode === 'profile'
           ? t('按需使用 · 仅 Codex CLI。请用下方命令，在安装 Codex 的设备终端开启新会话。直接运行普通 Codex 或 Desktop 不会使用这份试用配置。', 'On demand · Codex CLI only. Use the command below in a terminal on the device with Codex installed to start a new session. Ordinary Codex and Desktop do not use this trial configuration.')
