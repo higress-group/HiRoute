@@ -65,6 +65,7 @@ jobs:
           done < "$RUNNER_TEMP/release-assets.tsv"
       - name: Verify checksums and packaged contents
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_REVISION: ${{ steps.release.outputs.revision }}
         run: |
           node apps/website/scripts/release-manifest.mjs verify-assets apps/website/data/releases.json --tag "$RELEASE_TAG" --revision "$RELEASE_REVISION" --asset-dir "$RUNNER_TEMP/release-assets"
