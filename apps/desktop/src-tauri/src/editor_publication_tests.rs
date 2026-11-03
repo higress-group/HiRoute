@@ -100,6 +100,10 @@ async fn edited_draft_publish_uses_submitted_content_and_consumes_the_exact_draf
 #[tokio::test]
 async fn native_default_preserves_custom_text_across_publication_and_restart() {
     use hiroute_domain::*;
+    let current_guidance: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../assets/decision-services/default-assessment-guidance.json"
+    ))
+    .unwrap();
     let root = prepare();
     let mut session = open(root.path());
     let original = plan(&mut session).await;
@@ -160,12 +164,9 @@ async fn native_default_preserves_custom_text_across_publication_and_restart() {
         );
         assert_eq!(
             scope.competence.criteria,
-            stock_c_questions()["q1"]["criteria"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|v| v.as_str().unwrap().to_owned())
-                .collect::<Vec<_>>()
+            // Editable defaults use the current guidance; stock_c_questions is frozen C v1.
+            ["lowest_criterion", "middle_criterion", "highest_criterion"]
+                .map(|key| current_guidance[key].as_str().unwrap().to_owned())
                 .as_slice()
         );
         editor = current.desired.editor(None).unwrap();

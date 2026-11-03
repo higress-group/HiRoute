@@ -64,12 +64,12 @@ export async function dshDesktopCaptures(client, baseUrl, output) {
 
 export async function codexDesktopCaptures(client, baseUrl, output) {
   const results = [];
-  for (const [language, theme] of [['zh', 'dark'], ['en', 'light']]) {
+  for (const [language, theme] of [['zh', 'dark'], ['en', 'dark'], ['zh', 'light'], ['en', 'light']]) {
     for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) {
       await navigate(client, new URL(`agent-trust.html?language=${language}&theme=${theme}`, baseUrl).href, viewport);
       await waitFor(client, 'Boolean(window.agentTrust && document.querySelector(".native-list .list-row"))');
-      await evaluate(client, `import('/agent-trust-scenarios.mjs').then(m => m.showCodexIndependentDesktop())`);
-      for (const state of ['configured', 'launch-error', 'editor']) {
+      for (const state of ['unconfigured', 'configured', 'launch-error', 'editor']) {
+        if (state === 'unconfigured' || state === 'configured') await evaluate(client, `import('/agent-trust-scenarios.mjs').then(m => m.showCodexIndependentDesktop(${state !== 'unconfigured'}))`);
         if (state === 'launch-error') {
           await evaluate(client, `window.agentTrust.handlers.launch_codex_desktop = () => { throw { code: 'CODEX_DESKTOP_LAUNCH_FAILED' }; }; document.querySelector('[data-codex-desktop-launch]').click()`);
           await waitFor(client, 'Boolean(document.querySelector("[data-error-code=CODEX_DESKTOP_LAUNCH_FAILED]"))');
@@ -80,13 +80,22 @@ export async function codexDesktopCaptures(client, baseUrl, output) {
         }
         const geometry = await evaluate(client, `(() => {
           const box = document.querySelector('[role=dialog]') || document.querySelector('[data-codex-desktop-instance]');
-          const button = box.querySelector('button[type=submit]') || box.querySelector('[data-codex-desktop-launch]');
+          const button = box.querySelector('button[type=submit]') || box.querySelector('[data-codex-desktop-launch], [data-codex-desktop-configure]');
           const a = button.getBoundingClientRect();
+          const luminance = color => {
+            const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+            const context = canvas.getContext('2d'); context.fillStyle = color; context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map(v => v / 255)
+              .map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
+              .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+          };
+          const style = getComputedStyle(button), foreground = luminance(style.color), background = luminance(style.backgroundColor);
+          const actionContrast = document.querySelector('[role=dialog]') ? null : (Math.max(foreground, background) + .05) / (Math.min(foreground, background) + .05);
           return { overflow: box.scrollWidth > box.clientWidth + 1, bodyOverflow: document.documentElement.scrollWidth > innerWidth + 1,
             actionVisible: a.left >= 0 && a.right <= innerWidth + 1 && a.top >= 0 && a.bottom <= innerHeight,
-            text: box.innerText };
+            actionContrast, text: box.innerText };
         })()`);
-        if (geometry.overflow || geometry.bodyOverflow || !geometry.actionVisible) throw Error(`Codex Desktop geometry: ${JSON.stringify({ language, viewport, state, geometry })}`);
+        if (geometry.overflow || geometry.bodyOverflow || !geometry.actionVisible || geometry.actionContrast !== null && geometry.actionContrast < 4.5) throw Error(`Codex Desktop geometry: ${JSON.stringify({ language, viewport, state, geometry })}`);
         const id = `codex-desktop-${state}-${language}-${theme}-${viewport.width}`;
         const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
         await writeFile(path.join(output, `${id}.png`), Buffer.from(shot.data, 'base64'));

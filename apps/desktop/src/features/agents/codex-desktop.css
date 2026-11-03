@@ -2,8 +2,9 @@
 .codex-instance-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .codex-instance .codex-instance-heading h3 { margin: 0; font-size: 16px; line-height: 1.4; }
 .codex-instance-heading .btn { flex-shrink: 0; }
-.codex-instance .btn-primary { background: var(--accent); box-shadow: none; }
-.codex-instance .btn-primary:hover:not(:disabled) { background: var(--accent-bright); }
+.codex-instance .btn-primary { background: color-mix(in srgb, var(--accent) 75%, #000); box-shadow: none; }
+.codex-instance .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 70%, #000); }
+.codex-instance .field-help { color: var(--text-soft); }
 .codex-instance > p, .codex-instance-skills p { font-size: 13px; line-height: 1.6; }
 .codex-instance-skills { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
 .codex-instance-skills > strong { font-size: 13px; }

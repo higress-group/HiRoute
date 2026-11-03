@@ -100,6 +100,8 @@ const scenarios = [
     await until(() => calls('launch_codex_desktop').length === 2 && !button.disabled, 'launch retry');
     assert(calls('launch_codex_desktop').every(call => Object.keys(call.payload).join() === 'contextId'), 'WebView supplied launch paths or environment');
     assert(calls('preview_agent_settings').length === 0, 'Retry replayed Apply');
+    await openEditor('model', false);
+    assert(!document.querySelector('[data-codex-desktop-instance] [role=status]'), 'Old launch feedback survived a new settings action');
     await showCodexIndependentDesktop(false);
     assert(!document.querySelector('[data-codex-desktop-launch]'), 'Unconfigured Desktop can launch');
     document.querySelector('[data-codex-desktop-configure]').click();

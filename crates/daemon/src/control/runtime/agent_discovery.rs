@@ -119,7 +119,20 @@ impl LocalControlAdapter {
     ) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
         let wants_codex = selected.is_none_or(|agent| agent == "agent_codex_default");
         let wants_desktop = selected.is_none_or(|agent| agent == "agent_codex_desktop");
-        let fixed_candidates = if wants_codex || wants_desktop {
+        let desktop_catalog_source = if wants_desktop {
+            self.scanner
+                .codex_desktop_scanner()
+                .and_then(|scanner| scanner.codex_catalog_summary().ok())
+                .filter(|catalog| {
+                    catalog.metadata_source
+                        != hiroute_integrations::CodexCatalogMetadataSourceV1::HirouteGenerated
+                })
+        } else {
+            None
+        };
+        // Fresh and HiRoute-only Desktop instances display no native source bindings.
+        // Their targeted read must not join an unrelated, growing compute inventory.
+        let fixed_candidates = if wants_codex || desktop_catalog_source.is_some() {
             hiroute_application::control::RoutingFactsPort::routing_compilation_snapshot(
                 self,
                 &WorkspaceId::default(),
@@ -218,14 +231,7 @@ impl LocalControlAdapter {
             None
         }
         .and_then(&catalog_view);
-        let desktop_catalog = if wants_desktop {
-            self.scanner
-                .codex_desktop_scanner()
-                .and_then(|scanner| scanner.codex_catalog_summary().ok())
-        } else {
-            None
-        }
-        .and_then(catalog_view);
+        let desktop_catalog = desktop_catalog_source.and_then(catalog_view);
         let discoveries = match selected {
             Some(agent) => vec![
                 self.scanner

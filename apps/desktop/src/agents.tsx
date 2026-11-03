@@ -285,6 +285,7 @@ export function Agents({
       agent = current;
     }
     trigger.current = source;
+    if (agent.agent_id === 'agent_codex_desktop') setDesktopFeedback(null);
     setActionError('');
     setNotice('');
     setPreview(null);
@@ -306,6 +307,7 @@ export function Agents({
   async function change(agent: Agent, facet: Facet, restore: boolean, source: HTMLElement | null) {
     if (busy || !mutationAllowed || !snapshot?.trusted_authority || !agent.context_id || !agentEcosystem(agent.agent_id) || (!restore && !selectionKnown)) return;
     setBusy(true);
+    if (agent.agent_id === 'agent_codex_desktop') setDesktopFeedback(null);
     setBusyText(text('正在保存…', 'Saving…'));
     setActionError('');
     setNotice('');
