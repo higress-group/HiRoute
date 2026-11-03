@@ -58,6 +58,32 @@ fn wire(protocol: IngressProtocol, reasoning: Option<&str>) -> serde_json::Value
 }
 
 #[test]
+fn chat_replayed_reasoning_and_text_fields_keep_the_accepted_boundary() {
+    for allowance in [0, 8 * 1024, 64 * 1024] {
+        let (_dir, replay) = super::replay();
+        let proof = accepted("actual reasoning", true).evidence().unwrap();
+        let request = super::reasoning_boundary::production_request_for(
+            IngressProtocol::ChatCompletions,
+            &wire(IngressProtocol::ChatCompletions, Some("actual reasoning")),
+            &replay,
+            allowance,
+        );
+        let incoming = incoming_evidence(
+            &request,
+            0,
+            &replay,
+            &mut FingerprintBudget::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            proof.matches(incoming),
+            Some(true),
+            "Chat fields preserve exact payloads without an ordered reasoning/text claim"
+        );
+    }
+}
+
+#[test]
 fn omitted_plaintext_is_only_a_visible_projection_with_bounded_actual_content() {
     for protocol in [
         IngressProtocol::Responses,

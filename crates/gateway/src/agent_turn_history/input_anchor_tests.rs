@@ -99,7 +99,10 @@ fn rewritten_shortened_and_new_inputs_never_alias_the_old_source() {
         );
         let mut messages = original;
         match case {
-            "rewrite" => messages[0] = text(MessageRole::User, "Rewritten context"),
+            "rewrite" => {
+                messages[0] = text(MessageRole::User, "Rewritten context");
+                messages.push(text(MessageRole::Assistant, "Unmatched output"));
+            }
             "shorten" => {
                 messages.remove(0);
             }
@@ -107,7 +110,9 @@ fn rewritten_shortened_and_new_inputs_never_alias_the_old_source() {
                 text(MessageRole::Assistant, "Accepted"),
                 text(MessageRole::User, "Input"),
             ]),
-            "window_changed" => messages.push(text(MessageRole::Assistant, "Unmatched output")),
+            "window_changed" | "unavailable" => {
+                messages.push(text(MessageRole::Assistant, "Unmatched output"));
+            }
             _ => {}
         }
         let input = request(messages);
