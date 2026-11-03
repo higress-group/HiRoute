@@ -53,7 +53,8 @@ fn windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases() {
     assert_eq!(args[0], "--expose-internals");
     // GetTempPath can use an 8.3 account name. Production admission returns the
     // actual ordinary drive path rather than retaining that alternate spelling.
-    let expected_archive = crate::agents::managed_launch::windows_executable_path(&archive).unwrap();
+    let expected_archive =
+        crate::agents::managed_launch::windows_executable_path(&archive).unwrap();
     assert_eq!(
         Path::new(args[1]),
         expected_archive.join("dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js")
