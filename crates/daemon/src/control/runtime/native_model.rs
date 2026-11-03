@@ -297,17 +297,19 @@ impl LocalControlAdapter {
             Err(error) if error.code != PortErrorCode::InvalidData => return Err(error),
             Err(_) => {}
         }
-        let derived = codex_catalog_plan_for(
-            &self
-                .settings_agent_for_context(&payload.context_id)
+        // Select the registered home by subject. Original Codex journals retain their
+        // released recovery behavior even when they use an older context identifier.
+        let config = if model_intent.desired()["subject"]["agent_id"]
+            == hiroute_integrations::CODEX_DESKTOP_AGENT_ID
+        {
+            self.scanner
+                .codex_desktop_config_target()
                 .ok_or_else(|| conflict("codex.catalog.context"))?
-                .scanner(&self.scanner)
-                .codex_user_config_target(),
-            settings,
-            &publication,
-            &baseline,
-        )
-        .map_err(|_| conflict("codex.catalog.context_drift"))?;
+        } else {
+            self.scanner.codex_user_config_target()
+        };
+        let derived = codex_catalog_plan_for(&config, settings, &publication, &baseline)
+            .map_err(|_| conflict("codex.catalog.context_drift"))?;
         let producer_kind = match derived.producer.metadata_source {
             hiroute_integrations::CodexCatalogMetadataSourceV1::UserConfigured => {
                 CodexCatalogProducerKindV1::UserConfigured
