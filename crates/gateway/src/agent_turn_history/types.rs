@@ -163,6 +163,8 @@ pub(crate) enum ExecutionAttribution {
 pub(crate) struct AgentTurnTicket {
     /// End of the exact, unambiguous accepted response in this request.
     pub(crate) capture_input_start: Option<usize>,
+    /// Archive source identity; does not authorize execution continuity.
+    pub(crate) capture_turn_anchor: String,
     pub(crate) key: AgentTurnHistoryKey,
     pub(crate) entry_token: u64,
     pub(crate) revision: u64,

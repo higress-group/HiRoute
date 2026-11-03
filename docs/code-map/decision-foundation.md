@@ -156,6 +156,8 @@ keeps unrelated session growth out of the routine scan. Incoming projection and
 fingerprinting stay outside that lock; no model execution owns it.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+The [retained Hermes Chat listener](../../tools/e2e-harness/tests/p0_gateway_runtime/hermes_long_chat.rs)
+covers independent reasoning/text fields, long-body spill and complete next-input assessment.
 [Opening evidence](../../crates/gateway/src/agent_turn_history/store/opening.rs)
 compares the full old request separately from that response edge. Both reused
 and independent branches require an actually appended input to establish a new
@@ -304,7 +306,10 @@ separate, so mixed current scopes retain rates; authenticated supported pre-appl
 The [model row projection](../../apps/desktop/src/features/plan-quality-state.ts)
 associates configured candidates with retained execution by declared position and
 reasoning, not display name or a freshly materialized model ID. The shared stage
-view reads recorded execution facts even if the current plan has changed.
+view reads recorded execution facts even if the current plan has changed. Its
+bounded ordinal coverage helper distinguishes absent, partial and complete
+assessments, keeping frozen score coverage and pending turns visible without
+changing the query's complete-score eligibility.
 The `observation plan-quality samples` CLI exposes the same query; its
 [command registry](../../crates/application-api/src/commands.rs), generated manifests
 and [CLI entry tests](../../crates/cli/src/lib.rs) must remain aligned.

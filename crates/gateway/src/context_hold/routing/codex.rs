@@ -110,7 +110,7 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
             return RoutingFacts::uncertain();
         }
     }
-    // rust-v0.147.0 emits exactly these kinds. An unfamiliar future kind is
+    // These explicit protocol kinds are auxiliary. An unfamiliar kind is
     // observed traffic, not permission to discard an ordinary execution.
     match metadata.request_kind.as_str() {
         Some("memory" | "prewarm" | "compaction") => return RoutingFacts::detached(),
@@ -124,7 +124,7 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
         return RoutingFacts::uncertain();
     }
     let window = metadata.window_id.as_str();
-    // rust-v0.147.0 emits thread_id:window_number. Every native compaction
+    // The native window is thread_id:window_number. Every native compaction
     // increments that persisted number; it survives resume. It is negative
     // evidence only: zero still needs a clean bootstrap or captured task.
     let generation = thread.zip(window).and_then(|(thread, window)| {
@@ -138,17 +138,12 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
         }
         suffix.parse::<u64>().ok()
     });
-    let known_producer = matches!(
-        single_header(headers, "user-agent", 1024),
-        Field::Value(value) if matches!(value.split_whitespace().next(),
-            Some("codex_exec/0.147.0" | "codex_cli_rs/0.147.0"))
-    );
     RoutingFacts {
         native: NativeCheckpoint {
             turn: turn.map(digest),
             compacted: generation.is_some_and(|number| number > 0),
             generation,
-            user_origin: if generation.is_some() && known_producer {
+            user_origin: if generation.is_some() {
                 NativeUserOrigin::NativeTurn
             } else {
                 NativeUserOrigin::Observed

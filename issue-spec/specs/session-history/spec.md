@@ -51,6 +51,13 @@ classes and notification text SHALL NOT invent that missing dimension.
 
 Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connection/authorization. Equal raw native IDs under distinct connections cannot merge conversations. For a trusted registered Hermes consumer, absent or invalid native identity remains request-scoped without first-user content inference. A caller-supplied header or user-agent does not establish managed-consumer authority; session identity itself grants no model or management access. Native cache/root affinity is not Hermes conversation proof.
 
+A valid Hermes `observed_batch` remains correlation-only native evidence. Independently,
+the observation input excerpt SHALL identify the complete latest wire User occurrence
+as `wire_observed`, with source uncertainty, so later accepted tool continuations can
+reference its retained input without storing it again. This does not select a human
+source or a native message window. An explicit existing-turn declaration, invalid
+input descriptor, or unavailable typed peer SHALL NOT fall back to an ancestor User.
+
 #### Scenario: Separate Hermes conversations when identity is missing or content matches
 
 - **WHEN** independent managed Hermes conversations have equal prompts, equal raw IDs under different connections, or no usable native ID
@@ -66,6 +73,32 @@ New observation writes SHALL associate a session with an Agent only through the 
 Startup attribution recovery SHALL register only verifiable ownership. Missing proof for a managed Agent grant in the current publication SHALL leave new observations unlinked and produce bounded diagnostics without blocking startup or journal recovery. A current authenticated service-completion receipt may prove ownership while the transaction's native-file tail remains pending; the exact journal and grant proofs still apply. After journal recovery completes the operation, publication restoration SHALL register the now-verifiable ownership for new sessions. Unverifiable historical connection operations SHALL be skipped with bounded diagnostics. Recovery SHALL NOT backfill unlinked historical sessions. Publication activation SHALL retain strict transaction and grant validation.
 
 A session receiving mapped grants from different Agents SHALL retain an attribution conflict and display as unlinked. Repeated or later matching evidence cannot clear the conflict. Missing mappings remain unknown. Full fact deletion or retention expiry SHALL erase the session attribution evidence with those facts; content-only deletion preserves it. Worker run relations retain their existing verified authority and semantics.
+
+Session summaries SHALL expose an optional `executor` from retained verified Worker
+relations, separately from `agent_id`. It names one harness only when every request
+in the authorized filtered population has a nonconflicting verified relation and
+all name the same harness. Start/Continue run changes alone do not erase a common
+executor. Missing relations, conflicting relations and mixed harnesses leave it
+unknown; evidence outside the reader's Run/time/query scope cannot supply or remove
+that identity. Executor proof does not require complete native history correlation.
+This derived read SHALL NOT register Agent grants, rewrite session ownership,
+backfill native attribution, add a per-session lookup or introduce a storage migration.
+
+The session list, selected heading, search results and Home activity SHALL label a
+known Worker as its executor with a delegated-execution qualifier, such as
+`Codex (delegated)`. They SHALL NOT describe it as an unlinked Agent solely because
+there is no managed native configuration association. Missing or unrecognized
+executor identity remains explicit; model names, User-Agent strings and the caller's
+Agent cannot name the executor. Ordinary native Agent labels keep their meaning.
+
+#### Scenario: Retained Codex delegation has no native configuration association
+
+- **GIVEN** a retained session has an empty `agent_id` and verified Codex Run links.
+- **THEN** its summary exposes the Codex executor and the UI labels it as delegated
+  Codex, while the stored `agent_id` stays empty and no configuration link is invented.
+- **AND** the same rule applies to Claude Code, DSH, Pi, Qoder and OpenCode.
+- **AND** reopening preserves this read from existing evidence, while an authorized
+  subset sees only its own consistent executor and mixed or missing links stay unknown.
 
 #### Scenario: Reconfiguration and rotation preserve old attribution
 
@@ -201,7 +234,7 @@ complete environment block may be consumed with that setup prefix, while remaini
 real text supplies the title. Mere mentions or malformed/unclosed setup cannot hide
 a user question. Captured bytes remain expandable and unchanged.
 
-Body may initially fold retained standalone Agent context and complete leading reminders. Users can expand captured semantic text. Unarchived setup, tool definitions and opaque protocol state are not fabricated as available or classified as accidental capture loss. Real user/assistant messages cannot be hidden by partial-tag guesses. Incomplete pagination/search-anchor context keeps raw text until safe interpretation is possible. Folding/title extraction changes neither model request, retained semantic bytes, nor search offsets. A request body view represents recorded new activity and any explicit first-seen input context, not its complete historical model input.
+Body may initially fold retained standalone Agent context and complete leading reminders. Users can expand captured semantic text. Unarchived setup, tool definitions and opaque protocol state are not fabricated as available or classified as accidental capture loss. Real user/assistant messages cannot be hidden by partial-tag guesses. Incomplete pagination/search-anchor context keeps raw text until safe interpretation is possible. Folding/title extraction changes neither model request, retained semantic bytes, nor search offsets. A request body view represents recorded new activity and any explicit first-seen input context, not its complete historical model input. An unchanged carried input SHALL retain its captured source identity across routing-stage resets when exact request-prefix evidence binds the same input position to one source. This archive-only association SHALL NOT authorize execution continuity, merge stages, infer sources from text similarity, or hide missing, deleted or expired content. Ambiguous or unavailable source evidence remains explicitly partial.
 
 #### Scenario: Fold only retained semantic context
 
@@ -390,7 +423,30 @@ supplies names/order and cannot merge differing recorded model/profile summaries
 Display published order, not performance ranking; unknown labels stay unavailable.
 Draft edits cannot change historical rows/threshold interpretation. Below-floor,
 meets-floor, and unrated filters use each stage's frozen floor; equality meets it,
-partial is unrated but may expose its raw score/gaps in detail.
+partial remains in the not-fully-assessed filter and is excluded from complete
+score counts and averages. Scope counts and filter labels SHALL say fully assessed
+and not fully assessed rather than implying that every incomplete stage has no score.
+
+Stage presentation SHALL distinguish absent, partial and complete assessments.
+An existing partial assessment SHALL retain its visible raw score, labelled as
+partial; zero is a valid score. Show the recorded assessment's target range and
+the stage turns outside it without requiring the evidence disclosure to be opened.
+Do not extend a frozen assessment to cover newly appended turns. If the assessment
+is partial but its ordinal range covers the stage, report pending turns as unknown:
+the range alone cannot identify missing evidence or unassessed requests within a
+turn. Keep history gaps, partial assessment evidence and attribution uncertainty
+distinct. This presentation SHALL NOT change statistical eligibility or infer a
+complete assessment from ordinal coverage alone.
+
+#### Scenario: A growing stage retains its earlier score
+
+- **GIVEN** a stage spans turns 1–5 and its latest assessment scores turns 1–4 at 0.68.
+- **THEN** the stage displays 0.68 as partially assessed, the assessed range 1–4,
+  and turn 5 awaiting assessment; it remains excluded from complete-score averages.
+- **AND** an absent assessment displays unrated with the entire stage pending,
+  while a complete assessment of the whole stage at zero displays a complete zero.
+- **AND** an assessment with incomplete evidence over turns 1–5 stays partial and
+  does not claim that no turns await assessment.
 
 Plan and session views share stage/score/query components and reject stale-range
 responses. Switching sessions resets its stage filter, while same-session refresh

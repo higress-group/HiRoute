@@ -66,7 +66,8 @@ try {
   chrome.stderr.on('data', data => { chromeErrors = (chromeErrors + data).slice(-8000); });
   try { await waitFor(`http://127.0.0.1:${cdpPort}/json/version`); }
   catch (error) { throw new Error(`${error.message}\n${chromeErrors}`); }
-  const runner = spawn(process.execPath, [path.join(here, 'session-window-active.mjs'), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot], { cwd: desktopRoot, stdio: 'inherit' });
+  const runnerName = process.argv.includes('--assessment-coverage') ? 'assessment-coverage.mjs' : 'session-window-active.mjs';
+  const runner = spawn(process.execPath, [path.join(here, runnerName), String(cdpPort), `http://127.0.0.1:${httpPort}/`, outputRoot], { cwd: desktopRoot, stdio: 'inherit' });
   const outcome = await waitForExit(runner);
   if (outcome.code !== 0) process.exitCode = outcome.code ?? 1;
 } finally {

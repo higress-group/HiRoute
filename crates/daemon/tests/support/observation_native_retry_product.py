@@ -19,12 +19,12 @@ def rows(product, sql, values=()):
         return db.execute(sql, values).fetchall()
 
 
-def send(product, messages, turn, failed=False, session='native-content-retry', captured=True):
+def send(product, messages, turn, failed=False, session='native-content-retry', captured=True,
+         hermes=False):
     prior = {row[0] for row in rows(product, 'SELECT request_id FROM logical_requests')}
     client = http.client.HTTPConnection('127.0.0.1', product.port, timeout=30)
     try:
-        client.request('POST', '/v1/responses', encoded({
-            'model': product.model_alias, 'input': messages, 'stream': False}), {
+        headers = {
                 'Content-Type': 'application/json',
                 'X-HiRoute-Token': product.bearer(product.agent_connection),
                 'session-id': session, 'thread-id': session,
@@ -32,7 +32,19 @@ def send(product, messages, turn, failed=False, session='native-content-retry', 
                 'x-codex-turn-metadata': encoded({
                     'session_id': session, 'thread_id': session,
                     'turn_id': turn, 'request_kind': 'turn'}).decode(),
-            })
+            }
+        if hermes:
+            headers = {'Content-Type': 'application/json',
+                'X-HiRoute-Token': product.bearer(product.agent_connection),
+                'X-Hermes-Session-Id': session, 'X-HiRoute-Agent': 'hermes',
+                'X-HiRoute-Routing-Context': encoded({
+                    'version': 2, 'agent': 'hermes', 'session_id': session, 'purpose': 'main',
+                    'turn_id': turn, 'input': {'kind': 'observed_batch', 'event_id': turn}}).decode()}
+        body = {'model': product.model_alias, 'input': messages, 'stream': False}
+        if hermes:
+            body['tools'] = [{'type': 'function', 'name': 'native_probe',
+                              'parameters': {'type': 'object'}}]
+        client.request('POST', '/v1/responses', encoded(body), headers)
         response = client.getresponse()
         raw = response.read()
         product.outputs.append(raw)
@@ -66,6 +78,106 @@ def query(product, view, value):
 def catalog(product, request_id):
     return query(product, 'catalog', {'request_id': request_id, 'limit': 200,
         'cursor': None, 'include_input_selection': True, 'include_semantic_metadata': True})
+
+
+def verify_carried_input_source(product):
+    """Archive provenance survives response-association loss, independently of retry."""
+    session = 'native-carried-input-source'
+    messages = [{'role': 'user', 'content': 'Preserve this original input occurrence.'}]
+    first = send(product, messages, 'source-A', session=session)
+    original = catalog(product, first)
+    source = [c for c in original['contents'] if c['direction'] == 'request_input'
+              and c['role'] == 'user']
+    assert len(source) == 1 and source[0]['state'] == 'complete', original
+    expected = {'source_request_id': first,
+                'message_occurrence_id': source[0]['message_occurrence_id']}
+    requests = [first]
+    last = None
+    for step in range(3):
+        # This output was never accepted: the original input prefix remains
+        # exact, but response continuity must fail and open an independent stage.
+        messages.append({'role': 'assistant', 'content': f'Unmatched output {step}'})
+        current = send(product, messages, 'source-A', session=session)
+        requests.append(current)
+        wait_for(lambda: complete_content(product, current), 'carried source capture incomplete')
+        last = catalog(product, current)
+        assert not last['roots_partial'] and last['input_anchor'] == expected, last
+        assert not [c for c in last['contents'] if c['direction'] == 'request_input'], last
+    placeholders = ','.join('?' for _ in requests)
+    def stages():
+        return rows(product, 'SELECT agent_turn_id FROM observation_analysis_turns_v1 '
+                    f'WHERE request_id IN ({placeholders})', requests)
+
+    wait_for(lambda: len(stages()) == len(requests), 'semantic stage admissions did not persist')
+    assert len({row[0] for row in stages()}) == 4, \
+        'archive source identity merged unrelated execution stages'
+    product.stop()
+    product.start()
+    assert catalog(product, requests[-1]) == last, 'carried source changed after reopen'
+    text = query(product, 'content', {'request_id': first, 'content_id': source[0]['content_id'],
+                                    'cursor': None})
+    assert text['state'] == 'available', text
+    assert ''.join(chunk['text'] for chunk in text['chunks']) == messages[0]['content']
+    # Identical text is a distinct occurrence at a genuinely appended input.
+    messages.append({'role': 'user', 'content': messages[0]['content']})
+    following = send(product, messages, 'source-B', session=session)
+    wait_for(lambda: complete_content(product, following), 'new input capture incomplete')
+    page = catalog(product, following)
+    assert not page['roots_partial'] and page['input_anchor'] != expected, page
+    return {'carried_source_requests': len(requests), 'independent_stages': 4,
+            'carried_source_reopened': True, 'repeated_input_is_distinct': True}
+
+
+def verify_hermes_long_input_source(product, upstream, decisions):
+    """Controlled Hermes v2 metadata through the real writer and authorized reader."""
+    session = 'hermes-retained-long-history'
+    messages = [message for index in range(50) for message in (
+        {'role': 'user', 'content': f'Background {index}: ' + 'x' * 16384},
+        {'role': 'assistant', 'content': f'Uncaptured context {index}: ' + 'y' * 16384})]
+    current = 'Read the synthetic value without discarding earlier context.'
+    messages.append({'role': 'user', 'content': current})
+    assert len(encoded(messages)) > 1024 * 1024
+    before = len(decisions())
+    upstream.function_tools = True
+    first = send(product, messages, 'hermes-A', session=session, hermes=True)
+    page = catalog(product, first)
+    assert page['input_selection']['evidence'] == 'wire_observed', page
+    assert page['input_selection']['source_unverified'], page
+    users = [c for c in page['contents'] if c['direction'] == 'request_input'
+             and c['role'] == 'user' and c['kind'] == 'text']
+    source = users[-1]
+    # Capture completion precedes the independent asynchronous text index.
+    wait_for(lambda: rows(product,
+        "SELECT 1 FROM observation_text_index_v2 i JOIN content_instances_v2 c "
+        "ON c.workspace_id=i.workspace AND c.content_blob_digest=i.digest "
+        "WHERE c.request_id=? AND c.content_id=? AND i.state='ready'",
+        (first, source['content_id'])), 'long input text index did not become ready')
+    body = query(product, 'content', {'request_id': first, 'content_id': source['content_id'],
+                                    'cursor': None})
+    assert body['state'] == 'available', body
+    assert ''.join(chunk['text'] for chunk in body['chunks']) == current, body
+    messages += [
+        {'type': 'function_call', 'call_id': 'native-proxy-call', 'name': 'native_probe',
+         'arguments': '{}'},
+        {'type': 'function_call_output', 'call_id': 'native-proxy-call', 'output': '42'}]
+    upstream.function_tools = False
+    continued = send(product, messages, 'hermes-A', session=session, hermes=True)
+    assert len(decisions()) == before + 1, 'long tool continuation was reclassified'
+    wait_for(lambda: complete_content(product, continued), 'long continuation capture incomplete')
+    expected = {'source_request_id': first,
+                'message_occurrence_id': source['message_occurrence_id']}
+    page = catalog(product, continued)
+    assert not page['roots_partial'] and page['input_anchor'] == expected, page
+    messages += [{'role': 'assistant', 'content': 'native product answer'},
+                 {'role': 'user', 'content': current}]
+    following = send(product, messages, 'hermes-B', session=session, hermes=True)
+    wait_for(lambda: complete_content(product, following), 'long next input capture incomplete')
+    assert len(decisions()) == before + 2
+    assert catalog(product, following)['input_anchor'] != expected
+    product.stop()
+    product.start()
+    assert catalog(product, continued)['input_anchor'] == expected
+    return {'long_hermes_requests': 3, 'long_hermes_source_reopened': True}
 
 
 def run(repository):
@@ -117,6 +229,9 @@ def run(repository):
             assert body['state'] == 'available' and body['next_cursor'] is None, body
             assert ''.join(c['text'] for c in body['chunks']) == messages[0]['content'], body
 
+            carried_source = verify_carried_input_source(product)
+            long_hermes = verify_hermes_long_input_source(product, upstream, decisions)
+
             # Runtime history cannot prove optional body persistence. A failed
             # first capture must remain an explicit gap on a healthy retry.
             product.stop()
@@ -143,7 +258,8 @@ def run(repository):
                 'state': 'green', 'real_requests': 5, 'input_occurrences': 1,
                 'ordinary_retry_content_nacks': 0, 'ordinary_retry_content_gaps': 0,
                 'injected_capture_failures': 1, 'missing_retry_input_explicitly_partial': True,
-                'actual_attempts_linked': True, 'history_reopened': True}), flush=True)
+                'actual_attempts_linked': True, 'history_reopened': True,
+                **carried_source, **long_hermes}), flush=True)
     finally:
         try:
             product.close()

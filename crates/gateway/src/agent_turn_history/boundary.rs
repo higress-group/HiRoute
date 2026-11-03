@@ -436,6 +436,9 @@ pub(super) fn incoming_evidence(
     hash.finish().map(|mut evidence| {
         evidence.contextual = request.native_only;
         evidence.consumed_end = consumed_end;
+        evidence.chat_fields = request.ingress_protocol
+            == crate::server::request_plan::IngressProtocol::ChatCompletions
+            && consumed_end == start.saturating_add(1);
         evidence
     })
 }
@@ -476,6 +479,8 @@ pub(super) struct BoundaryEvidence {
     full: [u8; 32],
     plaintext_full: [u8; 32],
     visible: Option<[u8; 32]>,
+    single_reasoning: Option<[u8; 32]>,
+    chat_fields: bool,
     reasoning: bool,
     contextual: bool,
     encrypted: bool,
@@ -493,6 +498,15 @@ impl BoundaryEvidence {
                 || self.reasoning
                     && !incoming.reasoning
                     && self.visible.is_some()
+                    && self.visible == incoming.visible
+                // Chat replays reasoning and visible content as separate
+                // fields, without their relative stream arrival order. Keep
+                // visible/tool order and one complete reasoning block exact;
+                // this projection never proves provider-state affinity.
+                || incoming.chat_fields
+                    && self.single_reasoning.is_some()
+                    && self.single_reasoning == incoming.single_reasoning
+                    && self.visible.is_some()
                     && self.visible == incoming.visible)
         {
             Some(true)
@@ -506,6 +520,8 @@ struct BoundaryHasher {
     full: RuntimeHash,
     plaintext_full: RuntimeHash,
     visible: RuntimeHash,
+    single_reasoning: RuntimeHash,
+    reasoning_parts: usize,
     content: bool,
     visible_content: bool,
     reasoning: bool,
@@ -520,6 +536,8 @@ impl Default for BoundaryHasher {
                 b"accepted-plaintext-encoding-boundary/v1",
             ),
             visible: RuntimeHash::new_with_prefix(b"accepted-response-boundary/v2"),
+            single_reasoning: RuntimeHash::new_with_prefix(b"accepted-single-reasoning/v1"),
+            reasoning_parts: 0,
             content: false,
             visible_content: false,
             reasoning: false,
@@ -549,6 +567,10 @@ impl BoundaryHasher {
         if kind == b"reasoning" || kind == b"encrypted_content" {
             self.reasoning = true;
             self.encrypted |= kind == b"encrypted_content";
+            if kind == b"reasoning" {
+                self.single_reasoning.update(digest);
+                self.reasoning_parts += 1;
+            }
         } else {
             self.visible.update(kind);
             self.visible.update(digest);
@@ -562,6 +584,8 @@ impl BoundaryHasher {
             full: self.full.finalize(),
             plaintext_full: self.plaintext_full.finalize(),
             visible: self.visible_content.then(|| self.visible.finalize()),
+            single_reasoning: (self.reasoning_parts == 1).then(|| self.single_reasoning.finalize()),
+            chat_fields: false,
             reasoning: self.reasoning,
             contextual: false,
             encrypted: self.encrypted,

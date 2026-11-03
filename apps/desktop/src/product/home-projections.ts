@@ -1,6 +1,7 @@
 import type { Agent, AgentSnapshot } from '../agents';
 import { agentHasNoModelConnection, agentModelStatus } from '../features/agents/status.ts';
 import { agentBrand, agentDisplayName, agentEcosystem, agentSupportsCollaboration, agentSupportsModelRouting } from '../features/agents/ecosystems.ts';
+import { sessionAgentLabel } from '../features/session-correlation.ts';
 import type {
   HomeActivity,
   HomeAgents,
@@ -50,6 +51,7 @@ export type ObservationSessionPage = {
   sessions: {
     session_id: string;
     agent_id: string;
+    executor?: string | null;
     first_request_at_ms: number;
     last_request_at_ms: number;
     request_count: number;
@@ -256,9 +258,10 @@ export function projectHomeActivity(page: ObservationSessionPage): HomeActivity 
     sessions: page.sessions.map(session => ({
       sessionId: session.session_id || null,
       agentId: session.agent_id || undefined,
+      executor: session.executor ?? (session.correlation_kind === 'verified_worker' ? null : undefined),
       title: '',
       requestCount: session.request_count,
-      agentName: session.agent_id
+      agentName: session.executor != null || session.correlation_kind === 'verified_worker' ? sessionAgentLabel(session, 'en') : session.agent_id
         ? agentEcosystem(session.agent_id) ? agentDisplayName(session.agent_id, 'en') : 'Agent'
         : undefined,
       occurredAtMs: session.last_request_at_ms,

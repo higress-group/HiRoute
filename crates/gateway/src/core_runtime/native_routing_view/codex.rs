@@ -45,6 +45,7 @@ pub(super) fn prepare(
             current_input_position: Some(CurrentInputPosition::Event(index)),
             current_input_unavailable: false,
             origin_unverified: true,
+            observed_batch: false,
             _reservation: Some(reservation),
         },
         None => NativeRoutingView {
@@ -59,6 +60,7 @@ pub(super) fn prepare(
             // task. A later User event still uses the normal complete fallback.
             current_input_unavailable: peer.is_some() || latest.is_none(),
             origin_unverified: true,
+            observed_batch: false,
             _reservation: None,
         },
     })

@@ -1,7 +1,177 @@
 use super::tests::{link, open, query, reader, seed};
 use super::*;
-use hiroute_domain::{ContentCompleteness, FactsCompleteness, ObservationQueryPort};
+use hiroute_domain::{
+    ContentCompleteness, FactsCompleteness, ObservationQueryPort,
+    ObservationSessionCorrelationKindV1,
+};
 use rusqlite::params;
+
+#[test]
+fn sessions_name_verified_executors_for_every_harness_without_inventing_agent_ownership() {
+    for harness in ["codex", "claude", "dsh", "pi", "qoder", "opencode"] {
+        let root = tempfile::tempdir().unwrap();
+        let store = open(root.path());
+        seed(&store, "first", 100);
+        let mut relation = link("first", "run-one");
+        relation.harness_id = harness.into();
+        store.link_observed_request(&relation).unwrap();
+        let page = store
+            .observed_sessions(&reader(None), &query(50), 500)
+            .unwrap();
+        assert_eq!(page.sessions[0].executor.as_deref(), Some(harness));
+        assert!(page.sessions[0].agent_id.is_empty());
+        // Executor proof does not upgrade request-scoped native history evidence.
+        assert_ne!(
+            page.sessions[0].correlation_kind,
+            ObservationSessionCorrelationKindV1::VerifiedWorker
+        );
+        drop(store);
+        let reopened = open(root.path());
+        let retained = reopened
+            .observed_sessions(&reader(None), &query(50), 500)
+            .unwrap();
+        assert_eq!(retained.sessions, page.sessions);
+    }
+}
+
+#[test]
+fn continued_runs_keep_one_executor_while_scoped_reads_do_not_leak_other_harnesses() {
+    let root = tempfile::tempdir().unwrap();
+    let store = open(root.path());
+    seed(&store, "first", 100);
+    seed(&store, "second", 200);
+    let first = link("first", "run-one");
+    let mut second = link("second", "run-two");
+    second.task_id = first.task_id.clone();
+    second.continued_from_run_id = Some(first.run_id.clone());
+    store.link_observed_request(&first).unwrap();
+    store.link_observed_request(&second).unwrap();
+    assert_eq!(
+        store
+            .observed_sessions(&reader(None), &query(50), 500)
+            .unwrap()
+            .sessions[0]
+            .executor
+            .as_deref(),
+        Some("codex")
+    );
+
+    // A later Continue can use a different executor. No one executor owns the
+    // combined scope; each authorized/time-filtered population keeps its own fact.
+    seed(&store, "third", 300);
+    let mut third = link("third", "run-three");
+    third.task_id = first.task_id.clone();
+    third.continued_from_run_id = Some(second.run_id.clone());
+    third.harness_id = "dsh".into();
+    store.link_observed_request(&third).unwrap();
+    assert!(
+        store
+            .observed_sessions(&reader(None), &query(50), 500)
+            .unwrap()
+            .sessions[0]
+            .executor
+            .is_none()
+    );
+    for (run, harness) in [
+        ("run-one", "codex"),
+        ("run-two", "codex"),
+        ("run-three", "dsh"),
+    ] {
+        let page = store
+            .observed_sessions(&reader(Some(run)), &query(50), 500)
+            .unwrap();
+        assert_eq!(page.sessions[0].request_count, 1);
+        assert_eq!(page.sessions[0].executor.as_deref(), Some(harness));
+    }
+    let early = ObservationRequestQuery {
+        to_ms: 150,
+        ..query(50)
+    };
+    assert_eq!(
+        store
+            .observed_sessions(&reader(None), &early, 500)
+            .unwrap()
+            .sessions[0]
+            .executor
+            .as_deref(),
+        Some("codex")
+    );
+}
+
+#[test]
+fn missing_or_conflicted_links_cannot_borrow_a_sibling_executor() {
+    let root = tempfile::tempdir().unwrap();
+    let store = open(root.path());
+    seed(&store, "first", 100);
+    seed(&store, "second", 200);
+    let first = link("first", "run-one");
+    let second = link("second", "run-one");
+    store.link_observed_request(&first).unwrap();
+    let missing = store
+        .observed_sessions(&reader(None), &query(50), 500)
+        .unwrap();
+    assert!(missing.sessions[0].executor.is_none());
+    assert!(
+        serde_json::to_value(&missing.sessions[0])
+            .unwrap()
+            .get("executor")
+            .is_none()
+    );
+    store.link_observed_request(&second).unwrap();
+    let mut conflict = second.clone();
+    conflict.harness_id = "claude".into();
+    conflict.source_event_id = "conflict".into();
+    assert!(matches!(
+        store.link_observed_request(&conflict),
+        Err(ObservationV2Error::RelationshipConflict)
+    ));
+    assert!(
+        store
+            .observed_sessions(&reader(None), &query(50), 500)
+            .unwrap()
+            .sessions[0]
+            .executor
+            .is_none()
+    );
+    let early = ObservationRequestQuery {
+        to_ms: 150,
+        ..query(50)
+    };
+    assert_eq!(
+        store
+            .observed_sessions(&reader(None), &early, 500)
+            .unwrap()
+            .sessions[0]
+            .executor
+            .as_deref(),
+        Some("codex")
+    );
+}
+
+#[test]
+fn executor_presentation_does_not_rewrite_a_recorded_native_agent() {
+    let root = tempfile::tempdir().unwrap();
+    let store = open(root.path());
+    seed(&store, "first", 100);
+    store
+        .connection
+        .lock()
+        .execute("UPDATE sessions SET agent_id='agent_hermes_default'", [])
+        .unwrap();
+    let native = store
+        .observed_sessions(&reader(None), &query(50), 500)
+        .unwrap();
+    assert_eq!(native.sessions[0].agent_id, "agent_hermes_default");
+    assert!(native.sessions[0].executor.is_none());
+    store
+        .link_observed_request(&link("first", "run-one"))
+        .unwrap();
+    let delegated = store
+        .observed_sessions(&reader(None), &query(50), 500)
+        .unwrap();
+    assert_eq!(delegated.sessions[0].agent_id, native.sessions[0].agent_id);
+    assert_eq!(delegated.sessions[0].executor.as_deref(), Some("codex"));
+}
 
 fn retire_during_session_read(store: &crate::LocalObservationStore) {
     let mut db = store.connection.lock();
