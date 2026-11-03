@@ -127,6 +127,7 @@ impl LocalControlAdapter {
             }
             SettingsAgentClass::Claude => self.scanner.claude_user_settings_target(),
             SettingsAgentClass::Qoder
+            | SettingsAgentClass::CodexDesktop
             | SettingsAgentClass::Pi
             | SettingsAgentClass::Dsh
             | SettingsAgentClass::DshDesktop

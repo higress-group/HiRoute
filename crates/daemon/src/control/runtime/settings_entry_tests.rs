@@ -1143,6 +1143,8 @@ impl AgentConnectionControlPort for FixtureFacts {
 #[path = "settings_entry_facets_tests.rs"]
 mod facets;
 
+#[path = "settings_codex_desktop_tests.rs"]
+mod settings_codex_desktop_tests;
 #[path = "settings_profile_tests.rs"]
 mod settings_profile_tests;
 

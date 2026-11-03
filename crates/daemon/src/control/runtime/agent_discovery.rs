@@ -118,7 +118,8 @@ impl LocalControlAdapter {
         selected: Option<&str>,
     ) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
         let wants_codex = selected.is_none_or(|agent| agent == "agent_codex_default");
-        let fixed_candidates = if wants_codex {
+        let wants_desktop = selected.is_none_or(|agent| agent == "agent_codex_desktop");
+        let fixed_candidates = if wants_codex || wants_desktop {
             hiroute_application::control::RoutingFactsPort::routing_compilation_snapshot(
                 self,
                 &WorkspaceId::default(),
@@ -128,7 +129,7 @@ impl LocalControlAdapter {
         } else {
             Vec::new()
         };
-        let codex_catalog = if wants_codex { self.scanner.codex_catalog_summary().ok() } else { None }.and_then(|catalog| {
+        let catalog_view = |catalog: hiroute_integrations::CodexCatalogSummaryV1| {
             let metadata_source = match catalog.metadata_source {
                 hiroute_integrations::CodexCatalogMetadataSourceV1::UserConfigured => {
                     AgentModelCatalogMetadataSourceV1::UserConfigured
@@ -210,7 +211,21 @@ impl LocalControlAdapter {
                 native_default_model: catalog.native_default_model,
                 models,
             })
-        });
+        };
+        let codex_catalog = if wants_codex {
+            self.scanner.codex_catalog_summary().ok()
+        } else {
+            None
+        }
+        .and_then(&catalog_view);
+        let desktop_catalog = if wants_desktop {
+            self.scanner
+                .codex_desktop_scanner()
+                .and_then(|scanner| scanner.codex_catalog_summary().ok())
+        } else {
+            None
+        }
+        .and_then(catalog_view);
         let discoveries = match selected {
             Some(agent) => vec![
                 self.scanner
@@ -238,6 +253,7 @@ impl LocalControlAdapter {
                     agent.codex_access = Some(access);
                 }
                 if agent.agent_id == hiroute_integrations::CODEX_DESKTOP_AGENT_ID {
+                    agent.native_model_catalog = desktop_catalog.clone();
                     let paths = self
                         .scanner
                         .codex_desktop_instance_paths()

@@ -61,6 +61,9 @@ pub(crate) fn check(
                     hiroute_application_api::AgentModelSurfaceV2::CodexCli
                         | hiroute_application_api::AgentModelSurfaceV2::CodexDesktop
                 ),
+                "agent_codex_desktop" => {
+                    target.surface != hiroute_application_api::AgentModelSurfaceV2::CodexDesktop
+                }
                 "agent_claude_default" => {
                     target.surface != hiroute_application_api::AgentModelSurfaceV2::ClaudeCli
                 }

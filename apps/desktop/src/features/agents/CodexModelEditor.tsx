@@ -20,7 +20,8 @@ export function CodexModelEditor({
   const planName = (id: string) => plans.find(plan => plan.agent_plan_id === id)?.desired.display_name;
   const planEnabled = (id: string) => enabledPlans.some(plan => plan.agent_plan_id === id);
   const protectedNativeModelIds = new Set(agentModelStatus(selected)?.protected_native_model_ids ?? []);
-  const codexSurfaces = codexSurfaceFacts(activeCodexMode, selected.available_surfaces ?? []);
+  const codexSurfaces = codexSurfaceFacts(activeCodexMode, selected.available_surfaces ?? [])
+    .filter(fact => selected.agent_id !== 'agent_codex_desktop' || fact.surface === 'codex_desktop');
   const catalogModels = (selected.native_model_catalog?.models ?? [])
     .map(model => ({ ...model, source_options: model.source_options ?? [] }));
   const fixedModelRows = editorValues.fixedModels.map(fixed => catalogModels

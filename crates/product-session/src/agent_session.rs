@@ -608,6 +608,7 @@ impl Session {
                 })
                 .map(|agent| match agent.agent_id.as_str() {
                     "agent_codex_default" => "Codex".to_owned(),
+                    "agent_codex_desktop" => "Codex Desktop".to_owned(),
                     "agent_claude_default" => "Claude Code".to_owned(),
                     "agent_qoder_default" => "Qoder".to_owned(),
                     _ => if input.language == "en" {

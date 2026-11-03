@@ -283,6 +283,10 @@ impl AgentCheckInput {
         };
         let supported = match self.agent_id.as_str() {
             "agent_codex_default" | "agent_claude_default" => true,
+            "agent_codex_desktop" => matches!(
+                scope,
+                AgentCheckScopeV1::NativeAuthentication | AgentCheckScopeV1::Live
+            ),
             "agent_pi_default" | "agent_dsh_default" | "agent_opencode_default" => {
                 scope == AgentCheckScopeV1::Collaboration
             }
@@ -303,6 +307,7 @@ impl AgentCheckInput {
                     target.surface,
                     AgentModelSurfaceV2::CodexCli | AgentModelSurfaceV2::CodexDesktop
                 ),
+                "agent_codex_desktop" => target.surface == AgentModelSurfaceV2::CodexDesktop,
                 "agent_qoder_default" => target.surface == AgentModelSurfaceV2::QoderCli,
                 _ => false,
             };
