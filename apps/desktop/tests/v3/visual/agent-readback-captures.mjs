@@ -117,6 +117,19 @@ export async function agentDetailsCaptures(client, baseUrl, output) {
       for (const agent of ids) {
         await evaluate(client, `import('/agent-trust-scenarios.mjs').then(m => m.showAgentDetail(${JSON.stringify(agent)}))`);
         const geometry = await evaluate(client, `(async () => {
+          let scrollProof = null;
+          if (innerWidth === 755 && document.querySelector('.agent-detail').dataset.agentId === 'agent_claude_default') {
+            const pane = document.querySelector('.detail-pane');
+            pane.scrollTop = pane.scrollHeight;
+            const before = pane.scrollTop;
+            const select = name => [...document.querySelectorAll('.native-list .list-row')]
+              .find(row => row.querySelector('.row-title')?.textContent.trim() === name).click();
+            const paint = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            select('Codex'); await paint();
+            scrollProof = { before, after: pane.scrollTop };
+            if (before <= 0 || pane.scrollTop !== 0) throw Error('Switching Agents retained the previous detail scroll: ' + JSON.stringify(scrollProof));
+            select('Claude Code'); await paint();
+          }
           const rows = [...document.querySelectorAll('.agent-capability-row')], measured = [];
           for (const row of rows) {
             row.scrollIntoView({ block: 'center' }); await new Promise(resolve => requestAnimationFrame(resolve));
@@ -128,7 +141,7 @@ export async function agentDetailsCaptures(client, baseUrl, output) {
           }
           document.querySelector('.detail-pane').scrollTop = 0;
           await new Promise(resolve => requestAnimationFrame(resolve));
-          return { rows: measured, bodyOverflow: document.documentElement.scrollWidth > innerWidth + 1,
+          return { rows: measured, scrollProof, bodyOverflow: document.documentElement.scrollWidth > innerWidth + 1,
             detailsExpanded: document.querySelector('.native-details').open,
             text: document.querySelector('.agent-detail').innerText };
         })()`);

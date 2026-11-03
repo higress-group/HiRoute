@@ -119,12 +119,6 @@ const scenarios = [
       assert(facet('model') && !facet('model').disabled, `${id} lost its primary configuration action`);
       assert(!document.querySelector('.agent-usage-details'), `${id} shows technical detail by default`);
       assert(calls('cli_entry_status').length === 0, `${id} probes unrelated CLI state on navigation`);
-      const pane = document.querySelector('.detail-pane');
-      pane.scrollTop = pane.scrollHeight;
-      const next = [...document.querySelectorAll('.native-list .list-row')].find(row => row.querySelector('.row-title')?.textContent.trim() === 'Codex Desktop');
-      next.click(); await tick();
-      assert(pane.scrollTop === 0, 'Switching Agents retained the previous detail scroll');
-      await showAgentDetail(id);
       const details = document.querySelector('.native-details');
       assert(!details.open && !text().includes('/selected/skills/hiroute-management'), `${id} exposes resource paths by default`);
       details.querySelector('summary').click(); await tick();
