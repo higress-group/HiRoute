@@ -170,6 +170,7 @@ pub struct WorkerRunResult {
     pub(super) finalization: Option<DelegationFinalizationLease>,
 }
 
+#[cfg(test)]
 pub(crate) async fn execute(
     platform: &dyn WorkerPlatformPort,
     request: WorkerLaunchRequest,
