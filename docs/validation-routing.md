@@ -313,6 +313,16 @@ admits these exact non-ignored cases alongside an existing installation and reco
 Other test cases retain the fresh-profile requirement. Temporary ACL/recovery checks
 prove native file behavior, not installed-product acceptance.
 
+The exact Windows DSH discovery cases in `dsh_desktop::windows_tests`, the Web
+lookup-reason regression and the uninstall-registration reader test also run
+alongside an installed HiRoute. Component cases use only temporary files or a
+unique test-owned registry subtree. The explicitly ignored installed-DSH case
+reads the official client's real installation and profiles, probes its bundled
+public CLI in isolated roots, and verifies unchanged native profile bytes.
+It records `read_only_dsh_discovery`; it does not establish model configuration,
+an actual model request or UI acceptance. Other test names and mismatched ignored
+selection retain the ordinary fresh-profile admission.
+
 `inspect-installation` runs a read-only inventory in the configured account. Collect
 and finish it normally; its success is inspection evidence, not a product scenario.
 When the user explicitly authorizes clearing old validation data, use
