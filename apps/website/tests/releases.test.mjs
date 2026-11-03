@@ -9,6 +9,7 @@ import {
   artifactAssets, artifactKey, artifactManifestUrl, artifactUrl, latestRelease, validateReleaseManifest,
   verifyDesktopIdentity,
   projectReleaseManifest, LEGACY_RELEASE_SCHEMA,
+  verifyWindowsNativeAcceptance,
 } from '../src/lib/releases.mjs';
 
 const revision = 'a'.repeat(40);
@@ -23,6 +24,57 @@ const release = {
   notes: { zh: '正式版本。', en: 'Stable release.' }, artifacts: [artifact],
 };
 const manifest = { schema: 'hiroute.website.releases/v2', releases: [release] };
+
+function nativeAcceptanceFixture() {
+  // Validator fixtures only; these fabricated receipts never establish installation evidence.
+  const policy = JSON.parse(fs.readFileSync(new URL('../../../scripts/windows-desktop-cases.json', import.meta.url)));
+  policy.release_decisions = [];
+  const identity = { version: '1.2.3', revision, installer_sha256: 'c'.repeat(64), native_runtime: 'green',
+    native_evidence: { runs: Object.entries(policy.platforms).map(([platform, cases]) => ({ platform, revision,
+      installer_sha256: 'c'.repeat(64), standard_user: true, architecture: 'AMD64', os_version: 'fixture-only',
+      scenarios: Object.fromEntries(cases.map(id => [id, 'green'])) })) } };
+  const decision = { version: identity.version, revision, installer_sha256: identity.installer_sha256,
+    decision_url: 'https://github.com/higress-group/HiRoute/issues/193#issuecomment-123',
+    deferred_cases: Object.fromEntries(Object.entries(policy.platforms).map(([platform, cases]) => [platform,
+      cases.filter(id => !['install.standard-user', 'install.console-ready'].includes(id))])) };
+  return { policy, identity, decision };
+}
+
+test('Windows acceptance defaults to complete, exact-artifact native evidence', () => {
+  const { policy, identity } = nativeAcceptanceFixture();
+  assert.equal(verifyWindowsNativeAcceptance(identity, policy), identity);
+  identity.native_evidence.runs[0].scenarios['update.killed-resume'] = 'not_assessed';
+  assert.throws(() => verifyWindowsNativeAcceptance(identity, policy), /incomplete/);
+  identity.native_runtime = 'deferred';
+  assert.throws(() => verifyWindowsNativeAcceptance(identity, policy), /exact committed release decision/);
+});
+
+test('an exact committed release decision preserves deferred verdicts without passing them', () => {
+  const { policy, identity, decision } = nativeAcceptanceFixture();
+  policy.release_decisions.push(decision);
+  identity.native_runtime = 'deferred'; identity.acceptance_decision = decision.decision_url;
+  for (const run of identity.native_evidence.runs) {
+    for (const id of decision.deferred_cases[run.platform]) run.scenarios[id] = 'not_assessed';
+  }
+  assert.equal(verifyWindowsNativeAcceptance(identity, policy), identity);
+  for (const mutate of [
+    value => { value.revision = 'b'.repeat(40); },
+    value => { value.version = '1.2.4'; },
+    value => { value.installer_sha256 = 'd'.repeat(64); },
+    value => { value.acceptance_decision += '0'; },
+    value => { value.native_evidence.runs[0].standard_user = false; },
+    value => { value.native_evidence.runs[0].scenarios['update.killed-resume'] = 'failed'; },
+    value => { value.native_evidence.runs[0].scenarios['update.killed-resume'] = 'green'; },
+    value => { delete value.native_evidence.runs[0].scenarios['update.killed-resume']; },
+    value => { value.native_evidence.runs[0].scenarios['unregistered-case'] = 'green'; },
+  ]) {
+    const altered = structuredClone(identity); mutate(altered);
+    assert.throws(() => verifyWindowsNativeAcceptance(altered, policy));
+  }
+  decision.deferred_cases.windows11.push('install.console-ready');
+  identity.native_evidence.runs[0].scenarios['install.console-ready'] = 'not_assessed';
+  assert.throws(() => verifyWindowsNativeAcceptance(identity, policy), /cannot omit actual standard-user/);
+});
 test('Desktop update endpoint publishes the same validated website catalog', () => {
   const generated = JSON.parse(fs.readFileSync(new URL('../public/releases.json', import.meta.url), 'utf8'));
   const source = JSON.parse(fs.readFileSync(new URL('../data/releases.json', import.meta.url), 'utf8'));

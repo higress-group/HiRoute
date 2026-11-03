@@ -533,6 +533,10 @@
               "minimum": 1000,
               "type": "integer"
             },
+            "codex_parallel_tool_calls": {
+              "default": true,
+              "type": "boolean"
+            },
             "context_window_tokens": {
               "maximum": 9223372036854775807,
               "minimum": 1,

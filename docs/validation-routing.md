@@ -142,7 +142,10 @@ neither creates accounts nor logs users in, restarts Windows or changes RDP.
 
 Replace example locations with installed, pinned clients. The source root contains
 matching `tools/windows-agent-fixtures` declarations, lockfile and installed npm
-modules. `doctor` reports the actual OS and existing sessions; select the intended
+modules. Keep npm lifecycle scripts disabled. The fixture preparer materializes
+Claude's declared native entry from its locked Windows platform package, replacing
+only the reviewed placeholder; an unknown existing entry is preserved and rejected.
+`doctor` reports the actual OS and existing sessions; select the intended
 session in HOME rather than silently falling back to SSH service context. An
 administrator session is not standard-user evidence. The configured account must
 be able to read the bundles and register a task for its existing login session.
@@ -234,7 +237,13 @@ existing 150-second subprocess bound; the outer task covers both calls.
 The runner records the actual client version before the call and preserves partial
 stdout/stderr when its bounded wait expires. Such a timeout is a failed attempt,
 not an inference verdict. The bounded public-CLI action also accepts `sessions`
-for product receipt readback; protected content still uses the product's authority.
+for product receipt readback, and `models feed status` plus `models metadata list|get`
+for directory identity and record readback. These model commands are read-only;
+refresh and other model mutations remain native UI actions. Protected content
+still uses the product's authority.
+Native UI observations deduplicate Runtime IDs and include visible elements only,
+with raw, unique and visible counts retained in `ui.json`. The 1,600-element limit
+applies before and after actions; scroll to observe additional list content.
 For a connection failure, `network-probe --source-id SOURCE` resolves one ready
 saved HTTPS source through the installed CLI and performs a bounded, verified TLS
 handshake in the same account. It sends no HTTP request or credentials, changes no

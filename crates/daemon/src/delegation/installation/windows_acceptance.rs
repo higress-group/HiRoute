@@ -179,6 +179,7 @@ fn profile(
         workspace: &root.workspace,
         alias: PROBE_MODEL,
         codex_catalog: catalog.as_deref(),
+        preserve_legacy_serial_catalog: false,
         native_effort: None,
         gateway,
         permit: &permit,

@@ -4,9 +4,9 @@
 use serde_json::{Value, json};
 use std::{io::Write, path::Path, process::Command};
 
-// The challenge requires the complete current CLI contract. Its native tool
-// allowance must fit that contract; the independent 64 KiB retained-output
-// bound below still rejects unbounded or unrelated output.
+// Read one complete installed descriptor. Listing the growing command catalog
+// can exceed a native client's tool-output limit and falsely reject a working
+// Skill/CLI installation. The independent 64 KiB retained-output bound remains.
 const TOOL_OUTPUT_TOKENS: usize = 16 * 1024;
 
 #[cfg(test)]
@@ -97,14 +97,21 @@ impl CollaborationChallenge {
         }
         let path = root.join("SKILL.md");
         let text = format!(
-            "---\nname: hiroute-probe\ndescription: Read-only HiRoute compatibility check {discovery}\n---\n\nRead this file and run the installed hiroute schema list --output json.\nContent receipt: {contents}\n"
+            "---\nname: hiroute-probe\ndescription: Read-only HiRoute compatibility check {discovery}\n---\n\nRead this file and run the installed hiroute schema show --command-id schema.list --output json.\nContent receipt: {contents}\n"
         );
         super::probe_files::file(&path)
             .and_then(|mut file| file.write_all(text.as_bytes()))
             .map_err(|_| "private skill")?;
         let mut command = Command::new(cli);
         command
-            .args(["schema", "list", "--output", "json"])
+            .args([
+                "schema",
+                "show",
+                "--command-id",
+                "schema.list",
+                "--output",
+                "json",
+            ])
             .env_clear()
             .env("HOME", home);
         #[cfg(unix)]
@@ -132,13 +139,9 @@ impl CollaborationChallenge {
         let envelope: Value = serde_json::from_str(&expected_cli).map_err(|_| "CLI contract")?;
         if !success
             || envelope["status"] != "succeeded"
-            || !envelope["data"]["commands"]
-                .as_array()
-                .is_some_and(|commands| {
-                    commands
-                        .iter()
-                        .any(|command| command["command_id"] == "schema.list")
-                })
+            || envelope["data"]["command_id"] != "schema.list"
+            || envelope["data"]["kind"] != "query"
+            || envelope["data"]["model_call"] != "never"
         {
             return Err("trusted CLI contract");
         }
@@ -157,7 +160,7 @@ impl CollaborationChallenge {
                     .ok_or("CLI path encoding")
             };
             format!(
-                "Get-Content -Raw -LiteralPath {}; & {} schema list --output json",
+                "Get-Content -Raw -LiteralPath {}; & {} schema show --command-id schema.list --output json",
                 quote(&path)?,
                 quote(cli)?
             )
@@ -181,7 +184,7 @@ impl CollaborationChallenge {
                 cli.to_owned()
             };
             format!(
-                "/bin/cat {}; {} schema list --output json",
+                "/bin/cat {}; {} schema show --command-id schema.list --output json",
                 quote(&path)?,
                 quote(&cli)?
             )
@@ -492,7 +495,7 @@ mod tests {
         CollaborationChallenge {
             discovery: "discovery-nonce".into(),
             contents: "contents-nonce".into(),
-            command: "/trusted/hiroute schema list --output json".into(),
+            command: "/trusted/hiroute schema show --command-id schema.list --output json".into(),
             expected_cli: "CLI-contract-output".into(),
             readonly: None,
             selected_tool: SelectedTool::Unknown,

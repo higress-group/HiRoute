@@ -9,8 +9,10 @@ const content = path.join(website, 'content/guides');
 export const guidePages = {
   quickstart: { zh: '快速开始', en: 'Quickstart' },
   'install-macos': { zh: 'macOS 安装与首次启动', en: 'Install and open HiRoute on macOS' },
-  'install-linux': { zh: 'Linux 无界面版安装', en: 'Install HiRoute headless on Linux' },
+  'install-linux': { zh: 'Linux Web UI 与 CLI 安装', en: 'Install HiRoute on Linux: Web UI and CLI' },
   'install-windows': { zh: 'Windows 桌面版安装', en: 'Install HiRoute Desktop on Windows' },
+  models: { zh: '接入模型', en: 'Connect models' },
+  'model-trial': { zh: '试用新模型', en: 'Try a new model' },
   'model-routing': { zh: '使用智能模型路由', en: 'Use smart model routing' },
   'task-routing': { zh: '使用智能任务路由', en: 'Use smart task routing' },
   cli: { zh: 'HiRoute CLI', en: 'HiRoute CLI' },

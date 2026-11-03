@@ -217,6 +217,40 @@ fn context_window_round_trips_without_changing_omitted_legacy_limits() {
 }
 
 #[test]
+fn codex_parallel_tools_default_and_override_preserve_released_limits() {
+    let released: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/released-plan-editor.v2.json")).unwrap();
+    let mut draft: PlanEditorStateV2 = serde_json::from_value(released["editor"].clone()).unwrap();
+    assert_eq!(draft.limits.codex_parallel_tool_calls, None);
+    assert!(draft.limits.codex_parallel_tool_calls_enabled());
+    assert_eq!(
+        serde_json::to_value(&draft.limits).unwrap(),
+        released["editor"]["limits"]
+    );
+    for enabled in [false, true] {
+        draft.limits.codex_parallel_tool_calls = Some(enabled);
+        let encoded = serde_json::to_value(&draft).unwrap();
+        let reopened: PlanEditorStateV2 = serde_json::from_value(encoded).unwrap();
+        assert_eq!(reopened.limits.codex_parallel_tool_calls, Some(enabled));
+        let saved = reopened.effective().unwrap();
+        assert_eq!(saved.limits.codex_parallel_tool_calls_enabled(), enabled);
+        assert_eq!(
+            saved.editor(None).unwrap().limits.codex_parallel_tool_calls,
+            Some(enabled)
+        );
+    }
+    for invalid in [
+        serde_json::json!("false"),
+        serde_json::json!(0),
+        serde_json::json!([]),
+    ] {
+        let mut encoded = released["editor"].clone();
+        encoded["limits"]["codex_parallel_tool_calls"] = invalid;
+        assert!(serde_json::from_value::<PlanEditorStateV2>(encoded).is_err());
+    }
+}
+
+#[test]
 fn retired_follow_up_field_can_be_omitted_without_rewriting_legacy_values() {
     let released: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/released-plan-editor.v2.json")).unwrap();

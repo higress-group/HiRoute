@@ -782,6 +782,12 @@ An authenticated console session SHALL have the same protected-operation authori
 
 Sessions SHALL remain in memory only, expire after 12 hours idle or seven days total, and be bounded to 16 active sessions. A valid new login at capacity SHALL retire and audit the least recently used session. Invalid credentials SHALL NOT evict a session. Failed exchanges SHALL be limited per peer and globally within independent loopback and network budgets, so network failures cannot block a local launch credential.
 
+#### Scenario: Copyable sign-in commands
+
+- **WHEN** the console presents sign-in guidance in Chinese or English, including after a session expires
+- **THEN** its access-token creation example includes every required CLI argument with concrete values, including `--name`, and can be copied without filling in missing parameters.
+- **AND** the CLI continues to reject token creation without a name; the example does not change credential requirements or expiry defaults.
+
 #### Scenario: Launch credential replay
 
 - **WHEN** a launch link that was already exchanged, or has expired, is opened again

@@ -11,7 +11,8 @@ import type { ComputeCandidateView } from '../../../src/features/model-connectio
 import type { SubscriptionCandidate, SubscriptionCheckResult } from '../../../src/features/subscriptions/types';
 import type { ModelFeedStatus } from '../../../src/features/model-feed/types';
 import type { AuthoringOptions, Draft, Editor, Plan } from '../../../src/plan-editor';
-import type { DecisionServiceRecord, DecisionServiceView, DecisionSourceSummary } from '../../../src/features/decision-services/contracts';
+import type { DecisionServiceRecord, DecisionServiceView, DecisionSourceSummary, DecisionServiceTestResult, DecisionServiceNetworkTestResult } from '../../../src/features/decision-services/contracts';
+import type { NativeNetworkRoute } from '../../../src/features/model-connections/native-network';
 import type { DesktopSnapshot } from '../../../src/product/home-projections';
 import { fixture as legacyHomeFixture } from '../../mvp16/browser/fixtures';
 import connectionRegistry from '../../../../../assets/release-facts/current/bundle/connector-registry.json';
@@ -518,10 +519,10 @@ function agentSnapshotFor(scenario: ProductScenario): AgentSnapshot {
 }
 
 // Synthetic digests only distinguish fixture states; canonical digests are backend-owned.
-export function fixtureDigest(value: unknown) {
+export function fixtureDigest(value: unknown): `sha256:${string}` {
   let hash = 0x811c9dc5;
   for (const ch of JSON.stringify(value)) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619) >>> 0;
-  return 'sha256:' + hash.toString(16).padStart(8, '0').repeat(8);
+  return `sha256:${hash.toString(16).padStart(8, '0').repeat(8)}`;
 }
 export function fixtureDecisionSource(sourceId: string, overrides: Partial<DecisionSourceSummary> = {}): DecisionSourceSummary {
   return {
@@ -543,9 +544,38 @@ export function fixtureDecisionView(service: DecisionServiceRecord, sources: Dec
   };
 }
 
+/** Current connection-test envelope; the nested check retains its V2 contract. */
+export function fixtureDecisionNetworkRoute(): NativeNetworkRoute {
+  return { mode: 'direct', route: 'direct', reason: 'policy_direct', destination: 'api.openai.test:443',
+    state_revision: fixtureDigest(['decision-network', 'direct']), failure: null };
+}
+export function fixtureDecisionNetworkTest(check: DecisionServiceTestResult): DecisionServiceNetworkTestResult {
+  return { schema: 'hiroute.decision-service-test-result/v3', check,
+    network: { policy: { mode: 'direct' }, expected_network_revision: 0, route: fixtureDecisionNetworkRoute() }, failure: null };
+}
+
 export function mockProductInvoke(command: string, payload: Record<string, any> | undefined, scenario: ProductScenario) {
   fixtureTrace.commands.push(command);
   fixtureTrace.requests.push({ command, payload: structuredClone(payload) });
+  return productFixtureReply(command, payload, scenario);
+}
+
+function productFixtureReply(command: string, payload: Record<string, any> | undefined, scenario: ProductScenario): any {
+  if (command === 'preview_native_network_route') return fixtureDecisionNetworkRoute();
+  if (command === 'native_source_network') {
+    const source = readyManagement.sources.find(item => item.source_id === payload?.input?.source_id);
+    if (!source) throw { code: 'NOT_FOUND' };
+    return { source_id: source.source_id, source_revision: source.revision, network_revision: 0,
+      policy: { mode: 'direct' }, applied_revision: 0, application_state: 'applied', operation: null,
+      routes: [fixtureDecisionNetworkRoute()], models: source.models.map(model => ({ binding_id: model.binding_id, display_name: model.display_name })), decisions: [] };
+  }
+  if (['check_model_connection_v2', 'check_registered_model_connection_v2', 'check_saved_model_connection_v2'].includes(command)) {
+    const request = payload?.request;
+    return { check: productFixtureReply(command.replace(/_v2$/, ''), { request: request?.request }, scenario),
+      network: { policy: request?.network_edit?.policy ?? { mode: 'direct' },
+        expected_network_revision: request?.network_edit?.expected_network_revision ?? 0,
+        route: fixtureDecisionNetworkRoute() }, failure: null };
+  }
   const fresh = scenario === 'fresh';
   if (command === 'decision_services_v3') return { schema: 'hiroute.decision-services/v3', services: [] };
   if (command === 'preview_decision_context') return fixtureDecisionContext(payload!.input);
@@ -712,7 +742,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
         { kind: 'context_window', binding_ids: ['binding/bailian/qwen-coder'] },
         { kind: 'image_input', binding_ids: ['binding/bailian/qwen-coder'] },
       ],
-      fixed_limits: ['parallel_tool_calls_disabled'],
+      fixed_limits: [],
     },
   };
   if (command === 'preview_agent_settings') return scenario === 'agent_blocked' && !agentPrerequisiteChecked
@@ -728,7 +758,7 @@ export function mockProductInvoke(command: string, payload: Record<string, any> 
     return { state: 'succeeded', operation: { state: 'succeeded' } };
   }
   if (command === 'preview_restore_name') return { operation: { state: 'succeeded' } };
-  if (command === 'preview_compute_save' || command === 'preview_compute_save_v3') return {
+  if (command === 'preview_compute_save' || command === 'preview_compute_save_v3' || command === 'preview_compute_save_v4') return {
     candidate: payload?.change?.subject?.candidate,
     spec: { schema_version: { major: 2, minor: 0 }, command_id: 'fixture-model-save', desired_state: {} },
     accept_digest: 'sha256:fixture-save',

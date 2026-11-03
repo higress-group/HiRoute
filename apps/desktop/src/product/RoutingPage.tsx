@@ -110,6 +110,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
     }
   }, [snapshot]);
   async function choose(next: RoutingEditorIntent, source: HTMLElement) {
+    if (busy || localBusy || editorBusy) return;
     if (editor?.key !== next.key && dirty && !(await requestEditorReplacement('routing'))) return;
     trigger.current = source;
     if (editor?.key !== next.key) { setDirty(false); setPendingPersistence(null); setPersistedNotice(''); setEditor({ ...next, editingMemory: {} }); }
@@ -125,6 +126,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
     finally { setLocalBusy(false); }
   }
   async function newRoute(source: HTMLElement) {
+    if (busy || localBusy || editorBusy) return;
     if (dirty && !(await requestEditorReplacement('routing'))) return;
     returnEditor.current = editor;
     trigger.current = source;
@@ -147,10 +149,13 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
     : associationCurrent.status === 'error' ? 'unavailable' : associationCurrent.complete ? 'complete' : 'partial';
   const pageLocked = busy || localBusy || editorBusy || !mutable;
   const pageActions = creating ? <>
-    <button className="btn" type="button" disabled={pageLocked} onClick={() => void planEditor.current?.saveDraft()}>{text('保存草稿', 'Save draft')}</button>
     <button className="btn" type="button" disabled={editorBusy} onClick={() => planEditor.current?.cancel()}>{text('取消', 'Cancel')}</button>
+    <button className="btn" type="button" disabled={pageLocked} onClick={() => void planEditor.current?.saveDraft()}>{text('保存草稿', 'Save draft')}</button>
     <button className="btn btn-primary" type="button" disabled={pageLocked || !publicationReady} onClick={() => void planEditor.current?.publish()}>{editor?.initialModelRoute ? text('保存并创建', 'Save and create') : text('启用', 'Enable')}</button>
-  </> : entries.length ? <button className="btn btn-primary" disabled={busy || localBusy || !mutable} onClick={event => void newRoute(event.currentTarget)}><UiIcon name="plus" />{text('新建智能路由', 'New smart routing')}</button> : undefined;
+  </> : entries.length ? <>
+    {editor?.plan?.head.status === 'enabled' && <button className="btn" type="button" disabled={pageLocked} onClick={() => setMappingPlan(editor.plan!)}>{text('映射 Agent', 'Map an Agent')}</button>}
+    <button className="btn btn-primary" disabled={busy || localBusy || !mutable} onClick={event => void newRoute(event.currentTarget)}><UiIcon name="plus" />{text('新建智能路由', 'New smart routing')}</button>
+  </> : undefined;
   const closeEditor = () => {
     const next = creating ? returnEditor.current : null;
     returnEditor.current = null;
@@ -161,15 +166,16 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
     setPersistedNotice('');
     requestAnimationFrame(() => trigger.current?.isConnected && trigger.current.focus());
   };
-  const editorView = editor ? <fieldset className="detail-fieldset" disabled={!mutable || busy || localBusy || editorBusy}>
+  const editorView = editor ? <div className="detail-fieldset">
     {editor.staleDraft && <div className="callout warn" role="status"><UiIcon name="warning" /><div><strong>{text('这是基于旧版本的草稿', 'This draft is based on an older version')}</strong><p>{text('当前生效路由已单独显示在列表中。保留此草稿供查看；如需继续，请先读取当前配置再重新编辑。', 'The active route is listed separately. This draft is retained for inspection; reload the current route before editing further.')}</p></div></div>}
-    <PlanEditor ref={planEditor} key={`${editor.key}:${editor.draft?.revision ?? editor.plan?.head.head_revision ?? 'new'}`} creating={creating} plan={editor.plan} draft={editor.draft} initialBindingId={editor.initialBindingId} initialModelRoute={editor.initialModelRoute} initialView={editor.initialView} initialDivisionBranch={editor.initialDivisionBranch} initialContent={editor.initialContent} onCreateDraft={async initialContent => {
+    <PlanEditor ref={planEditor} mutable={mutable && !busy && !localBusy} key={`${editor.key}:${editor.draft?.revision ?? editor.plan?.head.head_revision ?? 'new'}`} creating={creating} plan={editor.plan} draft={editor.draft} initialBindingId={editor.initialBindingId} initialModelRoute={editor.initialModelRoute} initialView={editor.initialView} initialDivisionBranch={editor.initialDivisionBranch} initialContent={editor.initialContent} onCreateDraft={async initialContent => {
+      if (busy || localBusy || editorBusy || !mutable) return false;
       if (dirty && !(await requestEditorReplacement('routing'))) return false;
       returnEditor.current = editor; setPendingPersistence(null); setPersistedNotice(''); setDirty(false); setShowList(false);
       setEditor({ key: randomId(), initialContent, editingMemory: {} });
       return true;
     }} editingMemory={editor.editingMemory} language={language} active={active} refreshVersion={refreshVersion} usedBy={usedBy} usedByState={usedByState} onOpenAgent={onOpenAgent} onOpenSession={onOpenSession} onOpenServices={onOpenServices} onDirty={next => { setDirty(next); if (next) setPersistedNotice(''); }} onEdit={() => setPendingPersistence(null)} onBusyChange={setEditorBusy} onPublicationReady={setPublicationReady} onOperation={onOperation} onPersisted={(next, action, identity, submitted) => { setPendingPersistence(next ? null : { action, identity, operationId: submitted?.operation_id ?? null }); if (next) { returnEditor.current = null; setEditor(current => ({ ...next, editingMemory: current?.editingMemory ?? {} })); setDirty(false); setPersistedNotice(action === 'save_draft' ? text('草稿已保存，可以继续编辑或发布。', 'Draft saved. Continue editing or publish.') : text('更改已发布，新请求将使用当前路由。', 'Changes published. New requests will use this routing.')); } }} onDone={onRefresh} onClose={closeEditor} />
-  </fieldset> : null;
+  </div> : null;
   return <ProductPage
     title={creating ? text('新建智能路由', 'New smart routing') : text('智能路由', 'Smart routing')}
     subtitle={creating ? text('启用前不会对 Agent 生效。', 'This route does not affect Agents until enabled.') : text('为 Agent 创建可复用的智能路由配置。', 'Create reusable smart routing for Agents.')}
@@ -181,8 +187,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
     {error && <div role="alert" className="callout bad"><UiIcon name="warning" /><span>{error}</span></div>}
     {loading && <div className="empty-state" role="status"><div><span className="oc-spinner" /><p>{text('正在读取路由…', 'Reading routes…')}</p></div></div>}
     {!!snapshot?.catalog_error && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{text('暂时无法刷新路由，当前编辑仍会保留。', 'Unable to refresh routes. Your edits remain available.')}</span><button className="btn" type="button" onClick={() => void onRefresh()}>{text('重试', 'Retry')}</button></div>}
-    {!loading && !mutable && snapshot && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('路由可以查看，暂时不能修改', 'Routes are viewable but cannot be changed')}</strong><p>{text('本机服务尚未就绪，请刷新状态后保存。', 'The local service is not ready. Refresh its status before saving.')}</p></div></div>}
-    {editor?.plan?.head.status === 'enabled' && <div className="actions"><button className="btn" disabled={pageLocked} onClick={() => setMappingPlan(editor.plan!)}>{text('映射 Agent', 'Map an Agent')}</button></div>}
+    {!loading && !mutable && snapshot && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('路由可以查看，暂时不能修改', 'Routes are viewable but cannot be changed')}</strong><p>{text('当前连接暂时不能提交修改。请恢复连接或刷新状态后再保存。', 'The current connection cannot submit changes. Restore the connection or refresh its status before saving.')}</p></div></div>}
     {mappingPlan && <Dialog open title={text('映射 Agent', 'Map an Agent')} closeLabel={text('关闭', 'Close')} onClose={() => setMappingPlan(null)}><TrialAgentMapping plan={mappingPlan} language={language} mutable={mutable} onOperation={value => onOperation({ ...value, safe_error_code: null })} onChanged={() => void onRefresh()} onOpenAgent={onOpenAgent} onOpenSessions={onOpenSessions} /></Dialog>}
     {creating ? <div className="new-plan-workspace">{editorView}</div> : !loading && !entries.length && !editor ? <div className="empty-state routing-empty"><div><span className="empty-icon"><UiIcon name="route" /></span><h3>{text('还没有智能路由', 'No smart routing yet')}</h3><p>{text('创建一份配置，决定 Agent 怎样使用你的模型。', 'Create a plan that determines how Agents use your models.')}</p><button className="btn btn-primary" disabled={busy || localBusy || !mutable} onClick={event => void newRoute(event.currentTarget)}><UiIcon name="plus" />{text('新建智能路由', 'Create smart routing')}</button></div></div> : <div className={`split-view${showList || !editor ? ' show-list' : ''}`}>
       <aside className="master-pane"><nav className="master-list native-list" aria-label={text('路由列表', 'Routing list')}>

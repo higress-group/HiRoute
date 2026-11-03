@@ -887,6 +887,7 @@ fn map_control_error(error: control::ControlReadError) -> ErrorCode {
             ErrorCode::DaemonUnavailable
         }
         control::ControlReadError::Denied
+        | control::ControlReadError::CodexProfileConflict
         | control::ControlReadError::CollaborationRootRequired => ErrorCode::CapabilityDenied,
     }
 }

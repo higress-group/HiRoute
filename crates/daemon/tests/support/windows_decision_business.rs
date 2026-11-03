@@ -28,15 +28,20 @@ pub fn roundtrip(product: &InstalledProduct) {
         };
         assert_eq!(request.body["model"], "windows-decision-model");
         let state = request.body["state"].as_object().unwrap();
-        assert_eq!(state.len(), 4);
+        assert_eq!(state.len(), 5);
         for field in [
             "latest_user",
             "prior_context",
             "assessment_stage",
             "history_partial",
+            "request_context",
         ] {
             assert!(state.contains_key(field), "current request lacks {field}");
         }
+        assert_eq!(state["request_context"]["source"], "request_replay");
+        assert!(state["request_context"]["messages"].is_array());
+        assert!(state["request_context"]["truncated"].is_boolean());
+        assert!(state["request_context"]["boundary_unavailable"].is_boolean());
         let questions = request.body["questions"].as_object().unwrap();
         let historical = questions
             .values()

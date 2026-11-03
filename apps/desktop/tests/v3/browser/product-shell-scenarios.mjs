@@ -10,6 +10,8 @@ import { trustProgressScenarios } from './trust-progress-scenarios.mjs';
 import { homeStartupScenarios } from './home-startup-scenarios.mjs';
 import { trialModelNavigationScenarios } from './trial-model-navigation-scenarios.mjs';
 import { operationRecoveryScenarios } from './operation-recovery-scenarios.mjs';
+import { frontendConsistencyScenarios } from './frontend-consistency-scenarios.mjs';
+import { interactionConsistencyScenarios } from './interaction-consistency-scenarios.mjs';
 const c = () => window.productShell;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
@@ -100,9 +102,8 @@ function decisionStore(services = [], sources = []) {
     const view = store.view(input.id);
     if (!view || view.service.revision !== input.revision || view.configuration_digest !== input.expected_configuration_digest) throw { code: 'DECISION_REVISION_CONFLICT' };
     // `store.test` may change credentials mid-call; the result still names the state it admitted.
-    return { schema: 'hiroute.decision-service-test-result/v3', check: { schema: 'hiroute.decision-service-test-result/v2', failure_code: null, duration_millis: 20, ...store.test(input),
-      tested_configuration_digest: view.configuration_digest, tested_credential_state_revision: view.credential_state_revision },
-      network: sharedSourceOf(view.service) ? { policy: { mode: 'direct' }, expected_network_revision: 0, route: c().fixtureResponse('preview_native_network_route', { input: { target: { kind: 'decision' } } }) } : null, failure: null };
+    return c().decisionNetworkTest({ schema: 'hiroute.decision-service-test-result/v2', failure_code: null, duration_millis: 20, ...store.test(input),
+      tested_configuration_digest: view.configuration_digest, tested_credential_state_revision: view.credential_state_revision });
   };
   return store;
 }
@@ -122,6 +123,8 @@ async function routing() {
   await until(() => document.querySelector('.plan-identity-fields input'), 'route editor');
 }
 const scenarios = [
+  ...interactionConsistencyScenarios,
+  ...frontendConsistencyScenarios,
   ...decisionContextScenarios({ fresh, click, until, all, text, calls, setInput, nativeField, decisionStore, control: c }),
   ...trialModelNavigationScenarios(scenario),
   scenario('desktop.operation.hidden-summaries-defer', ['operation-feedback'], 'Terminal confirmation does not scan a hidden Agent page or unrelated Home summaries', async () => {
@@ -310,8 +313,8 @@ const scenarios = [
     await click('检查并选择模型');
     assert(all('[role="dialog"] h2').some(item => item.textContent === '连接订阅') && !document.querySelector('[data-hermes-source-scope]'), 'Independent subscription check leaked the device-scan title or Hermes controls');
     await click('检查订阅');
-    await until(() => button('保存接入'), 'new account checked');
-    await click('保存接入');
+    await until(() => button('保存并接入'), 'new account checked');
+    await click('保存并接入');
     await until(() => calls('preview_compute_save').length || document.querySelector('[data-error-code]'), 'save outcome');
     assert(calls('preview_compute_save').length === 1, 'New independent account kept the previous append target and cannot save');
     const change = calls('preview_compute_save')[0].payload.change;
@@ -572,10 +575,10 @@ const scenarios = [
     await fresh(() => {
       c().management.sources = [c().management.sources.find(source => source.source_id === 'source/bailian/coding')];
       c().management.sources[0].state = 'disabled';
-      c().handlers.check_saved_model_connection = payload => {
-        const checked = c().fixtureResponse('check_saved_model_connection', payload);
-        checked.candidate.models.push({ ...checked.candidate.models[0], model_ref: 'model-ref/new', upstream_model_id: 'new-model', display_name: 'New model' });
-        return checked;
+      c().handlers.check_saved_model_connection_v2 = payload => {
+        const result = c().fixtureResponse('check_saved_model_connection_v2', payload);
+        result.check.candidate.models.push({ ...result.check.candidate.models[0], model_ref: 'model-ref/new', upstream_model_id: 'new-model', display_name: 'New model' });
+        return result;
       };
     });
     await click('模型'); await click('向此接入添加模型');
@@ -600,11 +603,11 @@ const scenarios = [
   scenario('desktop.models.tool-check-selection', ['model-connections'], 'A tool check retains the chosen model with its fresh reference without selecting new inventory', async () => {
     await fresh(); await click('模型');
     setInput(await newBailianAPI(), 'synthetic-tool-check-input');
-    c().handlers.check_registered_model_connection = payload => {
-      const result = c().fixtureResponse('check_registered_model_connection', payload);
-      if (payload.request.inference_model_id) {
-        result.inference = 'verified';
-        result.candidate.models = result.candidate.models.map(model => ({ ...model, model_ref: `${model.model_ref}/checked` }));
+    c().handlers.check_registered_model_connection_v2 = payload => {
+      const result = c().fixtureResponse('check_registered_model_connection_v2', payload);
+      if (payload.request.request.inference_model_id) {
+        result.check.inference = 'verified';
+        result.check.candidate.models = result.check.candidate.models.map(model => ({ ...model, model_ref: `${model.model_ref}/checked` }));
       }
       return result;
     };
@@ -613,12 +616,13 @@ const scenarios = [
     assert(all('.model-result-row input:checked').length === 0, 'Inventory selected models without consent');
     all('.model-result-row input[type="checkbox"]')[0].click(); await pause(40);
     await click('验证工具调用（仅所选模型，可能计费）');
-    await until(() => calls('check_registered_model_connection').length === 2 && button('保存连接'), 'tool check completed');
+    await until(() => calls('check_registered_model_connection_v2').length === 2 && button('保存连接'), 'tool check completed');
     assert(all('.model-result-row input:checked').length === 1, 'Tool check lost the explicit model selection');
     assert(!button('保存连接').disabled, 'Successful tool check disabled save');
     await click('保存连接');
-    await until(() => calls('preview_compute_save_v3').length === 1, 'current save preview');
-    const preview = JSON.stringify(calls('preview_compute_save_v3')[0].payload);
+    await until(() => calls('preview_compute_save_v4').length === 1, 'current network-aware save preview');
+    assert(calls('preview_compute_save_v4')[0].payload.networkEdit.policy.mode === 'direct', 'Save lost the checked network policy');
+    const preview = JSON.stringify(calls('preview_compute_save_v4')[0].payload);
     assert(preview.includes('model-ref/qwen3-coder-plus/checked') && !preview.includes('model-ref/qwen3-max/checked'), 'Save did not use only the selected fresh model reference');
   }),
   scenario('desktop.routing.disabled-header', ['routing-editor'], 'A stopped route stays visibly disabled while its editor has unsaved changes', async () => {
@@ -964,7 +968,8 @@ const scenarios = [
     setInput(input('credential'), 'synthetic-closure-key'); await pause(40);
     await click('仅保存'); await until(() => store.services[0].revision === 3, 'shared -> independent save');
     assert(sent().service.connection.authentication.kind === 'independent' && sources() === '[]', `Independent save registered sources: ${sources()}`);
-    all('summary').find(item => item.textContent.includes('详情与更多操作')).click(); await pause(40); await click('删除决策模型'); await click('删除');
+    await click('移除模型'); await until(() => all('[role="dialog"]').length, 'whole-service removal confirmation');
+    all('[role="dialog"] button').find(item => item.textContent.trim() === '移除模型').click();
     await until(() => !store.services.length, 'whole-service deletion');
     assert(sent().service === null && sources() === JSON.stringify([{ source_id: a, revision: 3 }, { source_id: b, revision: 7 }]), `Deletion did not name every related source: ${sources()}`);
     assert(!store.rejected.length, `The store rejected a request shape: ${JSON.stringify(store.rejected)}`);

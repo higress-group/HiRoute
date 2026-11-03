@@ -4,7 +4,7 @@ Smart model routing selects and executes models according to the published confi
 
 When a new judgment selects the same group, HiRoute prefers the model from the previous turn if the conversation still matches and the model can serve the request. This includes a backup selected after another model failed, and helps reuse model context and prompt caches. If the group changes or the previous model cannot be reused, normal selection and automatic relay apply. This happens automatically, with no follow-up switching setting.
 
-This guide shows Desktop. Linux headless exposes the same production paths through `routing options/list/show/preview/apply` and `decision services list/apply/test`. Start with [Run HiRoute headless on Linux](/en/docs/install-linux/) and [HiRoute CLI](/en/docs/cli/); obtain request fields from the installed schema. For a first connection, follow [Quickstart](/en/docs/) to create a fixed route, then add decision models when needed.
+This guide shows Desktop; the Linux Web UI has the same interface and steps. The CLI exposes the same paths through `routing options/list/show/preview/apply` and `decision services list/apply/test`; see [Install HiRoute on Linux](/en/docs/install-linux/) and [HiRoute CLI](/en/docs/cli/), and obtain request fields from the installed schema. For a first connection, follow [Quickstart](/en/docs/) to create a fixed route, then add decision models when needed. To let a new model take simple work with a primary model as backup, follow [Try a new model](/en/docs/model-trial/).
 
 ## Choose a routing type
 
@@ -17,30 +17,32 @@ Create or edit a plan in Smart routing, then choose How to use models:
 | Custom branches | Tasks such as writing and reviewing need different models | Selects a task category, then regular or primary models within that branch |
 | Free first | You want free models attempted first | Tries free candidates in a fixed order, then either stops or uses an optional primary fallback |
 
-Models → General models manages models that execute your tasks. Models → Decision models manages connections that judge and assess work, including self-hosted custom extensions. Decision models do not answer the task in place of execution models. Tool selection is not supported in this release.
+Models → General models manages models that execute your tasks. Models → Decision models manages connections that judge and assess work, including self-hosted custom extensions. Decision models do not answer the task in place of execution models, and they do not select tools.
 
 ## Connect a decision model
 
-With a custom extension, skip the trust and judgment-setting steps: the extension owns the group decision. The editor keeps only categories, conditions and candidates; parked settings return when switching to a built-in connection.
-
 1. Open Models → Decision models and select Add decision model.
-2. Choose a provider: Bailian, OpenRouter Jev, TypeSafe, or another compatible connection.
-3. Enter an API key and connection name, then confirm the model name and complete decision endpoint. Expand prefilled values to edit them, or fill in any missing values.
+2. Choose a source under Credentials. Use existing API connection reuses the keys of a connection saved under Models, without entering them again. Configure independently asks you to choose a provider and enter a key for this decision model only. Providers include Bailian (Token Plan or Workspace), OpenAI, OpenRouter, TypeSafe, and Other compatible connection.
+3. Confirm the model ID, complete URL and protocol, then enter a name. Select Change to edit a prefilled value, or fill in any missing values.
 4. Select Save and test, or Save only and later Test connection in the saved details.
 
 HiRoute supplies judgment and assessment logic for built-in decision models, so no separate Jev deployment is required.
+
+The Context window is automatic by default and follows the model metadata; you can also set a custom request window. Current input and decision questions take priority, and history uses the remaining space. Advanced: per-question limit caps each question separately.
 
 ![Connect a decision model](/decision-assets/decision-models-en.png)
 
 Save and test saves first, then tests that exact saved connection revision. The test sends fixed synthetic input and may consume provider quota. It reads no real conversation, executes no task, and produces no quality score. Passing confirms connectivity and required response fields for that revision in this test; it does not establish task judgment accuracy or continuing health. A failed test may still follow a successful save; check the status in the details.
 
-Every saved edit creates a new revision. A route pins its selected connection revision: saving r2 leaves a published route on r1 until you select r2 in the route and publish changes. Saving or testing a connection does not publish a route. Adding a connection from an unfinished route preserves the draft; publishing remains a separate action when you return.
+Every saved edit creates a new revision. A route pins its selected connection revision: saving r2 leaves a published route on r1 until you select r2 in the route and publish changes. Saving or testing a connection does not publish a route. Adding a connection from an unfinished route preserves the draft; publishing remains a separate action when you return. With an existing API connection, key or network changes in that connection apply to later calls without republishing; changing the model, URL or protocol creates a new revision.
 
 To choose categories and model groups with your own service, choose Connect custom extension from the add menu, enter its complete endpoint, and select authentication. Extensions implement the [Custom extension API](/en/docs/decision-api/). See [Connect decision models](/en/docs/decision-extensions/) for built-in provider configuration and interface mapping. The optional [self-hosted Jev reference extension](/en/docs/jev-decider/) provides deployment examples.
 
 During real routing, the selected decision connection receives the complete current user content and allowed execution history. History includes user content, accepted assistant text, ordered tool names, and explicit coarse outcomes. The request body excludes system/developer prompts, tool arguments, tool-result bodies, and execution-model credentials. Assessment uses criteria frozen when the target stage executed. Incomplete visible history and an incomplete assessment target retain separate markers.
 
 ## Configure Difficulty routing
+
+With a custom extension, skip the trust and judgment-setting steps: the extension owns the group decision. The editor keeps only categories, conditions and candidates; parked settings return when switching to a built-in connection.
 
 1. Select Difficulty routing. Decision method defaults to Decision model; select the saved connection revision. You may instead choose Heuristic rules or Custom extension.
 2. Add models for explicit, bounded work to Regular models.
@@ -49,11 +51,15 @@ During real routing, the selected decision connection receives the complete curr
 
 ![Difficulty routing configuration](/decision-assets/config-en.png)
 
-The main form needs only the decision method and two model groups. Judgment settings starts collapsed. The simple probability threshold defaults to **0.8** and the competence floor to **0.5**. Expand it to edit the simple/complex instructions separately from How competence is assessed, including assessment instructions and the 0 / 0.5 / 1 criteria. A higher simple threshold uses regular models more cautiously. An applicable complete previous-stage score below the competence floor selects primary for this turn.
+With a decision model, **Trust · how much goes to Regular** sets how much work goes to regular models: further right sends more tasks to Regular. Choose one of the five presets, **Trial, Familiar, Trusted, Hands-off** and **Entrusted**, or enter an **Exact value**. The saved value is a simple-probability threshold, so simpler tasks go to Regular first. New plans default to **Familiar**, a threshold of **0.8**. **Entrusted** is a threshold of 0, and applicable low-score protection still applies there. Trust changes only routing; agent permissions, tool approval and sandboxing do not change.
+
+When you edit an existing route, **Replay this setting on your records** appears under Trust. It uses the last 7 days of the active published version to estimate how many stages would go to Regular at the new setting. It estimates past allocation; it is not a prediction. With enough evidence, Home also suggests stepping trust up or down; see [Try a new model](/en/docs/model-trial/).
+
+Judgment settings starts collapsed, with a competence floor of **0.5**. Expand it to edit What counts as simple or complex, and How competence is assessed, including assessment instructions and the 0 / 0.5 / 1 criteria. An applicable complete previous-stage score below the competence floor selects primary for this turn.
 
 Simple probability describes this turn's task degree, not the probability that an execution model will answer correctly.
 
-Heuristic rules use task signals to classify simple or complex work and produce no model competence score. Probability thresholds and assessment prompts are hidden in that mode. Switching methods and returning preserves the selected connection and judgment draft.
+Heuristic rules use task signals to classify simple or complex work and produce no model competence score. Trust and assessment prompts are hidden in that mode. Switching methods and returning preserves the selected connection and judgment draft.
 
 ## Configure Custom branches
 
@@ -64,6 +70,8 @@ Select Custom branches to assign different models to tasks such as writing and r
 3. Expand Plan default judgment at the bottom to set shared thresholds, degree prompts, and assessment criteria.
 4. Branches follow plan defaults. To use different criteria, expand the branch's Judgment settings and choose Customize. Choose Restore plan defaults to follow the plan again.
 
+Each branch with primary models has its own Trust control. Adjusting trust on a branch gives that branch its own judgment settings.
+
 ![Custom branch configuration](/decision-assets/custom-branches-en.png)
 
 Customize copies the complete effective settings and makes the whole set independent, including thresholds, degree prompts, and competence criteria. Restore plan defaults removes the complete override and immediately follows the plan again, preserving the branch name, task condition, and models. A branch without primary models shows competence settings only; degree settings appear after primary models are added.
@@ -72,11 +80,13 @@ Each decision selects one task branch. Overlapping conditions follow the current
 
 ## Understand turn selection and failures
 
-In Difficulty routing and Custom branches, a task with two model groups selects regular only when this turn's simple probability meets its threshold and no applicable low score is present. Otherwise, primary is selected. With defaults, simple probability **0.8** meets the threshold and competence **0.5** meets the floor; a score below **0.5** triggers protection.
+With a decision model, each new message gets three independent answers along the task's timeline: how the last step went (competence score), how hard this step is (simple probability), and whether the last step's problem carries into the next (earlier problem relevance). HiRoute applies your route settings to choose and run the group.
+
+In Difficulty routing and Custom branches, a task with two model groups selects regular only when this turn's simple probability meets its threshold and no applicable low score is present. Otherwise, primary is selected. With the defaults for a new plan, simple probability must reach **0.8**; competence **0.5** meets the floor, and a score below **0.5** triggers protection.
 
 Protection requires a fresh, complete, valid assessment returned by this decision, bound to the preceding actual execution stage and compatible with the current category, published configuration, and assessment criteria. Missing, partial, cross-category, or unattributable scores cannot trigger protection. Unrated is not zero, and an old low score is not repeatedly applied.
 
-For valid difficulty, eligible low-score protection is evaluated for simple and complex work. A native applicability result below 0.5 releases only the historical constraint: the difficulty selection still applies, so complex work remains Primary. Unavailable applicability retains protection. A preceding Primary stage may also trigger protection, without creating another group.
+For valid difficulty, eligible low-score protection is evaluated for simple and complex work. Earlier problem relevance below 0.5 means the last step's problem does not carry into this one. It releases only the historical constraint: the difficulty selection still applies, so complex work remains Primary. Unavailable relevance retains protection. A preceding Primary stage may also trigger protection, without creating another group.
 
 A new usable request can choose again. An earlier primary selection does not lock later turns to primary. Tool continuations inherit a reusable captured decision when native evidence identifies the same task. Known summaries and auxiliary calls stay outside main task history.
 
@@ -103,17 +113,23 @@ All candidates must satisfy the request's text, image, tool, and context require
 
 Select Enable or Publish changes to freeze the connection revision, task conditions, judgment settings, model order, and reasoning configuration. Missing models or connections and invalid judgment settings block publication. Invalid fields in collapsed sections are expanded and located.
 
-Then open Agents, choose the target agent, open Model routing, enable HiRoute routing, select the plan, and choose a default. After saving, use the page's live check or submit a small real task to verify the model path.
+Then open Agent, choose the target agent, enable Model routing, select this route, and reload the agent as the page describes. [Quickstart](/en/docs/) explains how each agent connects. After saving, submit a small real task to verify the model path.
 
-Maximum wait per request includes retries and streaming output and defaults to 1 hour for new plans. A slow response is interrupted at this deadline. Request writing, waiting for the first response byte, and stream idleness each default to 10 minutes. Edit the total wait in the route; existing plans retain their saved value. This does not change the model's own maximum output length.
+The route's **Context and wait time** settings:
+
+- **Context window:** automatic by default, using at most 400,000 tokens and bounded by the limit shared by all candidates. You can set a custom window. Larger windows may increase context and cache costs.
+- **Maximum wait per request (seconds):** includes retries and streaming output, and defaults to 1 hour for new plans. A slow response is interrupted at this deadline. Request writing, waiting for the first response byte, and stream idleness each default to 10 minutes. Existing plans retain their saved value. This does not change the model's own maximum output length.
+- **Allow parallel tool calls in Codex:** under Advanced settings, on by default. Turn it off for models that do not support it; HiRoute then disables parallel calls in requests.
+
+After you change these settings and publish, save the agent model settings again and restart the client to load the updated window and tool capabilities.
 
 ## Inspect the outcome
 
+Open a session in **Sessions**. The **Routing timeline** shows, turn by turn, the group and model actually used, simple probability and stage scores, and where low-score protection applied and was released. Select a turn to see the selection basis at the start of that stage, plus each request's usage, cache hits and API-equivalent estimate. **View conversation** switches to the conversation, and **View model performance** opens the route's model performance.
+
+![Session routing timeline](/decision-assets/readme-session-en.png)
+
 Open Model performance on the route to inspect stage samples and competence coverage by actual task branch, model group, model, and reasoning settings. Difficulty routing groups Regular / Primary. Custom branches groups positions such as Writing → Regular / Primary. The same model used in different groups is recorded separately.
-
-Model performance in Sessions exposes the same stage facts, including the actual model, competence, and assessment coverage for each stage.
-
-![Session stage assessments](/decision-assets/quality-native-en.png)
 
 Open View assessment evidence or Stage details, then locate the session evidence and check these facts separately:
 

@@ -23,9 +23,10 @@ and checks required routes and local links. Product guides are authored once in
 content is ignored by Git. The last two are generated from the canonical
 standalone installer and the current stable release record; do not hand-edit them.
 
-Homepage competence images are complete native Desktop session captures. Configuration
-illustrations use actual product components. Both use constructed documentation data;
-see [capture provenance](../../decision-extensions/assets/README.md) for their distinct sources.
+Session timeline images on the homepage and in the model-routing guide are frames from
+real Desktop session recordings. Trust, report and configuration illustrations use actual
+product components with constructed documentation data; see
+[capture provenance](../../decision-extensions/assets/README.md) for their distinct sources.
 They are illustrations, not provider acceptance or model benchmarks. Historical news and experiment
 reports retain their original version and evidence; current setup instructions belong in the guides.
 
@@ -103,13 +104,28 @@ derives the immutable URL rather than storing another configurable URL:
 https://hiroute.ai/releases/<version>/<packager-filename>
 ```
 
-The manifest uses schema `hiroute.website.releases/v2` and intentionally has no
+The canonical manifest uses schema `hiroute.website.releases/v3`. Preparation emits
+`releases-v3.json` for Windows Desktop and a `releases.json` V2 projection without
+Windows artifacts for supported older macOS readers. Linux archives include the
+Web UI assets as well as the CLI and service; this does not change their
+`standalone` package kind.
+
+The manifest intentionally has no
 release-level Git revision. A release record cannot contain the SHA of the commit
 that contains that same record without becoming self-referential. The packager
 filename still includes the first 12 characters of its source revision.
 
 Create tag `v<version>` on the exact source candidate, create a draft GitHub
-Release, and attach every DMG, standalone archive, and companion manifest. After
+Release, and attach every DMG, Linux archive and companion manifest, and the x64
+Windows NSIS installer with its `.identity.json` sidecar when Windows is in scope.
+Windows headless archives are internal payloads and must not be published. The
+installer identity must bind the exact source/hash and native cases
+from `scripts/windows-desktop-cases.json`, with the actual OS/build recorded.
+Complete acceptance is the default; an explicit committed release decision can
+defer named cases only for its exact version/source/installer, preserving their
+`not_assessed` verdicts. Actual standard-user installation and console readiness
+remain required for both selections. A deferral is never reported as a native pass.
+Compilation alone does not establish native acceptance. After
 reviewing those assets, add their exact filenames, sizes, and digests to the
 manifest on `main`. Publish the GitHub Release only after that record lands.
 The workflow freezes that `main` revision for the website, resolves the tag's

@@ -9,6 +9,10 @@ permissions:
 jobs:
   windows-validation:
     uses: ./.github/workflows/windows-headless.yml
+    with:
+      # The public Windows asset is x64 Desktop. Native ARM64 headless remains
+      # a separate manual assessment and never produces a public release asset.
+      include_internal_arm64: false
 
   build-unix:
     strategy:
@@ -37,8 +41,6 @@ jobs:
         include:
           - target: x86_64-pc-windows-msvc
             runner: windows-2025
-          - target: aarch64-pc-windows-msvc
-            runner: windows-11-arm
     uses: ./.github/workflows/build-release-platform.yml
     with:
       target: ${{ matrix.target }}

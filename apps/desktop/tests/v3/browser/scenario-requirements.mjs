@@ -67,6 +67,18 @@ export const focusedRequirements = {
 };
 
 export const productShellRequired = [
+  'desktop.interactions.tab-focus-return',
+  'desktop.interactions.update-download-cancel',
+  'desktop.interactions.route-dirty-cancel',
+  'desktop.interactions.route-save-isolation',
+  'desktop.interactions.guard-owner-unmount',
+  'desktop.interactions.credential-cancel',
+  'desktop.interactions.read-only-exit',
+  'desktop.interactions.tab-navigation',
+  'desktop.interactions.unknown-cli',
+  'desktop.interactions.route-actions',
+  'desktop.interactions.read-only-routing',
+  'desktop.interactions.diagnostics-save',
   'desktop.trial.connected-models-and-models-return',
   'desktop.home.observation-reader-bound',
   'desktop.home.observation-busy-recovers',

@@ -23,6 +23,7 @@ export function PlanRuntimeSettings({ limits, options, previewAgent: fixedPrevie
   const windowError = contextWindowError(limits.context_window_tokens, bounds, language);
   const timeoutError = requestTimeoutError(limits.request_timeout_ms, limits.attempt_timeout_ms, language);
   const codex = options?.codex_capabilities;
+  const parallelTools = limits.codex_parallel_tool_calls !== false;
   const claude = options?.claude_capabilities;
   const dsh = options?.dsh_capabilities;
   const format = (tokens: number) => tokens.toLocaleString(en ? 'en-US' : 'zh-CN');
@@ -100,6 +101,7 @@ export function PlanRuntimeSettings({ limits, options, previewAgent: fixedPrevie
           <div className="plan-capability-value" data-codex-capability-summary>
             <strong>{text(`上下文 ${compact(codex.context_window)} · 输入 ${codex.input_modalities.includes('image') ? '文本/图片' : '文本'}`, `Context ${compact(codex.context_window)} · Input ${codex.input_modalities.includes('image') ? 'text/images' : 'text'}`)}</strong>
             <span>{codex.reasoning === 'follow_request' ? text('思考档位跟随请求，不支持时使用默认档位', 'Reasoning follows the request, with a default when unsupported') : text('推理强度由路由配置决定', 'Reasoning effort is determined by the route configuration')}</span>
+            <span data-plan-parallel-summary>{parallelTools ? text('并行工具调用已开启', 'Parallel tool calls are on') : text('并行工具调用已关闭', 'Parallel tool calls are off')}</span>
           </div>
           {codex.limitations.map(limit => <div className="callout warn" role="status" data-codex-capability-limit={limit.kind} key={limit.kind}>
             <UiIcon name="warning" /><div>
@@ -123,15 +125,18 @@ export function PlanRuntimeSettings({ limits, options, previewAgent: fixedPrevie
         : dsh?.state === 'unavailable' ? <p className="oc-inline-error" role="alert" data-dsh-capability-state={dsh.reason}>{dsh.reason === 'invalid_plan' ? text('请先修正当前路由配置。', 'Correct the current route configuration first.') : dsh.reason === 'responses_unavailable' ? text('当前组合尚不能形成完整的 DSH Responses 预览。', 'The current combination cannot yet produce a complete DSH Responses preview.') : text('当前组合缺少可确认的 DSH 上下文或输出预算。', 'The current combination lacks a verifiable DSH context or output budget.')}</p>
           : <p className="field-help" role="status">{text('正在核实当前组合的能力。', 'Checking the current combination.')}</p>)}
       {previewAgent === 'other' && <p className="field-help">{text('此 Agent 暂无能力预览；映射时会核实兼容性。', 'A capability preview is not available for this Agent; compatibility is checked when mapping.')}</p>}
-      <Disclosure className="native-details plan-capability-details" label={text('能力依据与生效方式', 'Capability details and applying changes')} language={language}>
+      <Disclosure className="native-details plan-capability-details" label={previewAgent === 'codex' ? text('高级设置', 'Advanced settings') : text('能力依据与生效方式', 'Capability details and applying changes')} language={language}>
+        {previewAgent === 'codex' && <div data-plan-parallel-tools>
+          <div className="option-panel"><button className="option-row" type="button" role="switch" aria-checked={parallelTools}
+            onClick={() => onChange({ ...limits, codex_parallel_tool_calls: parallelTools ? false : undefined })}>
+            <div><strong>{text('允许 Codex 并行工具调用', 'Allow parallel tool calls in Codex')}</strong><span>{text('默认开启；模型不支持时可关闭。关闭后，HiRoute 会在请求中禁用并行调用。', 'On by default. Turn off for unsupported models; HiRoute then disables parallel calls in requests.')}</span></div>
+            <span className={`switch${parallelTools ? ' on' : ''}`} aria-hidden="true" />
+          </button></div>
+        </div>}
         <p className="field-help">{text('默认最多使用 400,000 tokens，受候选共同上界约束。较大的窗口可能增加上下文与缓存费用。', 'The default is at most 400,000 tokens, bounded by the shared candidate limit. Larger windows may increase context and cache costs.')}</p>
-        <p className="field-help">{text('已接入的 Agent 需重新保存模型设置并重新启动，才能加载更新后的窗口；进行中的会话不会立即改变。', 'Save the Agent model settings again and restart the client to load the updated window. Running sessions do not change immediately.')}</p>
+        <p className="field-help">{text('发布后，已接入的 Agent 需重新保存模型设置并重新启动，才能加载更新后的窗口与工具调用能力。', 'After publishing, save the Agent model settings again and restart the client to load the updated window and tool capabilities.')}</p>
         {previewAgent === 'codex' ? <>
           <p className="field-help">{text('依据当前编辑内容及候选的 Codex Responses 入口能力计算。上游使用其他协议时仍可能通过 HiRoute 适配；发布和接入时会重新核对，预览不代表真实客户端验证。', 'Calculated from the current edit and candidate Codex Responses ingress capabilities. HiRoute may adapt another upstream protocol; publication and connection recheck compatibility, and this preview is not a live client verification.')}</p>
-          {codex?.state === 'available' && codex.fixed_limits.includes('parallel_tool_calls_disabled') && <div className="callout" data-codex-fixed-limit="parallel_tool_calls_disabled"><UiIcon name="info" /><div>
-            <strong>{text('HiRoute 当前固定使用串行工具调用', 'HiRoute currently uses serial tool calls')}</strong>
-            <p>{text('这是当前实现限制，不由任何候选模型造成。', 'This is a fixed implementation limit, not a candidate-model limitation.')}</p>
-          </div></div>}
         </> : previewAgent === 'claude' ? <p className="field-help">{text('作用于整个 Claude Code 进程；接入多个计划时取最小窗口，原生模型可能更早压缩。接入时会核对窗口、配置冲突和请求能力。', 'Applies to the whole Claude Code process. Multiple plans share the smallest window; native models may compact earlier. Connection checks window constraints, configuration conflicts and request capabilities.')}</p> : <p className="field-help">{text('预览不代表授权或已完成映射；发布和映射仍会执行检查。', 'A preview does not authorize or confirm mapping; publication and mapping still perform their checks.')}</p>}
       </Disclosure>
     </div>

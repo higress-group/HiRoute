@@ -259,7 +259,9 @@ try {
   await run('append keeps saved configuration locked and preserves disabled state', async () => {
     await open('append=1');
     assert.equal(await evaluate(client, 'document.querySelectorAll(".connection-provider-card").length'), 0);
-    assert.ok(await evaluate(client, `Array.from(document.querySelectorAll('#mc-connection-form input, #mc-connection-form select')).every(item=>item.matches(':disabled'))`));
+    // Saved endpoint/credential fields stay locked. The separately owned network
+    // policy is intentionally editable and is covered by network-policy scenarios.
+    assert.ok(await evaluate(client, `Array.from(document.querySelectorAll('#mc-connection-form fieldset.connection-fields input, #mc-connection-form fieldset.connection-fields select')).every(item=>item.matches(':disabled'))`));
     assert.equal(await evaluate(client, `document.querySelector('#mc-connection-form input:not([type=password])').value`), '已有 · 接入');
     await click('.modal-foot button', '检查并继续'); await waitFor(client, `Boolean(document.querySelector('.model-selection'))`);
     await click('.model-selection input[type=checkbox]'); await click('.modal-foot button', '保存连接');

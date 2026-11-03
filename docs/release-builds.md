@@ -130,10 +130,41 @@ container; the HOME is removed afterwards. Logs and package evidence are retaine
 
 ## Hosted build and publication
 
+### Prepare before freezing the final candidate
+
+Track release acceptance in [the release acceptance Issue](https://github.com/higress-group/HiRoute/issues/193).
+Record the intended version, current main SHA, supported released source packages,
+selected checks and unresolved native/upgrade gates there. Set the product version
+through the shared tool and validate the resulting component and handshake
+projections. Update both README languages, the website homepage/download page and
+the public installation/Quickstart guides together. Linux's `standalone` package
+kind includes its Web UI and CLI; public platform descriptions must reflect both.
+
+Keep baseline results bound to their tested SHA while pending changes are reviewed.
+After integration, assess the intervening production diff and run the affected
+product smoke, including save/reopen, configured Gateway access and independent
+restoration where applicable. Do not rerun unaffected broad suites solely because
+documentation or version fields changed. Build every final package from the same
+frozen source, and execute all outstanding package-bound/native gates against
+those actual artifacts; an earlier baseline pass does not satisfy them.
+
+Prepare release notes separately from `apps/website/data/releases.json`. Add the public catalog
+record only after exact package hashes and required acceptance are available.
+Until then, distinguish upcoming platform capabilities from the versions actually
+downloadable, and do not publish a Windows download row or model-feed availability
+claim without its corresponding acceptance and publication prerequisites.
+
+### Build and publish the frozen artifacts
+
 Run the **build-release-candidates** workflow on the public candidate branch.
 Unix candidate builds start independently of the reusable **windows-headless**
-workflow at the same source commit. All five native scopes, their selected Windows 11
-x64-artifact replays and the native ARM64 Rust-installation job must succeed before Windows package-build jobs can start.
+workflow at the same source commit. All five x64 native scopes and their selected
+Windows 11 x64-artifact replays must succeed before Windows package-build jobs can
+start. The public release has no Windows ARM64 asset: its native headless package
+remains available through `build-release.py` on a native ARM64 host, and its Rust
+installation assessment remains in the default manual **windows-headless** run.
+The release workflow explicitly
+excludes that internal ARM64 assessment; it does not establish ARM64 runtime support.
 Both groups use **build-release-platform** for the same per-target build steps. This expensive Windows matrix
 does not run automatically on PR or main pushes; ordinary iteration uses the
 [cross-compilation and development-machine path](validation-routing.md#windows-iteration-and-release-validation).
@@ -245,8 +276,11 @@ product fixes and retain each result at its actual source revision.
    verifies tag/package identity and digests, then publishes OSS/site links and
    proposes the [release contract snapshot](release-contracts.md).
    Windows Desktop also attaches its `INSTALLER.exe.identity.json`; publication
-   verifies the installer digest, source revision and complete native case evidence.
-   An incomplete or misbound sidecar cannot publish a Windows Desktop artifact.
+   verifies the installer digest, source revision and native case evidence. Complete
+   acceptance is the default. An explicit maintainer-directed deferral must match
+   the exact version/source/installer in the existing Windows acceptance policy,
+   retain `not_assessed` verdicts, and still prove standard-user installation and
+   console readiness for both selections. A mismatched or undeclared omission fails.
 
 The build workflow only stores Actions artifacts. It does not publish a GitHub
 Release, alter the stable catalog, or replace any immutable distribution object.

@@ -42,6 +42,11 @@ the source change and let the convergence owner use the validation generator pro
 A checksum refresh is not evidence that a changed assertion still represents the contract.
 For affected Desktop journeys, resolve the required capable environment before a costly build.
 
+When UI branches overlap, converge on the [shared interaction guidelines](../../../docs/desktop-interactions.md)
+and the combined production pattern. Do not resolve a conflict by retaining two
+competing controls or layering incompatible styles. Use UI-quality checks on the
+affected combined flows, including draft/confirmation guards and comparative evidence.
+
 ## Use platform builds and the development machine during iteration
 
 For Windows changes, follow [Windows iteration](../../../docs/validation-routing.md#windows-iteration-and-release-validation):

@@ -1,5 +1,5 @@
 {
-  "latest_stable": "v0.3.1",
+  "latest_stable": "v0.5.0",
   "releases": [
     {
       "channel": "stable",
@@ -28,6 +28,13 @@
       "revision": "13856abd873da5b4373d39322493b4cc105c4867",
       "sha256": "c24ee70477f6a85f51000dfa22f27d17f5c501284da56a921ce7bedf9b99df99",
       "tag": "v0.3.1"
+    },
+    {
+      "channel": "stable",
+      "file": "v0.5.0.json",
+      "revision": "4be499ff7bb067e6d39a015103971f6af5584f70",
+      "sha256": "3ba029584206ddbf4bc7b63e83f9c08b10c3e869188677eff43e61770605134f",
+      "tag": "v0.5.0"
     }
   ],
   "schema": "hiroute.release-contract-index/v1"

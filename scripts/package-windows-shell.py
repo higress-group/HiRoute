@@ -111,31 +111,58 @@ def shell_image(installer, run=None):
         return image
 
 
+def verify_native_acceptance(identity, policy=None):
+    if policy is None:
+        policy = json.loads((ROOT / "scripts/windows-desktop-cases.json").read_text())
+    if policy.get("schema") != "hiroute.windows-desktop-acceptance/v1":
+        raise ValueError("unknown Windows native acceptance policy")
+    required = policy["platforms"]
+    evidence = identity.get("native_evidence", {})
+    runs = evidence.get("runs", []) if isinstance(evidence, dict) else []
+    if (not isinstance(runs, list) or len(runs) != len(required) or any(not isinstance(run, dict) for run in runs)
+            or {run.get("platform") for run in runs} != set(required)):
+        raise ValueError("native evidence must cover Windows 11 x64 and the Server selection")
+    deferred = {platform: [] for platform in required}
+    if identity.get("native_runtime") != "green":
+        decisions = [entry for entry in policy["release_decisions"] if all(
+            entry.get(key) == identity.get(key) for key in ("version", "revision", "installer_sha256"))]
+        if (identity.get("native_runtime") != "deferred" or len(decisions) != 1
+                or identity.get("acceptance_decision") != decisions[0].get("decision_url")
+                or not re.fullmatch(r"https://github\.com/higress-group/HiRoute/issues/[1-9][0-9]*#issuecomment-[1-9][0-9]*",
+                                    decisions[0].get("decision_url", ""))):
+            raise ValueError("Windows native deferral lacks an exact committed release decision")
+        deferred = decisions[0].get("deferred_cases", {})
+        if (set(deferred) != set(required) or not any(deferred.values())
+                or any(not isinstance(cases, list) or len(cases) != len(set(cases))
+                       or not set(cases) <= set(required[platform])
+                       or set(cases) & {"install.standard-user", "install.console-ready"}
+                       for platform, cases in deferred.items())):
+            raise ValueError("native deferral cannot omit actual standard-user installation and console readiness")
+    for native in runs:
+        scenarios = native.get("scenarios", {})
+        platform = native["platform"]
+        if (native.get("revision") != identity["revision"]
+                or native.get("installer_sha256") != identity["installer_sha256"]
+                or native.get("standard_user") is not True or native.get("architecture") != "AMD64"
+                or not native.get("os_version") or not isinstance(scenarios, dict)
+                or set(scenarios) != set(required[platform])
+                or any(scenarios[case] != ("not_assessed" if case in deferred[platform] else "green")
+                       for case in required[platform])):
+            raise ValueError("native evidence does not bind all standard-user scenarios to this artifact")
+
+
 def verify(installer, identity, revision):
     if not isinstance(identity, dict):
         raise ValueError("Windows Desktop identity must be an object")
     regular(installer)
     expected = {"schema": SCHEMA, "revision": revision, "architecture": "x86_64", "distribution": "unsigned",
                 "installer_sha256": digest(installer), "installer_size": installer.stat().st_size,
-                "integrity": "green", "embedded_components": "green", "native_runtime": "green"}
+                "integrity": "green", "embedded_components": "green"}
     if not re.fullmatch(r"[0-9a-f]{40}", revision) or any(identity.get(k) != v for k, v in expected.items()):
         raise ValueError("Windows Desktop identity lacks matching native acceptance")
     if installer.name != f'HiRoute-{identity.get("version")}-{revision[:12]}-windows-x86_64-setup.exe':
         raise ValueError("Windows Desktop installer identity differs from its filename")
-    evidence = identity.get("native_evidence", {})
-    runs = evidence.get("runs", []) if isinstance(evidence, dict) else []
-    required = json.loads((ROOT / "scripts/windows-desktop-cases.json").read_text())
-    if (not isinstance(runs, list) or len(runs) != len(required) or any(not isinstance(run, dict) for run in runs)
-            or {run.get("platform") for run in runs} != set(required)):
-        raise ValueError("native evidence must cover Windows 11 x64 and the Server selection")
-    for native in runs:
-        scenarios = native.get("scenarios", {})
-        if (native.get("revision") != revision or native.get("installer_sha256") != expected["installer_sha256"]
-                or native.get("standard_user") is not True or native.get("architecture") != "AMD64"
-                or not native.get("os_version") or not isinstance(scenarios, dict)
-                or any(scenarios.get(case) != "green" for case in required[native["platform"]])
-                or any(value != "green" for value in scenarios.values())):
-            raise ValueError("native evidence does not bind all standard-user scenarios to this artifact")
+    verify_native_acceptance(identity)
     return identity
 
 

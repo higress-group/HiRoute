@@ -210,6 +210,7 @@ pub(super) fn snapshot(
         overall_timeout_ms,
         max_attempts,
         routing: Some(AliasRoutingV1 {
+            codex_parallel_tool_calls: None,
             agent_plan_id: "agent-plan-91".into(),
             plan_display_name: Some("Runtime verification".into()),
             request_owned,

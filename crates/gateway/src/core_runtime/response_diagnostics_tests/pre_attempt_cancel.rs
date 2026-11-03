@@ -475,6 +475,7 @@ pub(super) fn classified_publication(
         })
         .collect();
     alias.routing = Some(AliasRoutingV1 {
+        codex_parallel_tool_calls: None,
         agent_plan_id: "pre-attempt-plan".into(),
         plan_display_name: None,
         request_owned: AliasRequestOwnedRouteV1::Classified {

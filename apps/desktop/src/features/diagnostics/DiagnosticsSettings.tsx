@@ -1,10 +1,8 @@
 import { hostCapabilities } from '../../host/index.ts';
 import {
   canSave,
-  debugEnabled,
   fixedFailureText,
   settingsReadErrorText,
-  toggleDebug,
 } from './diagnostics-state';
 import { useDiagnostics } from './use-diagnostics';
 import { DIAGNOSTIC_LEVELS, type DiagnosticLevel } from './types';
@@ -47,15 +45,6 @@ export function DiagnosticsSettings(props: DiagnosticsSettingsProps) {
             </span>
           </div>
           <div className="diagnostics-controls">
-            <label className="diagnostics-toggle">
-              <input
-                type="checkbox"
-                checked={debugEnabled(view.draft)}
-                aria-label={text('开启调试日志', 'Enable debug logs')}
-                onChange={event => view.setDraft(toggleDebug(view.draft, event.target.checked))}
-              />
-              <span>{text('开启调试日志', 'Enable debug logs')}</span>
-            </label>
             <label className="diagnostics-select">
               <span>{text('等级', 'Level')}</span>
               <select
@@ -88,6 +77,7 @@ export function DiagnosticsSettings(props: DiagnosticsSettingsProps) {
         {readError && (
           <p className="diagnostics-note error" role="alert">
             {readError}
+            <button className="btn" type="button" onClick={() => void view.refresh()}>{text('重试', 'Retry')}</button>
           </p>
         )}
         {view.saveError && (
@@ -103,9 +93,9 @@ export function DiagnosticsSettings(props: DiagnosticsSettingsProps) {
           <div className="settings-copy">
             <strong>{text('日志目录', 'Log directory')}</strong>
             <span>
-              {hostCapabilities().directory_reveal === 'path' ? text('日志保存在运行 HiRoute 服务的设备上。可显示目录路径，在该设备上打开目录并查看 daemon/ 下的日志文件；日志不包含对话内容或凭据。', 'Logs are stored on the device running HiRoute. Show the directory path and open it on that device to read the daemon/ logs. Logs contain no conversation content or credentials.') : text(
-                '日志保存在本机应用数据目录；点击会在文件管理器中打开该目录。目录里的 .jsonl 文件就是日志：desktop/ 下是客户端日志，daemon/ 下是引擎（本机服务）日志；向社区求助时附上这些文件即可，其余文件不需要发送。日志不含对话内容或凭据。',
-                'The logs live in this app\'s local data directory. The button opens that folder in your file manager. The .jsonl files are the logs: desktop/ holds the client logs and daemon/ the engine (local service) logs; attach these when asking the community for help — the other files are not needed. The logs never contain conversation content or credentials.',
+              {hostCapabilities().directory_reveal === 'path' ? text('日志保存在服务所在设备。显示路径后，在该设备打开 daemon/ 目录查看 .jsonl 日志。日志不含对话正文或凭据。', 'Logs are stored on the service device. Show the path and open daemon/ there to view .jsonl files. Logs contain no conversation content or credentials.') : text(
+                '打开本机日志目录：desktop/ 为客户端日志，daemon/ 为服务日志。向社区求助时可附上其中的 .jsonl 文件。日志不含对话正文或凭据。',
+                'Open the local log directory: desktop/ holds client logs and daemon/ holds service logs. Attach the .jsonl files when asking the community for help. Logs contain no conversation content or credentials.',
               )}
             </span>
           </div>

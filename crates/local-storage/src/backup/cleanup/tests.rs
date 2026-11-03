@@ -374,6 +374,16 @@ fn native_storage_names_do_not_share_retirement_authority() {
     let f = Fixture::new();
     let roots = [b"store-\x80".to_vec(), b"store-\x81".to_vec()]
         .map(|name| f.state.join(std::ffi::OsString::from_vec(name)));
+    let native = roots.each_ref().map(|root| UpgradeCleanup::new(root));
+    assert_ne!(native[0].jobs().unwrap(), native[1].jobs().unwrap());
+    assert_ne!(
+        native[0].source(&Source::Backups).unwrap(),
+        native[1].source(&Source::Backups).unwrap()
+    );
+    // APFS rejects invalid UTF-8 filenames. Keep the native-byte assertions above
+    // and exercise actual cross-namespace retirement with representable names.
+    #[cfg(target_os = "macos")]
+    let roots = [f.state.join("store-甲"), f.state.join("store-乙")];
     let controllers = roots.map(|root| {
         crate::prepare_owner_directory(&root).unwrap();
         let cleanup = UpgradeCleanup::new(&root);

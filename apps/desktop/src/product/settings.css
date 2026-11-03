@@ -1,0 +1,63 @@
+.settings-page { grid-template-rows: auto auto minmax(0, 1fr); }
+.settings-tabs {
+  display: flex;
+  gap: 24px;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--divider);
+}
+.settings-tabs > button {
+  min-height: 46px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: calc(14px * var(--hr-text-scale));
+  text-align: left;
+  cursor: pointer;
+}
+.settings-tabs > button[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.settings-tabs > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.settings-page .settings-wrap { width: min(960px, 100%); container-type: inline-size; }
+.settings-page [data-settings-panel][hidden] { display: none; }
+.settings-page [data-settings-panel]:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.settings-page .settings-group { margin-bottom: 24px; }
+.settings-page .settings-group > h2 {
+  margin: 0 0 12px;
+  font-size: calc(14px * var(--hr-text-scale));
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: normal;
+  text-transform: none;
+}
+.settings-page .settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px 24px;
+  padding: 16px 18px;
+}
+.settings-page .settings-copy { min-width: 0; }
+.settings-page .settings-copy strong { font-size: calc(14px * var(--hr-text-scale)); font-weight: 500; }
+.settings-page .settings-copy span { font-size: calc(12px * var(--hr-text-scale)); line-height: 1.7; overflow-wrap: anywhere; }
+.settings-page .settings-copy code { display:block;margin-top:6px;color:var(--text-muted);font-size:calc(13px * var(--hr-text-scale));line-height:1.6;overflow-wrap:anywhere; }
+.settings-page .settings-row > .segmented { align-self: center; }
+.settings-page .gateway-listener-control { max-width: 400px; }
+.settings-page .settings-inline-error,
+.settings-page .gateway-risk { font-size: calc(12px * var(--hr-text-scale)); line-height: 1.7; }
+@container (max-width: 660px) {
+  .settings-page .settings-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .settings-page .settings-row > .btn,
+  .settings-page .settings-row > .segmented,
+  .settings-page .settings-row > .badge { justify-self: start; }
+  .settings-page .gateway-listener-control { justify-content: flex-start; max-width: 100%; }
+}
+@media (max-width: 900px) {
+  .settings-tabs { gap: 20px; padding: 0 20px; }
+  .settings-tabs > button { font-size: calc(13px * var(--hr-text-scale)); }
+}

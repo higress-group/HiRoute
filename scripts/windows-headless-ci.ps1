@@ -201,11 +201,16 @@ function Invoke-LibraryTests {
         'query_v2::session_search_tests::live_search_450k_occurrences_and_100k_sources_under_real_deadline',
         'store::field_replay_tests::captured_native_suffix_uses_the_real_writer',
         'store::field_tests::current_history_and_real_maintenance',
+        'store::semantic_field::current_writer_storage_and_reads_for_private_semantic_field_corpus',
+        'store::tests::content_v2::pressure::bounded_batches_keep_the_same_small_item_bytes_and_feedback',
+        'store::tests::content_v2::pressure::thousands_of_small_items_remain_durable_and_replay_exactly',
         'store::tests::plan_quality::routing_timeline::timeline_long_session_read_cost',
         'store::tests::plan_quality::trust::trust_suggestion_population_read_cost')
     }
     if ($Package -eq 'hiroute-gateway') {
-      $optIn = @('server::core_runtime::adapters::tests::local_work::benchmark_local_text_processing')
+      $optIn = @(
+        'server::core_runtime::adapters::tests::local_work::benchmark_local_text_processing',
+        'server::core_runtime::observation::content::request::field::export_actual_semantic_capture_for_private_field_corpus')
     }
     if ($Package -eq 'hiroute-integrations') {
       $optIn = @(
@@ -216,6 +221,7 @@ function Invoke-LibraryTests {
         'agents::windows_runtime::tests::windows_selected_node_version_uses_the_private_capture_and_held_job',
         'agents::windows_runtime::tests::windows_selected_pi_sdk_capabilities_load_the_actual_package',
         'agents::windows_collaboration_tests::actual_windows_codex_native_skill_executes_the_public_cli',
+        'agents::windows_collaboration_tests::actual_windows_claude_native_authentication_without_tools',
         'agents::windows_collaboration_tests::actual_windows_claude_native_skill_executes_the_public_cli',
         'agents::windows_collaboration_tests::actual_windows_qoder_native_skill_executes_the_public_cli_without_synthesized_account')
     }
@@ -255,7 +261,7 @@ function Invoke-LibraryTests {
       $harness += '--nocapture'
     }
     @{ source_revision = $ExpectedSha; package = $Package; explicit_opt_in_or_child_fixtures = $optIn;
-       reason = 'Real selected installation inputs and helper children have separate explicit native gates; any unregistered ignored case still fails this inventory.'
+       reason = 'Selected installations, helper children, private stopped field corpora and controlled persistence/performance runs require explicit inputs or assessment. Any unregistered ignored case still fails this inventory.'
     } | ConvertTo-Json -Depth 5 | Out-File -Encoding utf8 "$evidence/$name-selection.json"
     Invoke-RequiredTests $name @('-p',$Package,'--lib') $required $harness
   } catch { $failures.Add($_.Exception.Message); Write-Warning $_.Exception.Message }
@@ -296,6 +302,11 @@ if ($Scope -eq 'components') {
     'private_fs::tests::private_materials_are_exclusive_and_read_without_permission_adoption',
     'private_fs::tests::storage_preparation_reopens_without_adopting_a_file',
     'private_fs::tests::windows_owned_root_stays_pinned_and_private_read_does_not_repair_borrowed_acl',
+    'private_fs::removal::tests::deep_or_unknown_entry_is_preserved_without_false_completion',
+    'private_fs::removal::tests::exhausted_time_budget_still_makes_one_entry_progress',
+    'private_fs::removal::tests::large_flat_tree_is_bounded_and_resumes_with_linear_progress',
+    'private_fs::removal::tests::read_only_retired_copy_can_be_removed',
+    'private_fs::removal::tests::replaced_root_and_descendant_are_never_adopted',
     'windows::read_lease::tests::admitted_installed_hardlinks_keep_identity_and_write_delete_fences',
     'windows::background::tests::native_argv_quotes_spaces_quotes_and_trailing_slashes_without_shell',
     'windows::background::tests::profile_is_absolute_and_definition_rejects_unknown_or_foreign_owner',
@@ -481,6 +492,8 @@ if ($Scope -eq 'components') {
   Invoke-RequiredTests 'agent-cancel-oracle' @('-p','hiroute-daemon','--lib',$cancelOracle) @($cancelOracle) @('--exact')
   $mainOracle = 'agents::collaboration_probe::tests::codex_collaboration_accepts_correlated_native_text_content_items_only'
   Invoke-RequiredTests 'agent-main-oracle' @('-p','hiroute-integrations','--lib',$mainOracle) @($mainOracle) @('--exact')
+  $skillSettings = 'agents::native_ingress_probe::windows_skill_settings_tests::windows_skill_only_settings_require_fresh_collaboration_not_authentication'
+  Invoke-RequiredTests 'agent-skill-only-settings' @('-p','hiroute-integrations','--lib',$skillSettings) @($skillSettings) @('--exact')
   $launchOracle = 'agents::collaboration_probe::tests::native_launch_diagnostic_'
   Invoke-RequiredTests 'agent-launch-oracle' @('-p','hiroute-integrations','--lib',$launchOracle) @(
     'agents::collaboration_probe::tests::native_launch_diagnostic_preserves_fixed_os_codes_and_api_stages',
@@ -535,6 +548,7 @@ if ($Scope -eq 'components') {
     ($toolDiagnostic + 'header_rejects_partial_duplicate_overflow_and_embedded_receipts'),
     ($toolDiagnostic + 'only_pinned_prelaunch_captions_establish_handler_preflight'),
     ($toolDiagnostic + 'facets_are_closed_and_shape_counts_do_not_invent_parsed_text'),
+    ($toolDiagnostic + 'bash_failure_diagnostics_keep_only_closed_exit_and_cwd_facts'),
     ($toolDiagnostic + 'terminal_script_checkpoint_retains_failure_facts_without_proving_denial'))
   $qoderSkill = 'agents::qoder_probe::skill_diagnostic::tests::'
   Invoke-RequiredTests 'agent-qoder-skill-load-diagnostic' @('-p','hiroute-integrations','--lib',$qoderSkill) @(
@@ -579,6 +593,8 @@ if ($Scope -eq 'components') {
     ($selectionInput + 'ordinary_npm_shim_uses_the_shared_declared_bin_parser_and_rejects_reparse_bins'))
   $npmInspection = 'agents::windows_runtime::tests::windows_npm_inspection_runs_before_manifest_read_and_entry_canonicalization'
   Invoke-RequiredTests 'agent-npm-inspection' @('-p','hiroute-integrations','--lib',$npmInspection) @($npmInspection) @('--exact')
+  $nativeNpm = 'agents::windows_runtime::native_npm_tests::native_npm_pe_runs_without_node_and_invalidates_changed_engine_identity'
+  Invoke-RequiredTests 'agent-npm-native-entry' @('-p','hiroute-integrations','--lib',$nativeNpm) @($nativeNpm) @('--exact')
   $piLocator = 'agents::filesystem::pi_native::windows_tests::'
   Invoke-RequiredTests 'agent-pi-locator' @('-p','hiroute-integrations','--lib',$piLocator) @(
     ($piLocator + 'windows_pi_scanner_binds_local_npm_shim_to_declared_entry_without_evaluation'),

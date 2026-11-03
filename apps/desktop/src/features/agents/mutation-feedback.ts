@@ -70,3 +70,16 @@ export function agentActionErrorMessage(code: string, language: 'zh' | 'en'): st
   }
   return zh ? '操作未完成，当前输入已保留。' : 'The operation did not complete; your input is retained.';
 }
+
+/** Only a recognized backend reason becomes recovery guidance; never display raw native errors. */
+export function agentSettingsFailureMessage(error: unknown, language: 'zh' | 'en'): string | null {
+  if (!error || typeof error !== 'object' || !('source' in error) || error.source !== 'backend'
+    || !('envelope' in error) || !error.envelope || typeof error.envelope !== 'object'
+    || !('error' in error.envelope)) return null;
+  const detail = error.envelope.error;
+  if (!detail || typeof detail !== 'object' || !('code' in detail) || detail.code !== 'CAPABILITY_DENIED'
+    || !('message_key' in detail) || detail.message_key !== 'error.codex_profile_conflict') return null;
+  return language === 'zh'
+    ? 'Codex 配置无法安全合并，尚未保存。请检查配置文件格式、访问权限及已有的同名 HiRoute 配置。当前选择已保留，处理冲突后再保存。'
+    : 'Codex settings cannot be merged safely. Nothing was saved. Check the file format, access permissions and existing HiRoute names. Your choices are retained; resolve the conflict before saving again.';
+}

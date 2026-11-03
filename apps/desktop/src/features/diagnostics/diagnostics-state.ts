@@ -3,16 +3,6 @@ import type {
   DiagnosticsStatus,
 } from './types';
 
-/** The quick toggle and the level select share one draft level. */
-export function toggleDebug(draft: DiagnosticLevel, enabled: boolean): DiagnosticLevel {
-  if (enabled) return 'debug';
-  return draft === 'debug' ? 'info' : draft;
-}
-
-export function debugEnabled(draft: DiagnosticLevel): boolean {
-  return draft === 'debug';
-}
-
 /**
  * A newer or equal status is applied; an older revision is dropped so a late response can
  * never roll the accepted revision, level or save error back.

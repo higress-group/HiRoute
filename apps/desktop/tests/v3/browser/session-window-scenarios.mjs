@@ -813,8 +813,10 @@ const scenarios = [
         };
       });
       c().showRequestExcerpt(id);
-      await until(() => document.querySelector('.routing-quote')?.textContent.includes(state === 'deleted' ? '正文已清理' : state === 'failed' ? '消息暂时无法读取' : '这一轮的消息暂不可用'), `quote ${state} state`);
-      if (state === 'failed') assert(document.querySelector('.routing-quote [data-content-state]')?.dataset.contentState === 'error', 'Failed read lost its explicit error state');
+      const expected = state === 'deleted' ? '正文已清理' : state === 'failed' ? '消息暂时无法读取' : '这一轮的消息暂不可用';
+      await until(() => document.querySelector('.routing-quote')?.textContent.includes(expected), `quote ${state} state`);
+      const contentState = document.querySelector('.routing-quote [data-content-state]')?.dataset.contentState;
+      assert(contentState === (state === 'deleted' ? 'cleared' : state === 'failed' ? 'error' : 'pending'), `Quote ${state} lost its distinct content state`);
       if (state !== 'deleted') assert(!document.querySelector('.routing-quote').textContent.includes('已清理'), 'Unavailability claimed deletion');
     }
   }],

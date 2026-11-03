@@ -230,6 +230,7 @@ pub(super) fn materialize_aliases(
                         plan_display_name: Some(
                             plan.body.identity.display_name.as_str().to_owned(),
                         ),
+                        codex_parallel_tool_calls: limits.codex_parallel_tool_calls,
                         request_owned: plan.body.materialized.request_owned.clone(),
                         groups,
                     }),

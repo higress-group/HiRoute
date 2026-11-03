@@ -1,6 +1,6 @@
 # Windows 桌面版安装
 
-HiRoute 桌面版提供按当前用户安装的 NSIS 安装包，只支持原生 Windows x64。安装包自带命令行、后台服务、控制台文件和 WebView2 引导安装器，不要求 Python 或管理员权限。经过验证的版本发布后，可从[下载页](/download/)选择 Windows 桌面安装包。
+HiRoute Windows 桌面版提供按当前用户安装的 NSIS 安装包，只支持原生 Windows x64。安装包自带命令行、后台服务、控制台文件和 WebView2 引导安装器，不要求 Python 或管理员权限。可从[下载页](/download/)选择 Windows 桌面安装包。
 
 ## 校验下载
 
@@ -14,7 +14,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\YOUR-INS
 
 ## 打开未签名安装包
 
-本期版本没有代码签名，Windows 可能显示“未知发布者”或 SmartScreen 信誉提示。确认下载来源和摘要后，在系统提供该选项时选择“更多信息 → 仍要运行”。组织策略或 Smart App Control 可能禁止继续运行，此时请走组织的应用批准流程，不要关闭 Windows 安全功能。微软的[应用和浏览器控制说明](https://support.microsoft.com/en-us/windows/security/windows-security/app-browser-control-in-the-windows-security-app)介绍了这些保护。
+安装包没有代码签名，Windows 可能显示“未知发布者”或 SmartScreen 信誉提示。确认下载来源和摘要后，在系统提供该选项时选择“更多信息 → 仍要运行”。组织策略或 Smart App Control 可能禁止继续运行，此时请走组织的应用批准流程，不要关闭 Windows 安全功能。微软的[应用和浏览器控制说明](https://support.microsoft.com/en-us/windows/security/windows-security/app-browser-control-in-the-windows-security-app)介绍了这些保护。
 
 ## 安装与启动
 
@@ -22,11 +22,11 @@ Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\YOUR-INS
 2. 登录自启和托盘默认开启，安装时可以分别取消。关闭托盘后，关闭窗口会退出壳，后台服务继续运行。
 3. 打开 HiRoute。壳检查当前用户的 Task，启动服务，等待 Gateway 就绪后打开本机控制台。不需要口令或解锁，受保护操作仍在页面内逐次确认。
 
-同一用户已有的 Task 安装会原地升级。本期不提供 SCM 安装；已有 SCM 托管的安装会在产品写入前被拒绝，并保持原样。此桌面安装包不支持 ARM64 或 x86 主机。
+同一用户已有的 Task 安装会原地升级。不提供 SCM（Windows 服务）安装；已有 SCM 托管的安装会在产品写入前被拒绝，并保持原样。此桌面安装包不支持 ARM64 或 x86 主机。
 
 安装器把固定的 `.local\bin` 加入当前用户 PATH，保留其它条目；新开终端后生效。设置页与托盘的“Start at login”同时管理壳和后台 Task。托盘“Quit”只退出壳，服务保留运行。
 
-无人值守安装可在校验安装包后，使用 `/S` 运行并等待进程退出码。安装器采用默认的登录自启和托盘选项，全程不弹提示，完成后启动服务，失败时返回非零退出码。仅使用 CLI 和 daemon 的用户也安装同一包。本期不发布 Windows standalone 归档或 ARM64 包。
+无人值守安装可在校验安装包后，使用 `/S` 运行并等待进程退出码。安装器采用默认的登录自启和托盘选项，全程不弹提示，完成后启动服务，失败时返回非零退出码。仅使用 CLI 和 daemon 的用户也安装同一包。Windows 没有单独的 standalone 归档，也没有 ARM64 包。
 
 ## 更新与恢复
 
@@ -34,7 +34,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\YOUR-INS
 
 手动下载的新安装包使用同一套排空与事务流程。旧 daemon 不支持排空时，只有交互式安装经明确确认后才能停止它，静默更新会拒绝。失败后，启动页或升级页显示错误和恢复状态，请保留日志与备份。安装被中断后再次打开壳，会尝试 journal 恢复并恢复被暂停的接收入口；遇到变更或外来文件时保留现场并要求修复。
 
-本次是 Windows 首个受支持版本。通用完整数据组及配套程序/原生状态的恢复能力仍保留，但不承诺兼容未发布开发构建；开发旧版历史升级矩阵不属于本次必要验收。当前格式的安装修复不会无必要地导出 Task/应用注册或重复归档完整 Desktop。
+完整数据组及配套程序/原生状态的恢复能力保留，但不保证兼容未发布的开发构建。安装修复不会无必要地导出 Task/应用注册或重复归档完整 Desktop。
 
 存储格式升级会保留配置、凭据和路由；旧 HiRoute 历史与配套旧程序一起封存，新历史和统计从切换时开始。旧时期的继续会话与历史引用需要整组恢复到配套旧版本，原生 Agent 历史不变。使用无人值守的 `/S` 安装前也应先了解这一变化；静默模式不会显示说明页。
 

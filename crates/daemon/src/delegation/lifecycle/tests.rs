@@ -275,6 +275,7 @@ fn inputs_for_harness(
         workspace: &cwd,
         alias: "fixed-alias",
         codex_catalog: catalog.as_deref(),
+        preserve_legacy_serial_catalog: false,
         native_effort: None,
         gateway: "127.0.0.1:10001".parse().unwrap(),
         permit: &permit,

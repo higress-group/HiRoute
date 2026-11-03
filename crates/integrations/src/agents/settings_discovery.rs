@@ -32,7 +32,7 @@ impl FilesystemAgentScannerV1 {
             &executable,
             config,
         );
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         if kind == AgentKindV1::Codex {
             if let Ok(cache) = self.codex_ingress.lock()
                 && let Some(evidence) = cache.as_ref()

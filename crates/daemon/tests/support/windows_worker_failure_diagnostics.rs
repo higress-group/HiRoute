@@ -11,6 +11,21 @@ use super::{dependency_selection, oracle::Ledger};
 const MAX_RESULT_BYTES: usize = 1024 * 1024;
 const MAX_REQUESTS: usize = 64;
 
+pub(super) fn collaboration_preview(value: &Value) {
+    let Ok(preview) = serde_json::from_value::<hiroute_application_api::AgentSettingsPreviewV2>(
+        value["data"].clone(),
+    ) else {
+        return;
+    };
+    for block in preview.preview.blockers {
+        // Typed enums only: never project configuration, paths, model IDs or native output.
+        println!(
+            "Windows collaboration preview blocker: facet={:?}, reason={:?}, capabilities={:?}",
+            block.facet, block.reason, block.capabilities
+        );
+    }
+}
+
 pub(super) fn receipt(
     current: &Value,
     result: &Value,

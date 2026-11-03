@@ -573,6 +573,14 @@ impl WorkerProfileSource for ManagedWorkerProfileSource {
             workspace: &workspace,
             alias: &task.plan.model_alias,
             codex_catalog: codex_catalog.as_deref(),
+            preserve_legacy_serial_catalog: input
+                .compiled_plan
+                .body
+                .materialized
+                .attempt_owned
+                .limits
+                .codex_parallel_tool_calls
+                .is_none(),
             native_effort: None,
             gateway: input.gateway,
             permit: &input.permit,

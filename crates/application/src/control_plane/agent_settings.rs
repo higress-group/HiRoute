@@ -284,6 +284,13 @@ fn settings_read_failure(
     request_id: String,
 ) -> MachineEnvelopeV2<Value> {
     let mut response = failed(map_control_error(error), request_id);
+    if error == crate::control::ControlReadError::CodexProfileConflict {
+        response
+            .error
+            .as_mut()
+            .expect("failed envelope has an error")
+            .message_key = "error.codex_profile_conflict".into();
+    }
     if error == crate::control::ControlReadError::CollaborationRootRequired {
         response
             .error

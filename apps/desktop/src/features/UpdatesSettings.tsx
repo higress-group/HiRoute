@@ -1,5 +1,5 @@
 import { invoke, hostCapabilities } from '../host/index.ts';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { safeDiagnosticCode } from '../error-code';
 import type { Language } from '../ui/preferences';
 
@@ -21,6 +21,8 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
   const [view, setView] = useState<UpdateView | null>(null);
   const [error, setError] = useState('');
   const [actionPending, setActionPending] = useState(false);
+  const [cancelPending, setCancelPending] = useState(false);
+  const pending = useRef({ action: false, cancel: false });
   const busy = view !== null && busyPhases.includes(view.phase);
   const recovery = view?.recovery;
   useEffect(() => {
@@ -37,10 +39,14 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
     return () => { current = false; window.clearInterval(timer); };
   }, [active, busy]);
   const act = async (command: 'update_check' | 'update_download' | 'update_install' | 'update_cancel') => {
-    setActionPending(true); setError('');
+    const key = command === 'update_cancel' ? 'cancel' : 'action';
+    if (pending.current[key] || (key === 'action' && pending.current.cancel)) return;
+    pending.current[key] = true;
+    const setPending = key === 'cancel' ? setCancelPending : setActionPending;
+    setPending(true); setError('');
     try { setView(await invoke<UpdateView>(command)); }
     catch (failure) { setError(safeDiagnosticCode(failure, 'UPGRADE_UNAVAILABLE')); }
-    finally { setActionPending(false); }
+    finally { pending.current[key] = false; setPending(false); }
   };
   const status = !view ? text('正在读取版本信息…', 'Reading version information…')
     : view.phase === 'checking' ? text('正在检查官网发布版本…', 'Checking official releases…')
@@ -60,10 +66,10 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
   return <section className="settings-group"><h2>{text('版本升级', 'Updates')}</h2><div className="settings-list">
     <div className="settings-row"><div className="settings-copy"><strong>HiRoute {view?.current_version ?? ''}</strong><span role="status">{status}</span></div>
       <div className="worker-settings-control">
-        {!busy && <button className="btn" type="button" disabled={actionPending} onClick={() => void act('update_check')}>{text('检查更新', 'Check for updates')}</button>}
-        {view && !busy && view.available && !view.package_ready && <button className="btn" type="button" disabled={actionPending || !view.can_install} onClick={() => void act('update_download')}>{text('下载更新', 'Download update')}</button>}
-        {view?.package_ready && !busy && <button className="btn" type="button" disabled={actionPending || restartRequired} onClick={() => void act('update_install')}>{text('安装并重启', 'Install and restart')}</button>}
-        {canCancel && <button className="btn" type="button" onClick={() => void act('update_cancel')}>{text('取消升级', 'Cancel update')}</button>}
+        {!busy && <button className="btn" type="button" disabled={actionPending || cancelPending} onClick={() => void act('update_check')}>{text('检查更新', 'Check for updates')}</button>}
+        {view && !busy && view.available && !view.package_ready && <button className="btn" type="button" disabled={actionPending || cancelPending || !view.can_install} onClick={() => void act('update_download')}>{text('下载更新', 'Download update')}</button>}
+        {view?.package_ready && !busy && <button className="btn" type="button" disabled={actionPending || cancelPending || restartRequired} onClick={() => void act('update_install')}>{text('安装并重启', 'Install and restart')}</button>}
+        {canCancel && <button className="btn" type="button" disabled={cancelPending} onClick={() => void act('update_cancel')}>{text('取消升级', 'Cancel update')}</button>}
       </div>
     </div>
     {view?.available && !busy && <div className="gateway-risk">{view.available.notes[language]}</div>}

@@ -11,6 +11,7 @@ test('every indexed article renders both languages with real assets and public e
     assert.ok(html.length > 0);
     assert.doesNotMatch(html, /href="\.\.\/|src="assets\//);
     for (const match of html.matchAll(/src="\/news-assets\/([^"]+)"/g)) await fs.access(path.join(newsRoot, 'assets', match[1]));
+    for (const match of html.matchAll(/src="\/decision-assets\/([^"]+)"/g)) await fs.access(path.join(newsRoot, '../decision-extensions/assets', match[1]));
     if (language === 'en') assert.doesNotMatch(html, /[\u3400-\u9fff]/u);
     assert.equal(newsRoute(post.slug, language), `${language === 'en' ? '/en' : ''}/news/${post.slug}/`);
   }
@@ -35,4 +36,11 @@ test('the backfilled open-source introduction leaves dated news ahead of it', ()
   assert.ok(caseStudy >= 0 && introduction > caseStudy);
   assert.equal(posts[introduction].date, undefined);
   assert.ok(posts[0].date, 'the homepage latest-article entry must remain dated news');
+});
+
+test('same-day news keeps its index order', async () => {
+  const order = JSON.parse(await fs.readFile(path.join(newsRoot, 'index.json'), 'utf8')).map(post => post.slug);
+  for (let i = 1; i < posts.length; i++) {
+    if (posts[i - 1].date === posts[i].date) assert.ok(order.indexOf(posts[i - 1].slug) < order.indexOf(posts[i].slug), posts[i].slug);
+  }
 });

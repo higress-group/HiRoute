@@ -345,7 +345,7 @@ class CandidateTests(unittest.TestCase):
                     "installer_size": installer.stat().st_size}
         with self.assertRaisesRegex(ValueError, "Windows 11"):
             packager.verify(installer, identity, "a" * 40)
-        required = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())
+        required = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())["platforms"]
         identity["native_evidence"] = {"runs": [{"platform": platform_name, "revision": "a" * 40,
             "installer_sha256": packager.digest(installer), "standard_user": True, "architecture": "AMD64",
             "os_version": "fixture-only", "scenarios": dict.fromkeys(cases, "green")} for platform_name, cases in required.items()]}
@@ -459,6 +459,60 @@ class NativeCompilerContextTests(unittest.TestCase):
         self.assertIn(b'compiler overrides must be absent', process.stderr)
 
 
+class NativeAcceptanceDecisionTests(unittest.TestCase):
+    def fixture(self):
+        # Validator fixtures only, never native installation evidence.
+        policy = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())
+        policy["release_decisions"] = []
+        identity = {"version": "1.2.3", "revision": "a" * 40, "installer_sha256": "c" * 64,
+                    "native_runtime": "green", "native_evidence": {"runs": [
+                        {"platform": platform, "revision": "a" * 40, "installer_sha256": "c" * 64,
+                         "standard_user": True, "architecture": "AMD64", "os_version": "fixture-only",
+                         "scenarios": dict.fromkeys(cases, "green")}
+                        for platform, cases in policy["platforms"].items()]}}
+        decision = {key: identity[key] for key in ("version", "revision", "installer_sha256")}
+        decision.update(decision_url="https://github.com/higress-group/HiRoute/issues/193#issuecomment-123",
+                        deferred_cases={platform: [case for case in cases if case not in
+                                        ("install.standard-user", "install.console-ready")]
+                                        for platform, cases in policy["platforms"].items()})
+        return policy, identity, decision
+
+    def test_full_acceptance_remains_default_and_partial_without_decision_is_rejected(self):
+        verify = MODULES["package-windows-shell"].verify_native_acceptance
+        policy, identity, _ = self.fixture()
+        verify(identity, policy)
+        identity["native_evidence"]["runs"][0]["scenarios"]["update.killed-resume"] = "not_assessed"
+        with self.assertRaisesRegex(ValueError, "all standard-user"):
+            verify(identity, policy)
+        identity["native_runtime"] = "deferred"
+        with self.assertRaisesRegex(ValueError, "exact committed release decision"):
+            verify(identity, policy)
+
+    def test_exact_decision_retains_unexecuted_states_and_rejects_drift_failure_or_waived_install(self):
+        verify = MODULES["package-windows-shell"].verify_native_acceptance
+        policy, identity, decision = self.fixture()
+        policy["release_decisions"].append(decision)
+        identity.update(native_runtime="deferred", acceptance_decision=decision["decision_url"])
+        for run in identity["native_evidence"]["runs"]:
+            for case in decision["deferred_cases"][run["platform"]]:
+                run["scenarios"][case] = "not_assessed"
+        verify(identity, policy)
+        for key, value in (("revision", "b" * 40), ("version", "1.2.4"),
+                           ("installer_sha256", "d" * 64), ("acceptance_decision", "unrecorded")):
+            changed = json.loads(json.dumps(identity)); changed[key] = value
+            with self.subTest(field=key), self.assertRaises(ValueError):
+                verify(changed, policy)
+        for state in ("failed", "green", None):
+            changed = json.loads(json.dumps(identity))
+            changed["native_evidence"]["runs"][0]["scenarios"]["update.killed-resume"] = state
+            with self.subTest(verdict=state), self.assertRaises(ValueError):
+                verify(changed, policy)
+        decision["deferred_cases"]["windows11"].append("install.console-ready")
+        identity["native_evidence"]["runs"][0]["scenarios"]["install.console-ready"] = "not_assessed"
+        with self.assertRaisesRegex(ValueError, "cannot omit actual standard-user"):
+            verify(identity, policy)
+
+
 class HostedReleasePolicyTests(unittest.TestCase):
     def test_expensive_windows_assessment_is_release_or_manual_only(self):
         workflow = (REPO / '.github/workflows/windows-headless.yml').read_text()
@@ -474,9 +528,13 @@ class HostedReleasePolicyTests(unittest.TestCase):
     def test_manual_scope_cannot_narrow_the_reusable_release_gate(self):
         workflow = (REPO / '.github/workflows/windows-headless.yml').read_text()
         triggers = workflow.split('\non:\n', 1)[1].split('\npermissions:', 1)[0]
-        # Scope is a dispatch-only choice. Reusable calls reject undeclared
-        # inputs, so callers cannot turn the release gate into a partial run.
-        self.assertEqual(triggers.split('  workflow_call:', 1)[1].strip(), '')
+        # Scope is a dispatch-only choice. Reusable calls can omit only the
+        # unpublished ARM64 assessment, never any required x64 scope.
+        reusable = triggers.split('  workflow_call:', 1)[1]
+        self.assertNotRegex(reusable, r'(?m)^      scope:')
+        self.assertIn('include_internal_arm64:', reusable)
+        self.assertIn('type: boolean', reusable)
+        self.assertIn('default: true', reusable)
         self.assertIn('default: all', triggers)
         self.assertIn('options: [all, components, core, product, background, agents]', triggers)
         matrix = ("scope: ${{ fromJSON(inputs.scope != '' && inputs.scope != 'all' && "
@@ -485,6 +543,7 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertEqual(workflow.count(matrix), 1)
         self.assertIn("windows11-arm-install:", workflow)
         self.assertIn("-Scope install", workflow)
+        self.assertIn("if: inputs.include_internal_arm64 && (", workflow)
 
     def test_windows_replay_requires_successful_producers(self):
         workflow = (REPO / '.github/workflows/windows-headless.yml').read_text()
@@ -503,12 +562,13 @@ class HostedReleasePolicyTests(unittest.TestCase):
         windows = jobs['build-windows']
         unix = jobs['build-unix']
         self.assertIn('uses: ./.github/workflows/windows-headless.yml', gate)
+        self.assertIn('include_internal_arm64: false', gate)
         self.assertNotRegex(gate, r'(?m)^    (if|continue-on-error):')
         self.assertRegex(windows, r'\A    needs: windows-validation\n')
         self.assertNotRegex(windows, r'(?m)^    (if|continue-on-error):')
         self.assertNotRegex(unix, r'(?m)^    (needs|if|continue-on-error):')
         self.assertEqual(re.findall(r'target: ([a-z0-9_-]+)', windows),
-                         ['x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc'])
+                         ['x86_64-pc-windows-msvc'])
         self.assertEqual(re.findall(r'target: ([a-z0-9_-]+)', unix),
                          ['aarch64-apple-darwin', 'x86_64-apple-darwin',
                           'x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu'])
@@ -548,7 +608,7 @@ class HostedReleasePolicyTests(unittest.TestCase):
             'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-host-runtime --lib standalone_install::',
             'cargo test --locked --target x86_64-pc-windows-msvc '
-            '-p hiroute-host-runtime --lib storage_recovery::',
+            '-p hiroute-host-runtime --lib storage_recovery:: -- --test-threads=1',
             'cargo test --locked --target x86_64-pc-windows-msvc '
             '-p hiroute-platform --lib windows::shell_registration::tests::'
             'inherited_export_is_published_privately_and_changed_material_is_not_overwritten -- --exact',

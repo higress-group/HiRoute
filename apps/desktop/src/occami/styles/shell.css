@@ -11,7 +11,7 @@
   width: 100%;
   height: 100%;
   background:
-    radial-gradient(circle at 82% -16%, rgba(103, 119, 245, 0.11), transparent 34%),
+
     var(--bg);
 }
 
@@ -24,7 +24,7 @@
   height: var(--titlebar-height);
   border-bottom: 1px solid var(--divider);
   background: color-mix(in srgb, var(--glass) 95%, transparent);
-  backdrop-filter: blur(22px) saturate(125%);
+  backdrop-filter: none;
   -webkit-app-region: drag;
 }
 
@@ -109,7 +109,7 @@
   overflow-y: auto;
   border-right: 1px solid var(--divider);
   background: color-mix(in srgb, var(--glass) 91%, transparent);
-  backdrop-filter: blur(22px) saturate(120%);
+  backdrop-filter: none;
 }
 
 .brand {
@@ -248,8 +248,8 @@
   min-height: var(--toolbar-height);
   padding: 0 28px;
   border-bottom: 1px solid var(--divider);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(18px);
+  background: var(--bg);
+  backdrop-filter: none;
 }
 
 .page-title-wrap {
@@ -259,7 +259,7 @@
 .page-title {
   margin: 0;
   font-size:calc(22px * var(--hr-text-scale));
-  font-weight: 720;
+  font-weight: 650;
   letter-spacing: -0.025em;
 }
 
@@ -304,7 +304,7 @@
   border-radius: 12px;
   background: color-mix(in srgb, var(--panel-high) 93%, transparent);
   box-shadow: var(--shadow-md);
-  backdrop-filter: blur(18px);
+  backdrop-filter: none;
 }
 
 .prototype-tag {

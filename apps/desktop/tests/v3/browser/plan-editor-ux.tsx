@@ -11,6 +11,7 @@ import { blankModel } from '../../../src/features/model-connections/state';
 import { dailyPlan, fixturePlanAuthoring, fixtureTrace, mockProductInvoke, readyDesktop, resetFixtureTrace } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
+const parallelChecks = new URLSearchParams(location.search).get('checks') === 'parallel';
 const authoringChecks = new URLSearchParams(location.search).get('checks') === 'authoring';
 const authoringLanguage = new URLSearchParams(location.search).get('language') === 'en' ? 'en' : 'zh';
 let authoringCalls = 0;
@@ -120,6 +121,33 @@ const selectClassifier = async (kind: 'local' | 'rest') => {
   await tick();
 };
 
+const parallelCases: [string, () => Promise<void>][] = [
+  ['Parallel-tool advanced settings default on and retain an explicit disable through draft reopen', async () => {
+    await until(() => Boolean(document.querySelector('[data-codex-capability-state="available"]')), 'initial capability preview');
+    let details = element<HTMLDetailsElement>('.plan-capability-details');
+    assert(!details.open, 'Advanced settings are not collapsed initially');
+    details.querySelector('summary')!.click(); await tick();
+    let toggle = element<HTMLButtonElement>('[data-plan-parallel-tools] [role="switch"]');
+    assert(toggle.getAttribute('aria-checked') === 'true', 'Parallel tools are not on by default');
+    toggle.click(); await tick();
+    const before = submitted.length;
+    const previousEditor = element('.plan-editor');
+    button('保存草稿').click();
+    await until(() => submitted.length > before && !previousEditor.isConnected && !element<HTMLFieldSetElement>('.detail-fieldset').disabled, 'disabled preference saved and editor reopened');
+    assert(submitted.at(-1)!.editor.limits.codex_parallel_tool_calls === false, 'Save dropped the explicit disable');
+    details = element<HTMLDetailsElement>('.plan-capability-details');
+    assert(!details.open, 'Reopened advanced settings were expanded unexpectedly');
+    details.querySelector('summary')!.click(); await tick();
+    toggle = element<HTMLButtonElement>('[data-plan-parallel-tools] [role="switch"]');
+    assert(toggle.getAttribute('aria-checked') === 'false', 'Reopen reset the disabled preference');
+    toggle.click(); await tick();
+    const next = submitted.length;
+    button('保存草稿').click();
+    await until(() => submitted.length > next && !element<HTMLFieldSetElement>('.detail-fieldset').disabled, 'default restored and saved');
+    assert(submitted.at(-1)!.editor.limits.codex_parallel_tool_calls === undefined, 'Default-on did not clear the override');
+  }],
+];
+
 const checks: [string, () => Promise<void>][] = [
   ['Built-in rules hide external connection controls and protocol', async () => {
     await until(() => Boolean(document.querySelector('[data-codex-capability-state]')), 'editor options');
@@ -227,8 +255,9 @@ const availabilityCases: [string, () => Promise<void>][] = [
     try {
       await until(() => Boolean(releaseInitialOptions && releaseInitialSources && document.querySelector('.route-candidate')), 'blocked initial metadata reads');
       const text = [...document.querySelectorAll('.route-candidate')].map(row => row.textContent).join(' ');
-      assert(text.includes('正在读取来源') && text.includes('正在读取价格') && text.includes('正在读取思考设置'), 'Initial reads were not identified as loading');
-      assert(!text.includes('来源暂不可得') && !text.includes('价格未记录') && !text.includes('思考设置未取得'), 'Loading metadata was presented as a failed configuration');
+      const reasoning = [...document.querySelectorAll('.route-candidate .route-reasoning-value')];
+      assert(text.includes('正在读取来源') && text.includes('正在读取价格') && reasoning.length > 0 && reasoning.every(value => value.textContent === '正在读取…'), 'Initial reads were not identified as loading');
+      assert(!text.includes('来源暂不可得') && !text.includes('价格未记录') && !text.includes('思考设置未取得') && !text.includes('暂不可用'), 'Loading metadata was presented as a failed configuration');
     } finally { releaseInitialOptions?.(); releaseInitialSources?.(); }
   }],
   ['routing.options.id-safety: ASCII manual entry preserves exact existing and observed Unicode IDs', async () => {
@@ -346,7 +375,7 @@ function Harness() {
       return;
     }
     const next = [];
-    for (const [name, check] of authoringChecks ? authoringCases : availabilityChecks ? availabilityCases : checks) {
+    for (const [name, check] of authoringChecks ? authoringCases : availabilityChecks ? availabilityCases : parallelChecks ? parallelCases : checks) {
       try { await check(); next.push({ name, state: 'green' }); }
       catch (error) { next.push({ name, state: 'red', error: error instanceof Error ? error.message : String(error) }); }
     }

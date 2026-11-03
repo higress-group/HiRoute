@@ -11,6 +11,12 @@
 .console-entry-card h1 { margin: 0; font-size: calc(24px * var(--hr-text-scale)); line-height: 1.3; }
 .console-entry-card p { margin: 0; line-height: 1.65; overflow-wrap: anywhere; }
 .console-entry-card code { overflow-wrap: anywhere; }
+.console-entry-help { display: grid; gap: 12px; color: var(--text-soft); font-size: calc(14px * var(--hr-text-scale)); }
+.console-entry-help ul { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.console-entry-help li { display: grid; gap: 4px; }
+.console-entry-help code { color: var(--text); font-family: var(--font-mono); font-size: calc(13px * var(--hr-text-scale)); }
+.console-entry-help li > span { color: var(--text-muted); font-size: calc(13px * var(--hr-text-scale)); line-height: 1.5; }
+.console-login .field { margin: 0; }
 .console-login { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .console-login .input, .console-path { width: 100%; min-width: 0; }
 .console-entry-preferences { display: flex; flex-wrap: wrap; gap: 8px; }

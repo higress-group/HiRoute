@@ -3,6 +3,13 @@ type Scope = 'decisions' | 'models' | 'routing' | 'agents';
 const eventName = 'hiroute-before-editor-replace';
 let pending: Promise<boolean> | null = null;
 type Decision = () => Promise<boolean>;
+export type DraftSaveAvailability = { allowed: boolean; subscribe: (listener: () => void) => () => void };
+
+function watchDialogRemoval(dialog: HTMLDialogElement, cancel: () => void): () => void {
+  const observer = new MutationObserver(() => { if (!dialog.isConnected) cancel(); });
+  observer.observe(document.body, { childList: true, subtree: true });
+  return () => observer.disconnect();
+}
 
 function button(label: string, className: string, onClick: () => void): HTMLButtonElement {
   const element = document.createElement('button');
@@ -30,7 +37,12 @@ export function confirmDiscard(language: 'zh' | 'en'): Promise<boolean> {
     description.id = 'discard-dialog-description';
     description.textContent = zh ? '离开后，这次未保存的修改将丢失。' : 'Leaving will lose your unsaved changes.';
     dialog.setAttribute('aria-describedby', description.id);
+    let finished = false;
+    let stopWatching = () => {};
     function finish(accepted: boolean) {
+      if (finished) return;
+      finished = true;
+      stopWatching();
       dialog.close(); dialog.remove(); pending = null;
       if (previous?.isConnected) previous.focus();
       resolve(accepted);
@@ -41,11 +53,12 @@ export function confirmDiscard(language: 'zh' | 'en'): Promise<boolean> {
     actions.append(keep, discard); dialog.append(title, description, actions);
     (document.querySelector('.app-window') ?? document.body).append(dialog);
     dialog.showModal(); keep.focus();
+    stopWatching = watchDialogRemoval(dialog, () => finish(false));
   });
   return pending;
 }
 
-export function confirmSaveDraftOrDiscard(language: 'zh' | 'en', saveDraft: () => Promise<boolean>): Promise<boolean> {
+export function confirmSaveDraftOrDiscard(language: 'zh' | 'en', saveDraft: () => Promise<boolean>, availability?: DraftSaveAvailability): Promise<boolean> {
   if (pending) return pending;
   const zh = language === 'zh';
   pending = new Promise<boolean>(resolve => {
@@ -72,9 +85,13 @@ export function confirmSaveDraftOrDiscard(language: 'zh' | 'en', saveDraft: () =
     const actions = document.createElement('div');
     actions.className = 'modal-foot discard-dialog-actions';
     let finished = false;
+    let unsubscribe = () => {};
+    let stopWatching = () => {};
     function finish(accepted: boolean) {
       if (finished) return;
       finished = true;
+      unsubscribe();
+      stopWatching();
       dialog.close();
       dialog.remove();
       pending = null;
@@ -84,12 +101,16 @@ export function confirmSaveDraftOrDiscard(language: 'zh' | 'en', saveDraft: () =
     const keep = button(zh ? '继续编辑' : 'Keep editing', 'btn', () => finish(false));
     const discard = button(zh ? '不保存' : 'Discard', 'btn', () => finish(true));
     const save = button(zh ? '保存草稿并离开' : 'Save draft and leave', 'btn btn-primary', () => {
+      if (availability?.allowed === false) return;
       keep.disabled = true;
       discard.disabled = true;
       save.disabled = true;
       save.textContent = zh ? '正在保存…' : 'Saving…';
       void saveDraft().then(finish).catch(() => finish(false));
     });
+    const updateAvailability = () => { save.disabled = keep.disabled || availability?.allowed === false; };
+    unsubscribe = availability?.subscribe(updateAvailability) ?? (() => {});
+    updateAvailability();
     const close = button('', 'icon-btn', () => finish(false));
     close.setAttribute('aria-label', zh ? '关闭' : 'Close');
     close.title = zh ? '关闭' : 'Close';
@@ -101,6 +122,7 @@ export function confirmSaveDraftOrDiscard(language: 'zh' | 'en', saveDraft: () =
     (document.querySelector('.app-window') ?? document.body).append(dialog);
     dialog.showModal();
     keep.focus();
+    stopWatching = watchDialogRemoval(dialog, () => finish(false));
   });
   return pending;
 }

@@ -61,19 +61,24 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
         .unwrap();
     let spec = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"model":{"intent":"configure","settings":{
         "mode":"codex_default","native_model_mode":"hiroute_only","fixed_models":[],"allowed_plan_ids":[plan.agent_plan_id],"default_selection":{"kind":"plan","plan_id":plan.agent_plan_id}}}});
-    // A filename never establishes ownership, even for an empty preexisting file.
-    fs::write(&profile, "").unwrap();
-    fs::set_permissions(&profile, fs::Permissions::from_mode(0o600)).unwrap();
-    assert!(
-        service
-            .dispatch_wire(request(
-                "PreviewAgentConnectionChange",
-                json!({"spec":spec}),
-                None
-            ))
-            .error
-            .is_some()
-    );
+    // Foreign reserved identities and malformed sources are stable configuration conflicts.
+    for content in [
+        "[model_providers.hiroute]\nname = 'User provider'\n",
+        "model = 'first'\nmodel = 'duplicate'\n",
+    ] {
+        fs::write(&profile, content).unwrap();
+        fs::set_permissions(&profile, fs::Permissions::from_mode(0o600)).unwrap();
+        let denied = service.dispatch_wire(request(
+            "PreviewAgentConnectionChange",
+            json!({"spec":spec}),
+            None,
+        ));
+        let error = denied.error.unwrap();
+        assert_eq!(error.code, api::ErrorCode::CapabilityDenied);
+        assert_eq!(error.message_key, "error.codex_profile_conflict");
+        assert!(denied.data.is_none());
+        assert_eq!(fs::read_to_string(&profile).unwrap(), content);
+    }
     fs::remove_file(&profile).unwrap();
     let preview = service.dispatch_wire(request(
         "PreviewAgentConnectionChange",
@@ -690,3 +695,6 @@ fn profile_delete_race_rolls_back_and_releases_writer() {
     assert!(!runtime.adapter.codex_access_view().unwrap().slot_occupied);
     assert!(!profile.exists());
 }
+
+#[path = "settings_profile_merge_tests.rs"]
+mod merge;

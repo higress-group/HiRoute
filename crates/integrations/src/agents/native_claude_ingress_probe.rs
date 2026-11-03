@@ -9,6 +9,7 @@ use hiroute_domain::{
     AgentCapability, CanonicalDigest, CapabilityState, SupportedAgentInstallationV1,
 };
 use serde_json::json;
+#[cfg(not(windows))]
 use std::fs;
 use std::io::Write;
 #[cfg(unix)]
@@ -66,8 +67,14 @@ impl ClaudeNativeIngressProbe {
         let before = binary_identity(&binary)?;
         let root = super::probe_files::temporary("hiroute-native-claude-")
             .map_err(|_| fail("private check directory"))?;
+        #[cfg(not(windows))]
         let root_path =
             fs::canonicalize(root.path()).map_err(|_| fail("private check directory"))?;
+        // Git Bash cannot use Rust's verbatim spelling for its working directory
+        // and temporary roots. Preserve the same owner-only directory identity.
+        #[cfg(windows)]
+        let (root_path, _root_lease) = super::probe_files::native_directory(root.path())
+            .map_err(|_| fail("private check directory"))?;
         private_directory(&root_path)?;
         let home = root_path.join("home");
         let config = home.join(".claude");
@@ -250,6 +257,27 @@ impl ClaudeNativeIngressProbe {
         if child.stop().is_err() {
             let _ = root.keep();
             return Err(fail("native cleanup"));
+        }
+        #[cfg(test)]
+        if result.is_err() {
+            let bytes = std::fs::read(&output_path).unwrap_or_default();
+            let text = String::from_utf8_lossy(&bytes);
+            let value = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+            eprintln!(
+                "native Claude closed completion: requests={requests} authenticated={authenticated_message} collaboration={} output_bytes={} json={} result_type={} native_error={:?} tools_argument_error={} sources_argument_error={} login_required={} helper_failed={}",
+                cli.is_some(),
+                bytes.len(),
+                value.is_some(),
+                value.as_ref().is_some_and(|v| v["type"] == "result"),
+                value.as_ref().and_then(|v| v["is_error"].as_bool()),
+                text.contains("--tools")
+                    && (text.contains("argument") || text.contains("requires")),
+                text.contains("--setting-sources")
+                    && (text.contains("argument") || text.contains("requires")),
+                text.contains("Not logged in") || text.contains("Please run /login"),
+                text.contains("apiKeyHelper")
+                    && (text.contains("error") || text.contains("failed")),
+            );
         }
         result?;
         if binary_identity(&binary)? != before {

@@ -268,11 +268,13 @@ impl TaskSessionRoot {
     }
 
     /// The task root is a private Codex target. Its catalog contains only the frozen Plan alias;
-    /// no user's native catalog or cache is copied into it. A Continue must see identical bytes.
+    /// no user's native catalog or cache is copied into it. Continue retains the original bytes,
+    /// including the previous serial projection when the frozen Plan omitted that policy.
     pub(super) fn prepare_codex_catalog(
         &self,
         alias: &str,
         contents: &[u8],
+        preserve_legacy_serial: bool,
     ) -> Result<PathBuf, DelegationErrorV1> {
         use std::io::Read;
         checked_directory(&self.path)?;
@@ -327,7 +329,18 @@ impl TaskSessionRoot {
                     .read_to_end(&mut actual)
                     .map_err(|_| DelegationErrorV1::StorageUnavailable)?;
                 if actual != contents {
-                    return Err(DelegationErrorV1::Conflict);
+                    let mut previous = value.clone();
+                    if !preserve_legacy_serial
+                        || previous["models"][0]["supports_parallel_tool_calls"] != true
+                    {
+                        return Err(DelegationErrorV1::Conflict);
+                    }
+                    previous["models"][0]["supports_parallel_tool_calls"] = Value::Bool(false);
+                    let previous = serde_json::to_vec(&previous)
+                        .map_err(|_| DelegationErrorV1::CapabilityUnavailable)?;
+                    if actual != previous {
+                        return Err(DelegationErrorV1::Conflict);
+                    }
                 }
             }
             Err(_) => return Err(DelegationErrorV1::StorageUnavailable),

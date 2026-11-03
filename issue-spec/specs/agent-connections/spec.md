@@ -250,9 +250,18 @@ provider/default or advertise Desktop configured. Advanced root explicitly affec
 CLI/Desktop sharing that scope; discovering one surface does not require installing
 or validating another. Desktop-only discovery uses its actual embedded engine.
 
-Filename, comments, same-name empty file/provider, or an inherited HiRoute provider
-are not ownership proof. Existing unowned files remain untouched; conflicting names
-may suggest another name. Creating a profile rejects inherited same-name provider
+Filename, comments, a parseable file, or an inherited HiRoute provider do not prove
+prior ownership. An explicit first connection may merge a readable, valid native
+profile file when its reserved HiRoute provider/profile identities are unoccupied.
+Preserve existing preferences, comments, unrelated providers and unknown fields;
+record original values and file existence in the protected field-restoration journal.
+Both ordinary and inline TOML provider maps support the same configure, adjustment
+and restore lifecycle without normalizing the user's existing map representation.
+Restore removes only owned effects and preserves the original file and later unrelated
+edits. Preview/Apply still fence exact source bytes and reject concurrent changes.
+Malformed, inaccessible or same-name identity conflicts remain refused with actionable
+configuration-conflict guidance, rather than a misleading stale-preview retry.
+Creating a profile rejects inherited same-name provider
 auth residue rather than clearing it with an empty table. Added auth/header fields
 inside an owned provider are conflicts, not silently cleaned. Root selector
 `profile="hiroute"` conflicts just like the reserved inherited profile; other selectors
@@ -383,8 +392,23 @@ Merged output preserves top-level unknown fields, complete retained-entry JSON a
 relative order, then appends qualified plans. It exposes only authorized retained
 names. For target-cache native entries, absent supports_parallel_tool_calls defaults
 to true; explicit booleans remain, null/wrong types fail. Explicit user catalogs get
-no such missing default. Appended plans explicitly set false for current serial
-capability. Metadata does not grant account/model rights.
+no such missing default. Appended Plan entries allow parallel tool calls by default.
+An optional boolean `limits.codex_parallel_tool_calls` controls this Codex catalog
+declaration; false disables it for both user-target and private Worker catalogs.
+Omission permits parallel calls and preserves the original serialized Plan bytes.
+A retained Worker task whose frozen Plan omitted this policy may continue with its
+exact previous serial catalog; new tasks use the current default. Explicit overrides
+and unrelated catalog drift do not receive that exception.
+On Responses ingress, the published route opt-out also sets the forwarded request
+flag to false, including native and cross-protocol candidates, because some Codex
+clients always send true regardless of their catalog. The default never changes a
+client request from false to true. Fixed models and other ingress protocols retain
+their original behavior.
+The preview validates the selected tool capability and reports an explicit disable
+as a route setting, not a fixed implementation limit or a candidate defect. Existing
+installed catalogs change only after model settings are saved again and Codex restarts.
+This capability permits multiple calls; it does not schedule native tools or override
+the client's own request preference. Metadata does not grant account/model rights.
 
 Preview/Apply bind producer kind, exact path, complete content/context digest.
 Drift fails context_drift before config write. Artifact is private and immutable;

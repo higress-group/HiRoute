@@ -5,9 +5,15 @@ import { preferredCodexShell } from './codex-launch';
 export type { CodexAccess } from './types';
 import type { CodexAccess } from './types';
 
-export function CodexHistoryNotice({ language, mode }: { language: 'zh' | 'en'; mode: 'profile' | 'root' }) {
+export function CodexHistoryNotice({ language, mode, compact = false }: { language: 'zh' | 'en'; mode: 'profile' | 'root'; compact?: boolean }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const root = mode === 'root';
+  const recovery = <>
+    <p>{root
+      ? text('找回步骤：在 HiRoute 的“模型路由”点击“停用”，等待原配置恢复完成，再使用原 CODEX_HOME 和原 profile 运行 ', 'To recover: turn off Model routing in HiRoute and wait for configuration restoration to finish. Then use your original CODEX_HOME and profile to run ')
+      : text('无需停用 HiRoute。退出 HiRoute profile，用原 CODEX_HOME 和原 profile 运行 ', 'No need to disable HiRoute. Exit the HiRoute profile and use your original CODEX_HOME and profile to run ')}<code>codex resume --all</code>{text('，选择原有会话。', ' and select the earlier session.')}</p>
+    <p>{text('原入口使用原服务商，绕过 HiRoute，需要原账号或 API 凭据。', 'The original entry uses the original provider, bypasses HiRoute, and needs its original account or API credentials.')}</p>
+  </>;
   return <div className={`callout${root ? ' warn' : ''}`} role="note" data-codex-history-guidance data-codex-history-mode={mode}>
     <UiIcon name={root ? 'warning' : 'info'} /><div>
       <strong>{root
@@ -16,10 +22,7 @@ export function CodexHistoryNotice({ language, mode }: { language: 'zh' | 'en'; 
       <p>{root
         ? text('设为默认后，Codex 按模型服务商筛选 /resume。原有会话可能不再显示，即使选择全部目录；会话文件仍然保留。', 'After using HiRoute by default, Codex filters /resume by model provider. Earlier sessions may disappear, even with all directories selected; their files remain.')
         : text('按需使用只影响 HiRoute profile，普通 Codex 的配置和会话历史不变。HiRoute profile 内的 /resume 可能不显示原服务商的会话。', 'On-demand access only affects the HiRoute profile. Ordinary Codex configuration and session history stay unchanged. Inside the HiRoute profile, /resume may hide sessions from the original provider.')}</p>
-      <p>{root
-        ? text('找回步骤：在 HiRoute 的“模型路由”点击“停用”，等待原配置恢复完成，再使用原 CODEX_HOME 和原 profile 运行 ', 'To recover: turn off Model routing in HiRoute and wait for configuration restoration to finish. Then use your original CODEX_HOME and profile to run ')
-        : text('无需停用 HiRoute。退出 HiRoute profile，用原 CODEX_HOME 和原 profile 运行 ', 'No need to disable HiRoute. Exit the HiRoute profile and use your original CODEX_HOME and profile to run ')}<code>codex resume --all</code>{text('，选择原有会话。', ' and select the earlier session.')}</p>
-      <p>{text('原入口使用原服务商，绕过 HiRoute，需要原账号或 API 凭据。', 'The original entry uses the original provider, bypasses HiRoute, and needs its original account or API credentials.')}</p>
+      {compact ? <Disclosure language={language} label={text('查找原有会话', 'Find earlier sessions')}>{recovery}</Disclosure> : recovery}
     </div>
   </div>;
 }
@@ -46,28 +49,46 @@ export function CodexAccessSettings({ access, mode, language, disabled, onMode }
   </div>;
 }
 
-export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
-  access: CodexAccess; language: 'zh' | 'en'; retryDisabled: boolean; onRetry: () => Promise<void>;
+export function CodexLaunchInstructions({ access, language, primary = false, compact = false }: {
+  access: CodexAccess; language: 'zh' | 'en'; primary?: boolean; compact?: boolean;
 }) {
   const [shell, setShell] = useState(() => preferredCodexShell(typeof navigator === 'undefined' ? '' : navigator.platform, access.commands));
   const [copyState, setCopyState] = useState('');
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  if (access.selected_mode !== 'profile' || !access.slot_occupied || access.pending_operation || access.access_revoked) return null;
+  const command = access.commands[shell];
+  const copy = async () => {
+    try { await copyText(command); setCopyState(text('已复制', 'Copied')); }
+    catch { setCopyState(text('复制失败，请手动选择命令复制', 'Copy failed; select and copy the command manually')); }
+  };
+  const shellControl = <label className="field-label agent-launch-shell">Shell <select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label>;
+  const copyButton = <button className={`btn${primary ? ' btn-primary' : ''}`} disabled={!command} onClick={() => void copy()}>{text('复制启动命令', 'Copy launch command')}</button>;
+  if (compact) return <div data-codex-launch-instructions>
+    <div className="agent-launch-row"><div><strong>{text('终端启动', 'Start in a terminal')}</strong><p>{text('复制命令，开启使用 HiRoute 的 CLI 会话。', 'Copy the command to start a CLI session using HiRoute.')}</p></div>{copyButton}</div>
+    {copyState && <p role="status">{copyState}</p>}
+    <Disclosure className="agent-launch-help" label={text('启动命令与会话说明', 'Launch command and sessions')} language={language}>
+      {shellControl}<pre className="agent-launch-command"><code>{command}</code></pre>
+    </Disclosure>
+  </div>;
+  return <div data-codex-launch-instructions>
+      <div className="detail-section-head"><strong>{text('启动 Codex', 'Start Codex')}</strong>{shellControl}</div>
+      <pre className="agent-launch-command"><code>{command}</code></pre>
+      {copyButton}<span role="status">{copyState}</span>
+    </div>;
+}
+
+export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
+  access: CodexAccess; language: 'zh' | 'en'; retryDisabled: boolean; onRetry: () => Promise<void>;
+}) {
+  const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   if (!access.slot_occupied && !access.pending_operation) return null;
   const mode = access.selected_mode;
-  const command = access.commands[shell];
   return <section className="fact-section" data-codex-access-mode={mode}>
-    {mode === 'profile' && access.slot_occupied && !access.pending_operation && !access.access_revoked && <div className="agent-launch-row">
-      <div><strong>{text('终端启动', 'Start in a terminal')}</strong><p>{text('复制命令，开启使用 HiRoute 的 CLI 会话。', 'Copy the command to start a CLI session using HiRoute.')}</p></div>
-      <button className="btn" disabled={!command} onClick={async () => {
-        try { await copyText(command); setCopyState(text('已复制', 'Copied')); }
-        catch { setCopyState(text('复制失败，请手动选择命令复制', 'Copy failed; select and copy the command manually')); }
-      }}>{copyState || text('复制启动命令', 'Copy launch command')}</button>
-    </div>}
-    {mode === 'root' && !access.access_revoked && <p className="field-help" data-codex-history-summary>{text('当前为默认接入。原有会话可能被服务商筛选隐藏，可停用模型路由恢复原配置。', 'This is the default connection. Provider filtering may hide earlier sessions; disable model routing to restore the original settings.')}</p>}
-    <Disclosure className="agent-launch-help" label={mode === 'profile' ? text('启动命令与会话说明', 'Launch command and sessions') : text('原有会话与配置说明', 'Earlier sessions and settings')} language={language}>
-      {mode === 'profile' && <><label className="field agent-launch-shell"><span className="field-label">Shell</span><select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label><pre className="agent-launch-command"><code>{command}</code></pre></>}
-      <CodexHistoryNotice language={language} mode={mode} />
-    </Disclosure>
+    <p className="field-help">{mode === 'profile'
+      ? text('按需使用 · Codex CLI：复制命令到终端启动。普通 Codex 与 Desktop 保持原配置。', 'On demand · Codex CLI: copy the command to start in a terminal. Ordinary Codex and Desktop keep their settings.')
+      : text('默认接入 · Codex CLI 和 Desktop：共享此配置目录的入口使用 HiRoute。', 'Default connection · Codex CLI and Desktop: entry points sharing this directory use HiRoute.')}</p>
+    <CodexHistoryNotice language={language} mode={mode} compact />
+    <CodexLaunchInstructions access={access} language={language} compact />
     {!access.pending_operation && !access.access_revoked && access.conflict_fields.length > 0 && <div className="callout warn" role="alert" data-codex-restore-conflict>
       <UiIcon name="warning" /><div>
       <strong>{text('配置文件存在冲突', 'Configuration file conflict')}</strong>

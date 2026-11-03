@@ -1,4 +1,4 @@
-//! Real Claude discovery, public model settings, native ingress proof and exact restore.
+//! Real Claude discovery, public model settings, native ingress proof and owned restore.
 use super::windows_headless_business::{assert_operation, cli};
 use super::{InstalledProduct, assert_no_secret};
 use hiroute_platform::windows::{
@@ -16,7 +16,7 @@ pub struct ClaudeConnection {
     context: String,
     restore: String,
     config: PathBuf,
-    before: Vec<u8>,
+    before: Value,
 }
 impl ClaudeConnection {
     pub fn configure(product: &InstalledProduct, plan_id: &str) -> Self {
@@ -116,7 +116,7 @@ impl ClaudeConnection {
             context,
             restore,
             config,
-            before,
+            before: serde_json::from_slice(&before).unwrap(),
         }
     }
     pub fn connection_id(&self) -> String {
@@ -216,9 +216,9 @@ impl ClaudeConnection {
             Some("restored" | "not_configured")
         ));
         assert_eq!(
-            std::fs::read(&self.config).unwrap(),
+            serde_json::from_slice::<Value>(&std::fs::read(&self.config).unwrap()).unwrap(),
             self.before,
-            "public restore must preserve the exact prior native file"
+            "public restore must preserve all prior native JSON values and remove owned settings"
         );
         security::verify_owner_only(&self.config, false).unwrap();
         std::fs::remove_file(&self.config).unwrap();

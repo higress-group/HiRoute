@@ -130,18 +130,31 @@ impl WorkerBusiness {
                 .iter()
                 .any(|task| task["task_id"] == result["task_id"])
         );
-        let read = cli(
-            product,
-            &[
-                "worker",
-                "read",
-                "--run",
-                result["run_id"].as_str().unwrap(),
-                "--max-bytes",
-                "16384",
-            ],
-            None,
-        );
+        let content_deadline = Instant::now() + Duration::from_secs(30);
+        let read = loop {
+            let read = cli(
+                product,
+                &[
+                    "worker",
+                    "read",
+                    "--run",
+                    result["run_id"].as_str().unwrap(),
+                    "--max-bytes",
+                    "16384",
+                ],
+                None,
+            );
+            assert_eq!(read["data"]["run_id"], result["run_id"]);
+            assert_eq!(read["data"]["task_id"], result["task_id"]);
+            if read["data"]["content_state"] != "pending" {
+                break read;
+            }
+            assert!(
+                Instant::now() < content_deadline,
+                "completed native Worker content remained pending"
+            );
+            thread::sleep(Duration::from_millis(100));
+        };
         assert_eq!(read["data"]["content_state"], "available");
         assert!(read["data"]["text"].as_str().unwrap().contains(&receipt));
         let cancellation = cancel::verify(product, &workspace, &plan.plan_id, &nonce);
@@ -724,6 +737,7 @@ pub(super) fn command(
 ) -> Value {
     let (exit, value) = command_outcome(product, args, payload, deadline);
     if exit != 0 && args.starts_with(&["agents", "collaboration", "configure"]) {
+        failure_diagnostics::collaboration_preview(&value);
         // Read-only failure localization: transport health and the same intent's
         // preview distinguish daemon loss from the CLI's frozen receipt boundary.
         for (stage, probe) in [
@@ -748,6 +762,7 @@ pub(super) fn command(
                 dependency_selection::error_code(&observed),
                 observed["data"]["applicable"].as_bool()
             );
+            failure_diagnostics::collaboration_preview(&observed);
         }
     }
     assert_eq!(

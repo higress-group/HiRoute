@@ -406,16 +406,16 @@ const scenarios = [
       resource: { directory: '/selected/skills/hiroute-management', native_available: true, runtime_loading: 'unobserved', shared_context_count: 2, file_ownership: 'borrowed_identical' } };
     await tick();
     [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Qoder')).click();
-    await until(() => facet('management_skill')?.getAttribute('aria-checked') === 'true', 'Enabled management switch');
+    await until(() => facet('management_skill')?.textContent === '停用', 'Enabled management action');
     c().handlers.preview_agent_settings = payload => {
       const spec = payload.input.spec;
-      assert(spec.management_skill.intent === 'restore' && spec.management_skill.restore_point_ref === 'restore/management-only', 'Management switch did not restore its own reference');
-      assert(spec.model.intent === 'keep' && spec.collaboration.intent === 'keep', 'Management switch disabled another facet');
+      assert(spec.management_skill.intent === 'restore' && spec.management_skill.restore_point_ref === 'restore/management-only', 'Management action did not restore its own reference');
+      assert(spec.model.intent === 'keep' && spec.collaboration.intent === 'keep', 'Management action disabled another facet');
       agent.settings.management_skill.state = 'restored'; agent.settings.management_skill.restore_point_ref = null;
       agent.settings.management_skill.resource.shared_context_count = 1;
       return { preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } };
     };
-    facet('management_skill').click(); await until(() => configureSpecs().length === 1 && facet('management_skill')?.getAttribute('aria-checked') === 'false', 'Management restore observed');
+    facet('management_skill').click(); await until(() => configureSpecs().length === 1 && facet('management_skill')?.textContent === '启用', 'Management restore observed');
     assert(document.querySelector('[data-agent-management]').textContent.includes('外部') && document.querySelector('[data-agent-management]').textContent.includes('可能仍然可用'), 'Restore claimed global removal of external files');
   }),
   scenario('hermes.collaboration.native-model-independent', ['hermes', 'agent-collaboration'], 'Hermes chooses either delegation policy independently of model and management preparation', async () => {
@@ -556,10 +556,14 @@ const scenarios = [
     assert(dialog().querySelector('[data-agent-service-responsibility]')?.textContent.includes('启用不会自动设置开机启动'), 'Enabling routing promises automatic startup');
     const route = dialog().querySelector('[data-agent-plan-id] input');
     assert(route?.checked && !submit().disabled, 'Sole route is not ready to submit');
-    assert(!dialog().querySelector('details').open, 'Advanced settings are open on first enable');
+    assert([...dialog().querySelectorAll('details')].filter(n=>!n.closest('[data-codex-history-guidance]')).every(n=>!n.open), 'Advanced settings are open on first enable');
     const history = dialog().querySelector('[data-codex-history-guidance]');
     assert(visible(history) && !history.closest('details'), 'Session-history guidance is hidden before enabling');
     assert(history.dataset.codexHistoryMode === 'profile' && !history.classList.contains('warn'), 'Default profile is presented as a root takeover warning');
+    const recovery=history.querySelector('details');
+    assert(recovery&&!recovery.open,'Recovery steps displace route choices on first opening');
+    recovery.querySelector('summary').click();await tick();
+    assert(recovery.open&&visible(recovery.querySelector('code')),'Earlier-session instructions cannot be opened');
     assert(history.textContent.includes('普通 Codex 的配置和会话历史不变')
       && history.textContent.includes('HiRoute profile 内的 /resume'), 'Default guidance does not limit provider filtering to the HiRoute profile');
     assert(history.textContent.includes('无需停用 HiRoute') && !history.textContent.includes('恢复完成')
@@ -1034,7 +1038,7 @@ const scenarios = [
     c().handlers.preview_agent_settings = () => ({ preview: { applicable: true, blockers: [] }, mutation: { state: 'applied', operation: { operation_id: 'operation/agent-settings-fixture', state: 'succeeded', sequence: 1, cancellable: false } } });
     const details = document.querySelector('.native-details'); details.querySelector('summary').click(); await tick();
     assert(!details.querySelector('input[type="password"]'), 'Qoder recovery exposed a model token');
-    [...details.querySelectorAll('button')].find(button => button.textContent === '停用任务路由').click();
+    document.querySelector('[data-agent-disable="collaboration"]').click();
     await until(() => configureSpecs().some(spec => spec.collaboration.intent === 'restore'), 'collaboration restore submitted');
     const spec = configureSpecs().at(-1);
     assert(spec.model.intent === 'keep' && spec.collaboration.restore_point_ref === 'task-restore/qoder', 'Restore changed a model facet or used the wrong Skill owner');
@@ -1134,7 +1138,7 @@ const scenarios = [
     agent.settings = c().qoderRouted().agents[0].settings; c().refresh(); await tick();
     await until(() => facet('model')?.textContent === '调整' && !facet('model').disabled, 'model connection refreshed');
     const recovery = document.querySelector('.native-details'); if (!recovery.open) recovery.querySelector('summary').click(); await tick();
-    [...recovery.querySelectorAll('button')].find(button => button.textContent === '停用任务路由').click();
+    document.querySelector('[data-agent-disable="collaboration"]').click();
     await until(() => configureSpecs().some(spec => spec.collaboration.intent === 'restore'), 'independent collaboration restore');
     assert(configureSpecs().at(-1).model.intent === 'keep' && agent.settings.current_selection.mode === 'qoder_additional', 'Collaboration restore removed model routes');
   }),

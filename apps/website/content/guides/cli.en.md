@@ -1,11 +1,12 @@
 # HiRoute CLI
 
-HiRoute CLI is the official terminal entry to the HiRoute local service. It can connect to Desktop or serve as the complete management interface for Linux headless. Model sources, smart routes, Agent connections, session observation, and Worker tasks reuse the same production paths as Desktop; there is no second headless control plane.
+HiRoute CLI is the official terminal entry to the HiRoute local service. It works alongside macOS / Windows Desktop and the Linux Web UI, or as the complete management interface for terminal and automation workflows. Model sources, smart routes, Agent connections, session observation and Worker tasks reuse the same production paths.
 
 ## Install and inspect the CLI
 
 - macOS Desktop: open Settings → CLI → Terminal entry and select Install.
-- Linux headless: follow [Run HiRoute headless on Linux](/en/docs/install-linux/) to use the website's one-line installer, then start the service explicitly.
+- Windows Desktop: the current-user installer includes the CLI and offers to add its entry to PATH. See [Windows installation](/en/docs/install-windows/), then open a new terminal.
+- Linux: follow [Linux Web UI and CLI installation](/en/docs/install-linux/) to use the website's one-line installer, then start the service explicitly.
 
 If the entry directory is not on PATH, add this line to your shell configuration and open a new terminal:
 
@@ -46,7 +47,7 @@ Quickstart is read-only: it shows the current service, exact targets, reusable s
 3. Select returned binding IDs with `routing options --request-stdin` and `{}`. Create a fixed route with `--mode fixed_model --model BINDING_ID`, or go directly to difficulty routing:
 
    ```sh
-   hiroute routing preview --name 'Economy work' --purpose 'Routine and complex development' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route-apply.json
+   hiroute routing preview --name 'Daily development' --purpose 'Routine and complex development' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route-apply.json
    hiroute routing apply --request-file route-apply.json
    ```
 
@@ -73,14 +74,31 @@ Read the whole JSON file, diagnostics and saved code separately. Never parse onl
 
 ### Connect a decision service from the CLI
 
-Run `hiroute decision services options` before creating a connection. Reuse an explicitly selected
-saved `ID@REVISION`; a saved record is not a connectivity test. Installed presets include Bailian
-Token Plan/workspace, OpenRouter and TypeSafe, plus System One compatible and custom extensions.
-They describe integration defaults, not current provider availability, account entitlement or price.
-Workspace/compatible entries require the endpoint/model shown in their options. Ordinary Chat
-execution models are not decision services. Local rules remain an explicit alternative.
+Run `hiroute decision connections options` before creating a connection to see installed presets and
+saved connections. Reuse an explicitly selected saved `ID@REVISION`; a saved record is not a
+connectivity test. Installed presets include Bailian Token Plan/workspace, OpenAI, OpenRouter and
+TypeSafe, plus compatible connections and custom extensions. They describe integration defaults, not
+current provider availability, account entitlement or price. Workspace/compatible entries require the
+endpoint/model shown in their options; a compatible connection also needs an explicit
+`--wire-protocol system_one|openai_decisions`. Ordinary Chat execution models are not decision
+services. Local rules remain an explicit alternative.
 
-A credential is a human step outside chat. In your own terminal on the HiRoute host (for example
+If you already connected the provider's API, reuse its keys instead of entering a credential again.
+Find the connection with `decision sources list` and add `--source SOURCE_ID` when creating the
+decision connection. Key or network changes in that API connection apply to later calls without
+republishing:
+
+```sh
+hiroute decision sources list --output json
+hiroute decision connections apply --id routing-decision --name 'Routing decision' --provider openai --source SOURCE_ID --apply-file decision-connection-apply.json
+hiroute decision connections apply --request-file decision-connection-apply.json
+hiroute decision connections test --service routing-decision@SAVED_REVISION
+```
+
+The context window follows the model metadata automatically; use `--context-window-tokens N` to set a
+custom request window when needed.
+
+Without a reusable API connection, a credential is a human step outside chat. In your own terminal on the HiRoute host (for example
 an SSH session), run the following with a fresh non-secret candidate reference:
 
 ```sh
@@ -94,9 +112,9 @@ terminal saves no service. Tell the managing Agent only whether registration suc
 continue with the same reference. Desktop's existing password field is also supported.
 
 ```sh
-hiroute decision services apply --id daily-decision --name 'Daily decisions' --provider typesafe --candidate CANDIDATE_REF --apply-file decision-apply.json
-hiroute decision services apply --request-file decision-apply.json
-hiroute decision services test --service daily-decision@SAVED_REVISION
+hiroute decision connections apply --id daily-decision --name 'Daily decisions' --provider typesafe --candidate CANDIDATE_REF --apply-file decision-apply.json
+hiroute decision connections apply --request-file decision-apply.json
+hiroute decision connections test --service daily-decision@SAVED_REVISION
 hiroute routing preview --plan PLAN_ID --decision-service daily-decision@SAVED_REVISION --apply-file decision-route-apply.json
 hiroute routing apply --request-file decision-route-apply.json
 ```
@@ -143,20 +161,20 @@ Do not expect `schema list` to contain Host commands, and do not infer fields fo
 
 ## Manage models, routes, and Agents
 
-The Released CLI now supports the complete headless loop:
+The CLI supports the complete headless loop:
 
 - Discover and inspect model sources with `compute scan/list/show`; check and save connections with `compute connection options/test/preview/apply/authorize`.
 - Inspect candidate model capabilities with `models show`.
-- Manage saved decision model or custom extension revisions with `decision services list/apply/test`.
+- Manage saved decision model or custom extension revisions with `decision connections options/list/apply/test`, and list reusable API connections with `decision sources list`. The original `decision services list/apply/test` remains available.
 - Create, update, and publish smart routes with `routing options/list/show/preview/apply`.
 - Discover local Agents with `agents scan/list/check`; connect with `agents connect preview/apply/status` and recover with `agents restore preview/apply`.
 - If a write response is lost or uncertain, query the operation in its original idempotency domain with `operations find/get`.
 
-Configuration writes preview first, then apply with the complete request, preview digest, exact revisions, and idempotency key. Models, routes, and Agents use their own `preview/apply` commands. Decision connections use `decision services apply` for both preview and save. Pass passwords and API keys through `protected-input`, never through ordinary JSON, arguments, or logs. Obtain exact fields from the matching `schema show`, `options`, and leaf `--help`.
+Configuration writes preview first, then apply with the complete request, preview digest, exact revisions, and idempotency key. Models, routes, and Agents use their own `preview/apply` commands. Decision connections use the same `apply` command for both preview and save. Pass passwords and API keys through `protected-input`, never through ordinary JSON, arguments, or logs. Obtain exact fields from the matching `schema show`, `options`, and leaf `--help`.
 
 ## Manage decision connections
 
-The CLI keeps the `decision services` command name; Desktop places these connections under Models → Decision models. Built-in decision models and custom extensions are independent of general models that execute tasks:
+Desktop manages these connections under Models → Decision models. In the CLI, `decision connections list/apply/test` manages decision connections, including reused API connections, protocols and context windows; see Connect a decision service from the CLI above. The original `decision services` commands keep their original request format, and existing connections and published snapshots stay readable. Built-in decision models and custom extensions are independent of general models that execute tasks. The `decision services` request format works as follows:
 
 ```sh
 hiroute decision services list --output json
@@ -198,7 +216,7 @@ hiroute worker executors
 hiroute worker plans
 ```
 
-`worker executors` lists execution agents and their availability on this device. `worker plans` lists published plans allowed for the current agent. Choose an agent that passes dependency checks and use the returned plan ID, not its display name.
+`worker executors` lists execution agents and their availability on this device. `worker plans` lists every published plan that allows task delegation on this service. Choose an agent that passes dependency checks and use the returned plan ID, not its display name.
 
 ## Start a task
 
@@ -212,6 +230,8 @@ hiroute worker exec \
 ```
 
 Supply exactly one input source: text after `--`, a `--file`, or standard input. `--cwd` is converted to an absolute path, but it is not directory authorization or a concurrency lock.
+
+After submission, `exec` waits up to 30 seconds for the task's next progress, then returns the current state; if the task has already succeeded, the result is included. Set this wait to 1–30 seconds with `--wait-timeout`, or return right after submission with `--no-wait`. `--run-timeout` limits the task's own run time, from 1 to 86400 seconds, with a default of 3600. Delegated tasks run with the `approve-all` permission policy, without per-tool approval.
 
 `--submission-key` is a caller-selected idempotency key. If a connection or process interruption leaves acceptance uncertain, keep the same key and query it. Do not generate a new key and retry blindly:
 

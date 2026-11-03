@@ -56,3 +56,21 @@ hiroute --help
 ```
 
 The Terminal entry connects to HiRoute's local service. Keep Desktop installed and the local service available. See [HiRoute CLI](/en/docs/cli/) for the released commands.
+
+## Update and recover
+
+Open **Settings → Updates** and select **Check for updates**. HiRoute gets stable releases from the official website, verifies the complete DMG and App, and checks upgrade prerequisites. Installation waits for current calls and tasks, and you can select **Cancel update** while it waits. Agent routing pauses during installation. HiRoute keeps the complete previous App and attempts to restore it if the update fails.
+
+When an update changes the storage format, it retains configuration, credentials and routing and seals old HiRoute history. Current history and statistics begin at cutover; native Agent history is unchanged.
+
+Prefer **Updates** over manual replacement. If you must replace the App manually, fully quit HiRoute, confirm that its service and tasks have stopped, and keep the complete original App and data directory.
+
+If startup fails, the startup page shows the specific cause and recovery instructions, even while the service is down. Read the `RECOVERY.md` of the batch the page identifies before restoring. You can also run `hiroute service recovery --output json` in Terminal to see the verified recovery batch and source directory. Do not replace individual database files, delete data, or retry repeatedly to work around a failure.
+
+## Uninstall
+
+1. On the **Agent** page, disable model routing, task routing and HiRoute management for each Agent, and wait for restoration to finish so each Agent returns to its earlier settings.
+2. Turn off **Start at login** in **Settings**.
+3. Fully quit HiRoute, then move the App to the Trash.
+
+Deleting the App keeps your data by default. Only after confirming that no task is running, integrations have been restored, and session records and logs are no longer needed, delete the current user's HiRoute data under `~/Library/Application Support/ai.hiroute.desktop`. Never delete `.codex`, `.claude`, your projects or existing credentials.

@@ -127,7 +127,8 @@ pub(super) fn plan_entry(
         "auto_compact_token_limit": null, "effective_context_window_percent": 95,
         "supports_reasoning_summary_parameter": false, "default_reasoning_summary": "none",
         "support_verbosity": false, "default_verbosity": null,
-        "input_modalities": modalities, "supports_parallel_tool_calls": false,
+        "input_modalities": modalities,
+        "supports_parallel_tool_calls": plan.body.materialized.attempt_owned.limits.codex_parallel_tool_calls_enabled(),
         "supports_image_detail_original": false,
         "web_search_tool_type": "text", "supports_search_tool": false,
         "experimental_supported_tools": [], "use_responses_lite": false, "tool_mode": "direct",
@@ -155,6 +156,14 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
     if plan.validate().is_err() {
         return unavailable(CodexCapabilityIssueKindV1::InvalidCompiledPlan, None);
     }
+    let parallel_tools = plan
+        .body
+        .materialized
+        .attempt_owned
+        .limits
+        .codex_parallel_tool_calls_enabled();
+    let mut required = requirements(false);
+    required.parallel_tools = parallel_tools;
     let mut candidates = Vec::new();
     for candidate in plan
         .body
@@ -195,7 +204,7 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
                 Some(&candidate.binding_id),
             );
         }
-        if let Err(error) = executable.validate(&requirements(false)) {
+        if let Err(error) = executable.validate(&required) {
             return unavailable(
                 if matches!(
                     error,
@@ -303,7 +312,11 @@ pub fn codex_plan_capability_preview(plan: &CompiledAgentPlanV1) -> CodexClientC
             CodexReasoningControlV1::FollowRequest
         },
         limitations,
-        fixed_limits: vec![CodexFixedCapabilityLimitV1::ParallelToolCallsDisabled],
+        fixed_limits: if parallel_tools {
+            Vec::new()
+        } else {
+            vec![CodexFixedCapabilityLimitV1::ParallelToolCallsDisabled]
+        },
     }
 }
 
@@ -385,6 +398,7 @@ fn unavailable(
     }
 }
 
+// Shared baseline; each native client applies its own parallel-tool policy.
 pub(super) fn requirements(image: bool) -> RequestCapabilityRequirementsV1 {
     RequestCapabilityRequirementsV1 {
         ingress_protocol: IngressProtocol::Responses,
