@@ -12,6 +12,8 @@ mod auxiliary_failure_isolation;
 mod bearer_auth;
 #[path = "p0_gateway_runtime/cancelled_tool_stage.rs"]
 mod cancelled_tool_stage;
+#[path = "p0_gateway_runtime/codex_acp_history.rs"]
+mod codex_acp_history;
 #[path = "p0_gateway_runtime/codex_v2_encoding.rs"]
 mod codex_v2_encoding;
 #[path = "p0_gateway_runtime/context_overflow.rs"]
@@ -22,6 +24,8 @@ mod decision_branches;
 mod dsh_native_routing;
 #[path = "p0_gateway_runtime/hermes_identity.rs"]
 mod hermes_identity;
+#[path = "p0_gateway_runtime/hermes_long_chat.rs"]
+mod hermes_long_chat;
 #[path = "p0_gateway_runtime/history_bypass.rs"]
 mod history_bypass;
 #[path = "p0_gateway_runtime/instruction_history.rs"]
@@ -32,6 +36,7 @@ mod interrupted_input_boundary;
 mod native_encrypted_continuation;
 #[path = "p0_gateway_runtime/native_existing_turn.rs"]
 mod native_existing_turn;
+
 #[path = "p0_gateway_runtime/native_history.rs"]
 mod native_history;
 #[path = "p0_gateway_runtime/native_input_window.rs"]

@@ -212,7 +212,7 @@ or closed channels fail closed. Status separates reachability from protected aut
 
 ## Observation and conversation boundaries
 
-Format 6 owns semantic messages/parts and shared bodies. [Input selection and response coalescing](../../crates/gateway/src/observation/content.rs) consume existing continuity evidence; [scope claims](../../crates/observation/src/content/capture.rs) prevent repeated context import. [Catalog and one-hop input anchors](../../crates/observation/src/query_v2/catalog.rs) retain current authorization/expiry. [Observation reset](../../crates/observation/src/store/reset.rs) replaces known old formats without body copies and reuses bounded post-ready cleanup. Online routing, native history and frozen assessment membership remain with their existing owners.
+Format 6 owns semantic messages/parts and shared bodies. [Input selection and response coalescing](../../crates/gateway/src/observation/content.rs) consume existing continuity evidence; [scope claims](../../crates/observation/src/content/capture.rs) prevent repeated context import. [Archive input-source selection](../../crates/gateway/src/agent_turn_history/store/branches.rs) retains one exact prefix-bound input occurrence across stage resets without granting execution continuity. [Catalog and one-hop input anchors](../../crates/observation/src/query_v2/catalog.rs) retain current authorization/expiry. [Observation reset](../../crates/observation/src/store/reset.rs) replaces known old formats without body copies and reuses bounded post-ready cleanup. Online routing, native history and frozen assessment membership remain with their existing owners.
 
 
 | Concern | Owner | What callers must preserve |

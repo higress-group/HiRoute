@@ -51,7 +51,10 @@ pub(super) fn item_ids(
             if item.get("type").and_then(Value::as_str) == Some("additional_tools") {
                 continue;
             }
-            if let Some(id) = item.get("id") {
+            // Native Codex serializes an absent optional input-message ID as
+            // null. It supplies no identity, just like an omitted ID; preserve
+            // the original document for native forwarding.
+            if let Some(id) = item.get("id").filter(|id| !id.is_null()) {
                 let id = id
                     .as_str()
                     .ok_or(ModelIrError::InvalidField("input[].id"))?;
@@ -270,6 +273,35 @@ pub(super) fn decode(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn native_optional_input_ids_accept_null_without_inventing_identity() {
+        for id in [None, Some(Value::Null), Some(json!("native-input"))] {
+            let mut item = json!({"type":"message","role":"user","content":"synthetic input"});
+            if let Some(id) = id.clone() {
+                item["id"] = id;
+            }
+            let ids = item_ids(Some(&json!([item]))).unwrap();
+            assert_eq!(
+                ids.get(&0).map(String::as_str),
+                id.as_ref().and_then(Value::as_str)
+            );
+        }
+        for invalid in [
+            json!(""),
+            json!(3),
+            json!({}),
+            json!([]),
+            json!("invalid\nidentity"),
+        ] {
+            assert!(
+                item_ids(Some(
+                    &json!([{"type":"message","role":"user","content":"input","id":invalid}])
+                ))
+                .is_err()
+            );
+        }
+    }
 
     #[test]
     fn native_options_and_history_preserve_values_above_former_proxy_limits() {
@@ -505,7 +537,7 @@ mod tests {
         );
         let projected = project_candidate_request(&restored, &profile).unwrap();
         assert_eq!(projected.body["input"], document["input"]);
-        for invalid in [Value::Null, json!(5), json!("")] {
+        for invalid in [json!(false), json!(5), json!("")] {
             let mut document = document.clone();
             document["input"][0]["id"] = invalid;
             assert!(decode_ingress_request(IngressProtocol::Responses, &document).is_err());

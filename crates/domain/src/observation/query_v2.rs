@@ -732,6 +732,10 @@ pub enum ObservationSessionCorrelationKindV1 {
 pub struct ObservationSessionSummaryV2 {
     pub session_id: String,
     pub agent_id: String,
+    /// One verified Worker harness across the visible requests, independent of
+    /// managed Agent configuration ownership and native history correlation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executor: Option<String>,
     pub first_request_at_ms: i64,
     pub last_request_at_ms: i64,
     pub request_count: u64,

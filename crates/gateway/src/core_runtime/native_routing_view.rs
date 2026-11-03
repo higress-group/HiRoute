@@ -25,6 +25,7 @@ pub(super) struct NativeRoutingView {
     current_input_position: Option<CurrentInputPosition>,
     current_input_unavailable: bool,
     origin_unverified: bool,
+    observed_batch: bool,
     _reservation: Option<Reservation>,
 }
 
@@ -42,6 +43,10 @@ impl NativeRoutingView {
             return peer;
         }
         if let Some(input) = crate::context_hold::native_input(headers) {
+            let observed_batch = matches!(
+                &input,
+                Ok(Some(crate::context_hold::NativeInput::ObservedBatch { .. }))
+            );
             let (selected, projection) = match input {
                 Ok(Some(crate::context_hold::NativeInput::NativeMessages(window))) => {
                     let selected = window_input(request, replay, budget, &window);
@@ -62,6 +67,7 @@ impl NativeRoutingView {
                     current_input_position: Some(position),
                     current_input_unavailable: false,
                     origin_unverified: true,
+                    observed_batch,
                     _reservation: Some(reservation),
                 },
                 None => Self {
@@ -70,6 +76,7 @@ impl NativeRoutingView {
                     current_input_position: None,
                     current_input_unavailable: false,
                     origin_unverified: true,
+                    observed_batch,
                     _reservation: None,
                 },
             };
@@ -83,6 +90,7 @@ impl NativeRoutingView {
                 current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: true,
+                observed_batch: false,
                 _reservation: None,
             };
         }
@@ -93,6 +101,7 @@ impl NativeRoutingView {
                 current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: request.native_only,
+                observed_batch: false,
                 _reservation: None,
             };
         };
@@ -106,6 +115,7 @@ impl NativeRoutingView {
                 current_input_position: Some(position),
                 current_input_unavailable: false,
                 origin_unverified: true,
+                observed_batch: false,
                 _reservation: Some(reservation),
             },
             None => Self {
@@ -114,6 +124,7 @@ impl NativeRoutingView {
                 current_input_position: None,
                 current_input_unavailable: false,
                 origin_unverified: true,
+                observed_batch: false,
                 _reservation: None,
             },
         }
@@ -147,7 +158,7 @@ impl NativeRoutingView {
             match self.current_input_position {
                 Some(CurrentInputPosition::Event(index)) => Some((index, E::NativeMatched)),
                 Some(CurrentInputPosition::Window { first, .. }) => Some((first, E::NativeMatched)),
-                None if self.projection == NativeInputProjection::Wire => {
+                None if self.projection == NativeInputProjection::Wire || self.observed_batch => {
                     observed_input_index(request).map(|index| (index, E::WireObserved))
                 }
                 None => None,

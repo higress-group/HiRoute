@@ -120,7 +120,7 @@ try {
         rows:[...document.querySelectorAll('.trust-cost-row')].map(e=>e.innerText),
         tile:[...document.querySelectorAll('.trust-tile')].at(-1).innerText}))()`);
       assert.equal(state.rows.length, 3);
-      assert.ok(state.header.includes(language === 'zh' ? '所选范围：5 个阶段 · 4 已评分 · 1 未评分' : 'Selected scope: 5 stages · 4 scored · 1 unrated'));
+      assert.ok(state.header.includes(language === 'zh' ? '所选范围：5 个阶段 · 4 完整评分 · 1 未完整评分' : 'Selected scope: 5 stages · 4 fully assessed · 1 not fully assessed'));
       assert.ok(state.suggestion.includes(language === 'zh' ? '升档样本：2 / 30' : 'Step-up samples: 2 / 30'));
       assert.ok(state.suggestion.includes(language === 'zh' ? '当前版本 ·' : 'Active revision ·'));
       assert.ok(state.suggestion.includes(language === 'zh' ? '常规组 · 完整评分' : 'Regular · Fully scored'));
@@ -216,7 +216,7 @@ try {
     larger.announcements = [{ model_configuration_id: 'other-branch', included_on: '2026-10-03', before: 0, announcement_day: 0, after: 0, executed_version_verified: false }];
     await fixture({ report: larger, scored: 58 });
     assert.equal(await evaluate(client, `document.querySelector('.trust-suggestion-actions button') !== null`), true);
-    assert.match(await evaluate(client, `document.querySelector('.quality-scope-meta').innerText`), /58 scored/);
+    assert.match(await evaluate(client, `document.querySelector('.quality-scope-meta').innerText`), /58 fully assessed/);
     assert.match(await evaluate(client, `document.querySelector('.trust-suggestion').innerText`), /Step-up samples: 41 \/ 30/);
     await keyboardToggle('.trust-evidence-scope > summary');
     const unrelated = await evaluate(client, `document.querySelector('.trust-evidence-scope').innerText`);

@@ -476,6 +476,7 @@ pub(super) fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> us
     size_of::<SessionEntry>()
         + size_of_val(key) + 768 // charged scope and branch index nodes
         + entry.branch_id.capacity()
+        + entry.checkpoint.capture_turn_anchor.capacity()
         + entry.active.decision.as_ref().map_or(0, decision_bytes)
         + entry.active.request_ids.capacity() * size_of::<String>()
         + entry

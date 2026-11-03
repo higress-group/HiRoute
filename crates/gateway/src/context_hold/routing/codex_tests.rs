@@ -77,11 +77,12 @@ fn codex_window_counter_is_negative_evidence_and_unknown_shapes_stay_conservativ
 }
 
 #[test]
-fn unsupported_codex_producer_records_uncertainty_even_at_zero_window() {
+fn coherent_codex_protocol_does_not_depend_on_client_name_or_version() {
     for producer in [
         None,
         Some("codex_exec/0.146.0"),
-        Some("codex_exec/0.148.0"),
+        Some("codex_exec/0.166.0"),
+        Some("@agentclientprotocol/codex-acp/0.166.0 (linux; x86_64)"),
         Some("unknown/0.147.0"),
     ] {
         let mut headers = HeaderMap::new();
@@ -89,7 +90,7 @@ fn unsupported_codex_producer_records_uncertainty_even_at_zero_window() {
             headers.insert("user-agent", producer.parse().unwrap());
         }
         let native = facts(&headers, &document(metadata(json!("thread:0")))).native;
-        assert_eq!(native.user_origin, NativeUserOrigin::Observed);
+        assert_eq!(native.user_origin, NativeUserOrigin::NativeTurn);
     }
 }
 

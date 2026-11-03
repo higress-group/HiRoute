@@ -38,6 +38,18 @@ test('unknown and unlinked identities do not acquire a supported Agent name', ()
   assert.equal(recent.agentName, undefined);
 });
 
+test('Home preserves verified delegated executor names without inventing Agent navigation', () => {
+  const session = { session_id: 'session/worker', agent_id: '', executor: 'codex', first_request_at_ms: 1,
+    last_request_at_ms: 2, request_count: 1, fallback_request_count: 0, unknown_model_request_count: 0, correlation_kind: 'verified_worker' };
+  const recent = projectHomeActivity({ sessions: [session], next_cursor: null }).sessions[0];
+  assert.equal(recent.agentName, 'Codex (delegated)');
+  assert.equal(recent.executor, 'codex');
+  assert.equal(recent.agentId, undefined);
+  const unknown = projectHomeActivity({ sessions: [{ ...session, executor: undefined }], next_cursor: null }).sessions[0];
+  assert.equal(unknown.agentName, 'Delegated executor unknown');
+  assert.equal(unknown.executor, null);
+});
+
 
 test('DSH Desktop has independent model identity without claiming unverified Skills', () => {
   const id = 'agent_dsh_desktop';
