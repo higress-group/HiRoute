@@ -14,10 +14,17 @@ if (['dsh', 'pi', 'qoder', 'opencode'].includes(additionalFamily ?? '')) agents.
  ...structuredClone(agents.agents[0]), agent_id:`agent_${additionalFamily}_default`, context_id:`agent-context/${additionalFamily}/default`,
 });
 const retiredContexts = new Map<string, Agent>();
-if (additionalFamily === 'codex') agents.agents.push({
+if (additionalFamily === 'codex' || additionalFamily === 'codex-desktop') agents.agents.push({
  ...structuredClone(readyAgents.agents.find(a=>a.agent_id==='agent_codex_default')!),
  context_id:'agent-context/codex/root',
  codex_access:{codex_home:'/workspace/codex',slot_id:'codex',root_context_id:'agent-context/codex/root',profile_context_id:'agent-context/codex/profile',selected_mode:'root',slot_occupied:true,target_file:'config.toml',profile_name:'hiroute',commands:{},pending_operation:null,access_revoked:false,conflict_fields:[]},
+});
+if (additionalFamily === 'codex-desktop') agents.agents.push({
+ ...structuredClone(agents.agents.find(a=>a.agent_id==='agent_codex_default')!),
+ agent_id:'agent_codex_desktop', context_id:'agent-context/codex-desktop/trial',
+ codex_access:undefined, native_model_catalog:null, available_surfaces:['codex_desktop'],
+ codex_desktop:{codex_home:'/workspace/instance/codex',user_data:'/workspace/instance/desktop',source_codex_home:'/workspace/codex',shared_skills:'/workspace/.agents/skills'},
+ settings:{state:'not_configured',context_id:'agent-context/codex-desktop/trial',restore_point_ref:null,model_verified:false},
 });
 const codexCommands = {
  'bash/zsh': "CODEX_HOME='/workspace/codex' codex --profile trial-fixture",
@@ -112,11 +119,13 @@ Object.assign(window,{trialModel,primaryModel});
 const agentControl = {
  hold: new URLSearchParams(location.search).has('agent-hold'), failNext: false,
  pending: [] as { context: string; release(): void }[],
- mappedContexts: [] as string[], rejectedContexts: [] as string[],
- holdNextLaunchRead: false, failNextLaunchRead: false,
+ mappedContexts: [] as string[], rejectedContexts: [] as string[], openedAgents: [] as string[],
+ holdNextLaunchRead: false, failNextLaunchRead: false, untrustedNextLaunchRead: false,
  pendingLaunchReads: [] as (() => void)[],
  setCodexRevoked(value: boolean) { agents.agents.find(a=>a.agent_id==='agent_codex_default')!.codex_access!.access_revoked=value; },
  setTrusted(value: boolean) { agents.trusted_authority=value; },
+ codexState() { return structuredClone(agents.agents.find(a=>a.agent_id==='agent_codex_default')); },
+ invalidateDesktop() { agents.agents.find(a=>a.agent_id==='agent_codex_desktop')!.settings!.context_id='agent-context/codex-desktop/replaced'; },
  setCodexMode(mode: 'root' | 'profile') {
   const agent=agents.agents.find(a=>a.agent_id==='agent_codex_default')!;
   retiredContexts.set(agent.context_id!,{...structuredClone(agent),settings:{state:'restored',restore_point_ref:null,model_verified:false}});
@@ -178,6 +187,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
   const value = structuredClone(agents);
   if (payload?.contextId) {
    value.agents=value.agents.filter(agent=>agent.context_id===payload.contextId);
+   if (agentControl.untrustedNextLaunchRead) { agentControl.untrustedNextLaunchRead=false; value.trusted_authority=false; }
    if (agentControl.failNextLaunchRead) { agentControl.failNextLaunchRead=false; throw Error('SYNTHETIC_LAUNCH_READ_FAILED'); }
    if (agentControl.holdNextLaunchRead) { agentControl.holdNextLaunchRead=false; await new Promise<void>(release=>agentControl.pendingLaunchReads.push(release)); }
   }
@@ -250,7 +260,7 @@ export async function quickStartInvoke(command:string,payload:any,params:URLSear
    const p=selection.preset_mappings;
    selection.preset_mappings={haiku:p.haiku,opus:p.opus,sonnet:p.sonnet};
   }
-  agent.settings={state:'configured',restore_point_ref:'restore/test',model_verified:false,operation_id:'operation/map',operation_state:'succeeded',current_selection:selection};
+  agent.settings={state:'configured',context_id:agent.context_id!,restore_point_ref:'restore/test',model_verified:false,operation_id:'operation/map',operation_state:'succeeded',current_selection:selection};
   if (agent.codex_access) agent.codex_access.slot_occupied=true;
   return {preview:{applicable:true,blockers:[]},mutation:{state:'applied',operation:{operation_id:'operation/map',state:'succeeded',sequence:1,cancellable:false}}};
  }
@@ -394,5 +404,5 @@ export function TrialFixture({language}:{language:'zh'|'en'}) {
  const [reopened,setReopened]=useState(false);
  Object.assign(window,{reopenPublishedTrial:()=>setReopened(true),setTrialLanguage:setCurrentLanguage,setTrialMutable:setMutable});
  if (reopened && desktop.catalog.plans[0]) return <div className="trial-page-host" style={{height:'100vh'}}><PlanEditor plan={desktop.catalog.plans[0]} language={currentLanguage} onDone={async()=>{}} onClose={()=>setReopened(false)} /></div>;
- return open ? <div className="trial-page-host" style={{height:'100vh'}}><TrialQuickStart initialModelId={trialModel.model_configuration_id} initialBindingId="binding/bailian/qwen-coder" language={currentLanguage} mutable={mutable} snapshot={snapshot} operation={operation} onOperation={setOperation} onRefresh={async()=>{setSnapshot(structuredClone(desktop));setOperation(observed);}} onClose={()=>setOpen(false)} onOpenAgent={()=>{}} /></div> : <NewModels language={currentLanguage} active plans={snapshot.catalog.plans} refreshVersion={0} onTry={()=>setOpen(true)} />;
+ return open ? <div className="trial-page-host" style={{height:'100vh'}}><TrialQuickStart initialModelId={trialModel.model_configuration_id} initialBindingId="binding/bailian/qwen-coder" language={currentLanguage} mutable={mutable} snapshot={snapshot} operation={operation} onOperation={setOperation} onRefresh={async()=>{setSnapshot(structuredClone(desktop));setOperation(observed);}} onClose={()=>setOpen(false)} onOpenAgent={id=>agentControl.openedAgents.push(id)} /></div> : <NewModels language={currentLanguage} active plans={snapshot.catalog.plans} refreshVersion={0} onTry={()=>setOpen(true)} />;
 }

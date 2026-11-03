@@ -15,14 +15,8 @@ pub async fn launch_codex_desktop(
     }
     #[cfg(target_os = "macos")]
     {
-        let snapshot = super::agent_snapshot(
-            window.clone(),
-            state.clone(),
-            Some(Vec::new()),
-            Some(context_id.clone()),
-        )
-        .await?;
-        let (paths, operation) = launch_target(snapshot, &context_id)?;
+        let target = read_launch_target(&window, &state, &context_id).await?;
+        let (paths, operation) = (target.paths, target.operation);
         let prepared = paths.clone();
         let skills = tauri::async_runtime::spawn_blocking(move || {
             hiroute_desktop_host_effects::prepare_codex_instance(
@@ -35,11 +29,8 @@ pub async fn launch_codex_desktop(
         })
         .await
         .map_err(|_| DesktopFailure::from("CODEX_DESKTOP_PREPARE_FAILED"))??;
-        let fresh =
-            super::agent_snapshot(window, state, Some(Vec::new()), Some(context_id.clone()))
-                .await?;
-        let (current, current_operation) = launch_target(fresh, &context_id)?;
-        if paths != current || operation != current_operation {
+        let fresh = read_launch_target(&window, &state, &context_id).await?;
+        if paths != fresh.paths || operation != fresh.operation {
             return Err("AGENT_STATUS_UNVERIFIED".into());
         }
         tauri::async_runtime::spawn_blocking(move || {
@@ -56,6 +47,36 @@ pub async fn launch_codex_desktop(
 }
 
 #[cfg(target_os = "macos")]
+async fn read_launch_target(
+    window: &WebviewWindow,
+    state: &DesktopState,
+    context: &str,
+) -> Result<hiroute_product_session::codex_desktop::LaunchTarget, DesktopFailure> {
+    let broker = window.state::<WebConfirmationState>();
+    let active = || window.is_visible().is_ok();
+    let visible = || window.is_visible().unwrap_or(false);
+    let window_context = hiroute_product_session::commands::ClientContext {
+        id: window.label(),
+        confirmations: &broker,
+        active: &active,
+        visible: &visible,
+        notify: None,
+    };
+    let product_state = hiroute_product_session::commands::CommandState(
+        &state.0,
+        &state.1.error,
+        &state.2,
+        &state.3,
+    );
+    hiroute_product_session::commands::native_codex_desktop_launch_target(
+        &window_context,
+        &product_state,
+        context,
+    )
+    .await
+}
+
+#[cfg(all(test, target_os = "macos"))]
 fn launch_target(
     snapshot: AgentSnapshot,
     context: &str,

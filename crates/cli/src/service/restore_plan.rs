@@ -77,9 +77,9 @@ pub(super) fn contexts(list: &Value) -> io::Result<Vec<Context>> {
             if context != root {
                 insert(root, false, true)?;
             }
-        } else if name == "agent_dsh_desktop" {
+        } else if matches!(name, "agent_dsh_desktop" | "agent_codex_desktop") {
             // Desktop exposes a model facet only; its Skills belong to the
-            // separate DSH context and are not present in Desktop status.
+            // separate CLI context and are not present in Desktop status.
             insert(context, true, false)?;
         } else {
             insert(context, true, true)?;
@@ -93,7 +93,11 @@ pub(super) fn spec(
     status: &AgentSettingsStatusV2,
 ) -> Option<AgentSettingsSpecV2> {
     use AgentModelSettingsStateV2::{Configured, NotConfigured, Restored};
-    if context.agent == "agent_dsh_desktop" && status.model().is_none() {
+    if matches!(
+        context.agent.as_str(),
+        "agent_dsh_desktop" | "agent_codex_desktop"
+    ) && status.model().is_none()
+    {
         return None;
     }
     let restore = |state: &AgentModelSettingsStateV2, point: &Option<String>| match state {
@@ -270,48 +274,61 @@ mod tests {
     }
 
     #[test]
-    fn dsh_desktop_restores_only_its_supported_model_facet() {
-        let list = json!({"agents":[{"agent_id":"agent_dsh_desktop","context_id":"desktop"}]});
-        let contexts = contexts(&list).unwrap();
-        let desktop = &contexts[0];
-        assert!(desktop.model);
-        assert!(!desktop.collaboration);
-        assert!(!desktop.management_skill);
+    fn desktop_agents_restore_only_their_supported_model_facet() {
+        for agent_id in ["agent_dsh_desktop", "agent_codex_desktop"] {
+            let list = json!({"agents":[{"agent_id":agent_id,"context_id":"desktop"}]});
+            let contexts = contexts(&list).unwrap();
+            let desktop = &contexts[0];
+            assert!(desktop.model);
+            assert!(!desktop.collaboration);
+            assert!(!desktop.management_skill);
 
-        for state in ["not_configured", "configured", "drift"] {
-            let mut value =
-                serde_json::to_value(status("desktop", state, "not_configured")).unwrap();
-            value.as_object_mut().unwrap().remove("management_skill");
-            value.as_object_mut().unwrap().remove("collaboration");
-            let status = serde_json::from_value(value).unwrap();
-            let plan = spec(desktop, &status);
-            if state == "drift" {
-                assert!(
-                    plan.is_none(),
-                    "an unresolved model conflict must still block uninstall"
-                );
-                continue;
+            for state in [
+                "not_configured",
+                "restored",
+                "configured",
+                "drift",
+                "needs_attention",
+                "pending",
+            ] {
+                let mut value =
+                    serde_json::to_value(status("desktop", state, "not_configured")).unwrap();
+                value.as_object_mut().unwrap().remove("management_skill");
+                value.as_object_mut().unwrap().remove("collaboration");
+                let status = serde_json::from_value(value).unwrap();
+                let plan = spec(desktop, &status);
+                if matches!(state, "drift" | "needs_attention" | "pending") {
+                    assert!(
+                        plan.is_none(),
+                        "an unresolved model conflict must still block uninstall"
+                    );
+                    continue;
+                }
+                let plan = plan.unwrap();
+                assert_eq!(plan.management_skill, None);
+                assert!(matches!(plan.collaboration, AgentFacetIntent::Keep));
+                if state == "configured" {
+                    assert!(matches!(plan.model, AgentFacetIntent::Restore { .. }));
+                } else {
+                    assert!(matches!(plan.model, AgentFacetIntent::Keep));
+                    assert!(
+                        !plan.is_restore_only(),
+                        "an inactive Desktop must not block uninstall"
+                    );
+                }
             }
-            let plan = plan.unwrap();
-            assert_eq!(plan.management_skill, None);
-            assert!(matches!(plan.collaboration, AgentFacetIntent::Keep));
-            if state == "configured" {
-                assert!(matches!(plan.model, AgentFacetIntent::Restore { .. }));
-            } else {
-                assert!(matches!(plan.model, AgentFacetIntent::Keep));
-            }
+
+            let mut missing =
+                serde_json::to_value(status("desktop", "configured", "not_configured")).unwrap();
+            missing["restore_point_ref"] = serde_json::Value::Null;
+            assert!(spec(desktop, &serde_json::from_value(missing).unwrap()).is_none());
+
+            let wrong_shape = json!({"schema":"hiroute.agent-collaboration-only-settings-status/v2",
+                "context_id":"desktop", "collaboration":{
+                    "schema":"hiroute.agent-collaboration-settings-status/v2", "state":"not_configured",
+                    "operation_id":null, "operation_state":null, "restore_point_ref":null}});
+            assert!(spec(desktop, &serde_json::from_value(wrong_shape).unwrap()).is_none());
         }
-
-        let mut missing =
-            serde_json::to_value(status("desktop", "configured", "not_configured")).unwrap();
-        missing["restore_point_ref"] = serde_json::Value::Null;
-        assert!(spec(desktop, &serde_json::from_value(missing).unwrap()).is_none());
-
-        let wrong_shape = json!({"schema":"hiroute.agent-collaboration-only-settings-status/v2",
-            "context_id":"desktop", "collaboration":{
-                "schema":"hiroute.agent-collaboration-settings-status/v2", "state":"not_configured",
-                "operation_id":null, "operation_state":null, "restore_point_ref":null}});
-        assert!(spec(desktop, &serde_json::from_value(wrong_shape).unwrap()).is_none());
     }
 
     #[test]

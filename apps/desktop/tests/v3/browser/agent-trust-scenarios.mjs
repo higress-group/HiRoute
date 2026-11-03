@@ -149,11 +149,48 @@ const scenarios = [
       assert(!button.disabled && /复制启动命令/.test(button.textContent),'Linux command action unavailable');
       const code=document.querySelector('.codex-instance-command code');
       assert(code?.textContent.includes("hiroute agents desktop launch '") && code.textContent.includes('context/codex-desktop'), 'Linux command uses another context');
+      const reads=calls('agent_snapshot').length;
       button.click(); await until(()=>!button.disabled && document.querySelector('[data-codex-desktop-instance] [role=status], [data-error-code=CLIPBOARD_UNAVAILABLE]'),'Linux copy feedback');
+      assert(calls('agent_snapshot').length===reads,'Copying a context-only command read the unrelated Plan catalog');
       assert(calls('launch_codex_desktop').length===0 && calls('shell_launch_codex_desktop').length===0,'Console attempted HTTP/native launch');
       assert(document.querySelector('.codex-instance-command').textContent.includes('服务所在电脑'),'Command execution location missing');
       assert(calls('preview_agent_settings').length===0,'Launch command changed settings');
     } finally { c().setPlatform('macos'); }
+  }),
+  scenario('codex.desktop.restore-draft-isolation', ['codex-desktop'], 'The optional ordinary Codex restore model never follows selection into the independent Desktop', async () => {
+    await showCodexIndependentDesktop();
+    const cli=JSON.stringify(c().agents.agents.find(agent=>agent.agent_id==='agent_codex_default'));
+    const desktopContext=c().agents.agents.find(agent=>agent.agent_id==='agent_codex_desktop').context_id;
+    const select=async id=>{
+      const name=id==='agent_codex_default'?'Codex':'Codex Desktop';
+      [...document.querySelectorAll('.native-list .list-row')].find(row=>row.querySelector('.row-title')?.textContent.trim()===name).click();
+      await until(()=>document.querySelector(`[data-agent-id="${id}"] .detail-hero`),`${id} selected`);
+    };
+    const restoreInput=async()=>{
+      const details=document.querySelector('.native-details');
+      if(!details.open) details.querySelector('summary').click();
+      await until(()=>document.querySelector('input[list="codex-native-restore-models"]'),'ordinary root restore input');
+      return document.querySelector('input[list="codex-native-restore-models"]');
+    };
+    await select('agent_codex_default');
+    let input=await restoreInput();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'gpt-cli-only');
+    input.dispatchEvent(new Event('input',{bubbles:true}));await tick();
+    assert(input.value==='gpt-cli-only','The restore draft was not entered');
+    await select('agent_codex_desktop');
+    assert(!document.querySelector('input[list="codex-native-restore-models"]'),'Desktop exposes an ordinary root restore choice');
+    await select('agent_codex_default');input=await restoreInput();
+    assert(input.value==='','Changing connections retained an unrelated restore draft');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'gpt-cli-only');
+    input.dispatchEvent(new Event('input',{bubbles:true}));await tick();
+    await select('agent_codex_desktop');
+    const disable=[...document.querySelectorAll('[data-agent-model] button')].find(button=>button.textContent.trim()==='停用');
+    assert(disable&&!disable.disabled,'Desktop disable is unavailable');disable.click();
+    await until(()=>calls('preview_agent_settings').length===1,'Desktop disable preview');
+    const spec=configureSpecs()[0];
+    assert(spec.context_id===desktopContext&&spec.model.restore_point_ref,'Disable targeted another connection');
+    assert(spec.restore_native_model===undefined,'Ordinary root restore model leaked into Desktop');
+    assert(JSON.stringify(c().agents.agents.find(agent=>agent.agent_id==='agent_codex_default'))===cli,'Desktop disable changed the ordinary CLI state');
   }),
   scenario('codex.desktop.independent-launch-and-retry', ['codex-desktop'], 'Independent Desktop coexists with CLI and launch retry never repeats Apply', async () => {
     await showCodexIndependentDesktop();
@@ -578,8 +615,9 @@ const scenarios = [
   }),
   scenario('codex.history.root-and-configured-guidance', ['agent-model-routing'], 'Codex distinguishes original-entry return from root restoration in setup and saved settings', async () => {
     await freshCodex('splitCodexStatus');
-    const guidance = document.querySelector('.agent-launch-help');
-    assert(!guidance.open && visible(document.querySelector('[data-codex-history-summary]')), 'Default connection needs a short visible history reminder');
+    const notice = document.querySelector('[data-codex-history-guidance]');
+    const guidance = notice?.querySelector('details');
+    assert(visible(notice) && guidance && !guidance.open && visible(notice.querySelector('p')), 'Default connection needs a short visible history reminder');
     guidance.querySelector('summary').click(); await tick();
     const saved = document.querySelector('[data-codex-history-guidance]');
     assert(visible(saved) && saved.dataset.codexHistoryMode === 'root'

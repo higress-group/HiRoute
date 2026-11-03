@@ -68,6 +68,21 @@ pub async fn read_launch_target(
     }
     let before: ClientServiceStatusV1 =
         query(client, "GetClientServiceStatus", &ClientEmptyRequestV1 {}).await?;
+    let agents = read_launch_entries(client, context).await?;
+    let after: ClientServiceStatusV1 =
+        query(client, "GetClientServiceStatus", &ClientEmptyRequestV1 {}).await?;
+    require_current_service(&before, &after)?;
+    launch_target(agents, context, true)
+}
+
+/// Hosts add their own Session/window fence around this exact model-only read.
+pub(crate) async fn read_launch_entries(
+    client: &Client,
+    context: &str,
+) -> Result<Vec<AgentEntry>, DesktopFailure> {
+    if context.is_empty() || context.len() > 256 {
+        return Err("AGENT_INPUT_INVALID".into());
+    }
     #[derive(serde::Deserialize)]
     struct Scan {
         agents: Vec<AgentEntry>,
@@ -99,8 +114,13 @@ pub async fn read_launch_target(
     )
     .await?;
     scan.agents[0].settings = Some(settings);
-    let after: ClientServiceStatusV1 =
-        query(client, "GetClientServiceStatus", &ClientEmptyRequestV1 {}).await?;
+    Ok(scan.agents)
+}
+
+pub(crate) fn require_current_service(
+    before: &ClientServiceStatusV1,
+    after: &ClientServiceStatusV1,
+) -> Result<(), DesktopFailure> {
     if !after.recovery_ready
         || !after.mutation_available
         || before.revisions != after.revisions
@@ -110,7 +130,7 @@ pub async fn read_launch_target(
     {
         return Err("AGENT_STATUS_UNVERIFIED".into());
     }
-    launch_target(scan.agents, context, true)
+    Ok(())
 }
 
 #[cfg(test)]

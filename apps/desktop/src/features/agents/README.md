@@ -122,6 +122,10 @@ Desktop model and token actions clear previous launch feedback. Token submission
 the persistent usage hint explain quitting/restarting the separate instance after a
 successful update; they do not claim an already-running process reloaded its grant.
 Neither action automatically quits or relaunches either Codex instance.
+The optional native model on restore belongs only to ordinary Codex root mode;
+changing the selected connection clears that draft. Independent Desktop restores
+only its own model facet, including during uninstall, and never requests CLI Skill
+restoration. Its trial handoff returns to this connection's existing launch action.
 
 ## Current call paths
 
@@ -166,7 +170,7 @@ additional enable/save steps or model-verification badges on the settings page.
 | Connect an Agent to HiRoute routing | These forms and settings intents, followed by native/backend Preview and Apply. |
 | Safely restore managed configuration | Application transaction and integration/storage effects. The UI presents progress and recovery actions; it cannot infer safety from file appearance. |
 | Copy a command / start an Agent | Copy is a host clipboard effect. It does not launch a process, enable service startup or prove a model call. Existing Codex profile/root applicability stays explicit. |
-| Open the independent Codex Desktop | macOS Desktop and Windows Shell use context-only native IPC. Other consoles copy `hiroute agents desktop launch <CONTEXT_ID> --output json` for a graphical terminal on the service host; HTTP never dispatches launch. Shared native preparation and fresh model-only Local Control reads retain the same successful Operation. |
+| Open the independent Codex Desktop | macOS Desktop and Windows Shell use context-only native IPC. Other consoles copy `hiroute agents desktop launch <CONTEXT_ID> --output json` for a graphical terminal on the service host; HTTP never dispatches launch. Copy uses the trusted displayed context; execution performs fresh model-only Local Control reads before and after preparation, retaining the same successful Operation. The macOS Session reader preserves window/authority fences. Neither launch nor copy loads the unrelated Plan catalog or Skill inventory. |
 | Enable delegation / execute a Worker task | Collaboration configures the caller's task-routing skill. [Task history](../AgentTasks.tsx) and Worker contracts separately own execution, cancellation and results. Model routing support does not imply Worker harness support. |
 
 ## Product contract tests

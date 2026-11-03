@@ -83,6 +83,18 @@ test('enabling task routing sends only the trigger preference, independently of 
   });
 });
 
+test('a root restore model draft cannot cross into the independent Desktop or an unknown Codex mode', () => {
+  const desktop = { ...codex, agent_id: 'agent_codex_desktop', context_id: 'context/desktop', codex_access: undefined };
+  const restore = wire(agentSettingsSpec(desktop, 'model', true, draft));
+  assert.equal(restore.context_id, 'context/desktop');
+  assert.deepEqual(restore.model, { intent: 'restore', restore_point_ref: 'restore/model' });
+  assert.equal(Object.hasOwn(restore, 'restore_native_model'), false);
+  const unknown = { ...codex, codex_access: undefined };
+  assert.equal(wire(agentSettingsSpec(unknown, 'model', true, draft)).restore_native_model, undefined);
+  const root = { ...codex, codex_access: { ...codex.codex_access, slot_occupied: true, selected_mode: 'root' } };
+  assert.equal(agentSettingsSpec(root, 'model', true, draft).restore_native_model, 'native-on-restore');
+});
+
 test('Qoder configures either collaboration trigger and restores only its Skill without a model facet', () => {
   const before = structuredClone({ qoder, draft });
   for (const triggerMode of ['explicit', 'delegate_by_default']) {

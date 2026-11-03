@@ -86,13 +86,16 @@ has its own exact-history binding and does not replace the native `/resume` pick
 The separate [Codex Desktop instance](../../crates/integrations/src/agents/codex_desktop.rs)
 uses a distinct home and settings identity alongside that CLI slot. Its
 [native command](../../apps/desktop/src-tauri/src/bridge/codex_desktop.rs) binds launch
-to fresh configured status; [host preparation](../../crates/desktop-host-effects/src/codex_instance.rs)
+to fresh configured status through the [model-only native Session reader](../../crates/product-session/src/commands/codex_desktop.rs),
+retaining the originating window, Session and service fences without loading Plans
+or Skill inventories; [host preparation](../../crates/desktop-host-effects/src/codex_instance.rs)
 shares user skills without replacing existing entries;
 the [Windows Shell entry](../../apps/shell/src-tauri/src/runtime/codex_desktop.rs) and
 [local CLI action](../../crates/cli/src/codex_desktop.rs) share the
 [exact-context launch reader](../../crates/product-session/src/codex_desktop.rs) and
 [native effect](../../crates/desktop-host-effects/src/codex_launch.rs). Web consoles
-copy that local command; package discovery and graphical launch stay on its host.
+copy that context-only local command without reading the Plan catalog; package
+discovery, fresh authority checks and graphical launch stay on its host.
 Windows skill junctions and Unix symlinks share the exclusive
 [directory-link boundary](../../crates/platform/src/directory_link.rs).
 This identity is model-only;
@@ -103,8 +106,10 @@ The trial flow preserves that selected mode. After confirmed mapping, its
 [handoff](../../apps/desktop/src/features/trial/TrialCodexHandoff.tsx) reads only
 the submitted native context, verifies its saved selection and reuses the shared
 profile command/copy view. Default mode instead explains restarting the matching
-CLI/Desktop. Explicit result refresh retires the earlier launch instructions;
-unverified, changed or revoked settings cannot supply a command.
+CLI/Desktop. The independent Desktop instead links back to its exact Agent
+connection for the separate-window or local-command action. Explicit result
+refresh retires the earlier launch instructions; unverified, changed or revoked
+settings cannot supply confirmed guidance.
 OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)

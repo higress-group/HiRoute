@@ -39,7 +39,9 @@ export function TrialAgentChoice({ snapshot, value, onChange, language, disabled
       {(['opus', 'sonnet', 'haiku'] as const).map(preset => <label key={preset} className="trial-preset"><input type="checkbox" disabled={!known} aria-invalid={!!presetError} aria-describedby={presetError ? presetErrorId : undefined} checked={value.presets.includes(preset)} onChange={e => onChange({ ...value, presets: e.target.checked ? [...value.presets, preset] : value.presets.filter(p => p !== preset) })} /><strong>{preset[0].toUpperCase() + preset.slice(1)}</strong><span>{t('现在：', 'Now: ')}{known ? current(preset) : t('尚未核实', 'Not yet verified')}</span></label>)}
       {presetError && <p id={presetErrorId} className="oc-inline-error">{presetError}</p>}
     </div> : value.agentId && <p className="field-help">{agentDisplayName(value.agentId, language)} · {agentEcosystem(value.agentId) === 'codex'
-      ? !known ? t('正在核实接入方式…', 'Checking the connection mode…') : agent?.codex_access?.selected_mode === 'root'
+      ? !known ? t('正在核实接入方式…', 'Checking the connection mode…') : value.agentId === 'agent_codex_desktop'
+        ? t('独立 Codex Desktop。将此路由设为独立实例的默认模型；映射后到 Agent 页启动独立窗口或复制本机启动命令。普通 Codex 与 CLI profile 保持原配置。', 'Independent Codex Desktop. Use this route as its default model, then open the separate window or copy its local launch command from Agents. Ordinary Codex and the CLI profile keep their settings.')
+        : agent?.codex_access?.selected_mode === 'root'
         ? t('沿用默认接入，将此路由设为默认模型；映射后重新启动对应的 Codex CLI 或 Desktop。', 'Keep the default connection and use this route as the default model. Restart the corresponding Codex CLI or Desktop after mapping.')
         : t('按需使用 · 仅 Codex CLI。将此路由设为 HiRoute profile 的默认模型；映射后用启动命令开启新会话。普通 Codex 和 Desktop 保持原配置。', 'On demand · Codex CLI only. Use this route as the HiRoute profile’s default model, then start a new session with its launch command. Ordinary Codex and Desktop keep their settings.')
       : t('将此路由加入可用路由。', 'Add this route to the allowed routes.')}</p>}
