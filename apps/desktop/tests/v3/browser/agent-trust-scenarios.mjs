@@ -79,6 +79,7 @@ export async function showDshDesktopEditor() {
 
 export async function showCodexIndependentDesktop(configured = true) {
   c().reset(); c().agents = c().independentCodexDesktop(configured); c().refresh();
+  await tick();
   await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Codex Desktop')), 'independent Desktop entry');
   [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex Desktop')).click();
   await until(() => document.querySelector('[data-agent-id="agent_codex_desktop"] [data-codex-desktop-instance]'), 'independent Desktop detail');
