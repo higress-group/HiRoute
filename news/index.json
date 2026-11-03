@@ -1,5 +1,45 @@
 [
   {
+    "slug": "new-model-trials-and-task-routing",
+    "date": "2026-11-03",
+    "title": {
+      "zh": "HiRoute 新版本发布：新模型放心试，任务交给对的 Agent",
+      "en": "New HiRoute Release: Try New Models Safely, Hand Tasks to the Right Agent"
+    },
+    "shortTitle": {
+      "zh": "新版本发布：新模型放心试，任务交给对的 Agent",
+      "en": "New release: try new models safely, hand tasks to the right Agent"
+    },
+    "description": {
+      "zh": "在自己的工作里边用边评新模型，信任度按证据上调或下调；System One 每轮三问；路由计划绑定执行 Agent，和 Hermes 组成 Super Agent；Windows 桌面版首次发布，Linux 可以在浏览器里使用同一套界面。",
+      "en": "Evaluate new models in your own work and adjust trust from evidence, ask three questions every turn with System One, bind execution Agents to routing plans for a Super Agent with Hermes, and use Windows Desktop or the same interface in a browser on Linux."
+    },
+    "files": {
+      "zh": "2026-11-03-new-model-trials-and-task-routing.zh-CN.md",
+      "en": "2026-11-03-new-model-trials-and-task-routing.en.md"
+    }
+  },
+  {
+    "slug": "hermes-super-agent",
+    "date": "2026-11-03",
+    "title": {
+      "zh": "用 Hermes 和 HiRoute 搭一个 DeepSeek 式的 Super Agent",
+      "en": "A DeepSeek-Style Super Agent with Hermes and HiRoute"
+    },
+    "shortTitle": {
+      "zh": "用 Hermes 和 HiRoute 搭 Super Agent",
+      "en": "A Super Agent with Hermes and HiRoute"
+    },
+    "description": {
+      "zh": "DeepSeek 提出了 Router 与 Worker 两层的 Super Agent 架构。用 Hermes 做 Router，HiRoute 按计划把任务交给 Pi、Qoder CLI、Codex CLI 等执行 Agent：提交即返回，结束时自动唤起，每一轮再按证据选模型。",
+      "en": "DeepSeek described a two-layer Router and Worker architecture for a Super Agent. With Hermes as the Router, HiRoute hands each task to an execution Agent such as Pi, Qoder CLI or Codex CLI, returns on submit, wakes Hermes on completion and still picks a model for every turn."
+    },
+    "files": {
+      "zh": "2026-11-03-hermes-super-agent.zh-CN.md",
+      "en": "2026-11-03-hermes-super-agent.en.md"
+    }
+  },
+  {
     "slug": "routing-cache-cost",
     "date": "2026-10-14",
     "title": {
