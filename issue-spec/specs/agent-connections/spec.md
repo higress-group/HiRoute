@@ -272,6 +272,9 @@ still protect an incomplete shared-service cutover.
 A daemon whose ordinary CODEX_HOME overlaps its private Desktop namespace SHALL
 refuse startup with an actionable native-environment conflict, not storage-corruption
 guidance. It SHALL NOT deduplicate/rebind existing targets or infer the previous home.
+The closed `codex_home_conflict` startup reason SHALL reach both diagnostics and the
+Desktop's original-home restart instructions without transporting paths, credentials
+or arbitrary error text, and SHALL NOT authorize storage restoration or package repair.
 After restarting with the original home, the existing connection can use its exact
 context, journal, target and grant to restore; another connection's restore point
 cannot acquire ownership.

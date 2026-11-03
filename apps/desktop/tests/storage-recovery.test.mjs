@@ -2,6 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { storageRecoveryText, startupFailureText } from '../src/storage-recovery.ts';
 const report=(cause,action)=>({schema:'hiroute.storage-startup-recovery/v1',cause,action});
+test('Codex home overlap keeps its original-environment guidance without storage repair',()=>{
+  for (const language of ['zh','en']) for (const recovery of [undefined,report('missing_key','preserve_and_diagnose')]) {
+    const value=startupFailureText('DAEMON_CODEX_HOME_CONFLICT',recovery,language,'macos');
+    assert.match(value.reason,/CODEX_HOME/);
+    assert.match(value.instructions,language==='zh'?/原先的 CODEX_HOME/:/original CODEX_HOME/);
+    assert.match(value.instructions,/Codex Desktop/);
+    assert.doesNotMatch(value.instructions,language==='zh'?/使用同一版本的完整安装包|还原数据库/:/same complete version|restoring the database/);
+    assert.equal(value.canRetry,false);
+    assert.equal(value.backupDirectory,undefined);
+  }
+});
 test('missing packages and retired or unknown actions never authorize program-only downgrade',()=>{
   for (const language of ['zh','en']) {
     for (const value of [undefined,report('missing_package','preserve_and_diagnose'),report('missing_package','reinstall_original'),report('missing_key','future_action'),{...report('missing_package','preserve_and_diagnose'),schema:'future'}]) {

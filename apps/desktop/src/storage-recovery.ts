@@ -60,6 +60,11 @@ export function storageRecoveryText(value: unknown, language: 'zh' | 'en', platf
 
 export function startupFailureText(code: string | undefined | null, recovery: unknown, language: 'zh' | 'en', platform: string): RecoveryText {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  if (code === 'DAEMON_CODEX_HOME_CONFLICT') return {
+    reason: text('CODEX_HOME 与 HiRoute 的独立 Codex Desktop 目录重叠，服务无法启动。', 'CODEX_HOME overlaps HiRoute’s separate Codex Desktop directory, preventing startup.'),
+    instructions: text('请退出 HiRoute，使用这些接入原先的 CODEX_HOME 重新启动。连接恢复后，可在 Agent → Codex Desktop 中停用独立接入。请保留现有配置、凭据和会话，无需删除数据或修复安装包。', 'Quit HiRoute and restart it with the original CODEX_HOME used for these connections. Once connected, you can disable the separate connection under Agents → Codex Desktop. Keep existing settings, credentials and sessions; deleting data or repairing the package is unnecessary.'),
+    canRetry: false,
+  };
   if (recovery || ['DAEMON_STORAGE_UNREADABLE', 'DAEMON_UPGRADE_SOURCE_UNSUPPORTED', 'DAEMON_UPGRADE_STORAGE_FAILED'].includes(code ?? '')) {
     return storageRecoveryText(recovery, language, platform);
   }

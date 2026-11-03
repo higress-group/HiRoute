@@ -489,7 +489,11 @@ pub fn start_role_all(config: RoleAllConfig) -> Result<RoleAllHandle, RoleAllErr
             config.diagnostics.stage_end(
                 StartupStage::PublicationReconcile,
                 StageOutcome::Failed {
-                    code: StartupFailureCode::StorageUnavailable,
+                    code: if matches!(&error, RoleAllError::Component("Native configuration", _)) {
+                        StartupFailureCode::CodexHomeConflict
+                    } else {
+                        StartupFailureCode::StorageUnavailable
+                    },
                 },
             );
             if let Some(cpa) = &cpa {

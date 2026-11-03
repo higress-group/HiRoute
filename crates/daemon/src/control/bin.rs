@@ -338,7 +338,7 @@ fn classify_role_all_error(error: &RoleAllError) -> StartupFailureCode {
         RoleAllError::StandaloneProxyUnavailable => StartupFailureCode::DependencyUnavailable,
         RoleAllError::JoinTimeout(_) => StartupFailureCode::Internal,
         RoleAllError::Component(component, detail) => match *component {
-            "Native configuration" => StartupFailureCode::InvalidConfiguration,
+            "Native configuration" => StartupFailureCode::CodexHomeConflict,
             "Storage" if detail.starts_with("UPGRADE_SOURCE_UNSUPPORTED") => {
                 StartupFailureCode::UpgradeSourceUnsupported
             }
@@ -1099,7 +1099,7 @@ mod tests {
         );
         assert_eq!(
             classify_role_all_error(&conflict),
-            StartupFailureCode::InvalidConfiguration
+            StartupFailureCode::CodexHomeConflict
         );
         let storage = RoleAllError::Component("Storage", "invalid store".into());
         assert_eq!(

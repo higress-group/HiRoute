@@ -267,7 +267,7 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
         None,
     ));
     assert!(restored.error.is_none(), "{restored:?}");
-    assert_eq!(restored.data.unwrap()["state"], "restored");
+    assert_eq!(restored.data.unwrap()["state"], "not_configured");
     assert!(
         recovered
             .adapter

@@ -156,6 +156,21 @@ mod tests {
     }
 
     #[test]
+    fn codex_home_conflict_frame_exposes_no_paths_or_configuration() {
+        let mut writer = Writer::default();
+        StartupFailure {
+            schema: "hiroute.daemon-startup-failure/v1",
+            code: hiroute_diagnostics::event::StartupFailureCode::CodexHomeConflict,
+        }
+        .write_to(&mut writer)
+        .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&writer.bytes).unwrap(),
+            serde_json::json!({"schema":"hiroute.daemon-startup-failure/v1", "code":"codex_home_conflict"})
+        );
+    }
+
+    #[test]
     fn startup_failure_frame_exposes_only_the_stable_code() {
         let mut writer = Writer::default();
         StartupFailure {
