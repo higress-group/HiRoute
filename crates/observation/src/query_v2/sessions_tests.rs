@@ -1,6 +1,9 @@
 use super::tests::{link, open, query, reader, seed};
 use super::*;
-use hiroute_domain::{ContentCompleteness, FactsCompleteness, ObservationQueryPort};
+use hiroute_domain::{
+    ContentCompleteness, FactsCompleteness, ObservationQueryPort,
+    ObservationSessionCorrelationKindV1,
+};
 use rusqlite::params;
 
 #[test]
