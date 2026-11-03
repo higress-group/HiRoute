@@ -126,7 +126,8 @@ function independentCodexDesktop(configured = true): AgentSnapshot {
     desktop.settings.operation_state = 'succeeded';
     desktop.settings.operation_id = 'operation/desktop-fixture';
   }
-  if (!configured) desktop.settings = { state: 'not_configured', model_verified: false, restore_point_ref: null };
+  if (!configured) desktop.settings = { state: 'not_configured', model_verified: false, restore_point_ref: null,
+    management_skill: structuredClone(cli.settings?.management_skill) };
   snapshot.agents.push(desktop);
   return snapshot;
 }

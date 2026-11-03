@@ -64,7 +64,8 @@ export async function showDshDesktopEditor() {
   const web = c().agents.agents.find(a => a.agent_id === 'agent_dsh_default');
   c().agents.agents.push({ ...structuredClone(web), agent_id: 'agent_dsh_desktop',
     context_id: 'agent-context/dsh/desktop-fixture', available_surfaces: ['dsh_desktop'],
-    settings: { state: 'not_configured', model_verified: false, restore_point_ref: null, current_selection: null } });
+    settings: { state: 'not_configured', model_verified: false, restore_point_ref: null, current_selection: null,
+      management_skill: structuredClone(web.settings.management_skill) } });
   c().refresh();
   await tick();
   await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('DeepSeek Harness Desktop')), 'Desktop entry loaded');
@@ -87,7 +88,7 @@ export async function showCodexIndependentDesktop(configured = true) {
 }
 
 export async function showDesktopManagement(id) {
-  if (id === 'agent_codex_desktop') await showCodexIndependentDesktop();
+  if (id === 'agent_codex_desktop') await showCodexIndependentDesktop(false);
   else {
     c().reset(); c().agents=c().registered();
     const owner=c().agents.agents.find(agent=>agent.agent_id==='agent_dsh_default');
@@ -116,6 +117,7 @@ export async function showAgentDetail(id) {
   const agent = snapshot.agents.find(agent => agent.agent_id === id);
   if (agent.settings) agent.settings.management_skill = { state: 'configured', restore_point_ref: 'restore/management-fixture',
     resource: { directory: '/selected/skills/hiroute-management', native_available: true, runtime_loading: 'unobserved', shared_context_count: 2, file_ownership: 'borrowed_identical' } };
+  if(id==='agent_dsh_desktop') snapshot.agents.find(value=>value.agent_id==='agent_dsh_default').settings.management_skill=structuredClone(agent.settings.management_skill);
   c().agents = snapshot; c().refresh(); await tick();
   const names = { agent_codex_default: 'Codex', agent_claude_default: 'Claude Code', agent_qoder_default: 'Qoder',
     agent_hermes_default: 'Hermes', agent_pi_default: 'Pi', agent_dsh_default: 'DeepSeek Harness Web',
