@@ -59,11 +59,66 @@ fn windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases() {
     assert_ne!(proof, scanner.dsh_desktop_contract().unwrap());
     std::fs::remove_file(&archive).unwrap();
     assert!(scanner.dsh_desktop_contract().is_err());
+    std::fs::remove_dir(install.join("resources")).unwrap();
+    let foreign = directory.path().join("foreign-resources");
+    std::fs::create_dir(&foreign).unwrap();
+    std::fs::write(foreign.join("app.asar"), b"foreign runtime").unwrap();
+    hiroute_platform_test_support::junction::create(&install.join("resources"), &foreign).unwrap();
+    assert!(
+        scanner.dsh_desktop_contract().is_err(),
+        "archive aliases cannot establish composition authority"
+    );
     assert!(
         matches!(
             scanner.dsh_desktop_settings_discovery().outcome,
             AgentDiscoveryOutcomeV1::Supported { .. }
         ),
         "Restore facts survive a removed runtime"
+    );
+}
+
+#[test]
+#[ignore = "requires the official DSH Desktop installed in the existing Windows account"]
+fn windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_changing_profiles() {
+    let home = hiroute_platform::windows::background::profile().unwrap();
+    let layout = AgentFilesystemLayoutV1::from_process(&home, &home);
+    assert!(
+        layout.dsh_desktop_executable.is_some(),
+        "official Desktop must be independently discovered"
+    );
+    let root = layout.dsh_config_root.clone();
+    let profiles = [
+        "cordis.patch.yml",
+        "profiles/web/cordis.patch.yml",
+        "profiles/desktop/cordis.patch.yml",
+        "profiles/desktop/package.json",
+    ];
+    let read = || {
+        profiles.map(|relative| match std::fs::read(root.join(relative)) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => panic!("existing native profile is unreadable: {error}"),
+        })
+    };
+    let before = read();
+    let scanner = FilesystemAgentScannerV1::new(layout, super::super::tests::registry());
+    let result = scanner.scan_dsh_desktop();
+    let AgentDiscoveryOutcomeV1::Supported { installation } = result.outcome else {
+        panic!("the installed Windows Desktop must be discovered");
+    };
+    assert!(
+        !installation.version.is_empty(),
+        "the actual bundled CLI must report its version"
+    );
+    let proof = scanner.check_dsh_desktop_model_configuration().unwrap();
+    assert!(
+        scanner
+            .dsh_desktop_model_configuration_is_current(&proof)
+            .unwrap()
+    );
+    assert_eq!(
+        before,
+        read(),
+        "version/composition probes must not initialize or edit native profiles"
     );
 }
