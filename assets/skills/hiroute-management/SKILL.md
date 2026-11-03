@@ -244,9 +244,9 @@ exec/continue: approve-all, no permission options. Keep submission/run IDs.
 status is immediate; wait blocks to terminal. Use a background terminal with exit notifications.
 --wait-timeout 1..30 bounds total time; --after-revision N observes once (default 30s).
 Wait timeout/interrupt never cancels.
-Replay identical request/key after uncertainty; cancel only on request. Ready proves no success.
+Replay identical request/key after uncertainty; cancel only on request.
 
-Standing policy: agents collaboration configure AGENT_ID --trigger explicit --preview; save without
+Policy: agents collaboration configure AGENT_ID --trigger explicit --preview; save without
 --preview, with --idempotency-key KEY. explicit: only on request; delegate-by-default: suitable tasks
 within scope. hiroute-collaboration is independent of models/management.
 Read agents collaboration status AGENT_ID; remove via owned facet Restore. Reload Skills in a fresh session.
