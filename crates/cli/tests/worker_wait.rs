@@ -280,7 +280,9 @@ fn explicit_timeout_is_one_total_budget_even_with_intermediate_progress() {
     let mut progress = observation(RunStateV1::Running, 2);
     progress.delay = Duration::from_millis(650);
     let mut success = observation(RunStateV1::Succeeded, 3);
-    success.delay = Duration::from_secs(2);
+    // Completion falls after the original budget but before a mistakenly
+    // renewed budget, so the returned state detects deadline renewal directly.
+    success.delay = Duration::from_millis(650);
     with_control(
         Tasks::new([observation(RunStateV1::Running, 1), progress, success]),
         |fixture, tasks| {
