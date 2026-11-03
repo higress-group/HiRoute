@@ -200,6 +200,45 @@ pub(super) fn launch(codex_home: &Path, user_data: &Path) -> Result<(), &'static
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires Codex Desktop installed for the current Windows user"]
+    fn actual_windows_codex_desktop_package_has_its_own_engine() {
+        let installation = installed().expect("CODEX_DESKTOP_CURRENT_USER_PACKAGE_REQUIRED");
+        assert!(installation.executable.is_absolute() && installation.executable.is_file());
+        assert!(installation.engine.is_absolute() && installation.engine.is_file());
+        let mut engine = Command::new(installation.engine)
+            .arg("--version")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("start the installed Desktop engine");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match engine.try_wait() {
+                Ok(Some(status)) => {
+                    assert!(status.success(), "installed Desktop engine version failed");
+                    break;
+                }
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                Ok(None) => {
+                    let _ = engine.kill();
+                    let _ = engine.wait();
+                    panic!("installed Desktop engine version timed out");
+                }
+                Err(_) => {
+                    let _ = engine.kill();
+                    let _ = engine.wait();
+                    panic!("installed Desktop engine status unavailable");
+                }
+            }
+        }
+    }
+
     #[test]
     fn codex_desktop_cache_prefers_current_entry_and_compares_versions_numerically() {
         let root = tempfile::tempdir().unwrap();

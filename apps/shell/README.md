@@ -12,6 +12,11 @@ authentication, confirmations and operations stay in `hirouted` and
   explicit owner configuration/restart steps without changing saved scope.
 - `mod` / `commands`: private WebView, single instance, navigation lock and
   explicit host commands, each checked against the exact active console origin.
+- `codex_desktop`: launch an independently configured Codex Desktop instance from
+  an exact local Agent context. The native host resolves the current user's
+  installed package and prepares shared skills; callers cannot supply a command,
+  executable path or environment. Older shells retain the console's copyable
+  local launch command until the native capability is available.
 - `startup_failure`: the completed readiness wait projects the latest typed
   daemon failure through the shared host mapping. Installer, manager-command and
   console failures never load an older storage recovery report.
