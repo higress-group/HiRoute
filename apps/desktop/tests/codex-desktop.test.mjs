@@ -26,8 +26,8 @@ test('launch failure keeps completed configuration and asks for launch retry', (
 });
 
 test('native Desktop launch uses macOS Desktop and Windows Shell, while consoles copy a local command', () => {
-  for (const [host, platform, supported] of [['tauri','macos',true],['shell-console','windows',true],['console','windows',false],['console','linux',false],['tauri','linux',false]]) {
-    assert.equal(nativeCodexDesktopLaunch({host,platform}),supported);
+  for (const [host, platform, supported, codex_desktop_launch] of [['tauri','macos',true],['shell-console','windows',true,true],['shell-console','windows',false],['console','windows',false],['console','linux',false],['tauri','linux',false]]) {
+    assert.equal(nativeCodexDesktopLaunch({host,platform,codex_desktop_launch}),supported);
   }
   const agent={agent_id:'agent_codex_desktop',context_id:'context/desktop',available_surfaces:['codex_desktop'],codex_desktop:{},settings:{state:'configured',operation_state:'succeeded',current_selection:{}}};
   assert.equal(codexDesktopLaunchCommand(agent),"hiroute agents desktop launch 'context/desktop' --output json");

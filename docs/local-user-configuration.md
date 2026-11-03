@@ -132,6 +132,9 @@ profile. Both connections may stay enabled. Native launch is available in HiRout
 Desktop on macOS and the Windows Shell with the ChatGPT / Codex desktop app installed;
 the installed Codex CLI is not a substitute. Windows resolves the current user's MSIX
 registration and keeps environment changes private to the new desktop process.
+Windows/Linux installation facts refresh when scanning or configuring this connection,
+including after application installation or an update. The existing routing grant,
+private directories and native history remain bound to the same connection.
 
 The Web console offers **Copy launch command**, including on Linux. Run the copied
 `hiroute agents desktop launch '<CONTEXT_ID>' --output json` command on the HiRoute

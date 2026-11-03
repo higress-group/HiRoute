@@ -16,15 +16,15 @@ fn paired(executable: PathBuf) -> Option<Installation> {
         return None;
     }
     let directory = executable.parent()?;
-    let engine = [
-        "resources/codex-cli/bin/codex.exe",
-        "resources/codex.exe",
-        "resources/codex-cli/bin/codex",
-        "resources/codex",
-    ]
-    .into_iter()
-    .map(|leaf| directory.join(leaf))
-    .find(|path| path.is_file());
+    let leaves = if cfg!(windows) {
+        ["resources/codex-cli/bin/codex.exe", "resources/codex.exe"]
+    } else {
+        ["resources/codex-cli/bin/codex", "resources/codex"]
+    };
+    let engine = leaves
+        .into_iter()
+        .map(|leaf| directory.join(leaf))
+        .find(|path| path.is_file());
     Some(Installation {
         executable,
         engine: engine?,
@@ -36,6 +36,17 @@ fn cached_engine() -> Option<PathBuf> {
     let root = hiroute_platform::windows::background::local_app_data()
         .ok()?
         .join("OpenAI/Codex/bin");
+    cached_engine_in(&root)
+}
+
+#[cfg(any(windows, test))]
+fn cached_engine_in(root: &Path) -> Option<PathBuf> {
+    let current = root.join("codex.exe");
+    if current.is_file() {
+        // The app owns this stable cache entry, which can point at a versioned runtime.
+        // Resolve it here; ordinary borrowed executable admission still rejects reparses.
+        return current.canonicalize().ok();
+    }
     let mut entries = std::fs::read_dir(root)
         .ok()?
         .take(128)
@@ -52,7 +63,10 @@ fn cached_engine() -> Option<PathBuf> {
         })
         .collect::<Vec<_>>();
     entries.sort_by(|a, b| b.0.cmp(&a.0));
-    entries.into_iter().next().map(|(_, path)| path)
+    entries
+        .into_iter()
+        .next()
+        .and_then(|(_, path)| path.canonicalize().ok())
 }
 
 #[cfg(windows)]
@@ -187,13 +201,36 @@ pub(super) fn launch(codex_home: &Path, user_data: &Path) -> Result<(), &'static
 mod tests {
     use super::*;
     #[test]
+    fn codex_desktop_cache_prefers_current_entry_and_compares_versions_numerically() {
+        let root = tempfile::tempdir().unwrap();
+        for version in ["1.9.0", "1.10.0", "unrelated"] {
+            let directory = root.path().join(version);
+            std::fs::create_dir(&directory).unwrap();
+            std::fs::write(directory.join("codex.exe"), "fixture").unwrap();
+        }
+        assert_eq!(
+            cached_engine_in(root.path()).unwrap(),
+            root.path().join("1.10.0/codex.exe").canonicalize().unwrap()
+        );
+        let current = root.path().join("codex.exe");
+        std::fs::write(&current, "current").unwrap();
+        assert_eq!(
+            cached_engine_in(root.path()).unwrap(),
+            current.canonicalize().unwrap()
+        );
+    }
+    #[test]
     fn codex_desktop_package_requires_its_own_engine_and_isolates_only_child_environment() {
         let root = tempfile::tempdir().unwrap();
         let executable = root.path().join("ChatGPT.exe");
         std::fs::write(&executable, "fixture").unwrap();
         assert!(paired(executable.clone()).is_none());
         std::fs::create_dir_all(root.path().join("resources/codex-cli/bin")).unwrap();
-        let engine = root.path().join("resources/codex-cli/bin/codex.exe");
+        let engine = root.path().join(if cfg!(windows) {
+            "resources/codex-cli/bin/codex.exe"
+        } else {
+            "resources/codex-cli/bin/codex"
+        });
         std::fs::write(&engine, "fixture").unwrap();
         let pair = paired(executable.clone()).unwrap();
         assert_eq!(pair.engine, engine);

@@ -232,6 +232,8 @@ impl AgentFilesystemLayoutV1 {
 
 #[derive(Clone)]
 pub struct FilesystemAgentScannerV1 {
+    pub(super) codex_desktop_location: std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+    pub(super) dynamic_codex_desktop_location: bool,
     pi_collaboration_cli:
         std::sync::Arc<std::sync::Mutex<Option<(PathBuf, hiroute_domain::CanonicalDigest)>>>,
     dsh_collaboration_cli: std::sync::Arc<std::sync::Mutex<Option<(PathBuf, CanonicalDigest)>>>,
@@ -251,11 +253,17 @@ pub struct FilesystemAgentScannerV1 {
 }
 
 impl FilesystemAgentScannerV1 {
+    pub(super) fn invalidate_codex_ingress(&self) {
+        #[cfg(any(unix, windows))]
+        if let Ok(mut evidence) = self.codex_ingress.lock() {
+            *evidence = None;
+        }
+    }
+
     fn located_codex_engine(&self) -> Result<Option<PathBuf>, super::executable::ProbeFailure> {
         let mut first_failure = None;
         for candidate in self
-            .layout
-            .codex_desktop_executable
+            .codex_desktop_engine_path()
             .iter()
             .chain(std::iter::once(&self.layout.codex_executable))
         {
@@ -300,6 +308,10 @@ impl FilesystemAgentScannerV1 {
             .map(|context| context.model_target())
             .unwrap_or_default();
         Self {
+            codex_desktop_location: std::sync::Arc::new(std::sync::Mutex::new(
+                layout.codex_desktop_executable.clone(),
+            )),
+            dynamic_codex_desktop_location: false,
             layout,
             opencode_model_target,
             registry,
@@ -652,9 +664,7 @@ impl FilesystemAgentScannerV1 {
             hiroute_domain::AgentModelSurfaceV2::CodexCli => {
                 Some(self.layout.codex_executable.clone())
             }
-            hiroute_domain::AgentModelSurfaceV2::CodexDesktop => {
-                self.layout.codex_desktop_executable.clone()
-            }
+            hiroute_domain::AgentModelSurfaceV2::CodexDesktop => self.codex_desktop_engine_path(),
             hiroute_domain::AgentModelSurfaceV2::ClaudeCli
             | hiroute_domain::AgentModelSurfaceV2::QoderCli
             | hiroute_domain::AgentModelSurfaceV2::PiCli
@@ -674,8 +684,7 @@ impl FilesystemAgentScannerV1 {
         let available = |path: &Path| matches!(super::executable::resolve(path), Ok(Some(_)));
         match agent_id {
             super::CODEX_DESKTOP_AGENT_ID => self
-                .layout
-                .codex_desktop_executable
+                .codex_desktop_engine_path()
                 .as_deref()
                 .filter(|path| available(path))
                 .map(|_| [hiroute_domain::AgentModelSurfaceV2::CodexDesktop].into())
@@ -683,8 +692,7 @@ impl FilesystemAgentScannerV1 {
             "agent_codex_default" => {
                 let mut surfaces = BTreeSet::new();
                 if self
-                    .layout
-                    .codex_desktop_executable
+                    .codex_desktop_engine_path()
                     .as_deref()
                     .is_some_and(available)
                 {

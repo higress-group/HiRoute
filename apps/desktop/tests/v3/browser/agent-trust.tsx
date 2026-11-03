@@ -115,13 +115,14 @@ function independentCodexDesktop(configured = true): AgentSnapshot {
   const cli = codexOf(snapshot);
   const desktop = structuredClone(cli);
   desktop.agent_id = 'agent_codex_desktop';
-  desktop.context_id = 'agent-context/codex-desktop/fixture';
+  desktop.context_id = `agent-context/codex-desktop/sha256:${'a'.repeat(64)}`;
   desktop.codex_access = undefined;
   desktop.codex_desktop = { codex_home: '/example/Application Support/HiRoute/data.codex-desktop/codex',
     user_data: '/example/Application Support/HiRoute/data.codex-desktop/desktop', source_codex_home: '/example/.codex', shared_skills: '/example/.agents/skills' };
   desktop.available_surfaces = ['codex_desktop'];
   desktop.native_model_catalog = null;
   if (configured && desktop.settings && 'state' in desktop.settings) {
+    desktop.settings.context_id = desktop.context_id;
     desktop.settings.operation_state = 'succeeded';
     desktop.settings.operation_id = 'operation/desktop-fixture';
   }
@@ -201,7 +202,7 @@ const control = {
   reset: () => {},
   setPlatform: (platform: string) => {
     setHostTransport(platform !== 'macos' ? {
-      capabilities: () => ({ ...browserCapabilities, host: platform === 'windows' ? 'shell-console' : 'console', platform }),
+      capabilities: () => ({ ...browserCapabilities, host: platform === 'windows' ? 'shell-console' : 'console', platform, codex_desktop_launch: platform === 'windows' }),
       call: async <T,>(command: string, args: Record<string, unknown> = {}) => await fixtureIPC(command, args) as T,
     } : undefined);
   },

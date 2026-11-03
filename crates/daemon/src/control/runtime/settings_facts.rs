@@ -142,6 +142,11 @@ impl LocalControlAdapter {
         {
             return Err(ControlReadError::Denied);
         }
+        if class == SettingsAgentClass::CodexDesktop
+            && matches!(spec.model, AgentFacetIntent::Configure { .. })
+        {
+            self.refresh_codex_desktop_location();
+        }
         // Probe the installed composition once per facts capture, not once per
         // native-file snapshot. Apply captures again under the admission lock;
         // mutable configuration still participates in both snapshots below.

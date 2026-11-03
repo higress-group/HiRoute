@@ -64,7 +64,8 @@ pub(crate) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExec
             Err(hiroute_product_session::failure::DesktopFailure::Transport { .. }) => {
                 failure(ErrorCode::DaemonUnavailable, globals.request_id.clone())
             }
-            Err(hiroute_product_session::failure::DesktopFailure::Backend { envelope }) => {
+            Err(hiroute_product_session::failure::DesktopFailure::Backend { mut envelope }) => {
+                envelope.request_id = globals.request_id.clone();
                 render(*envelope)
             }
             Err(hiroute_product_session::failure::DesktopFailure::Native { code }) => {

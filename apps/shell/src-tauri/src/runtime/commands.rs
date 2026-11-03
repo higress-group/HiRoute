@@ -42,7 +42,7 @@ pub(super) fn shell_capabilities(
         authorize(&window, &state)?;
     }
     Ok(
-        json!({"host":"shell-console","platform":"windows","updates":true,"cli_entry":false,"quit":true,"titlebar":false,"login_start":true,"directory_reveal":"path"}),
+        json!({"host":"shell-console","platform":"windows","codex_desktop_launch":true,"updates":true,"cli_entry":false,"quit":true,"titlebar":false,"login_start":true,"directory_reveal":"path"}),
     )
 }
 #[tauri::command]

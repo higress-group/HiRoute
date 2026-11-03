@@ -4,7 +4,7 @@ import { agentModelStatus } from './status.ts';
 
 export function nativeCodexDesktopLaunch(host: HostCapabilities): boolean {
   return (host.host === 'tauri' && host.platform === 'macos')
-    || (host.host === 'shell-console' && host.platform === 'windows');
+    || (host.host === 'shell-console' && host.platform === 'windows' && host.codex_desktop_launch === true);
 }
 
 export function codexDesktopLaunchCommand(agent: Agent): string | null {

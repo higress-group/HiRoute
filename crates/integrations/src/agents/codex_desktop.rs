@@ -37,6 +37,33 @@ impl CodexDesktopInstancePaths {
 }
 
 impl FilesystemAgentScannerV1 {
+    pub fn with_dynamic_codex_desktop_location(mut self) -> Self {
+        self.dynamic_codex_desktop_location = true;
+        self
+    }
+
+    pub fn refresh_codex_desktop_location(&self, resolve: impl FnOnce() -> Option<PathBuf>) {
+        if !self.dynamic_codex_desktop_location {
+            return;
+        }
+        let current = resolve();
+        let changed = if let Ok(mut location) = self.codex_desktop_location.lock()
+            && *location != current
+        {
+            *location = current;
+            true
+        } else {
+            false
+        };
+        if changed {
+            self.invalidate_codex_ingress();
+        }
+    }
+
+    pub(super) fn codex_desktop_engine_path(&self) -> Option<PathBuf> {
+        self.codex_desktop_location.lock().ok()?.clone()
+    }
+
     pub fn with_codex_desktop_instance(mut self, paths: CodexDesktopInstancePaths) -> Self {
         self.layout.codex_desktop_instance_root = Some(paths.root);
         self
@@ -72,9 +99,7 @@ impl FilesystemAgentScannerV1 {
         scanner.layout.codex_user_config = paths.codex_home.join("config.toml");
         scanner.layout.codex_subscription_auth_override = None;
         scanner.layout.codex_executable = self
-            .layout
-            .codex_desktop_executable
-            .clone()
+            .codex_desktop_engine_path()
             .unwrap_or_else(|| paths.root.join("desktop-not-installed"));
         Some(scanner)
     }

@@ -1674,9 +1674,7 @@ fn release_agent_scanner(
     let mut layout = AgentFilesystemLayoutV1::from_process(home, project);
     layout.codex_desktop_executable = codex_desktop_engine;
     #[cfg(not(target_os = "macos"))]
-    if layout.codex_desktop_executable.is_none() {
-        layout.codex_desktop_executable = hiroute_desktop_host_effects::codex_desktop_engine();
-    }
+    let dynamic_desktop_location = layout.codex_desktop_executable.is_none();
     for (kind, executable) in selected {
         let target = match kind {
             AgentKindV1::Codex => &mut layout.codex_executable,
@@ -1689,7 +1687,16 @@ fn release_agent_scanner(
         };
         *target = executable.clone();
     }
-    Ok(FilesystemAgentScannerV1::new(layout, index))
+    let scanner = FilesystemAgentScannerV1::new(layout, index);
+    #[cfg(not(target_os = "macos"))]
+    let scanner = if dynamic_desktop_location {
+        scanner.with_dynamic_codex_desktop_location()
+    } else {
+        scanner
+    };
+    #[cfg(not(target_os = "macos"))]
+    scanner.refresh_codex_desktop_location(hiroute_desktop_host_effects::codex_desktop_engine);
+    Ok(scanner)
 }
 
 fn discovered_agent(

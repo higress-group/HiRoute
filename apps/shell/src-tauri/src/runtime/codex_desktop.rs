@@ -9,7 +9,7 @@ pub(super) async fn shell_launch_codex_desktop(
     context_id: String,
 ) -> Result<serde_json::Value, DesktopFailure> {
     authorize(&window, &state)?;
-    let client = service::client()?;
+    let client = service::client()?.with_timeout(std::time::Duration::from_secs(15));
     let skills =
         hiroute_desktop_host_effects::launch_configured_codex_instance(&client, &context_id)
             .await?;

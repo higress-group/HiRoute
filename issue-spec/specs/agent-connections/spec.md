@@ -287,8 +287,10 @@ copied. Windows SHALL resolve the current user's installed `OpenAI.Codex` MSIX
 registration and desktop executable, and launch it directly with the same private
 environment and user-data argument. Shell activation through Explorer, which would
 lose the isolated environment, SHALL NOT be used. Native launching SHALL be exposed
-through HiRoute's Windows Shell as well as its macOS Desktop. CLI is never
-substituted for a missing Desktop engine. The separate instance lives in a storage-root-specific
+through HiRoute's Windows Shell as well as its macOS Desktop.
+Windows Shell SHALL explicitly advertise its optional `codex_desktop_launch` host
+capability; absence on an older Shell SHALL retain the local-command fallback.
+CLI is never substituted for a missing Desktop engine. The separate instance lives in a storage-root-specific
 sibling namespace, outside Core upgrade snapshots. Native history and login remain
 Codex-owned and survive routing restore.
 
@@ -316,6 +318,16 @@ Both preserve same-name destinations and never acquire deletion authority over s
 skills. Native package and graphical-session execution require their actual platform
 evidence; UI mocks and cross-compilation alone do not prove a Windows or Linux desktop
 request succeeded.
+
+Windows/Linux package location facts SHALL refresh at full discovery, exact Desktop
+discovery and Desktop Configure admission, so installing or updating the application
+does not require rebinding the context or restarting the daemon. Other Agent-specific
+reads SHALL not query this package. Existing settings/home/grant identities remain
+unchanged, and removed installations lose the Desktop surface. Explicit fixture
+scanners retain their selected location unless their owner enables this refresh.
+Shared Windows junctions SHALL retain the lexical source skill entry, so replacing or
+removing a source link flows through to the private instance without copying its old
+target or granting source deletion authority.
 
 Model/token updates SHALL discard stale Desktop launch feedback. Guidance SHALL
 require quitting and restarting the separate instance after a successful route or

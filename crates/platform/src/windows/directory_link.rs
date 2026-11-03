@@ -8,9 +8,20 @@ use windows_sys::Win32::{
 
 pub(crate) fn create(source: &Path, destination: &Path) -> io::Result<()> {
     let canonical = source.canonicalize()?;
-    let target = canonical.to_str().ok_or(io::ErrorKind::InvalidInput)?;
-    let target = target.strip_prefix(r"\\?\").unwrap_or(target);
+    let resolved = canonical.to_str().ok_or(io::ErrorKind::InvalidInput)?;
+    let resolved = resolved.strip_prefix(r"\\?\").unwrap_or(resolved);
     // NTFS mount points cannot target network shares. Do not create a broken link.
+    if resolved.starts_with("UNC\\") || resolved.starts_with(r"\\") {
+        return Err(io::ErrorKind::Unsupported.into());
+    }
+    // Follow future replacement/removal of the ordinary skill entry, like a Unix link.
+    // absolute normalizes dot components without resolving source junctions/symlinks.
+    let lexical = std::path::absolute(source)?;
+    let target = lexical.to_str().ok_or(io::ErrorKind::InvalidInput)?;
+    let target = target
+        .strip_prefix(r"\\?\")
+        .unwrap_or(target)
+        .replace('/', "\\");
     if target.starts_with("UNC\\") || target.starts_with(r"\\") {
         return Err(io::ErrorKind::Unsupported.into());
     }

@@ -11,6 +11,8 @@ use crate::agents::{
 
 #[path = "filesystem_tests/claude_routing.rs"]
 mod claude_routing;
+#[path = "filesystem_tests/codex_desktop.rs"]
+mod codex_desktop;
 #[path = "filesystem_tests/dsh.rs"]
 mod dsh;
 #[path = "filesystem_tests/pi.rs"]
