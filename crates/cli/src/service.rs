@@ -154,10 +154,13 @@ pub(crate) fn start(timeout: Duration) -> Result<ServiceStatus, ServiceFailure> 
     #[cfg(windows)]
     wait_ready(deadline.saturating_duration_since(Instant::now()))?;
     #[cfg(not(windows))]
-    if let Err(error) = wait_ready(timeout) {
+    {
+        let ready = wait_ready(timeout);
         #[cfg(target_os = "linux")]
-        stop_failed_storage_start(&layout);
-        return Err(error);
+        if ready.is_err() {
+            stop_failed_storage_start(&layout);
+        }
+        ready?;
     }
     status()
 }
@@ -189,10 +192,13 @@ pub(crate) fn restart(timeout: Duration) -> Result<ServiceStatus, ServiceFailure
     #[cfg(windows)]
     wait_ready(deadline.saturating_duration_since(Instant::now()))?;
     #[cfg(not(windows))]
-    if let Err(error) = wait_ready(timeout) {
+    {
+        let ready = wait_ready(timeout);
         #[cfg(target_os = "linux")]
-        stop_failed_storage_start(&layout);
-        return Err(error);
+        if ready.is_err() {
+            stop_failed_storage_start(&layout);
+        }
+        ready?;
     }
     status()
 }
