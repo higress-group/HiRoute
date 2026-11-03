@@ -11,6 +11,8 @@ pub struct DiscoveredAgentV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_access: Option<CodexAccessViewV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_desktop: Option<CodexDesktopInstanceViewV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_id: Option<String>,
     pub agent_id: String,
     pub profile_id: String,
@@ -48,6 +50,16 @@ pub struct CodexAccessViewV1 {
     pub pending_operation: Option<String>,
     pub access_revoked: bool,
     pub conflict_fields: Vec<String>,
+}
+
+/// HiRoute's separate native instance. These are display/launch facts, never credentials.
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CodexDesktopInstanceViewV1 {
+    pub codex_home: String,
+    pub user_data: String,
+    pub source_codex_home: String,
+    pub shared_skills: String,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

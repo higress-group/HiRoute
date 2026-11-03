@@ -298,12 +298,19 @@ impl LocalControlAdapter {
             reason: CLIENT_FAILED,
         })?;
         let mut command = Command::new(executable);
-        let root = self.scanner.codex_user_config_target();
+        let class = self
+            .settings_agent_for_context(context_id)
+            .ok_or(AttemptFailure {
+                executed: false,
+                reason: CLIENT_FAILED,
+            })?;
+        let root = class.scanner(&self.scanner).codex_user_config_target();
         let home = root.parent().ok_or(AttemptFailure {
             executed: false,
             reason: CLIENT_FAILED,
         })?;
         command.env("CODEX_HOME", home);
+        command.env("CODEX_SQLITE_HOME", home);
         if self.settings_agent_for_context(context_id)
             == Some(super::settings_facts::SettingsAgentClass::CodexProfile)
         {

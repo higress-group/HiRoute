@@ -65,6 +65,7 @@ impl LocalControlAdapter {
     pub(super) fn settings_context_for_agent(&self, agent_id: &str) -> Option<String> {
         let class = match agent_id {
             "agent_codex_default" => SettingsAgentClass::Codex,
+            "agent_codex_desktop" => SettingsAgentClass::CodexDesktop,
             "agent_claude_default" => SettingsAgentClass::Claude,
             "agent_qoder_default" => SettingsAgentClass::Qoder,
             "agent_pi_default" => SettingsAgentClass::Pi,
@@ -91,6 +92,7 @@ impl LocalControlAdapter {
         [
             SettingsAgentClass::Codex,
             SettingsAgentClass::CodexProfile,
+            SettingsAgentClass::CodexDesktop,
             SettingsAgentClass::Claude,
             SettingsAgentClass::Qoder,
             SettingsAgentClass::Pi,
@@ -133,7 +135,11 @@ impl LocalControlAdapter {
             .ok_or(ControlReadError::NotFound)?;
         self.check_codex_slot(spec, class)?;
         // Desktop model access does not establish independent Skill/Worker support.
-        if class == SettingsAgentClass::DshDesktop && !spec.keeps_skills() {
+        if matches!(
+            class,
+            SettingsAgentClass::DshDesktop | SettingsAgentClass::CodexDesktop
+        ) && !spec.keeps_skills()
+        {
             return Err(ControlReadError::Denied);
         }
         // Probe the installed composition once per facts capture, not once per
@@ -250,6 +256,10 @@ impl LocalControlAdapter {
             self.scanner.claude_settings_discovery(configure_skill)
         } else if class == SettingsAgentClass::CodexProfile {
             self.scanner.codex_profile_settings_discovery()
+        } else if class == SettingsAgentClass::CodexDesktop {
+            self.scanner
+                .codex_desktop_settings_discovery()
+                .ok_or(ControlReadError::NotFound)?
         } else {
             self.scanner.codex_settings_discovery(configure_skill)
         };
@@ -371,9 +381,9 @@ impl LocalControlAdapter {
         // New settings saves do not manage startup. Keep the preview field for V2 clients;
         // only an older, journal-owned login item may require cleanup on final restore.
         let other_context = match class {
-            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => {
-                SettingsAgentClass::Claude
-            }
+            SettingsAgentClass::Codex
+            | SettingsAgentClass::CodexProfile
+            | SettingsAgentClass::CodexDesktop => SettingsAgentClass::Claude,
             SettingsAgentClass::Claude => SettingsAgentClass::Codex,
             SettingsAgentClass::Qoder
             | SettingsAgentClass::Pi
@@ -531,7 +541,7 @@ impl LocalControlAdapter {
             }
             let model = match class {
                 SettingsAgentClass::Qoder | SettingsAgentClass::Pi | SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop | SettingsAgentClass::Hermes | SettingsAgentClass::OpenCode => return Err(ControlReadError::Denied),
-                SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => original
+                SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile | SettingsAgentClass::CodexDesktop => original
                     .plan
                     .external()
                     .iter()
@@ -627,20 +637,22 @@ impl LocalControlAdapter {
             }
             None => false,
         };
-        let (restore_native_model_ids, restored_native_model) = if class
-            == SettingsAgentClass::Codex
-            && matches!(&spec.model, AgentFacetIntent::Restore { .. })
-        {
-            match selected_restore.as_ref() {
-                Some((original, _)) => {
-                    let facts = self.codex_restore_model_facts(original, &target)?;
-                    (facts.ids, facts.model)
+        let (restore_native_model_ids, restored_native_model) =
+            if matches!(
+                class,
+                SettingsAgentClass::Codex | SettingsAgentClass::CodexDesktop
+            ) && matches!(&spec.model, AgentFacetIntent::Restore { .. })
+            {
+                match selected_restore.as_ref() {
+                    Some((original, _)) => {
+                        let facts = self.codex_restore_model_facts(class, original, &target)?;
+                        (facts.ids, facts.model)
+                    }
+                    None => (Some(Vec::new()), None),
                 }
-                None => (Some(Vec::new()), None),
-            }
-        } else {
-            (None, None)
-        };
+            } else {
+                (None, None)
+            };
         let template = collaboration_template(spec)?;
         let collaboration_file_conflict = match &spec.collaboration {
             AgentFacetIntent::Configure { .. } => plan_skill_install(
@@ -680,13 +692,16 @@ impl LocalControlAdapter {
                 }
             }
         );
-        let codex_catalog_summary = if class == SettingsAgentClass::Codex
-            && preserve_native_models
+        let codex_catalog_summary = if matches!(
+            class,
+            SettingsAgentClass::Codex | SettingsAgentClass::CodexDesktop
+        ) && preserve_native_models
             && let Some(active) = active_configuration.as_ref()
         {
-            self.codex_restore_model_facts(active, &target)?.catalog
+            self.codex_restore_model_facts(class, active, &target)?
+                .catalog
         } else if class.is_codex() {
-            self.scanner.codex_catalog_summary().ok()
+            class.scanner(&self.scanner).codex_catalog_summary().ok()
         } else {
             None
         };
@@ -699,7 +714,9 @@ impl LocalControlAdapter {
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
             }
-            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => codex_catalog_summary
+            SettingsAgentClass::Codex
+            | SettingsAgentClass::CodexProfile
+            | SettingsAgentClass::CodexDesktop => codex_catalog_summary
                 .as_ref()
                 .map(|catalog| catalog.native_default_model.clone()),
             SettingsAgentClass::Claude => self
@@ -785,11 +802,17 @@ impl LocalControlAdapter {
                     Some(catalog),
                 ) if preserve_native_models && active_protected_native_ids.is_empty() => self
                     .preserved_codex_model_selections(
+                        class,
                         catalog,
                         &mut fixed_candidate_facts,
                         active_configuration
                             .as_ref()
-                            .filter(|_| class == SettingsAgentClass::Codex)
+                            .filter(|_| {
+                                matches!(
+                                    class,
+                                    SettingsAgentClass::Codex | SettingsAgentClass::CodexDesktop
+                                )
+                            })
                             .map(|op| (op, target.as_str())),
                     )
                     .unwrap_or_default(),
@@ -843,7 +866,9 @@ impl LocalControlAdapter {
             .collect::<Vec<_>>();
         let native_default_must_be_original = preserve_native_models;
         let mut model_catalog = if let (
-            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile,
+            SettingsAgentClass::Codex
+            | SettingsAgentClass::CodexProfile
+            | SettingsAgentClass::CodexDesktop,
             AgentFacetIntent::Configure { settings },
         ) = (class, &spec.model)
         {
@@ -872,7 +897,13 @@ impl LocalControlAdapter {
                     }
                 }
             }
-            self.codex_catalog_facts(&complete, active.as_ref(), &baseline, &mut installation)
+            self.codex_catalog_facts(
+                class,
+                &complete,
+                active.as_ref(),
+                &baseline,
+                &mut installation,
+            )
         } else {
             None
         };
@@ -917,7 +948,7 @@ impl LocalControlAdapter {
             && matches!(&spec.model, AgentFacetIntent::Configure { settings } if !settings.allowed_plan_ids().is_empty())
             && hiroute_integrations::codex_has_context_override(
                 &hiroute_integrations::CodexConfigurationScope::user_file(
-                    self.scanner.codex_user_config_target(),
+                    class.scanner(&self.scanner).codex_user_config_target(),
                 ),
             )
             .map_err(|_| ControlReadError::Unavailable)?;
@@ -1041,12 +1072,12 @@ impl LocalControlAdapter {
             | SettingsAgentClass::Hermes => {
                 return Err(ControlReadError::Denied);
             }
-            SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => {
-                SettingsModelTargetFacts::Codex {
-                    provider_id: "hiroute".into(),
-                    endpoint: runtime.gateway_base_url.clone(),
-                }
-            }
+            SettingsAgentClass::Codex
+            | SettingsAgentClass::CodexProfile
+            | SettingsAgentClass::CodexDesktop => SettingsModelTargetFacts::Codex {
+                provider_id: "hiroute".into(),
+                endpoint: runtime.gateway_base_url.clone(),
+            },
             SettingsAgentClass::Claude => {
                 SettingsModelTargetFacts::Claude(SettingsClaudeModelFacts {
                     installation: installation.clone(),

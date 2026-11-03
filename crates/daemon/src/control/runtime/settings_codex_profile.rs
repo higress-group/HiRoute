@@ -82,7 +82,7 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<(), ControlReadError> {
-        if !class.is_codex() {
+        if !class.is_codex() || class == SettingsAgentClass::CodexDesktop {
             return Ok(());
         }
         if class == SettingsAgentClass::CodexProfile && !spec.keeps_skills() {

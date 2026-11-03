@@ -2387,10 +2387,13 @@ name = "hiroute-desktop-host-effects"
 version = "0.1.0"
 dependencies = [
  "block2",
+ "hiroute-platform",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-service-management",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

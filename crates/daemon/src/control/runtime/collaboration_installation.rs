@@ -93,6 +93,7 @@ impl LocalControlAdapter {
         if matches!(
             class,
             SettingsAgentClass::Qoder
+                | SettingsAgentClass::CodexDesktop
                 | SettingsAgentClass::Pi
                 | SettingsAgentClass::Dsh
                 | SettingsAgentClass::DshDesktop
@@ -145,6 +146,7 @@ impl LocalControlAdapter {
                 SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => "codex.sealed",
                 SettingsAgentClass::Claude => "claude-code.sealed",
                 SettingsAgentClass::Qoder
+                | SettingsAgentClass::CodexDesktop
                 | SettingsAgentClass::Pi
                 | SettingsAgentClass::Dsh
                 | SettingsAgentClass::DshDesktop

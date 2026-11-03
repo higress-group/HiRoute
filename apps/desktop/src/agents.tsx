@@ -4,11 +4,12 @@ import { AgentSkillDetails } from './features/agents/AgentSkillDetails';
 import { loadAgentDiscoveryTargets, saveAgentDiscoveryTargets } from './features/agents/discovery';
 import { PreviousRouting } from './features/agents/PreviousRouting';
 import { CodexAccessPanel } from './features/agents/CodexAccessPanel';
+import { CodexDesktopPanel } from './features/agents/CodexDesktopPanel';
 import { confirmedCodexLaunchCommand, type PendingCodexLaunchCopy } from './features/agents/codex-launch';
 import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon, copyText } from './ui';
 import { confirmDiscard, useDiscardGuard } from './ui/discard-guard';
 import React, { useEffect, useRef, useState } from 'react';
-import { invoke } from './host';
+import { hostCapabilities, invoke } from './host';
 import { agentEditorSeed, withModelSelection, agentModelFormInvalid, editorFingerprint, EMPTY_EDITOR_VALUES, type AgentEditorValues } from './features/agents/editor-state';
 import { AgentSettingsFeedback } from './features/agents/AgentSettingsFeedback';
 import { AgentModelEditor, modelSelectionSummary } from './features/agents/AgentModelEditor';
@@ -95,6 +96,7 @@ export function Agents({
   const text = (cn: string, en: string) => (zh ? cn : en);
   const [snapshot, setSnapshot] = useState<AgentSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
+  const [desktopLaunching, setDesktopLaunching] = useState(false);
   const [busyText, setBusyText] = useState('');
   const hermesTargets = useRef<AgentNativeTarget[]>(loadAgentDiscoveryTargets());
   const [scanning, setScanning] = useState(false);
@@ -444,6 +446,18 @@ export function Agents({
     }
   }
 
+  async function launchDesktop(agent: Agent) {
+    if (!agent.context_id || busy || scanning || !snapshot?.trusted_authority) return;
+    setBusy(true); setDesktopLaunching(true); setActionError(''); setNotice('');
+    try {
+      const result = await invoke<{ preserved_skills: number }>('launch_codex_desktop', { contextId: agent.context_id });
+      setNotice(result.preserved_skills > 0
+        ? text('已请求启动独立窗口。实例内的同名技能已保留；其他用户技能已共享。', 'Separate window requested. Existing skills with the same name were kept; other user skills are shared.')
+        : text('已请求启动独立窗口，用户技能已共享。', 'Separate window requested. User skills are shared.'));
+    } catch (error) { setActionFailure(error); }
+    finally { setBusy(false); setDesktopLaunching(false); }
+  }
+
   function setTriggerMode(triggerMode: AgentCollaborationTriggerMode) {
     setEditorValues(value => ({ ...value, triggerMode }));
     setPreview(null);
@@ -520,7 +534,7 @@ export function Agents({
   const selectedExecutableDiagnostic = selected
     ? executableDiagnostic(selected.configuration_state)
     : null;
-  const activeCodexMode = selected?.codex_access?.slot_occupied
+  const activeCodexMode = selected?.agent_id === 'agent_codex_desktop' ? 'root' : selected?.codex_access?.slot_occupied
     ? selected.codex_access.selected_mode : codexMode;
   const catalogModels = (selected?.native_model_catalog?.models ?? [])
     .map(model => ({ ...model, source_options: model.source_options ?? [] }));
@@ -590,7 +604,7 @@ export function Agents({
                           : text('已发现 · 尚未接入', 'Detected · not connected');
                   return <button className={`list-row${active ? ' active' : ''}`} key={agentKey(agent)} aria-current={active ? 'page' : undefined} onClick={async () => { if (dirty && !(await confirmDiscard(language))) return; setEditor(null); setPreview(null); setActionError(''); setNotice(''); setTokenEditing(false); setTokenDraft(''); setSelectedAgent(agentKey(agent)); setShowAgentList(false); }}>
                     <BrandIcon kind={brand(agent)} label={`${agentName(agent)} logo`} />
-                    <span className="row-main"><span className="row-title">{agentName(agent)}</span>{agent.native_target && <span className="row-meta">{agent.native_target.config_root}</span>}<span className="row-meta">{stateLabel}</span></span>
+                    <span className="row-main"><span className="row-title">{agentName(agent)}</span>{agent.agent_id === 'agent_codex_desktop' && <span className="row-meta">{text('独立窗口 · 共享技能', 'Separate window · shared skills')}</span>}{agent.agent_id === 'agent_codex_default' && <span className="row-meta">{agent.codex_access?.selected_mode === 'root' && agent.codex_access.slot_occupied ? text('默认配置', 'Default configuration') : text('CLI 独立 profile', 'Separate CLI profile')}</span>}{agent.native_target && <span className="row-meta">{agent.native_target.config_root}</span>}<span className="row-meta">{stateLabel}</span></span>
                   </button>;
                 })}
               </nav>
@@ -610,6 +624,10 @@ export function Agents({
                   const access = selected.codex_access;
                   if (access?.pending_operation) await retrySettingsOperation(access.pending_operation);
                 }} />}
+                {selected.agent_id === 'agent_codex_desktop' && <CodexDesktopPanel agent={selected} language={language}
+                  configured={selectedModel?.state === 'configured'} launching={desktopLaunching}
+                  nativeHost={hostCapabilities().host === 'tauri' && hostCapabilities().platform === 'macos'}
+                  disabled={busy || selectedPending || Boolean(editor) || !mutable} onLaunch={() => void launchDesktop(selected)} />}
                 <AgentDiscoveryFeedback agent={selected} language={language} scanning={scanning} onScan={() => void refresh()} />
                 {executableStatus}
                 {selectedHasDrift && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('接入配置已变化', 'Connection settings changed')}</strong><p>{text('HiRoute 不会覆盖已变化的设置。请在“连接详情与恢复”中恢复需要的路由配置。', 'HiRoute will not overwrite changed settings. Restore the required routing configuration under Connection details and recovery.')}</p></div></div>}

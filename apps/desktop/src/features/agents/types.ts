@@ -146,6 +146,12 @@ export type AgentSettingsStatus = ModelStatus | CollaborationOnlyStatus;
 export type Agent = {
   native_target?: AgentNativeTarget;
   codex_access?: CodexAccess | null;
+  codex_desktop?: {
+    codex_home: string;
+    user_data: string;
+    source_codex_home: string;
+    shared_skills: string;
+  } | null;
   agent_id: string;
   version: string;
   context_id: string | null;

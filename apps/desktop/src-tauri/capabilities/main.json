@@ -74,6 +74,7 @@
     "allow-save-classifier-header-secret",
     "allow-save-classifier-openapi",
     "allow-agent-snapshot",
+    "allow-launch-codex-desktop",
     "allow-trial-setup-snapshot",
     "allow-agent-home-summary",
     "allow-agent-model-associations",

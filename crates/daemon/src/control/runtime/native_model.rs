@@ -21,13 +21,19 @@ use hiroute_integrations::{
 pub(super) fn is_settings_codex_model(intent: &ExternalEffectIntentV1) -> bool {
     intent.effect_id() == "agent-connection-managed-configuration"
         && intent.desired()["transaction"] == "settings"
-        && intent.desired()["subject"]["agent_id"] == "agent_codex_default"
+        && matches!(
+            intent.desired()["subject"]["agent_id"].as_str(),
+            Some("agent_codex_default" | "agent_codex_desktop")
+        )
 }
 
 pub(super) fn is_settings_codex_catalog(intent: &ExternalEffectIntentV1) -> bool {
     intent.effect_id() == "agent-connection-model-catalog"
         && intent.desired()["transaction"] == "settings"
-        && intent.desired()["subject"]["agent_id"] == "agent_codex_default"
+        && matches!(
+            intent.desired()["subject"]["agent_id"].as_str(),
+            Some("agent_codex_default" | "agent_codex_desktop")
+        )
 }
 
 /// The catalog baseline of the active managed edit: the user's pre-management pointer, so a
@@ -292,7 +298,11 @@ impl LocalControlAdapter {
             Err(_) => {}
         }
         let derived = codex_catalog_plan_for(
-            &self.scanner.codex_user_config_target(),
+            &self
+                .settings_agent_for_context(&payload.context_id)
+                .ok_or_else(|| conflict("codex.catalog.context"))?
+                .scanner(&self.scanner)
+                .codex_user_config_target(),
             settings,
             &publication,
             &baseline,

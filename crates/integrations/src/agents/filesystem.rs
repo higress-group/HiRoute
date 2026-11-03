@@ -130,6 +130,8 @@ pub struct AgentFilesystemLayoutV1 {
     /// Codex Desktop's application-owned engine, supplied by the native host after resolving the
     /// installed bundle through the operating system. `None` means that surface is unavailable.
     pub codex_desktop_executable: Option<PathBuf>,
+    /// One daemon-owned independent Desktop namespace, outside its Core storage group.
+    pub codex_desktop_instance_root: Option<PathBuf>,
     pub claude_executable: PathBuf,
     pub qoder_executable: PathBuf,
     pub pi_executable: PathBuf,
@@ -183,6 +185,7 @@ impl AgentFilesystemLayoutV1 {
         Self {
             codex_executable: PathBuf::from("codex"),
             codex_desktop_executable: None,
+            codex_desktop_instance_root: None,
             claude_executable: PathBuf::from("claude"),
             qoder_executable: PathBuf::from("qoder"),
             pi_executable: PathBuf::from("pi"),
@@ -443,6 +446,7 @@ impl FilesystemAgentScannerV1 {
         let mut results = Vec::new();
         for agent_id in [
             "agent_codex_default",
+            super::CODEX_DESKTOP_AGENT_ID,
             "agent_qoder_default",
             "agent_pi_default",
             "agent_dsh_default",
@@ -455,6 +459,12 @@ impl FilesystemAgentScannerV1 {
             }
             let discovery = match agent_id {
                 "agent_codex_default" => self.scan_codex(),
+                super::CODEX_DESKTOP_AGENT_ID => {
+                    let Some(discovery) = self.codex_desktop_settings_discovery() else {
+                        continue;
+                    };
+                    discovery
+                }
                 "agent_qoder_default" => self.qoder_settings_discovery(false),
                 "agent_pi_default" => self.pi_settings_discovery(),
                 "agent_dsh_default" => self.scan_dsh(),
@@ -480,9 +490,16 @@ impl FilesystemAgentScannerV1 {
             if let AgentDiscoveryOutcomeV1::Supported { installation } = &mut result.outcome {
                 let binary = match installation.profile.kind {
                     AgentKindV1::Codex => {
+                        let desktop = installation.agent_id == super::CODEX_DESKTOP_AGENT_ID;
+                        let target = if desktop {
+                            self.codex_desktop_config_target()
+                                .expect("discovered Desktop has a configured native target")
+                        } else {
+                            self.layout.codex_user_config.clone()
+                        };
                         super::observed_capabilities::attach_target_file_capabilities(
                             installation,
-                            &self.layout.codex_user_config,
+                            &target,
                         );
                         self.located_codex_engine()
                             .ok()
@@ -505,6 +522,7 @@ impl FilesystemAgentScannerV1 {
                 };
                 #[cfg(any(unix, windows))]
                 if installation.profile.kind == AgentKindV1::Codex
+                    && installation.agent_id != super::CODEX_DESKTOP_AGENT_ID
                     && let Ok(cache) = self.codex_ingress.lock()
                     && let Some(evidence) = cache.as_ref()
                 {
@@ -523,13 +541,14 @@ impl FilesystemAgentScannerV1 {
     }
 
     fn scan_codex(&self) -> FilesystemAgentDiscoveryV1 {
+        self.scan_codex_for("agent_codex_default")
+    }
+
+    pub(super) fn scan_codex_for(&self, agent_id: &str) -> FilesystemAgentDiscoveryV1 {
         match self.located_codex_engine() {
             Ok(Some(_)) => {
-                let mut observation = base_observation(
-                    "agent_codex_default",
-                    AgentKindV1::Codex,
-                    "not-probed".to_owned(),
-                );
+                let mut observation =
+                    base_observation(agent_id, AgentKindV1::Codex, "not-probed".to_owned());
                 match super::sample_codex_configuration(&super::CodexConfigurationScope::user_file(
                     self.layout.codex_user_config.clone(),
                 )) {
@@ -545,20 +564,16 @@ impl FilesystemAgentScannerV1 {
                         }
                     }
                     Err(error) => report_only_agent(
-                        "agent_codex_default",
+                        agent_id,
                         AgentKindV1::Codex,
                         "not-probed".to_owned(),
                         error.report_reason(),
                     ),
                 }
             }
-            Ok(None) => probe_report(
-                "agent_codex_default",
-                AgentKindV1::Codex,
-                ExecutableProbe::NotFound,
-            ),
+            Ok(None) => probe_report(agent_id, AgentKindV1::Codex, ExecutableProbe::NotFound),
             Err(reason) => probe_report(
-                "agent_codex_default",
+                agent_id,
                 AgentKindV1::Codex,
                 ExecutableProbe::Unknown(reason),
             ),
@@ -658,6 +673,13 @@ impl FilesystemAgentScannerV1 {
     ) -> BTreeSet<hiroute_domain::AgentModelSurfaceV2> {
         let available = |path: &Path| matches!(super::executable::resolve(path), Ok(Some(_)));
         match agent_id {
+            super::CODEX_DESKTOP_AGENT_ID => self
+                .layout
+                .codex_desktop_executable
+                .as_deref()
+                .filter(|path| available(path))
+                .map(|_| [hiroute_domain::AgentModelSurfaceV2::CodexDesktop].into())
+                .unwrap_or_default(),
             "agent_codex_default" => {
                 let mut surfaces = BTreeSet::new();
                 if self

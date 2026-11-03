@@ -32,6 +32,21 @@ export function agentDisableMessage(state: string, language: 'zh' | 'en'): strin
 
 export function agentActionErrorMessage(code: string, language: 'zh' | 'en'): string {
   const zh = language === 'zh';
+  if (code === 'CODEX_DESKTOP_NOT_INSTALLED') return zh
+    ? '未发现 Codex Desktop，请安装后重新扫描。模型路由配置已保留。'
+    : 'Codex Desktop was not found. Install it and scan again. Your routing settings are retained.';
+  if (code === 'CODEX_DESKTOP_PREPARE_FAILED') return zh
+    ? '无法准备独立实例或共享技能。请检查实例目录的访问权限，再重试启动。已保存的模型路由保持有效。'
+    : 'Could not prepare the instance or shared skills. Check directory access, then retry opening. Saved model routing remains active.';
+  if (code === 'CODEX_DESKTOP_LAUNCH_FAILED') return zh
+    ? '独立窗口未能启动。已保存的模型路由保持有效，可再次点击“启动独立窗口”。'
+    : 'The separate window could not open. Saved model routing remains active; try Open separate window again.';
+  if (code === 'CODEX_DESKTOP_HOST_REQUIRED') return zh
+    ? '请在 macOS 版 HiRoute Desktop 中启动独立窗口。'
+    : 'Open the separate window from HiRoute Desktop on macOS.';
+  if (code === 'AGENT_STATUS_UNVERIFIED') return zh
+    ? '接入状态已变化，请重新读取并确认模型路由已启用后再启动。'
+    : 'Connection state changed. Refresh and confirm model routing is enabled before opening.';
   if (code === 'AGENT_TOKEN_INVALID') return zh
     ? '令牌须为 16–128 位英文字母、数字或 . _ ~ -。当前令牌未更改。'
     : 'Use 16–128 letters, numbers, or . _ ~ -. The current token was not changed.';

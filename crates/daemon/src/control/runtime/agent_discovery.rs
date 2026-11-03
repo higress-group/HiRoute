@@ -19,6 +19,7 @@ impl AgentDiscoveryPort for LocalControlAdapter {
                     agents.push(DiscoveredAgentV1 {
                         native_target: Some(target.clone()),
                         codex_access: None,
+                        codex_desktop: None,
                         context_id: Some(hiroute_integrations::hermes_context_id(
                             target.config_root(),
                         )),
@@ -62,6 +63,7 @@ impl AgentDiscoveryPort for LocalControlAdapter {
             native_target: Some(target),
             context_id: Some(context_id),
             codex_access: None,
+            codex_desktop: None,
             agent_id: installation.agent_id,
             profile_id: installation.profile.profile_id,
             version: installation.version,
@@ -234,6 +236,28 @@ impl LocalControlAdapter {
                         access.root_context_id.clone()
                     });
                     agent.codex_access = Some(access);
+                }
+                if agent.agent_id == hiroute_integrations::CODEX_DESKTOP_AGENT_ID {
+                    let paths = self
+                        .scanner
+                        .codex_desktop_instance_paths()
+                        .ok_or(ControlReadError::Corrupt)?;
+                    let source = self.scanner.codex_user_config_target();
+                    agent.codex_desktop =
+                        Some(hiroute_application_api::CodexDesktopInstanceViewV1 {
+                            codex_home: paths.codex_home.to_string_lossy().into_owned(),
+                            user_data: paths.user_data.to_string_lossy().into_owned(),
+                            source_codex_home: source
+                                .parent()
+                                .ok_or(ControlReadError::Corrupt)?
+                                .to_string_lossy()
+                                .into_owned(),
+                            shared_skills: native_agent_home()
+                                .map_err(|_| ControlReadError::Unavailable)?
+                                .join(".agents/skills")
+                                .to_string_lossy()
+                                .into_owned(),
+                        });
                 }
                 Ok(agent)
             })

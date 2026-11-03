@@ -196,6 +196,19 @@ pub fn codex_desktop_engine() -> Option<std::path::PathBuf> {
     }
 }
 
+#[cfg(unix)]
+mod codex_instance;
+#[cfg(unix)]
+pub use codex_instance::{SharedCodexSkills, prepare_codex_instance};
+
+#[cfg(target_os = "macos")]
+pub fn launch_codex_instance(
+    codex_home: &std::path::Path,
+    user_data: &std::path::Path,
+) -> Result<(), &'static str> {
+    codex_instance::launch(codex_home, user_data)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
