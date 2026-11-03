@@ -7,6 +7,7 @@
 .agent-capability-actions .btn { min-width: 50px; }
 .agent-capability-extra { grid-column: 1 / -1; color: var(--text-soft); font-size: 13px; }
 .agent-detail .native-details { margin-top: 0; padding-top: 16px; border-top: 0; }
+.agent-detail .native-details > .disclosure-body { padding-top: 16px; }
 .agent-usage-details { display: grid; gap: 24px; margin-bottom: 24px; }
 .agent-usage-details h4 { margin: 0 0 8px; font-size: 13px; }
 .agent-usage-details p { margin: 6px 0; color: var(--text-soft); font-size: 13px; line-height: 1.7; }

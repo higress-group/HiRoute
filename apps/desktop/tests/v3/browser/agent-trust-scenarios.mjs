@@ -123,6 +123,8 @@ const scenarios = [
       assert(!details.open && !text().includes('/selected/skills/hiroute-management'), `${id} exposes resource paths by default`);
       details.querySelector('summary').click(); await tick();
       assert(document.querySelector('.agent-usage-details'), `${id} lost its usage details`);
+      const heading = details.querySelector('.agent-usage-details h4');
+      if (heading) assert(heading.getBoundingClientRect().top >= details.querySelector('summary').getBoundingClientRect().bottom + 12, `${id} usage heading touches the summary focus ring`);
       if (facet('management_skill')) {
         assert(text().includes('/selected/skills/hiroute-management'), `${id} lost the Skill resource path`);
         const repair = [...details.querySelectorAll('button')].find(button => button.textContent === '重新准备 Skill');
