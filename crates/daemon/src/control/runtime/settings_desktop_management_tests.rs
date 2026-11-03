@@ -74,6 +74,26 @@ printf '%s\n' '- id: skill-filesystem' '- id: tool-skill' '- id: skill'
     ] {
         let context = runtime.adapter.settings_context_for_agent(owner).unwrap();
         let desktop_context = runtime.adapter.settings_context_for_agent(desktop).unwrap();
+        let native_paths: Vec<_> = [owner, desktop]
+            .into_iter()
+            .map(|id| {
+                let context = runtime.adapter.settings_context_for_agent(id).unwrap();
+                runtime
+                    .adapter
+                    .settings_agent_for_context(&context)
+                    .unwrap()
+                    .native_path(&runtime.adapter.scanner)
+                    .unwrap()
+            })
+            .collect();
+        let original = if owner == "agent_codex_default" {
+            b"# native Codex settings\n".as_slice()
+        } else {
+            b"# native DSH settings\n[]\n".as_slice()
+        };
+        for path in &native_paths {
+            write(path, original);
+        }
         let read = |id: &str| {
             let response = service.dispatch_wire(request("GetAgentConnectionStatus", json!({"schema_version":{"major":2,"minor":0},"context_id":id,"include_skills":true}),None));
             assert!(response.error.is_none(), "{response:?}");
@@ -81,12 +101,27 @@ printf '%s\n' '- id: skill-filesystem' '- id: tool-skill' '- id: skill'
         };
         let before = read(&desktop_context);
         let spec = json!({"schema_version":{"major":2,"minor":0},"context_id":context,"management_skill":{"intent":"configure","settings":{}}});
-        apply(
+        let outcome = apply(
             &service,
             &runtime,
             spec,
             &format!("desktop-management-{owner}"),
         );
+        let operation_id: OperationId =
+            serde_json::from_value(outcome["operation_id"].clone()).unwrap();
+        let operation = runtime
+            .adapter
+            .stores_lock()
+            .unwrap()
+            .control()
+            .load_operation(&operation_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(operation.plan.external().len(), 1);
+        assert!(operation.plan.agent_access_grants().is_empty());
+        for path in &native_paths {
+            assert_eq!(fs::read(path).unwrap(), original);
+        }
         let status = read(&desktop_context);
         assert_eq!(
             status["management_skill"],
@@ -120,14 +155,22 @@ printf '%s\n' '- id: skill-filesystem' '- id: tool-skill' '- id: skill'
             entries["entries"][1]["management_skill"]["state"],
             "recorded"
         );
-        saved.push((context, desktop_context, status["management_skill"].clone()));
+        saved.push((
+            context,
+            desktop_context,
+            status["management_skill"].clone(),
+            native_paths,
+            original.to_vec(),
+        ));
     }
     drop(service);
     drop(runtime);
     (runtime, service) = build();
     fs::remove_file(codex_engine).unwrap();
     fs::remove_file(dsh_engine).unwrap();
-    for (context, desktop_context, saved_status) in saved {
+    for (index, (context, desktop_context, saved_status, native_paths, original)) in
+        saved.into_iter().enumerate()
+    {
         let read = |id: &str| {
             let response=service.dispatch_wire(request("GetAgentConnectionStatus",json!({"schema_version":{"major":2,"minor":0},"context_id":id,"include_skills":true}),None));
             assert!(response.error.is_none(), "{response:?}");
@@ -139,7 +182,7 @@ printf '%s\n' '- id: skill-filesystem' '- id: tool-skill' '- id: skill'
             &service,
             &runtime,
             spec,
-            &format!("desktop-management-restore-{context}"),
+            &format!("desktop-management-restore-{index}"),
         );
         let restored = read(&desktop_context);
         assert_eq!(
@@ -147,6 +190,9 @@ printf '%s\n' '- id: skill-filesystem' '- id: tool-skill' '- id: skill'
             read(&context)["management_skill"]
         );
         assert_eq!(restored["management_skill"]["state"], "restored");
+        for path in &native_paths {
+            assert_eq!(fs::read(path).unwrap(), original);
+        }
         assert!(
             !Path::new(saved_status["resource"]["directory"].as_str().unwrap())
                 .join("SKILL.md")
