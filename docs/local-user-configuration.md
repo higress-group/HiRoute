@@ -133,9 +133,16 @@ Desktop on macOS with Codex Desktop installed; the installed CLI is not a substi
 
 The instance uses private Codex, SQLite and Electron data directories while retaining
 the real HOME. Ordinary subscription settings, login and sessions are not copied.
-Its directory is shown under **Sharing and instance directories** and is outside
-HiRoute's Core data/upgrade snapshots. Close this separate window before reopening
-after route changes. Disabling routing retains its native sessions and login.
+Its directory is shown under **Connection details and recovery** and is outside
+HiRoute's Core data/upgrade snapshots. Normal macOS Desktop uses
+`~/Library/Application Support/ai.hiroute.desktop/storage.codex-desktop/`; isolated
+validation runs use their explicitly selected test root. After route or token changes
+succeed, quit this separate instance and start it again so its process loads the new
+configuration. Disabling routing retains its native sessions and login.
+
+An inherited `CODEX_HOME` that points into the private instance cannot create another
+model slot over that directory. The existing Desktop connection can still restore
+its owned configuration and revoke its access through its original restore point.
 
 Existing `.agents/skills` and project skills remain shared. When opening the window,
 HiRoute also links ordinary Codex user skill folders individually, including their

@@ -269,6 +269,10 @@ home's configuration or authority. An inherited CODEX_HOME resolving to the same
 physical home cannot create two model slots. Existing publication/recovery fences
 still protect an incomplete shared-service cutover.
 
+The collision guard SHALL refuse Configure for overlapping homes while preserving
+Restore of an existing owned connection. Restore still verifies its exact context,
+journal, target and grant; another connection's restore point cannot acquire ownership.
+
 On macOS, the native host resolves the installed Codex bundle and launches it with
 `open -n`, private CODEX_HOME and CODEX_SQLITE_HOME, private
 CODEX_ELECTRON_USER_DATA_PATH and matching `--user-data-dir`. Real HOME stays
@@ -285,6 +289,11 @@ Operation. UI-supplied paths, environment or commands are not accepted. Launch
 failure preserves the completed configuration and retries launch only. First use
 offers route configuration; configured use offers the separate window. CLI and
 Desktop remain distinct entries with visible scope and recovery information.
+
+Model/token updates SHALL discard stale Desktop launch feedback. Guidance SHALL
+require quitting and restarting the separate instance after a successful route or
+token update, rather than claiming its running process automatically reloads credentials.
+Updating a token SHALL NOT launch, quit or reconfigure the ordinary client.
 
 User skills in real HOME's `.agents/skills` and project skills remain naturally
 shared. At launch preparation only, other valid CODEX_HOME user skill directories

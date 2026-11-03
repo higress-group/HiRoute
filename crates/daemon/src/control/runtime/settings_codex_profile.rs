@@ -85,7 +85,7 @@ impl LocalControlAdapter {
         if !class.is_codex() {
             return Ok(());
         }
-        if !matches!(spec.model, AgentFacetIntent::Keep)
+        if matches!(spec.model, AgentFacetIntent::Configure { .. })
             && self
                 .scanner
                 .codex_desktop_config_target()
@@ -96,8 +96,8 @@ impl LocalControlAdapter {
                         )
                 })
         {
-            // An inherited CODEX_HOME must never turn the private Desktop into a second
-            // model slot over the same physical home.
+            // An inherited CODEX_HOME cannot create a second model slot over the private
+            // home. Restore still verifies the existing journal/grant/target owner below.
             return Err(ControlReadError::Denied);
         }
         if class == SettingsAgentClass::CodexDesktop {

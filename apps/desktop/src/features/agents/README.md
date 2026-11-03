@@ -118,6 +118,11 @@ recovery. The top-level `agents.tsx` type exports and `agent-editor-state.ts` /
 `agent-mutation-feedback.ts` exports remain compatibility entry points for existing callers.
 New Agent feature code imports its local owners directly.
 
+Desktop model and token actions clear previous launch feedback. Token submission and
+the persistent usage hint explain quitting/restarting the separate instance after a
+successful update; they do not claim an already-running process reloaded its grant.
+Neither action automatically quits or relaunches either Codex instance.
+
 ## Current call paths
 
 1. The page invokes `agent_snapshot`. The native
