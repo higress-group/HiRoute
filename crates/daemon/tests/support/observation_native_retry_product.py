@@ -40,8 +40,11 @@ def send(product, messages, turn, failed=False, session='native-content-retry', 
                 'X-HiRoute-Routing-Context': encoded({
                     'version': 2, 'agent': 'hermes', 'session_id': session, 'purpose': 'main',
                     'turn_id': turn, 'input': {'kind': 'observed_batch', 'event_id': turn}}).decode()}
-        client.request('POST', '/v1/responses', encoded({
-            'model': product.model_alias, 'input': messages, 'stream': False}), headers)
+        body = {'model': product.model_alias, 'input': messages, 'stream': False}
+        if hermes:
+            body['tools'] = [{'type': 'function', 'name': 'native_probe',
+                              'parameters': {'type': 'object'}}]
+        client.request('POST', '/v1/responses', encoded(body), headers)
         response = client.getresponse()
         raw = response.read()
         product.outputs.append(raw)
