@@ -261,13 +261,24 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
         restore(&desktop_context, &desktop_status["restore_point_ref"]),
         "disable-desktop-with-inherited-home",
     );
+    let restored = service.dispatch_wire(request(
+        "GetAgentConnectionStatus",
+        json!({"schema_version":{"major":2,"minor":0},"context_id":desktop_context}),
+        None,
+    ));
+    assert!(restored.error.is_none(), "{restored:?}");
+    assert_eq!(restored.data.unwrap()["state"], "restored");
     assert!(
         inherited
             .adapter
-            .resolve_active_agent_grant(&format!(
-                "agent-connection/{}",
-                desktop_context.as_str().unwrap()
-            ))
+            .stores_lock()
+            .unwrap()
+            .secrets()
+            .inspect_agent_access_grant(
+                WorkspaceId::DEFAULT,
+                &format!("agent-connection/{}", desktop_context.as_str().unwrap())
+            )
+            .unwrap()
             .is_none()
     );
     assert_eq!(fs::read(&profile).unwrap(), cli_bytes);
