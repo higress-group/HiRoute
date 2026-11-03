@@ -37,3 +37,10 @@ test('the backfilled open-source introduction leaves dated news ahead of it', ()
   assert.equal(posts[introduction].date, undefined);
   assert.ok(posts[0].date, 'the homepage latest-article entry must remain dated news');
 });
+
+test('same-day news keeps its index order', async () => {
+  const order = JSON.parse(await fs.readFile(path.join(newsRoot, 'index.json'), 'utf8')).map(post => post.slug);
+  for (let i = 1; i < posts.length; i++) {
+    if (posts[i - 1].date === posts[i].date) assert.ok(order.indexOf(posts[i - 1].slug) < order.indexOf(posts[i].slug), posts[i].slug);
+  }
+});

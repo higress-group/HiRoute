@@ -15,7 +15,8 @@ for (const post of posts) {
   }
 }
 // Undated backfills follow dated news and do not replace the latest homepage article.
-posts.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '') || a.slug.localeCompare(b.slug));
+// Same-day news keeps its index order, so the index decides which one the homepage features.
+posts.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
 export const newsRoute = (slug, language) => `${language === 'en' ? '/en' : ''}/news/${slug ? slug + '/' : ''}`;
 
 export function articleLink(href) {
