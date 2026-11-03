@@ -143,13 +143,21 @@ def verify_hermes_long_input_source(product, upstream, decisions):
     users = [c for c in page['contents'] if c['direction'] == 'request_input'
              and c['role'] == 'user' and c['kind'] == 'text']
     source = users[-1]
+    # Capture completion precedes the independent asynchronous text index.
+    wait_for(lambda: rows(product,
+        "SELECT 1 FROM observation_text_index_v2 i JOIN content_instances_v2 c "
+        "ON c.workspace_id=i.workspace AND c.content_blob_digest=i.digest "
+        "WHERE c.request_id=? AND c.content_id=? AND i.state='ready'",
+        (first, source['content_id'])), 'long input text index did not become ready')
     body = query(product, 'content', {'request_id': first, 'content_id': source['content_id'],
                                     'cursor': None})
+    assert body['state'] == 'available', body
     assert ''.join(chunk['text'] for chunk in body['chunks']) == current, body
     messages += [
         {'type': 'function_call', 'call_id': 'native-proxy-call', 'name': 'native_probe',
          'arguments': '{}'},
         {'type': 'function_call_output', 'call_id': 'native-proxy-call', 'output': '42'}]
+    upstream.function_tools = False
     continued = send(product, messages, 'hermes-A', session=session, hermes=True)
     assert len(decisions()) == before + 1, 'long tool continuation was reclassified'
     wait_for(lambda: complete_content(product, continued), 'long continuation capture incomplete')
@@ -157,7 +165,6 @@ def verify_hermes_long_input_source(product, upstream, decisions):
                 'message_occurrence_id': source['message_occurrence_id']}
     page = catalog(product, continued)
     assert not page['roots_partial'] and page['input_anchor'] == expected, page
-    upstream.function_tools = False
     messages += [{'role': 'assistant', 'content': 'native product answer'},
                  {'role': 'user', 'content': current}]
     following = send(product, messages, 'hermes-B', session=session, hermes=True)
