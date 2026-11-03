@@ -44,6 +44,8 @@ mod pi_native;
 #[path = "qoder_discovery.rs"]
 mod qoder_discovery;
 pub use pi_native::PiDefaultModel;
+#[path = "desktop_management.rs"]
+mod desktop_management;
 #[path = "settings_discovery.rs"]
 mod settings_discovery;
 

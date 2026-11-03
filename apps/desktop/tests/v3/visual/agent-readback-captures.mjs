@@ -2,6 +2,10 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { evaluate, navigate, waitFor } from './cdp-client.mjs';
 
+async function settled(client) {
+  await evaluate(client, `Promise.all(document.getAnimations().filter(a=>Number.isFinite(a.effect?.getTiming().iterations??1)).map(a=>a.finished.catch(()=>{}))).then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true)))))`);
+}
+
 // Production components/styles, controlled IPC. No native save or latency claim.
 export async function desktopManagementCaptures(client, baseUrl, output) {
   const results=[];
@@ -16,6 +20,7 @@ export async function desktopManagementCaptures(client, baseUrl, output) {
           await evaluate(client,"document.querySelector('[data-agent-facet=management_skill]').click()");
           await waitFor(client,"Boolean(document.querySelector('[role=dialog] [data-agent-management-shared]'))");
         }
+        await settled(client);
         const geometry=await evaluate(client,`(()=>{
           const box=document.querySelector('${state==='editor'?'[role=dialog]':'[data-agent-management]'}');
           const action=box.querySelector('${state==='editor'?'button[type=submit]':'button'}').getBoundingClientRect();
@@ -132,12 +137,13 @@ export async function codexDesktopCaptures(client, baseUrl, output) {
         if (state === 'unconfigured' || state === 'configured') await evaluate(client, `import('/agent-trust-scenarios.mjs').then(m => m.showCodexIndependentDesktop(${state !== 'unconfigured'}))`);
         if (state === 'launch-error') {
           await evaluate(client, `window.agentTrust.handlers.launch_codex_desktop = () => { throw { code: 'CODEX_DESKTOP_LAUNCH_FAILED' }; }; document.querySelector('[data-codex-desktop-launch]').click()`);
-          await waitFor(client, 'Boolean(document.querySelector("[data-error-code=CODEX_DESKTOP_LAUNCH_FAILED]"))');
+          await waitFor(client, 'Boolean(document.querySelector("[data-error-code=CODEX_DESKTOP_LAUNCH_FAILED]") && !document.querySelector("[data-codex-desktop-launch]").disabled)');
         }
         if (state === 'editor') {
           await evaluate(client, `document.querySelector('[data-agent-facet=model]').click()`);
           await waitFor(client, 'Boolean(document.querySelector("[role=dialog]"))');
         }
+        await settled(client);
         const geometry = await evaluate(client, `(() => {
           const box = document.querySelector('[role=dialog]') || document.querySelector('[data-codex-desktop-instance]');
           const button = box.querySelector('button[type=submit]') || box.querySelector('[data-codex-desktop-launch], [data-codex-desktop-configure]');

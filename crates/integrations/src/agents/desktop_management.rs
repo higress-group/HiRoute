@@ -40,7 +40,7 @@ impl FilesystemAgentScannerV1 {
         else {
             return None;
         };
-        super::observed_capabilities::attach_optional_file_capabilities(
+        super::super::observed_capabilities::attach_optional_file_capabilities(
             &mut installation,
             executable.as_deref(),
             target,
