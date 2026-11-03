@@ -1,11 +1,42 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { qualityExecutionKey, qualityModelRows, qualityNativeModelName, qualityReasoningLabel } from '../src/features/plan-quality-state.ts';
+import { qualityAssessmentCoverage, qualityExecutionKey, qualityModelRows, qualityNativeModelName, qualityReasoningLabel } from '../src/features/plan-quality-state.ts';
 
 const configured = (branch, model, profile = 'high') => ({ plan_revision: 1, group: 'regular', candidate_index: 0, branch_id: branch, model_configuration_id: model, reasoning_profile_id: profile, display_name: model + ' readable' });
 const summary = (branch, model, profile = 'high', digest = profile) => ({
   execution: { group: 'regular', candidate_index: 0, plan_revision: 1, selected_branch_id: null, executed_branch_id: branch, model_configuration_id: model, profile_digest: digest, attribution: 'single' },
   reasoning_profile_id: profile, native_model: model, scored_stage_count: 1, unrated_stage_count: 0, average_score: .8,
+});
+
+test('assessment presentation preserves zero scores and distinguishes missing, partial and complete coverage', () => {
+  const sample = { first_turn_ordinal: 1, last_observed_turn_ordinal: 5 };
+  assert.deepEqual(qualityAssessmentCoverage(sample), { state: 'unrated', pending: [[1, 5]] });
+  const full = { target_from_ordinal: 1, target_through_ordinal: 5, score: 0, partial: false };
+  assert.deepEqual(qualityAssessmentCoverage({ ...sample, assessment: full }), { state: 'complete', pending: [] });
+  assert.deepEqual(qualityAssessmentCoverage({ ...sample, assessment: { ...full, partial: true } }), { state: 'partial', pending: [] });
+  for (const partial of [true, false]) {
+    assert.deepEqual(qualityAssessmentCoverage({ ...sample, assessment: { ...full, target_through_ordinal: 4, partial } }),
+      { state: 'partial', pending: [[5, 5]] });
+  }
+});
+
+test('pending ordinal intervals retain both sides and never expand a frozen assessment', () => {
+  const sample = { first_turn_ordinal: 1, last_observed_turn_ordinal: 5 };
+  const assessment = { target_from_ordinal: 2, target_through_ordinal: 4, partial: true };
+  assert.deepEqual(qualityAssessmentCoverage({ ...sample, assessment }), { state: 'partial', pending: [[1, 1], [5, 5]] });
+  assert.deepEqual(qualityAssessmentCoverage({ ...sample, assessment: { ...assessment, target_through_ordinal: 9 } }),
+    { state: 'partial', pending: [[1, 1]] });
+  for (const [from, through] of [[6, 9], [0, 0]]) {
+    assert.deepEqual(qualityAssessmentCoverage({ ...sample, assessment: { ...assessment, target_from_ordinal: from, target_through_ordinal: through } }),
+      { state: 'partial', pending: [[1, 5]] });
+  }
+});
+
+test('large histories produce at most two pending intervals without enumerating turns', () => {
+  const last = Number.MAX_SAFE_INTEGER;
+  const sample = { first_turn_ordinal: 1, last_observed_turn_ordinal: last,
+    assessment: { target_from_ordinal: 2, target_through_ordinal: last - 1, partial: false } };
+  assert.deepEqual(qualityAssessmentCoverage(sample), { state: 'partial', pending: [[1, 1], [last, last]] });
 });
 
 test('published order survives a higher score and the same model in other groups or reasoning profiles', () => {

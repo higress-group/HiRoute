@@ -48,6 +48,30 @@ export type QualityModelRow = {
   summary?: QualityModelSummary;
 };
 
+/** A frozen assessment can cover only part of a still-growing stage. Ordinal
+ * gaps identify pending turns; partial evidence within that range does not.
+ * Keep ranges bounded instead of enumerating a potentially long history.
+ */
+export function qualityAssessmentCoverage(sample: {
+  first_turn_ordinal: number;
+  last_observed_turn_ordinal: number;
+  assessment?: { target_from_ordinal: number; target_through_ordinal: number; partial: boolean } | null;
+}): { state: 'unrated' | 'partial' | 'complete'; pending: [number, number][] } {
+  const first = sample.first_turn_ordinal;
+  const last = sample.last_observed_turn_ordinal;
+  const assessment = sample.assessment;
+  if (!assessment) return { state: 'unrated', pending: [[first, last]] };
+  const from = assessment.target_from_ordinal;
+  const through = assessment.target_through_ordinal;
+  const pending: [number, number][] = [];
+  if (through < first || from > last) pending.push([first, last]);
+  else {
+    if (from > first) pending.push([first, from - 1]);
+    if (through < last) pending.push([through + 1, last]);
+  }
+  return { state: assessment.partial || pending.length > 0 ? 'partial' : 'complete', pending };
+}
+
 export function qualityExecutionKey(execution: QualityExecution): string {
   return JSON.stringify([
     execution.plan_revision, execution.selected_branch_id, execution.executed_branch_id,

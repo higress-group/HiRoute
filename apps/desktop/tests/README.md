@@ -254,7 +254,11 @@ actual feed/default/price effects.
 
 ## Session quality presentation
 
-Session quality names come from the exact retained execution request (same session and request ID), then the current configuration display name when available. Opaque configuration/branch IDs belong in diagnostic tooltips, not primary labels. Mixed or unknown attribution must not be presented as one model. History gaps and partial assessment evidence remain separate visible flags; an unrated stage is not assigned a score.
+Verified Worker executor names use retained Run relations rather than native Agent configuration ownership. The session list, selected heading, search results and Home reuse the same labels. Shared query regressions cover every supported harness, Continue, reopening, missing/conflicting links and authorized Run/time subsets; browser regressions reject an executor being hidden as an unlinked Agent. Unknown identities do not acquire configuration navigation.
+
+Session quality names come from the exact retained execution request (same session and request ID), then the current configuration display name when available. Opaque configuration/branch IDs belong in diagnostic tooltips, not primary labels. Mixed or unknown attribution must not be presented as one model. History gaps and partial assessment evidence remain separate visible flags. Absent assessments display unrated; partial assessments retain their raw score and are labelled separately from complete scores. Visible target and pending ranges do not broaden a frozen score or admit partial evidence to complete-score averages. An incomplete assessment spanning the full ordinal range leaves pending turns unknown.
+
+`node tests/v3/visual/session-window.mjs <output> --assessment-coverage` checks the production stage cards at default/minimum content viewports and an intermediate split-pane width in Chinese/English and light/dark themes, collapsed and expanded. Its regression rejects hidden partial scores, invented scores for missing assessments, lost zero scores, misleading coverage, and long diagnostic identities pushing the score outside the viewport. Controlled IPC evidence supplements, but does not replace, the original-session Web console acceptance.
 
 `plan-quality-models.test.mjs` protects evidence identity, missing evidence and request deduplication. The session-window browser scenarios exercise the real Sessions/PlanQuality wiring, both model stages, coverage flags, unrated copy and evidence navigation; these are mock IPC checks, not native or model-quality evidence.
 

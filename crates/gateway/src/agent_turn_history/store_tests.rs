@@ -65,6 +65,9 @@ mod concurrent_requests;
 #[path = "admission_contention_tests.rs"]
 mod admission_contention;
 
+#[path = "input_anchor_tests.rs"]
+mod input_anchor;
+
 #[path = "native_retry_tests.rs"]
 mod native_retry;
 #[path = "stage_closure_tests.rs"]

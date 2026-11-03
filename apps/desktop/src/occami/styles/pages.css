@@ -441,7 +441,7 @@ button.list-row { width: 100%; border-top: 0; border-right: 0; border-left: 0; c
 .quality-stage-heading { margin-bottom: 14px; }
 .quality-stage-heading span { display: block; margin-top: 5px; }
 .quality-list { display: grid; gap: 12px; }
-.quality-row { padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-soft); }
+.quality-row { min-width: 0; overflow-wrap: anywhere; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-soft); }
 .quality-row-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .quality-row-main { min-width: 0; }
 .quality-row-main strong, .quality-row-main span { display: block; }

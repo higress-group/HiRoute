@@ -20,6 +20,7 @@ a prerequisite, not a model call, installed Skill invocation or resumable task.
 | Publish a Plan for Worker delegation | [CLI Plan choices](../../crates/cli/src/quickstart/preview.rs), [shared defaults](../../crates/application/src/routing/editor_options.rs), [domain publication rules](../../crates/domain/src/routing/authoring.rs) | [Installed CLI selection, publication and Restore](../../crates/daemon/tests/support/quickstart_worker_plan.py) |
 | Set Codex parallel tool calls | [Route limits](../../crates/domain/src/routing/strategy.rs), [shared user/Worker catalog projection](../../crates/integrations/src/agents/codex_catalog_plan.rs), [collapsed advanced controls](../../apps/desktop/src/features/PlanRuntimeSettings.tsx) | [Default/override and retained native entries](../../crates/integrations/src/agents/codex_catalog_plan_tests.rs), [draft/reopen interaction](../../apps/desktop/tests/v3/browser/plan-editor-ux.tsx) |
 | Enable, edit or disable task collaboration independently | [CLI intent workflow](../../crates/cli/src/collaboration.rs), [Skill effects](../../crates/application/src/agent_connection), [shared session checks](../../crates/product-session/src/agent_check_session.rs) | [CLI workflow regressions](../../crates/cli/src/collaboration/tests.rs), [real main-Agent → public CLI → Worker journey](../../crates/daemon/tests/support/collaboration_product.py) |
+| Name the actual executor in retained sessions | [Authorized session summary](../../crates/observation/src/query_v2/sessions.rs), [verified Run relations](../../crates/observation/src/query_v2/relation.rs), [shared session labels](../../apps/desktop/src/features/session-correlation.ts) | [Scoped/mixed/reopen executor reads](../../crates/observation/src/query_v2/sessions_tests.rs), [production list and heading scenarios](../../apps/desktop/tests/v3/browser/session-window-scenarios.mjs), [Home projection](../../apps/desktop/tests/agent-presentation.test.mjs); executor names do not invent managed Agent ownership |
 
 Qoder/Pi/DSH/OpenCode saved models use one owned provider per Plan with an explicit
 Responses/Messages choice. [Route grants](../../crates/domain/src/agents/model_grant.rs)
@@ -69,6 +70,13 @@ and older User-role projections against the complete final User scope. Unknown
 producers still lose the optional input proof. Native failed-request retry association belongs to the
 [shared history owner](../../crates/gateway/src/agent_turn_history/store/retry.rs),
 not to the DSH adapter or a session-wide lock.
+
+Codex's [native metadata parser](../../crates/gateway/src/context_hold/routing/codex.rs)
+validates coherent protocol identities and windows independently of User-Agent
+versions. Its [Responses input adapter](../../crates/gateway/src/adapters/responses_ingress.rs)
+recognizes empty output probability metadata already accepted by the response
+parser; unknown/nonempty enrichment stays opaque. [ACP listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_acp_history.rs)
+cover replayed commentary, tool continuation and complete next-stage assessment.
 
 Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
 explains native provider-scoped session discovery before enabling routing. Default

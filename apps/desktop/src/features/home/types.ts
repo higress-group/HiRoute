@@ -114,6 +114,7 @@ export type HomeSession = {
   title: string;
   agentId?: string;
   agentName?: string;
+  executor?: string | null;
   modelLabel?: string;
   occurredAtMs?: number;
   occurredAtLabel: string;

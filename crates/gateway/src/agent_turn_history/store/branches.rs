@@ -26,6 +26,7 @@ impl From<HistoryRelation> for hiroute_domain::HistoryRelationV1 {
 
 pub(super) struct BranchAdmission {
     capture_input_start: Option<usize>,
+    capture_turn_anchor: Option<String>,
     pub(super) key: AgentTurnHistoryKey,
     pub(super) scope: AgentTurnHistoryKey,
     pub(super) relation: HistoryRelation,
@@ -249,6 +250,28 @@ impl AgentTurnHistoryStore {
         } else {
             HistoryRelation::Root
         };
+        // Exact request-prefix evidence can retain an archived input occurrence
+        // even when its response edge cannot prove execution continuity. Require
+        // one agreed source at the same input position; never join by native ID
+        // or matching text. The public reader still verifies retained content.
+        let capture_turn_anchor = {
+            let mut sources = inner.scope_entries(scope).filter_map(|(_, entry)| {
+                (analyzed.current_input_start.is_some()
+                    && analyzed.current_input_start == entry.checkpoint.input_start
+                    && analyzed.message_count > entry.checkpoint.message_count
+                    && analyzed
+                        .turns
+                        .last()
+                        .is_some_and(|turn| turn.user_index == entry.checkpoint.active_user_index)
+                    && super::opening::request_prefix(&entry.checkpoint, analyzed)
+                        == super::opening::RequestPrefix::Match)
+                    .then_some(&entry.checkpoint.capture_turn_anchor)
+            });
+            sources
+                .next()
+                .filter(|first| sources.all(|next| next == *first))
+                .cloned()
+        };
         let mut completed = None;
         let sealed_key = selected.filter(|_| !reusable).map(|c| c.0.clone());
         if let Some(key) = &sealed_key {
@@ -340,6 +363,7 @@ impl AgentTurnHistoryStore {
         }
         Ok(BranchAdmission {
             capture_input_start,
+            capture_turn_anchor,
             key,
             scope: scope.clone(),
             relation,
@@ -413,8 +437,16 @@ impl AgentTurnHistoryStore {
         // A visible projection is enough for actual-stage capture, never for
         // provider affinity or provider-state cleanup authorization.
         ticket.capture_input_start = selection.capture_input_start;
+        if let Some(anchor) = selection.capture_turn_anchor {
+            entry.checkpoint.capture_turn_anchor = anchor.clone();
+            ticket.capture_turn_anchor = anchor;
+        }
         ticket.allow_affinity = !selection.projected && !selection.retry;
         if !selection.forked || selection.seed.is_empty() {
+            let old = entry.accounted_bytes;
+            entry.accounted_bytes = entry_bytes(&selection.key, entry);
+            let new = entry.accounted_bytes;
+            inner.replace_accounting(old, new);
             return Ok(());
         }
         entry.closed = selection.seed;

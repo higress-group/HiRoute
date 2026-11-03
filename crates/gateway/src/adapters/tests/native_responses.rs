@@ -1,4 +1,49 @@
 use super::*;
+use serde_json::Value;
+
+#[test]
+fn empty_output_probability_metadata_is_modeled_without_trusting_unknown_state() {
+    for value in [
+        None,
+        Some(Value::Null),
+        Some(json!([])),
+        Some(json!([{"token":"synthetic","logprob":-0.2}])),
+        Some(json!(false)),
+        Some(json!({})),
+    ] {
+        let mut part =
+            json!({"type":"output_text","text":"Synthetic commentary.","annotations":[]});
+        if let Some(value) = &value {
+            part["logprobs"] = value.clone();
+        }
+        let body = json!({"model":"alias","input":[
+            {"role":"user","content":"Synthetic task"},
+            {"role":"assistant","phase":"commentary","content":[part]}
+        ]});
+        let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+        let empty = value
+            .as_ref()
+            .is_none_or(|value| value.is_null() || value.as_array().is_some_and(Vec::is_empty));
+        assert_eq!(request.native_only, !empty, "{value:?}");
+        assert_eq!(
+            request.native_history_layout().unwrap()[1].modeled,
+            empty,
+            "{value:?}"
+        );
+        let native = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+        assert_eq!(
+            project_candidate_request(&request, &native).unwrap().body["input"],
+            body["input"]
+        );
+    }
+    for (key, value) in [("logprobs", json!([])), ("future_metadata", Value::Null)] {
+        let mut part = json!({"type":"input_text","text":"Synthetic task"});
+        part[key] = value;
+        let body = json!({"model":"alias","input":[{"role":"user","content":[part]}]});
+        let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+        assert!(request.native_only && !request.native_history_layout().unwrap()[0].modeled);
+    }
+}
 
 #[test]
 fn native_codex_peer_messages_preserve_wire_without_fabricating_user_history() {

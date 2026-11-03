@@ -921,7 +921,7 @@ impl ProductionGatewayRuntime {
                 input_capture_current,
                 agent_turn_guard
                     .as_ref()
-                    .map(|guard| guard.ticket().agent_turn_id.clone()),
+                    .map(|guard| guard.ticket().capture_turn_anchor.clone()),
             );
             request_observation.capture_request_async(&canonical_request, &replay);
             drop(routing_view);

@@ -291,14 +291,24 @@ fn decode_responses_content(
             let object = value
                 .as_object()
                 .ok_or(ModelIrError::InvalidField("content[]"))?;
-            match required_string(object, "type")?.as_str() {
+            let kind = required_string(object, "type")?;
+            match kind.as_str() {
                 "input_text" | "output_text" => {
                     ensure_keys(
                         context,
                         object,
-                        &["type", "text", "annotations"],
+                        &["type", "text", "annotations", "logprobs"],
                         "responses text",
                     )?;
+                    // Responses emits empty probability metadata, which Codex
+                    // retains in replayed output_text. It supplies no history
+                    // content. Keep nonempty/unknown shapes opaque as before.
+                    if object.get("logprobs").is_some_and(|value| {
+                        kind != "output_text"
+                            || !(value.is_null() || value.as_array().is_some_and(Vec::is_empty))
+                    }) {
+                        context.mark_native_only();
+                    }
                     Ok(ContentPart::Text {
                         text: content_string(object, "text")?,
                     })

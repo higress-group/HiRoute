@@ -58,6 +58,129 @@ fn wire(protocol: IngressProtocol, reasoning: Option<&str>) -> serde_json::Value
 }
 
 #[test]
+fn chat_replayed_reasoning_and_text_fields_keep_the_accepted_boundary() {
+    for allowance in [0, 8 * 1024, 64 * 1024] {
+        let (_dir, replay) = super::replay();
+        let proof = accepted("actual reasoning", true).evidence().unwrap();
+        let request = super::reasoning_boundary::production_request_for(
+            IngressProtocol::ChatCompletions,
+            &wire(IngressProtocol::ChatCompletions, Some("actual reasoning")),
+            &replay,
+            allowance,
+        );
+        let incoming =
+            incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default()).unwrap();
+        assert_eq!(
+            proof.matches(incoming),
+            Some(true),
+            "Chat fields preserve exact payloads without an ordered reasoning/text claim"
+        );
+    }
+}
+
+#[test]
+fn chat_field_projection_still_requires_exact_text_reasoning_and_tools() {
+    for allowance in [0, 64 * 1024] {
+        let (_dir, replay) = super::replay();
+        let mut capture = accepted("actual reasoning", true);
+        capture.accept(&ModelEvent::ToolCallStarted {
+            index: 2,
+            logical_id: "call".into(),
+            native_id: "call".into(),
+            tool_kind: ToolKindV1::Function,
+            namespace: None,
+            name: "read".into(),
+            owner: Box::new(super::accepted_output::owner()),
+            item_id: None,
+        });
+        capture.accept(&ModelEvent::ToolCallFinished {
+            index: 2,
+            logical_id: "call".into(),
+            tool_kind: ToolKindV1::Function,
+            namespace: None,
+            name: "read".into(),
+            arguments: json!({"path":"fixture"}),
+            encrypted_function_args: None,
+            status: ResponseItemStatus::Completed,
+        });
+        let proof = capture.evidence().unwrap();
+        let mut body = wire(IngressProtocol::ChatCompletions, Some("actual reasoning"));
+        body["messages"][0]["tool_calls"] = json!([{"id":"call","type":"function",
+            "function":{"name":"read","arguments":"{\"path\":\"fixture\"}"}}]);
+        for mutation in 0..7 {
+            let mut changed = body.clone();
+            match mutation {
+                1 => changed["messages"][0]["content"] = json!("changed visible text"),
+                2 => changed["messages"][0]["reasoning_content"] = json!("changed reasoning"),
+                3 => changed["messages"][0]["tool_calls"][0]["id"] = json!("different-call"),
+                4 => {
+                    changed["messages"][0]["tool_calls"][0]["function"]["arguments"] =
+                        json!("{\"path\":\"changed\"}")
+                }
+                5 => changed["messages"][0]["unknown_state"] = json!("opaque"),
+                6 => {
+                    changed["messages"][0]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("tool_calls");
+                }
+                _ => {}
+            }
+            let request = super::reasoning_boundary::production_request_for(
+                IngressProtocol::ChatCompletions,
+                &changed,
+                &replay,
+                allowance,
+            );
+            let matched =
+                incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default())
+                    .and_then(|incoming| proof.matches(incoming));
+            assert_eq!(
+                matched,
+                (mutation == 0).then_some(true),
+                "mutation {mutation}"
+            );
+        }
+    }
+}
+
+#[test]
+fn chat_field_projection_does_not_reorder_ordered_protocols_or_merge_reasoning_blocks() {
+    let (_dir, replay) = super::replay();
+    let proof = accepted("actual reasoning", true).evidence().unwrap();
+    for protocol in [IngressProtocol::Responses, IngressProtocol::Messages] {
+        let mut body = wire(protocol, Some("actual reasoning"));
+        match protocol {
+            IngressProtocol::Responses => body["input"].as_array_mut().unwrap().swap(0, 1),
+            _ => body["messages"][0]["content"]
+                .as_array_mut()
+                .unwrap()
+                .swap(0, 1),
+        }
+        let request =
+            super::reasoning_boundary::production_request_for(protocol, &body, &replay, 0);
+        let incoming =
+            incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default()).unwrap();
+        assert!(proof.matches(incoming).is_none());
+    }
+    let mut capture = accepted("actual ", true);
+    capture.accept(&ModelEvent::ReasoningFinished {
+        index: 2,
+        text: "reasoning".into(),
+        status: ResponseItemStatus::Completed,
+    });
+    let request = super::reasoning_boundary::production_request_for(
+        IngressProtocol::ChatCompletions,
+        &wire(IngressProtocol::ChatCompletions, Some("actual reasoning")),
+        &replay,
+        0,
+    );
+    let incoming =
+        incoming_evidence(&request, 0, &replay, &mut FingerprintBudget::default()).unwrap();
+    assert!(capture.evidence().unwrap().matches(incoming).is_none());
+}
+
+#[test]
 fn omitted_plaintext_is_only_a_visible_projection_with_bounded_actual_content() {
     for protocol in [
         IngressProtocol::Responses,

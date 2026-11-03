@@ -692,8 +692,22 @@ observed-input capture from their current usable request. Gateway restart discar
 in-memory history: it SHALL NOT import an old summary or claimed prior output as
 accepted execution. New A and B in that same session SHALL be classified and
 captured, and B SHALL be able to evaluate A's newly accepted execution. Uncaptured
-older context remains partial. Counter rollback and unsupported producers disclose
-uncertainty rather than permanently disabling smart routing.
+older context remains partial. Counter rollback and unsupported protocol shapes disclose
+uncertainty rather than permanently disabling smart routing. Codex native turn and
+window evidence SHALL be validated by coherent protocol fields, independently of
+User-Agent names or exact client versions. This evidence alone grants neither
+accepted-response continuity nor verified human origin. Known empty `output_text.logprobs`
+metadata (`null` or `[]`) SHALL have the same absence semantics in response parsing
+and replayed history. It SHALL NOT make an otherwise exact accepted continuation
+unverifiable. Nonempty or unrecognized enrichment remains opaque; this does not
+authorize ignoring changed text, tool arguments, identity or unknown history fields.
+
+Chat Completions replays plaintext reasoning and visible content as separate fields,
+without preserving their relative stream arrival order. A single complete reasoning
+block with the same bytes and the same ordered visible text/tool evidence MAY retain
+the accepted execution as a contextual projection. This does not establish provider
+state affinity or permit reasoning changes, opaque state, merged reasoning blocks,
+changed tool identities/arguments, or reordering in Responses or Messages history.
 
 The current C protocol may supply readable replayed User/Assistant text before
 the current input as separate request background, as specified in
