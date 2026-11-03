@@ -7,7 +7,7 @@ HiRoute CLI 让你在终端连接模型、配置路由、接入 Agent、查看�
 ## 安装与检查
 
 - macOS 桌面应用：打开“设置” → “CLI” → “终端入口”，选择“安装”。
-- Windows 桌面应用（0.5.0+）：当前用户安装包自带 CLI，可选择将入口加入 PATH。按 [Windows 安装指南](/docs/install-windows/)安装后打开新终端。
+- Windows 桌面应用：当前用户安装包自带 CLI，可选择将入口加入 PATH。按 [Windows 安装指南](/docs/install-windows/)安装后打开新终端。
 - Linux：按 [Linux Web UI 与 CLI 安装](/docs/install-linux/)使用官网一行命令安装，再手动启动服务。
 
 如果 PATH 不包含入口目录，把下面一行加入 shell 配置后重新打开终端：
@@ -49,7 +49,7 @@ Quickstart 只读当前服务、准确的配置目标、可复用的模型来源
 3. 用 `routing options --request-stdin` 输入 `{}`，获取当前绑定 ID。可选择 `--mode fixed_model --model BINDING_ID`，也可直接创建按难度分流组合：
 
    ```sh
-   hiroute routing preview --name '日常省钱' --purpose '处理日常和复杂开发任务' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route-apply.json
+   hiroute routing preview --name '日常开发' --purpose '处理日常和复杂开发任务' --mode smart_saving --economy ECONOMY_BINDING --primary PRIMARY_BINDING --decision local_rules --apply-file route-apply.json
    hiroute routing apply --request-file route-apply.json
    ```
 
@@ -76,13 +76,25 @@ Apply 文件为新建的私有文件，不会覆盖已有文件，包含准确�
 
 ### 通过 CLI 接入决策模型
 
-先运行 `hiroute decision services options`，优先复用明确选定的已保存 `ID@REVISION`。
-“已保存”不代表当前可用。安装包预设包括百炼 Token Plan/业务空间、OpenRouter、TypeSafe，
-以及 System One 兼容和自定义扩展；预设不保证供应商当前可用、账号权限或价格。
-按返回的必填项补充工作空间/兼容接入的地址和模型。普通 Chat 执行模型不是决策服务，
-本地规则仍是可以明确选择的另一条路径。
+先运行 `hiroute decision connections options`，查看安装包预设和已保存的连接，优先复用明确选定的已保存 `ID@REVISION`。
+“已保存”不代表当前可用。安装包预设包括百炼 Token Plan/业务空间、OpenAI、OpenRouter、TypeSafe，
+以及兼容接入和自定义扩展；预设不保证供应商当前可用、账号权限或价格。
+按返回的必填项补充工作空间/兼容接入的地址和模型；兼容接入还要用 `--wire-protocol system_one|openai_decisions` 明确协议。
+普通 Chat 执行模型不是决策服务，本地规则仍是可以明确选择的另一条路径。
 
-凭证由用户在聊天之外录入。在 HiRoute 所在机器上，使用自己的终端（例如独立 SSH 会话）执行，
+如果已经接入了对应供应商的 API，可以直接复用其中的 Key，不需要再录入凭证。用 `decision sources list` 找到这个接入，
+新建连接时加上 `--source SOURCE_ID`；接入里的 Key 或网络设置变化会用于之后的调用，无需重新发布：
+
+```sh
+hiroute decision sources list --output json
+hiroute decision connections apply --id routing-decision --name '路由决策' --provider openai --source SOURCE_ID --apply-file decision-connection-apply.json
+hiroute decision connections apply --request-file decision-connection-apply.json
+hiroute decision connections test --service routing-decision@SAVED_REVISION
+```
+
+上下文窗口默认按模型元信息自动确定；需要时用 `--context-window-tokens N` 自定义总窗口。
+
+不复用 API 接入时，凭证由用户在聊天之外录入。在 HiRoute 所在机器上，使用自己的终端（例如独立 SSH 会话）执行，
 将候选引用换成新的非敏感标识：
 
 ```sh
@@ -95,9 +107,9 @@ hiroute protected-input register --candidate CANDIDATE_REF --prompt --format bea
 仅将登记是否成功告诉 Agent，它可用同一引用继续；Desktop 用户也可使用已有密码输入框。
 
 ```sh
-hiroute decision services apply --id daily-decision --name '日常决策' --provider typesafe --candidate CANDIDATE_REF --apply-file decision-apply.json
-hiroute decision services apply --request-file decision-apply.json
-hiroute decision services test --service daily-decision@SAVED_REVISION
+hiroute decision connections apply --id daily-decision --name '日常决策' --provider typesafe --candidate CANDIDATE_REF --apply-file decision-apply.json
+hiroute decision connections apply --request-file decision-apply.json
+hiroute decision connections test --service daily-decision@SAVED_REVISION
 hiroute routing preview --plan PLAN_ID --decision-service daily-decision@SAVED_REVISION --apply-file decision-route-apply.json
 hiroute routing apply --request-file decision-route-apply.json
 ```
@@ -143,7 +155,7 @@ hiroute routing apply --help
 
 - `compute scan/list/show` 发现和读取模型来源；`compute connection options/test/preview/apply/authorize` 检查并保存连接。
 - `models show` 查看候选模型能力。
-- `decision services list/apply/test` 管理决策模型或自定义扩展的已保存连接版本。
+- `decision connections options/list/apply/test` 管理决策模型或自定义扩展的已保存连接版本，`decision sources list` 列出可复用的 API 接入；原有的 `decision services list/apply/test` 仍可使用。
 - `routing options/list/show/preview/apply` 创建、更新并发布智能路由。
 - `agents scan/list/check` 发现本机 Agent；`agents connect preview/apply/status` 接入，`agents restore preview/apply` 恢复。
 - `operations find/get` 在保存请求已发出、但结果未收到时，查询原操作是否已经完成。
@@ -154,11 +166,11 @@ hiroute routing apply --help
 2. 用 `preview` 查看变更，保留返回的摘要和版本号（revision）。
 3. 用 `apply` 提交同一份变更，带上这些值和固定的幂等键（idempotency key，用来识别同一次提交，避免重复执行）。
 
-模型、路由和 Agent 分别有 `preview`、`apply` 命令。决策连接是例外：两个步骤都使用 `decision services apply`，见下一节。密码或 API Key 通过 `protected-input` 传入，不放进普通 JSON、命令参数或日志。
+模型、路由和 Agent 分别有 `preview`、`apply` 命令。决策连接是例外：预览和提交都使用同一个 `apply` 命令，见下一节。密码或 API Key 通过 `protected-input` 传入，不放进普通 JSON、命令参数或日志。
 
 ## 管理决策连接
 
-CLI 保留 `decision services` 命令名；桌面应用将这些连接放在“模型 → 决策模型”中。内置决策模型和自定义扩展独立于实际执行任务的通用模型：
+桌面应用在“模型 → 决策模型”中管理这些连接。CLI 用 `decision connections list/apply/test` 管理决策连接，包括复用 API 接入、选择协议和设置上下文窗口，用法见上文“通过 CLI 接入决策模型”。原有的 `decision services` 命令保留原来的请求格式，已有连接和发布快照仍然可读。内置决策模型和自定义扩展独立于实际执行任务的通用模型。下面说明 `decision services` 的请求格式：
 
 ```sh
 hiroute decision services list --output json
@@ -214,7 +226,7 @@ hiroute worker executors
 hiroute worker plans
 ```
 
-`worker executors` 列出本机执行 Agent 的可用状态；`worker plans` 列出当前 Agent 获准使用的已发布计划。选择通过依赖检查的执行 Agent，并使用命令返回的计划 ID，不要用显示名称代替。
+`worker executors` 列出本机执行 Agent 的可用状态；`worker plans` 列出本机服务中所有已发布并允许任务委派的计划。选择通过依赖检查的执行 Agent，并使用命令返回的计划 ID，不要用显示名称代替。
 
 ## 启动任务
 
@@ -228,6 +240,8 @@ hiroute worker exec \
 ```
 
 输入必须来自 `--` 后的文本、`--file` 文件或标准输入三者之一。`--cwd` 会转换为绝对路径，但它不是目录授权或并发锁。
+
+提交后，`exec` 会等待任务的下一次进展，最多 30 秒，然后返回当前状态；任务已经成功结束时直接带上结果。`--wait-timeout` 可把这段等待设为 1–30 秒，`--no-wait` 提交后立即返回。`--run-timeout` 限制任务本身的运行时间，范围 1–86400 秒，默认 3600 秒。委派任务使用 `approve-all` 权限策略运行，不逐项审批工具调用。
 
 `--submission-key` 是调用者选择的幂等键。新任务应使用新的值。若连接或进程中断后无法确定这次任务是否被接受，使用原来的键查询，不要换一个新键直接重试：
 

@@ -9,10 +9,11 @@ the task conditions and model groups; HiRoute applies them on each new user turn
 ## Connect a decision model
 
 1. Open **Models → Decision models** and add a connection. Built-in connections
-   support **Bailian**, **OpenRouter Jev**, **TypeSafe**, and compatible System One
-   endpoints.
-2. Enter the provider, model, complete endpoint and credential, then save and test
-   the connection.
+   support **Bailian**, **OpenAI**, **OpenRouter Jev**, **TypeSafe**, and compatible
+   endpoints that use the System One or OpenAI decisions protocol.
+2. Choose the credential source: reuse the keys of an existing API connection, or
+   enter a key for this decision model only. Confirm the model, complete endpoint
+   and protocol, then save and test the connection.
 3. Select the saved connection in a routing plan and configure difficulty routing or
    custom task branches with their execution models.
 4. Publish the plan to apply it. Editing a connection or a draft takes effect only
@@ -20,7 +21,9 @@ the task conditions and model groups; HiRoute applies them on each new user turn
 
 Built-in decision models need no self-hosted service. The connection test checks
 the saved connection's transport and required response fields with synthetic input;
-it does not establish the accuracy of decisions on your tasks.
+it does not establish the accuracy of decisions on your tasks. The context window
+follows the model metadata automatically: current input and decision questions take
+priority, and history uses the remaining space.
 
 A **custom extension** is an optional HTTP service that integrates its own provider
 and chooses the category and regular/primary group from the route shape sent by HiRoute. Its optional stage score is used only for observation. Add it
@@ -35,13 +38,15 @@ is a deployable reference implementation.
 | Difficulty routing | Whether the current task is simple or complex | Economy and primary groups |
 | Custom branches | The current task category, then its required degree when it has two groups | Regular models and optional primary models per category |
 
-For built-in decision models, category, degree and competence answer different questions:
+With a built-in decision model, each new message gets three independent answers along the task's timeline:
 
 | Question | Example | Effect |
 | --- | --- | --- |
-| What is the current task? | Writing or reviewing an article | Select one task branch |
-| What degree of work does this task require? | A local wording edit or a full argument review | Select a model group within that branch |
-| How well did the preceding stage perform? | A draft has useful structure but unsupported claims | Record competence and, when applicable, protect the next turn with primary models |
+| How did the last step go? | A draft has useful structure but unsupported claims | A competence score that also feeds model reports and trust suggestions |
+| How hard is this step? | A local wording edit or a full argument review | A simple probability; only simple-enough work can go to the regular group |
+| Will the last step's problem carry into the next? | Evidence the last step missed is still needed now | If it does, low-score protection hands the turn to primary; if not, protection is released and difficulty decides |
+
+HiRoute applies the published plan's thresholds, chooses the group and runs it, so you can retune routing without rewriting prompts. Custom branches first decide which category the current task belongs to, such as writing or reviewing, and then choose a model group within that category.
 
 For custom branches, overlapping conditions are resolved by the current request's
 main intent; no match uses the configured default branch. A category with only
@@ -51,7 +56,7 @@ Difficulty routing uses one task scope, so simple and complex are not separate t
 ## How HiRoute selects and executes models
 
 For a built-in decision model with two groups, regular/economy models are selected when this call's
-simple probability meets the threshold (default **0.8**) and there is no applicable
+simple probability meets the threshold (set by trust; **0.8** by default for a new plan) and there is no applicable
 complete score below the competence floor (default **0.5**). Otherwise HiRoute
 selects primary models. Low-score protection uses only a fresh score for the
 preceding actual stage with the same category, published plan version and assessment
@@ -61,9 +66,10 @@ triggers low-score protection. A saved old score does not become a fresh low sco
 on later turns. A writing score does not upgrade a review task.
 
 With valid difficulty, HiRoute evaluates an eligible low score regardless of whether
-the task is simple or complex. Native applicability below 0.5 releases the
-historical constraint; the difficulty result still determines the group, so complex
-work remains Primary. Unavailable applicability retains protection. The previous
+the task is simple or complex. Earlier problem relevance below 0.5 means the last
+step's problem does not carry into this one. It releases the historical constraint;
+the difficulty result still determines the group, so complex work remains Primary.
+Unavailable relevance retains protection. The previous
 actual stage may itself have used Primary; that never creates a third group.
 
 Each new user message is decided again and may choose either group. Tool
@@ -86,8 +92,13 @@ when configured.
 
 ## Adjust judgment settings and inspect results
 
-For built-in decision models, advanced judgment settings start collapsed. Expand them to edit the simple/complex
-criteria, thresholds, assessment instructions and the **0 / 0.5 / 1** competence
+For built-in decision models, **Trust** in the route editor sets how much work goes
+to the regular group: further right sends more tasks to Regular. It is saved as a
+simple-probability threshold, with five presets, **Trial** (0.9), **Familiar** (0.8),
+**Trusted** (0.65), **Hands-off** (0.5) and **Entrusted** (0), or an exact value.
+Applicable low-score protection applies at every level. Judgment settings start
+collapsed. Expand them to edit the simple/complex criteria, competence floor
+(default **0.5**), assessment instructions and the **0 / 0.5 / 1** competence
 anchors. Category conditions describe task intent, degree conditions describe work
 within a category, and competence standards assess work that has already happened.
 

@@ -8,6 +8,8 @@ import { RoutingPage } from './src/product/RoutingPage';
 import { HomeNavigation } from './src/features/home/HomeNavigation';
 import { PresentationRoot } from './src/ui/PresentationRoot';
 import { decisionDocsData, queryDocsSamples, type DocsQualityQuery } from './decision-docs-data';
+import { fixturePlanAuthoring } from './tests/v3/browser/product-fixtures';
+import { fixtureDecisionContext } from './tests/v3/browser/decision-context-fixture';
 import './src/occami/styles.css';
 
 const params = new URLSearchParams(location.search);
@@ -19,12 +21,36 @@ const captureCalls: string[] = [];
 Object.assign(window, { __DECISION_DOCS__: { samples, captureCalls }, __TAURI_INTERNALS__: {
   invoke: async (command: string, args?: { request?: { intent: { view: string; query: DocsQualityQuery } } }) => {
     captureCalls.push(command);
-    if (command === 'plan_editor_options') return options;
+    if (command === 'plan_editor_options') {
+      // The editor seeds from the current authoring projection of the selected plan.
+      const planId = (args as { input?: { authoring?: { plan_id?: string } } } | undefined)?.input?.authoring?.plan_id;
+      return { ...options, authoring: fixturePlanAuthoring([plan, customPlan].find(item => item.agent_plan_id === planId)) };
+    }
     // Documentation records use independent keys; digests are fixed placeholders read only by diagnostics.
-    if (command === 'decision_services_v2') return { services: services.map((service, index) => ({ service, configuration_digest: `sha256:${String(index + 1).repeat(64)}`, credential_state_revision: `sha256:${'a'.repeat(64)}`, source: null, related_sources: [] })) };
+    if (command === 'decision_services_v3') return { schema: 'hiroute.decision-services/v3', services: services.map((service, index) => ({ service, configuration_digest: `sha256:${String(index + 1).repeat(64)}`, credential_state_revision: `sha256:${'a'.repeat(64)}`, source: null, related_sources: [] })) };
     if (command === 'decision_connection_sources') return { sources: [] };
+    if (command === 'agent_model_associations') return { complete: true, agents: [] };
+    if (command === 'preview_decision_context') return fixtureDecisionContext((args as unknown as { input: Parameters<typeof fixtureDecisionContext>[0] }).input);
     if (command === 'compute_management_snapshot') return { sources: [{ display_name: 'Bailian', display_template_id: 'bailian-token-plan', models: models.map(m => ({ binding_id: m.model_configuration_id })) }] };
     if (command === 'observation_read' && args?.request?.intent.view === 'plan_quality') return queryDocsSamples(samples, args.request.intent.query);
+    // The performance view keeps its stage samples; trust evidence stays empty instead of inventing suggestions.
+    if (command === 'observation_read' && args?.request?.intent.view === 'plan_trust') {
+      const query = args.request.intent.query as unknown as { plan_id: string };
+      const counts = { executed: 0, complete: 0, competence_eligible: 0, meets_floor: 0, partial: 0, awaiting_assessment: 0, unscored: 0, sessions: 0 };
+      const branchIds = query.plan_id === customPlan.agent_plan_id ? ['writing', 'review'] : ['smart_saving'];
+      return { plan_id: query.plan_id, active_revision: customPlan.agent_plan_revision, revision: 'active', from_ms: 0, to_ms: Date.UTC(2026, 9, 8, 9, 40),
+        rows: [], sessions: [], session_total: 0, executors: [], announcements: [],
+        branches: branchIds.map(branch_id => ({ branch_id, threshold_millis: 800, full_history: counts, upward_cohort: counts, upward_from_ms: 0,
+          suggestion: { kind: 'keep', missing: [] },
+          replay: { included: 0, excluded_by_reason: {}, recorded_share_at_current: null, estimate_only: true, thresholds: [] } })),
+        cost: { kind: 'unavailable', reason: 'no_recorded_requests' } };
+    }
+    // The configuration views show the trust control without claiming replayed evidence.
+    if (command === 'observation_read' && args?.request?.intent.view === 'plan_trust_replay') {
+      const thresholds = (args.request.intent.query as unknown as { thresholds_millis: number[] }).thresholds_millis;
+      return { included: 0, excluded_by_reason: {}, recorded_share_at_current: null, estimate_only: true,
+        thresholds: thresholds.map(threshold_millis => ({ threshold_millis, regular: 0, primary: 0, protected_as_primary: 0, regular_share: null, primary_share: null, newly_regular: 0 })) };
+    }
     throw new Error('DOCUMENTATION_DEMO_NO_LIVE_ACTIONS');
   },
 } });
@@ -68,7 +94,7 @@ createRoot(document.getElementById('root')!).render(
         ]} onNavigate={() => {}} onOpenSettings={() => {}} />
       <main className="main">{view === 'decision-models' ?
         <DecisionServicesPage language={language} active mutable tabs={modelTabs} plans={snapshot.catalog.plans} /> :
-        <RoutingPage language={language} snapshot={snapshot} loading={false} busy={false}
+        <RoutingPage language={language} snapshot={snapshot} loading={false} busy={false} mutationAllowed
           initialEditor={{ key: selectedPlan.agent_plan_id, plan: selectedPlan }} onRefresh={async () => {}} onOperation={() => {}} />}
       </main>
     </div>}

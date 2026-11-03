@@ -2,7 +2,7 @@
 
 HiRoute on Linux provides a **Web UI and CLI** for servers, remote workstations and automation. Use your browser to connect models, configure routes and Agents, inspect sessions and manage delegated tasks. The service host needs no desktop environment; the CLI also supports the full management workflow.
 
-The Web UI requires **0.5.0 or later**. Check the [download page](/en/download/) for published packages; earlier Linux releases provide the CLI. A complete package includes the local service, Gateway, CLI, console assets and Agent management Skill.
+Check the [download page](/en/download/) for published packages. A complete package includes the local service, Gateway, CLI, Web UI console assets and Agent management Skill.
 
 Linux packages support `x86_64` and ARM64 (`aarch64`), with glibc 2.31 or later. Installation needs no `sudo`; it requires `curl` and Python 3.
 
@@ -30,9 +30,9 @@ export PATH="$HOME/.local/bin:$PATH"
 
 The installer downloads the latest stable Linux release and checks its architecture and file integrity before installation. Desktop and standalone must not manage the service in the same `HOME`.
 
-## Open the Web UI (0.5.0+)
+## Open the Web UI
 
-The Web UI uses HiRoute's authenticated Web console. Linux keeps it off unless configured. With a 0.5.0 or later package, choose local access and a port during installation:
+The Web UI uses HiRoute's authenticated Web console. Linux keeps it off unless configured. You can choose local access and a port during installation:
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh -s -- --console-mode loopback --console-port 5838
@@ -137,7 +137,7 @@ If a network or process interruption leaves acceptance uncertain, do not retry w
 
 ## Model information updates
 
-On feed-capable releases, the local service automatically retrieves model
+The local service automatically retrieves model
 information over HTTPS from `hiroute.ai` and validates its content. The same setting applies to Desktop, the web console,
 and standalone use. Requests include no account, installation or usage identifiers.
 Retrieval does not call a model or test a connection. Before the first publication,

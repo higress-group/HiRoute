@@ -2,9 +2,9 @@
 
 ## Native session captures
 
-The model-routing guide uses
-[English](quality-native-en.png) and [Chinese](quality-native-zh-CN.png) captures
-of the real macOS Desktop Sessions page. Both are 2400×2100 pixels, captured at
+The [English](quality-native-en.png) and [Chinese](quality-native-zh-CN.png) captures
+show the real macOS Desktop Sessions page as it looked when captured. The website guides
+no longer reference them; the model-routing guide uses the README session frames below. Both are 2400×2100 pixels, captured at
 1200×1050 logical points, with the navigation, session list and two complete
 model-performance cards visible. The website scales them proportionally to its
 content width without cropping or fixed-height distortion.
@@ -29,7 +29,7 @@ not replace routing or provider acceptance.
 
 ## README session recordings
 
-The root README and website homepage use [English](readme-session-en.png) and [Chinese](readme-session-zh-CN.png)
+The root README, website homepage and model-routing guide use [English](readme-session-en.png) and [Chinese](readme-session-zh-CN.png)
 frames from macOS screen recordings of real DeepSeek Harness Desktop sessions routed
 through HiRoute Desktop release builds, not browser mocks. Both sessions work on the same
 fictional Account Export project with live provider calls: DeepSeek V4.1 Flash in the
@@ -82,9 +82,9 @@ provider quality, persistence, evidence navigation or native window acceptance.
 
 | View | English | Chinese | What it shows |
 | --- | --- | --- | --- |
-| Decision models | [English](decision-models-en.png) | [中文](decision-models-zh-CN.png) | Two-pane model page, provider logos, Bailian connection form |
-| Difficulty routing | [English](config-en.png) | [中文](config-zh-CN.png) | Decision method, regular/primary candidates, collapsed judgment settings |
-| Custom branches | [English](custom-branches-en.png) | [中文](custom-branches-zh-CN.png) | Writing/review conditions, regular/primary groups and branch settings |
+| Decision models | [English](decision-models-en.png) | [中文](decision-models-zh-CN.png) | Two-pane model page, provider logos, credential source choice, Bailian connection form |
+| Difficulty routing | [English](config-en.png) | [中文](config-zh-CN.png) | Decision method, regular/primary candidates, trust control, low-score protection, collapsed judgment settings |
+| Custom branches | [English](custom-branches-en.png) | [中文](custom-branches-zh-CN.png) | Writing/review conditions, regular/primary groups, per-branch trust control and branch settings |
 | Plan performance | [English](quality-en.png) | [中文](quality-zh-CN.png) | One row per configured execution slot; stage counts and averages |
 | Session detail excerpt | [English](session-en.png) | [中文](session-zh-CN.png) | Actual stage selection, frozen threshold and later assessment coverage |
 | Compact session excerpt | [English](quality-session-en.png) | [中文](quality-session-zh-CN.png) | Two stages in the session's model-performance component; not the homepage image |
@@ -97,6 +97,12 @@ and a review session with 0.38 followed by 0.91. The latter shows primary protec
 from a fresh low score even though simple probability meets 0.8. It is not evidence
 that one model outperforms another. Synthetic editor/publication IDs intentionally
 differ so a configured slot and its observation must join into one row.
+
+The mock also answers the plan editor's current read paths: the authoring projection
+of the selected plan, saved decision connections with no reusable API source, an empty
+Agent association list, the decision context preview and an empty trust record. With no
+recorded evidence, the trust control shows no replayed allocation and no suggestion;
+nothing is presented as measured history.
 
 No textual Jev reason or transcript is fabricated. Evidence buttons are disabled
 because the fixture has no retained conversation. The session images are component
