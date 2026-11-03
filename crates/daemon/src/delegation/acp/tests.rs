@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[derive(Default)]
-pub(super) struct Journal(Mutex<Vec<&'static str>>);
+pub(super) struct Journal(pub(super) Mutex<Vec<&'static str>>);
 impl AcpRunJournal for Journal {
     fn session_bound(&self, _: &AcpSessionBinding) -> Result<(), DelegationErrorV1> {
         self.0.lock().unwrap().push("session");

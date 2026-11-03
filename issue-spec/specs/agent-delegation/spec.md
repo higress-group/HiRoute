@@ -218,6 +218,32 @@ read AllowOnce when applicable, rejects write/execute/unknown; deny-all rejects
 permission requests while retaining non-tool answer/state/result/cancel. cwd is not
 an OS file sandbox. Another run's policy/deadline remains unaffected.
 
+Claude's approve-all policy MUST use native `auto` when the daemon's effective
+Unix UID is root, and `bypassPermissions` otherwise. Windows elevation is not Unix
+root. Auto retains Claude's native permission decisions without interactive host
+approval; it does not promise bypass semantics. Existing restricted policies keep
+their native mode and tool constraints.
+
+Root Auto MUST be confirmed through the session's typed mode selector after
+confirming the frozen model. A successful setter returning another mode, including
+`acceptEdits`, MUST fail before prompt. Its returned model selector MUST still
+confirm the frozen model; a permission-mode change cannot change the task route.
+Ordinary bypass admission inspects the mode catalog returned by `session/new` or
+`session/load`; absence of modes in `initialize` is not a missing session capability.
+Diagnostics MUST explain the missing or unconfirmed native mode. HiRoute MUST NOT
+silently select Manual or Accept edits, fabricate sandbox status, or infer support
+from an adapter release label.
+
+#### Scenario: Claude executes autonomously under root
+
+- **WHEN** the daemon runs with effective Unix UID zero and admits new Claude work or exact Continue with approve-all
+- **THEN** the host confirms the frozen model, selects typed Auto mode, and requires the returned mode and model to match before prompt; a native fallback or model change is rejected.
+
+#### Scenario: Claude omits the requested autonomous mode
+
+- **WHEN** the selected Claude adapter cannot offer or confirm the requested Auto or bypass mode for the frozen model
+- **THEN** new work and exact Continue fail before prompt with the recorded mode-selection cause and actionable native-policy guidance; the host does not fall back to another permission mode.
+
 ### Requirement: Preparation and cancellation have a durable fence
 
 Preparing checkpoint MUST commit before any process spawn. Cancelling a still-Accepted

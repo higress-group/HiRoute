@@ -417,6 +417,8 @@ async fn run_session(
     updates.lock().unwrap_or_else(|e| e.into_inner()).session =
         Some(binding.acp_session_id.clone());
     journal.session_bound(&binding)?;
+    let claude_auto = input.identity_contract == AcpNativeIdentityContract::ClaudeSessionV1
+        && input.native_session_mode.as_deref() == Some("auto");
     let typed_mode = input.identity_contract == AcpNativeIdentityContract::OpenCodeSessionV1;
     let config_options = if typed_mode {
         journal.phase_started(Stage::ModeSelection);
@@ -438,19 +440,50 @@ async fn run_session(
     } else {
         config_options
     };
-    if let Some(expected_model) = input.expected_model.as_deref() {
+    let config_options = if let Some(expected_model) = input.expected_model.as_deref() {
         journal.phase_started(Stage::ModelSelection);
-        model::ensure_model(
+        Some(
+            model::ensure_model(
+                &connection,
+                &binding.acp_session_id,
+                config_options.as_deref(),
+                expected_model,
+                &input.cancellation,
+                input.deadline,
+            )
+            .await?,
+        )
+    } else {
+        config_options
+    };
+    if claude_auto {
+        journal.phase_started(Stage::ModeSelection);
+        let options = model::ensure_mode(
             &connection,
             &binding.acp_session_id,
             config_options.as_deref(),
-            expected_model,
+            "auto",
             &input.cancellation,
             input.deadline,
         )
-        .await?;
+        .await
+        .map_err(|error| {
+            if error == DelegationErrorV1::CapabilityUnavailable
+                && let Some(progress) = progress.as_ref()
+            {
+                progress.push("[HiRoute] Claude under root requires confirmed Auto mode for the frozen model. The selected adapter did not offer or confirm auto; a fallback to Manual or Accept edits is not accepted. No task prompt was sent.\n");
+            }
+            error
+        })?;
+        if let Some(expected_model) = input.expected_model.as_deref() {
+            journal.phase_started(Stage::ModelSelection);
+            model::confirm_model(&options, expected_model)?;
+        }
     }
-    if let Some(native_session_mode) = input.native_session_mode.filter(|_| !typed_mode) {
+    if let Some(native_session_mode) = input
+        .native_session_mode
+        .filter(|_| !typed_mode && !claude_auto)
+    {
         journal.phase_started(Stage::ModeSelection);
         let mode_available = modes.as_ref().is_some_and(|modes| {
             modes
@@ -459,6 +492,17 @@ async fn run_session(
                 .any(|mode| mode.id.to_string() == native_session_mode)
         });
         if !mode_available {
+            if input.identity_contract == AcpNativeIdentityContract::ClaudeSessionV1
+                && native_session_mode == "bypassPermissions"
+            {
+                if let Some(progress) = progress.as_ref() {
+                    progress.push(if modes.is_none() {
+                        "[HiRoute] The selected Claude adapter returned no session mode catalog in session/new or session/load. Approve-all requires the advertised bypassPermissions mode. No task prompt was sent.\n"
+                    } else {
+                        "[HiRoute] The selected Claude adapter's session mode catalog does not offer bypassPermissions, which approve-all requires. No task prompt was sent.\n"
+                    });
+                }
+            }
             return Err(DelegationErrorV1::CapabilityUnavailable);
         }
         phase(
@@ -703,6 +747,8 @@ mod identity_tests;
 mod model_tests;
 #[cfg(test)]
 mod notification_tests;
+#[cfg(test)]
+mod permission_mode_tests;
 #[cfg(test)]
 mod security_tests;
 #[cfg(test)]

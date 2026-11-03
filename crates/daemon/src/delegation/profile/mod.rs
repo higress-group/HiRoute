@@ -164,7 +164,7 @@ impl CandidateWorkerProfile {
             }
             (WorkerHarnessV1::CodexCli, _) => "read-only",
             (WorkerHarnessV1::ClaudeCode, WorkerPermissionPolicyV1::ApproveAll) => {
-                "bypassPermissions"
+                claude::autonomous_mode()
             }
             (WorkerHarnessV1::ClaudeCode, _) => "default",
             (WorkerHarnessV1::QoderCli, WorkerPermissionPolicyV1::ApproveAll) => "yolo",

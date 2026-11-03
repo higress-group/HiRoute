@@ -18,7 +18,7 @@ pub(super) async fn ensure_model(
     expected_model: &str,
     cancellation: &CancellationToken,
     deadline: Instant,
-) -> Result<(), DelegationErrorV1> {
+) -> Result<Vec<SessionConfigOption>, DelegationErrorV1> {
     ensure_select(
         connection,
         session_id,
@@ -29,7 +29,21 @@ pub(super) async fn ensure_model(
         deadline,
     )
     .await
-    .map(|_| ())
+}
+
+pub(super) fn confirm_model(
+    config_options: &[SessionConfigOption],
+    expected_model: &str,
+) -> Result<(), DelegationErrorV1> {
+    if selector(Some(config_options), "model")?
+        .current_value
+        .to_string()
+        == expected_model
+    {
+        Ok(())
+    } else {
+        Err(DelegationErrorV1::CapabilityUnavailable)
+    }
 }
 
 pub(super) async fn ensure_mode(

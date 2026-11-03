@@ -82,7 +82,10 @@ impl WorkerExecutionFailureV1 {
                 | WorkerExecutionStageV1::SessionResume => {
                     "Check the native session capability and, for Continue, the original history. No task prompt was sent."
                 }
-                WorkerExecutionStageV1::ModeSelection | WorkerExecutionStageV1::ModelSelection => {
+                WorkerExecutionStageV1::ModeSelection => {
+                    "Check the required native session mode for the frozen model. Claude uses auto under a root account and bypassPermissions otherwise; the adapter must confirm the requested mode without falling back. Check native permissions policy and Auto model support. No task prompt was sent."
+                }
+                WorkerExecutionStageV1::ModelSelection => {
                     "The native client must confirm the exact task mode and frozen model through ACP config options. No task prompt was sent."
                 }
                 WorkerExecutionStageV1::Prompt => {

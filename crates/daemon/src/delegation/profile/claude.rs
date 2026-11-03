@@ -1,6 +1,24 @@
 //! Claude reuses native settings while the host owns the managed model route.
 use super::*;
 
+pub(super) fn autonomous_mode() -> &'static str {
+    #[cfg(unix)]
+    let root = nix::unistd::geteuid().is_root();
+    #[cfg(not(unix))]
+    let root = false;
+    autonomous_mode_for_root(root)
+}
+
+fn autonomous_mode_for_root(root: bool) -> &'static str {
+    if root { "auto" } else { "bypassPermissions" }
+}
+
+#[test]
+fn autonomous_mode_follows_effective_root_status() {
+    assert_eq!(autonomous_mode_for_root(true), "auto");
+    assert_eq!(autonomous_mode_for_root(false), "bypassPermissions");
+}
+
 pub(super) fn render(
     input: &ProfileInput<'_>,
     projected_tools: &[WorkerToolV1],

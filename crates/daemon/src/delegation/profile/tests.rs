@@ -411,7 +411,7 @@ fn managed_claude_profile_disables_ambient_settings_and_native_delegation() {
     );
     assert!(options.get("permissionMode").is_none());
     assert!(options.get("allowDangerouslySkipPermissions").is_none());
-    assert_eq!(profile.native_session_mode(), "bypassPermissions");
+    assert_eq!(profile.native_session_mode(), claude::autonomous_mode());
     assert_eq!(options["mcpServers"], json!({}));
     assert!(
         options["disallowedTools"]
@@ -771,7 +771,7 @@ fn explicit_native_mode_runs_without_universal_confinement_flags() {
             assert_eq!(profile.native_session_mode(), "agent-full-access");
             assert_eq!(config["sandbox_workspace_write"]["network_access"], true);
         } else {
-            assert_eq!(profile.native_session_mode(), "bypassPermissions");
+            assert_eq!(profile.native_session_mode(), claude::autonomous_mode());
             assert!(
                 profile.session_meta["claudeCode"]["options"]
                     .get("permissionMode")
