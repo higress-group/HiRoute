@@ -19,7 +19,7 @@ try {
   for (const language of ['zh', 'en']) for (const view of ['decision-models', 'config', 'custom-branches', 'quality', 'session', 'quality-session']) {
     const compact = ['session', 'quality-session'].includes(view);
     const width = compact ? 1200 : 1600;
-    const height = compact ? (view === 'session' ? 1180 : 813) : view === 'custom-branches' ? 1840 : view === 'config' ? 1580 : view === 'quality' ? 1420 : 1100;
+    const height = compact ? (view === 'session' ? 1180 : 813) : view === 'custom-branches' ? 1840 : view === 'config' ? 1880 : view === 'quality' ? 1420 : 1100;
     await navigate(client, `${base}/decision-docs.html?lang=${language}&view=${view}`, {width,height});
     await waitFor(client, `location.search.includes('lang=${language}&view=${view}') && !!window.__DECISION_DOCS__`);
     if (view === 'decision-models') {
@@ -58,8 +58,10 @@ try {
     // Wait for the product's resize observers and disclosure transitions.
     await evaluate(client, 'new Promise(r=>setTimeout(r,350))');
     const state = await evaluate(client, `({overflow:document.documentElement.scrollWidth>innerWidth,errors:[...document.querySelectorAll('[role=alert]')].filter(e=>e.checkVisibility()).map(e=>e.innerText),calls:__DECISION_DOCS__.captureCalls})`);
-    assert.equal(state.overflow, false);assert.deepEqual(state.errors, []);
-    assert(state.calls.every(c=>['observation_read','compute_management_snapshot','plan_editor_options','decision_services_v3','decision_connection_sources'].includes(c)));
+    assert.equal(state.overflow, false, `${language}/${view} overflows`);assert.deepEqual(state.errors, [], `${language}/${view} shows errors`);
+    const unexpected = state.calls.filter(c=>!['observation_read','compute_management_snapshot','plan_editor_options','decision_services_v3','decision_connection_sources','agent_model_associations','preview_decision_context'].includes(c));
+    assert.deepEqual(unexpected, [], `${language}/${view} made unexpected calls`);
+    assert(state.calls.every(c=>['observation_read','compute_management_snapshot','plan_editor_options','decision_services_v3','decision_connection_sources','agent_model_associations','preview_decision_context'].includes(c)));
     if (capture) {
       const shot=await client.send('Page.captureScreenshot',{format:'png'});
       fs.writeFileSync(new URL(`${view}-${language==='zh'?'zh-CN':'en'}.png`,assets),Buffer.from(shot.data,'base64'));

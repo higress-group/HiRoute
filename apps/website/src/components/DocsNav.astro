@@ -11,6 +11,8 @@ const prefix = en ? '/en' : '';
   <a class:list={{active:active === 'install-windows'}} href={`${prefix}/docs/install-windows/`}>{en ? 'Install on Windows' : 'Windows 桌面版安装'}</a>
 
   <span>{en ? 'USE HIROUTE' : '使用 HIROUTE'}</span>
+  <a class:list={{active:active === 'models'}} href={`${prefix}/docs/models/`}>{en ? 'Connect models' : '接入模型'}</a>
+  <a class:list={{active:active === 'model-trial'}} href={`${prefix}/docs/model-trial/`}>{en ? 'Try a new model' : '试用新模型'}</a>
   <a class:list={{active:active === 'model-routing'}} href={`${prefix}/docs/model-routing/`}>{en ? 'Smart model routing' : '智能模型路由'}</a>
   <a class:list={{active:active === 'task-routing'}} href={`${prefix}/docs/task-routing/`}>{en ? 'Smart task routing' : '智能任务路由'}</a>
   <a class:list={{active:active === 'cli'}} href={`${prefix}/docs/cli/`}>HiRoute CLI</a>

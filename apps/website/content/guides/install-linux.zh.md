@@ -2,7 +2,7 @@
 
 Linux 版提供 **Web UI 与 CLI**，适合服务器、远程工作站和自动化环境。你可以在浏览器中接入模型、配置路由与 Agent、查看会话和管理委派任务；服务主机无需安装桌面环境，CLI 也支持完整管理流程。
 
-Web UI 需要 **0.5.0 或更高版本**。[下载页](/download/)列出已发布的安装包；较早的 Linux 版本提供 CLI。完整安装包包括本机服务、Gateway、CLI、控制台文件，以及供 Agent 使用的管理 Skill。
+[下载页](/download/)列出已发布的安装包。完整安装包包括本机服务、Gateway、CLI、Web UI 控制台文件，以及供 Agent 使用的管理 Skill。
 
 Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或更高版本。无需 `sudo`；安装需要 `curl` 与 Python 3。
 
@@ -30,9 +30,9 @@ export PATH="$HOME/.local/bin:$PATH"
 
 安装脚本会下载最新稳定的 Linux 版本，并在安装前检查架构与文件完整性。桌面应用与独立服务版（standalone）不应在同一个 `HOME` 中同时管理服务。
 
-## 打开 Web UI（0.5.0+）
+## 打开 Web UI
 
-Web UI 通过 HiRoute 的认证 Web 控制台提供，Linux 默认关闭。使用 0.5.0 或更高版本安装包时，可以在安装时选择本机访问和端口：
+Web UI 通过 HiRoute 的认证 Web 控制台提供，Linux 默认关闭。可以在安装时选择本机访问和端口：
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh -s -- --console-mode loopback --console-port 5838
@@ -137,7 +137,7 @@ hiroute worker exec \
 
 ## 模型信息更新
 
-支持模型 Feed 的版本会由本机服务自动从 `hiroute.ai` 获取经过校验的模型信息。
+本机服务会自动从 `hiroute.ai` 获取经过校验的模型信息。
 桌面端、网页控制台和独立服务共用这个设置。请求不携带账号、安装或用量标识，
 获取信息不会调用模型或测试连接。首次发布前，服务继续使用内置模型目录。
 

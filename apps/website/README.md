@@ -23,9 +23,10 @@ and checks required routes and local links. Product guides are authored once in
 content is ignored by Git. The last two are generated from the canonical
 standalone installer and the current stable release record; do not hand-edit them.
 
-Homepage competence images are complete native Desktop session captures. Configuration
-illustrations use actual product components. Both use constructed documentation data;
-see [capture provenance](../../decision-extensions/assets/README.md) for their distinct sources.
+Session timeline images on the homepage and in the model-routing guide are frames from
+real Desktop session recordings. Trust, report and configuration illustrations use actual
+product components with constructed documentation data; see
+[capture provenance](../../decision-extensions/assets/README.md) for their distinct sources.
 They are illustrations, not provider acceptance or model benchmarks. Historical news and experiment
 reports retain their original version and evidence; current setup instructions belong in the guides.
 
