@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::Value;
 
 #[test]
 fn empty_output_probability_metadata_is_modeled_without_trusting_unknown_state() {
