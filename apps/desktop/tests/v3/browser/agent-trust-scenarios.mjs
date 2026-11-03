@@ -77,7 +77,35 @@ export async function showDshDesktopEditor() {
   await tick();
 }
 
+export async function showCodexIndependentDesktop(configured = true) {
+  c().reset(); c().agents = c().independentCodexDesktop(configured); c().refresh();
+  await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Codex Desktop')), 'independent Desktop entry');
+  [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex Desktop')).click();
+  await until(() => document.querySelector('[data-agent-id="agent_codex_desktop"] [data-codex-desktop-instance]'), 'independent Desktop detail');
+}
+
 const scenarios = [
+  scenario('codex.desktop.independent-launch-and-retry', ['codex-desktop'], 'Independent Desktop coexists with CLI and launch retry never repeats Apply', async () => {
+    await showCodexIndependentDesktop();
+    assert(!facet('collaboration') && !facet('management_skill'), 'Desktop invents independent Skill installation authority');
+    assert([...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Codex')).length === 2, 'CLI entry disappeared');
+    const button = document.querySelector('[data-codex-desktop-launch]');
+    assert(!button.disabled, 'Configured Desktop cannot launch');
+    c().handlers.launch_codex_desktop = () => { throw { code: 'CODEX_DESKTOP_LAUNCH_FAILED' }; };
+    button.click();
+    await until(() => document.querySelector('[data-error-code="CODEX_DESKTOP_LAUNCH_FAILED"]'), 'launch error');
+    assert(calls('preview_agent_settings').length === 0, 'Launch changed routing');
+    c().handlers.launch_codex_desktop = () => ({ preserved_skills: 1 });
+    button.click();
+    await until(() => calls('launch_codex_desktop').length === 2 && !button.disabled, 'launch retry');
+    assert(calls('launch_codex_desktop').every(call => Object.keys(call.payload).join() === 'contextId'), 'WebView supplied launch paths or environment');
+    assert(calls('preview_agent_settings').length === 0, 'Retry replayed Apply');
+    await showCodexIndependentDesktop(false);
+    assert(!document.querySelector('[data-codex-desktop-launch]'), 'Unconfigured Desktop can launch');
+    document.querySelector('[data-codex-desktop-configure]').click();
+    await until(() => visible(dialog()), 'Desktop setup from primary action');
+    assert(!dialog().querySelector('[data-codex-history-guidance]'), 'Independent Desktop uses root takeover guidance');
+  }),
   scenario('dsh.desktop.independent-model-settings', ['dsh-desktop'], 'Desktop model settings use their own context and preserve Web settings', async () => {
     await showDshDesktopEditor();
     const web = JSON.stringify(c().agents.agents.find(a => a.agent_id === 'agent_dsh_default'));

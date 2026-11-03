@@ -1,6 +1,5 @@
 //! Native entries for the shared daemon-owned feed reads; WebView cannot supply a URL or key.
 use super::*;
-use hiroute_application_api::*;
 
 #[tauri::command]
 pub(super) async fn model_feed_status(

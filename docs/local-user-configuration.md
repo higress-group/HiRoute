@@ -124,6 +124,25 @@ Local CLI callers can resume that same operation through `agents connect apply` 
 This retry accepts no new settings or grants. The daemon checks the stored operation and its
 context before continuing. First-time creation and edits still require normal Preview/Apply.
 
+### Independent Codex Desktop window
+
+Open **Agents → Codex Desktop**, choose routes and enable model routing, then use
+**Open separate window**. This is independent of **Agents → Codex** and its CLI
+profile. Both connections may stay enabled. Native launch is available in HiRoute
+Desktop on macOS with Codex Desktop installed; the installed CLI is not a substitute.
+
+The instance uses private Codex, SQLite and Electron data directories while retaining
+the real HOME. Ordinary subscription settings, login and sessions are not copied.
+Its directory is shown under **Sharing and instance directories** and is outside
+HiRoute's Core data/upgrade snapshots. Close this separate window before reopening
+after route changes. Disabling routing retains its native sessions and login.
+
+Existing `.agents/skills` and project skills remain shared. When opening the window,
+HiRoute also links ordinary Codex user skill folders individually, including their
+scripts/resources, skipping `.system` and duplicate `.agents/skills` names. Existing
+entries inside the instance are preserved. Links remain after disabling routing;
+source updates are visible through them. Each instance manages its own system skills.
+
 ### Find earlier Codex sessions
 
 Default **On demand** mode preserves ordinary Codex configuration and session

@@ -97,6 +97,7 @@ export function Agents({
   const [snapshot, setSnapshot] = useState<AgentSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [desktopLaunching, setDesktopLaunching] = useState(false);
+  const [desktopFeedback, setDesktopFeedback] = useState<{ code?: string; message: string } | null>(null);
   const [busyText, setBusyText] = useState('');
   const hermesTargets = useRef<AgentNativeTarget[]>(loadAgentDiscoveryTargets());
   const [scanning, setScanning] = useState(false);
@@ -448,13 +449,13 @@ export function Agents({
 
   async function launchDesktop(agent: Agent) {
     if (!agent.context_id || busy || scanning || !snapshot?.trusted_authority) return;
-    setBusy(true); setDesktopLaunching(true); setActionError(''); setNotice('');
+    setBusy(true); setDesktopLaunching(true); setDesktopFeedback(null); setActionError(''); setNotice('');
     try {
       const result = await invoke<{ preserved_skills: number }>('launch_codex_desktop', { contextId: agent.context_id });
-      setNotice(result.preserved_skills > 0
+      setDesktopFeedback({ message: result.preserved_skills > 0
         ? text('已请求启动独立窗口。实例内的同名技能已保留；其他用户技能已共享。', 'Separate window requested. Existing skills with the same name were kept; other user skills are shared.')
-        : text('已请求启动独立窗口，用户技能已共享。', 'Separate window requested. User skills are shared.'));
-    } catch (error) { setActionFailure(error); }
+        : text('已请求启动独立窗口，用户技能已共享。', 'Separate window requested. User skills are shared.') });
+    } catch (error) { const code = desktopErrorCode(error); setDesktopFeedback({ code, message: agentActionErrorMessage(code, language) }); }
     finally { setBusy(false); setDesktopLaunching(false); }
   }
 
@@ -626,8 +627,10 @@ export function Agents({
                 }} />}
                 {selected.agent_id === 'agent_codex_desktop' && <CodexDesktopPanel agent={selected} language={language}
                   configured={selectedModel?.state === 'configured'} launching={desktopLaunching}
+                  feedback={desktopFeedback}
                   nativeHost={hostCapabilities().host === 'tauri' && hostCapabilities().platform === 'macos'}
-                  disabled={busy || selectedPending || Boolean(editor) || !mutable} onLaunch={() => void launchDesktop(selected)} />}
+                  disabled={busy || selectedPending || Boolean(editor) || !mutable || !selected.context_id || agentHasNoModelConnection(selected)}
+                  onLaunch={() => void launchDesktop(selected)} onConfigure={source => void open(selected, 'model', source)} />}
                 <AgentDiscoveryFeedback agent={selected} language={language} scanning={scanning} onScan={() => void refresh()} />
                 {executableStatus}
                 {selectedHasDrift && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('接入配置已变化', 'Connection settings changed')}</strong><p>{text('HiRoute 不会覆盖已变化的设置。请在“连接详情与恢复”中恢复需要的路由配置。', 'HiRoute will not overwrite changed settings. Restore the required routing configuration under Connection details and recovery.')}</p></div></div>}

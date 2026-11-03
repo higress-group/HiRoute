@@ -151,7 +151,7 @@ pub(super) fn launch(codex_home: &Path, user_data: &Path) -> Result<(), &'static
 mod tests {
     use super::*;
     #[test]
-    fn shares_whole_user_skill_directories_without_adopting_existing_entries() {
+    fn codex_desktop_shares_skills_without_adopting_existing_entries() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("instance");
         let source = dir.path().join("ordinary");
@@ -161,6 +161,7 @@ mod tests {
             fs::write(source.join("skills").join(name).join("SKILL.md"), "skill").unwrap();
         }
         fs::create_dir_all(shared.join("duplicate")).unwrap();
+        fs::write(source.join("auth.json"), "keep private").unwrap();
         fs::create_dir_all(root.join("codex/skills/conflict")).unwrap();
         let prepare = || {
             prepare_codex_instance(&root.join("codex"), &root.join("desktop"), &source, &shared)
@@ -175,6 +176,7 @@ mod tests {
         );
         assert!(!root.join("codex/skills/.system").exists());
         assert!(!root.join("codex/skills/duplicate").exists());
+        assert!(!root.join("codex/auth.json").exists());
         fs::create_dir_all(source.join("skills/one/scripts")).unwrap();
         fs::write(source.join("skills/one/scripts/run"), "updated").unwrap();
         assert_eq!(

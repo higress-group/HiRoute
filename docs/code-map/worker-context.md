@@ -69,6 +69,13 @@ explains native provider-scoped session discovery before enabling routing. Defau
 on-demand access preserves the ordinary entry for earlier sessions; advanced default
 takeover first requires configuration restoration. See [session recovery](../local-user-configuration.md#find-earlier-codex-sessions). Worker Continue below
 has its own exact-history binding and does not replace the native `/resume` picker.
+The separate [Codex Desktop instance](../../crates/integrations/src/agents/codex_desktop.rs)
+uses a distinct home and settings identity alongside that CLI slot. Its
+[native command](../../apps/desktop/src-tauri/src/bridge/codex_desktop.rs) binds launch
+to fresh configured status; [host preparation](../../crates/desktop-host-effects/src/codex_instance.rs)
+shares user skills without replacing existing entries. This identity is model-only;
+it does not register another Worker executor. [Lifecycle coverage](../../crates/daemon/src/control/runtime/settings_codex_desktop_tests.rs)
+exercises both connections and recovery through the public settings wire.
 OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)

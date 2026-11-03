@@ -108,6 +108,21 @@ function protectedCodex(): AgentSnapshot {
   codexOf(snapshot).settings!.protected_native_model_ids = ['gpt-5.6-sol'];
   return snapshot;
 }
+function independentCodexDesktop(configured = true): AgentSnapshot {
+  const snapshot = splitCodexStatus();
+  const cli = codexOf(snapshot);
+  const desktop = structuredClone(cli);
+  desktop.agent_id = 'agent_codex_desktop';
+  desktop.context_id = 'agent-context/codex-desktop/fixture';
+  desktop.codex_access = undefined;
+  desktop.codex_desktop = { codex_home: '/example/Application Support/HiRoute/data.codex-desktop/codex',
+    user_data: '/example/Application Support/HiRoute/data.codex-desktop/desktop', source_codex_home: '/example/.codex', shared_skills: '/example/.agents/skills' };
+  desktop.available_surfaces = ['codex_desktop'];
+  desktop.native_model_catalog = null;
+  if (!configured) desktop.settings = { state: 'not_configured', model_verified: false, restore_point_ref: null };
+  snapshot.agents.push(desktop);
+  return snapshot;
+}
 function splitCodexStatus(): AgentSnapshot {
   const snapshot = registered();
   const agent = codexOf(snapshot);
@@ -168,7 +183,9 @@ function additionalRouted(ecosystem: 'qoder' | 'pi' | 'dsh' | 'opencode' = 'qode
 
 type Handler = (payload: Record<string, unknown>) => unknown;
 const control = {
-  agents: registered(),
+  agents: new URLSearchParams(location.search).get('view') === 'codex-desktop'
+    ? (() => { const snapshot = independentCodexDesktop(); snapshot.agents.sort(a => a.agent_id === 'agent_codex_desktop' ? -1 : 0); return snapshot; })()
+    : registered(),
   commands: [] as { command: string; payload: Record<string, unknown> }[],
   handlers: {} as Record<string, Handler>,
   mutations: 0,
@@ -186,6 +203,7 @@ const control = {
   protectedCodex,
   cliOnly: () => freshCodex('codex_cli'),
   splitCodexStatus,
+  independentCodexDesktop,
   qoderFresh: () => additionalAgent(false),
   qoderConfigured: () => additionalAgent(true),
   qoderRouted: () => additionalRouted(),
@@ -201,6 +219,7 @@ mockIPC(async (command, payload) => {
   control.commands.push({ command, payload: args });
   if (control.handlers[command]) return control.handlers[command](args);
   switch (command) {
+    case 'launch_codex_desktop': return { preserved_skills: 0 };
     case 'cli_entry_status': return { state: 'valid', command_resolves_to_app_cli: true, path_contains_entry_directory: true };
     case 'trial_agent_model': return trialAgentRead(control.agents, command, args);
     case 'agent_snapshot': {

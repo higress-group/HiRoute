@@ -38,6 +38,7 @@ verified settings and actions.
 | [HermesModelEditor.tsx](HermesModelEditor.tsx), [HermesRootFields.tsx](HermesRootFields.tsx) | One Plan/protocol and explicit effective profile; root fields are shared with source scan. Automatic adapter preparation and unobserved native loading stay distinct. |
 | [collaboration-check-feedback.ts](collaboration-check-feedback.ts) | Versioned collaboration-check failures become safe login, Skill recovery and retry guidance; native output is never display text. |
 | [CodexAccessPanel.tsx](CodexAccessPanel.tsx) | Profile/root facts, mode controls, launch commands, visible mode-specific session-history and original-entry guidance, ordinary file-conflict diagnosis and an existing pending Operation's recovery entry. |
+| [CodexDesktopPanel.tsx](CodexDesktopPanel.tsx) | Peer Desktop connection scope, initial route setup, context-only native launch, local retry feedback and shared-skill/directory disclosure. Configuration and launch remain independent actions. |
 | [codex-launch.ts](codex-launch.ts), [codex-surfaces.ts](codex-surfaces.ts) | Confirmed command-copy eligibility and the distinction between detected executables and mode applicability. |
 | [mutation-feedback.ts](mutation-feedback.ts) | Submitted, pre-apply cancelled and uncertain outcomes; truthful disable/recovery messages. |
 | [Agents page](../../agents.tsx) | Snapshot refresh, selected Agent/tab, in-memory draft and mode, discard guard, native calls, Operation handoff, confirmation-dependent copy effect and task-history composition. |
@@ -52,7 +53,7 @@ retry entry. Statically known channel models are shown separately from unobserve
 live session selection. Hermes can independently prepare the shared collaboration
 Skill and either existing trigger mode, retaining its native model and requiring
 no model plugin. It is not a Worker executor.
-All six supported Agents remain in the common catalog even when discovery returns
+All supported Agents and separate Desktop connections remain in the common catalog even when discovery returns
 no usable installation/configuration. Common rescan preserves existing entries;
 absence is not proof of uninstallation. Hermes appears before a profile is selected. This
 presentation entry has no context or settings authority. Its details contain the
@@ -71,7 +72,7 @@ explicit root never falls back to another; an unreadable default remains visible
 without hiding other Agents. Known invalid paths, missing explicit roots/configuration
 and read errors remain distinct. Hermes uses its own bundled mark in the common icon component.
 
-Management is a separate enable/disable control for every supported family. It
+Management is a separate enable/disable control for supported CLI families. Desktop-only entries share user skills without exposing independent installation controls. It
 uses the same settings Preview/Apply/owned restore as the other facets, with no
 Plan or model requirement. Scope/shared/external facts come from backend status;
 retained native files are not presented as globally disabled. CLI entry installation

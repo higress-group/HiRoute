@@ -82,7 +82,25 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<(), ControlReadError> {
-        if !class.is_codex() || class == SettingsAgentClass::CodexDesktop {
+        if !class.is_codex() {
+            return Ok(());
+        }
+        if !matches!(spec.model, AgentFacetIntent::Keep)
+            && self
+                .scanner
+                .codex_desktop_config_target()
+                .is_some_and(|target| {
+                    hiroute_integrations::canonical_codex_config_path(&target)
+                        == hiroute_integrations::canonical_codex_config_path(
+                            &self.scanner.codex_user_config_target(),
+                        )
+                })
+        {
+            // An inherited CODEX_HOME must never turn the private Desktop into a second
+            // model slot over the same physical home.
+            return Err(ControlReadError::Denied);
+        }
+        if class == SettingsAgentClass::CodexDesktop {
             return Ok(());
         }
         if class == SettingsAgentClass::CodexProfile && !spec.keeps_skills() {

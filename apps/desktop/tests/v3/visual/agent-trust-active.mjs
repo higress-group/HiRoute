@@ -56,6 +56,9 @@ try {
       if (selected.some(item => item.capabilities.includes('dsh-desktop'))) {
         checks.push(...await (await import('./agent-readback-captures.mjs')).dshDesktopCaptures(client, baseUrl, outputRoot));
       }
+      if (selected.some(item => item.capabilities.includes('codex-desktop'))) {
+        checks.push(...await (await import('./agent-readback-captures.mjs')).codexDesktopCaptures(client, baseUrl, outputRoot));
+      }
       if (selected.some(item => item.capabilities.includes('agent-readback'))) {
         checks.push(...await (await import('./agent-readback-captures.mjs')).agentReadbackCaptures(client, baseUrl, outputRoot));
       }

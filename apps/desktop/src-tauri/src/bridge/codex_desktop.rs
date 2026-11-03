@@ -96,3 +96,64 @@ fn launch_target(
             .ok_or("AGENT_STATUS_UNVERIFIED")?,
     ))
 }
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    fn snapshot(state: &str, agent_id: &str, trusted: bool) -> AgentSnapshot {
+        AgentSnapshot {
+            trusted_authority: trusted,
+            plans: AgentPlanCatalogViewV2 { schema: "hiroute.agent-plan-catalog/v2".into(), next_cursor: None, drafts: vec![], plans: vec![] },
+            agents: vec![serde_json::from_value(serde_json::json!({
+                "agent_id": agent_id, "context_id": "context/desktop", "version": "fixture",
+                "configuration_state": "registered", "available_surfaces": ["codex_desktop"],
+                "codex_desktop": { "codex_home": "/private/instance/codex", "user_data": "/private/instance/desktop", "source_codex_home": "/ordinary/.codex", "shared_skills": "/ordinary/.agents/skills" },
+                "settings": { "schema": "hiroute.agent-model-settings-status/v2", "context_id": "context/desktop",
+                    "state": state, "operation_id": "operation/desktop", "operation_state": "succeeded",
+                    "restore_point_ref": "restore/desktop", "applied_revision": 1, "surface_results": [], "model_verified": false,
+                    "current_selection": { "mode": "codex_default", "native_model_mode": "hiroute_only", "fixed_models": [], "allowed_plan_ids": ["plan/one"], "default_selection": { "kind": "plan", "plan_id": "plan/one" } }
+                }
+            })).unwrap()],
+        }
+    }
+    #[test]
+    fn codex_desktop_launch_requires_current_authority_and_exact_connection() {
+        assert!(
+            launch_target(
+                snapshot("configured", "agent_codex_desktop", true),
+                "context/desktop"
+            )
+            .is_ok()
+        );
+        for state in ["pending", "not_configured", "drift", "needs_attention"] {
+            assert!(
+                launch_target(
+                    snapshot(state, "agent_codex_desktop", true),
+                    "context/desktop"
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            launch_target(
+                snapshot("configured", "agent_codex_desktop", false),
+                "context/desktop"
+            )
+            .is_err()
+        );
+        assert!(
+            launch_target(
+                snapshot("configured", "agent_codex_default", true),
+                "context/desktop"
+            )
+            .is_err()
+        );
+        assert!(
+            launch_target(
+                snapshot("configured", "agent_codex_desktop", true),
+                "context/other"
+            )
+            .is_err()
+        );
+    }
+}

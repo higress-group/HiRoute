@@ -241,6 +241,43 @@ inside an owned provider are conflicts, not silently cleaned. Root selector
 remain independent. Collaboration uses the native root, not the model profile;
 misdirected collaboration configuration fails with its explicit root-context reason.
 
+### Requirement: Codex Desktop has an independent managed instance
+
+`agent_codex_desktop` is a peer connection to the ordinary Codex CLI profile/root
+slot. It uses the Codex model adapter with its own native target, context, access
+grant, catalog and restore point. Both connections can remain enabled across
+restart. Reconfiguring, rotating a token or restoring one cannot change the other
+home's configuration or authority. An inherited CODEX_HOME resolving to the same
+physical home cannot create two model slots. Existing publication/recovery fences
+still protect an incomplete shared-service cutover.
+
+On macOS, the native host resolves the installed Codex bundle and launches it with
+`open -n`, private CODEX_HOME and CODEX_SQLITE_HOME, private
+CODEX_ELECTRON_USER_DATA_PATH and matching `--user-data-dir`. Real HOME stays
+unchanged. No ordinary configuration, auth, instructions or session files are
+copied. CLI is never substituted for a missing Desktop engine. Other hosts do not
+advertise native launch. The separate instance lives in a storage-root-specific
+sibling namespace, outside Core upgrade snapshots. Native history and login remain
+Codex-owned and survive routing restore.
+
+The launch command accepts only a context ID. Before native launch, a fresh trusted
+snapshot must prove the exact Desktop connection is configured and its Operation
+succeeded; preparation is followed by a fresh check of the same connection and
+Operation. UI-supplied paths, environment or commands are not accepted. Launch
+failure preserves the completed configuration and retries launch only. First use
+offers route configuration; configured use offers the separate window. CLI and
+Desktop remain distinct entries with visible scope and recovery information.
+
+User skills in real HOME's `.agents/skills` and project skills remain naturally
+shared. At launch preparation only, other valid CODEX_HOME user skill directories
+are linked individually into the private home's `skills`, including scripts and
+resources. Dot/system entries and names already present in `.agents/skills` are
+skipped. Existing destination entries are never replaced or deleted. Created links
+are recorded in a private informational receipt; the receipt confers no deletion
+authority. Source updates/removal flow through each lexical link; user replacements
+stay intact. Routing restore retains these links and native history. Sharing does
+not establish independent management-Skill or Worker support for the new identity.
+
 ### Requirement: Codex native retention needs both metadata and account proof
 
 Users choose HiRoute-only or retain-native-models as part of the shared settings.
