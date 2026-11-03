@@ -2,7 +2,7 @@
 
 use hiroute_application_api::{
     DelegationWaitV1, MachineEnvelopeV2, MachineStatus, RunStateV1, WorkerCommandDataV1,
-    WorkerResultRequestV1, WorkerWaitRequestV1,
+    WorkerResultRequestV1,
 };
 use hiroute_client_core::{Client, ClientFailure, FailureCode};
 use tokio::time::Instant;
@@ -32,8 +32,9 @@ pub(super) fn execute(
         );
     }
     let response = call(async {
-        let waited = until_terminal(client.shared_client(), request_id, parsed).await?;
-        finish(client.shared_client(), request_id, waited).await
+        let client = client.shared_client();
+        let waited = until_terminal(&client, request_id, parsed).await?;
+        finish(&client, request_id, waited).await
     });
     match response {
         Ok(mut envelope) => {
