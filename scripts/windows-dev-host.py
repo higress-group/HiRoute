@@ -304,6 +304,32 @@ def admit_test_profile(request, home, localappdata):
     if (request['binary'] == 'hiroute_local_storage.exe' and not request['ignored']
             and request['case'] in {prefix + name for name in artifact_cases}):
         return 'temporary_artifact_component'
+    # These exact Codex cases use tempfile-owned paths or in-process test doubles.
+    # The explicit installation probe only reads the current user's package and
+    # runs its engine's fixed --version entry; it never changes a native profile.
+    codex_components = {
+        'hiroute_platform.exe': {
+            'directory_link::tests::codex_skill_source_link_replacement_and_removal_flow_through_shared_link',
+            'directory_link::tests::codex_skill_directory_link_shares_updates_without_replacing_private_entries',
+        },
+        'hiroute_desktop_host_effects.exe': {
+            'codex_instance::tests::codex_desktop_shares_skills_without_adopting_existing_entries',
+            'codex_installation::tests::codex_desktop_cache_prefers_current_entry_and_compares_versions_numerically',
+            'codex_installation::tests::codex_desktop_package_requires_its_own_engine_and_isolates_only_child_environment',
+        },
+        'hiroute_product_session.exe': {
+            'codex_desktop::tests::codex_desktop_launch_reads_only_current_exact_model_authority',
+        },
+        'hiroute_cli.exe': {
+            'codex_desktop::tests::codex_desktop_local_launch_help_is_offline_and_rejects_paths_and_agent_authority',
+        },
+    }
+    if (not request['ignored']
+            and request['case'] in codex_components.get(request['binary'], set())):
+        return 'temporary_artifact_component'
+    if (request['binary'] == 'hiroute_desktop_host_effects.exe' and request['ignored']
+            and request['case'] == 'codex_installation::tests::actual_windows_codex_desktop_package_has_its_own_engine'):
+        return 'read_only_installation_component'
     # Never manufacture HOME or remove an existing installation to make a gate pass.
     for path in (localappdata / 'HiRoute/cli', home / '.local/share/hiroute/standalone.json',
                  home / '.local/bin/hiroute.exe'):

@@ -77,6 +77,26 @@ class Runner(unittest.TestCase):
                 stream.writestr(*extra)
         return archive
 
+    def test_codex_components_admit_only_exact_temp_or_read_only_cases_with_an_installed_profile(self):
+        home, local = self.root / 'home', self.root / 'local'
+        marker = local / 'HiRoute/cli/user-state'
+        marker.parent.mkdir(parents=True)
+        marker.write_bytes(b'preserve existing installation')
+        temporary = dict(binary='hiroute_platform.exe', ignored=False,
+                         case='directory_link::tests::codex_skill_source_link_replacement_and_removal_flow_through_shared_link')
+        probe = dict(binary='hiroute_desktop_host_effects.exe', ignored=True,
+                     case='codex_installation::tests::actual_windows_codex_desktop_package_has_its_own_engine')
+        self.assertEqual(host.admit_test_profile(temporary, home, local), 'temporary_artifact_component')
+        self.assertEqual(host.admit_test_profile(probe, home, local), 'read_only_installation_component')
+        for request in [temporary, probe]:
+            for changed in [dict(binary='windows_headless.exe'),
+                            dict(case=request['case'] + '_other'),
+                            dict(ignored=not request['ignored'])]:
+                with self.subTest(request=request, changed=changed), \
+                        self.assertRaisesRegex(ValueError, 'existing installation'):
+                    host.admit_test_profile({**request, **changed}, home, local)
+        self.assertEqual(marker.read_bytes(), b'preserve existing installation')
+
     def test_stage_verifies_bytes_and_rechecks_existing_bundle(self):
         archive = self.archive()
         value = host.stage(self.root, archive, controller.digest(archive))
