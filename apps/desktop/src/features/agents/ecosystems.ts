@@ -11,7 +11,14 @@ export function agentPageEntries(agents: Agent[]): Agent[] {
     configuration_state: agent_id === 'agent_hermes_default' ? 'profile_not_selected' : 'not_discovered',
     settings: null, status_error: null,
   }));
-  return missing.length ? [...agents, ...missing] : agents;
+  const entries = missing.length ? [...agents, ...missing] : [...agents];
+  const desktop = entries.findIndex(agent => agent.agent_id === 'agent_codex_desktop');
+  const codex = entries.findIndex(agent => agent.agent_id === 'agent_codex_default');
+  if (desktop >= 0 && codex >= 0 && desktop !== codex + 1) {
+    const [entry] = entries.splice(desktop, 1);
+    entries.splice(entries.findIndex(agent => agent.agent_id === 'agent_codex_default') + 1, 0, entry);
+  }
+  return entries;
 }
 
 export type AgentEcosystem = 'codex' | 'claude' | 'qoder' | 'pi' | 'dsh' | 'hermes' | 'opencode';

@@ -19,6 +19,11 @@ pub fn prepare_codex_instance(
     source_home: &Path,
     shared_skills: &Path,
 ) -> io::Result<SharedCodexSkills> {
+    // Two native IPC calls can overlap even when the UI prevents double submission.
+    static PREPARATION: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = PREPARATION
+        .lock()
+        .map_err(|_| io::Error::other("instance preparation unavailable"))?;
     let root = codex_home.parent().ok_or(io::ErrorKind::InvalidInput)?;
     if !root.is_absolute()
         || codex_home == source_home

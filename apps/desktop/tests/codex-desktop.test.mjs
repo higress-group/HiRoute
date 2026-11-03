@@ -10,6 +10,7 @@ test('Desktop is a peer connection and never borrows CLI profile context', () =>
     codex_access: { slot_occupied: false, root_context_id: 'context/root', profile_context_id: 'context/cli' } };
   const entries = agentPageEntries([cli, desktop]);
   assert.equal(entries.filter(a => a.agent_id === desktop.agent_id).length, 1);
+  assert.equal(entries.findIndex(a => a.agent_id === desktop.agent_id), entries.findIndex(a => a.agent_id === cli.agent_id) + 1);
   assert.equal(agentEcosystem(desktop.agent_id), 'codex');
   assert.equal(agentSupportsCollaboration(desktop.agent_id), false);
   assert.equal(agentSupportsManagement(desktop.agent_id), false);
