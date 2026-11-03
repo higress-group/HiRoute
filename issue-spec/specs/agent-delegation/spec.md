@@ -239,6 +239,33 @@ stale states, and known-active sessions cannot acknowledge. It records
 residual_acknowledged and releases the relevant local slot, not system-proven stop,
 task success, or undo. Uncertain response replays the same acknowledgement.
 
+An Unknown execution outcome whose cleanup is complete or explicitly acknowledged
+and whose process is not running is terminal and releasable. Cancelling it MUST be
+idempotent, retain that outcome and cleanup, and MUST NOT reacquire execution
+capacity. Exact submission replay still identifies the original run, never another
+prompt. A complete owned-scope stop proof for that run's immutable process binding
+MUST NOT be replaced or invalidated by a later lookup of a released/lost handle.
+Contradictory or weaker new process observations are rejected; exact event replay
+retains its existing idempotency.
+
+Normal daemon shutdown MUST fence new Worker starts, interrupt admitted execution
+without inventing user cancellation, and join current Worker finalization within
+the existing role shutdown deadline while the stores and owned process objects
+remain available. Stops are requested concurrently rather than granting a fresh
+deadline per task. Already published results retain their outcome. Missing stop
+proof after a crash, forced exit or failed cleanup remains explicit and requires
+the existing recovery path; daemon restart alone cannot prove process termination.
+
+#### Scenario: Cancel an ended uncertain execution
+
+- **WHEN** a run has an Unknown outcome and complete cleanup, including after reopen or release of its local process handle
+- **THEN** repeated cancel and original submission replay preserve its terminal outcome, stop proof and released execution capacity without prompting or stopping another process.
+
+#### Scenario: Restart while a native tool is active
+
+- **WHEN** the daemon normally shuts down with an admitted native Worker tool running
+- **THEN** it joins bounded owned-process cleanup and durable outcome recording before teardown; after restart the saved stop proof remains authoritative, cancellation cannot reopen a released run, and an independently completed task retains its exact native continuation.
+
 ### Requirement: Continue restores exactly the original session
 
 Continue MUST bind task/expected-latest-run, original canonical cwd/context/session,

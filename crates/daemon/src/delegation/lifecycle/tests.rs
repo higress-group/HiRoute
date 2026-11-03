@@ -11,6 +11,8 @@ use tokio_util::sync::CancellationToken;
 
 #[cfg(unix)]
 mod codex_capability;
+#[cfg(unix)]
+mod shutdown;
 mod startup;
 mod terminal;
 

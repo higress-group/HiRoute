@@ -103,6 +103,10 @@ impl DelegationRuntimePort for MemoryRuntime {
             return Err(DelegationErrorV1::Conflict);
         }
         match event {
+            DelegationCheckpointV1::ExecutionFailed { event, failure } => {
+                run.execution_failure = Some(*failure);
+                run.progress.advance(*event)?;
+            }
             DelegationCheckpointV1::Progress { event } => run.progress.advance(*event)?,
             _ => return Err(DelegationErrorV1::PermissionDenied),
         }
@@ -451,4 +455,54 @@ fn cancel_before_executor_preparation_is_cancelled_without_launching() {
         terminals.is_empty(),
         "the cancel transaction already settled the run"
     );
+}
+
+#[test]
+fn shutdown_fences_late_wakes_and_join_waits_for_all_registered_executions() {
+    let temporary = crate::test_support::private_tempdir();
+    let (report, runtime, executor) = fixture(&temporary, 12);
+    let executor = Arc::new(executor);
+    let first = active_key(&runtime.run.lock().unwrap());
+    let mut second = first.clone();
+    second.1 = "run/two".into();
+    executor
+        .active
+        .lock()
+        .unwrap()
+        .extend([first.clone(), second.clone()]);
+    executor.shutdown();
+    assert!(executor.shutdown.is_cancelled());
+    assert_eq!(
+        executor.join(Duration::ZERO),
+        Err(DelegationErrorV1::DeadlineExceeded)
+    );
+    executor.remove_active(&first);
+    assert_eq!(executor.upgrade_active_count().unwrap(), 1);
+    assert_eq!(
+        executor.join(Duration::ZERO),
+        Err(DelegationErrorV1::DeadlineExceeded)
+    );
+    let finishing = executor.clone();
+    let worker = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(20));
+        finishing.remove_active(&second);
+    });
+    executor.join(Duration::from_secs(2)).unwrap();
+    worker.join().unwrap();
+    executor.shutdown();
+    executor.join(Duration::ZERO).unwrap();
+    assert_eq!(
+        executor.wake(
+            &WorkspaceId::default(),
+            "run/one",
+            PathBuf::from("/workspace")
+        ),
+        Err(DelegationErrorV1::CapabilityUnavailable)
+    );
+    assert_eq!(
+        runtime.state().0,
+        hiroute_domain::delegation::RunStateV1::Failed
+    );
+    assert_eq!(executor.upgrade_active_count().unwrap(), 0);
+    report.shutdown();
 }

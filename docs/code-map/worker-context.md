@@ -343,6 +343,14 @@ has started, cancellation still needs owned-process stop evidence. Startup may
 settle the old revision-2 `Cancelling` record only when the exact record proves
 that preparation, process binding and prompt intent never occurred.
 
+An ended `Unknown` outcome can have complete cleanup. Its cancel is idempotent;
+[stored checkpoints](../../crates/local-storage/src/runtime/delegation/events.rs)
+reject later observations that would revoke the same run's complete scope-stop
+proof. [Role shutdown](../../crates/daemon/src/role_all.rs) signals the
+[executor](../../crates/daemon/src/delegation/executor/control.rs) and joins Worker
+finalization under its existing deadline before process/store teardown. This
+does not infer ownership from a previous daemon's missing process handle.
+
 The shared [startup coordinator](../../crates/daemon/src/delegation/lifecycle/startup.rs)
 protects same-daemon Codex borrowed-root initialization and OpenCode database
 initialization. OpenCode rechecks the captured configuration and read-only database

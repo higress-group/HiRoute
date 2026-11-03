@@ -181,6 +181,16 @@ fn windows_agent_discovery_uses_the_private_isolated_test_home() {
 }
 
 impl ProductionControlRuntime {
+    pub(crate) fn shutdown_workers(&self) {
+        self.delegation_executor.shutdown();
+    }
+
+    pub(crate) fn join_workers(&self, timeout: std::time::Duration) -> Result<(), String> {
+        self.delegation_executor
+            .join(timeout)
+            .map_err(|error| error.to_string())
+    }
+
     /// Recovery material expires only once the whole serving composition is ready.
     pub(crate) fn service_ready(&self) {
         self.adapter.upgrade_cleanup.service_ready();

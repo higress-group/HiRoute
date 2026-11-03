@@ -110,6 +110,9 @@ impl RunProgressV1 {
                 self.state = S::Cancelled;
                 self.cleanup = RunCleanupV1::Complete;
             }
+            // Unknown is an execution outcome, not evidence of a live process. Once its
+            // resources are released, cancelling it must not recreate pending cleanup.
+            (S::Unknown, E::CancelRequested) if self.workspace_releasable() => return Ok(()),
             (S::Preparing | S::Running | S::Unknown, E::CancelRequested) => {
                 self.cancel_requested = true;
                 self.state = S::Cancelling;

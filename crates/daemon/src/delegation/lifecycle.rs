@@ -173,8 +173,25 @@ pub struct WorkerRunResult {
 pub(crate) async fn execute(
     platform: &dyn WorkerPlatformPort,
     request: WorkerLaunchRequest,
+    input: AcpRunInput,
+    journal: Arc<dyn WorkerRunJournal>,
+) -> Result<WorkerRunResult, DelegationErrorV1> {
+    execute_with_shutdown(
+        platform,
+        request,
+        input,
+        journal,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+}
+
+pub(crate) async fn execute_with_shutdown(
+    platform: &dyn WorkerPlatformPort,
+    request: WorkerLaunchRequest,
     mut input: AcpRunInput,
     journal: Arc<dyn WorkerRunJournal>,
+    shutdown: tokio_util::sync::CancellationToken,
 ) -> Result<WorkerRunResult, DelegationErrorV1> {
     let platform_facts = match platform.capabilities(&request.profile) {
         Ok(facts) => facts,
@@ -204,13 +221,15 @@ pub(crate) async fn execute(
     }
     let terminal_checkpoint = ClaudeHistoryCheckpoint::capture(&request.profile, &input)
         .map(|history| Arc::new(LiveTerminalCheckpoint::new(journal.clone(), history)));
-    let startup = match startup::StartupPermit::acquire(
-        request.profile.native_initialization_root(),
-        input.deadline,
-        &input.cancellation,
-    )
-    .await
-    {
+    let startup = match tokio::select! {
+        biased;
+        _ = shutdown.cancelled() => Err(DelegationErrorV1::ProtocolFailed),
+        result = startup::StartupPermit::acquire(
+            request.profile.native_initialization_root(),
+            input.deadline,
+            &input.cancellation,
+        ) => result,
+    } {
         Ok(permit) => permit,
         Err(error) => {
             let _ = journal.execution_failed(error);
@@ -234,6 +253,10 @@ pub(crate) async fn execute(
         _ = input.cancellation.cancelled() => {
             let _ = journal.execution_failed(DelegationErrorV1::Cancelled);
             return Err(DelegationErrorV1::Cancelled);
+        }
+        _ = shutdown.cancelled() => {
+            let _ = journal.execution_failed(DelegationErrorV1::ProtocolFailed);
+            return Err(DelegationErrorV1::ProtocolFailed);
         }
         result = timeout_at(input.deadline, platform.launch(request)) => {
             let result = match result {
@@ -303,6 +326,17 @@ pub(crate) async fn execute(
                     );
                     acp_cancel.cancel();
                     future.await
+                },
+                _ = shutdown.cancelled() => {
+                    // Daemon shutdown interrupts execution without inventing user intent.
+                    // Persist that uncertainty before native cancellation, then use the
+                    // ordinary bounded ACP shutdown and owned-process cleanup below.
+                    if !terminal_checkpoint.as_ref().is_some_and(|checkpoint| checkpoint.has_receipt()) {
+                        let _ = journal.execution_failed(DelegationErrorV1::ProtocolFailed);
+                    }
+                    acp_cancel.cancel();
+                    let _ = future.await;
+                    Err(DelegationErrorV1::ProtocolFailed)
                 },
                 _ = tokio::time::sleep_until(deadline) => {
                     // An already published terminal receipt wins while its history drains.
