@@ -14,7 +14,7 @@ const client = await connectPage(port);
 const checks = [];
 const captures = [];
 try {
-  for (const [width, height] of [[1200, 813], [755, 600]]) {
+  for (const [width, height] of [[1200, 813], [755, 600], [864, 977]]) {
     for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) {
       await navigate(client, new URL('session-window.html', baseUrl).href, { width, height });
       await waitFor(client, 'Boolean(window.sessionWindow)');
@@ -40,13 +40,14 @@ try {
           const r = row.getBoundingClientRect(), main = row.querySelector('.quality-row-main').getBoundingClientRect(), score = row.querySelector('.quality-score').getBoundingClientRect();
           return { visible: r.width > 0 && r.height > 0, horizontalOverflow: row.scrollWidth > row.clientWidth + 1,
             headerOverlap: main.right > score.left + 1, outside: r.left < -1 || r.right > innerWidth + 1,
+            scoreOutside: score.right > innerWidth + 1 || score.left < r.left - 1,
             text: row.innerText, expanded: row.querySelector('.quality-assessment-details').open };
         })()`);
         const screenshot = `assessment-coverage-${language}-${theme}-${width}x${height}-${expanded ? 'expanded' : 'collapsed'}.png`;
         const capture = await client.send('Page.captureScreenshot', { format: 'png' });
         await writeFile(path.join(outputRoot, screenshot), Buffer.from(capture.data, 'base64'));
         captures.push({ screenshot, width, height, language, theme, geometry,
-          state: geometry.visible && !geometry.horizontalOverflow && !geometry.headerOverlap && !geometry.outside && geometry.expanded === expanded ? 'green' : 'red' });
+          state: geometry.visible && !geometry.horizontalOverflow && !geometry.headerOverlap && !geometry.outside && !geometry.scoreOutside && geometry.expanded === expanded ? 'green' : 'red' });
       }
     }
   }
