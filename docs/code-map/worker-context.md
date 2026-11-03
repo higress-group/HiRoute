@@ -69,6 +69,13 @@ producers still lose the optional input proof. Native failed-request retry assoc
 [shared history owner](../../crates/gateway/src/agent_turn_history/store/retry.rs),
 not to the DSH adapter or a session-wide lock.
 
+Codex's [native metadata parser](../../crates/gateway/src/context_hold/routing/codex.rs)
+validates coherent protocol identities and windows independently of User-Agent
+versions. Its [Responses input adapter](../../crates/gateway/src/adapters/responses_ingress.rs)
+recognizes empty output probability metadata already accepted by the response
+parser; unknown/nonempty enrichment stays opaque. [ACP listener regressions](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_acp_history.rs)
+cover replayed commentary, tool continuation and complete next-stage assessment.
+
 Codex's [connection guidance](../../apps/desktop/src/features/agents/CodexAccessPanel.tsx)
 explains native provider-scoped session discovery before enabling routing. Default
 on-demand access preserves the ordinary entry for earlier sessions; advanced default

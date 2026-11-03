@@ -119,6 +119,8 @@ impl Drop for SnapshotPin {
 #[derive(Clone)]
 struct TranscriptCheckpoint {
     active_user_index: usize,
+    input_start: Option<usize>,
+    capture_turn_anchor: String,
     message_count: usize,
     digest: Option<[u8; 32]>,
     retry_setup: Option<[u8; 32]>,
@@ -466,6 +468,8 @@ impl AgentTurnHistoryStore {
             };
             let checkpoint = TranscriptCheckpoint {
                 active_user_index: latest.user_index,
+                input_start: analyzed.current_input_start,
+                capture_turn_anchor: turn_id.clone(),
                 message_count: analyzed.message_count,
                 digest: analyzed.anchors.as_ref().map(|a| a.complete),
                 retry_setup: analyzed.retry_setup,
@@ -515,6 +519,7 @@ impl AgentTurnHistoryStore {
             inner.note_peak();
             let ticket = AgentTurnTicket {
                 capture_input_start: None,
+                capture_turn_anchor: turn_id.clone(),
                 key,
                 entry_token,
                 revision: 1,
@@ -672,12 +677,15 @@ impl AgentTurnHistoryStore {
                 entry.active.request_output_accepted = false;
                 entry.checkpoint = TranscriptCheckpoint {
                     active_user_index: latest.user_index,
+                    input_start: analyzed.current_input_start,
+                    capture_turn_anchor: entry.checkpoint.capture_turn_anchor.clone(),
                     message_count: analyzed.message_count,
                     digest: analyzed.anchors.as_ref().map(|a| a.complete),
                     retry_setup: analyzed.retry_setup,
                 };
                 let ticket = AgentTurnTicket {
                     capture_input_start: None,
+                    capture_turn_anchor: entry.checkpoint.capture_turn_anchor.clone(),
                     key: key.clone(),
                     entry_token: entry.entry_token,
                     revision: entry.revision,
@@ -831,12 +839,15 @@ impl AgentTurnHistoryStore {
             };
             entry.checkpoint = TranscriptCheckpoint {
                 active_user_index: latest.user_index,
+                input_start: analyzed.current_input_start,
+                capture_turn_anchor: turn_id.clone(),
                 message_count: analyzed.message_count,
                 digest: analyzed.anchors.as_ref().map(|a| a.complete),
                 retry_setup: analyzed.retry_setup,
             };
             let ticket = AgentTurnTicket {
                 capture_input_start: None,
+                capture_turn_anchor: turn_id.clone(),
                 key: key.clone(),
                 entry_token: entry.entry_token,
                 revision: entry.revision,

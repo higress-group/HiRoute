@@ -68,6 +68,50 @@ def catalog(product, request_id):
         'cursor': None, 'include_input_selection': True, 'include_semantic_metadata': True})
 
 
+def verify_carried_input_source(product):
+    """Archive provenance survives response-association loss, independently of retry."""
+    session = 'native-carried-input-source'
+    messages = [{'role': 'user', 'content': 'Preserve this original input occurrence.'}]
+    first = send(product, messages, 'source-A', session=session)
+    original = catalog(product, first)
+    source = [c for c in original['contents'] if c['direction'] == 'request_input'
+              and c['role'] == 'user']
+    assert len(source) == 1 and source[0]['state'] == 'complete', original
+    expected = {'source_request_id': first,
+                'message_occurrence_id': source[0]['message_occurrence_id']}
+    requests = [first]
+    last = None
+    for step in range(3):
+        # This output was never accepted: the original input prefix remains
+        # exact, but response continuity must fail and open an independent stage.
+        messages.append({'role': 'assistant', 'content': f'Unmatched output {step}'})
+        current = send(product, messages, 'source-A', session=session)
+        requests.append(current)
+        wait_for(lambda: complete_content(product, current), 'carried source capture incomplete')
+        last = catalog(product, current)
+        assert not last['roots_partial'] and last['input_anchor'] == expected, last
+        assert not [c for c in last['contents'] if c['direction'] == 'request_input'], last
+    placeholders = ','.join('?' for _ in requests)
+    stages = rows(product, 'SELECT COUNT(DISTINCT turn_id) FROM logical_requests '
+                  f'WHERE request_id IN ({placeholders})', requests)
+    assert stages == [(4,)], 'archive source identity merged unrelated execution stages'
+    product.stop()
+    product.start()
+    assert catalog(product, requests[-1]) == last, 'carried source changed after reopen'
+    text = query(product, 'content', {'request_id': first, 'content_id': source[0]['content_id'],
+                                    'cursor': None})
+    assert text['state'] == 'available', text
+    assert ''.join(chunk['text'] for chunk in text['chunks']) == messages[0]['content']
+    # Identical text is a distinct occurrence at a genuinely appended input.
+    messages.append({'role': 'user', 'content': messages[0]['content']})
+    following = send(product, messages, 'source-B', session=session)
+    wait_for(lambda: complete_content(product, following), 'new input capture incomplete')
+    page = catalog(product, following)
+    assert not page['roots_partial'] and page['input_anchor'] != expected, page
+    return {'carried_source_requests': len(requests), 'independent_stages': 4,
+            'carried_source_reopened': True, 'repeated_input_is_distinct': True}
+
+
 def run(repository):
     product, upstream = Product(repository), NativeUpstream()
     product.enable_debug_diagnostics()
@@ -117,6 +161,8 @@ def run(repository):
             assert body['state'] == 'available' and body['next_cursor'] is None, body
             assert ''.join(c['text'] for c in body['chunks']) == messages[0]['content'], body
 
+            carried_source = verify_carried_input_source(product)
+
             # Runtime history cannot prove optional body persistence. A failed
             # first capture must remain an explicit gap on a healthy retry.
             product.stop()
@@ -143,7 +189,7 @@ def run(repository):
                 'state': 'green', 'real_requests': 5, 'input_occurrences': 1,
                 'ordinary_retry_content_nacks': 0, 'ordinary_retry_content_gaps': 0,
                 'injected_capture_failures': 1, 'missing_retry_input_explicitly_partial': True,
-                'actual_attempts_linked': True, 'history_reopened': True}), flush=True)
+                'actual_attempts_linked': True, 'history_reopened': True, **carried_source}), flush=True)
     finally:
         try:
             product.close()

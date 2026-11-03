@@ -423,6 +423,13 @@ is v3; semantic response segments preserve status/annotations and conflicting fi
 versions without keeping every protocol delta. Queue pressure never falls back to
 synchronous full-history traversal; an admitted part finishes before optional capture
 aborts. First-seen context and current-input anchors do not become scoring authority.
+An exact carried request prefix may keep its original archive input identity across
+an independent routing stage when the input position and retained source agree
+uniquely. This does not reuse the old decision or assert an accepted response edge.
+The reader still checks capture completeness, authorization, deletion and expiry;
+missing source content stays partial. [Source regressions](src/agent_turn_history/input_anchor_tests.rs)
+and the [real-process reader/reopen case](../daemon/tests/support/observation_native_retry_product.py)
+keep archive identity independent of execution identity.
 Response ciphertext remains excluded from retained observation content.
 The response tracker retains accepted lifecycle evidence separately from that
 presentation policy. Converted responses use the protocol renderer's omission
