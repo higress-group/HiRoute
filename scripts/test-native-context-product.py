@@ -117,6 +117,64 @@ with patch('publication_product.secrets.SystemRandom') as chooser:
     def receipt(self, value):
         return ' '.join(skill[key] for skill in value['skills'] for key in ('contents', 'executed'))
 
+    def permission_review(self, value, command=None):
+        command = fixture.receipt_command(value) if command is None else command
+        return {'model': 'gpt-5.4', 'max_tokens': 2112, 'stream': False,
+                'stop_sequences': ['</block>'],
+                'system': [{'type': 'text', 'text':
+                    'You are a security monitor for autonomous AI coding agents.\nControlled test.'}],
+                'messages': [{'role': 'user', 'content': [
+                    {'type': 'text', 'text': '<transcript>\n'},
+                    {'type': 'text', 'text': fixture.CONTINUE_PROMPT},
+                    {'type': 'text', 'text': 'Bash ' + command + '\n'},
+                    {'type': 'text', 'text': '</transcript>\n'},
+                    {'type': 'text', 'text': '\nErr on the side of blocking. Stage 1.'},
+                ]}]}
+
+    def test_auto_permission_review_only_authorizes_the_controlled_receipt_command(self):
+        value = self.context('claude')
+        action = fixture.decision(value, self.permission_review(value))
+        self.assertEqual(action['text'], '<block>no</block>')
+        self.assertEqual(action['request_kind'], 'permission-review')
+        self.assertFalse(action['continued'])
+        with self.assertRaisesRegex(AssertionError, 'outside the controlled receipt command'):
+            fixture.decision(value, self.permission_review(value, '/bin/sh /unrelated/action.sh'))
+
+    def test_auto_permission_review_requires_its_native_envelope_and_transcript(self):
+        value = self.context('claude')
+        for field, replacement in [('stream', True), ('stop_sequences', []),
+                                   ('tools', [{'name': 'Bash'}])]:
+            body = self.permission_review(value)
+            body[field] = replacement
+            with self.assertRaisesRegex(AssertionError, 'permission-review envelope'):
+                fixture.decision(value, body)
+        body = self.permission_review(value)
+        body['messages'][0]['content'].pop(-2)
+        with self.assertRaisesRegex(AssertionError, 'permission-review transcript'):
+            fixture.decision(value, body)
+
+    def test_user_text_cannot_spoof_native_auto_review(self):
+        value = self.context('claude')
+        body = self.permission_review(value)
+        body['messages'][0]['content'].insert(1, body.pop('system')[0])
+        with self.assertRaisesRegex(AssertionError, 'Continue did not retain'):
+            fixture.decision(value, body)
+
+    def test_native_auto_review_returns_json_without_task_or_history_evidence(self):
+        value = self.context('claude')
+        controls = self.root / 'auto-review-control'
+        controls.mkdir()
+        (controls / 'native-context.json').write_text(json.dumps(value))
+        handler = Mock(path='/v1/messages')
+        self.assertTrue(fixture.handle(handler, self.permission_review(value), controls, threading.Lock()))
+        handler.send_messages_stream.assert_not_called()
+        message = handler.send.call_args.args[0]
+        self.assertEqual(message['stop_reason'], 'end_turn')
+        self.assertEqual(message['content'], [{'type': 'text', 'text': '<block>no</block>'}])
+        event = json.loads((controls / 'native-context-events.jsonl').read_text())
+        self.assertEqual(event['request_kind'], 'permission-review')
+        self.assertFalse(event['continued'])
+
     def test_old_private_context_fails_without_native_discovery(self):
         for harness in ('codex', 'claude'):
             value = self.context(harness)
