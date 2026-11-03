@@ -133,6 +133,9 @@ fn retained_long_hermes_chat_keeps_tool_stage_and_complete_next_input_assessment
     let mut publication = fixture.publication();
     publication.publication_revision += 1;
     publication.aliases[0].protocols = vec![IngressProtocol::ChatCompletions];
+    publication
+        .grants
+        .retain(|grant| grant.protocol == IngressProtocol::ChatCompletions);
     for (candidate, provider) in publication.aliases[0]
         .candidates
         .iter_mut()
