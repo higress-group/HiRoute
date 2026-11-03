@@ -181,6 +181,7 @@ const scenarios = [
   scenario('codex.desktop.token-update-restart', ['codex-desktop'], 'Desktop token updates discard old launch feedback and require an explicit instance restart', async () => {
     for (const regenerate of [true, false]) {
       await showCodexIndependentDesktop();
+      const desktopContext = c().agents.agents.find(agent => agent.agent_id === 'agent_codex_desktop').context_id;
       const cli = JSON.stringify(c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default'));
       const launch = document.querySelector('[data-codex-desktop-launch]');
       launch.click();
@@ -202,7 +203,7 @@ const scenarios = [
       assert(notice.includes('退出') && notice.includes('重新启动'), 'Desktop token notice implies an already-running instance automatically reloads credentials');
       assert(document.querySelector('[data-codex-desktop-instance]').textContent.includes('配置更新后'), 'Persistent restart guidance excludes token-only changes');
       const input = calls('preview_agent_settings')[0].payload.input;
-      assert(input.spec.context_id === 'agent-context/codex-desktop/fixture' && input.spec.collaboration.intent === 'keep', 'Token update changed another connection or facet');
+      assert(input.spec.context_id === desktopContext && input.spec.collaboration.intent === 'keep', 'Token update changed another connection or facet');
       assert(input.spec.access_token.intent === (regenerate ? 'regenerate' : 'keep'), 'Token update lost its existing native token intent');
       if (!regenerate) assert(input.custom_token === 'desktop-reviewed-token-123456', 'Custom token draft was lost');
       assert(calls('launch_codex_desktop').length === 1, 'Token update automatically relaunched a client');
