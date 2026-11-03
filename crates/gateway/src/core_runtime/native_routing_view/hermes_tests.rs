@@ -61,7 +61,10 @@ fn observed_batch_excerpt_uses_the_latest_wire_user_without_claiming_native_sele
     assert!(excerpt.source_unverified);
     assert!(view.current_input().is_none());
     assert!(view.current_input_position().is_none());
-    assert_eq!(serde_json::to_value(view.request(&input)).unwrap(), original);
+    assert_eq!(
+        serde_json::to_value(view.request(&input)).unwrap(),
+        original
+    );
 }
 
 #[test]
@@ -69,7 +72,10 @@ fn explicit_continuation_or_invalid_input_never_uses_an_ancestor_user_excerpt() 
     use hiroute_domain::RequestInputSelectionEvidenceV1 as E;
     let fixture = Fixture::new();
     let input = input("ancestor input");
-    for descriptor in [json!({"kind":"existing_turn","event_id":"turn"}), json!(null)] {
+    for descriptor in [
+        json!({"kind":"existing_turn","event_id":"turn"}),
+        json!(null),
+    ] {
         let mut headers = headers("ancestor input", 1);
         headers.insert(
             "x-hiroute-routing-context",

@@ -156,6 +156,8 @@ keeps unrelated session growth out of the routine scan. Incoming projection and
 fingerprinting stay outside that lock; no model execution owns it.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+The [retained Hermes Chat listener](../../tools/e2e-harness/tests/p0_gateway_runtime/hermes_long_chat.rs)
+covers independent reasoning/text fields, long-body spill and complete next-input assessment.
 [Opening evidence](../../crates/gateway/src/agent_turn_history/store/opening.rs)
 compares the full old request separately from that response edge. Both reused
 and independent branches require an actually appended input to establish a new

@@ -702,6 +702,13 @@ and replayed history. It SHALL NOT make an otherwise exact accepted continuation
 unverifiable. Nonempty or unrecognized enrichment remains opaque; this does not
 authorize ignoring changed text, tool arguments, identity or unknown history fields.
 
+Chat Completions replays plaintext reasoning and visible content as separate fields,
+without preserving their relative stream arrival order. A single complete reasoning
+block with the same bytes and the same ordered visible text/tool evidence MAY retain
+the accepted execution as a contextual projection. This does not establish provider
+state affinity or permit reasoning changes, opaque state, merged reasoning blocks,
+changed tool identities/arguments, or reordering in Responses or Messages history.
+
 The current C protocol may supply readable replayed User/Assistant text before
 the current input as separate request background, as specified in
 [decision services](../decision-services/spec.md). This resolves references in a

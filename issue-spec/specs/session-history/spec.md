@@ -51,6 +51,13 @@ classes and notification text SHALL NOT invent that missing dimension.
 
 Hermes SHALL use a distinct HMAC namespace scoped to the trusted managed connection/authorization. Equal raw native IDs under distinct connections cannot merge conversations. For a trusted registered Hermes consumer, absent or invalid native identity remains request-scoped without first-user content inference. A caller-supplied header or user-agent does not establish managed-consumer authority; session identity itself grants no model or management access. Native cache/root affinity is not Hermes conversation proof.
 
+A valid Hermes `observed_batch` remains correlation-only native evidence. Independently,
+the observation input excerpt SHALL identify the complete latest wire User occurrence
+as `wire_observed`, with source uncertainty, so later accepted tool continuations can
+reference its retained input without storing it again. This does not select a human
+source or a native message window. An explicit existing-turn declaration, invalid
+input descriptor, or unavailable typed peer SHALL NOT fall back to an ancestor User.
+
 #### Scenario: Separate Hermes conversations when identity is missing or content matches
 
 - **WHEN** independent managed Hermes conversations have equal prompts, equal raw IDs under different connections, or no usable native ID

@@ -24,6 +24,8 @@ mod decision_branches;
 mod dsh_native_routing;
 #[path = "p0_gateway_runtime/hermes_identity.rs"]
 mod hermes_identity;
+#[path = "p0_gateway_runtime/hermes_long_chat.rs"]
+mod hermes_long_chat;
 #[path = "p0_gateway_runtime/history_bypass.rs"]
 mod history_bypass;
 #[path = "p0_gateway_runtime/instruction_history.rs"]
