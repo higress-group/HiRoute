@@ -170,7 +170,8 @@ impl LocalControlAdapter {
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         #[cfg(any(unix, windows))]
         if matches!(class, SettingsAgentClass::Codex | SettingsAgentClass::Dsh)
-            && spec.skill_facet() == AgentSettingsFacet::ManagementSkill
+            && matches!(spec.collaboration, AgentFacetIntent::Keep)
+            && !matches!(spec.management_skill, None | Some(AgentFacetIntent::Keep))
             && (class == SettingsAgentClass::Codex
                 && !self
                     .scanner
