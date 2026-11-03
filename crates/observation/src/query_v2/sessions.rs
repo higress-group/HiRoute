@@ -114,6 +114,7 @@ impl crate::LocalObservationStore {
                 "{}, visible AS (
                  SELECT r.session_id,s.agent_id,r.started_at_ms,r.session_scope,
                    r.correlation_provenance,l.run_id,l.conflicted,
+                   json_extract(l.body_json,'$.harness_id') AS harness,
                    CASE WHEN s.content_completeness IN ('deleted','expired') THEN s.content_completeness
                      ELSE {request_state} END AS content_state,
                    (SELECT COUNT(DISTINCT a.model_id) FROM observation_attempt_models_v2 a WHERE a.workspace_id=r.workspace_id AND a.request_id=r.request_id) AS models,
@@ -139,13 +140,15 @@ impl crate::LocalObservationStore {
                        WHEN SUM(CASE WHEN session_scope='request_scoped' AND correlation_provenance='unproven' THEN 0 ELSE 1 END)=0 THEN 4
                        ELSE 0
                      END AS correlation_kind,
+                     CASE WHEN SUM(CASE WHEN run_id IS NOT NULL AND conflicted=0 AND harness IS NOT NULL THEN 0 ELSE 1 END)=0
+                          AND COUNT(DISTINCT harness)=1 THEN MIN(harness) END AS executor,
                      CASE WHEN MAX(content_state='deleted')=1 THEN 'deleted'
                        WHEN MAX(content_state='expired')=1 THEN 'expired'
                        WHEN MAX(content_state='partial')=1 THEN 'partial'
                        WHEN MAX(content_state='unknown')=1 THEN 'unknown'
                        ELSE 'complete' END AS content_state
                    FROM visible WHERE (?11=0 OR models>1 OR turn_change) GROUP BY session_id,agent_id
-                 ) SELECT session_id,agent_id,first_at,last_at,requests,fallbacks,unknown_models,correlation_kind,content_state FROM grouped
+                 ) SELECT session_id,agent_id,first_at,last_at,requests,fallbacks,unknown_models,correlation_kind,content_state,executor FROM grouped
                  WHERE last_at<?12 OR (last_at=?12 AND session_id>?13)
                  ORDER BY last_at DESC,session_id LIMIT ?14", super::turns::cte(10, "?4"));
             let mut stmt = tx.prepare(&sql)?;
@@ -175,6 +178,7 @@ impl crate::LocalObservationStore {
                     Ok(ObservationSessionSummaryV2 {
                         session_id: r.get(0)?,
                         agent_id: r.get(1)?,
+                        executor: r.get(9)?,
                         first_request_at_ms: r.get(2)?,
                         last_request_at_ms: r.get(3)?,
                         request_count: r.get(4)?,

@@ -3,6 +3,7 @@ import { TrustAttention } from '../trust/TrustAttention';
 import type { TrustSuggestionsRead } from '../trust/use-trust-suggestions';
 import { useState, type ReactNode } from 'react';
 import { ContentExcerpt } from '../Sessions';
+import { sessionAgentLabel } from '../session-correlation';
 import { agentBrandFromId, BrandIcon, Disclosure, formatMoney, ProductPage, UiIcon } from '../../ui';
 import { deriveHomePrimaryMode, visibleData } from './state';
 import type { HomeProps, HomeReads } from './types';
@@ -70,9 +71,9 @@ export function Home({ language, reads, onAction, hasTasks = false, trustSuggest
         {newModels}
         {attention}
         <section className="surface"><header className="surface-header"><h2>{text('近期会话', 'Recent sessions')}</h2><button className="btn btn-quiet" type="button" onClick={() => onAction({kind:'view-all-sessions',returnTo:'home'})}>{text('查看全部', 'View all')} <UiIcon name="chevronRight" /></button></header>
-          <div className="native-list">{recent.map((session,index) => { const sessionId = session.sessionId; const occurredAt = timeLabel(session.occurredAtMs, session.occurredAtLabel); const fallbackTitle = session.title || [session.agentName, occurredAt].filter(Boolean).join(' · ') || text('会话记录', 'Session'); return <button type="button" className="list-row v3-recent" key={sessionId ?? index} disabled={!sessionId} onClick={() => sessionId && onAction({kind:'open-session',sessionId,returnTo:'home'})}>
-            <BrandIcon kind={agentBrandFromId(session.agentId ?? session.agentName ?? '')} size="medium" />
-            <div className="row-main"><div className="row-title">{sessionId ? <ContentExcerpt session={sessionId} language={language} fallback={fallbackTitle} limit={48} revision={`${session.occurredAtMs ?? 0}:${session.requestCount ?? 0}`} onModel={model => setSessionModels(current => current[sessionId] === model ? current : { ...current, [sessionId]: model })} onRoute={route => setSessionRoutes(current => current[sessionId] === route ? current : { ...current, [sessionId]: route })} /> : fallbackTitle}</div><div className="row-meta">{[session.agentName, sessionId ? sessionRoutes[sessionId] : undefined, sessionId ? sessionModels[sessionId] : undefined].filter(Boolean).join(' · ')}</div></div>
+          <div className="native-list">{recent.map((session,index) => { const sessionId = session.sessionId; const agentName = session.executor !== undefined ? sessionAgentLabel({ agent_id: session.agentId, executor: session.executor, correlation_kind: 'verified_worker' }, language) : session.agentName; const occurredAt = timeLabel(session.occurredAtMs, session.occurredAtLabel); const fallbackTitle = session.title || [agentName, occurredAt].filter(Boolean).join(' · ') || text('会话记录', 'Session'); return <button type="button" className="list-row v3-recent" key={sessionId ?? index} disabled={!sessionId} onClick={() => sessionId && onAction({kind:'open-session',sessionId,returnTo:'home'})}>
+            <BrandIcon kind={agentBrandFromId(session.agentId ?? agentName ?? '')} size="medium" />
+            <div className="row-main"><div className="row-title">{sessionId ? <ContentExcerpt session={sessionId} language={language} fallback={fallbackTitle} limit={48} revision={`${session.occurredAtMs ?? 0}:${session.requestCount ?? 0}`} onModel={model => setSessionModels(current => current[sessionId] === model ? current : { ...current, [sessionId]: model })} onRoute={route => setSessionRoutes(current => current[sessionId] === route ? current : { ...current, [sessionId]: route })} /> : fallbackTitle}</div><div className="row-meta">{[agentName, sessionId ? sessionRoutes[sessionId] : undefined, sessionId ? sessionModels[sessionId] : undefined].filter(Boolean).join(' · ')}</div></div>
             {session.modelSwitch === true && <span className="badge info no-dot">{text('请求内回退', 'Request fallback')}</span>}<span className="muted">{occurredAt}</span><UiIcon name="chevronRight" />
           </button>; })}</div>
         </section>

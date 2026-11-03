@@ -74,6 +74,32 @@ Startup attribution recovery SHALL register only verifiable ownership. Missing p
 
 A session receiving mapped grants from different Agents SHALL retain an attribution conflict and display as unlinked. Repeated or later matching evidence cannot clear the conflict. Missing mappings remain unknown. Full fact deletion or retention expiry SHALL erase the session attribution evidence with those facts; content-only deletion preserves it. Worker run relations retain their existing verified authority and semantics.
 
+Session summaries SHALL expose an optional `executor` from retained verified Worker
+relations, separately from `agent_id`. It names one harness only when every request
+in the authorized filtered population has a nonconflicting verified relation and
+all name the same harness. Start/Continue run changes alone do not erase a common
+executor. Missing relations, conflicting relations and mixed harnesses leave it
+unknown; evidence outside the reader's Run/time/query scope cannot supply or remove
+that identity. Executor proof does not require complete native history correlation.
+This derived read SHALL NOT register Agent grants, rewrite session ownership,
+backfill native attribution, add a per-session lookup or introduce a storage migration.
+
+The session list, selected heading, search results and Home activity SHALL label a
+known Worker as its executor with a delegated-execution qualifier, such as
+`Codex (delegated)`. They SHALL NOT describe it as an unlinked Agent solely because
+there is no managed native configuration association. Missing or unrecognized
+executor identity remains explicit; model names, User-Agent strings and the caller's
+Agent cannot name the executor. Ordinary native Agent labels keep their meaning.
+
+#### Scenario: Retained Codex delegation has no native configuration association
+
+- **GIVEN** a retained session has an empty `agent_id` and verified Codex Run links.
+- **THEN** its summary exposes the Codex executor and the UI labels it as delegated
+  Codex, while the stored `agent_id` stays empty and no configuration link is invented.
+- **AND** the same rule applies to Claude Code, DSH, Pi, Qoder and OpenCode.
+- **AND** reopening preserves this read from existing evidence, while an authorized
+  subset sees only its own consistent executor and mixed or missing links stay unknown.
+
 #### Scenario: Reconfiguration and rotation preserve old attribution
 
 - **WHEN** a configured Agent sends a request, its grant rotates or its native settings are restored, and the observation store reopens

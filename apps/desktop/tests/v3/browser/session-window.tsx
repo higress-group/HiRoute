@@ -26,6 +26,7 @@ const control = {
   inputSelections: {} as Record<string, { version: number; evidence: string; message_ordinal: number | null; source_unverified: boolean }>,
   texts: {} as Record<string, string>,
   hits: [] as Hit[],
+  homeExecutors: {} as Record<string, string | null>,
   views: {} as Record<string, (query: Record<string, any>) => unknown>,
   handlers: {} as Record<string, Handler>,
   commands: [] as { command: string; payload: Record<string, any> }[],
@@ -176,6 +177,7 @@ function Harness() {
     control.inputSelections = {};
     control.texts = {};
     control.hits = [];
+    control.homeExecutors = {};
     control.views = {};
     control.handlers = {};
     control.commands = [];
@@ -192,8 +194,9 @@ function Harness() {
   const homeActivity = projectHomeActivity({
     sessions: Object.entries(control.requests).map(([sessionId, requests]) => ({
       session_id: sessionId, agent_id: '', first_request_at_ms: requests[0]?.started_at_ms ?? 0,
+      executor: control.homeExecutors[sessionId],
       last_request_at_ms: requests.at(-1)?.started_at_ms ?? 0, request_count: requests.length,
-      fallback_request_count: 0, unknown_model_request_count: 0, correlation_kind: 'agent_supplied',
+      fallback_request_count: 0, unknown_model_request_count: 0, correlation_kind: control.homeExecutors[sessionId] !== undefined ? 'verified_worker' : 'agent_supplied',
     })),
     next_cursor: null,
   });
@@ -211,7 +214,7 @@ function Harness() {
       <HomeNavigation language="zh" items={[...navItems]} current="sessions" serviceLabel="仅在本机运行" serviceReady onNavigate={() => {}} onOpenSettings={() => {}} />
       <main className="main"><div>
         <p className="sr-only">组件测试：所有 IPC 为 mock；不连接 Tauri、daemon 或真实数据。</p>
-        {homeVisible && <Home language="zh" reads={homeReads} onAction={() => {}} />}
+        {homeVisible && <Home language={control.language} reads={homeReads} onAction={() => {}} />}
         {qualityVisible && <PlanQuality key={'quality-' + generation} planId="plan/quality" planRevision={control.qualityPlanRevision} currentModels={control.qualityModels} active={!homeVisible} refreshVersion={refresh} language={control.language} />}
         {requestExcerpt && <blockquote className="routing-quote"><ContentExcerpt request={requestExcerpt} language={control.language} fallback="这一轮的消息暂不可用" /></blockquote>}
         <div hidden={homeVisible || qualityVisible || requestExcerpt !== null}><Sessions key={generation} active={!homeVisible && !qualityVisible && requestExcerpt === null} language={control.language} refreshVersion={refresh} onOpenAgents={() => {}} /></div>

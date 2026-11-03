@@ -175,66 +175,71 @@ async fn real_socket_preserves_business_rejection_and_request_identity() {
 
 #[tokio::test]
 async fn observation_session_correlation_survives_typed_transport() {
-    let (_root, listener, client) = setup();
-    let server = tokio::spawn(async move {
-        let mut stream = handshake(listener).await;
-        let request = receive(&mut stream).await;
-        assert_eq!(request.operation_id, "ListSessions");
-        let page = ObservationSessionPageV2 {
-            sessions: vec![ObservationSessionSummaryV2 {
-                session_id: "session/one".into(),
-                agent_id: "agent/one".into(),
-                first_request_at_ms: 1,
-                last_request_at_ms: 2,
-                request_count: 2,
-                fallback_request_count: 0,
-                unknown_model_request_count: 0,
-                content_completeness: serde_json::from_value(json!("partial")).unwrap(),
-                correlation_kind: ObservationSessionCorrelationKindV1::VerifiedWorker,
-            }],
-            next_cursor: None,
-        };
-        write(
-            stream.get_mut(),
-            &MachineEnvelopeV2::succeeded(page, Some(request.request_id)),
-        )
-        .await;
-    });
-    let query =
-        ObservationReadRequestV2::new(ObservationReadIntentV2::Sessions(ObservationRequestQuery {
-            from_ms: 0,
-            to_ms: 10,
-            session_id: None,
-            request_id: None,
-            limit: 10,
-            cursor: None,
-            agent_id: None,
-            plan_id: None,
-            native_model: None,
-            outcome: None,
-            only_model_switch: false,
-        }));
-    let response = client
-        .observation_read::<ObservationSessionPageV2>(
-            "observation-correlation",
-            query,
-            ProtectedClientGrantV2 {
-                principal_kind: PrincipalKind::Desktop,
-                capability: "test-capability".into(),
+    for executor in [None, Some("codex")] {
+        let (_root, listener, client) = setup();
+        let server = tokio::spawn(async move {
+            let mut stream = handshake(listener).await;
+            let request = receive(&mut stream).await;
+            assert_eq!(request.operation_id, "ListSessions");
+            let page = ObservationSessionPageV2 {
+                sessions: vec![ObservationSessionSummaryV2 {
+                    session_id: "session/one".into(),
+                    agent_id: "agent/one".into(),
+                    executor: executor.map(str::to_owned),
+                    first_request_at_ms: 1,
+                    last_request_at_ms: 2,
+                    request_count: 2,
+                    fallback_request_count: 0,
+                    unknown_model_request_count: 0,
+                    content_completeness: serde_json::from_value(json!("partial")).unwrap(),
+                    correlation_kind: ObservationSessionCorrelationKindV1::VerifiedWorker,
+                }],
+                next_cursor: None,
+            };
+            write(
+                stream.get_mut(),
+                &MachineEnvelopeV2::succeeded(page, Some(request.request_id)),
+            )
+            .await;
+        });
+        let query = ObservationReadRequestV2::new(ObservationReadIntentV2::Sessions(
+            ObservationRequestQuery {
+                from_ms: 0,
+                to_ms: 10,
+                session_id: None,
+                request_id: None,
+                limit: 10,
+                cursor: None,
+                agent_id: None,
+                plan_id: None,
+                native_model: None,
+                outcome: None,
+                only_model_switch: false,
             },
-        )
-        .await
-        .unwrap();
-    let summary = &response.data.unwrap().sessions[0];
-    assert_eq!(
-        summary.correlation_kind,
-        ObservationSessionCorrelationKindV1::VerifiedWorker
-    );
-    assert_eq!(
-        serde_json::to_value(summary.content_completeness).unwrap(),
-        json!("partial")
-    );
-    server.await.unwrap();
+        ));
+        let response = client
+            .observation_read::<ObservationSessionPageV2>(
+                "observation-correlation",
+                query,
+                ProtectedClientGrantV2 {
+                    principal_kind: PrincipalKind::Desktop,
+                    capability: "test-capability".into(),
+                },
+            )
+            .await
+            .unwrap();
+        let summary = &response.data.unwrap().sessions[0];
+        assert_eq!(summary.executor.as_deref(), executor);
+        assert_eq!(
+            summary.correlation_kind,
+            ObservationSessionCorrelationKindV1::VerifiedWorker
+        );
+        assert_eq!(
+            serde_json::to_value(summary.content_completeness).unwrap(),
+            json!("partial")
+        );
+        server.await.unwrap();
+    }
 }
 
 #[tokio::test]

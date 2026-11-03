@@ -196,6 +196,30 @@ const scenarios = [
         `${language} ${family} heading lacks ${expected}`);
     }
   }],
+  ['verified delegated executors appear without inventing a managed Agent association', async () => {
+    const executors = [['codex', 'Codex'], ['claude', 'Claude Code'], ['dsh', 'DeepSeek Harness'],
+      ['pi', 'Pi'], ['qoder', 'Qoder'], ['opencode', 'OpenCode'], ['future', null], [undefined, null]];
+    for (const language of ['zh', 'en']) for (const [executor, name] of executors) {
+      const expected = name ? language === 'zh' ? `${name}（委派执行）` : `${name} (delegated)`
+        : language === 'zh' ? '委派执行器未确认' : 'Delegated executor unknown';
+      await fresh(control => {
+        control.language = language;
+        control.homeExecutors['observation-session/simple'] = executor ?? null;
+        seedSimple(control);
+        control.views.sessions = query => {
+          const page = control.defaultRead('sessions', query);
+          return { ...page, sessions: page.sessions.map(row => ({ ...row, agent_id: '', executor, correlation_kind: 'verified_worker' })) };
+        };
+      });
+      await until(() => rows().length === 1, 'delegated session');
+      assert(rows()[0].innerText.includes(expected), `${language} ${executor} executor is hidden as an unlinked Agent`);
+      rows()[0].click();
+      await until(() => document.querySelector('.transcript-head p'), 'delegated session heading');
+      assert(document.querySelector('.transcript-head p').textContent.includes(expected), 'Heading lost the verified executor');
+      c().showHome();
+      await until(() => document.querySelector('.v3-recent .row-meta')?.textContent.includes(expected), 'Home retains and localizes the executor');
+    }
+  }],
   ['replayed history keeps attribution while reading skips hidden response pages', async () => {
     await fresh(control => {
       seedSimple(control, Date.now() - 60_000, { final_native_model: 'glm-5.3', within_request_fallback: true });
