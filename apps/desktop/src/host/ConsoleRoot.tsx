@@ -77,7 +77,7 @@ function ConsoleSessionRoot({ children }: PropsWithChildren) {
         {loginPage && <>
           <div className="console-entry-help"><p>{text('在运行 HiRoute 服务的设备上，选择一种登录方式：', 'On the device running HiRoute, choose a sign-in method:')}</p>
             <ul><li><code>hiroute console open</code><span>{text('获取一次性登录链接。', 'Get a single-use sign-in link.')}</span></li>
-              <li><code>hiroute console token create</code><span>{text('创建 access token，然后在下方输入。', 'Create an access token, then enter it below.')}</span></li></ul>
+              <li><code>hiroute console token create --name local-browser --expires 7 --output json</code><span>{text('创建有效期为 7 天的 access token，然后在下方输入返回的 token 值。', 'Create an access token valid for 7 days, then enter the returned token value below.')}</span></li></ul>
           </div>
           {plaintext && <div className="callout warn" role="note"><UiIcon name="warning" /><span>{text('当前连接未加密，access token 将以明文通过网络发送。仅在信任的网络中继续。', 'This connection is unencrypted. Your access token will travel over the network as plaintext. Continue only on a network you trust.')}</span></div>}
           <form className="console-login" autoComplete="off" onSubmit={event => void login(event)}>

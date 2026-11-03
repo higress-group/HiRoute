@@ -22,6 +22,8 @@ export async function runConsoleScenarios(client, baseUrl, output) {
     if (state === 'login' || state === 'expired') {
       const guidance = language === 'zh' ? '获取一次性登录链接' : 'single-use sign-in link';
       assert(await evaluate(client, `document.body.innerText.includes(${JSON.stringify(guidance)})`), 'Console entry still describes a local-only launch link');
+      const tokenCommand = 'hiroute console token create --name local-browser --expires 7 --output json';
+      assert(await evaluate(client, `[...document.querySelectorAll('.console-entry-help code')].some(code => code.textContent === ${JSON.stringify(tokenCommand)})`), 'Console entry token command is not a complete copyable example');
     }
     if (state === 'rate-limited' || state === 'session-limit') {
       await evaluate(client, 'Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(document.querySelector("input"), "c".repeat(64)); document.querySelector("input").dispatchEvent(new Event("input",{bubbles:true}))');
