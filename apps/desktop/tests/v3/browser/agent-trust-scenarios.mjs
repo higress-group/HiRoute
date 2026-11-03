@@ -160,6 +160,37 @@ const scenarios = [
     await until(() => visible(dialog()), 'Desktop setup from primary action');
     assert(!dialog().querySelector('[data-codex-history-guidance]'), 'Independent Desktop uses root takeover guidance');
   }),
+  scenario('codex.desktop.token-update-restart', ['codex-desktop'], 'Desktop token updates discard old launch feedback and require an explicit instance restart', async () => {
+    for (const regenerate of [true, false]) {
+      await showCodexIndependentDesktop();
+      const cli = JSON.stringify(c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default'));
+      const launch = document.querySelector('[data-codex-desktop-launch]');
+      launch.click();
+      await until(() => document.querySelector('[data-codex-desktop-instance] [role=status]'), 'prior launch feedback');
+      document.querySelector('.native-details summary').click(); await tick();
+      const controls = document.querySelector('[data-agent-token-controls]');
+      if (regenerate) controls.querySelector('button:last-child').click();
+      else {
+        controls.querySelector('button:first-child').click(); await tick();
+        assert(!document.querySelector('[data-codex-desktop-instance] [role=status]'), 'Token editing retained old launch feedback');
+        const input = document.querySelector('.agent-token-form input');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'desktop-reviewed-token-123456');
+        input.dispatchEvent(new Event('input', { bubbles: true })); await tick();
+        document.querySelector('.agent-token-form button[type=submit]').click();
+      }
+      await until(() => calls('preview_agent_settings').length === 1 && c().operations.length === 1 && !launch.disabled, 'token submission readback');
+      assert(!document.querySelector('[data-codex-desktop-instance] [role=status]'), 'Token rotation retained old launch feedback');
+      const notice = document.querySelector('.toast')?.textContent ?? '';
+      assert(notice.includes('退出') && notice.includes('重新启动'), 'Desktop token notice implies an already-running instance automatically reloads credentials');
+      assert(document.querySelector('[data-codex-desktop-instance]').textContent.includes('配置更新后'), 'Persistent restart guidance excludes token-only changes');
+      const input = calls('preview_agent_settings')[0].payload.input;
+      assert(input.spec.context_id === 'agent-context/codex-desktop/fixture' && input.spec.collaboration.intent === 'keep', 'Token update changed another connection or facet');
+      assert(input.spec.access_token.intent === (regenerate ? 'regenerate' : 'keep'), 'Token update lost its existing native token intent');
+      if (!regenerate) assert(input.custom_token === 'desktop-reviewed-token-123456', 'Custom token draft was lost');
+      assert(calls('launch_codex_desktop').length === 1, 'Token update automatically relaunched a client');
+      assert(JSON.stringify(c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default')) === cli, 'Desktop token update changed the CLI profile');
+    }
+  }),
   scenario('dsh.desktop.independent-model-settings', ['dsh-desktop'], 'Desktop model settings use their own context and preserve Web settings', async () => {
     await showDshDesktopEditor();
     const web = JSON.stringify(c().agents.agents.find(a => a.agent_id === 'agent_dsh_default'));

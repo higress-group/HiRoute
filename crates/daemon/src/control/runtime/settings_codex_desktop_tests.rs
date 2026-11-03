@@ -177,4 +177,103 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
         assert!(response.error.is_none(), "{response:?}");
         assert_eq!(response.data.unwrap()["state"], "configured");
     }
+
+    // A process started inside the private Codex instance can inherit its CODEX_HOME.
+    // This must prevent a second model slot, without trapping the existing owner's Restore.
+    let desktop_status = service
+        .dispatch_wire(request(
+            "GetAgentConnectionStatus",
+            json!({"schema_version":{"major":2,"minor":0},"context_id":desktop_context}),
+            None,
+        ))
+        .data
+        .unwrap();
+    drop(service);
+    drop(restarted);
+    let home = storage.join("home");
+    let mut layout = AgentFilesystemLayoutV1::from_process(&home, &storage);
+    layout.codex_user_config = desktop_config.clone();
+    layout.codex_executable = storage.join("codex-cli-fixture");
+    layout.codex_desktop_executable = Some(storage.join("codex-desktop-fixture"));
+    layout.claude_executable = storage.join("missing-claude");
+    let registry = serde_json::from_slice(include_bytes!(
+        "../../../../../assets/connector-registry/current/registry-seed.json"
+    ))
+    .unwrap();
+    let models: ReleaseModelDataBundleV2 = serde_json::from_slice(include_bytes!(
+        "../../../../../assets/release-facts/current/bundle/model-data.json"
+    ))
+    .unwrap();
+    let scanner = FilesystemAgentScannerV1::new(
+        layout,
+        ClaudeRegistrationIndexV1::from_verified_model_data(&registry, &models.data).unwrap(),
+    );
+    let inherited = open_with_scanner(&storage, scanner);
+    inherited.adapter.reconcile_startup_and_open().unwrap();
+    inherited
+        .adapter
+        .finish_startup_publication_recovery()
+        .unwrap();
+    let service = LocalControlDaemon::new(ApplicationService::new(inherited.application_ports()));
+    assert_eq!(
+        inherited.adapter.scanner.codex_user_config_target(),
+        desktop_config
+    );
+    for context in [
+        desktop_context.clone(),
+        json!(
+            inherited
+                .adapter
+                .settings_context_for_agent("agent_codex_default")
+                .unwrap()
+        ),
+    ] {
+        let denied = service.dispatch_wire(request(
+            "PreviewAgentConnectionChange",
+            json!({"spec":configure(&context)}),
+            None,
+        ));
+        assert!(
+            denied.error.is_some()
+                || denied
+                    .data
+                    .as_ref()
+                    .is_some_and(|data| data["applicable"] != true),
+            "colliding Configure must not create or replace another model slot: {denied:?}"
+        );
+    }
+    let wrong = service.dispatch_wire(request(
+        "PreviewAgentConnectionRestore",
+        json!({"spec":restore(&desktop_context, &cli_before["restore_point_ref"])}),
+        None,
+    ));
+    assert!(
+        wrong.error.is_some()
+            || wrong
+                .data
+                .as_ref()
+                .is_some_and(|data| data["applicable"] != true),
+        "another connection's restore point must not acquire Desktop ownership: {wrong:?}"
+    );
+    apply(
+        &service,
+        &inherited,
+        restore(&desktop_context, &desktop_status["restore_point_ref"]),
+        "disable-desktop-with-inherited-home",
+    );
+    assert!(
+        inherited
+            .adapter
+            .resolve_active_agent_grant(&format!(
+                "agent-connection/{}",
+                desktop_context.as_str().unwrap()
+            ))
+            .is_none()
+    );
+    assert_eq!(fs::read(&profile).unwrap(), cli_bytes);
+    assert_eq!(fs::read(&ordinary).unwrap(), original);
+    assert_eq!(
+        fs::read_to_string(paths.codex_home.join("native-session")).unwrap(),
+        "retain history"
+    );
 }
