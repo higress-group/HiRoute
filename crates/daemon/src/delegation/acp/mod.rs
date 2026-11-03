@@ -467,13 +467,12 @@ async fn run_session(
             input.deadline,
         )
         .await
-        .map_err(|error| {
-            if error == DelegationErrorV1::CapabilityUnavailable
+        .inspect_err(|error| {
+            if *error == DelegationErrorV1::CapabilityUnavailable
                 && let Some(progress) = progress.as_ref()
             {
                 progress.push("[HiRoute] Claude under root requires confirmed Auto mode for the frozen model. The selected adapter did not offer or confirm auto; a fallback to Manual or Accept edits is not accepted. No task prompt was sent.\n");
             }
-            error
         })?;
         if let Some(expected_model) = input.expected_model.as_deref() {
             journal.phase_started(Stage::ModelSelection);
