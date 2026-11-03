@@ -3,6 +3,36 @@ import path from 'node:path';
 import { evaluate, navigate, waitFor } from './cdp-client.mjs';
 
 // Production components/styles, controlled IPC. No native save or latency claim.
+export async function desktopManagementCaptures(client, baseUrl, output) {
+  const results=[];
+  for(const agent of ['agent_codex_desktop','agent_dsh_desktop']) for(const [language,theme] of [['zh','dark'],['en','light']]) {
+    for(const viewport of [{width:1200,height:813},{width:755,height:600}]) {
+      await navigate(client,new URL(`agent-trust.html?language=${language}&theme=${theme}`,baseUrl).href,viewport);
+      await waitFor(client,'Boolean(window.agentTrust && document.querySelector(".native-list .list-row"))');
+      await evaluate(client,`import('/agent-trust-scenarios.mjs').then(m=>m.showDesktopManagement(${JSON.stringify(agent)}))`);
+      for(const state of ['detail','editor']) {
+        if(state==='detail') await evaluate(client,"document.querySelector('[data-agent-management]').scrollIntoView({block:'center'})");
+        else {
+          await evaluate(client,"document.querySelector('[data-agent-facet=management_skill]').click()");
+          await waitFor(client,"Boolean(document.querySelector('[role=dialog] [data-agent-management-shared]'))");
+        }
+        const geometry=await evaluate(client,`(()=>{
+          const box=document.querySelector('${state==='editor'?'[role=dialog]':'[data-agent-management]'}');
+          const action=box.querySelector('${state==='editor'?'button[type=submit]':'button'}').getBoundingClientRect();
+          return {overflow:box.scrollWidth>box.clientWidth+1,bodyOverflow:document.documentElement.scrollWidth>innerWidth+1,
+            actionVisible:action.left>=0&&action.right<=innerWidth&&action.top>=0&&action.bottom<=innerHeight,text:box.innerText};
+        })()`);
+        if(geometry.overflow||geometry.bodyOverflow||!geometry.actionVisible) throw Error(`Shared management geometry: ${JSON.stringify({agent,state,language,viewport,geometry})}`);
+        const id=`desktop-management-${agent}-${state}-${language}-${theme}-${viewport.width}`;
+        const shot=await client.send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+        await writeFile(path.join(output,`${id}.png`),Buffer.from(shot.data,'base64'));
+        results.push({id,state:'green',agent,language,theme,viewport,geometry,screenshot:`${id}.png`});
+      }
+    }
+  }
+  return results;
+}
+
 export async function codexDesktopPlatformCaptures(client, baseUrl, output) {
   const results=[];
   for (const platform of ['windows','linux']) for (const [language,theme] of [['zh','dark'],['en','light']]) {

@@ -72,6 +72,30 @@ HiRoute SHALL manage management and collaboration Skills as distinct resources a
 
 Management preparation is available for all listed Agent families and requires neither a Plan nor a model grant. Hermes collaboration follows the same independent intent and trigger policy as other supported initiators, without adding a Hermes Worker executor. Neither Skill preparation nor model routing creates a new CLI authority.
 
+Codex CLI/root/profile and independent Codex Desktop SHALL present one management
+Skill owned by the original Codex root context in real HOME's `.agents/skills`.
+DSH Web and Desktop using the same DSH_HOME SHALL likewise present the Web context's
+single management Skill in `DSH_HOME/skills`. Desktop enable/disable and recovery
+SHALL operate on that existing shared owner, not add another reference or change
+either native model context. Full status and recorded summaries SHALL reflect the
+same management operation, drift and restore state in both views. The UI SHALL
+state the shared effect before editing. Model-only reads SHALL remain independent
+of Skill resources. No additional Worker or collaboration support is implied.
+
+Management preparation SHALL also work with an installed Desktop carrier and no
+separate CLI. It SHALL retain action-specific file/Skill-loading checks, reject a
+DSH composition disabling or redirecting its shared roots, preserve foreign Skill
+content and keep native runtime loading unobserved. Owned restore SHALL remain
+available after either application is removed. Existing strict public response
+shapes and accepted Skill ownership/recovery references SHALL keep their meanings.
+
+#### Scenario: Shared Desktop management with independent models
+
+- **WHEN** an owner enables, repairs, retries or disables management from either Codex or DSH Desktop
+- **THEN** the corresponding CLI/Web view reports the same management state and reference, while both model configurations and task routing remain unchanged.
+- **WHEN** the service reopens or the Desktop application is removed
+- **THEN** shared status and the original owned restore remain available without creating another installation reference.
+
 Prior contract source: https://github.com/higress-group/HiRoute/issues/125#issuecomment-6186244519
 
 #### Scenario: Prepare Hermes management without model connection
@@ -350,8 +374,9 @@ resources. Dot/system entries and names already present in `.agents/skills` are
 skipped. Existing destination entries are never replaced or deleted. Created links
 are recorded in a private informational receipt; the receipt confers no deletion
 authority. Source updates/removal flow through each lexical link; user replacements
-stay intact. Routing restore retains these links and native history. Sharing does
-not establish independent management-Skill or Worker support for the new identity.
+stay intact. Routing restore retains these links and native history. Management
+uses the existing shared user Skill and its original root-owned operation; the
+Desktop identity does not acquire a second installation or a Worker executor.
 
 ### Requirement: Codex native retention needs both metadata and account proof
 
@@ -578,8 +603,9 @@ a default dump. Capture SHALL bind executable/archive identity, home patch,
 Desktop patch and manifest, and recheck them before returning. A Web-profile
 change SHALL NOT invalidate an independent Desktop proof.
 
-Desktop model support SHALL NOT imply Worker, collaboration Skill or management
-Skill support. Those operations remain unavailable until independently supported.
+Desktop model support SHALL NOT imply Worker or collaboration Skill support.
+Management is explicitly supported through the same DSH_HOME user resource and
+canonical Web owner described above; it does not use the Desktop model journal.
 A composition dump or fixture SHALL NOT establish actual Desktop loading or
 Gateway request provenance; those require native client evidence.
 

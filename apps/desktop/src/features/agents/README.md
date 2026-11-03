@@ -74,7 +74,11 @@ explicit root never falls back to another; an unreadable default remains visible
 without hiding other Agents. Known invalid paths, missing explicit roots/configuration
 and read errors remain distinct. Hermes uses its own bundled mark in the common icon component.
 
-Management is a separate enable/disable control for supported CLI families. Desktop-only entries share user skills without exposing independent installation controls. It
+Management is a separate enable/disable action for supported families, including
+Codex Desktop and DSH Desktop. Their management state and actions use the original
+CLI/Web owner, with a visible shared-scope hint; neither Desktop creates a second
+installation reference. `management-context.ts` resolves that owner from native
+discovery metadata, while Preview and readback retain backend authority. It
 uses the same settings Preview/Apply/owned restore as the other facets, with no
 Plan or model requirement. Scope/shared/external facts come from backend status;
 retained native files are not presented as globally disabled. CLI entry installation
@@ -124,8 +128,9 @@ successful update; they do not claim an already-running process reloaded its gra
 Neither action automatically quits or relaunches either Codex instance.
 The optional native model on restore belongs only to ordinary Codex root mode;
 changing the selected connection clears that draft. Independent Desktop restores
-only its own model facet, including during uninstall, and never requests CLI Skill
-restoration. Its trial handoff returns to this connection's existing launch action.
+only its own model facet, including during uninstall. Uninstall restores the shared
+Skill once through its canonical CLI/Web context. Its trial handoff returns to
+this connection's existing launch action.
 
 ## Current call paths
 

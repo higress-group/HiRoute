@@ -105,5 +105,5 @@ export function agentSupportsCollaboration(agentId: string): boolean {
 }
 
 export function agentSupportsManagement(agentId: string): boolean {
-  return agentEcosystem(agentId) !== null && !['agent_dsh_desktop', 'agent_codex_desktop'].includes(agentId);
+  return agentEcosystem(agentId) !== null;
 }

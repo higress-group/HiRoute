@@ -145,9 +145,21 @@ impl LocalControlAdapter {
         );
         let hermes = self.settings_agent_for_context(&request.context_id)
             == Some(SettingsAgentClass::Hermes);
-        if !desktop && (hermes || request.include_skills) {
-            status.management_skill =
-                Some(self.management_settings_status(&collaboration_request)?);
+        if hermes || request.include_skills {
+            let class = self
+                .settings_agent_for_context(&request.context_id)
+                .ok_or(ControlReadError::NotFound)?;
+            let owner = class.management_owner();
+            let management_request = if owner != class {
+                AgentSettingsStatusRequestV2 {
+                    context_id: self.settings_context(owner),
+                    native_target: None,
+                    ..request.clone()
+                }
+            } else {
+                request.clone()
+            };
+            status.management_skill = Some(self.management_settings_status(&management_request)?);
         }
         if !desktop && (!hermes || request.include_skills) {
             status.collaboration =

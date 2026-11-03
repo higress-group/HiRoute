@@ -16,6 +16,15 @@ pub(in crate::control::runtime) enum SettingsAgentClass {
 }
 
 impl SettingsAgentClass {
+    /// User management Skills have one owner across native UI/profile views.
+    pub(in crate::control::runtime) fn management_owner(self) -> Self {
+        match self {
+            Self::CodexProfile | Self::CodexDesktop => Self::Codex,
+            Self::DshDesktop => Self::Dsh,
+            _ => self,
+        }
+    }
+
     pub(in crate::control::runtime) fn is_codex(self) -> bool {
         matches!(self, Self::Codex | Self::CodexProfile | Self::CodexDesktop)
     }

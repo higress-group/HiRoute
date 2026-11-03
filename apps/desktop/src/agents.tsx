@@ -20,6 +20,7 @@ import { AgentSettingsFeedback } from './features/agents/AgentSettingsFeedback';
 import { AgentModelEditor, modelSelectionSummary } from './features/agents/AgentModelEditor';
 import { HermesRootFields } from './features/agents/HermesRootFields';
 import { agentBrand, agentDisplayName, agentEcosystem, agentPageEntries, agentSupportsCollaboration, agentSupportsManagement, agentSupportsModelRouting } from './features/agents/ecosystems';
+import { managementAgentId, managementContext, sharedManagement } from './features/agents/management-context';
 import { agentHasNoModelConnection, agentModelStatus } from './features/agents/status';
 import { collaborationCheckFailureMessage } from './features/agents/collaboration-check-feedback';
 import { agentSettingsSpec, agentTokenSpec, prerequisiteCheck } from './features/agents/settings-request';
@@ -326,14 +327,15 @@ export function Agents({
     setPreview(null);
     let blockedByCheck: Preview | null = null;
     try {
-      const input = { language, spec: agentSettingsSpec(agent, facet, restore, { values: editorValues, codexMode, restoreNativeModel }) };
+      const input = { language, spec: agentSettingsSpec(agent, facet, restore, { values: editorValues, codexMode, restoreNativeModel,
+        ...(facet === 'management_skill' ? { managementContextId: managementContext(agent, snapshot.agents) } : {}) }) };
       let result = await invoke<Outcome>('preview_agent_settings', { input });
       const checkScope = !restore && agentEcosystem(agent.agent_id) !== 'hermes' ? prerequisiteCheck(result.preview, facet) : null;
       if (checkScope) {
         blockedByCheck = result.preview;
         setBusyText(text('正在检查并保存…', 'Checking and saving…'));
         const checked = await invoke<boolean>('check_agent_authentication', {
-          input: { agent_id: agent.agent_id, language, scope: checkScope },
+          input: { agent_id: facet === 'management_skill' ? managementAgentId(agent.agent_id) : agent.agent_id, language, scope: checkScope },
         });
         if (!checked) {
           setPreview(blockedByCheck);
@@ -538,7 +540,9 @@ export function Agents({
     if (!selected?.context_id || busy || !snapshot?.trusted_authority) return;
     setBusy(true); setActionError('');
     try {
-      await invoke('retry_agent_settings', { input: { schema: 'hiroute.agent-settings-retry/v1', context_id: selected.context_id, operation_id: operationId } });
+      const context = selectedManagement?.operation_id === operationId
+        ? managementContext(selected, snapshot?.agents ?? []) : selected.context_id;
+      await invoke('retry_agent_settings', { input: { schema: 'hiroute.agent-settings-retry/v1', context_id: context, operation_id: operationId } });
       await refresh(selected);
     } catch (error) { setActionFailure(error); }
     finally { onMutation(); setBusy(false); }
@@ -698,10 +702,10 @@ export function Agents({
                 {agentSupportsManagement(selected.agent_id) && <AgentCapabilityRow
                   data-agent-management data-hermes-management={agentEcosystem(selected.agent_id) === 'hermes' ? true : undefined}
                   title={text('HiRoute 管理', 'HiRoute management')}
-                  summary={skillsUnverified ? text('打开配置以读取当前状态', 'Open settings to read the current state')
+                  summary={<>{skillsUnverified ? text('打开配置以读取当前状态', 'Open settings to read the current state')
                     : selectedManagement?.state === 'configured' ? text('管理模型来源和智能路由', 'Manage model sources and smart routes')
                       : selectedManagement?.state === 'restored' ? text('已停用此接入；共享或外部技能可能仍然可用', 'Disabled here; shared or external skills may remain available')
-                        : text('让 Agent 帮你配置 HiRoute', 'Let the Agent configure HiRoute for you')}
+                        : text('让 Agent 帮你配置 HiRoute', 'Let the Agent configure HiRoute for you')}{sharedManagement(selected.agent_id) && <> · {agentEcosystem(selected.agent_id) === 'codex' ? text('CLI 与 Desktop 共享', 'Shared by CLI and Desktop') : text('Web 与 Desktop 共享', 'Shared by Web and Desktop')}</>}</>}
                   actions={<button className="btn btn-quiet" data-agent-facet="management_skill" disabled={busy || !selected.context_id || !mutable || selectedManagement?.state === 'pending'} onClick={event => { if (selectedManagement?.state === 'configured' && selectedManagement.restore_point_ref) void change(selected, 'management_skill', true, event.currentTarget); else open(selected, 'management_skill', event.currentTarget); }}>{skillsUnverified ? text('查看配置', 'View settings') : selectedManagement?.state === 'configured' ? text('停用', 'Disable') : text('启用', 'Enable')}</button>}
                 >
                   {selectedManagement?.restore_point_ref && selectedManagement.state !== 'configured' && <button className="btn btn-quiet" disabled={busy || !mutable} onClick={event => void change(selected, 'management_skill', true, event.currentTarget)}>{text('恢复管理 Skill', 'Restore management Skill')}</button>}
@@ -732,7 +736,7 @@ export function Agents({
                         onChange={setEditorValues}
                         onEdited={(clearNotice = true) => { setPreview(null); setActionError(''); if (clearNotice) setNotice(''); }}
                         onCreatePlan={onCreatePlan ? createPlanFromEditor : undefined} />}
-                      {editor.facet === 'management_skill' && <div className="additional-model-editor"><p>{text('准备后，此 Agent 可读取 HiRoute 管理 Skill 并通过本机 CLI 配置 HiRoute。模型路由和任务路由保持当前设置；此操作不调用模型。', 'This Agent can read the management Skill and configure HiRoute through the local CLI. Model and task routing keep their current settings; this operation does not call a model.')}</p><AgentSkillDetails resource={selectedManagement?.resource} language={language} management /></div>}
+                      {editor.facet === 'management_skill' && <div className="additional-model-editor">{sharedManagement(selected.agent_id) && <p className="field-help" data-agent-management-shared>{agentEcosystem(selected.agent_id) === 'codex' ? text('Codex CLI 与 Desktop 共用此管理技能，启用或停用会同步生效。', 'Codex CLI and Desktop share this management skill. Enabling or disabling applies to both.') : text('同一 DSH_HOME 的 Web 与 Desktop 共用此管理技能，启用或停用会同步生效。', 'Web and Desktop in the same DSH home share this management skill. Enabling or disabling applies to both.')}</p>}<p>{text('准备后，此 Agent 可读取 HiRoute 管理 Skill 并通过本机 CLI 配置 HiRoute。模型路由和任务路由保持当前设置；此操作不调用模型。', 'This Agent can read the management Skill and configure HiRoute through the local CLI. Model and task routing keep their current settings; this operation does not call a model.')}</p><AgentSkillDetails resource={selectedManagement?.resource} language={language} management /></div>}
                       {editor.facet === 'collaboration' && <fieldset className="worker-choices"><legend className="field-label">{text('委派时机', 'When to delegate')}</legend><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="explicit" checked={editorValues.triggerMode === 'explicit'} onChange={() => setTriggerMode('explicit')} /><div><strong>{text('仅在明确要求时', 'Only when explicitly requested')}</strong><span>{text('只有当你要求执行、委派或交给 Worker 时，Agent 才会启动任务。', 'The Agent starts a task only when you ask it to execute, delegate, or hand work to a Worker.')}</span></div></label><label className="check-row"><input type="radio" name="agent-collaboration-trigger" value="delegate_by_default" checked={editorValues.triggerMode === 'delegate_by_default'} onChange={() => setTriggerMode('delegate_by_default')} /><div><strong>{text('默认由 Agent 判断', 'Let the Agent decide by default')}</strong><span>{text('Agent 可以主动委派适合执行的任务；明确要求只回答时不会启动任务。', 'The Agent may proactively delegate suitable work, but will not start a task when you explicitly ask for an answer only.')}</span></div></label><p className="field-help">{text('可委派的任务路由在“智能路由”中管理。', 'Manage routes available for task delegation under Smart routing.')}</p></fieldset>}
                       {!selectionKnown && <div className="callout warn" role="alert"><UiIcon name="warning" /><span>{text('当前配置状态无法核实，不能覆盖保存。请刷新或处理配置变化。', 'The current setting cannot be verified. Refresh or resolve configuration changes before saving.')}</span></div>}
                     </fieldset>

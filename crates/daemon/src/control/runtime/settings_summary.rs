@@ -55,6 +55,27 @@ impl LocalControlAdapter {
             .iter()
             .map(|context| self.settings_agent_for_context(context).is_some())
             .collect();
+        let management_contexts: Vec<_> = request
+            .context_ids
+            .iter()
+            .map(|context| {
+                self.settings_agent_for_context(context)
+                    .map(|class| {
+                        if class.management_owner() == class {
+                            context.clone()
+                        } else {
+                            self.settings_context(class.management_owner())
+                        }
+                    })
+                    .unwrap_or_else(|| context.clone())
+            })
+            .collect();
+        let mut contexts = request.context_ids.clone();
+        for context in &management_contexts {
+            if !contexts.contains(context) {
+                contexts.push(context.clone());
+            }
+        }
         let capture = || {
             let waiting = Timer::start(&diagnostics, Category::HomeSummary, Stage::LockWait);
             let stores = self.stores_lock().map_err(super::map_port)?;
@@ -62,14 +83,19 @@ impl LocalControlAdapter {
             let _held = Timer::start(&diagnostics, Category::HomeSummary, Stage::LockHeld);
             let collect = |control: &hiroute_local_storage::ControlStore| {
                 let _locator = Timer::start(&diagnostics, Category::HomeSummary, Stage::Locator);
-                let results = control
-                    .agent_locator_summaries(&WorkspaceId::default(), &request.context_ids)?;
+                let results: BTreeMap<_, _> = contexts
+                    .iter()
+                    .cloned()
+                    .zip(control.agent_locator_summaries(&WorkspaceId::default(), &contexts)?)
+                    .collect();
                 let entries = request
                     .context_ids
                     .iter()
                     .zip(&known)
-                    .zip(results)
-                    .map(|((context, &known), [model, collaboration, management])| {
+                    .zip(&management_contexts)
+                    .map(|((context, &known), management_context)| {
+                        let [model, collaboration, _] = results[context].clone();
+                        let management = results[management_context][2].clone();
                         AgentSettingsSummaryEntryV1 {
                             context_id: context.clone(),
                             model: summary(model, known),

@@ -98,6 +98,31 @@ impl Patch {
         }
         Ok(row.and_then(|r| r.get("config")))
     }
+    /// Only a static patch retaining the shipped resource module can prove its roots.
+    pub fn resource_config(
+        &self,
+        id: &str,
+        module: &str,
+    ) -> Result<Option<&Value>, QoderNativeError> {
+        if self
+            .rows
+            .iter()
+            .filter(|r| !bundled_routing_insert(r))
+            .any(|r| {
+                r["id"].as_str().is_none()
+                    || r.as_object().expect("validated row").keys().any(|k| {
+                        !matches!(k.as_str(), "id" | "name" | "config" | "disabled" | "remove")
+                    })
+            })
+            || self
+                .rows
+                .iter()
+                .any(|r| r["id"] == id && r.get("name").is_some_and(|name| name != module))
+        {
+            return Err(qoder_error("DSH standard resource module required"));
+        }
+        self.config(id)
+    }
     pub fn credentials_config(&self) -> Result<Option<&Value>, QoderNativeError> {
         // Nested insert/remove operations can replace the module. Do not infer
         // the default store from a composition this passive reader cannot prove.

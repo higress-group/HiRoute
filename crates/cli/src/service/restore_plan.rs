@@ -78,8 +78,8 @@ pub(super) fn contexts(list: &Value) -> io::Result<Vec<Context>> {
                 insert(root, false, true)?;
             }
         } else if matches!(name, "agent_dsh_desktop" | "agent_codex_desktop") {
-            // Desktop exposes a model facet only; its Skills belong to the
-            // separate CLI context and are not present in Desktop status.
+            // Desktop owns its model facet. Its projected management status belongs
+            // to the canonical CLI/Web context and must be restored there only once.
             insert(context, true, false)?;
         } else {
             insert(context, true, true)?;

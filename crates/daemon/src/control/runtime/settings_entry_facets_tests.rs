@@ -900,3 +900,6 @@ mod collaboration;
 
 #[path = "settings_entry_shared_skills_tests.rs"]
 mod shared_skills;
+
+#[path = "settings_desktop_management_tests.rs"]
+mod desktop_management;

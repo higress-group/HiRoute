@@ -118,7 +118,7 @@ function independentCodexDesktop(configured = true): AgentSnapshot {
   desktop.context_id = `agent-context/codex-desktop/sha256:${'a'.repeat(64)}`;
   desktop.codex_access = undefined;
   desktop.codex_desktop = { codex_home: '/example/Application Support/HiRoute/data.codex-desktop/codex',
-    user_data: '/example/Application Support/HiRoute/data.codex-desktop/desktop', source_codex_home: '/example/.codex', shared_skills: '/example/.agents/skills' };
+    user_data: '/example/Application Support/HiRoute/data.codex-desktop/desktop', source_codex_home: cli.codex_access!.codex_home, shared_skills: '/example/.agents/skills' };
   desktop.available_surfaces = ['codex_desktop'];
   desktop.native_model_catalog = null;
   if (configured && desktop.settings && 'state' in desktop.settings) {

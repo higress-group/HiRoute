@@ -98,8 +98,14 @@ copy that context-only local command without reading the Plan catalog; package
 discovery, fresh authority checks and graphical launch stay on its host.
 Windows skill junctions and Unix symlinks share the exclusive
 [directory-link boundary](../../crates/platform/src/directory_link.rs).
-This identity is model-only;
-it does not register another Worker executor. [Lifecycle coverage](../../crates/daemon/src/control/runtime/settings_codex_desktop_tests.rs)
+Its model identity remains separate. Management uses the original CLI/root owner
+and shared user file through the [UI owner resolver](../../apps/desktop/src/features/agents/management-context.ts)
+and [shared status projection](../../crates/daemon/src/control/runtime/settings_status.rs).
+DSH Desktop likewise uses its DSH_HOME Web owner's management Skill. Neither adds
+a Worker executor or collaboration control. [Desktop-only management admission](../../crates/integrations/src/agents/desktop_management.rs)
+and [wire/reopen/restore coverage](../../crates/daemon/src/control/runtime/settings_desktop_management_tests.rs)
+preserve canonical references when no separate CLI is installed.
+[Lifecycle coverage](../../crates/daemon/src/control/runtime/settings_codex_desktop_tests.rs)
 exercises both connections and recovery through the public settings wire.
 
 The trial flow preserves that selected mode. After confirmed mapping, its

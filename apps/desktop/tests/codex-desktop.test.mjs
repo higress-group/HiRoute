@@ -5,7 +5,7 @@ import { agentSettingsSpec } from '../src/features/agents/settings-request.ts';
 import { agentActionErrorMessage } from '../src/features/agents/mutation-feedback.ts';
 import { nativeCodexDesktopLaunch, codexDesktopLaunchCommand } from '../src/features/agents/codex-desktop-launch.ts';
 
-test('Desktop is a peer connection and never borrows CLI profile context', () => {
+test('Desktop keeps independent model context while exposing shared management', () => {
   const desktop = { agent_id: 'agent_codex_desktop', context_id: 'context/desktop', settings: null };
   const cli = { agent_id: 'agent_codex_default', context_id: 'context/cli', settings: null,
     codex_access: { slot_occupied: false, root_context_id: 'context/root', profile_context_id: 'context/cli' } };
@@ -14,7 +14,7 @@ test('Desktop is a peer connection and never borrows CLI profile context', () =>
   assert.equal(entries.findIndex(a => a.agent_id === desktop.agent_id), entries.findIndex(a => a.agent_id === cli.agent_id) + 1);
   assert.equal(agentEcosystem(desktop.agent_id), 'codex');
   assert.equal(agentSupportsCollaboration(desktop.agent_id), false);
-  assert.equal(agentSupportsManagement(desktop.agent_id), false);
+  assert.equal(agentSupportsManagement(desktop.agent_id), true);
   const draft = { codexMode: 'profile', values: { nativeModelMode: 'hiroute_only', fixedModels: [], allowedPlanIds: ['plan/one'], defaultChoice: { kind: 'plan', plan_id: 'plan/one' } } };
   assert.equal(agentSettingsSpec(desktop, 'model', false, draft).context_id, 'context/desktop');
   assert.equal(agentSettingsSpec(cli, 'model', false, draft).context_id, 'context/cli');

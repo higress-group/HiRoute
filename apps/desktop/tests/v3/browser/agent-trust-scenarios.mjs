@@ -70,7 +70,7 @@ export async function showDshDesktopEditor() {
   await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('DeepSeek Harness Desktop')), 'Desktop entry loaded');
   [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('DeepSeek Harness Desktop')).click();
   await until(() => document.querySelector('[data-agent-id="agent_dsh_desktop"]'), 'Desktop selection');
-  assert(!facet('collaboration') && !facet('management_skill'), 'Model support invented Desktop Skill support');
+  assert(!facet('collaboration') && facet('management_skill'), 'Desktop lost shared management or invented delegation');
   await openEditor('model', false);
   assert(dialog().textContent.includes('DeepSeek Harness Desktop') && !dialog().textContent.includes('dsh web'), 'Desktop guidance targets the wrong client');
   const route = dialog().querySelector('input[type=checkbox]');
@@ -84,6 +84,19 @@ export async function showCodexIndependentDesktop(configured = true) {
   await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Codex Desktop')), 'independent Desktop entry');
   [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex Desktop')).click();
   await until(() => document.querySelector('[data-agent-id="agent_codex_desktop"] [data-codex-desktop-instance]'), 'independent Desktop detail');
+}
+
+export async function showDesktopManagement(id) {
+  if (id === 'agent_codex_desktop') await showCodexIndependentDesktop();
+  else {
+    c().reset(); c().agents=c().registered();
+    const owner=c().agents.agents.find(agent=>agent.agent_id==='agent_dsh_default');
+    c().agents.agents.push({...structuredClone(owner),agent_id:id,context_id:'agent-context/dsh/desktop-fixture',available_surfaces:['dsh_desktop']});
+    c().refresh();await tick();
+    await until(()=>[...document.querySelectorAll('.native-list .list-row')].some(row=>row.textContent.includes('DeepSeek Harness Desktop')),'DSH Desktop');
+    [...document.querySelectorAll('.native-list .list-row')].find(row=>row.textContent.includes('DeepSeek Harness Desktop')).click();
+  }
+  await until(()=>document.querySelector(`[data-agent-id="${id}"] .detail-hero`),'Desktop management detail');
 }
 
 export async function showAgentDetail(id) {
@@ -113,6 +126,59 @@ export async function showAgentDetail(id) {
 }
 
 const scenarios = [
+  scenario('agent.desktop.shared-management', ['desktop-management'], 'Desktop management uses the shared owner for configure/disable, and native prerequisites use its original Agent', async () => {
+    for(const id of ['agent_codex_desktop','agent_dsh_desktop']) {
+      await showDesktopManagement(id);
+      const ownerId=id==='agent_codex_desktop'?'agent_codex_default':'agent_dsh_default';
+      const owner=c().agents.agents.find(agent=>agent.agent_id===ownerId);
+      const desktop=c().agents.agents.find(agent=>agent.agent_id===id);
+      const context=owner.codex_access?.root_context_id??owner.context_id;
+      const model=JSON.stringify(desktop.settings.current_selection);
+      const ownerModel=JSON.stringify(owner.settings.current_selection);
+      c().agents.plans.plans=[];
+      assert(facet('management_skill')&&!facet('collaboration'),'Desktop management or delegation boundary missing');
+      assert(document.querySelector('[data-agent-management]').textContent.includes('共享'),'Shared scope is hidden before editing');
+      await openEditor('management_skill',false);
+      assert(dialog().querySelector('[data-agent-management-shared]'),'Editor does not explain the shared effect');
+      [...dialog().querySelectorAll('button')].find(button=>button.textContent.trim()==='取消').click();await tick();
+      assert(calls('preview_agent_settings').length===0,'Cancel submitted management');
+      let prepared=false;
+      c().handlers.preview_agent_settings=args=>{
+        const spec=args.input.spec;
+        assert(spec.context_id===context&&spec.model.intent==='keep'&&spec.collaboration.intent==='keep','Management borrowed a model or Desktop context');
+        if(!prepared){prepared=true;return{preview:{applicable:false,blockers:[{capabilities:[{capability:'skill_loading'}]}]}};}
+        const configured=spec.management_skill.intent==='configure';
+        const status={state:configured?'configured':'restored',restore_point_ref:configured?'restore/shared-management':null,operation_id:'operation/shared-management',operation_state:'succeeded'};
+        owner.settings.management_skill=structuredClone(status);desktop.settings.management_skill=structuredClone(status);
+        return{preview:{applicable:true,blockers:[]},mutation:{state:'applied',operation:{operation_id:'operation/agent-settings-fixture',state:'succeeded',sequence:1,cancellable:false}}};
+      };
+      await openEditor('management_skill',false);await save();
+      assert(calls('check_agent_authentication')[0].payload.input.agent_id===ownerId,'Management prerequisite checked the model-only Desktop identity');
+      assert(configureSpecs().length===2&&configureSpecs().every(spec=>spec.context_id===context),'Prerequisite retry changed management owner');
+      assert(facet('management_skill').textContent.trim()==='停用','Configured Desktop still offers Enable');
+      facet('management_skill').click();
+      await until(()=>calls('preview_agent_settings').length===3&&!facet('management_skill').disabled,'shared management restore');
+      assert(configureSpecs()[2].management_skill.restore_point_ref==='restore/shared-management','Disable lost the shared restore reference');
+      assert(facet('management_skill').textContent.trim()==='启用','Disabled Desktop still appears enabled');
+      assert(JSON.stringify(desktop.settings.current_selection)===model&&JSON.stringify(owner.settings.current_selection)===ownerModel,'Management changed either model selection');
+      assert(calls('launch_codex_desktop').length===0&&calls('trial_agent_model').length===0,'Management launched a client or used model-only confirmation');
+    }
+  }),
+  scenario('agent.desktop.shared-management-recovery', ['desktop-management'], 'Desktop recovery retries the canonical management Operation rather than its separate model context', async () => {
+    for(const id of ['agent_codex_desktop','agent_dsh_desktop']) {
+      await showDesktopManagement(id);
+      const desktop=c().agents.agents.find(agent=>agent.agent_id===id);
+      const owner=c().agents.agents.find(agent=>agent.agent_id===(id==='agent_codex_desktop'?'agent_codex_default':'agent_dsh_default'));
+      desktop.settings.management_skill={state:'needs_attention',operation_id:'operation/shared-pending',operation_state:'needs_attention',restore_point_ref:null};
+      c().handlers.retry_agent_settings=()=>({});c().refresh();await tick();
+      const retry=[...document.querySelectorAll('button')].find(button=>button.textContent.includes('重新检查并继续原操作'));
+      assert(retry&&!retry.disabled,'Shared management recovery unavailable');retry.click();
+      await until(()=>calls('retry_agent_settings').length===1,'shared management retry');
+      const input=calls('retry_agent_settings')[0].payload.input;
+      assert(input.context_id===(owner.codex_access?.root_context_id??owner.context_id)&&input.operation_id==='operation/shared-pending','Recovery used Desktop model identity');
+      assert(calls('preview_agent_settings').length===0,'Recovery created another settings operation');
+    }
+  }),
   scenario('agent.details.progressive-disclosure', ['agent-details'], 'Agent details prioritize configuration and actions while retaining usage, resources and repair', async () => {
     for (const id of ['agent_claude_default', 'agent_codex_default', 'agent_qoder_default', 'agent_hermes_default', 'agent_pi_default', 'agent_dsh_default', 'agent_dsh_desktop', 'agent_opencode_default']) {
       await showAgentDetail(id);
@@ -194,7 +260,7 @@ const scenarios = [
   }),
   scenario('codex.desktop.independent-launch-and-retry', ['codex-desktop'], 'Independent Desktop coexists with CLI and launch retry never repeats Apply', async () => {
     await showCodexIndependentDesktop();
-    assert(!facet('collaboration') && !facet('management_skill'), 'Desktop invents independent Skill installation authority');
+    assert(!facet('collaboration') && facet('management_skill'), 'Desktop lost shared management or invented delegation');
     assert([...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Codex')).length === 2, 'CLI entry disappeared');
     const button = document.querySelector('[data-codex-desktop-launch]');
     assert(!button.disabled, 'Configured Desktop cannot launch');

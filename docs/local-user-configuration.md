@@ -126,6 +126,15 @@ context before continuing. First-time creation and edits still require normal Pr
 
 ### Independent Codex Desktop window
 
+**HiRoute management** is shared by Codex CLI and Desktop through the real user's
+`.agents/skills` directory. Its Enable/Disable action and recovery state are the
+same in either Agent entry, including when CLI models use an independent profile.
+The management dialog explains this shared scope; model routing remains separate.
+DSH Desktop also exposes management, shared with Web in the same DSH_HOME. A
+separate native CLI is not required when the supported Desktop application is
+installed. Skill preparation does not prove an already-running session loaded it;
+refresh the native skill list or start a new session as needed.
+
 Open **Agents → Codex Desktop**, choose routes and enable model routing, then use
 **Open separate window**. This is independent of **Agents → Codex** and its CLI
 profile. Both connections may stay enabled. Native launch is available in HiRoute
