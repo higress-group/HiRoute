@@ -44,7 +44,7 @@ fn write_secret_settings(path: &Path, value: serde_json::Value) {
     }
 }
 
-fn registry() -> ClaudeRegistrationIndexV1 {
+pub(super) fn registry() -> ClaudeRegistrationIndexV1 {
     let registry: ConnectorRegistryBundleV1 = serde_json::from_slice(include_bytes!(
         "../../../../assets/connector-registry/current/registry-seed.json"
     ))

@@ -137,7 +137,7 @@ pub struct AgentFilesystemLayoutV1 {
     pub opencode_executable: PathBuf,
     pub opencode_context: Option<super::OpenCodeNativeContext>,
     pub dsh_executable: PathBuf,
-    /// Official macOS Desktop carrier, independently installed from the npm CLI.
+    /// Official macOS/Windows Desktop carrier, independent of the npm CLI.
     pub dsh_desktop_executable: Option<PathBuf>,
     pub dsh_config_root: PathBuf,
     pub qoder_home: PathBuf,

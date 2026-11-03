@@ -3,18 +3,68 @@
 use super::*;
 
 pub(super) fn installed_executable(home: &Path) -> Option<PathBuf> {
-    if !cfg!(target_os = "macos") {
+    #[cfg(windows)]
+    {
+        return windows_installation_roots(home, |key| std::env::var_os(key))
+            .into_iter()
+            .find_map(windows_installed_executable)
+            .or_else(|| {
+                hiroute_platform::windows::installed_apps::uninstall_locations("DeepSeek Harness")
+                    .into_iter()
+                    .find_map(windows_installed_executable)
+            });
+    }
+    #[cfg(target_os = "macos")]
+    {
+        [home.join("Applications"), PathBuf::from("/Applications")]
+            .into_iter()
+            .map(|root| root.join("DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness"))
+            .find(|path| {
+                super::super::executable::resolve(path)
+                    .ok()
+                    .flatten()
+                    .is_some()
+            })
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let _ = home;
+        None
+    }
+}
+
+#[cfg(windows)]
+fn windows_installation_roots(
+    home: &Path,
+    lookup: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> Vec<PathBuf> {
+    let local = lookup("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .unwrap_or_else(|| home.join("AppData/Local"));
+    let mut roots = vec![local.join("Programs/DeepSeek Harness")];
+    for key in ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(path) = lookup(key)
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute())
+        {
+            let root = path.join("DeepSeek Harness");
+            if !roots.contains(&root) {
+                roots.push(root);
+            }
+        }
+    }
+    roots
+}
+
+#[cfg(windows)]
+fn windows_installed_executable(root: PathBuf) -> Option<PathBuf> {
+    if !root.is_absolute() {
         return None;
     }
-    [home.join("Applications"), PathBuf::from("/Applications")]
-        .into_iter()
-        .map(|root| root.join("DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness"))
-        .find(|path| {
-            super::super::executable::resolve(path)
-                .ok()
-                .flatten()
-                .is_some()
-        })
+    super::super::executable::resolve(&root.join("DeepSeek Harness.exe"))
+        .ok()
+        .flatten()
 }
 
 impl FilesystemAgentScannerV1 {
@@ -37,11 +87,22 @@ impl FilesystemAgentScannerV1 {
         let executable = self
             .dsh_desktop_executable_target()
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
-        Ok(executable
+        #[cfg(not(windows))]
+        let archive = executable
             .parent()
             .and_then(Path::parent)
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?
-            .join("Resources/app.asar"))
+            .join("Resources/app.asar");
+        #[cfg(windows)]
+        let archive = {
+            let path = executable
+                .parent()
+                .ok_or(AgentFilesystemScanError::SourceUnavailable)?
+                .join("resources/app.asar");
+            super::super::managed_launch::windows_executable_path(&path)
+                .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?
+        };
+        Ok(archive)
     }
     #[cfg(any(unix, windows))]
     fn dsh_desktop_command(&self) -> Result<std::process::Command, AgentFilesystemScanError> {
@@ -190,3 +251,7 @@ impl FilesystemAgentScannerV1 {
 fn invalid<T>(_: T) -> AgentFilesystemScanError {
     AgentFilesystemScanError::InvalidConfig
 }
+
+#[cfg(all(test, windows))]
+#[path = "dsh_desktop_windows_tests.rs"]
+mod windows_tests;

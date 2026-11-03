@@ -132,12 +132,21 @@ impl FilesystemAgentScannerV1 {
         self.dsh_discovery(true)
     }
     fn dsh_discovery(&self, version_diagnostic: bool) -> FilesystemAgentDiscoveryV1 {
-        let Some(executable) = self.dsh_executable_target() else {
-            return probe_report(
-                "agent_dsh_default",
-                AgentKindV1::DeepseekHarness,
-                ExecutableProbe::NotFound,
-            );
+        // Do not erase a denied/invalid PATH candidate as "not installed". In
+        // particular, Windows rejects reparse aliases before looking further.
+        let executable = match super::super::executable::resolve(&self.layout.dsh_executable) {
+            Ok(Some(executable)) => executable,
+            result => {
+                return probe_report(
+                    "agent_dsh_default",
+                    AgentKindV1::DeepseekHarness,
+                    match result {
+                        Ok(None) => ExecutableProbe::NotFound,
+                        Err(reason) => ExecutableProbe::Unknown(reason),
+                        Ok(Some(_)) => unreachable!(),
+                    },
+                );
+            }
         };
         // Version output is diagnostic, not configuration authority. Settings
         // snapshots recheck the native files/path without launching the engine.

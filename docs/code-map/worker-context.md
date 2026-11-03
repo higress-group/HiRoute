@@ -285,6 +285,10 @@ not replace real native compaction, Continue or concurrent-route journeys.
 
 [Official Desktop admission](../../crates/integrations/src/agents/dsh_desktop.rs)
 uses the app's bundled public CLI and independent `profiles/desktop` settings.
+Windows discovery includes Programs directories and read-only uninstall hints
+through [native registration inspection](../../crates/platform/src/windows/installed_apps.rs).
+The [scan response](../../crates/application/src/control_plane/agent_discovery.rs)
+retains Web lookup failures and supplies context-scoped remediation actions.
 The Web entry retains `profiles/web` ownership; both reuse protected additional
 provider effects and bundled routing registration. Desktop discovery does not
 require npm DSH, and its model support does not advertise Worker/Skill support.
