@@ -1,5 +1,5 @@
 import { trialAgentRead } from './trial-agent-fixture';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from './host-mock';
 import { Agents, type Agent, type AgentSnapshot, type ModelStatus } from '../../../src/agents';
@@ -243,6 +243,14 @@ function Harness() {
   const [generation, setGeneration] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [active, setActive] = useState(true);
+  useEffect(() => {
+    if (presentation.get('view') !== 'codex-desktop') return;
+    const timer = window.setInterval(() => {
+      const row = [...document.querySelectorAll<HTMLButtonElement>('.native-list .list-row')].find(node => node.textContent?.includes('Codex Desktop'));
+      if (row) { row.click(); window.clearInterval(timer); }
+    }, 30);
+    return () => window.clearInterval(timer);
+  }, [generation]);
   control.setActive = setActive;
   const [operation, setOperation] = useState<OperationReference | null>(null);
   control.refresh = () => setRefresh(value => value + 1);
