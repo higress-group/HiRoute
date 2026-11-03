@@ -494,14 +494,13 @@ async fn run_session(
         if !mode_available {
             if input.identity_contract == AcpNativeIdentityContract::ClaudeSessionV1
                 && native_session_mode == "bypassPermissions"
+                && let Some(progress) = progress.as_ref()
             {
-                if let Some(progress) = progress.as_ref() {
-                    progress.push(if modes.is_none() {
-                        "[HiRoute] The selected Claude adapter returned no session mode catalog in session/new or session/load. Approve-all requires the advertised bypassPermissions mode. No task prompt was sent.\n"
-                    } else {
-                        "[HiRoute] The selected Claude adapter's session mode catalog does not offer bypassPermissions, which approve-all requires. No task prompt was sent.\n"
-                    });
-                }
+                progress.push(if modes.is_none() {
+                    "[HiRoute] The selected Claude adapter returned no session mode catalog in session/new or session/load. Approve-all requires the advertised bypassPermissions mode. No task prompt was sent.\n"
+                } else {
+                    "[HiRoute] The selected Claude adapter's session mode catalog does not offer bypassPermissions, which approve-all requires. No task prompt was sent.\n"
+                });
             }
             return Err(DelegationErrorV1::CapabilityUnavailable);
         }
