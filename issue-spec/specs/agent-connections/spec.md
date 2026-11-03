@@ -283,8 +283,12 @@ On macOS, the native host resolves the installed Codex bundle and launches it wi
 `open -n`, private CODEX_HOME and CODEX_SQLITE_HOME, private
 CODEX_ELECTRON_USER_DATA_PATH and matching `--user-data-dir`. Real HOME stays
 unchanged. No ordinary configuration, auth, instructions or session files are
-copied. CLI is never substituted for a missing Desktop engine. Other hosts do not
-advertise native launch. The separate instance lives in a storage-root-specific
+copied. Windows SHALL resolve the current user's installed `OpenAI.Codex` MSIX
+registration and desktop executable, and launch it directly with the same private
+environment and user-data argument. Shell activation through Explorer, which would
+lose the isolated environment, SHALL NOT be used. Native launching SHALL be exposed
+through HiRoute's Windows Shell as well as its macOS Desktop. CLI is never
+substituted for a missing Desktop engine. The separate instance lives in a storage-root-specific
 sibling namespace, outside Core upgrade snapshots. Native history and login remain
 Codex-owned and survive routing restore.
 
@@ -295,6 +299,23 @@ Operation. UI-supplied paths, environment or commands are not accepted. Launch
 failure preserves the completed configuration and retries launch only. First use
 offers route configuration; configured use offers the separate window. CLI and
 Desktop remain distinct entries with visible scope and recovery information.
+
+Web consoles SHALL offer a copyable `hiroute agents desktop launch <CONTEXT_ID>
+--output json` local host command instead of dispatching a process launch over HTTP.
+The command SHALL run on the service computer in a graphical desktop session, read
+fresh exact-context model authority without loading unrelated Plans or skill
+inventories, prepare shared skills, recheck the same successful settings Operation,
+and then launch the installed desktop package. Linux SHALL discover the installed
+`chatgpt` desktop package and its bundled engine; a headless terminal without DISPLAY
+or WAYLAND_DISPLAY SHALL receive actionable graphical-session guidance. Missing
+desktop installation SHALL not fall back to the separate Codex CLI.
+
+Windows user skill folders SHALL use exclusive directory junctions without requiring
+administrator rights or Developer Mode. Unix SHALL retain per-directory symlinks.
+Both preserve same-name destinations and never acquire deletion authority over source
+skills. Native package and graphical-session execution require their actual platform
+evidence; UI mocks and cross-compilation alone do not prove a Windows or Linux desktop
+request succeeded.
 
 Model/token updates SHALL discard stale Desktop launch feedback. Guidance SHALL
 require quitting and restarting the separate instance after a successful route or

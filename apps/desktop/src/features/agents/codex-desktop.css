@@ -3,3 +3,6 @@
 .codex-instance .field-help { color: var(--text-soft); }
 .codex-instance { border-bottom: 1px solid var(--divider); }
 .codex-instance-paths dd { overflow-wrap: anywhere; font-size: 12px; }
+.codex-instance-command { padding: 0 0 16px; }
+.codex-instance-command pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.codex-instance-command summary { color: var(--text-soft); font-size: 12px; cursor: pointer; }

@@ -60,41 +60,12 @@ fn launch_target(
     snapshot: AgentSnapshot,
     context: &str,
 ) -> Result<(CodexDesktopInstanceViewV1, String), DesktopFailure> {
-    if !snapshot.trusted_authority || snapshot.agents.len() != 1 {
-        return Err("AGENT_STATUS_UNVERIFIED".into());
-    }
-    let agent = snapshot
-        .agents
-        .into_iter()
-        .next()
-        .ok_or("AGENT_STATUS_UNVERIFIED")?;
-    if agent.agent_id != "agent_codex_desktop"
-        || agent.context_id.as_deref() != Some(context)
-        || agent.status_error.is_some()
-        || !agent
-            .available_surfaces
-            .contains(&hiroute_domain::AgentModelSurfaceV2::CodexDesktop)
-    {
-        return Err("CODEX_DESKTOP_NOT_INSTALLED".into());
-    }
-    let model = agent
-        .settings
-        .as_ref()
-        .and_then(|settings| settings.model())
-        .ok_or("AGENT_STATUS_UNVERIFIED")?;
-    if model.state != AgentModelSettingsStateV2::Configured
-        || model.operation_state.as_deref() != Some("succeeded")
-        || model.current_selection.is_none()
-    {
-        return Err("AGENT_STATUS_UNVERIFIED".into());
-    }
-    Ok((
-        agent.codex_desktop.ok_or("AGENT_STATUS_UNVERIFIED")?,
-        model
-            .operation_id
-            .clone()
-            .ok_or("AGENT_STATUS_UNVERIFIED")?,
-    ))
+    let target = hiroute_product_session::codex_desktop::launch_target(
+        snapshot.agents,
+        context,
+        snapshot.trusted_authority,
+    )?;
+    Ok((target.paths, target.operation))
 }
 
 #[cfg(all(test, target_os = "macos"))]

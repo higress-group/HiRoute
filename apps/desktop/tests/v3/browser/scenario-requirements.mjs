@@ -2,6 +2,7 @@
 // Retire a required ID only with an explicit replacement of its unique guarantee.
 export const agentTrustRequired = ['dsh.desktop.independent-model-settings','codex.restore.conflict-active',
   'codex.desktop.independent-launch-and-retry',
+  'codex.desktop.platform-launch',
   'codex.desktop.token-update-restart',
   'agent.details.progressive-disclosure',
   'hermes.discovery.parallel-entry',

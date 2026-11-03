@@ -2,6 +2,7 @@
 pub mod background;
 pub mod console;
 pub mod diagnostic_files;
+pub(crate) mod directory_link;
 pub mod durable;
 pub(crate) mod file_security;
 pub mod install;

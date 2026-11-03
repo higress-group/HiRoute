@@ -2,6 +2,8 @@ import { trialAgentRead } from './trial-agent-fixture';
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from './host-mock';
+import { setHostTransport } from '../../../src/host/index';
+import { browserCapabilities } from '../../../src/host/types';
 import { Agents, type Agent, type AgentSnapshot, type ModelStatus } from '../../../src/agents';
 import type { OperationReference } from '../../../src/features/model-connections/types';
 import { PresentationRoot } from '../../../src/ui';
@@ -119,6 +121,10 @@ function independentCodexDesktop(configured = true): AgentSnapshot {
     user_data: '/example/Application Support/HiRoute/data.codex-desktop/desktop', source_codex_home: '/example/.codex', shared_skills: '/example/.agents/skills' };
   desktop.available_surfaces = ['codex_desktop'];
   desktop.native_model_catalog = null;
+  if (configured && desktop.settings && 'state' in desktop.settings) {
+    desktop.settings.operation_state = 'succeeded';
+    desktop.settings.operation_id = 'operation/desktop-fixture';
+  }
   if (!configured) desktop.settings = { state: 'not_configured', model_verified: false, restore_point_ref: null };
   snapshot.agents.push(desktop);
   return snapshot;
@@ -193,6 +199,12 @@ const control = {
   refresh: () => {},
   setActive: (_active: boolean) => {},
   reset: () => {},
+  setPlatform: (platform: string) => {
+    setHostTransport(platform !== 'macos' ? {
+      capabilities: () => ({ ...browserCapabilities, host: platform === 'windows' ? 'shell-console' : 'console', platform }),
+      call: async <T,>(command: string, args: Record<string, unknown> = {}) => await fixtureIPC(command, args) as T,
+    } : undefined);
+  },
   remount: () => {},
   registered,
   notRunnable,
@@ -214,12 +226,13 @@ const control = {
 };
 Object.assign(window, { agentTrust: control });
 
-mockIPC(async (command, payload) => {
+async function fixtureIPC(command: string, payload?: unknown) {
   const args = (payload ?? {}) as Record<string, unknown>;
   control.commands.push({ command, payload: args });
   if (control.handlers[command]) return control.handlers[command](args);
   switch (command) {
-    case 'launch_codex_desktop': return { preserved_skills: 0 };
+    case 'launch_codex_desktop':
+    case 'shell_launch_codex_desktop': return { preserved_skills: 0 };
     case 'cli_entry_status': return { state: 'valid', command_resolves_to_app_cli: true, path_contains_entry_directory: true };
     case 'trial_agent_model': return trialAgentRead(control.agents, command, args);
     case 'agent_snapshot': {
@@ -234,7 +247,8 @@ mockIPC(async (command, payload) => {
     case 'check_agent_live': return { accepted: true, scope: 'live', model_call: true, state: 'passed', call_count: 1, requested_call_count: 1 };
     default: throw new Error(`Unexpected agent-trust command: ${command}`);
   }
-});
+}
+mockIPC(fixtureIPC);
 
 function Harness() {
   const presentation = new URLSearchParams(location.search);

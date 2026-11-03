@@ -1673,6 +1673,10 @@ fn release_agent_scanner(
     .map_err(|_| "verified Agent discovery facts are inconsistent".to_owned())?;
     let mut layout = AgentFilesystemLayoutV1::from_process(home, project);
     layout.codex_desktop_executable = codex_desktop_engine;
+    #[cfg(not(target_os = "macos"))]
+    if layout.codex_desktop_executable.is_none() {
+        layout.codex_desktop_executable = hiroute_desktop_host_effects::codex_desktop_engine();
+    }
     for (kind, executable) in selected {
         let target = match kind {
             AgentKindV1::Codex => &mut layout.codex_executable,

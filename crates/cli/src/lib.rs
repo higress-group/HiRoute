@@ -7,6 +7,7 @@
 
 mod args;
 mod client;
+mod codex_desktop;
 mod collaboration;
 mod control_plane;
 mod effective_status;
@@ -111,6 +112,9 @@ where
         };
     }
     if let Some(execution) = version::execute(&path_and_options, &globals) {
+        return execution;
+    }
+    if let Some(execution) = codex_desktop::execute(&path_and_options, &globals) {
         return execution;
     }
     if let Some(execution) = host_commands::execute(&path_and_options, &globals) {

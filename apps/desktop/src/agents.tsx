@@ -8,6 +8,7 @@ import { loadAgentDiscoveryTargets, saveAgentDiscoveryTargets } from './features
 import { PreviousRouting } from './features/agents/PreviousRouting';
 import { CodexAccessPanel } from './features/agents/CodexAccessPanel';
 import { CodexDesktopPanel } from './features/agents/CodexDesktopPanel';
+import { codexDesktopLaunchCommand, nativeCodexDesktopLaunch } from './features/agents/codex-desktop-launch';
 import { confirmedCodexLaunchCommand, type PendingCodexLaunchCopy } from './features/agents/codex-launch';
 import { BrandIcon, Dialog, Disclosure, ProductPage, UiIcon, copyText } from './ui';
 import { confirmDiscard, useDiscardGuard } from './ui/discard-guard';
@@ -472,6 +473,16 @@ export function Agents({
     if (!agent.context_id || busy || scanning || !snapshot?.trusted_authority) return;
     setBusy(true); setDesktopLaunching(true); setDesktopFeedback(null); setActionError(''); setNotice('');
     try {
+      if (!nativeCodexDesktopLaunch(hostCapabilities())) {
+        const current = await invoke<AgentSnapshot>('agent_snapshot', { nativeTargets: [], contextId: agent.context_id });
+        const target = current.agents.find(item => item.context_id === agent.context_id);
+        const command = current.trusted_authority && target ? codexDesktopLaunchCommand(target) : null;
+        if (!command) throw { code: 'AGENT_STATUS_UNVERIFIED' };
+        try { await copyText(command); }
+        catch { setDesktopFeedback({ code: 'CLIPBOARD_UNAVAILABLE', message: text('无法自动复制，请展开“查看启动命令”手动复制。', 'Automatic copy failed. Expand View launch command and copy it manually.') }); return; }
+        setDesktopFeedback({ message: text('启动命令已复制。请在 HiRoute 服务所在电脑的桌面终端运行。', 'Launch command copied. Run it in a desktop terminal on the HiRoute service computer.') });
+        return;
+      }
       const result = await invoke<{ preserved_skills: number }>('launch_codex_desktop', { contextId: agent.context_id });
       setDesktopFeedback({ message: result.preserved_skills > 0
         ? text('已请求启动独立窗口。实例内的同名技能已保留；其他用户技能已共享。', 'Separate window requested. Existing skills with the same name were kept; other user skills are shared.')
@@ -651,7 +662,7 @@ export function Agents({
                 {selected.agent_id === 'agent_codex_desktop' && <CodexDesktopPanel agent={selected} language={language}
                   configured={selectedModel?.state === 'configured'} launching={desktopLaunching}
                   feedback={desktopFeedback}
-                  nativeHost={hostCapabilities().host === 'tauri' && hostCapabilities().platform === 'macos'}
+                  nativeHost={nativeCodexDesktopLaunch(hostCapabilities())}
                   disabled={busy || selectedPending || Boolean(editor) || !mutable || !selected.context_id || agentHasNoModelConnection(selected)}
                   onLaunch={() => void launchDesktop(selected)} onConfigure={source => void open(selected, 'model', source)} />}
                 <AgentDiscoveryFeedback agent={selected} language={language} scanning={scanning} onScan={() => void refresh()} />

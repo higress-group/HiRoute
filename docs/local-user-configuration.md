@@ -129,7 +129,18 @@ context before continuing. First-time creation and edits still require normal Pr
 Open **Agents → Codex Desktop**, choose routes and enable model routing, then use
 **Open separate window**. This is independent of **Agents → Codex** and its CLI
 profile. Both connections may stay enabled. Native launch is available in HiRoute
-Desktop on macOS with Codex Desktop installed; the installed CLI is not a substitute.
+Desktop on macOS and the Windows Shell with the ChatGPT / Codex desktop app installed;
+the installed Codex CLI is not a substitute. Windows resolves the current user's MSIX
+registration and keeps environment changes private to the new desktop process.
+
+The Web console offers **Copy launch command**, including on Linux. Run the copied
+`hiroute agents desktop launch '<CONTEXT_ID>' --output json` command on the HiRoute
+service computer, in its logged-in graphical desktop terminal. It checks the saved
+connection, prepares shared skills and launches the installed application. Linux
+requires the desktop `chatgpt` package and DISPLAY or WAYLAND_DISPLAY; an SSH/headless
+shell alone cannot display a window. A remote browser never launches an application
+on the browser computer or dispatches a server-side launch through HTTP. **View launch
+command** remains available if clipboard access is blocked.
 
 The instance uses private Codex, SQLite and Electron data directories while retaining
 the real HOME. Ordinary subscription settings, login and sessions are not copied.
@@ -149,7 +160,10 @@ Existing `.agents/skills` and project skills remain shared. When opening the win
 HiRoute also links ordinary Codex user skill folders individually, including their
 scripts/resources, skipping `.system` and duplicate `.agents/skills` names. Existing
 entries inside the instance are preserved. Links remain after disabling routing;
-source updates are visible through them. Each instance manages its own system skills.
+source updates are visible through them. Windows uses local directory junctions,
+without administrator rights or Developer Mode; Unix uses symbolic links. Network-share
+skill targets cannot be represented by a Windows junction and are not silently copied.
+Each instance manages its own system skills.
 
 ### Find earlier Codex sessions
 

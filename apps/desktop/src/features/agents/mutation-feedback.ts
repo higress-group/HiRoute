@@ -42,8 +42,11 @@ export function agentActionErrorMessage(code: string, language: 'zh' | 'en'): st
     ? '独立窗口未能启动。已保存的模型路由保持有效，可再次点击“启动独立窗口”。'
     : 'The separate window could not open. Saved model routing remains active; try Open separate window again.';
   if (code === 'CODEX_DESKTOP_HOST_REQUIRED') return zh
-    ? '请在 macOS 版 HiRoute Desktop 中启动独立窗口。'
-    : 'Open the separate window from HiRoute Desktop on macOS.';
+    ? '请在 macOS 或 Windows 版 HiRoute 中启动，或在服务电脑的桌面终端运行启动命令。'
+    : 'Open from HiRoute on macOS or Windows, or run the launch command in a desktop terminal on the service computer.';
+  if (code === 'CODEX_DESKTOP_DISPLAY_REQUIRED') return zh
+    ? '请在服务电脑已登录的图形桌面终端运行启动命令。已保存的路由和会话会保留。'
+    : 'Run the launch command from the service computer’s logged-in graphical desktop. Saved routing and sessions are retained.';
   if (code === 'AGENT_STATUS_UNVERIFIED') return zh
     ? '接入状态已变化，请重新读取并确认模型路由已启用后再启动。'
     : 'Connection state changed. Refresh and confirm model routing is enabled before opening.';

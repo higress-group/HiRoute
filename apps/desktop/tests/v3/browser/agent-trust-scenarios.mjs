@@ -137,6 +137,24 @@ const scenarios = [
       }
     }
   }),
+  scenario('codex.desktop.platform-launch', ['codex-desktop'], 'Windows Shell launches natively and Linux console copies an exact local command without HTTP launch', async () => {
+    try {
+      await showCodexIndependentDesktop(); c().setPlatform('windows'); c().refresh(); await tick();
+      let button=document.querySelector('[data-codex-desktop-launch]');
+      assert(!button.disabled && /启动独立窗口/.test(button.textContent), 'Windows Shell launch unavailable');
+      button.click(); await until(()=>calls('launch_codex_desktop').length===1 && !button.disabled,'Windows native host action');
+      assert(Object.keys(calls('launch_codex_desktop')[0].payload).join()==='contextId','Windows accepted launch paths');
+      await showCodexIndependentDesktop(); c().setPlatform('linux'); c().refresh(); await tick();
+      button=document.querySelector('[data-codex-desktop-launch]');
+      assert(!button.disabled && /复制启动命令/.test(button.textContent),'Linux command action unavailable');
+      const code=document.querySelector('.codex-instance-command code');
+      assert(code?.textContent.includes("hiroute agents desktop launch '") && code.textContent.includes('context/codex-desktop'), 'Linux command uses another context');
+      button.click(); await until(()=>!button.disabled && document.querySelector('[data-codex-desktop-instance] [role=status], [data-error-code=CLIPBOARD_UNAVAILABLE]'),'Linux copy feedback');
+      assert(calls('launch_codex_desktop').length===0 && calls('shell_launch_codex_desktop').length===0,'Console attempted HTTP/native launch');
+      assert(document.querySelector('.codex-instance-command').textContent.includes('服务所在电脑'),'Command execution location missing');
+      assert(calls('preview_agent_settings').length===0,'Launch command changed settings');
+    } finally { c().setPlatform('macos'); }
+  }),
   scenario('codex.desktop.independent-launch-and-retry', ['codex-desktop'], 'Independent Desktop coexists with CLI and launch retry never repeats Apply', async () => {
     await showCodexIndependentDesktop();
     assert(!facet('collaboration') && !facet('management_skill'), 'Desktop invents independent Skill installation authority');

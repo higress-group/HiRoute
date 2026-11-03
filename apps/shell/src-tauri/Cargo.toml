@@ -18,6 +18,8 @@ fs2.workspace = true
 url = "=2.5.8"
 
 [target.'cfg(windows)'.dependencies]
+hiroute-desktop-host-effects = { path = "../../../crates/desktop-host-effects" }
+hiroute-product-session = { path = "../../../crates/product-session" }
 hiroute-application-api = { path = "../../../crates/application-api" }
 hiroute-client-core = { path = "../../../crates/client-core" }
 hiroute-platform = { path = "../../../crates/platform" }

@@ -74,7 +74,15 @@ The separate [Codex Desktop instance](../../crates/integrations/src/agents/codex
 uses a distinct home and settings identity alongside that CLI slot. Its
 [native command](../../apps/desktop/src-tauri/src/bridge/codex_desktop.rs) binds launch
 to fresh configured status; [host preparation](../../crates/desktop-host-effects/src/codex_instance.rs)
-shares user skills without replacing existing entries. This identity is model-only;
+shares user skills without replacing existing entries;
+the [Windows Shell entry](../../apps/shell/src-tauri/src/runtime/codex_desktop.rs) and
+[local CLI action](../../crates/cli/src/codex_desktop.rs) share the
+[exact-context launch reader](../../crates/product-session/src/codex_desktop.rs) and
+[native effect](../../crates/desktop-host-effects/src/codex_launch.rs). Web consoles
+copy that local command; package discovery and graphical launch stay on its host.
+Windows skill junctions and Unix symlinks share the exclusive
+[directory-link boundary](../../crates/platform/src/directory_link.rs).
+This identity is model-only;
 it does not register another Worker executor. [Lifecycle coverage](../../crates/daemon/src/control/runtime/settings_codex_desktop_tests.rs)
 exercises both connections and recovery through the public settings wire.
 OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps

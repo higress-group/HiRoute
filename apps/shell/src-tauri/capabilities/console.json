@@ -4,5 +4,5 @@
   "local": false,
   "remote": { "urls": ["http://127.0.0.1:*"] },
   "windows": ["main"],
-  "permissions": ["allow-shell-capabilities", "allow-shell-open-in-browser", "allow-shell-open-external-url", "allow-shell-save-classifier-openapi", "allow-shell-login-start-get", "allow-shell-login-start-set", "allow-shell-restart-service", "allow-shell-reconnect", "allow-shell-update-status", "allow-shell-update-check", "allow-shell-update-download", "allow-shell-update-install", "allow-shell-update-cancel"]
+  "permissions": ["allow-shell-capabilities", "allow-shell-launch-codex-desktop", "allow-shell-open-in-browser", "allow-shell-open-external-url", "allow-shell-save-classifier-openapi", "allow-shell-login-start-get", "allow-shell-login-start-set", "allow-shell-restart-service", "allow-shell-reconnect", "allow-shell-update-status", "allow-shell-update-check", "allow-shell-update-download", "allow-shell-update-install", "allow-shell-update-cancel"]
 }

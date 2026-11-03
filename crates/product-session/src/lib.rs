@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 pub mod authority;
 pub mod catalog;
+pub mod codex_desktop;
 pub mod confirmation;
 pub mod failure;
 pub mod operation_observation;

@@ -73,13 +73,13 @@ pub fn prepare_codex_instance(
             continue;
         }
         let target = destination.join(name);
-        match std::os::unix::fs::symlink(&source, &target) {
+        match hiroute_platform::directory_link::create(&source, &target) {
             Ok(()) => {
                 recorded.insert(name.into(), source.to_string_lossy().into_owned());
                 result.linked += 1;
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                if fs::read_link(&target).ok().as_deref() != Some(source.as_path()) {
+                if fs::canonicalize(&target).ok() != fs::canonicalize(&source).ok() {
                     result.preserved += 1;
                 }
             }
@@ -188,7 +188,10 @@ mod tests {
             fs::read_to_string(root.join("codex/skills/one/scripts/run")).unwrap(),
             "updated"
         );
+        #[cfg(unix)]
         fs::remove_file(root.join("codex/skills/one")).unwrap();
+        #[cfg(windows)]
+        fs::remove_dir(root.join("codex/skills/one")).unwrap();
         fs::create_dir(root.join("codex/skills/one")).unwrap();
         assert_eq!(
             prepare(),

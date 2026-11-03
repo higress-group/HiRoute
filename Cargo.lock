@@ -2244,6 +2244,7 @@ dependencies = [
  "hiroute-application-api",
  "hiroute-client-core",
  "hiroute-daemon",
+ "hiroute-desktop-host-effects",
  "hiroute-diagnostics",
  "hiroute-domain",
  "hiroute-host-runtime",
@@ -2252,6 +2253,7 @@ dependencies = [
  "hiroute-observation",
  "hiroute-platform",
  "hiroute-platform-test-support",
+ "hiroute-product-session",
  "nix",
  "serde",
  "serde_json",
@@ -2322,6 +2324,7 @@ dependencies = [
  "hiroute-application-api",
  "hiroute-client-core",
  "hiroute-cpa-bridge",
+ "hiroute-desktop-host-effects",
  "hiroute-diagnostics",
  "hiroute-domain",
  "hiroute-gateway",
@@ -2387,13 +2390,16 @@ name = "hiroute-desktop-host-effects"
 version = "0.1.0"
 dependencies = [
  "block2",
+ "hiroute-client-core",
  "hiroute-platform",
+ "hiroute-product-session",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-service-management",
  "serde_json",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -2699,9 +2705,11 @@ dependencies = [
  "fs2",
  "hiroute-application-api",
  "hiroute-client-core",
+ "hiroute-desktop-host-effects",
  "hiroute-diagnostics",
  "hiroute-host-runtime",
  "hiroute-platform",
+ "hiroute-product-session",
  "reqwest",
  "serde",
  "serde_json",

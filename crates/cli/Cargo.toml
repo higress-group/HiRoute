@@ -10,6 +10,8 @@ getrandom.workspace = true
 hiroute-integrations = { path = "../integrations" }
 hiroute-client-core = { path = "../client-core" }
 hiroute-host-runtime = { path = "../host-runtime" }
+hiroute-desktop-host-effects = { path = "../desktop-host-effects" }
+hiroute-product-session = { path = "../product-session" }
 tokio = { workspace = true, features = ["signal", "time"] }
 hiroute-application-api = { path = "../application-api" }
 nix = { workspace = true, features = ["signal", "user", "term"] }
