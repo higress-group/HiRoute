@@ -1,6 +1,9 @@
 import { SecretTransportWarning } from './host/ConsoleUi';
 import { AgentDiscoveryFeedback } from './features/agents/AgentDiscoveryFeedback';
 import { AgentSkillDetails } from './features/agents/AgentSkillDetails';
+import { AgentCapabilityRow } from './features/agents/AgentCapabilityRow';
+import { AgentUsageDetails } from './features/agents/AgentUsageDetails';
+import './features/agents/agent-details.css';
 import { loadAgentDiscoveryTargets, saveAgentDiscoveryTargets } from './features/agents/discovery';
 import { PreviousRouting } from './features/agents/PreviousRouting';
 import { CodexAccessPanel } from './features/agents/CodexAccessPanel';
@@ -98,6 +101,7 @@ export function Agents({
   const [busy, setBusy] = useState(false);
   const [desktopLaunching, setDesktopLaunching] = useState(false);
   const [desktopFeedback, setDesktopFeedback] = useState<{ code?: string; message: string } | null>(null);
+  const [connectionDetailsOpen, setConnectionDetailsOpen] = useState(false);
   const [busyText, setBusyText] = useState('');
   const hermesTargets = useRef<AgentNativeTarget[]>(loadAgentDiscoveryTargets());
   const [scanning, setScanning] = useState(false);
@@ -120,6 +124,7 @@ export function Agents({
   const [tokenEditing, setTokenEditing] = useState(false);
   const [tokenDraft, setTokenDraft] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(initialAgentId);
+  useEffect(() => setConnectionDetailsOpen(false), [selectedAgent]);
   const selectedAgentRef = useRef(selectedAgent);
   selectedAgentRef.current = selectedAgent;
   const [codexMode, setCodexMode] = useState<'profile' | 'root'>('profile');
@@ -555,6 +560,9 @@ export function Agents({
 
   const brand = (agent: Agent) => agentBrand(agent.agent_id);
   const selectionSummary = modelSelectionSummary(modelSelection, plans, language);
+  const connectionScope = selected?.agent_id === 'agent_codex_desktop' ? text('独立实例', 'Separate instance')
+    : selected?.codex_access ? (selected.codex_access.selected_mode === 'profile' ? text('按需使用 · CLI 独立 profile', 'On demand · separate CLI profile') : text('默认接入 · 共享配置', 'Default connection · shared settings'))
+      : text('在原来的客户端中使用 HiRoute', 'Use HiRoute in your existing client');
   const blockedPreview = <AgentSettingsFeedback preview={preview} agent={selected} facet={editor?.facet}
     defaultChoice={editorValues.defaultChoice} language={language} disabled={busy || !mutable}
     onCheck={(scope, source) => { if (selected) void check(selected, scope, source); }} />;
@@ -614,8 +622,8 @@ export function Agents({
             </aside>
             <section className="detail-pane">
               <div className="oc-model-back"><button className="btn btn-quiet" type="button" onClick={() => setShowAgentList(true)}><UiIcon name="arrowLeft" />{text('返回 Agent 列表', 'Back to Agents')}</button></div>
-              {selected && snapshot && <div className="detail-inner" data-agent-id={selected.agent_id}>
-                <header className="detail-hero"><div className="detail-identity"><BrandIcon kind={brand(selected)} label={`${agentName(selected)} logo`} /><div><h2>{agentName(selected)}</h2><p>{text('选择你需要的路由能力', 'Choose the routing capabilities you need')}</p></div></div></header>
+              {selected && snapshot && <div className="detail-inner agent-detail" data-agent-id={selected.agent_id}>
+                <header className="detail-hero"><div className="detail-identity"><BrandIcon kind={brand(selected)} label={`${agentName(selected)} logo`} /><div><h2>{agentName(selected)}</h2><p>{connectionScope}</p></div></div></header>
                 {agentEcosystem(selected.agent_id) === 'hermes' && <section className="detail-section v3-agent-section" data-hermes-profile>
                   <div className="detail-section-head"><h3>{text('配置目录', 'Configuration directory')}</h3><button type="button" className="btn btn-quiet" data-hermes-select-root disabled={busy || scanning} onClick={() => { setHermesRoot(selected.native_target?.config_root ?? ''); setActionError(''); setHermesRootOpen(true); }}>{selected.native_target ? text('更改', 'Change') : text('手动选择目录', 'Select directory manually')}</button></div>
                   {selected.native_target
@@ -644,40 +652,37 @@ export function Agents({
                   </div>
                 </div>}
                 {selectedPending && !settingsRecoveryOperation && !selected.codex_access?.pending_operation && <div className="oc-status-row" role="status"><span className="oc-spinner" /><p>{text('路由配置正在应用，完成后会自动更新。', 'Routing settings are being applied and will update automatically.')}</p></div>}
-                {agentSupportsModelRouting(selected.agent_id) && !agentHasNoModelConnection(selected) && <section className="detail-section v3-agent-section">
-                  <div className="detail-section-head"><h3>{text('模型路由', 'Model routing')}</h3><button className="btn btn-quiet" data-agent-facet="model" disabled={busy || selectedPending || !selected.context_id || !agentEcosystem(selected.agent_id) || !mutable} onClick={event => open(selected, 'model', event.currentTarget)}>{modelSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button>{selectedModel?.restore_point_ref && <button className="btn btn-quiet" disabled={busy || selectedPending || !mutable} onClick={event => void change(selected, 'model', true, event.currentTarget)}>{text('停用', 'Disable')}</button>}</div>
-                  <p>{modelSelection ? <>{text('当前选择：', 'Current selection: ')}<strong>{selectionSummary}</strong></> : selected.agent_id === 'agent_qoder_default'
-                    ? text('添加可在 Qoder 中明确选择的 HiRoute 路由，保留原有模型和默认值。', 'Add HiRoute routes you can explicitly select in Qoder, while keeping native models and defaults.')
-                    : text('为此 Agent 配置固定模型，或通过智能路由自动选择模型。', 'Configure a fixed model for this Agent, or use smart routing to choose a model automatically.')}</p>
-                  {modelSelection?.mode === 'claude_launcher' && <p className="field-help">{text('直接启动 claude，使用 Opus、Sonnet、Haiku 原生预设选择已映射路由；其他计划不会自动出现在模型菜单中。若未显式选择当前模型，Claude Default 取决于账号；预设映射不证明 Default 可用，请通过真实调用验证。', 'Start claude normally and use its native Opus, Sonnet, or Haiku preset for mapped routes. Other plans do not automatically appear in the model picker. Without an explicit model selection, Claude Default depends on the account; preset mappings do not prove it works. Verify with a live call.')}</p>}
-                  {modelSelection?.mode === 'qoder_additional' && <p className="field-help">{text('重新启动 Qoder 后，在模型选择中选用已添加的 HiRoute 路由。原有模型、登录和默认选择保持不变。', 'Restart Qoder and select an added HiRoute route in its model choices. Existing models, sign-in and defaults stay unchanged.')}</p>}
-                </section>}
-                {agentSupportsCollaboration(selected.agent_id) && <section className="detail-section v3-agent-section" data-agent-collaboration data-agent-skills-unverified={skillsUnverified || undefined}>
-                  <div className="detail-section-head"><h3>{text('任务路由', 'Task routing')}</h3><button className="btn btn-quiet" data-agent-facet="collaboration" disabled={busy || !selected.context_id || !mutable} onClick={event => open(selected, 'collaboration', event.currentTarget)}>{skillsUnverified ? text('查看配置', 'View settings') : taskSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button></div>
-                  {selected.agent_id === 'agent_qoder_default' && <div data-qoder-collaboration>
-                    <p>{text('使用 Qoder 原有模型和登录配置，通过任务协作使用 HiRoute 计划。需要登录时，请在终端正常启动 Qoder CLI 并完成登录后重试。', 'Keep your Qoder models and sign-in configuration, and use HiRoute plans through task collaboration. If sign-in is needed, start Qoder CLI normally in a terminal, sign in, and retry.')}</p>
-                  </div>}
-                  <p>{skillsUnverified ? text('状态尚未读取，打开配置时会重新核实。', 'Status has not been read. Opening settings will verify it again.') : taskSelection?.trigger_mode === 'delegate_by_default'
-                    ? text('由此 Agent 判断何时将任务交给执行 Agent；你仍可明确要求只回答、不执行。', 'This Agent decides when to delegate work to an execution Agent; you can still explicitly ask it to answer without execution.')
-                    : taskSelection
-                      ? text('仅在你明确要求执行或委派任务时，将任务交给执行 Agent。', 'Delegate work to an execution Agent only when you explicitly ask for execution or delegation.')
-                      : text('让此 Agent 将任务交给合适的执行 Agent，并获取结果。', 'Let this Agent delegate work to a suitable execution Agent and retrieve the results.')}</p>
-                  <AgentSkillDetails resource={selectedCollaboration?.resource} language={language} />
-                  <p className="field-help">{text('启用后，可在对话中说：“使用 HiRoute，将当前任务委派给【路由名称】执行。”路由名称见“智能路由”，也可让 Agent 选择合适的路由。', 'After enabling, ask in conversation: “Use HiRoute to delegate this task to [route name].” Find route names under Smart routing, or ask the Agent to choose a suitable route.')}</p>
-                </section>}
-                {agentSupportsManagement(selected.agent_id) && <section className="detail-section v3-agent-section" data-agent-management data-hermes-management={agentEcosystem(selected.agent_id) === 'hermes' ? true : undefined}>
-                  <div className="detail-section-head"><h3>{text('HiRoute 管理', 'HiRoute management')}</h3><button className="btn btn-quiet" role={skillsUnverified ? undefined : 'switch'} aria-checked={skillsUnverified ? undefined : selectedManagement?.state === 'configured'} data-agent-facet="management_skill" disabled={busy || !selected.context_id || !mutable || selectedManagement?.state === 'pending'} onClick={event => { if (selectedManagement?.state === 'configured' && selectedManagement.restore_point_ref) void change(selected, 'management_skill', true, event.currentTarget); else open(selected, 'management_skill', event.currentTarget); }}>{skillsUnverified ? text('查看配置', 'View settings') : selectedManagement?.state === 'configured' ? text('停用', 'Disable') : text('启用', 'Enable')}</button></div>
-                  <p>{text('准备管理 Skill，让此 Agent 通过本机 CLI 管理模型来源和智能路由。可独立启用或恢复，无需先连接模型。', 'Prepare the management Skill so this Agent can manage model sources and smart routes through the local CLI. Enable or restore it independently, without model routing.')}</p>
-                  {selectedManagement?.restore_point_ref && selectedManagement.state !== 'configured' && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'management_skill', true, event.currentTarget)}>{text('恢复管理 Skill', 'Restore management Skill')}</button>}
-                  <p>{skillsUnverified ? text('状态尚未读取，打开配置时会重新核实。', 'Status has not been read. Opening settings will verify it again.') : selectedManagement?.state === 'configured' ? text('当前配置已启用。', 'Enabled for this configuration.') : selectedManagement?.state === 'restored' ? text('当前配置已停用；共享或外部安装的 Skill 文件可能仍然可用。', 'Disabled for this configuration; a shared or externally installed Skill may remain available.') : text('当前配置未启用。', 'Not enabled for this configuration.')}</p>
-                  {selectedManagement?.state === 'configured' && <button className="btn btn-quiet" type="button" disabled={busy || !mutable} onClick={event => open(selected, 'management_skill', event.currentTarget)}>{text('重新准备 Skill', 'Prepare Skill again')}</button>}
-                  <AgentSkillDetails resource={selectedManagement?.resource} language={language} management />
-                </section>}
+                {agentSupportsModelRouting(selected.agent_id) && !agentHasNoModelConnection(selected)
+                  && (selected.agent_id !== 'agent_codex_desktop' || modelSelection || selectedModel?.restore_point_ref) && <AgentCapabilityRow
+                    title={text('模型路由', 'Model routing')}
+                    summary={modelSelection ? selectionSummary : text('选择模型或智能路由', 'Choose a model or smart route')}
+                    actions={<><button className="btn btn-quiet" data-agent-facet="model" disabled={busy || selectedPending || !selected.context_id || !agentEcosystem(selected.agent_id) || !mutable} onClick={event => open(selected, 'model', event.currentTarget)}>{modelSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button>{selectedModel?.restore_point_ref && <button className="btn btn-quiet" disabled={busy || selectedPending || !mutable} onClick={event => void change(selected, 'model', true, event.currentTarget)}>{text('停用', 'Disable')}</button>}</>}
+                  />}
+                {agentSupportsCollaboration(selected.agent_id) && <AgentCapabilityRow
+                  data-agent-collaboration data-agent-skills-unverified={skillsUnverified || undefined}
+                  title={text('任务路由', 'Task routing')}
+                  summary={skillsUnverified ? text('打开配置以读取当前状态', 'Open settings to read the current state')
+                    : taskSelection?.trigger_mode === 'delegate_by_default' ? text('由 Agent 判断何时委派', 'Let the Agent decide when to delegate')
+                      : taskSelection ? text('仅在明确要求时委派', 'Delegate only when requested')
+                        : text('将任务交给合适的执行 Agent', 'Delegate tasks to a suitable execution Agent')}
+                  actions={<button className="btn btn-quiet" data-agent-facet="collaboration" disabled={busy || !selected.context_id || !mutable} onClick={event => open(selected, 'collaboration', event.currentTarget)}>{skillsUnverified ? text('查看配置', 'View settings') : taskSelection ? text('调整', 'Edit') : text('启用', 'Enable')}</button>}
+                />}
+                {agentSupportsManagement(selected.agent_id) && <AgentCapabilityRow
+                  data-agent-management data-hermes-management={agentEcosystem(selected.agent_id) === 'hermes' ? true : undefined}
+                  title={text('HiRoute 管理', 'HiRoute management')}
+                  summary={skillsUnverified ? text('打开配置以读取当前状态', 'Open settings to read the current state')
+                    : selectedManagement?.state === 'configured' ? text('管理模型来源和智能路由', 'Manage model sources and smart routes')
+                      : selectedManagement?.state === 'restored' ? text('此接入已停用，可能仍有共享技能', 'Disabled here; shared skills may remain available')
+                        : text('让 Agent 帮你配置 HiRoute', 'Let the Agent configure HiRoute for you')}
+                  actions={<button className="btn btn-quiet" role={skillsUnverified ? undefined : 'switch'} aria-checked={skillsUnverified ? undefined : selectedManagement?.state === 'configured'} data-agent-facet="management_skill" disabled={busy || !selected.context_id || !mutable || selectedManagement?.state === 'pending'} onClick={event => { if (selectedManagement?.state === 'configured' && selectedManagement.restore_point_ref) void change(selected, 'management_skill', true, event.currentTarget); else open(selected, 'management_skill', event.currentTarget); }}>{skillsUnverified ? text('查看配置', 'View settings') : selectedManagement?.state === 'configured' ? text('停用', 'Disable') : text('启用', 'Enable')}</button>}
+                >
+                  {selectedManagement?.restore_point_ref && selectedManagement.state !== 'configured' && <button className="btn btn-quiet" disabled={busy || !mutable} onClick={event => void change(selected, 'management_skill', true, event.currentTarget)}>{text('恢复管理 Skill', 'Restore management Skill')}</button>}
+                </AgentCapabilityRow>}
                 {selectedModel?.native_adapter && <p className="field-help" data-hermes-resource-state>{selectedModel.native_adapter.resources_installed
                   ? text('适配插件已准备；当前 Hermes 进程的加载状态尚未确认。请重新加载插件或开启新会话。', 'Adapter files are prepared; loading in the current Hermes process is unobserved. Reload plugins or start a new session.')
                   : text('适配资源需要修复；请检查自己的文件编辑后重新保存配置。', 'Adapter resources need repair. Review your file edits and save the settings again.')}</p>}
                 {Boolean(selectedModel?.native_adapter?.known_channel_models?.length) && <p className="field-help" data-hermes-known-overrides>{text('已配置的通道模型覆盖', 'Configured channel model overrides')} · {selectedModel?.native_adapter?.known_channel_models?.join(', ')}. {text('需要改用 HiRoute 的通道，请通过 Hermes 的 /model 调整选择。', 'Use Hermes /model in a channel that should switch to HiRoute.')}</p>}
-                <Disclosure className="native-details" label={text('连接详情与恢复', 'Connection details and recovery')} language={language}><dl>{selected.version && <div><dt>{text('版本', 'Version')}</dt><dd>{selected.version}</dd></div>}{selectedModel?.state === 'configured' && modelSelection && <div><dt>{text('本机接入令牌', 'Local access token')}</dt><dd><input className="input" type="password" value="••••••••••••••••" readOnly aria-label={text('当前令牌已隐藏', 'Current token hidden')} /></dd></div>}</dl>{selectedModel?.restore_point_ref && selected.agent_id === 'agent_codex_default' && selected.codex_access?.selected_mode !== 'profile' && <label className="field-label">{text('恢复时选择原生模型（可选）', 'Native model on restore (optional)')}<input list="codex-native-restore-models" value={restoreNativeModel} onChange={event => { setRestoreNativeModel(event.target.value); setPreview(null); }} placeholder={text('保留原设置', 'Keep original setting')} disabled={busy || !mutable} /><datalist id="codex-native-restore-models">{nativeRestoreOptions.map(model => <option key={model.client_model_id} value={model.client_model_id}>{model.display_name}</option>)}</datalist></label>}{selectedModel?.state === 'configured' && modelSelection && <div className="actions" data-agent-token-controls><button className="btn" disabled={busy || !mutable} onClick={() => { setTokenEditing(true); setTokenDraft(''); setActionError(''); }}>{text('修改令牌', 'Change token')}</button><button className="btn" disabled={busy || !mutable} onClick={event => void changeToken(selected, true, event.currentTarget)}>{text('重新生成', 'Regenerate')}</button></div>}{tokenEditing && selectedModel?.state === 'configured' && modelSelection && <form className="agent-token-form" onSubmit={event => { event.preventDefault(); void changeToken(selected, false, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}><SecretTransportWarning language={language} /><label className="field"><span className="field-label">{text('新令牌', 'New token')}</span><input className="input" type="password" autoComplete="new-password" value={tokenDraft} onChange={event => setTokenDraft(event.target.value)} minLength={16} maxLength={128} pattern="[A-Za-z0-9._~\\-]{16,128}" required disabled={busy} /><span className="field-help">{text('16–128 位英文字母、数字及 . _ ~ -；保存后原令牌立即失效，无需重新接入。', 'Use 16–128 letters, numbers, or . _ ~ -. The old token stops working after save; reconnecting is unnecessary.')}</span></label><div className="actions"><button className="btn btn-primary" type="submit" disabled={busy || !mutable}>{text('保存令牌', 'Save token')}</button><button className="btn" type="button" disabled={busy} onClick={() => { setTokenEditing(false); setTokenDraft(''); }}>{text('取消', 'Cancel')}</button></div></form>}<div className="actions">{selectedCollaboration?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'collaboration', true, event.currentTarget)}>{text('停用任务路由', 'Disable task routing')}</button>}</div></Disclosure>
+                <Disclosure className="native-details" label={text('连接详情与恢复', 'Connection details and recovery')} language={language} open={connectionDetailsOpen} onOpenChange={setConnectionDetailsOpen}>{connectionDetailsOpen && <AgentUsageDetails agent={selected} language={language} />}<dl>{selected.version && !['not-probed', 'unknown', 'not_probed'].includes(selected.version) && <div><dt>{text('版本', 'Version')}</dt><dd>{selected.version}</dd></div>}</dl>{selectedModel?.restore_point_ref && selected.agent_id === 'agent_codex_default' && selected.codex_access?.selected_mode !== 'profile' && <label className="field-label">{text('恢复时选择原生模型（可选）', 'Native model on restore (optional)')}<input list="codex-native-restore-models" value={restoreNativeModel} onChange={event => { setRestoreNativeModel(event.target.value); setPreview(null); }} placeholder={text('保留原设置', 'Keep original setting')} disabled={busy || !mutable} /><datalist id="codex-native-restore-models">{nativeRestoreOptions.map(model => <option key={model.client_model_id} value={model.client_model_id}>{model.display_name}</option>)}</datalist></label>}{selectedModel?.state === 'configured' && modelSelection && <div className="actions" data-agent-token-controls><button className="btn" disabled={busy || !mutable} onClick={() => { setTokenEditing(true); setTokenDraft(''); setActionError(''); }}>{text('修改令牌', 'Change token')}</button><button className="btn" disabled={busy || !mutable} onClick={event => void changeToken(selected, true, event.currentTarget)}>{text('重新生成', 'Regenerate')}</button></div>}{tokenEditing && selectedModel?.state === 'configured' && modelSelection && <form className="agent-token-form" onSubmit={event => { event.preventDefault(); void changeToken(selected, false, (event.nativeEvent as SubmitEvent).submitter as HTMLElement | null); }}><SecretTransportWarning language={language} /><label className="field"><span className="field-label">{text('新令牌', 'New token')}</span><input className="input" type="password" autoComplete="new-password" value={tokenDraft} onChange={event => setTokenDraft(event.target.value)} minLength={16} maxLength={128} pattern="[A-Za-z0-9._~\\-]{16,128}" required disabled={busy} /><span className="field-help">{text('16–128 位英文字母、数字及 . _ ~ -；保存后原令牌立即失效，无需重新接入。', 'Use 16–128 letters, numbers, or . _ ~ -. The old token stops working after save; reconnecting is unnecessary.')}</span></label><div className="actions"><button className="btn btn-primary" type="submit" disabled={busy || !mutable}>{text('保存令牌', 'Save token')}</button><button className="btn" type="button" disabled={busy} onClick={() => { setTokenEditing(false); setTokenDraft(''); }}>{text('取消', 'Cancel')}</button></div></form>}<div className="actions">{selectedCollaboration?.restore_point_ref && <button className="btn" disabled={busy || !mutable} onClick={event => void change(selected, 'collaboration', true, event.currentTarget)}>{text('停用任务路由', 'Disable task routing')}</button>}</div></Disclosure>
                 {!editor && modelSelection && <PreviousRouting key={selected.agent_id} agent={selected.agent_id} language={language} disabled={busy || selectedPending || !mutable}
                   onDraft={async (selection, context, source) => {
                     if (context !== selected.context_id || !(await open(selected, 'model', source))) return;

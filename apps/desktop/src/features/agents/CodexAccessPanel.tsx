@@ -56,18 +56,18 @@ export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
   const mode = access.selected_mode;
   const command = access.commands[shell];
   return <section className="fact-section" data-codex-access-mode={mode}>
-    <p className="field-help">{mode === 'profile'
-      ? text('按需使用 · Codex CLI：复制命令到终端启动。普通 Codex 与 Desktop 保持原配置。', 'On demand · Codex CLI: copy the command to start in a terminal. Ordinary Codex and Desktop keep their settings.')
-      : text('默认接入 · Codex CLI 和 Desktop：共享此配置目录的入口使用 HiRoute。', 'Default connection · Codex CLI and Desktop: entry points sharing this directory use HiRoute.')}</p>
-    <CodexHistoryNotice language={language} mode={mode} />
-    {mode === 'profile' && access.slot_occupied && !access.pending_operation && !access.access_revoked && <div>
-      <div className="detail-section-head"><strong>{text('启动 Codex', 'Start Codex')}</strong><label className="field-label agent-launch-shell">Shell <select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label></div>
-      <pre className="agent-launch-command"><code>{command}</code></pre>
+    {mode === 'profile' && access.slot_occupied && !access.pending_operation && !access.access_revoked && <div className="agent-launch-row">
+      <div><strong>{text('终端启动', 'Start in a terminal')}</strong><p>{text('复制命令，开启使用 HiRoute 的 CLI 会话。', 'Copy the command to start a CLI session using HiRoute.')}</p></div>
       <button className="btn" disabled={!command} onClick={async () => {
         try { await copyText(command); setCopyState(text('已复制', 'Copied')); }
         catch { setCopyState(text('复制失败，请手动选择命令复制', 'Copy failed; select and copy the command manually')); }
-      }}>{text('复制启动命令', 'Copy launch command')}</button><span role="status">{copyState}</span>
+      }}>{copyState || text('复制启动命令', 'Copy launch command')}</button>
     </div>}
+    {mode === 'root' && !access.access_revoked && <p className="field-help" data-codex-history-summary>{text('当前为默认接入。原有会话可能被服务商筛选隐藏，可停用模型路由恢复原配置。', 'This is the default connection. Provider filtering may hide earlier sessions; disable model routing to restore the original settings.')}</p>}
+    <Disclosure className="agent-launch-help" label={mode === 'profile' ? text('启动命令与会话说明', 'Launch command and sessions') : text('原有会话与配置说明', 'Earlier sessions and settings')} language={language}>
+      {mode === 'profile' && <><label className="field agent-launch-shell"><span className="field-label">Shell</span><select className="select" value={shell} onChange={e => { setShell(e.target.value); setCopyState(''); }}>{Object.keys(access.commands).map(name => <option key={name}>{name}</option>)}</select></label><pre className="agent-launch-command"><code>{command}</code></pre></>}
+      <CodexHistoryNotice language={language} mode={mode} />
+    </Disclosure>
     {!access.pending_operation && !access.access_revoked && access.conflict_fields.length > 0 && <div className="callout warn" role="alert" data-codex-restore-conflict>
       <UiIcon name="warning" /><div>
       <strong>{text('配置文件存在冲突', 'Configuration file conflict')}</strong>
