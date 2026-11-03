@@ -92,9 +92,13 @@ def verify_carried_input_source(product):
         assert not last['roots_partial'] and last['input_anchor'] == expected, last
         assert not [c for c in last['contents'] if c['direction'] == 'request_input'], last
     placeholders = ','.join('?' for _ in requests)
-    stages = rows(product, 'SELECT COUNT(DISTINCT turn_id) FROM logical_requests '
-                  f'WHERE request_id IN ({placeholders})', requests)
-    assert stages == [(4,)], 'archive source identity merged unrelated execution stages'
+    def stages():
+        return rows(product, 'SELECT agent_turn_id FROM observation_analysis_turns_v1 '
+                    f'WHERE request_id IN ({placeholders})', requests)
+
+    wait_for(lambda: len(stages()) == len(requests), 'semantic stage admissions did not persist')
+    assert len({row[0] for row in stages()}) == 4, \
+        'archive source identity merged unrelated execution stages'
     product.stop()
     product.start()
     assert catalog(product, requests[-1]) == last, 'carried source changed after reopen'
