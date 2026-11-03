@@ -397,7 +397,30 @@ supplies names/order and cannot merge differing recorded model/profile summaries
 Display published order, not performance ranking; unknown labels stay unavailable.
 Draft edits cannot change historical rows/threshold interpretation. Below-floor,
 meets-floor, and unrated filters use each stage's frozen floor; equality meets it,
-partial is unrated but may expose its raw score/gaps in detail.
+partial remains in the not-fully-assessed filter and is excluded from complete
+score counts and averages. Scope counts and filter labels SHALL say fully assessed
+and not fully assessed rather than implying that every incomplete stage has no score.
+
+Stage presentation SHALL distinguish absent, partial and complete assessments.
+An existing partial assessment SHALL retain its visible raw score, labelled as
+partial; zero is a valid score. Show the recorded assessment's target range and
+the stage turns outside it without requiring the evidence disclosure to be opened.
+Do not extend a frozen assessment to cover newly appended turns. If the assessment
+is partial but its ordinal range covers the stage, report pending turns as unknown:
+the range alone cannot identify missing evidence or unassessed requests within a
+turn. Keep history gaps, partial assessment evidence and attribution uncertainty
+distinct. This presentation SHALL NOT change statistical eligibility or infer a
+complete assessment from ordinal coverage alone.
+
+#### Scenario: A growing stage retains its earlier score
+
+- **GIVEN** a stage spans turns 1–5 and its latest assessment scores turns 1–4 at 0.68.
+- **THEN** the stage displays 0.68 as partially assessed, the assessed range 1–4,
+  and turn 5 awaiting assessment; it remains excluded from complete-score averages.
+- **AND** an absent assessment displays unrated with the entire stage pending,
+  while a complete assessment of the whole stage at zero displays a complete zero.
+- **AND** an assessment with incomplete evidence over turns 1–5 stays partial and
+  does not claim that no turns await assessment.
 
 Plan and session views share stage/score/query components and reject stale-range
 responses. Switching sessions resets its stage filter, while same-session refresh

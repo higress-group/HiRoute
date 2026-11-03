@@ -306,7 +306,10 @@ separate, so mixed current scopes retain rates; authenticated supported pre-appl
 The [model row projection](../../apps/desktop/src/features/plan-quality-state.ts)
 associates configured candidates with retained execution by declared position and
 reasoning, not display name or a freshly materialized model ID. The shared stage
-view reads recorded execution facts even if the current plan has changed.
+view reads recorded execution facts even if the current plan has changed. Its
+bounded ordinal coverage helper distinguishes absent, partial and complete
+assessments, keeping frozen score coverage and pending turns visible without
+changing the query's complete-score eligibility.
 The `observation plan-quality samples` CLI exposes the same query; its
 [command registry](../../crates/application-api/src/commands.rs), generated manifests
 and [CLI entry tests](../../crates/cli/src/lib.rs) must remain aligned.

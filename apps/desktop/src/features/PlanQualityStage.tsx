@@ -1,7 +1,7 @@
 import React from 'react';
 import { RoutingDecisionDetail, type RoutingObservation } from './RoutingObservations';
 import { Disclosure, UiIcon } from '../ui';
-import { qualityBranchLabel, qualityGroupLabel, qualityReasoningLabel, type BranchPolicy } from './plan-quality-state';
+import { qualityAssessmentCoverage, qualityBranchLabel, qualityGroupLabel, qualityReasoningLabel, type BranchPolicy } from './plan-quality-state';
 
 type Assessment = {
   trigger_request_id: string;
@@ -49,7 +49,8 @@ export function PlanQualityStage({ sample, modelName, activeRevision, language, 
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const assessment = sample.assessment;
-  const reliable = assessment && !assessment.partial;
+  const coverage = qualityAssessmentCoverage(sample);
+  const pendingTurns = coverage.pending.map(([first, last]) => first === last ? String(first) : `${first}–${last}`).join(text('、', ', '));
   const executionRequestId = sample.execution_evidence_available ? sample.last_request_id ?? sample.first_request_id : null;
   const triggerRequestId = assessment?.evidence_available ? assessment.trigger_request_id : null;
   const branch = sample.executed_branch_id ?? 'unrecorded';
@@ -60,9 +61,13 @@ export function PlanQualityStage({ sample, modelName, activeRevision, language, 
         <span>{qualityReasoningLabel(sample.reasoning_profile_id, language)}</span>
         <span>{branch === 'smart_saving' ? qualityGroupLabel(branch, sample.branch_execution?.group, language) : sample.branch_execution?.policy.name ?? qualityBranchLabel(branch, language)} · {text('轮次 ' + sample.first_turn_ordinal + '–' + sample.last_observed_turn_ordinal, 'Turns ' + sample.first_turn_ordinal + '–' + sample.last_observed_turn_ordinal)}</span>
       </div>
-      <div className="quality-score"><strong>{reliable ? assessment.score.toFixed(2) + ' / 1' : text('未评分', 'Unrated')}</strong><span>{text('胜任度', 'Competence')}</span></div>
+      <div className="quality-score"><strong>{assessment ? assessment.score.toFixed(2) + ' / 1' : text('未评分', 'Unrated')}</strong><span>{coverage.state === 'partial' ? text('部分已评分', 'Partially assessed') : coverage.state === 'complete' ? text('完整评分', 'Fully assessed') : text('胜任度', 'Competence')}</span></div>
     </div>
-    {reliable && assessment.reason && <p className="quality-reason">{assessment.reason}</p>}
+    <p className="quality-coverage">
+      {assessment ? text('评分覆盖轮次 ' + assessment.target_from_ordinal + '–' + assessment.target_through_ordinal, 'Assessed turns ' + assessment.target_from_ordinal + '–' + assessment.target_through_ordinal) : text('暂无评分覆盖', 'No assessed turns')}
+      {' · '}{pendingTurns ? text('待评分轮次 ' + pendingTurns, 'Turns awaiting assessment ' + pendingTurns) : coverage.state === 'partial' ? text('待评分轮次未确认', 'Turns awaiting assessment are not known') : text('无待评分轮次', 'No turns awaiting assessment')}
+    </p>
+    {coverage.state === 'complete' && assessment?.reason && <p className="quality-reason">{assessment.reason}</p>}
     <div className="quality-stage-meta">{new Date(sample.last_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}{activeRevision != null && sample.plan_revision !== activeRevision && <> · {text('历史版本 ' + sample.plan_revision, 'Earlier version ' + sample.plan_revision)}</>}</div>
     {sample.branch_execution && <p className="quality-coverage">{text('实际执行', 'Actual execution')} · {qualityGroupLabel(branch, sample.branch_execution.group, language)} · {text('候选 ', 'Candidate ')}{sample.branch_execution.candidate_index + 1}{sample.branch_execution.policy.floor_millis != null && <> · {text('当时胜任下限 ', 'Execution competence floor ')}{sample.branch_execution.policy.floor_millis / 1000}</>}</p>}
     {sample.upgrade && <div className="callout"><UiIcon name="route" /><span>{text(`已触发主力保护 · 当时评分 ${sample.upgrade.decision.score} 低于下限 ${sample.upgrade.decision.floor_millis / 1000}`, `Triggered primary protection · score ${sample.upgrade.decision.score} below floor ${sample.upgrade.decision.floor_millis / 1000}`)}</span></div>}
@@ -79,13 +84,12 @@ export function PlanQualityStage({ sample, modelName, activeRevision, language, 
       </div>}
       {!assessment && <p className="quality-coverage">{text('尚未产生该阶段的胜任度评分；后续评估触发后才会显示。', 'No competence assessment has been recorded for this stage. A score appears after a subsequent assessment is triggered.')}</p>}
       {assessment && <>
-        <p className="quality-coverage">{text('评分覆盖轮次 ' + assessment.target_from_ordinal + '–' + assessment.target_through_ordinal, 'Assessed turns ' + assessment.target_from_ordinal + '–' + assessment.target_through_ordinal)}</p>
         <p className="quality-coverage">{text('原始评分', 'Raw score')} · {assessment.score}{assessment.assessed_at_ms != null && <> · {new Date(assessment.assessed_at_ms).toLocaleString(language === 'zh' ? 'zh-CN' : 'en')}</>}</p>
-        {assessment.partial && assessment.reason && <p className="quality-reason">{assessment.reason}</p>}
+        {coverage.state === 'partial' && assessment.reason && <p className="quality-reason">{assessment.reason}</p>}
       </>}
       <div className="quality-flags">
         {sample.history_partial && <span className="badge warn no-dot">{text('历史记录不完整', 'Incomplete history')}</span>}
-        {assessment?.partial && <span className="badge warn no-dot">{text('评分证据不完整', 'Partial assessment evidence')}</span>}
+        {coverage.state === 'partial' && <span className="badge warn no-dot">{coverage.pending.length > 0 ? text('评分覆盖或证据不完整', 'Partial assessment coverage or evidence') : text('评分证据不完整', 'Partial assessment evidence')}</span>}
         {sample.attribution !== 'single' && <span className="badge warn no-dot">{sample.attribution === 'mixed' ? text('无法归因于单一模型', 'Not attributable to one model') : text('模型归属未确认', 'Model attribution unknown')}</span>}
       </div>
       <p className="quality-coverage">{text('阶段评分用于观察该阶段的执行表现。', 'The score describes execution of this stage.')}</p>

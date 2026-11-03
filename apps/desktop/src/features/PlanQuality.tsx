@@ -145,7 +145,7 @@ export function PlanQuality({
     <option value="all">{text('全部阶段', 'All stages')}</option>
     <option value="low">{text('低于当时胜任下限', 'Below the execution competence floor')}</option>
     <option value="high">{text('达到当时胜任下限', 'Meets the execution competence floor')}</option>
-    <option value="unrated">{text('未评分', 'Unrated')}</option>
+    <option value="unrated">{text('未完整评分', 'Not fully assessed')}</option>
   </select></label>;
 
   const manualDivisionBranches = divisionBranches ?? report?.branches.map(branch => branch.branch_id) ?? [];
@@ -198,7 +198,7 @@ export function PlanQuality({
 
   return <div className={'plan-quality' + (compact ? ' compact' : '')}>
     <div className="quality-toolbar">
-      <div className="quality-scope-meta">{text(`所选范围：${stageCount} 个阶段 · ${summary.scored_stage_count} 已评分 · ${summary.unrated_stage_count} 未评分${report ? ` · 证据来自 ${report.session_total} 个会话` : ''}`, `Selected scope: ${stageCount} stages · ${summary.scored_stage_count} scored · ${summary.unrated_stage_count} unrated${report ? ` · evidence from ${report.session_total} sessions` : ''}`)}</div>
+      <div className="quality-scope-meta">{text(`所选范围：${stageCount} 个阶段 · ${summary.scored_stage_count} 完整评分 · ${summary.unrated_stage_count} 未完整评分${report ? ` · 证据来自 ${report.session_total} 个会话` : ''}`, `Selected scope: ${stageCount} stages · ${summary.scored_stage_count} fully assessed · ${summary.unrated_stage_count} not fully assessed${report ? ` · evidence from ${report.session_total} sessions` : ''}`)}</div>
       <div className="quality-filters">
         {!compact && <label><span className="sr-only">{text('时间范围', 'Time range')}</span><select className="select" value={period} onChange={event => { resetDetail(); setPeriod(event.target.value as Period); }}>
           <option value="seven_days">{text('最近 7 天', 'Last 7 days')}</option><option value="one_day">{text('最近 24 小时', 'Last 24 hours')}</option><option value="all">{text('全部保留期', 'All retained')}</option>
@@ -230,10 +230,10 @@ export function PlanQuality({
           <header className="quality-group-heading"><h4>{qualityRowSectionLabel(members[0], language)}{names.length === 1 ? ` → ${names[0]}` : ''}</h4><span>{text(members.length + ' 个模型配置', members.length + (members.length === 1 ? ' model configuration' : ' model configurations'))}</span></header>
           <div className="quality-table">{columns}{members.map(row => { const evidence = trustRow(row); const tone = groupTone(groupOf(row)); return <div className={'quality-model-row' + (selected?.key === row.key ? ' selected' : '')} key={row.key} data-model-configuration={row.configured?.model_configuration_id ?? row.summary?.execution.model_configuration_id ?? ''}>
             <div className="quality-model-name"><strong>{rowName(row)}</strong><span className="quality-model-tags"><span className={`badge no-dot ${tone}`}>{qualityGroupLabel(row.branch, groupOf(row), language)}</span><span>{qualityReasoningLabel(row.summary ? row.summary.reasoning_profile_id : row.configured?.reasoning_profile_id, language)}{version === 'all' && row.summary && text(' · 版本 ', ' · version ') + row.summary.execution.plan_revision}</span></span></div>
-            <div className="quality-model-average" data-label={text('平均阶段胜任度', 'Average stage competence')}>{row.summary?.average_score != null ? <><strong>{row.summary.average_score.toFixed(2)} <small>/ 1</small></strong><div className={`quality-score-bar ${tone}`} aria-hidden="true"><svg viewBox="0 0 100 4" preserveAspectRatio="none"><rect width={Math.max(0, Math.min(100, row.summary.average_score * 100))} height="4" /></svg></div></> : <span>{row.summary?.execution.attribution === 'mixed' ? text('不归属单模型', 'No single-model attribution') : row.summary ? text('未评分', 'Unrated') : text('暂无记录', 'No records')}</span>}</div>
+            <div className="quality-model-average" data-label={text('平均阶段胜任度', 'Average stage competence')}>{row.summary?.average_score != null ? <><strong>{row.summary.average_score.toFixed(2)} <small>/ 1</small></strong><div className={`quality-score-bar ${tone}`} aria-hidden="true"><svg viewBox="0 0 100 4" preserveAspectRatio="none"><rect width={Math.max(0, Math.min(100, row.summary.average_score * 100))} height="4" /></svg></div></> : <span>{row.summary?.execution.attribution === 'mixed' ? text('不归属单模型', 'No single-model attribution') : row.summary ? text('暂无完整评分', 'No complete assessment') : text('暂无记录', 'No records')}</span>}</div>
             <span data-label={text('胜任率', 'Competence rate')}>{percent(evidence?.competence_rate)}</span>
             <span data-label={text('阶段占比', 'Stage share')}>{percent(evidence?.execution_share)}</span>
-            <span className="quality-model-counts" data-label={text('阶段样本', 'Stage samples')}>{evidence ? <><span className="quality-row-coverage">{text(`评分覆盖 ${percent(evidence.scoring_coverage)}`, `${percent(evidence.scoring_coverage)} scoring coverage`)}</span>{stageStates(evidence.counts)}</> : <><span>{text((row.summary?.scored_stage_count ?? 0) + ' 已评分', (row.summary?.scored_stage_count ?? 0) + ' scored')}</span><span>{text((row.summary?.unrated_stage_count ?? 0) + ' 未评分', (row.summary?.unrated_stage_count ?? 0) + ' unrated')}</span></>}</span>
+            <span className="quality-model-counts" data-label={text('阶段样本', 'Stage samples')}>{evidence ? <><span className="quality-row-coverage">{text(`评分覆盖 ${percent(evidence.scoring_coverage)}`, `${percent(evidence.scoring_coverage)} scoring coverage`)}</span>{stageStates(evidence.counts)}</> : <><span>{text((row.summary?.scored_stage_count ?? 0) + ' 完整评分', (row.summary?.scored_stage_count ?? 0) + ' fully assessed')}</span><span>{text((row.summary?.unrated_stage_count ?? 0) + ' 未完整评分', (row.summary?.unrated_stage_count ?? 0) + ' not fully assessed')}</span></>}</span>
             <span data-label={text('耗时中位数', 'Median duration')}>{seconds(evidence?.duration_p50_ms)}</span>
             <button type="button" className="btn btn-quiet quality-view-stages" aria-expanded={selected?.key === row.key} onClick={() => { setScore('all'); setSelected(selected?.key === row.key ? null : { key: row.key, execution: row.summary?.execution ?? null }); }}>{selected?.key === row.key ? text('收起阶段', 'Hide stages') : text('查看阶段', 'View stages')}<UiIcon name="chevronRight" /></button>
           </div>; })}</div>
@@ -255,7 +255,7 @@ export function PlanQuality({
       </section>}
       </div>
       {report && <TrustScopeNotes report={report} names={modelNames} language={language} />}
-      {loaded && groups.length > 0 && groupBy === 'model' && <p className="quality-average-note">{text('平均值使用当前范围内各已评分阶段的最新原始评分，未评分阶段不计入平均。', 'Averages use the latest raw assessment of every scored stage in this scope. Unrated stages are excluded.')}</p>}
+      {loaded && groups.length > 0 && groupBy === 'model' && <p className="quality-average-note">{text('平均值使用当前范围内各完整评分阶段的最新原始评分，部分已评分和未评分阶段不计入平均。', 'Averages use the latest raw assessment of every fully assessed stage in this scope. Partially assessed and unrated stages are excluded.')}</p>}
       {loaded && !error && groups.length === 0 && <p className="oc-meta">{text('当前范围还没有模型阶段记录。', 'No model-stage records are available for this scope yet.')}</p>}
     </section>}
     {stageSection}

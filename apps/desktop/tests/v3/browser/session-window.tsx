@@ -20,6 +20,7 @@ const inWindow = (startedAt: number, query: Record<string, any>) => startedAt >=
 
 const control = {
   language: 'zh' as 'zh' | 'en',
+  theme: 'dark' as 'light' | 'dark',
   requests: {} as Record<string, RequestRow[]>,
   catalog: {} as Record<string, any[]>,
   inputSelections: {} as Record<string, { version: number; evidence: string; message_ordinal: number | null; source_unverified: boolean }>,
@@ -181,6 +182,7 @@ function Harness() {
     control.qualityModels = [];
     control.qualityPlanRevision = 1;
     control.language = 'zh';
+    control.theme = 'dark';
     setQualityVisible(false);
     setHomeVisible(false);
     setRequestExcerpt(null);
@@ -203,7 +205,7 @@ function Harness() {
     activity: { status: 'ready', data: homeActivity },
     value: { status: 'loading' },
   };
-  return <PresentationRoot language={control.language} theme="dark" textScale={1}>
+  return <PresentationRoot language={control.language} theme={control.theme} textScale={1}>
     <div className="app-window">
       <header className="titlebar"><div className="window-controls" /><div className="titlebar-main"><div className="window-title"><span>HiRoute</span><span>/</span><span>会话</span></div></div></header>
       <HomeNavigation language="zh" items={[...navItems]} current="sessions" serviceLabel="仅在本机运行" serviceReady onNavigate={() => {}} onOpenSettings={() => {}} />

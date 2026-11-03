@@ -434,7 +434,7 @@ const scenarios = [
     await until(() => document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 'full-scope mean');
     const modelRows = [...document.querySelectorAll('.quality-model-row')];
     assert(modelRows.length === 2 && modelRows[0].innerText.includes('Qwen Flash'), 'A refreshed source created a duplicate empty candidate row');
-    assert(modelRows[0].innerText.includes('25 已评分') && modelRows[0].innerText.includes('1 未评分'), 'Full-scope sample counts disappeared');
+    assert(modelRows[0].innerText.includes('25 完整评分') && modelRows[0].innerText.includes('1 未完整评分'), 'Full-scope sample counts disappeared');
     assert(modelRows[1].innerText.includes('暂无记录') && !modelRows[1].innerText.includes('0.00'), 'Unused candidate was assigned a zero score');
     assert(!document.querySelector('.quality-row'), 'The overview starts with a long stage list');
     modelRows[0].querySelector('button').click();
@@ -446,6 +446,7 @@ const scenarios = [
     const second = queryOf(reads('plan_quality').at(-1));
     assert(first.from_ms === second.from_ms && first.to_ms === second.to_ms, 'Stage pagination changed the summary window');
     const select = document.querySelector('.quality-score-filter');
+    assert(select.querySelector('option[value="unrated"]').textContent === '未完整评分', 'The incomplete filter implies that partial scores are missing');
     select.value = 'low'; select.dispatchEvent(new Event('change', { bubbles: true }));
     await until(() => document.querySelectorAll('.quality-row').length === 1 && document.querySelector('.quality-score strong')?.textContent === '0.00 / 1', 'zero score remains scored');
     assert(document.querySelector('.quality-model-average strong').textContent.includes('0.49'), 'Low-score filtering recomputed the mean');
@@ -458,7 +459,7 @@ const scenarios = [
     button('刷新').click();
     await until(() => reads('plan_quality').length > beforeUnusedRefresh && document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 'refresh of unused candidate retains full-scope summary');
     assert(!document.querySelector('.quality-row') && !document.querySelector('.quality-more'), 'Unused candidate displayed another model’s stages or pagination');
-    assert(document.querySelector('[data-model-configuration="model/qwen"]').innerText.includes('25 已评分'), 'Unused candidate refresh erased the other model’s counts');
+    assert(document.querySelector('[data-model-configuration="model/qwen"]').innerText.includes('25 完整评分'), 'Unused candidate refresh erased the other model’s counts');
     const beforeUnusedReentry = reads('plan_quality').length;
     c().showHome(); await tick(); c().showQualityPlan();
     await until(() => reads('plan_quality').length > beforeUnusedReentry && document.querySelector('.quality-model-average strong')?.textContent.includes('0.49'), 're-entry with unused candidate retains full-scope summary');
@@ -500,6 +501,54 @@ const scenarios = [
     assert(document.querySelector('.quality-score strong')?.textContent === '0.90 / 1', 'An older assessment overwrote a newer result');
     c().showHome(); await tick(); score = .95; c().showSessions();
     await until(() => document.querySelector('.quality-score strong')?.textContent === '0.95 / 1', 'fresh assessment after page re-entry');
+  }],
+  ['quality assessment coverage distinguishes unrated partial and complete scores', async () => {
+    const at = Math.floor(Date.now() / 86_400_000) * 86_400_000;
+    await fresh(control => {
+      seedSimple(control, at);
+      const stages = [
+        ['partial', { score: .68, partial: true, target_from_ordinal: 1, target_through_ordinal: 4 }],
+        ['unrated', null],
+        ['complete', { score: 0, partial: false, target_from_ordinal: 1, target_through_ordinal: 5 }],
+        ['evidence', { score: .485, partial: true, target_from_ordinal: 1, target_through_ordinal: 5 }],
+      ];
+      control.views.plan_quality = () => ({
+        samples: stages.map(([name, assessment]) => ({
+          segment_id: `stage/coverage/${name}`, session_id: 'observation-session/simple',
+          plan_id: 'plan/quality', plan_revision: 1, native_model: 'synthetic-flash',
+          attribution: 'single', selected_branch_id: 'smart_saving', executed_branch_id: 'smart_saving',
+          branch_execution: execution(), first_turn_ordinal: 1, last_observed_turn_ordinal: 5,
+          first_at_ms: at, last_at_ms: at, history_partial: false, execution_evidence_available: false,
+          assessment: assessment && { ...assessment, assessed_at_ms: at, evidence_available: false },
+        })),
+        summary: { ...emptySummary, scored_stage_count: 1, unrated_stage_count: 3 }, next_cursor: null,
+      });
+    });
+    await until(() => rows().length === 1, 'coverage session');
+    rows()[0].click(); openQuality();
+    await until(() => document.querySelectorAll('.quality-row').length === 4, 'coverage stages');
+    const stage = name => document.querySelector(`[data-stage-id="stage/coverage/${name}"]`);
+    for (const language of ['zh', 'en']) {
+      c().language = language; c().bumpRefresh();
+      const zh = language === 'zh';
+      await until(() => document.querySelector('.quality-refresh')?.textContent.includes(zh ? '刷新' : 'Refresh'), 'localized coverage refresh');
+      assert(document.querySelector('.quality-scope-meta').textContent.includes(zh ? '1 完整评分 · 3 未完整评分' : '1 fully assessed · 3 not fully assessed'), 'Partial assessments changed the complete-score count');
+      assert(stage('partial').querySelector('.quality-score strong').textContent === '0.68 / 1', 'An existing partial score was hidden as unrated');
+      assert(stage('partial').innerText.includes(zh ? '部分已评分' : 'Partially assessed'), 'Partial score lacks its distinct state');
+      assert(stage('partial').innerText.includes(zh ? '评分覆盖轮次 1–4' : 'Assessed turns 1–4'), 'Frozen score coverage was broadened');
+      assert(stage('partial').innerText.includes(zh ? '待评分轮次 5' : 'Turns awaiting assessment 5'), 'The appended turn was not left awaiting assessment');
+      assert(stage('unrated').querySelector('.quality-score strong').textContent === (zh ? '未评分' : 'Unrated'), 'A missing assessment acquired a score');
+      assert(stage('unrated').innerText.includes(zh ? '待评分轮次 1–5' : 'Turns awaiting assessment 1–5'), 'Unrated scope is unclear');
+      assert(stage('complete').querySelector('.quality-score strong').textContent === '0.00 / 1', 'Zero ceased to be a complete score');
+      assert(stage('complete').innerText.includes(zh ? '完整评分' : 'Fully assessed'), 'Complete score lacks its distinct state');
+      assert(stage('complete').innerText.includes(zh ? '无待评分轮次' : 'No turns awaiting assessment'), 'A complete score invented pending turns');
+      assert(stage('evidence').innerText.includes(zh ? '部分已评分' : 'Partially assessed'), 'Full ordinal coverage concealed partial evidence');
+      const details = stage('evidence').querySelector('.quality-assessment-details');
+      if (!details.open) details.querySelector('summary').click();
+      await tick();
+      assert(stage('evidence').innerText.includes(zh ? '评分证据不完整' : 'Partial assessment evidence'), 'Real evidence gaps disappeared');
+      assert(stage('evidence').innerText.includes(zh ? '待评分轮次未确认' : 'Turns awaiting assessment are not known'), 'Partial evidence invented a specific missing turn');
+    }
   }],
   ['quality stages show their executed models and distinguish evidence coverage', async () => {
     await fresh(control => {
@@ -1123,7 +1172,7 @@ const scenarios = [
     });
     c().showQualityPlan();
     await until(() => document.querySelector('.quality-model-average')?.textContent.includes('不归属单模型'), 'joint attribution remains explicit');
-    assert(document.querySelector('.quality-scope-meta').textContent.includes('1 已评分'), 'Joint stage was declared unrated');
+    assert(document.querySelector('.quality-scope-meta').textContent.includes('1 完整评分'), 'Joint stage was declared unrated');
     assert(document.querySelector('.quality-model-name').textContent.includes('多个执行模型'), 'One model was invented');
     assert(!document.querySelector('.quality-model-average strong'), 'Joint score became a model capability average');
   }],
@@ -1250,6 +1299,12 @@ const scenarios = [
 ];
 
 export const sessionWindowScenarioCount = scenarios.length;
+
+export function runAssessmentCoverageScenario() {
+  const index = scenarios.findIndex(([name]) => name.startsWith('quality assessment coverage distinguishes'));
+  if (index < 0) throw new Error('Assessment coverage scenario is missing');
+  return runSessionWindowScenarios(index, index + 1);
+}
 
 export function runSemanticCaptureScenario() {
   const index = scenarios.findIndex(([name]) => name.startsWith('semantic captures show imported context'));
