@@ -25,20 +25,29 @@ Putting this design into my own daily work, I find that a Router has at least th
 
 DeepSeek's article focuses on the first job. The prototype creates a Worker for each new work item, and the model a Worker uses depends on the DeepSeek Harness profile you configure. The other two jobs are exactly what HiRoute does.
 
-![Super Agent architecture: Hermes acts as the Router, understands intent and picks a plan, submits with hiroute worker exec --no-wait and returns to the chat at once; each HiRoute routing plan binds one execution Agent: research goes to Pi, engineering to Qoder CLI, correctness review to Codex CLI and structure review to DeepSeek Harness; when a run ends, Hermes wakes, fetches the result and replies; inside each plan, System One picks the economy or primary group turn by turn](assets/super-agent-en.svg)
+![Super Agent architecture: Hermes acts as the Router, understands intent and picks a plan, submits with hiroute worker exec --no-wait and returns to the chat at once, then waits in a background process until the run ends; each HiRoute routing plan binds one execution Agent: research goes to Pi, analysis to DeepSeek Harness, coding to Qoder CLI and code review to Codex CLI; when the run ends, the wait exits and notify_on_complete wakes Hermes, which fetches the result and replies; inside each plan, System One picks the economy or primary group turn by turn](assets/super-agent-en.svg)
 
 ### 1. Stay unblocked: return on submit, wake on completion
 
-Hermes hands a task to HiRoute with a command like this:
+Hermes hands off a task in two steps. The first is submitting it:
 
 ```sh
-hiroute worker exec --plan <PLAN_ID> --cwd /work/mq-research --no-wait \
-  -- "Collect the official docs and release notes of three message queues and build a comparison table"
+hiroute worker exec --plan <PLAN_ID> --cwd /work/hiroute --no-wait \
+  -- "Read the error and logs in this issue, reproduce the problem, find the related code and write up an analysis"
 ```
 
 With `--no-wait`, the command returns a task ID and a run ID as soon as the task is accepted, and Hermes goes straight back to the conversation. Several tasks can go out at once, each running in its own session.
 
-The result comes back through Hermes's built-in `notify_on_complete`. Hermes can run a command in a background process, and with `notify_on_complete` turned on, Hermes wakes up and starts a new turn when that process ends. The approach is to have Hermes put "wait for this task to finish" into such a background process. When the task ends, Hermes wakes up, fetches the result with `hiroute worker result --run <RUN_ID>` and tells you in the conversation. The wait happens in the background and never occupies the conversation.
+The second step is waiting for the result, which relies on Hermes background processes and `notify_on_complete`. Hermes can run a command in the background, and with `notify_on_complete` turned on, Hermes wakes up and starts a new turn when that process exits. Note that the notification fires when the process exits, so it needs a command that keeps waiting until the task ends. If you turned on the notification for the `--no-wait` command above, it would exit right after submitting, and the notification would arrive while the task has only just started.
+
+The wait uses `hiroute worker wait`, which keeps waiting until the task ends:
+
+```sh
+# Hermes runs this in a background process with notify_on_complete turned on
+hiroute worker wait --run <RUN_ID>
+```
+
+When the task ends, the command exits, and Hermes wakes up, fetches the result with `hiroute worker result --run <RUN_ID>` and tells you in the conversation. The wait happens in the background, never occupies the conversation, and does not spend a model call every so often just to check the status.
 
 Why not use Hermes's own subagents? Hermes's `delegate_task` can also run work in the background, but its documentation is explicit: top-level delegation is asynchronous yet still tied to the owning session and the Hermes process, so closing the session, `/stop`, `/new` or a process restart can cancel or strand work in progress. For work that must survive those boundaries, the documentation recommends scheduled jobs or a background process with `notify_on_complete`. HiRoute tasks run in HiRoute's background service, their results are stored, and you can look them up by run ID at any time.
 
@@ -54,10 +63,10 @@ From my own use, the four execution Agents split the work roughly like this:
 
 | Execution Agent | What I hand it |
 | --- | --- |
-| Pi | Collecting material, first drafts and batch changes from a checklist; with a clear brief it runs fast |
-| Qoder CLI | Engineering code; boundary wording and Chinese prose in public documents |
-| Codex CLI | Correctness review: checks each command against the installed help and schema to confirm it runs and where its boundaries are; slower and more expensive, so I save it for work where mistakes are costly |
-| DeepSeek Harness | Narrative and structure: finds where readers drop off and proposes a new layout; not a substitute for fact-by-fact checks |
+| Pi | Research: reading issues and logs, searching code and docs, and turning the findings into a checklist; with a clear brief it runs fast |
+| DeepSeek Harness | Research and analysis too, especially for problems whose causes take some untangling |
+| Qoder CLI | Engineering: fixing bugs, adding tests and opening PRs |
+| Codex CLI | Code review: running tests and checking edge cases and compatibility; slower and more expensive, so I save it for work where mistakes are costly |
 
 This is my experience, not an evaluation result. Your tasks may call for a different split, and changing the execution Agent only means editing a plan, not touching Hermes.
 
@@ -69,29 +78,21 @@ For a delegated task, the first turn starts with the task itself; with no previo
 
 So "who does the work" and "how expensive a model it uses" are two independent decisions: choosing Qoder CLI does not lock in a model tier. Over time, each plan's model performance report summarizes how well the economy group performs and, with enough evidence, suggests raising or lowering trust. A suggestion is only a suggestion, and nothing is published until you replay and confirm it.
 
-## A real example: the previous version of this article
+## A scenario: a morning of maintaining HiRoute
 
-This article had a longer earlier version about my full delegation setup in Hermes. That version went from a 2.7 KB brief to a push to the repository with exactly this division of work:
+Take maintaining HiRoute, an open-source project. A typical morning goes like this.
 
-| Stage | Execution Agent | Deliverable |
-| --- | --- | --- |
-| First draft (17 minutes) | Pi | 2.7 KB brief to a 298-line draft, self-checked and pushed |
-| Correctness review | Codex CLI | Checked every command against the installed schema |
-| Narrative review (6 minutes) | DeepSeek Harness | Diagnosed a "manual-like" feel and proposed a scenario-first structure |
-| Boundary and Chinese review | Qoder CLI | Tightened boundary statements and prose |
-| Second pass (9 minutes) | Pi | Revised with all three reviews and cut the body by 29% |
-| Restructure | DeepSeek Harness | Rebuilt the outline scenario-first |
-| Finish (1 minute) | Pi | Front matter, trailing spaces, `git diff --check` |
+A few new issues came in over the weekend: one says tool calls sometimes fail after connecting a certain model, one asks how to configure a proxy on a Linux server, and one suggests a new feature. I used to open each one, reproduce it and dig through the code, and the morning would be gone. Now I send Hermes one message in the chat app: "Look at the new issues from the weekend and find the cause of the ones you can reproduce. For confirmed bugs, fix them, open a PR and get it reviewed."
 
-Only Pi's and DeepSeek Harness's stages were timed; the Codex and Qoder reviews were not timed separately. DeepSeek Harness, incidentally, served as a Worker twice in this workflow.
+Hermes splits the work across plans:
 
-I made sure the three reviews could not see each other's conclusions. They agreed on the big picture: too manual-like, boundaries need to be explicit, commands need to run. Their unique findings barely overlapped:
+1. **Research: Pi or DeepSeek Harness.** One task per issue: read the error and logs, reproduce the problem, find the related code paths and check the provider's recent docs and changelogs. Routine ones go to Pi; ones whose causes take some untangling go to DeepSeek Harness.
+2. **Coding: Qoder CLI.** For a confirmed bug, Hermes hands the reproduction steps and the analysis to Qoder, which fixes it in its own working directory, adds tests and opens a PR. An issue that only needs clearer docs goes to Qoder as well.
+3. **Review: Codex CLI.** When the PR is up, Codex reviews it: it runs the tests, checks the fix against the reproduction steps and looks for compatibility breaks. Hermes sends Codex's findings back to Qoder's task with `hiroute worker continue`, and Codex reviews again after the changes.
 
-- **Codex was the only one to check whether each command runs.** Comparing against the installed `--help` and schema, it caught a nonexistent `--timezone` option in a scheduled-job example and eight commands missing `--non-interactive`.
-- **DeepSeek Harness's diagnosis was closest to how readers feel.** It concluded that the manual tone drowned out the message, and proposed the scenario-first structure in six minutes.
-- **Qoder was the most precise about what the setup can and cannot do**, and wrote the best Chinese prose.
+All of these tasks run in the background, and Hermes stays responsive. If I ask it something else meanwhile, it answers as usual, and whenever a task ends, it wakes up and sends me a summary. Inside each execution Agent, models switch step by step too: routine steps such as reading logs and running tests usually go to the economy group, while hard parts such as finding the root cause and designing a fix go to the primary model.
 
-Were two extra reviews worth it? If the three had only echoed each other, they would have been a waste. They saw different things, and that is what makes the division of work pay off. It is also the point of a Super Agent: the Router does not need to be good at everything, only to know what to hand to whom.
+By the end of the morning, only two decisions are left for me: whether to build the new feature, and whether the fixed PR can be merged. That is the point of a Super Agent. The Router does not need to be good at everything, only to know what to hand to whom, and I no longer have to watch several Agent sessions at once.
 
 ## How to set it up
 
@@ -99,7 +100,7 @@ The full steps are in [smart task routing](https://hiroute.ai/en/docs/task-routi
 
 1. **Create plans.** Under **Smart routing** in HiRoute, create a plan for each kind of work, turn on **Allow delegation to an execution agent**, choose the execution Agent, write a clear purpose and publish. The execution Agent must pass its local dependency check before a task can start.
 2. **Let Hermes delegate.** On the **Agent** page, choose Hermes, open **Task routing** and choose when to delegate: only when you explicitly ask, or let the Agent decide by default. Save, then complete the task delegation skill check when prompted. You can also route Hermes's own model requests through HiRoute; the two settings are independent.
-3. **Delegate from Hermes.** Tell Hermes "Use HiRoute to delegate this task to [plan name]" or "Use HiRoute to delegate this task and choose a suitable route". Then add a standing instruction for Hermes: after delegating, put the wait in a background process with `notify_on_complete`, and reply once the result is fetched.
+3. **Delegate from Hermes.** Tell Hermes "Use HiRoute to delegate this task to [plan name]" or "Use HiRoute to delegate this task and choose a suitable route". Then add how to wait to Hermes's standing instructions: submit with `--no-wait`; run `hiroute worker wait --run <RUN_ID>` in a background process with `notify_on_complete` turned on; when woken, fetch the result with `hiroute worker result` and reply.
 
 Other personal agents such as OpenClaw can call the same `hiroute worker` commands directly, as long as they can run a local command line.
 
@@ -109,6 +110,7 @@ This combination follows the same idea as DeepSeek's prototype but differs in a 
 
 - **A non-executing Router is a convention, not isolation.** DeepSeek's prototype simply gives the Router no Bash; Hermes keeps its own tools. If you let the Agent decide by default, it tends to delegate work that can run independently, but it does not lose the ability to execute. For hard isolation, restrict tools in Hermes's own configuration.
 - **Follow-ups go through the Router.** In the prototype, later comments on a work item go straight to its Worker. Here, an execution Agent cannot ask you questions mid-task; Hermes sends any follow-up to the same task with `hiroute worker continue`.
+- **Completion notices follow the Hermes session.** Notices reach only interactive sessions, such as chat apps, the terminal and the desktop app. If you start a new session with `/new` before the task ends, that notice is dropped. The HiRoute task is unaffected, and you can fetch its result by run ID at any time.
 - **Delegation is one level deep.** An execution Agent cannot delegate further. Plan discovery, status checks, waiting and summaries all stay with Hermes.
 - **One plan binds one execution Agent.** If a run fails, HiRoute does not switch to another kind of Agent.
 - **Execution permissions are not a sandbox.** Execution Agents run with approve-all and can read and write files, run commands and access the network as far as their own capabilities allow. HiRoute provides no operating-system sandbox, so do not delegate work that must be strictly read-only. A working directory is not a lock either; if several tasks share one, keep them from overwriting each other.

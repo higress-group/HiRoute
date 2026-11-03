@@ -25,20 +25,29 @@
 
 DeepSeek 的文章重点在第一件事。原型为每个新的工作项创建一个 Worker，Worker 用哪个模型，取决于你给 DeepSeek Harness 配的 profile。后两件事，正是 HiRoute 在做的。
 
-![Super Agent 架构：Hermes 作为 Router 理解意图、选择计划，用 hiroute worker exec --no-wait 提交后立即回到对话；HiRoute 的路由计划各绑定一个执行 Agent：资料搜集交给 Pi，工程开发交给 Qoder CLI，正确性审查交给 Codex CLI，结构审阅交给 DeepSeek Harness；任务结束后唤起 Hermes，取回结果并回复；每份计划内部，System One 每轮在经济组和主力组之间选择](assets/super-agent-zh.svg)
+![Super Agent 架构：Hermes 作为 Router 理解意图、选择计划，用 hiroute worker exec --no-wait 提交后立即回到对话，并在后台进程里等到任务结束；HiRoute 的路由计划各绑定一个执行 Agent：资料搜集交给 Pi，问题分析交给 DeepSeek Harness，工程编码交给 Qoder CLI，代码审查交给 Codex CLI；任务结束时后台等待退出，notify_on_complete 唤起 Hermes，取回结果并回复；每份计划内部，System One 每轮在经济组和主力组之间选择](assets/super-agent-zh.svg)
 
 ### 一、不被卡住：提交即返回，结束时唤起
 
-Hermes 把任务交给 HiRoute，用的是这样一条命令：
+Hermes 交出一个任务分两步。第一步是提交：
 
 ```sh
-hiroute worker exec --plan <PLAN_ID> --cwd /work/mq-research --no-wait \
-  -- "搜集三种消息队列的官方文档和发布说明，整理成对比表"
+hiroute worker exec --plan <PLAN_ID> --cwd /work/hiroute --no-wait \
+  -- "读这个 issue 里的报错和日志，复现问题，找到相关代码，整理成一份分析"
 ```
 
 加上 `--no-wait`，任务一被接受，命令就返回 task ID 和 run ID，Hermes 马上回到对话。多个任务可以同时派出去，各自在自己的会话里执行。
 
-结果怎么回来，靠的是 Hermes 自带的 `notify_on_complete`。Hermes 可以把命令放进后台进程执行；打开 `notify_on_complete` 后，这个进程一结束，Hermes 就会被唤起，开始新的一轮。做法是让 Hermes 把“等待这次任务结束”放进这样的后台进程：任务一结束，Hermes 被唤起，用 `hiroute worker result --run <RUN_ID>` 取回结果，再在对话里告诉你。等待发生在后台，不占用对话。
+第二步是等结果，靠的是 Hermes 的后台进程和 `notify_on_complete`。Hermes 可以把一条命令放到后台运行；打开 `notify_on_complete` 后，这个进程退出时，Hermes 会被唤起，开始新的一轮。注意，通知发生在进程退出的时候，所以它要配一条等到任务结束才退出的命令。如果直接给上面那条 `--no-wait` 命令打开通知，提交一完成它就退出了，通知马上就到，任务其实才刚开始。
+
+等待用的是 `hiroute worker wait`，它会一直等到任务结束才退出：
+
+```sh
+# 由 Hermes 放进后台进程运行，并打开 notify_on_complete
+hiroute worker wait --run <RUN_ID>
+```
+
+任务一结束，这条命令退出，Hermes 被唤起，用 `hiroute worker result --run <RUN_ID>` 取回结果，再在对话里告诉你。等待在后台进行，不占用对话，也不用隔一会儿就花一次模型调用去查状态。
 
 为什么不直接用 Hermes 自己的子 Agent？Hermes 的 `delegate_task` 也能在后台跑任务，但它的文档写得很清楚：顶层委派虽然是异步的，仍然绑在所属会话和 Hermes 进程上，会话关闭、`/stop`、`/new` 或者进程重启，都可能取消或丢下进行中的任务；需要跨过这些边界的工作，文档建议用定时任务，或者带 `notify_on_complete` 的后台进程。HiRoute 的任务由 HiRoute 的后台服务执行，结果持久保存，凭 run ID 随时可以查回来。
 
@@ -54,10 +63,10 @@ Hermes 委派前先运行 `hiroute worker plans`，读出已发布、允许委�
 
 | 执行 Agent | 我交给它的活 |
 | --- | --- |
-| Pi | 搜集资料、写初稿、按清单批量落地；任务书写清楚，它跑得很快 |
-| Qoder CLI | 开发工程代码；对外文档的边界表述和中文行文 |
-| Codex CLI | 正确性审查：逐条对照安装版的 help 和 schema，核对命令能不能跑、边界在哪；更慢也更贵，留给错了代价大的活 |
-| DeepSeek Harness | 叙事和结构：判断读者在哪一步掉线，给出重排方案；不替代逐条的事实核对 |
+| Pi | 搜集资料：读 issue 和日志、翻代码、查文档，整理成清单；任务书写清楚，它跑得很快 |
+| DeepSeek Harness | 同样做搜集和分析，更适合来龙去脉比较绕、需要梳理清楚的问题 |
+| Qoder CLI | 工程编码：修 bug、补测试、提 PR |
+| Codex CLI | 代码审查：跑测试，核对边界和兼容性；更慢也更贵，留给错了代价大的活 |
 
 这只是我的经验，不是评测结论。换成你的任务，完全可能是另一套分工；好在换执行 Agent 只是改一份计划，不用动 Hermes。
 
@@ -69,29 +78,21 @@ Hermes 委派前先运行 `hiroute worker plans`，读出已发布、允许委�
 
 所以“选谁干”和“用多贵的模型干”是两次独立的判断：选中 Qoder CLI，不等于固定用某一档模型。用一段时间后，每份计划的模型表现报告会汇总经济组的胜任情况，证据足够时建议上调或下调信任度。建议只是建议，回放确认后才会发布。
 
-## 一个真实的例子：这篇文章的上一版
+## 一个场景：维护 HiRoute 的一个早上
 
-这篇文章之前有一个更长的版本，讲我在 Hermes 里做任务委派的完整实践。那一版从一份 2.7KB 的任务书到推送进仓库，就是按这套分工跑完的：
+拿维护 HiRoute 这个开源项目来说，常见的一个早上是这样的。
 
-| 阶段 | 执行 Agent | 交付 |
-| --- | --- | --- |
-| 初稿（17 分钟） | Pi | 2.7KB 任务书 → 298 行初稿，自查后推送 |
-| 正确性审查 | Codex CLI | 逐条核对命令与安装版的 schema |
-| 叙事审查（6 分钟） | DeepSeek Harness | 诊断“手册感”，提出场景先行的重排方案 |
-| 边界与中文审查 | Qoder CLI | 边界表述与行文修改 |
-| 二轮修改（9 分钟） | Pi | 按三家意见改稿，正文压缩 29% |
-| 结构重排 | DeepSeek Harness | 按场景先行重排全文骨架 |
-| 收尾（1 分钟） | Pi | 文件头信息、尾随空格、`git diff --check` |
+周末攒下几个新 issue：一个说接入某个模型后，工具调用偶尔报错；一个问 Linux 服务器上怎么配代理；还有一个是新功能的建议。以前我得一个个点开、复现、翻代码，一上午就没了。现在我在 IM 里跟 Hermes 说一句：“看看周末的新 issue，能复现的定位原因；确认是 bug 的，修好提 PR，再找人 review。”
 
-表里只记了 Pi 和 DeepSeek Harness 的耗时，Codex 和 Qoder 的审查没有单独计时。顺带一提，DeepSeek Harness 自己也在这套分工里，当了两次 Worker。
+Hermes 把这件事拆开，交给不同的计划：
 
-三份审查，我特意让它们互相看不到对方的结论。结果大方向收敛：手册感太重、边界要写清、命令要能跑。各自的独家发现又几乎不重叠：
+1. **搜集：Pi 或 DeepSeek Harness。** 每个 issue 一个任务：读报错和日志，复现问题，在代码里找相关路径，查供应商最近的文档和变更说明。普通的交给 Pi；来龙去脉比较绕的，交给 DeepSeek Harness 梳理。
+2. **编码：Qoder CLI。** 确认是 bug 的，Hermes 把复现步骤和分析结论交给 Qoder，在独立的工作目录里修复、补测试、提 PR。只需要把文档写清楚的，也顺手交给它。
+3. **审查：Codex CLI。** PR 提上来以后，交给 Codex review：跑测试，按复现步骤验证修复，检查有没有破坏兼容。Codex 提的问题，Hermes 用 `hiroute worker continue` 转回 Qoder 那个任务修改，改完再让 Codex 复审。
 
-- **Codex 是唯一逐条核对命令能不能跑的。** 它对照安装版的 `--help` 和 schema，抓出定时任务示例里一个并不存在的 `--timezone` 参数，还有 8 处缺 `--non-interactive` 的命令。
-- **DeepSeek Harness 的诊断最接近读者感受。** 它的结论是“手册感压过了布道感”，6 分钟就给出了场景先行的重排方案。
-- **Qoder 把“能做什么、不能做什么”抠得最细**，中文行文也最好。
+这些任务都在后台跑，Hermes 一直能回话：中途我问它别的事，它照常回答；每个任务结束，它被唤起，把结果整理好发给我。每个执行 Agent 内部，模型也在一步步切换：读日志、跑测试这类常规步骤，一般走经济组；定位根因、设计修复这些难点，交给主力。
 
-多派两家审查，值不值？如果三家只是互相复述，就是浪费；正因为各自看见了不同的东西，分工才成立。这也是 Super Agent 的意义：Router 不需要样样精通，只要知道该把什么交给谁。
+一个早上下来，真正需要我判断的只剩两件事：新功能要不要做，修好的 PR 能不能合。这也是 Super Agent 的意义：Router 不需要样样精通，只要知道该把什么交给谁；我也不用同时盯着好几个 Agent 会话。
 
 ## 怎么搭起来
 
@@ -99,7 +100,7 @@ Hermes 委派前先运行 `hiroute worker plans`，读出已发布、允许委�
 
 1. **建计划**：在 HiRoute 的「智能路由」里，为每类工作建一份计划，打开“允许委派任务给执行 Agent”，选好执行 Agent，写清使用场景，然后发布。执行 Agent 要通过本机的依赖检查，才能真正启动任务。
 2. **让 Hermes 能委派**：在「Agent」里选择 Hermes，打开「任务路由」，选择委派时机：仅在你明确要求时委派，或者默认由 Agent 判断。保存后，按提示完成任务委派技能检查。Hermes 自己的模型请求也可以一起接入 HiRoute，两件事互不影响。
-3. **在 Hermes 里委派**：对 Hermes 说“使用 HiRoute，将当前任务委派给【计划名称】执行”，或者“使用 HiRoute 委派当前任务，选择合适的路由”。再把这条约定写进 Hermes 的长期指令：委派后把等待放进后台进程，打开 `notify_on_complete`，任务结束后取回结果再回复。
+3. **在 Hermes 里委派**：对 Hermes 说“使用 HiRoute，将当前任务委派给【计划名称】执行”，或者“使用 HiRoute 委派当前任务，选择合适的路由”。再把等待的做法写进 Hermes 的长期指令：用 `--no-wait` 提交；然后把 `hiroute worker wait --run <RUN_ID>` 放进后台进程，打开 `notify_on_complete`；被唤起后用 `hiroute worker result` 取回结果，再回复。
 
 OpenClaw 等其他 personal agent，只要能在本机执行命令行，也可以直接调用 `hiroute worker` 这一组命令，做法相同。
 
@@ -109,6 +110,7 @@ OpenClaw 等其他 personal agent，只要能在本机执行命令行，也可�
 
 - **Router 不执行，是约定，不是隔离。** DeepSeek 的原型直接不给 Router 配 Bash；Hermes 仍然保留自己的工具。把委派时机设为默认由 Agent 判断，它会倾向于把适合独立执行的工作委派出去，但不会因此失去执行能力。需要硬隔离，要在 Hermes 自己的工具配置里收紧。
 - **追问经过 Router。** 原型里，同一个工作项后续的评论会直接送到对应的 Worker。在这里，执行 Agent 不能中途直接问你，追加要求由 Hermes 用 `hiroute worker continue` 发给同一个任务。
+- **完成通知跟着 Hermes 的会话走。** 通知只会送到交互式的会话里，比如 IM、终端和桌面应用；任务结束前如果开了新会话（`/new`），这次通知会被丢掉。HiRoute 的任务不受影响，凭 run ID 随时可以取回结果。
 - **委派只有一层。** 执行 Agent 不能再委派别的任务；计划发现、状态查询、等待和结果汇总，都留在 Hermes。
 - **一份计划只绑一个执行 Agent。** 执行失败时，不会自动换成另一种 Agent。
 - **执行权限不是沙箱。** 执行 Agent 以 approve-all 运行，可以按自身能力读写文件、执行命令和访问网络，HiRoute 不提供操作系统级沙箱。必须强制只读的任务，不要通过它委派。工作目录也不是锁，多个任务用同一个目录时，要自己避免互相覆盖。

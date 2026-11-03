@@ -102,12 +102,12 @@ DeepSeek Harness 团队 10 月 31 日发布了长文《Super-agent 设计探索�
 
 类似的架构，用 HiRoute 现有的能力就能搭出来，不需要专门再造一套 Super Agent 的路由机制：
 
-![Super Agent 架构：Hermes 作为 Router 理解意图、选择计划，用 hiroute worker exec --no-wait 提交后立即回到对话；HiRoute 的路由计划各绑定一个执行 Agent：资料搜集交给 Pi，工程开发交给 Qoder CLI，正确性审查交给 Codex CLI，结构审阅交给 DeepSeek Harness；任务结束后唤起 Hermes，取回结果并回复；每份计划内部，System One 每轮在经济组和主力组之间选择](assets/super-agent-zh.svg)
+![Super Agent 架构：Hermes 作为 Router 理解意图、选择计划，用 hiroute worker exec --no-wait 提交后立即回到对话，并在后台进程里等到任务结束；HiRoute 的路由计划各绑定一个执行 Agent：资料搜集交给 Pi，问题分析交给 DeepSeek Harness，工程编码交给 Qoder CLI，代码审查交给 Codex CLI；任务结束时后台等待退出，notify_on_complete 唤起 Hermes，取回结果并回复；每份计划内部，System One 每轮在经济组和主力组之间选择](assets/super-agent-zh.svg)
 
 - **personal agent 做 Router**：Hermes 可以在 HiRoute 里直接开启任务路由；OpenClaw 等其他 personal agent，只要能在本机执行命令行，也能调用同一套命令。
 - **用 `hiroute worker exec` 委派**：把任务、工作目录和验收要求交给 `hiroute worker exec`。加上 `--no-wait`，任务一被接受就返回，Router 马上回到对话；多个任务可以并行执行。
-- **任务结束时自动回报**：以 Hermes 为例，它把等待放进后台进程，并打开自带的 `notify_on_complete`。任务一结束，Hermes 就会被唤起，取回结果，再在对话里告诉你。
-- **可以指定执行 Agent**：搜集资料这类轻量任务，交给绑定 Pi 的计划；开发工程代码，交给绑定 Qoder CLI 的计划。委派时可以直接点名计划，也可以让 Router 按每份计划写明的用途自己选。
+- **任务结束时自动回报**：以 Hermes 为例，提交之后，它在后台进程里一直等到任务结束，并打开自带的 `notify_on_complete`。任务一结束，这个进程退出，Hermes 就会被唤起，取回结果，再在对话里告诉你。
+- **可以指定执行 Agent**：搜集资料这类轻量任务，交给绑定 Pi 的计划；开发工程代码，交给绑定 Qoder CLI 的计划；代码审查，交给绑定 Codex CLI 的计划。委派时可以直接点名计划，也可以让 Router 按每份计划写明的用途自己选。
 
 ```sh
 # 把资料搜集交给绑定 Pi 的计划，提交后立即返回
@@ -135,8 +135,8 @@ hiroute console open
 
 ## 六、更多改进
 
-- **订阅和 API 一起接入**：接入 Codex 或 Claude 订阅时，可以顺手填一个对应的 OpenAI 或 Anthropic API Key。选一次模型、保存一次，两边的模型同时导入。
-- **给 API Key 设花费额度**：可以设一次性额度、按日历周期补充，或让多个 Key 共用一份额度。HiRoute 转发请求前先预留，完成后结算。金额按 HiRoute 转发的流量估算，不是供应商的账户余额。
+- **订阅和 API 一起接入**：接入 Codex 或 Claude 订阅时，可以顺手填一个对应的 OpenAI 或 Anthropic API Key。选一次模型、保存一次，两边的模型同时导入。订阅附带的 API 赠金正好用得上：符合条件的 ChatGPT Pro / Business，以及 Claude Max / Ultra / Team，每个账单周期都能领一笔 API 赠金，没用完的不会顺延（见 [OpenAI](https://developers.openai.com/api/docs/guides/chatgpt-api-credits) 和 [Anthropic](https://support.claude.com/en/articles/17154008-monthly-api-credits-for-max-ultra-and-team-plans) 的官方说明）。这里填领取赠金那个组织的 Key，再在模型详情里为订阅的模型创建路由，HiRoute 会发现 API 里的同名模型，可以一起加入候选。这样，订阅和 API 里的同名模型就组装成了一个模型：Agent 只用一个模型名，HiRoute 先用订阅，订阅暂时用不了时自动接着用 API。
+- **给 API Key 设花费额度**：可以设一次性额度、按日历周期补充，或让多个 Key 共用一份额度。HiRoute 转发请求前先预留，完成后结算。金额按 HiRoute 转发的流量估算，不是供应商的账户余额。管赠金也合适：按赠金的金额给那个 Key 设一份按月补充的额度，用完以后，这个 Key 会被跳过。
 - **按接入设置代理**：每个 API 接入可以选择直连、沿用后台服务的环境代理，或手动填写 HTTP(S) 代理和绕过规则；共用这个接入的决策模型也遵循同样的设置。
 - **本地记录更省空间**：长会话不再反复保存完整的请求快照和协议日志，只保留查看历史、评分和模型归属需要的内容。本地记录默认最多占用 20 GB，可以调整或关闭，七天保留期照常生效。
 - **模型资料单独更新**：上下文窗口等官方模型资料和首页的新模型推荐，通过 HiRoute 的模型目录单独发布，不必等应用升级。
