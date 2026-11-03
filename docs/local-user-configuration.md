@@ -140,9 +140,10 @@ validation runs use their explicitly selected test root. After route or token ch
 succeed, quit this separate instance and start it again so its process loads the new
 configuration. Disabling routing retains its native sessions and login.
 
-An inherited `CODEX_HOME` that points into the private instance cannot create another
-model slot over that directory. The existing Desktop connection can still restore
-its owned configuration and revoke its access through its original restore point.
+If HiRoute starts with an inherited `CODEX_HOME` pointing into its private instance,
+startup refuses the directory conflict. Restart HiRoute with the original `CODEX_HOME`
+used for its active connections, then restore or disable the Desktop connection if
+needed. Do not delete data or redirect the existing managed files to bypass this check.
 
 Existing `.agents/skills` and project skills remain shared. When opening the window,
 HiRoute also links ordinary Codex user skill folders individually, including their

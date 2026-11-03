@@ -158,10 +158,10 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
         configure(&desktop_context),
         "reenable-desktop",
     );
-    let scanner = runtime.adapter.scanner.clone();
+    let original_scanner = runtime.adapter.scanner.clone();
     drop(service);
     drop(runtime);
-    let restarted = open_with_scanner(&storage, scanner);
+    let restarted = open_with_scanner(&storage, original_scanner.clone());
     restarted.adapter.reconcile_startup_and_open().unwrap();
     restarted
         .adapter
@@ -179,7 +179,7 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
     }
 
     // A process started inside the private Codex instance can inherit its CODEX_HOME.
-    // This must prevent a second model slot, without trapping the existing owner's Restore.
+    // Startup must explain the conflict without rebinding existing managed targets.
     let desktop_status = service
         .dispatch_wire(request(
             "GetAgentConnectionStatus",
@@ -208,40 +208,40 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
         layout,
         ClaudeRegistrationIndexV1::from_verified_model_data(&registry, &models.data).unwrap(),
     );
-    let inherited = open_with_scanner(&storage, scanner);
-    inherited.adapter.reconcile_startup_and_open().unwrap();
-    inherited
+    let private_before_overlap = fs::read(&desktop_config).unwrap();
+    let key = storage.join("observation-hmac-key");
+    let original_key = fs::read(&key).unwrap();
+    let failure = ProductionControlRuntime::prepare_for_role_all_with_scanner(
+        &storage,
+        crate::release_catalog::fixture_catalog(),
+        None,
+        scanner,
+    );
+    let message = match failure {
+        Err(message) => message,
+        Ok(_) => panic!("overlapping homes must not register two native targets"),
+    };
+    assert_eq!(
+        message,
+        crate::control::runtime::native_context_guidance::CODEX_HOME_CONFLICT
+    );
+    assert_eq!(fs::read(&desktop_config).unwrap(), private_before_overlap);
+    assert_eq!(fs::read(&key).unwrap(), original_key);
+    assert_eq!(fs::read(&profile).unwrap(), cli_bytes);
+    assert_eq!(fs::read(&ordinary).unwrap(), original);
+    assert_eq!(
+        fs::read_to_string(&auth).unwrap(),
+        "native-auth-placeholder"
+    );
+
+    // Returning to the original environment preserves both connections and their ownership.
+    let recovered = open_with_scanner(&storage, original_scanner);
+    recovered.adapter.reconcile_startup_and_open().unwrap();
+    recovered
         .adapter
         .finish_startup_publication_recovery()
         .unwrap();
-    let service = LocalControlDaemon::new(ApplicationService::new(inherited.application_ports()));
-    assert_eq!(
-        inherited.adapter.scanner.codex_user_config_target(),
-        desktop_config
-    );
-    for context in [
-        desktop_context.clone(),
-        json!(
-            inherited
-                .adapter
-                .settings_context_for_agent("agent_codex_default")
-                .unwrap()
-        ),
-    ] {
-        let denied = service.dispatch_wire(request(
-            "PreviewAgentConnectionChange",
-            json!({"spec":configure(&context)}),
-            None,
-        ));
-        assert!(
-            denied.error.is_some()
-                || denied
-                    .data
-                    .as_ref()
-                    .is_some_and(|data| data["applicable"] != true),
-            "colliding Configure must not create or replace another model slot: {denied:?}"
-        );
-    }
+    let service = LocalControlDaemon::new(ApplicationService::new(recovered.application_ports()));
     let wrong = service.dispatch_wire(request(
         "PreviewAgentConnectionRestore",
         json!({"spec":restore(&desktop_context, &cli_before["restore_point_ref"])}),
@@ -257,9 +257,9 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
     );
     apply(
         &service,
-        &inherited,
+        &recovered,
         restore(&desktop_context, &desktop_status["restore_point_ref"]),
-        "disable-desktop-with-inherited-home",
+        "disable-desktop-after-home-conflict",
     );
     let restored = service.dispatch_wire(request(
         "GetAgentConnectionStatus",
@@ -269,7 +269,7 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
     assert!(restored.error.is_none(), "{restored:?}");
     assert_eq!(restored.data.unwrap()["state"], "restored");
     assert!(
-        inherited
+        recovered
             .adapter
             .stores_lock()
             .unwrap()
@@ -281,6 +281,13 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
             .unwrap()
             .is_none()
     );
+    let cli_after = service.dispatch_wire(request(
+        "GetAgentConnectionStatus",
+        json!({"schema_version":{"major":2,"minor":0},"context_id":cli_context}),
+        None,
+    ));
+    assert!(cli_after.error.is_none(), "{cli_after:?}");
+    assert_eq!(cli_after.data.unwrap()["state"], "configured");
     assert_eq!(fs::read(&profile).unwrap(), cli_bytes);
     assert_eq!(fs::read(&ordinary).unwrap(), original);
     assert_eq!(

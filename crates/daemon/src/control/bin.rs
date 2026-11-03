@@ -338,6 +338,7 @@ fn classify_role_all_error(error: &RoleAllError) -> StartupFailureCode {
         RoleAllError::StandaloneProxyUnavailable => StartupFailureCode::DependencyUnavailable,
         RoleAllError::JoinTimeout(_) => StartupFailureCode::Internal,
         RoleAllError::Component(component, detail) => match *component {
+            "Native configuration" => StartupFailureCode::InvalidConfiguration,
             "Storage" if detail.starts_with("UPGRADE_SOURCE_UNSUPPORTED") => {
                 StartupFailureCode::UpgradeSourceUnsupported
             }
@@ -1089,6 +1090,23 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn codex_home_conflict_is_not_storage_corruption() {
+        let conflict = RoleAllError::Component(
+            "Native configuration",
+            crate::control::runtime::native_context_guidance::CODEX_HOME_CONFLICT.into(),
+        );
+        assert_eq!(
+            classify_role_all_error(&conflict),
+            StartupFailureCode::InvalidConfiguration
+        );
+        let storage = RoleAllError::Component("Storage", "invalid store".into());
+        assert_eq!(
+            classify_role_all_error(&storage),
+            StartupFailureCode::StorageUnavailable
+        );
+    }
 
     fn frame(principal: &str) -> Vec<u8> {
         serde_json::to_vec(&json!({

@@ -320,8 +320,9 @@ installed skills and actual native requests require separate native acceptance.
 `codex.desktop.token-update-restart` covers both regenerated and custom tokens after
 a launch: stale launch feedback clears, quit/restart guidance remains visible, the
 saved selection and CLI connection stay independent, and no automatic client launch
-is introduced. The daemon Desktop lifecycle also restarts with an inherited private
-Codex home, retaining collision rejection while permitting only its owned restore.
+is introduced. The daemon Desktop lifecycle also refuses an overlapping inherited
+Codex home with native-context guidance, verifies files/keys stay unchanged, then
+reopens with the original home and permits only its owned restore.
 
 Home bounded-read regressions in `v3/browser/home-startup-scenarios.mjs` exercise
 shared queue capacity, typed busy recovery/exhaustion, terminal failures and

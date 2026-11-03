@@ -57,6 +57,13 @@ impl FilesystemAgentScannerV1 {
         )
     }
 
+    pub fn codex_home_overlaps_desktop(&self) -> bool {
+        self.codex_desktop_config_target().is_some_and(|target| {
+            super::canonical_codex_config_path(&target)
+                == super::canonical_codex_config_path(&self.codex_user_config_target())
+        })
+    }
+
     /// Reuse the native Codex reader with this exact home and the application-owned engine.
     /// The independently installed CLI is never a fallback for the Desktop surface.
     pub fn codex_desktop_scanner(&self) -> Option<Self> {

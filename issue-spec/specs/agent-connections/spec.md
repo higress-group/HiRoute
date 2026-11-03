@@ -269,9 +269,12 @@ home's configuration or authority. An inherited CODEX_HOME resolving to the same
 physical home cannot create two model slots. Existing publication/recovery fences
 still protect an incomplete shared-service cutover.
 
-The collision guard SHALL refuse Configure for overlapping homes while preserving
-Restore of an existing owned connection. Restore still verifies its exact context,
-journal, target and grant; another connection's restore point cannot acquire ownership.
+A daemon whose ordinary CODEX_HOME overlaps its private Desktop namespace SHALL
+refuse startup with an actionable native-environment conflict, not storage-corruption
+guidance. It SHALL NOT deduplicate/rebind existing targets or infer the previous home.
+After restarting with the original home, the existing connection can use its exact
+context, journal, target and grant to restore; another connection's restore point
+cannot acquire ownership.
 
 On macOS, the native host resolves the installed Codex bundle and launches it with
 `open -n`, private CODEX_HOME and CODEX_SQLITE_HOME, private

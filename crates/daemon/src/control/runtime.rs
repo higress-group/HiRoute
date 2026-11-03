@@ -81,7 +81,7 @@ mod model_feed;
 mod mutation;
 mod native_additional_model;
 mod native_claude_model;
-mod native_context_guidance;
+pub(crate) mod native_context_guidance;
 mod native_hermes;
 mod native_model;
 mod native_network;
@@ -433,6 +433,9 @@ impl ProductionControlRuntime {
             hiroute_integrations::CodexDesktopInstancePaths::for_storage_root(storage_root)
                 .map_err(|error| error.to_string())?,
         );
+        if scanner.codex_home_overlaps_desktop() {
+            return Err(native_context_guidance::CODEX_HOME_CONFLICT.into());
+        }
         let codex_desktop_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
             hiroute_integrations::CODEX_DESKTOP_AGENT_ID,
             CODEX_PROFILE_ID_V1,

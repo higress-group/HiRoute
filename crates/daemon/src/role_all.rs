@@ -473,6 +473,9 @@ pub fn start_role_all(config: RoleAllConfig) -> Result<RoleAllHandle, RoleAllErr
     )
     .map_err(|error| match storage_failures.try_iter().last() {
         Some(recovery) => RoleAllError::StorageRecovery(Box::new(recovery)),
+        None if error == crate::control::runtime::native_context_guidance::CODEX_HOME_CONFLICT => {
+            RoleAllError::Component("Native configuration", error)
+        }
         None => RoleAllError::Component("Storage", error),
     });
     let runtime = match runtime {

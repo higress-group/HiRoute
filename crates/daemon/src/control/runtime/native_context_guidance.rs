@@ -2,6 +2,12 @@
 use hiroute_local_storage::LocalStorageError;
 use std::path::Path;
 
+pub(crate) const CODEX_HOME_CONFLICT: &str = "CODEX_HOME overlaps HiRoute's independent Codex Desktop directory. \
+     Restart HiRoute with the original CODEX_HOME used for its active connections. \
+     Then disable the independent connection through Agents > Codex Desktop if needed. \
+     Existing configuration, credentials and sessions have not been replaced; \
+     do not delete storage or rebind its managed files to resolve this environment conflict.";
+
 pub(super) fn managed_artifact_error(error: &LocalStorageError, qoder_settings: &Path) -> String {
     let original = error.to_string();
     if !matches!(error, LocalStorageError::Locked) {
