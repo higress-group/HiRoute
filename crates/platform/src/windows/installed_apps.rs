@@ -49,7 +49,11 @@ fn string(key: &Key, name: &str) -> Option<OsString> {
             &mut size,
         )
     };
-    if status != ERROR_SUCCESS || size < 2 || size % 2 != 0 || size as usize > buffer.len() * 2 {
+    if status != ERROR_SUCCESS
+        || size < 2
+        || !size.is_multiple_of(2)
+        || size as usize > buffer.len() * 2
+    {
         return None;
     }
     let value = &buffer[..size as usize / 2];
