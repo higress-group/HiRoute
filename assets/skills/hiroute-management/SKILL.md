@@ -245,7 +245,11 @@ Run worker dependencies discover --harness codex_cli then worker dependencies se
 Use found tuples: expected_selection_revision = selection_revisions[].revision, not a CLI/package version.
 Discovery installs nothing; read executors/plans. worker exec needs absolute cwd, text and
 stable key; exec/continue use approve-all, omit permission options. Keep submission/run IDs for
-status/wait/result/list; timeout is pending. Replay identical request/key after uncertainty;
+status/wait/result/list. worker wait --run ID blocks until the run ends and includes an available
+successful result; run it in a notifying background terminal when the main Agent must stay responsive.
+--wait-timeout 1..30 bounds total waiting; --after-revision N watches one revision with a 30-second
+default. Use status for an immediate query. Wait timeout/interruption never cancels work.
+Replay identical request/key after uncertainty;
 cancel only on request. Readiness proves no success.
 
 Standing policy: preview agents collaboration configure AGENT_ID --trigger explicit --preview; to save,

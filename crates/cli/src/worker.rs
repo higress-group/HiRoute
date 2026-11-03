@@ -17,6 +17,7 @@ mod input;
 mod render;
 #[cfg(windows)]
 mod selection_windows;
+mod wait;
 
 use input::{
     parse_cancel, parse_dependencies_discover, parse_dependency_selection, parse_list, parse_read,
@@ -24,7 +25,7 @@ use input::{
 };
 use render::{
     CommandData, command_data, erase, render_cancel, render_erased, render_result, render_status,
-    render_transport, render_wait, render_worker_data, uncertain_submission,
+    render_transport, render_worker_data, uncertain_submission,
 };
 
 pub(crate) fn input_failure(code: ErrorCode, globals: Globals) -> CliExecution {
@@ -178,12 +179,11 @@ pub(crate) fn execute(command: &str, options: &[String], globals: Globals) -> Cl
             render_status(response, globals.output, "worker.status")
         }
         "worker.wait" => {
-            let request = match parse_wait(options) {
-                Ok(request) => request,
+            let parsed = match parse_wait(options) {
+                Ok(parsed) => parsed,
                 Err(code) => return failure(code, globals.output, Some(request_id)),
             };
-            let response = call(client.shared_client().worker_wait(&request_id, &request));
-            render_wait(response, globals.output, "worker.wait")
+            wait::execute(parsed, &client, globals.output, &request_id)
         }
         "worker.result" => {
             let request = match parse_result(options) {

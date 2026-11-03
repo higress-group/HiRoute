@@ -857,10 +857,24 @@ hiroute worker exec --plan PLAN_ID --cwd /absolute/project \
 hiroute worker status \
   --submission task-20260921-1 --operation start --output json
 hiroute worker status --run RUN_ID --output json
-hiroute worker wait --run RUN_ID --wait-timeout 30 --output json
+hiroute worker wait --run RUN_ID --output json
+hiroute worker wait --run RUN_ID --after-revision REVISION --output json
 hiroute worker result --run RUN_ID --output json
 hiroute worker list --output json
 ```
+
+`worker wait --run RUN_ID` 默认一直等待该 run 到达 `succeeded`、`failed`、`cancelled`
+或 `unknown`，中间进度更新和单次 30 秒等待窗口结束都不会使它退出。成功时返回可用的保存结果；
+失败、取消和结果未知时保留失败原因并以非零状态退出。主 Agent 可以把它放到后台终端，
+利用进程退出通知在任务结束时唤醒自己。daemon 或传输故障会使等待命令报错退出。
+
+`--wait-timeout SECONDS`（1..30）限制包含中间进度更新的累计等待时间；不指定则没有总等待时限。
+`--after-revision REVISION` 保留等待一次进度变化或终态的语义，默认最多等 30 秒；
+HiRoute 提示的前台后续操作使用这种形式。
+
+兼容性变化：以前不带 `--after-revision` 的 `worker wait` 会立即返回当前状态；
+需要立即查询时请改用 `worker status`。Local Control 等待协议和 `worker exec` 的默认有限等待不变。
+中断等待命令或达到等待时限都不会取消 Worker run。
 
 等待超时只表示仍在运行，不会取消任务。响应不确定时用原 submission key 查询，或原样重放同一
 `worker exec`；不要换 key。重复提交返回同一个 run，不会执行两次。`selection_revision` 是 Worker

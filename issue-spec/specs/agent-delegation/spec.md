@@ -360,6 +360,42 @@ paths/secrets, and normal owned cleanup rather than a software-version allowlist
 - **WHEN** a Qoder task continues after the daemon's configuration-directory selector changes
 - **THEN** progress reports the original frozen task directory, a new task may use the newly selected directory, and guidance does not claim that installation readiness proves model access.
 
+### Requirement: Public completion waiting composes bounded observations
+
+`hiroute worker wait --run RUN_ID` MUST wait for that exact run to reach `succeeded`,
+`failed`, `cancelled` or `unknown` by default. Intermediate progress revisions and
+individual bounded observation timeouts MUST NOT end completion waiting. An already
+terminal run returns immediately. Success includes saved result text when available;
+unavailable result content does not delay a terminal response. Failed, cancelled and
+unknown completion uses the existing Worker execution failure classification and
+retains task/run locators and any recorded stage/reason.
+
+An explicit `--wait-timeout SECONDS` in the existing 1..30 range bounds total waiting
+with one monotonic deadline that progress does not renew. Expiry returns the latest
+observed state with `timed_out=true`. Without this option there is no total waiting
+limit. Daemon and transport errors end the command instead of retrying indefinitely.
+Stopping or timing out the observer never cancels, resubmits or continues the run.
+
+`--after-revision N` retains one bounded observation: return the next revision or
+terminal state, defaulting to 30 seconds, with its existing output and exit behavior.
+Suggested foreground next actions retain this explicit cursor. Immediate queries use
+`worker status`. Local Control's bounded wait request/response, maximum single wait
+and `worker exec`'s default wait remain unchanged.
+
+#### Scenario: Completion spans progress and observation timeouts
+
+Given a running Worker, when completion waiting observes progress and a bounded
+timeout, it continues from the latest revision until the run is terminal and renders
+one final response, including available successful result text.
+
+#### Scenario: A finite wait expires during progress
+
+Given a finite total wait, when progress arrives before its original deadline, the
+deadline remains fixed. If it expires first, the CLI returns a pending observation
+and the same run remains available for later status, wait and cancellation.
+
+Source Issue: https://github.com/higress-group/HiRoute/issues/348
+
 ### Requirement: Progress is a bounded best-effort public-text stream
 
 Read exposes saved assistant text while a turn is still running, after short-cycle
