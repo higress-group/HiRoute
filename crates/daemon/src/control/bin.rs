@@ -1095,7 +1095,7 @@ mod tests {
     fn codex_home_conflict_is_not_storage_corruption() {
         let conflict = RoleAllError::Component(
             "Native configuration",
-            crate::control::runtime::native_context_guidance::CODEX_HOME_CONFLICT.into(),
+            "CODEX_HOME overlaps the private Desktop home".into(),
         );
         assert_eq!(
             classify_role_all_error(&conflict),
