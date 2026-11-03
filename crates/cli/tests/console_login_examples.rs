@@ -38,7 +38,10 @@ fn displayed_and_documented_token_examples_pass_argument_validation() {
         .filter(|line| line.starts_with("hiroute console token create"))
         .collect();
     assert!(!page_commands.is_empty(), "missing copyable token command");
-    assert!(!guide_commands.is_empty(), "missing documented token command");
+    assert!(
+        !guide_commands.is_empty(),
+        "missing documented token command"
+    );
     for example in page_commands.into_iter().chain(guide_commands) {
         let arguments: Vec<_> = example.split_ascii_whitespace().skip(1).collect();
         let (exit, envelope) = invoke(root.path(), &arguments);
