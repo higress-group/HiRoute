@@ -53,6 +53,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(item => item.capabilities.includes('agent-details'))) {
+        checks.push(...await (await import('./agent-readback-captures.mjs')).agentDetailsCaptures(client, baseUrl, outputRoot));
+      }
       if (selected.some(item => item.capabilities.includes('dsh-desktop'))) {
         checks.push(...await (await import('./agent-readback-captures.mjs')).dshDesktopCaptures(client, baseUrl, outputRoot));
       }

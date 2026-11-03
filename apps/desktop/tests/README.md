@@ -309,6 +309,14 @@ Skill states and fresh Skill editor selection. Readback captures use production
 styles in Chinese/dark and English/light at 1200×813 and 755×600. Native save
 confirmation and latency still require the normal Release app and real data.
 
+`agent.details.progressive-disclosure` protects concise default views, lazy technical
+details, management repair and scroll reset across the supported Agent families.
+Its production-style captures cover Chinese/dark and English/light at both supported
+sizes, checking aligned actions, wrapping and reachable controls. Independent Codex
+Desktop adds both languages/themes, first setup, configured, launch-error and editor
+states. These browser cases use controlled IPC; real launch, coexisting grants,
+installed skills and actual native requests require separate native acceptance.
+
 Home bounded-read regressions in `v3/browser/home-startup-scenarios.mjs` exercise
 shared queue capacity, typed busy recovery/exhaustion, terminal failures and
 superseded retries through the production hook. They remain React/mock-IPC

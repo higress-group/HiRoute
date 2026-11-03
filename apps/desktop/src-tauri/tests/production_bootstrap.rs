@@ -104,9 +104,9 @@ async fn corrupt_observation_store_reports_data_failure_without_rewriting_it() {
     let error = Resident::open(root.path(), &binary)
         .err()
         .expect("corrupt observation data must stop startup");
-    // The current format admission cannot identify a non-SQLite source. It
-    // preserves that typed cause before opening or attempting to convert it.
-    assert_eq!(error, "DAEMON_UPGRADE_SOURCE_UNSUPPORTED");
+    // The established current-format group bypasses legacy source admission.
+    // Its observation owner reports corrupt data without attempting conversion.
+    assert_eq!(error, "DAEMON_STORAGE_UNREADABLE");
     assert_eq!(std::fs::read(&database).unwrap(), original);
     assert!(std::fs::read(&key_path).unwrap() == original_key);
 }

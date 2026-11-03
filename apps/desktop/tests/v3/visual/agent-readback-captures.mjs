@@ -105,3 +105,40 @@ export async function codexDesktopCaptures(client, baseUrl, output) {
   }
   return results;
 }
+
+export async function agentDetailsCaptures(client, baseUrl, output) {
+  const results = [];
+  const ids = ['agent_claude_default', 'agent_codex_default', 'agent_qoder_default', 'agent_hermes_default',
+    'agent_pi_default', 'agent_dsh_default', 'agent_dsh_desktop', 'agent_opencode_default'];
+  for (const [language, theme] of [['zh', 'dark'], ['en', 'light']]) {
+    for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) {
+      await navigate(client, new URL(`agent-trust.html?language=${language}&theme=${theme}`, baseUrl).href, viewport);
+      await waitFor(client, 'Boolean(window.agentTrust && document.querySelector(".native-list .list-row"))');
+      for (const agent of ids) {
+        await evaluate(client, `import('/agent-trust-scenarios.mjs').then(m => m.showAgentDetail(${JSON.stringify(agent)}))`);
+        const geometry = await evaluate(client, `(async () => {
+          const rows = [...document.querySelectorAll('.agent-capability-row')], measured = [];
+          for (const row of rows) {
+            row.scrollIntoView({ block: 'center' }); await new Promise(resolve => requestAnimationFrame(resolve));
+            const heading = row.querySelector('h3'), actions = row.querySelector('.agent-capability-actions');
+            const title = heading.getBoundingClientRect(), action = actions.getBoundingClientRect();
+            measured.push({ label: heading.textContent, overflow: row.scrollWidth > row.clientWidth + 1,
+              overlap: title.right > action.left, labelHeight: title.height,
+              actionVisible: action.left >= 0 && action.right <= innerWidth + 1 && action.top >= 0 && action.bottom <= innerHeight });
+          }
+          document.querySelector('.detail-pane').scrollTop = 0;
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          return { rows: measured, bodyOverflow: document.documentElement.scrollWidth > innerWidth + 1,
+            detailsExpanded: document.querySelector('.native-details').open,
+            text: document.querySelector('.agent-detail').innerText };
+        })()`);
+        if (geometry.bodyOverflow || geometry.detailsExpanded || geometry.rows.some(row => row.overflow || row.overlap || !row.actionVisible || row.labelHeight > 48)) throw Error(`Agent detail geometry: ${JSON.stringify({ agent, language, viewport, geometry })}`);
+        const id = `agent-detail-${agent}-${language}-${theme}-${viewport.width}`;
+        const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+        await writeFile(path.join(output, `${id}.png`), Buffer.from(shot.data, 'base64'));
+        results.push({ id, state: 'green', agent, language, theme, viewport, geometry, screenshot: `${id}.png` });
+      }
+    }
+  }
+  return results;
+}

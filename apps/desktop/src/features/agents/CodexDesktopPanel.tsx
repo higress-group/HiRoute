@@ -9,7 +9,7 @@ export function CodexDesktopPanel({ agent, language, configured, launching, disa
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   return <section className="codex-instance" data-codex-desktop-instance>
-    <div className="agent-launch-row"><div><strong>{text('独立窗口', 'Separate window')}</strong><p>{text('共享用户技能，可与 CLI profile 同时使用。', 'Shared user skills; works alongside the CLI profile.')}</p></div>
+    <div className="agent-launch-row"><div><strong>{text('独立窗口', 'Separate window')}</strong><p>{configured ? text('路由变更后需重开窗口，会话会保留。', 'Reopen after changing routes. Sessions are retained.') : text('选择路由后，即可启动独立窗口。', 'Choose routes to open a separate window.')}</p></div>
       <button type="button" className="btn btn-primary" data-agent-facet={!configured ? 'model' : undefined} data-codex-desktop-launch={configured || undefined} data-codex-desktop-configure={!configured || undefined} disabled={disabled || (configured && !nativeHost)} onClick={event => configured ? onLaunch() : onConfigure(event.currentTarget)}>{launching ? text('启动中…', 'Opening…') : configured ? text('启动独立窗口', 'Open separate window') : text('选择路由并启用', 'Choose routes and enable')}</button>
     </div>
     {feedback && <div className={`callout${feedback.code ? ' bad' : ''}`} role={feedback.code ? 'alert' : 'status'} data-error-code={feedback.code}>{feedback.message}</div>}

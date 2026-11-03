@@ -28,6 +28,8 @@ verified settings and actions.
 | --- | --- |
 | [types.ts](types.ts) | WebView projections and current serialized model choices. These describe the existing native/API contract, not a second capability authority. |
 | [status.ts](status.ts) | Reads the shared model/collaboration-only status union. A missing model capability is distinct from an unconfigured model or an unreadable status. |
+| [AgentCapabilityRow.tsx](AgentCapabilityRow.tsx), [agent-details.css](agent-details.css) | Aligned current-choice/action rows shared by all Agent details and the Hermes directory selector; primary actions remain reachable at the minimum supported size. |
+| [AgentUsageDetails.tsx](AgentUsageDetails.tsx) | Secondary usage, resource paths, known channel overrides and management repair. Mounted only when connection details are expanded, including CLI-entry reads. |
 | [discovery.ts](discovery.ts), [AgentDiscoveryFeedback.tsx](AgentDiscoveryFeedback.tsx) | Supported catalog, remembered non-secret target hints, common rescan and distinct undiscovered/unavailable states. Backend revalidation owns context and write authority. |
 | [AgentSkillDetails.tsx](AgentSkillDetails.tsx) | Backend-supplied Skill scope, shared/borrowed availability, unobserved native loading and the existing CLI-entry preparation commands. |
 | [ecosystems.ts](ecosystems.ts) | Explicit current Agent identity, display name, brand and surface labels. Unknown discovered identities have no settings editor. |
@@ -37,7 +39,7 @@ verified settings and actions.
 | [AgentSettingsFeedback.tsx](AgentSettingsFeedback.tsx) | Presentation of authoritative Preview blockers. |
 | [HermesModelEditor.tsx](HermesModelEditor.tsx), [HermesRootFields.tsx](HermesRootFields.tsx) | One Plan/protocol and explicit effective profile; root fields are shared with source scan. Automatic adapter preparation and unobserved native loading stay distinct. |
 | [collaboration-check-feedback.ts](collaboration-check-feedback.ts) | Versioned collaboration-check failures become safe login, Skill recovery and retry guidance; native output is never display text. |
-| [CodexAccessPanel.tsx](CodexAccessPanel.tsx) | Profile/root facts, mode controls, launch commands, visible mode-specific session-history and original-entry guidance, ordinary file-conflict diagnosis and an existing pending Operation's recovery entry. |
+| [CodexAccessPanel.tsx](CodexAccessPanel.tsx) | Direct CLI command copy, mode controls, compact saved-root history reminder and expandable full launch/history guidance. Setup keeps its full notice visible; file conflicts and pending recovery remain direct. |
 | [CodexDesktopPanel.tsx](CodexDesktopPanel.tsx) | Peer Desktop connection scope, initial route setup, context-only native launch, local retry feedback and shared-skill/directory disclosure. Configuration and launch remain independent actions. |
 | [codex-launch.ts](codex-launch.ts), [codex-surfaces.ts](codex-surfaces.ts) | Confirmed command-copy eligibility and the distinction between detected executables and mode applicability. |
 | [mutation-feedback.ts](mutation-feedback.ts) | Submitted, pre-apply cancelled and uncertain outcomes; truthful disable/recovery messages. |

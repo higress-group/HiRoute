@@ -8,6 +8,24 @@ published routes converge through the common recoverable settings workflow.
 
 ## Requirements
 
+### Requirement: Agent details prioritize current choices and actions
+
+The default details view SHALL use consistent rows for model routing, task routing
+and management, with the current selection or a short explanation beside the
+applicable actions. Desktop launch and CLI command copy remain directly reachable.
+Usage instructions, resource paths, known channel overrides, token controls and
+management repair SHALL be available through collapsed details rather than repeated
+as full paragraphs in the default view. A default Codex root connection retains a
+short visible session-history reminder; setup retains its full mode-specific notice.
+Conflicts, unfinished operations and required repair actions remain directly visible.
+Merely opening a details view SHALL NOT probe an unrelated CLI entry. Selecting
+another Agent resets detail scroll and the expanded secondary section.
+
+#### Scenario: Inspect configuration and then request technical detail
+
+- **WHEN** the user opens any supported Agent and expands its connection details
+- **THEN** the initial view presents concise current choices and actions; expansion exposes applicable usage, resource and recovery information without changing configuration, losing management repair or hiding active conflicts.
+
 ### Requirement: Settings confirmation reads its current target
 
 After a settings change, Desktop SHALL read the exact selected context and confirm
