@@ -552,9 +552,9 @@ async fn interrupted_terminal_checkpoint_retains_lease_completion_and_false_read
 }
 
 #[tokio::test]
-async fn execute_outer_cancel_and_deadline_after_completion_preserve_terminal_receipt() {
+async fn execute_outer_interruptions_after_completion_preserve_terminal_receipt() {
     let mut exercised = Vec::new();
-    for interruption in ["outer-cancel", "deadline"] {
+    for interruption in ["outer-cancel", "deadline", "daemon-shutdown"] {
         let (request, mut input, _directory) = claude_inputs();
         if interruption == "deadline" {
             // The terminal response precedes this bound; the missing native tail
@@ -563,6 +563,7 @@ async fn execute_outer_cancel_and_deadline_after_completion_preserve_terminal_re
         }
         let deadline = input.deadline;
         let cancellation = input.cancellation.clone();
+        let shutdown = CancellationToken::new();
         let journal = Arc::new(TerminalJournal::default());
         let fixture = TailFixture::new(
             journal.clone(),
@@ -584,18 +585,21 @@ async fn execute_outer_cancel_and_deadline_after_completion_preserve_terminal_re
             if interruption == "outer-cancel" {
                 cancellation.cancel();
                 assert!(cancellation.is_cancelled());
+            } else if interruption == "daemon-shutdown" {
+                shutdown.cancel();
+                assert!(shutdown.is_cancelled());
             } else {
                 tokio::time::sleep_until(deadline).await;
                 assert!(Instant::now() >= deadline);
             }
-            // Neither interruption may publish another outcome, revoke twice or
+            // No interruption may publish another outcome, revoke twice or
             // release the finalization lease while the live transport is draining.
             assert_eq!(*journal.events.lock().unwrap(), ["completed", "revoke"]);
             assert!(journal.finalization.try_acquire().is_none());
             assert!(!fixture.task.lock().unwrap().as_ref().unwrap().is_finished());
         };
         let (result, ()) = timeout(Duration::from_secs(4), async {
-            tokio::join!(biased; execute(&fixture, request, input, journal.clone()), interrupt)
+            tokio::join!(biased; execute_with_shutdown(&fixture, request, input, journal.clone(), shutdown.clone()), interrupt)
         })
         .await
         .unwrap();
@@ -616,7 +620,7 @@ async fn execute_outer_cancel_and_deadline_after_completion_preserve_terminal_re
         assert!(journal.finalization.try_acquire().is_some());
         exercised.push(interruption);
     }
-    assert_eq!(exercised, ["outer-cancel", "deadline"]);
+    assert_eq!(exercised, ["outer-cancel", "deadline", "daemon-shutdown"]);
 }
 
 /// ACP EOF belongs to the transport. This independently retained platform object
