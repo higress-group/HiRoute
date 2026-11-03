@@ -5,14 +5,14 @@ use super::*;
 pub(super) fn installed_executable(home: &Path) -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        return windows_installation_roots(home, |key| std::env::var_os(key))
+        windows_installation_roots(home, |key| std::env::var_os(key))
             .into_iter()
             .find_map(windows_installed_executable)
             .or_else(|| {
                 hiroute_platform::windows::installed_apps::uninstall_locations("DeepSeek Harness")
                     .into_iter()
                     .find_map(windows_installed_executable)
-            });
+            })
     }
     #[cfg(target_os = "macos")]
     {

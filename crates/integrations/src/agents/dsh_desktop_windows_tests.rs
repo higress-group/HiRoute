@@ -45,6 +45,7 @@ fn windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases() {
     std::fs::write(&archive, b"runtime identity").unwrap();
     let mut layout = AgentFilesystemLayoutV1::from_process(directory.path(), directory.path());
     layout.dsh_desktop_executable = Some(executable);
+    layout.dsh_config_root = directory.path().join(".dsh");
     let registry = super::super::tests::registry();
     let scanner = FilesystemAgentScannerV1::new(layout, registry);
     let command = scanner.dsh_desktop_command().unwrap();
@@ -116,9 +117,8 @@ fn windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_ch
             .dsh_desktop_model_configuration_is_current(&proof)
             .unwrap()
     );
-    assert_eq!(
-        before,
-        read(),
+    assert!(
+        before == read(),
         "version/composition probes must not initialize or edit native profiles"
     );
 }
