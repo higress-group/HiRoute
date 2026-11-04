@@ -55,6 +55,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-cli", "work_plans"),
         ("hiroute-cli", "worker_dependencies"),
         ("hiroute-cli", "worker_submission"),
+        ("hiroute-cli", "worker_wait"),
         ("hiroute-integrations", "agent_profiles"),
         ("hiroute-integrations", "claude_subscription_catalog"),
         ("hiroute-integrations", "current_model_metadata"),
