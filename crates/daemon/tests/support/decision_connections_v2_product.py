@@ -242,14 +242,14 @@ def run(repository):
                 timeline = data('sessions timeline ' + session_id)
                 requests = [request for turn in timeline['turns'] for request in turn['requests']]
                 failures = [request for request in requests if request.get('decision_failure')]
-                if len(failures) == len(expected):
+                if (len(failures) == len(expected) and len(requests) == 1 + len(expected)
+                        and all(request['outcome'] == 'accepted' for request in requests)):
                     break
             assert time.monotonic() < deadline, 'decision fallback evidence did not reach the timeline'
             time.sleep(.05)
-        assert len(requests) == 1 + len(expected), requests
-        assert all(request['outcome'] == 'accepted' for request in requests), requests
         assert all(request['decision_failure']['service'] == {'id': shared['id'], 'revision': 1}
                    for request in failures), failures
+        assert all(request['decision_failure']['source'] == 'unresolved' for request in failures), failures
         failure_key = lambda failure: (failure['http_status'], failure['kind'])
         assert sorted(failure_key(request['decision_failure']['failure']) for request in failures) == sorted(
             map(failure_key, expected)), failures
