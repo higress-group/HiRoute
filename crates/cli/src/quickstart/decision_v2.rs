@@ -329,16 +329,13 @@ pub(super) fn test(client: &LocalControlClient, options: &[String]) -> Result<Va
         .ok()
         .filter(|revision| *revision > 0)
         .ok_or_else(|| error(ErrorCode::InvalidArguments))?;
-    let services = data(client, "ListDecisionServicesV3", json!({}))?;
-    let row = services["services"]
-        .as_array()
-        .and_then(|rows| {
-            rows.iter()
-                .find(|row| row["service"]["id"] == id && row["service"]["revision"] == revision)
-        })
-        .ok_or_else(|| choices(&["--service (listed ID@REVISION)"], services.clone()))?;
-    Ok(
-        json!({"id":id,"revision":revision,"expected_configuration_digest":row["configuration_digest"]}),
+    data(
+        client,
+        hiroute_application_api::RESOLVE_DECISION_TEST_REVISION_V1,
+        json!(hiroute_application_api::DecisionTestRevisionQueryV1 {
+            id: id.into(),
+            revision
+        }),
     )
 }
 

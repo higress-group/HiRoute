@@ -91,6 +91,16 @@ pub struct DecisionServicesV3 {
     pub services: Vec<DecisionServiceViewV2>,
 }
 
+pub const RESOLVE_DECISION_TEST_REVISION_V1: &str = "ResolveDecisionTestRevisionV1";
+
+/// Same-user Local Control preparation for the CLI's exact revision selector.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionTestRevisionQueryV1 {
+    pub id: String,
+    pub revision: u64,
+}
+
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionServiceTestRequestV2 {

@@ -735,6 +735,12 @@ fn render(envelope: MachineEnvelopeV2<Value>) -> CliExecution {
     } else if envelope
         .error
         .as_ref()
+        .is_some_and(|error| error.message_key == "decision_service.client_version_required")
+    {
+        "Use `hiroute decision connections list` and `hiroute decision connections test --service ID@REVISION` for decision connections saved by current Desktop versions.\n".to_owned()
+    } else if envelope
+        .error
+        .as_ref()
         .is_some_and(|error| error.code == ErrorCode::DaemonUnavailable)
     {
         DAEMON_UNAVAILABLE_HINT.to_owned()
@@ -783,7 +789,16 @@ pub fn root_help() -> String {
 }
 
 fn native_help_document(descriptor: &CommandDescriptorV1) -> String {
-    let document = descriptor.help_document();
+    let mut document = descriptor.help_document();
+    match descriptor.command_id.as_str() {
+        "decision.services.list" | "decision.services.test" => document.push_str(
+            "\nThis command reads V1 decision services. For current Desktop connections, use `hiroute decision connections list` or `hiroute decision connections test --service ID@REVISION`.\n",
+        ),
+        "decision.connections.test" => document.push_str(
+            "\n`--service ID@REVISION` selects an exact saved revision, including a historical revision pinned by a published Plan.\n",
+        ),
+        _ => {}
+    }
     #[cfg(windows)]
     {
         // Presentation adapts carriers; the shared registry and its digest retain their bytes.

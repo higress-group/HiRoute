@@ -90,6 +90,10 @@ impl ApplicationService {
             return control_plane::agent_settings::summary(self, request);
         }
 
+        if request.operation_id == hiroute_application_api::RESOLVE_DECISION_TEST_REVISION_V1 {
+            return self.resolve_decision_test_revision(request);
+        }
+
         let Some(descriptor) = command_by_operation(&request.operation_id) else {
             return failed(ErrorCode::UnknownCommand, request.request_id);
         };

@@ -1313,6 +1313,10 @@ Key changes affect later calls without republishing. Changing the decision model
 protocol or source creates a new immutable revision; select that revision in the route and publish
 it. Previously published routes keep their selected revision and source.
 
+`decision connections test --service ID@REVISION` can test any exact retained revision, including
+one pinned by a published Plan after a newer save. Read the revision from the Plan when diagnosing
+its route. A missing revision fails before any provider call.
+
 Use `--endpoint`, `--model` and `--wire-protocol system_one|openai_decisions` to set the exact
 provider request. For an arbitrary `compatible` connection, select the protocol explicitly.
 Choose the appropriate Bailian Token Plan or workspace endpoint; a preset does not establish
@@ -1366,7 +1370,9 @@ replay a stale change. Discover full current request schemas with `schema show`.
 ### Existing V1 decision service commands
 
 The released `decision services list/apply/test` commands retain their strict V1 contract. Use
-`decision connections list/apply/test` for tagged V2 connections, including shared credentials.
+`decision connections list/apply/test` for tagged V2 and V3 connections, including shared credentials.
+If a V1 list or test returns `SCHEMA_INCOMPATIBLE` with `decision_service.client_version_required`,
+use the corresponding `decision connections` command.
 Existing V1 content and published route snapshots remain readable without rewriting their hashes.
 The following example shows the legacy V1 request shape:
 
