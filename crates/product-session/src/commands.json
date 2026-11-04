@@ -986,6 +986,12 @@
     "host_only": true
   },
   {
+    "name": "launch_codex_desktop",
+    "args": [{ "name": "context_id", "type": "String" }],
+    "result": "Result<serde_json::Value, DesktopFailure>",
+    "host_only": true
+  },
+  {
     "name": "open_external_url",
     "args": [],
     "result": "Result<(), DesktopFailure>",

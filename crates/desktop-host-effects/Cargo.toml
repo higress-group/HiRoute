@@ -6,6 +6,12 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+hiroute-platform = { path = "../platform" }
+hiroute-product-session = { path = "../product-session" }
+hiroute-client-core = { path = "../client-core" }
+tokio.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"

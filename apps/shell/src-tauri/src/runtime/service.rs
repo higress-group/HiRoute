@@ -99,7 +99,7 @@ pub(super) fn execute(
 pub(super) fn manager(args: &[&str]) -> Result<Value, &'static str> {
     execute(&cli()?, args, None, Duration::from_secs(45))
 }
-fn client() -> Result<Client, &'static str> {
+pub(super) fn client() -> Result<Client, &'static str> {
     let layout = StandaloneLayout::from_environment().map_err(|_| "INSTALLATION_UNAVAILABLE")?;
     Ok(Client::new(
         "hiroute-shell",

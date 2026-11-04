@@ -6,6 +6,7 @@ fn main() {
                 "shell_status",
                 "shell_retry_startup",
                 "shell_capabilities",
+                "shell_launch_codex_desktop",
                 "shell_open_in_browser",
                 "shell_open_external_url",
                 "shell_save_classifier_openapi",

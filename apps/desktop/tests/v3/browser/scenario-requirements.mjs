@@ -1,6 +1,13 @@
 // Reviewed capability gates. New discovered scenarios run in full mode automatically.
 // Retire a required ID only with an explicit replacement of its unique guarantee.
 export const agentTrustRequired = ['dsh.desktop.independent-model-settings','codex.restore.conflict-active',
+  'agent.desktop.shared-management',
+  'agent.desktop.shared-management-recovery',
+  'codex.desktop.independent-launch-and-retry',
+  'codex.desktop.platform-launch',
+  'codex.desktop.restore-draft-isolation',
+  'codex.desktop.token-update-restart',
+  'agent.details.progressive-disclosure',
   'hermes.discovery.parallel-entry',
   'agent.discovery.remember-and-revalidate',
   'agent.management.all-supported-families',

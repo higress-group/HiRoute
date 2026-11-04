@@ -224,6 +224,7 @@
     "hiroute.desktop-plan-intent/v1",
     "hiroute.desktop-price-intent/v1",
     "hiroute.desktop-rename-intent/v1",
+    "hiroute.desktop-shared-management/v1",
     "hiroute.desktop-subscription-check-intent/v1",
     "hiroute.desktop-upgrade-handoff/v1",
     "hiroute.desktop-worker-dependency-selection-intent/v1",

@@ -7,6 +7,7 @@ type SettingsDraft = {
   values: AgentEditorValues;
   codexMode: 'profile' | 'root';
   restoreNativeModel: string;
+  managementContextId?: string;
 };
 
 /** Build only the public intent. Native Preview/confirmation owns authorization and Apply. */
@@ -18,7 +19,8 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
   if (ecosystem === 'hermes' && !agent.native_target) throw new Error('AGENT_INPUT_INVALID');
   const keep = { intent: 'keep' as const };
   if (facet === 'management_skill') {
-    return { schema_version: { major: 2, minor: 0 }, context_id: agent.codex_access?.root_context_id ?? agent.context_id, ...target,
+    if (['agent_codex_desktop', 'agent_dsh_desktop'].includes(agent.agent_id) && !draft.managementContextId) throw new Error('AGENT_STATUS_UNVERIFIED');
+    return { schema_version: { major: 2, minor: 0 }, context_id: draft.managementContextId ?? agent.codex_access?.root_context_id ?? agent.context_id, ...target,
       model: keep, collaboration: keep, management_skill: restore
         ? { intent: 'restore', restore_point_ref: agent.settings?.management_skill?.restore_point_ref }
         : { intent: 'configure', settings: {} } };
@@ -69,7 +71,7 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
       context_id: agent.codex_access && !agent.codex_access.slot_occupied
         ? (codexMode === 'root' ? agent.codex_access.root_context_id : agent.codex_access.profile_context_id)
         : agent.context_id,
-      restore_native_model: restore && ecosystem === 'codex' && agent.codex_access?.selected_mode !== 'profile' && restoreNativeModel
+      restore_native_model: restore && agent.agent_id === 'agent_codex_default' && agent.codex_access?.selected_mode === 'root' && restoreNativeModel
         ? restoreNativeModel : undefined,
       model: restore
         ? { intent: 'restore', restore_point_ref: agentModelStatus(agent)?.restore_point_ref }

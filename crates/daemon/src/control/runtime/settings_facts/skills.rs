@@ -168,6 +168,43 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
+        #[cfg(any(unix, windows))]
+        if matches!(class, SettingsAgentClass::Codex | SettingsAgentClass::Dsh)
+            && matches!(spec.collaboration, AgentFacetIntent::Keep)
+            && !matches!(spec.management_skill, None | Some(AgentFacetIntent::Keep))
+            && (class == SettingsAgentClass::Codex
+                && !self
+                    .scanner
+                    .available_model_surfaces("agent_codex_default")
+                    .contains(&hiroute_domain::AgentModelSurfaceV2::CodexCli)
+                || class == SettingsAgentClass::Dsh
+                    && self.scanner.dsh_executable_target().is_none())
+        {
+            let (_, target) = self.settings_skill_resource(
+                &spec.context_id,
+                None,
+                AgentSettingsFacet::ManagementSkill,
+            )?;
+            let path = self
+                .artifacts
+                .native_target_path(&target)
+                .map_err(super::super::map_port)?;
+            if class == SettingsAgentClass::Codex {
+                self.refresh_codex_desktop_location();
+            }
+            let installation = self
+                .scanner
+                .desktop_management_installation(
+                    class.agent_id(),
+                    &path,
+                    matches!(
+                        spec.management_skill,
+                        Some(AgentFacetIntent::Configure { .. })
+                    ),
+                )
+                .ok_or(ControlReadError::NotFound)?;
+            return self.skill_only_settings_snapshot_for_installation(spec, class, installation);
+        }
         let installation = if class == SettingsAgentClass::Hermes {
             hiroute_integrations::hermes_management_installation(
                 &self.hermes_target_for_spec(spec)?,
@@ -190,6 +227,15 @@ impl LocalControlAdapter {
             };
             *installation
         };
+        self.skill_only_settings_snapshot_for_installation(spec, class, installation)
+    }
+
+    fn skill_only_settings_snapshot_for_installation(
+        &self,
+        spec: &AgentSettingsSpecV2,
+        class: SettingsAgentClass,
+        installation: hiroute_domain::SupportedAgentInstallationV1,
+    ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         let subject = if class == SettingsAgentClass::Hermes {
             hiroute_integrations::hermes_subject(self.hermes_target_for_spec(spec)?.config_root())
                 .map_err(|_| ControlReadError::Corrupt)?

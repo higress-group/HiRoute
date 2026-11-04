@@ -124,6 +124,59 @@ Local CLI callers can resume that same operation through `agents connect apply` 
 This retry accepts no new settings or grants. The daemon checks the stored operation and its
 context before continuing. First-time creation and edits still require normal Preview/Apply.
 
+### Independent Codex Desktop window
+
+**HiRoute management** is shared by Codex CLI and Desktop through the real user's
+`.agents/skills` directory. Its Enable/Disable action and recovery state are the
+same in either Agent entry, including when CLI models use an independent profile.
+The management dialog explains this shared scope; model routing remains separate.
+DSH Desktop also exposes management, shared with Web in the same DSH_HOME. A
+separate native CLI is not required when the supported Desktop application is
+installed. Skill preparation does not prove an already-running session loaded it;
+refresh the native skill list or start a new session as needed.
+
+Open **Agents → Codex Desktop**, choose routes and enable model routing, then use
+**Open separate window**. This is independent of **Agents → Codex** and its CLI
+profile. Both connections may stay enabled. Native launch is available in HiRoute
+Desktop on macOS and the Windows Shell with the ChatGPT / Codex desktop app installed;
+the installed Codex CLI is not a substitute. Windows resolves the current user's MSIX
+registration and keeps environment changes private to the new desktop process.
+Windows/Linux installation facts refresh when scanning or configuring this connection,
+including after application installation or an update. The existing routing grant,
+private directories and native history remain bound to the same connection.
+
+The Web console offers **Copy launch command**, including on Linux. Run the copied
+`hiroute agents desktop launch '<CONTEXT_ID>' --output json` command on the HiRoute
+service computer, in its logged-in graphical desktop terminal. It checks the saved
+connection, prepares shared skills and launches the installed application. Linux
+requires the desktop `chatgpt` package and DISPLAY or WAYLAND_DISPLAY; an SSH/headless
+shell alone cannot display a window. A remote browser never launches an application
+on the browser computer or dispatches a server-side launch through HTTP. **View launch
+command** remains available if clipboard access is blocked.
+
+The instance uses private Codex, SQLite and Electron data directories while retaining
+the real HOME. Ordinary subscription settings, login and sessions are not copied.
+Its directory is shown under **Connection details and recovery** and is outside
+HiRoute's Core data/upgrade snapshots. Normal macOS Desktop uses
+`~/Library/Application Support/ai.hiroute.desktop/storage.codex-desktop/`; isolated
+validation runs use their explicitly selected test root. After route or token changes
+succeed, quit this separate instance and start it again so its process loads the new
+configuration. Disabling routing retains its native sessions and login.
+
+If HiRoute starts with an inherited `CODEX_HOME` pointing into its private instance,
+startup refuses the directory conflict. Restart HiRoute with the original `CODEX_HOME`
+used for its active connections, then restore or disable the Desktop connection if
+needed. Do not delete data or redirect the existing managed files to bypass this check.
+
+Existing `.agents/skills` and project skills remain shared. When opening the window,
+HiRoute also links ordinary Codex user skill folders individually, including their
+scripts/resources, skipping `.system` and duplicate `.agents/skills` names. Existing
+entries inside the instance are preserved. Links remain after disabling routing;
+source updates are visible through them. Windows uses local directory junctions,
+without administrator rights or Developer Mode; Unix uses symbolic links. Network-share
+skill targets cannot be represented by a Windows junction and are not silently copied.
+Each instance manages its own system skills.
+
 ### Find earlier Codex sessions
 
 Default **On demand** mode preserves ordinary Codex configuration and session

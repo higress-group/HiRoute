@@ -5,6 +5,7 @@ use super::*;
 pub(in crate::control::runtime) enum SettingsAgentClass {
     Codex,
     CodexProfile,
+    CodexDesktop,
     Claude,
     Qoder,
     Pi,
@@ -15,13 +16,23 @@ pub(in crate::control::runtime) enum SettingsAgentClass {
 }
 
 impl SettingsAgentClass {
+    /// User management Skills have one owner across native UI/profile views.
+    pub(in crate::control::runtime) fn management_owner(self) -> Self {
+        match self {
+            Self::CodexProfile | Self::CodexDesktop => Self::Codex,
+            Self::DshDesktop => Self::Dsh,
+            _ => self,
+        }
+    }
+
     pub(in crate::control::runtime) fn is_codex(self) -> bool {
-        matches!(self, Self::Codex | Self::CodexProfile)
+        matches!(self, Self::Codex | Self::CodexProfile | Self::CodexDesktop)
     }
 
     pub(in crate::control::runtime) fn agent_id(self) -> &'static str {
         match self {
             Self::Codex | Self::CodexProfile => "agent_codex_default",
+            Self::CodexDesktop => hiroute_integrations::CODEX_DESKTOP_AGENT_ID,
             Self::Claude => "agent_claude_default",
             Self::Qoder => "agent_qoder_default",
             Self::Pi => "agent_pi_default",
@@ -35,6 +46,7 @@ impl SettingsAgentClass {
     pub(in crate::control::runtime) fn context_segment(self) -> &'static str {
         match self {
             Self::Codex | Self::CodexProfile => "codex",
+            Self::CodexDesktop => "codex-desktop",
             Self::Claude => "claude",
             Self::Qoder => "qoder",
             Self::Pi => "pi",
@@ -51,6 +63,7 @@ impl SettingsAgentClass {
         Some(match self {
             Self::Codex => scanner.codex_user_config_target(),
             Self::CodexProfile => scanner.codex_profile_config_target(),
+            Self::CodexDesktop => return scanner.codex_desktop_config_target(),
             Self::Claude => scanner.claude_user_settings_target(),
             Self::Qoder => scanner.qoder_user_config_target(),
             Self::Pi => scanner.pi_user_models_target(),
@@ -64,6 +77,7 @@ impl SettingsAgentClass {
     pub(in crate::control::runtime) fn skill_root_ref(self) -> &'static str {
         match self {
             Self::Codex | Self::CodexProfile => "skill-root/agent_codex_default",
+            Self::CodexDesktop => "skill-root/agent_codex_desktop",
             Self::Claude => "skill-root/agent_claude_default",
             Self::Qoder => "skill-root/agent_qoder_default",
             Self::Pi => "skill-root/agent_pi_default",
@@ -88,7 +102,7 @@ impl SettingsAgentClass {
             return Err(hiroute_domain::OperationValidationError::UnregisteredEffectPlan);
         }
         let (profile_id, integration_profile_ref) = match self {
-            Self::Codex | Self::CodexProfile => (
+            Self::Codex | Self::CodexProfile | Self::CodexDesktop => (
                 hiroute_integrations::CODEX_PROFILE_ID_V1,
                 hiroute_integrations::CODEX_INTEGRATION_PROFILE_REF_V1,
             ),
@@ -129,5 +143,18 @@ impl SettingsAgentClass {
             }
         };
         role.settings_target_for(&subject)
+    }
+
+    pub(in crate::control::runtime) fn scanner(
+        self,
+        scanner: &FilesystemAgentScannerV1,
+    ) -> FilesystemAgentScannerV1 {
+        if self == Self::CodexDesktop {
+            scanner
+                .codex_desktop_scanner()
+                .expect("registered desktop namespace")
+        } else {
+            scanner.clone()
+        }
     }
 }

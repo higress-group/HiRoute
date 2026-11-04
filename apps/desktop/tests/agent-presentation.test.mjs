@@ -51,13 +51,13 @@ test('Home preserves verified delegated executor names without inventing Agent n
 });
 
 
-test('DSH Desktop has independent model identity without claiming unverified Skills', () => {
+test('DSH Desktop has independent models and shared management without delegation', () => {
   const id = 'agent_dsh_desktop';
   assert.equal(agentDisplayName(id, 'zh'), 'DeepSeek Harness Desktop');
   assert.equal(surfaceName('dsh_desktop'), 'DeepSeek Harness Desktop');
   assert.equal(agentSupportsModelRouting(id), true);
   assert.equal(agentSupportsCollaboration(id), false);
-  assert.equal(agentSupportsManagement(id), false);
+  assert.equal(agentSupportsManagement(id), true);
   assert.equal(agentModelSelectionMatches(id, { mode: 'dsh_additional' }), true);
   const row = projectHomeAgents({ agents: [{ agent_id: id, settings: null }] }).agents[0];
   assert.equal(row.displayName, 'DeepSeek Harness Desktop');

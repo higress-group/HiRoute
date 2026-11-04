@@ -7,6 +7,8 @@ export type HostCapabilities = {
   quit: boolean;
   titlebar: boolean;
   login_start: boolean;
+  /** Absent on older Windows shells: retain the local-command fallback. */
+  codex_desktop_launch?: boolean;
   directory_reveal: 'native' | 'path';
   diagnostic_directory?: string;
   recovery_directory?: string;

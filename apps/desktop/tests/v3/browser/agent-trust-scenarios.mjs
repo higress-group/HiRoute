@@ -34,7 +34,7 @@ async function freshCodex(kind, singleRoute = false) {
   if (singleRoute) c().agents.plans.plans = c().agents.plans.plans.filter(plan => plan.head.status === 'enabled').slice(0, 1);
   await tick();
   await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Codex')), 'agents loaded');
-  document.querySelectorAll('.native-list .list-row').forEach(row => { if (row.textContent.includes('Codex')) row.click(); });
+  [...document.querySelectorAll('.native-list .list-row')].find(row => row.querySelector('.row-title')?.textContent.trim() === 'Codex').click();
   await until(() => document.querySelector('[data-agent-id="agent_codex_default"] .detail-hero'), 'Codex detail');
 }
 async function openEditor(kind = 'model', advanced = true) {
@@ -64,12 +64,14 @@ export async function showDshDesktopEditor() {
   const web = c().agents.agents.find(a => a.agent_id === 'agent_dsh_default');
   c().agents.agents.push({ ...structuredClone(web), agent_id: 'agent_dsh_desktop',
     context_id: 'agent-context/dsh/desktop-fixture', available_surfaces: ['dsh_desktop'],
-    settings: { state: 'not_configured', model_verified: false, restore_point_ref: null, current_selection: null } });
+    settings: { state: 'not_configured', model_verified: false, restore_point_ref: null, current_selection: null,
+      management_skill: structuredClone(web.settings.management_skill) } });
   c().refresh();
+  await tick();
   await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('DeepSeek Harness Desktop')), 'Desktop entry loaded');
   [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('DeepSeek Harness Desktop')).click();
   await until(() => document.querySelector('[data-agent-id="agent_dsh_desktop"]'), 'Desktop selection');
-  assert(!facet('collaboration') && !facet('management_skill'), 'Model support invented Desktop Skill support');
+  assert(!facet('collaboration') && facet('management_skill'), 'Desktop lost shared management or invented delegation');
   await openEditor('model', false);
   assert(dialog().textContent.includes('DeepSeek Harness Desktop') && !dialog().textContent.includes('dsh web'), 'Desktop guidance targets the wrong client');
   const route = dialog().querySelector('input[type=checkbox]');
@@ -77,7 +79,242 @@ export async function showDshDesktopEditor() {
   await tick();
 }
 
+export async function showCodexIndependentDesktop(configured = true) {
+  c().reset(); c().agents = c().independentCodexDesktop(configured); c().refresh();
+  await tick();
+  await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Codex Desktop')), 'independent Desktop entry');
+  [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex Desktop')).click();
+  await until(() => document.querySelector('[data-agent-id="agent_codex_desktop"] [data-codex-desktop-instance]'), 'independent Desktop detail');
+}
+
+export async function showDesktopManagement(id) {
+  if (id === 'agent_codex_desktop') await showCodexIndependentDesktop(false);
+  else {
+    c().reset(); c().agents=c().registered();
+    const owner=c().agents.agents.find(agent=>agent.agent_id==='agent_dsh_default');
+    c().agents.agents.push({...structuredClone(owner),agent_id:id,context_id:'agent-context/dsh/desktop-fixture',available_surfaces:['dsh_desktop']});
+    c().refresh();await tick();
+    await until(()=>[...document.querySelectorAll('.native-list .list-row')].some(row=>row.textContent.includes('DeepSeek Harness Desktop')),'DSH Desktop');
+    [...document.querySelectorAll('.native-list .list-row')].find(row=>row.textContent.includes('DeepSeek Harness Desktop')).click();
+  }
+  await until(()=>document.querySelector(`[data-agent-id="${id}"] .detail-hero`),'Desktop management detail');
+}
+
+export async function showAgentDetail(id) {
+  c().reset();
+  let snapshot;
+  if (id === 'agent_codex_default') {
+    snapshot = c().splitCodexStatus();
+    snapshot.agents.find(agent => agent.agent_id === id).codex_access.selected_mode = 'profile';
+    snapshot.agents.find(agent => agent.agent_id === id).codex_access.commands = { zsh: 'codex --profile hiroute' };
+  } else if (id === 'agent_hermes_default') snapshot = c().hermesConfigured();
+  else if (['qoder', 'pi', 'dsh', 'opencode'].some(kind => id === `agent_${kind}_default`)) snapshot = c().additionalRouted(id.split('_')[1]);
+  else if (id === 'agent_dsh_desktop') {
+    snapshot = c().additionalRouted('dsh');
+    snapshot.agents.push({ ...structuredClone(snapshot.agents[0]), agent_id: id,
+      context_id: 'agent-context/dsh/desktop-fixture', available_surfaces: ['dsh_desktop'] });
+  } else snapshot = c().registered();
+  const agent = snapshot.agents.find(agent => agent.agent_id === id);
+  if (agent.settings) agent.settings.management_skill = { state: 'configured', restore_point_ref: 'restore/management-fixture',
+    resource: { directory: '/selected/skills/hiroute-management', native_available: true, runtime_loading: 'unobserved', shared_context_count: 2, file_ownership: 'borrowed_identical' } };
+  if(id==='agent_dsh_desktop') snapshot.agents.find(value=>value.agent_id==='agent_dsh_default').settings.management_skill=structuredClone(agent.settings.management_skill);
+  c().agents = snapshot; c().refresh(); await tick();
+  const names = { agent_codex_default: 'Codex', agent_claude_default: 'Claude Code', agent_qoder_default: 'Qoder',
+    agent_hermes_default: 'Hermes', agent_pi_default: 'Pi', agent_dsh_default: 'DeepSeek Harness Web',
+    agent_dsh_desktop: 'DeepSeek Harness Desktop', agent_opencode_default: 'OpenCode' };
+  await until(() => [...document.querySelectorAll('.native-list .row-title')].some(title => title.textContent.trim() === names[id]), `${id} list entry`);
+  [...document.querySelectorAll('.native-list .list-row')].find(row => row.querySelector('.row-title')?.textContent.trim() === names[id]).click();
+  await until(() => document.querySelector(`[data-agent-id="${id}"] .detail-hero`), `${id} detail`);
+}
+
 const scenarios = [
+  scenario('agent.desktop.shared-management', ['desktop-management'], 'Desktop management uses the shared owner for configure/disable, and native prerequisites use its original Agent', async () => {
+    for(const id of ['agent_codex_desktop','agent_dsh_desktop']) {
+      await showDesktopManagement(id);
+      const ownerId=id==='agent_codex_desktop'?'agent_codex_default':'agent_dsh_default';
+      const owner=c().agents.agents.find(agent=>agent.agent_id===ownerId);
+      const desktop=c().agents.agents.find(agent=>agent.agent_id===id);
+      const context=owner.codex_access?.root_context_id??owner.context_id;
+      const model=JSON.stringify(desktop.settings.current_selection);
+      const ownerModel=JSON.stringify(owner.settings.current_selection);
+      c().agents.plans.plans=[];
+      assert(facet('management_skill')&&!facet('collaboration'),'Desktop management or delegation boundary missing');
+      assert(document.querySelector('[data-agent-management]').textContent.includes('共享'),'Shared scope is hidden before editing');
+      await openEditor('management_skill',false);
+      assert(dialog().querySelector('[data-agent-management-shared]'),'Editor does not explain the shared effect');
+      [...dialog().querySelectorAll('button')].find(button=>button.textContent.trim()==='取消').click();await tick();
+      assert(calls('preview_agent_settings').length===0,'Cancel submitted management');
+      let prepared=false;
+      c().handlers.preview_agent_settings=args=>{
+        const spec=args.input.spec;
+        assert(spec.context_id===context&&spec.model.intent==='keep'&&spec.collaboration.intent==='keep','Management borrowed a model or Desktop context');
+        if(!prepared){prepared=true;return{preview:{applicable:false,blockers:[{capabilities:[{capability:'skill_loading'}]}]}};}
+        const configured=spec.management_skill.intent==='configure';
+        const status={state:configured?'configured':'restored',restore_point_ref:configured?'restore/shared-management':null,operation_id:'operation/shared-management',operation_state:'succeeded'};
+        owner.settings.management_skill=structuredClone(status);desktop.settings.management_skill=structuredClone(status);
+        return{preview:{applicable:true,blockers:[]},mutation:{state:'applied',operation:{operation_id:'operation/agent-settings-fixture',state:'succeeded',sequence:1,cancellable:false}}};
+      };
+      await openEditor('management_skill',false);await save();
+      assert(calls('check_agent_authentication')[0].payload.input.agent_id===ownerId,'Management prerequisite checked the model-only Desktop identity');
+      assert(configureSpecs().length===2&&configureSpecs().every(spec=>spec.context_id===context),'Prerequisite retry changed management owner');
+      assert(facet('management_skill').textContent.trim()==='停用','Configured Desktop still offers Enable');
+      facet('management_skill').click();
+      await until(()=>calls('preview_agent_settings').length===3&&!facet('management_skill').disabled,'shared management restore');
+      assert(configureSpecs()[2].management_skill.restore_point_ref==='restore/shared-management','Disable lost the shared restore reference');
+      assert(facet('management_skill').textContent.trim()==='启用','Disabled Desktop still appears enabled');
+      assert(JSON.stringify(desktop.settings.current_selection)===model&&JSON.stringify(owner.settings.current_selection)===ownerModel,'Management changed either model selection');
+      assert(calls('launch_codex_desktop').length===0&&calls('trial_agent_model').length===0,'Management launched a client or used model-only confirmation');
+    }
+  }),
+  scenario('agent.desktop.shared-management-recovery', ['desktop-management'], 'Desktop recovery retries the canonical management Operation rather than its separate model context', async () => {
+    for(const id of ['agent_codex_desktop','agent_dsh_desktop']) {
+      await showDesktopManagement(id);
+      const desktop=c().agents.agents.find(agent=>agent.agent_id===id);
+      const owner=c().agents.agents.find(agent=>agent.agent_id===(id==='agent_codex_desktop'?'agent_codex_default':'agent_dsh_default'));
+      desktop.settings.management_skill={state:'needs_attention',operation_id:'operation/shared-pending',operation_state:'needs_attention',restore_point_ref:null};
+      c().handlers.retry_agent_settings=()=>({});c().refresh();await tick();
+      const retry=[...document.querySelectorAll('button')].find(button=>button.textContent.includes('重新检查并继续原操作'));
+      assert(retry&&!retry.disabled,'Shared management recovery unavailable');retry.click();
+      await until(()=>calls('retry_agent_settings').length===1,'shared management retry');
+      const input=calls('retry_agent_settings')[0].payload.input;
+      assert(input.context_id===(owner.codex_access?.root_context_id??owner.context_id)&&input.operation_id==='operation/shared-pending','Recovery used Desktop model identity');
+      assert(calls('preview_agent_settings').length===0,'Recovery created another settings operation');
+    }
+  }),
+  scenario('agent.details.progressive-disclosure', ['agent-details'], 'Agent details prioritize configuration and actions while retaining usage, resources and repair', async () => {
+    for (const id of ['agent_claude_default', 'agent_codex_default', 'agent_qoder_default', 'agent_hermes_default', 'agent_pi_default', 'agent_dsh_default', 'agent_dsh_desktop', 'agent_opencode_default']) {
+      await showAgentDetail(id);
+      assert(facet('model') && !facet('model').disabled, `${id} lost its primary configuration action`);
+      assert(!document.querySelector('.agent-usage-details'), `${id} shows technical detail by default`);
+      assert(calls('cli_entry_status').length === 0, `${id} probes unrelated CLI state on navigation`);
+      const details = document.querySelector('.native-details');
+      assert(!details.open && !text().includes('/selected/skills/hiroute-management'), `${id} exposes resource paths by default`);
+      details.querySelector('summary').click(); await tick();
+      assert(document.querySelector('.agent-usage-details'), `${id} lost its usage details`);
+      const heading = details.querySelector('.agent-usage-details h4');
+      if (heading) {
+        const gap = heading.getBoundingClientRect().top - details.querySelector('summary').getBoundingClientRect().bottom;
+        assert(gap >= 12, `${id} usage heading touches the summary focus ring (${gap}px gap)`);
+      }
+      if (facet('management_skill')) {
+        assert(text().includes('/selected/skills/hiroute-management'), `${id} lost the Skill resource path`);
+        const repair = [...details.querySelectorAll('button')].find(button => button.textContent === '重新准备 Skill');
+        assert(repair && !repair.disabled, `${id} lost management repair`);
+        repair.click(); await until(() => dialog(), `${id} repair editor`);
+        assert(c().operations.length === 0, 'Opening repair applied settings');
+      }
+    }
+  }),
+  scenario('codex.desktop.platform-launch', ['codex-desktop'], 'Windows Shell launches natively and Linux console copies an exact local command without HTTP launch', async () => {
+    try {
+      await showCodexIndependentDesktop(); c().setPlatform('windows'); c().refresh(); await tick();
+      let button=document.querySelector('[data-codex-desktop-launch]');
+      assert(!button.disabled && /启动独立窗口/.test(button.textContent), 'Windows Shell launch unavailable');
+      button.click(); await until(()=>calls('launch_codex_desktop').length===1 && !button.disabled,'Windows native host action');
+      assert(Object.keys(calls('launch_codex_desktop')[0].payload).join()==='contextId','Windows accepted launch paths');
+      await showCodexIndependentDesktop(); c().setPlatform('linux'); c().refresh(); await tick();
+      button=document.querySelector('[data-codex-desktop-launch]');
+      assert(!button.disabled && /复制启动命令/.test(button.textContent),'Linux command action unavailable');
+      const code=document.querySelector('.codex-instance-command code');
+      assert(code?.textContent.includes("hiroute agents desktop launch '") && code.textContent.includes('context/codex-desktop'), 'Linux command uses another context');
+      const reads=calls('agent_snapshot').length;
+      button.click(); await until(()=>!button.disabled && document.querySelector('[data-codex-desktop-instance] [role=status], [data-error-code=CLIPBOARD_UNAVAILABLE]'),'Linux copy feedback');
+      assert(calls('agent_snapshot').length===reads,'Copying a context-only command read the unrelated Plan catalog');
+      assert(calls('launch_codex_desktop').length===0 && calls('shell_launch_codex_desktop').length===0,'Console attempted HTTP/native launch');
+      assert(document.querySelector('.codex-instance-command').textContent.includes('服务所在电脑'),'Command execution location missing');
+      assert(calls('preview_agent_settings').length===0,'Launch command changed settings');
+    } finally { c().setPlatform('macos'); }
+  }),
+  scenario('codex.desktop.restore-draft-isolation', ['codex-desktop'], 'The optional ordinary Codex restore model never follows selection into the independent Desktop', async () => {
+    await showCodexIndependentDesktop();
+    const cli=JSON.stringify(c().agents.agents.find(agent=>agent.agent_id==='agent_codex_default'));
+    const desktopContext=c().agents.agents.find(agent=>agent.agent_id==='agent_codex_desktop').context_id;
+    const select=async id=>{
+      const name=id==='agent_codex_default'?'Codex':'Codex Desktop';
+      [...document.querySelectorAll('.native-list .list-row')].find(row=>row.querySelector('.row-title')?.textContent.trim()===name).click();
+      await until(()=>document.querySelector(`[data-agent-id="${id}"] .detail-hero`),`${id} selected`);
+    };
+    const restoreInput=async()=>{
+      const details=document.querySelector('.native-details');
+      if(!details.open) details.querySelector('summary').click();
+      await until(()=>document.querySelector('input[list="codex-native-restore-models"]'),'ordinary root restore input');
+      return document.querySelector('input[list="codex-native-restore-models"]');
+    };
+    await select('agent_codex_default');
+    let input=await restoreInput();
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'gpt-cli-only');
+    input.dispatchEvent(new Event('input',{bubbles:true}));await tick();
+    assert(input.value==='gpt-cli-only','The restore draft was not entered');
+    await select('agent_codex_desktop');
+    assert(!document.querySelector('input[list="codex-native-restore-models"]'),'Desktop exposes an ordinary root restore choice');
+    await select('agent_codex_default');input=await restoreInput();
+    assert(input.value==='','Changing connections retained an unrelated restore draft');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'gpt-cli-only');
+    input.dispatchEvent(new Event('input',{bubbles:true}));await tick();
+    await select('agent_codex_desktop');
+    const disable=[...document.querySelectorAll('[data-agent-model] button')].find(button=>button.textContent.trim()==='停用');
+    assert(disable&&!disable.disabled,'Desktop disable is unavailable');disable.click();
+    await until(()=>calls('preview_agent_settings').length===1,'Desktop disable preview');
+    const spec=configureSpecs()[0];
+    assert(spec.context_id===desktopContext&&spec.model.restore_point_ref,'Disable targeted another connection');
+    assert(spec.restore_native_model===undefined,'Ordinary root restore model leaked into Desktop');
+    assert(JSON.stringify(c().agents.agents.find(agent=>agent.agent_id==='agent_codex_default'))===cli,'Desktop disable changed the ordinary CLI state');
+  }),
+  scenario('codex.desktop.independent-launch-and-retry', ['codex-desktop'], 'Independent Desktop coexists with CLI and launch retry never repeats Apply', async () => {
+    await showCodexIndependentDesktop();
+    assert(!facet('collaboration') && facet('management_skill'), 'Desktop lost shared management or invented delegation');
+    assert([...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Codex')).length === 2, 'CLI entry disappeared');
+    const button = document.querySelector('[data-codex-desktop-launch]');
+    assert(!button.disabled, 'Configured Desktop cannot launch');
+    c().handlers.launch_codex_desktop = () => { throw { code: 'CODEX_DESKTOP_LAUNCH_FAILED' }; };
+    button.click();
+    await until(() => document.querySelector('[data-error-code="CODEX_DESKTOP_LAUNCH_FAILED"]'), 'launch error');
+    assert(calls('preview_agent_settings').length === 0, 'Launch changed routing');
+    c().handlers.launch_codex_desktop = () => ({ preserved_skills: 1 });
+    button.click();
+    await until(() => calls('launch_codex_desktop').length === 2 && !button.disabled, 'launch retry');
+    assert(calls('launch_codex_desktop').every(call => Object.keys(call.payload).join() === 'contextId'), 'WebView supplied launch paths or environment');
+    assert(calls('preview_agent_settings').length === 0, 'Retry replayed Apply');
+    await openEditor('model', false);
+    assert(!document.querySelector('[data-codex-desktop-instance] [role=status]'), 'Old launch feedback survived a new settings action');
+    await showCodexIndependentDesktop(false);
+    assert(!document.querySelector('[data-codex-desktop-launch]'), 'Unconfigured Desktop can launch');
+    document.querySelector('[data-codex-desktop-configure]').click();
+    await until(() => visible(dialog()), 'Desktop setup from primary action');
+    assert(!dialog().querySelector('[data-codex-history-guidance]'), 'Independent Desktop uses root takeover guidance');
+  }),
+  scenario('codex.desktop.token-update-restart', ['codex-desktop'], 'Desktop token updates discard old launch feedback and require an explicit instance restart', async () => {
+    for (const regenerate of [true, false]) {
+      await showCodexIndependentDesktop();
+      const desktopContext = c().agents.agents.find(agent => agent.agent_id === 'agent_codex_desktop').context_id;
+      const cli = JSON.stringify(c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default'));
+      const launch = document.querySelector('[data-codex-desktop-launch]');
+      launch.click();
+      await until(() => document.querySelector('[data-codex-desktop-instance] [role=status]'), 'prior launch feedback');
+      document.querySelector('.native-details summary').click(); await tick();
+      const controls = document.querySelector('[data-agent-token-controls]');
+      if (regenerate) controls.querySelector('button:last-child').click();
+      else {
+        controls.querySelector('button:first-child').click(); await tick();
+        assert(!document.querySelector('[data-codex-desktop-instance] [role=status]'), 'Token editing retained old launch feedback');
+        const input = document.querySelector('.agent-token-form input');
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'desktop-reviewed-token-123456');
+        input.dispatchEvent(new Event('input', { bubbles: true })); await tick();
+        document.querySelector('.agent-token-form button[type=submit]').click();
+      }
+      await until(() => calls('preview_agent_settings').length === 1 && c().operations.length === 1 && !launch.disabled, 'token submission readback');
+      assert(!document.querySelector('[data-codex-desktop-instance] [role=status]'), 'Token rotation retained old launch feedback');
+      const notice = document.querySelector('.toast')?.textContent ?? '';
+      assert(notice.includes('退出') && notice.includes('重新启动'), 'Desktop token notice implies an already-running instance automatically reloads credentials');
+      assert(document.querySelector('[data-codex-desktop-instance]').textContent.includes('配置更新后'), 'Persistent restart guidance excludes token-only changes');
+      const input = calls('preview_agent_settings')[0].payload.input;
+      assert(input.spec.context_id === desktopContext && input.spec.collaboration.intent === 'keep', 'Token update changed another connection or facet');
+      assert(input.spec.access_token.intent === (regenerate ? 'regenerate' : 'keep'), 'Token update lost its existing native token intent');
+      if (!regenerate) assert(input.custom_token === 'desktop-reviewed-token-123456', 'Custom token draft was lost');
+      assert(calls('launch_codex_desktop').length === 1, 'Token update automatically relaunched a client');
+      assert(JSON.stringify(c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default')) === cli, 'Desktop token update changed the CLI profile');
+    }
+  }),
   scenario('dsh.desktop.independent-model-settings', ['dsh-desktop'], 'Desktop model settings use their own context and preserve Web settings', async () => {
     await showDshDesktopEditor();
     const web = JSON.stringify(c().agents.agents.find(a => a.agent_id === 'agent_dsh_default'));
@@ -178,14 +415,14 @@ const scenarios = [
     agent.context_id = null; agent.settings = null; agent.status_error = 'AGENT_STATUS_UNAVAILABLE'; agent.configuration_state = 'profile_unavailable';
     c().refresh(); await tick();
     await until(() => document.querySelector('[data-agent-discovery="unavailable"]'), 'Unreadable default profile');
-    assert(rows().length === 1 && document.querySelectorAll('.native-list .list-row').length === 8, 'An unreadable profile hid or duplicated Agents');
+    assert(rows().length === 1 && document.querySelectorAll('.native-list .list-row').length === 9, 'An unreadable profile hid or duplicated Agents');
     assert(facet('model').disabled && !document.querySelector('[data-hermes-select-root]').disabled, 'Unreadable profile has settings authority or cannot change directory');
   }),
   scenario('hermes.discovery.parallel-entry', ['hermes', 'agent-discovery'], 'Hermes remains alongside other Agents and selects its profile from details without writes', async () => {
     c().reset(); await tick();
     const hermesRows = () => [...document.querySelectorAll('.native-list .list-row')].filter(row => row.textContent.includes('Hermes'));
     await until(() => hermesRows().length === 1, 'Unscoped Hermes list row');
-    assert(document.querySelectorAll('.native-list .list-row').length === 8, 'Existing Agent entries changed');
+    assert(document.querySelectorAll('.native-list .list-row').length === 9, 'Existing Agent entries changed');
     assert(!document.querySelector('[data-hermes-select-root]'), 'Hermes directory control leaked into another Agent');
     assert(![...document.querySelectorAll('button')].some(button => button.textContent === '选择 Hermes 配置目录'), 'Hermes has a page-level directory entry');
     hermesRows()[0].click();
@@ -244,7 +481,7 @@ const scenarios = [
     await until(() => calls('agent_snapshot').at(-1)?.payload.nativeTargets?.length === 1, 'Remembered target reread');
     [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
     await until(() => document.querySelector('[data-agent-discovery="unavailable"]'), 'Unavailable retained profile');
-    assert(document.querySelectorAll('.native-list .list-row').length === 8, 'One failed target hid another Agent');
+    assert(document.querySelectorAll('.native-list .list-row').length === 9, 'One failed target hid another Agent');
     assert(document.querySelector('[data-hermes-profile]').textContent.includes('/tmp/hermes-profile-fixture'), 'Failed read lost the selected root');
     assert(facet('model').disabled && facet('management_skill').disabled && facet('collaboration').disabled, 'A preference became settings authority');
     assert(configureSpecs().length === 0 && calls('check_agent_live').length === 0, 'Discovery wrote settings or called a model');
@@ -354,7 +591,10 @@ const scenarios = [
     await until(() => [...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Hermes')), 'Configured Hermes row');
     [...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Hermes')).click();
     await until(() => facet('model'), 'Configured Hermes detail');
-    assert(text().includes('native-channel-model') && text().includes('加载状态尚未确认'), 'Static overrides or unobserved loading guidance is missing');
+    assert(document.querySelector('[data-hermes-resource-state]').textContent.includes('重载插件'), 'Prepared resources lost the native reload action');
+    assert(!text().includes('native-channel-model'), 'Static channel details crowd the default view');
+    document.querySelector('.native-details summary').click(); await tick();
+    assert(text().includes('native-channel-model') && text().includes('/model'), 'Expanded details omit known channel overrides or their native selection action');
     await openEditor('model', false);
     assert(dialog().querySelector('select').value === 'unavailable-hermes-plan', 'Unavailable saved Plan was replaced');
     assert(submit().disabled, 'Unavailable Plan can be applied');
@@ -443,6 +683,10 @@ const scenarios = [
   }),
   scenario('codex.history.root-and-configured-guidance', ['agent-model-routing'], 'Codex distinguishes original-entry return from root restoration in setup and saved settings', async () => {
     await freshCodex('splitCodexStatus');
+    const notice = document.querySelector('[data-codex-history-guidance]');
+    const guidance = notice?.querySelector('details');
+    assert(visible(notice) && guidance && !guidance.open && visible(notice.querySelector('p')), 'Default connection needs a short visible history reminder');
+    guidance.querySelector('summary').click(); await tick();
     const saved = document.querySelector('[data-codex-history-guidance]');
     assert(visible(saved) && saved.dataset.codexHistoryMode === 'root'
       && saved.textContent.includes('停用') && saved.textContent.includes('恢复完成')
@@ -721,7 +965,10 @@ const scenarios = [
   }),
   scenario('agent.configuration.independent-facets', ['agent-model-routing', 'agent-collaboration'], 'registered installs keep both facets configurable in one step', async () => {
     await fresh('registered');
-    assert(text().includes('直接启动 claude，使用 Opus、Sonnet、Haiku 原生预设'), 'Claude preset routing does not explain the ordinary CLI entry');
+    assert(!document.querySelector('.agent-usage-details'), 'Usage details crowd the default view');
+    assert(calls('cli_entry_status').length === 0, 'Collapsed details probed the CLI entry');
+    document.querySelector('.native-details summary').click(); await tick();
+    assert(text().includes('直接启动 claude') && text().includes('Opus、Sonnet、Haiku'), 'Expanded guidance omits the ordinary Claude entry');
     assert(text().includes('路由已配置'), 'Configured routing status missing');
     await openEditor('model');
     assert(!executableCallout(dialog()), 'Registered install wrongly reported an executable failure');

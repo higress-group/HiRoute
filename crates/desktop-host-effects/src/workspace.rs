@@ -11,14 +11,14 @@ use super::login_item;
 /// packaged engine path. The daemon performs the ordinary safe executable/path checks; this host
 /// helper deliberately does not compare a version, digest, release artifact, or PATH fallback.
 pub(super) fn codex_desktop_engine() -> Option<std::path::PathBuf> {
+    Some(codex_desktop_bundle()?.join("Contents/Resources/codex-cli/bin/codex"))
+}
+
+pub(super) fn codex_desktop_bundle() -> Option<std::path::PathBuf> {
     let bundle_identifier = NSString::from_str("com.openai.codex");
     let bundle =
         NSWorkspace::sharedWorkspace().URLForApplicationWithBundleIdentifier(&bundle_identifier)?;
-    Some(
-        bundle
-            .to_file_path()?
-            .join("Contents/Resources/codex-cli/bin/codex"),
-    )
+    bundle.to_file_path()
 }
 
 /// Opens this process's own confirmed .app bundle so the operating system delivers the

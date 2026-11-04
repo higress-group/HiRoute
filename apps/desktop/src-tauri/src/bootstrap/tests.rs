@@ -187,8 +187,9 @@ fn shutdown_interrupts_a_pending_daemon_ready_read() {
 }
 
 #[test]
-fn startup_failure_frame_maps_storage_without_accepting_extra_payload() {
+fn codex_and_storage_startup_failures_retain_safe_codes() {
     for (code, expected) in [
+        ("codex_home_conflict", "DAEMON_CODEX_HOME_CONFLICT"),
         ("storage_access_denied", "DAEMON_STORAGE_ACCESS_DENIED"),
         ("storage_locked", "DAEMON_STORAGE_LOCKED"),
         ("storage_key_unavailable", "DAEMON_STORAGE_KEY_UNAVAILABLE"),

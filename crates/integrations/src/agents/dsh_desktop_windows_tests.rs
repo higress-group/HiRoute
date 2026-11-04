@@ -74,18 +74,20 @@ fn windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases() {
         Path::new(args[1]),
         expected_archive.join("dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js")
     );
-    let proof = scanner.dsh_desktop_contract().unwrap();
+    let proof = scanner.dsh_desktop_contract(false).unwrap();
     std::fs::write(&archive, b"a changed bundled runtime identity").unwrap();
-    assert_ne!(proof, scanner.dsh_desktop_contract().unwrap());
+    assert_ne!(proof, scanner.dsh_desktop_contract(false).unwrap());
     std::fs::remove_file(&archive).unwrap();
-    assert!(scanner.dsh_desktop_contract().is_err());
+    assert!(scanner.dsh_desktop_contract(false).is_err());
     std::fs::remove_dir(install.join("resources")).unwrap();
     let foreign = directory.path().join("foreign-resources");
     std::fs::create_dir(&foreign).unwrap();
     std::fs::write(foreign.join("app.asar"), b"foreign runtime").unwrap();
     hiroute_platform_test_support::junction::create(&install.join("resources"), &foreign).unwrap();
     assert!(
-        scanner.dsh_desktop_contract().is_err(),
+        [false, true]
+            .into_iter()
+            .all(|skills| scanner.dsh_desktop_contract(skills).is_err()),
         "archive aliases cannot establish composition authority"
     );
     assert!(

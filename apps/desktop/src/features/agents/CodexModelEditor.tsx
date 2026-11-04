@@ -20,7 +20,8 @@ export function CodexModelEditor({
   const planName = (id: string) => plans.find(plan => plan.agent_plan_id === id)?.desired.display_name;
   const planEnabled = (id: string) => enabledPlans.some(plan => plan.agent_plan_id === id);
   const protectedNativeModelIds = new Set(agentModelStatus(selected)?.protected_native_model_ids ?? []);
-  const codexSurfaces = codexSurfaceFacts(activeCodexMode, selected.available_surfaces ?? []);
+  const codexSurfaces = codexSurfaceFacts(activeCodexMode, selected.available_surfaces ?? [])
+    .filter(fact => selected.agent_id !== 'agent_codex_desktop' || fact.surface === 'codex_desktop');
   const catalogModels = (selected.native_model_catalog?.models ?? [])
     .map(model => ({ ...model, source_options: model.source_options ?? [] }));
   const fixedModelRows = editorValues.fixedModels.map(fixed => catalogModels
@@ -162,10 +163,12 @@ export function CodexModelEditor({
     return <label className="field"><span className="field-label">{text('思考预算', 'Reasoning budget')}</span><input className="input" type="number" min={reasoning.minimum_tokens} max={reasoning.maximum_tokens} step={reasoning.step_tokens} value={selection?.kind === 'budget' ? selection.tokens : ''} onChange={event => setFixedReasoning(model.client_model_id, { kind: 'budget', tokens: Number(event.target.value) })} /><span className="field-help">{reasoning.minimum_tokens}–{reasoning.maximum_tokens} tokens</span></label>;
   };
   return <div className="worker-choices">
-    <p className="field-help" data-codex-shared-scope>{activeCodexMode === 'profile'
+    <p className="field-help" data-codex-shared-scope>{selected.agent_id === 'agent_codex_desktop'
+      ? text('仅作用于 HiRoute 启动的独立 Desktop。启用后，回到接入页启动独立窗口。', 'Applies to the separate Desktop opened by HiRoute. After enabling, open its window from the connection page.')
+      : activeCodexMode === 'profile'
       ? text('按需使用 · 仅 Codex CLI。启用后将启动命令粘贴到终端，开启新会话。普通 Codex 和 Desktop 保持原配置。', 'On demand · Codex CLI only. After enabling, paste the launch command into a terminal to start a new session. Ordinary Codex and Desktop keep their settings.')
       : text('设为默认 · 修改同一配置目录下 Codex CLI 和 Desktop 的模型接入。保存后重新启动对应客户端即可生效。', 'Use by default · changes model access for Codex CLI and Desktop sharing this directory. Restart the client after saving to apply the settings.')}</p>
-    <CodexHistoryNotice language={language} mode={activeCodexMode} compact />
+    {selected.agent_id !== 'agent_codex_desktop' && <CodexHistoryNotice language={language} mode={activeCodexMode} compact />}
     <fieldset><legend className="field-label">{text('允许的智能路由', 'Allowed smart routes')}</legend>
       {enabledPlans.length === 1 && creatingModelConnection && <p className="field-help">{text('唯一可用路由已选为默认，可直接启用。', 'The only available route is selected as the default. Enable to continue.')}</p>}
       {enabledPlans.map(plan => <label className="check-row agent-route-choice" data-agent-plan-id={plan.agent_plan_id} key={plan.agent_plan_id}><input type="checkbox" checked={editorValues.allowedPlanIds.includes(plan.agent_plan_id)} onChange={() => toggleAllowedPlan(plan.agent_plan_id)} /><div><strong>{plan.desired.display_name}</strong></div></label>)}
@@ -195,7 +198,9 @@ export function CodexModelEditor({
       <label className="check-row"><input type="radio" name="codex-native-mode" value="hiroute_only" checked={editorValues.nativeModelMode === 'hiroute_only'} onChange={() => selectNativeModelMode('hiroute_only')} /><div><strong>{text('只使用已配置的 HiRoute 模型', 'Use configured HiRoute models only')}</strong><small>{text('无需接入原 Codex 账号；关闭时恢复原配置。', 'No original Codex account connection required; disabling restores the original configuration.')}</small></div></label>
       <label className="check-row"><input type="radio" name="codex-native-mode" value="preserve_available" checked={editorValues.nativeModelMode === 'preserve_available'} onChange={() => selectNativeModelMode('preserve_available')} /><div><strong>{text('同时保留 Codex 原有模型', 'Also keep native Codex models')}</strong><small>{text('先在“模型”接入原订阅账号或 API 来源；只保留能证明同账号可调用的模型。缓存目录不是账号权限。', 'Connect the original subscription account or API source under Models first. Only proven same-account models are kept; the cache is not entitlement.')}</small></div></label>
     </fieldset>
-    <div className="callout" data-codex-shared-scope><UiIcon name="info" /><div><strong>{activeCodexMode === 'profile' ? text('独立 CLI 配置', 'Separate CLI configuration') : text('一套共享配置', 'One shared configuration')}</strong><p>{activeCodexMode === 'profile'
+    <div className="callout" data-codex-shared-scope><UiIcon name="info" /><div><strong>{selected.agent_id === 'agent_codex_desktop' ? text('独立 Desktop 配置', 'Separate Desktop settings') : activeCodexMode === 'profile' ? text('独立 CLI 配置', 'Separate CLI configuration') : text('一套共享配置', 'One shared configuration')}</strong><p>{selected.agent_id === 'agent_codex_desktop'
+      ? text('配置与授权仅属于此独立实例；CLI 独立 profile 可同时启用。', 'Settings and access belong to this instance. The separate CLI profile can stay enabled alongside it.')
+      : activeCodexMode === 'profile'
       ? text('本次保存只作用于指定 profile 的 Codex CLI。Desktop 继续使用原来的默认配置。', 'This save applies only to Codex CLI using the selected profile. Desktop keeps its original default configuration.')
       : text('保存一次即作用于共享此配置作用域与 CODEX_HOME 的 Codex CLI 和 Desktop。', 'One save applies to Codex CLI and Desktop when they share this configuration scope and CODEX_HOME.')}</p>{codexSurfaces.map(({surface, detected, applicable}) => {
       return <span className="field-help" key={surface} data-agent-surface-fact={surface} data-agent-surface-detected={detected ? 'true' : 'false'} data-agent-surface-applicable={applicable ? 'true' : 'false'}>{surfaceName(surface)} · {detected ? text('当前已发现可执行入口', 'currently detected as runnable') : text('当前未发现可执行入口', 'not currently detected as runnable')} · {applicable ? text('适用当前模式', 'applies to this mode') : text('不适用当前模式', 'does not apply to this mode')}</span>;

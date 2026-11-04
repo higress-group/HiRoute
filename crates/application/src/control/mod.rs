@@ -95,9 +95,9 @@ pub struct ControlStateSnapshotV1 {
 
 pub use hiroute_application_api::{
     AgentConfigPermissionFindingV1, AgentModelCatalogMetadataSourceV1,
-    AgentModelSourceCoverageStateV1, CodexAccessViewV1, DiscoveredAgentConfigurationV1,
-    DiscoveredAgentModelCatalogV1, DiscoveredAgentModelSourceV1, DiscoveredAgentModelV1,
-    DiscoveredAgentV1, DiscoveredCredentialInputV1,
+    AgentModelSourceCoverageStateV1, CodexAccessViewV1, CodexDesktopInstanceViewV1,
+    DiscoveredAgentConfigurationV1, DiscoveredAgentModelCatalogV1, DiscoveredAgentModelSourceV1,
+    DiscoveredAgentModelV1, DiscoveredAgentV1, DiscoveredCredentialInputV1,
 };
 
 pub trait ControlStatePort: Send + Sync {

@@ -51,6 +51,8 @@ mod diagnostics;
 use diagnostics::*;
 mod external_url;
 use external_url::*;
+mod codex_desktop;
+use codex_desktop::*;
 mod host_settings;
 mod subscription_proxy;
 use host_settings::*;
@@ -828,6 +830,7 @@ pub fn run() {
             web_confirmation_snapshot,
             resolve_web_confirmation,
             agent_snapshot,
+            launch_codex_desktop,
             trial_setup_snapshot,
             agent_home_summary,
             agent_model_associations,

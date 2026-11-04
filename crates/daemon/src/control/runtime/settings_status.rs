@@ -139,13 +139,27 @@ impl LocalControlAdapter {
         } else {
             request.clone()
         };
-        let desktop = self.settings_agent_for_context(&request.context_id)
-            == Some(SettingsAgentClass::DshDesktop);
+        let desktop = matches!(
+            self.settings_agent_for_context(&request.context_id),
+            Some(SettingsAgentClass::DshDesktop | SettingsAgentClass::CodexDesktop)
+        );
         let hermes = self.settings_agent_for_context(&request.context_id)
             == Some(SettingsAgentClass::Hermes);
-        if !desktop && (hermes || request.include_skills) {
-            status.management_skill =
-                Some(self.management_settings_status(&collaboration_request)?);
+        if hermes || request.include_skills {
+            let class = self
+                .settings_agent_for_context(&request.context_id)
+                .ok_or(ControlReadError::NotFound)?;
+            let owner = class.management_owner();
+            let management_request = if owner != class {
+                AgentSettingsStatusRequestV2 {
+                    context_id: self.settings_context(owner),
+                    native_target: None,
+                    ..request.clone()
+                }
+            } else {
+                request.clone()
+            };
+            status.management_skill = Some(self.management_settings_status(&management_request)?);
         }
         if !desktop && (!hermes || request.include_skills) {
             status.collaboration =
@@ -605,7 +619,7 @@ impl LocalControlAdapter {
                     let surfaces = match (&settings, class) {
                         (
                             hiroute_domain::AgentModelSelectionV2::CodexDefault { .. },
-                            SettingsAgentClass::Codex,
+                            SettingsAgentClass::Codex | SettingsAgentClass::CodexDesktop,
                         ) => self.scanner.available_model_surfaces(class.agent_id()),
                         (
                             hiroute_domain::AgentModelSelectionV2::CodexDefault { .. },
@@ -771,7 +785,8 @@ fn model_intent(
         .iter()
         .find(|intent| match class {
             super::settings_facts::SettingsAgentClass::Codex
-            | super::settings_facts::SettingsAgentClass::CodexProfile => {
+            | super::settings_facts::SettingsAgentClass::CodexProfile
+            | super::settings_facts::SettingsAgentClass::CodexDesktop => {
                 super::native_model::is_settings_codex_model(intent)
             }
             super::settings_facts::SettingsAgentClass::Hermes => {
@@ -815,7 +830,8 @@ fn model_action(
             }
         }
         super::settings_facts::SettingsAgentClass::Codex
-        | super::settings_facts::SettingsAgentClass::CodexProfile => {
+        | super::settings_facts::SettingsAgentClass::CodexProfile
+        | super::settings_facts::SettingsAgentClass::CodexDesktop => {
             match settings_codex_model_file_for_operation(operation, intent)?.change {
                 CodexModelFileAction::Configure { .. } => Ok(ModelAction::Configure),
                 CodexModelFileAction::Restore { .. } => Ok(ModelAction::Restore),
@@ -846,7 +862,9 @@ fn model_endpoint_matches_runtime(
         SettingsAgentClass::Hermes => Ok(
             matches!(hiroute_application::agent_connection::settings_hermes_model_file_for_operation(operation, intent)?.change, hiroute_application::agent_connection::HermesModelFileAction::Configure { endpoint, .. } if endpoint == gateway_base_url),
         ),
-        SettingsAgentClass::Codex | SettingsAgentClass::CodexProfile => Ok(matches!(
+        SettingsAgentClass::Codex
+        | SettingsAgentClass::CodexProfile
+        | SettingsAgentClass::CodexDesktop => Ok(matches!(
             settings_codex_model_file_for_operation(operation, intent)?.change,
             CodexModelFileAction::Configure { endpoint, .. } if endpoint == gateway_base_url
         )),

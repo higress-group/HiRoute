@@ -5,6 +5,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use tauri::{Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+mod codex_desktop;
 mod commands;
 mod install_transaction;
 pub mod installer;
@@ -133,6 +134,7 @@ pub fn run() {
             shell_status,
             shell_retry_startup,
             shell_capabilities,
+            codex_desktop::shell_launch_codex_desktop,
             shell_open_in_browser,
             shell_open_external_url,
             shell_save_classifier_openapi,

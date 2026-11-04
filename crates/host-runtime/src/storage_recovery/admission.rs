@@ -187,6 +187,7 @@ fn failed_startup(root: &Path) -> Option<(DiagnosticRecordV1, StartupFailureCode
 
 pub fn startup_failure_host_code(code: StartupFailureCode) -> &'static str {
     match code {
+        StartupFailureCode::CodexHomeConflict => "DAEMON_CODEX_HOME_CONFLICT",
         StartupFailureCode::StorageUnavailable => "DAEMON_STORAGE_UNREADABLE",
         StartupFailureCode::StorageAccessDenied => "DAEMON_STORAGE_ACCESS_DENIED",
         StartupFailureCode::StorageLocked => "DAEMON_STORAGE_LOCKED",

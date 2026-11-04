@@ -90,6 +90,7 @@ pub(super) fn unavailable_hermes(target: Option<AgentNativeTargetV1>, reason: &s
     AgentEntry {
         native_target: target,
         codex_access: None,
+        codex_desktop: None,
         agent_id: "agent_hermes_default".into(),
         version: String::new(),
         configuration_state: "profile_unavailable".into(),

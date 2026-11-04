@@ -81,7 +81,7 @@ mod model_feed;
 mod mutation;
 mod native_additional_model;
 mod native_claude_model;
-mod native_context_guidance;
+pub(crate) mod native_context_guidance;
 mod native_hermes;
 mod native_model;
 mod native_network;
@@ -439,6 +439,19 @@ impl ProductionControlRuntime {
                 )?
             }
         };
+        scanner = scanner.with_codex_desktop_instance(
+            hiroute_integrations::CodexDesktopInstancePaths::for_storage_root(storage_root)
+                .map_err(|error| error.to_string())?,
+        );
+        if scanner.codex_home_overlaps_desktop() {
+            return Err(native_context_guidance::CODEX_HOME_CONFLICT.into());
+        }
+        let codex_desktop_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
+            hiroute_integrations::CODEX_DESKTOP_AGENT_ID,
+            CODEX_PROFILE_ID_V1,
+            CODEX_INTEGRATION_PROFILE_REF_V1,
+        )
+        .map_err(|error| error.to_string())?;
         let claude_subject = AgentConnectionTransactionSubjectV1::from_registered_profile(
             "agent_claude_default",
             CLAUDE_PROFILE_ID_V1,
@@ -500,6 +513,14 @@ impl ProductionControlRuntime {
             .target_for(&opencode_subject)
             .map_err(|e| e.to_string())?;
         let mut scoped_targets = Vec::new();
+        scoped_targets.push((
+            AgentConnectionEffectRoleV1::ManagedConfiguration
+                .target_for(&codex_desktop_subject)
+                .map_err(|error| error.to_string())?,
+            scanner
+                .codex_desktop_config_target()
+                .ok_or("missing desktop namespace")?,
+        ));
         let mut hermes_scan_targets = BTreeMap::new();
         for target in stores
             .control()
@@ -1662,6 +1683,8 @@ fn release_agent_scanner(
     .map_err(|_| "verified Agent discovery facts are inconsistent".to_owned())?;
     let mut layout = AgentFilesystemLayoutV1::from_process(home, project);
     layout.codex_desktop_executable = codex_desktop_engine;
+    #[cfg(not(target_os = "macos"))]
+    let dynamic_desktop_location = layout.codex_desktop_executable.is_none();
     for (kind, executable) in selected {
         let target = match kind {
             AgentKindV1::Codex => &mut layout.codex_executable,
@@ -1674,7 +1697,16 @@ fn release_agent_scanner(
         };
         *target = executable.clone();
     }
-    Ok(FilesystemAgentScannerV1::new(layout, index))
+    let scanner = FilesystemAgentScannerV1::new(layout, index);
+    #[cfg(not(target_os = "macos"))]
+    let scanner = if dynamic_desktop_location {
+        scanner.with_dynamic_codex_desktop_location()
+    } else {
+        scanner
+    };
+    #[cfg(not(target_os = "macos"))]
+    scanner.refresh_codex_desktop_location(hiroute_desktop_host_effects::codex_desktop_engine);
+    Ok(scanner)
 }
 
 fn discovered_agent(
@@ -1737,6 +1769,7 @@ fn discovered_agent(
     Ok(DiscoveredAgentV1 {
         native_target: None,
         codex_access: None,
+        codex_desktop: None,
         context_id: None,
         agent_id,
         profile_id,

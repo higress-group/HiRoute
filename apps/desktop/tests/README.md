@@ -82,6 +82,7 @@ The shared editor also serves subscription/API setup; IPC remains synthetic here
 | Connect an API through the service directory | [Connection flow scenarios](v3/visual/connection-flow-active.mjs), [directory and draft rules](connection-directory.test.mjs) | Full branded directory, separate product drafts and keys, checked source name, cancellation, explicit model selection and inherited append behavior. Uses production styles; native save and live calls need separate acceptance. |
 | Connect a subscription and optional provider API in one flow | [API setup rules](subscription-api-setup.test.mjs), [production interaction and layout](v3/visual/subscription-api-setup-active.mjs), selected with `new-model-trial.mjs OUTPUT --subscription-api` | Codex/OpenAI and Claude/Anthropic sign-in, scan, append and saved-source setup reuse one model selection and primary save. Subscription confirmation precedes API checking; failures retry only the API, reuse created sources and observe original pending writes. Provider credit guidance and zh/en light/dark at both supported sizes use production styles. IPC is synthetic; native installation, persistence and live provider requests remain separate acceptance. |
 | Enable or edit Codex routing | `codex.enable.draft-cancel`, `codex.routing.fixed-binding`, `codex.routing.mixed-native-default` in [Agent scenarios](v3/browser/agent-trust-scenarios.mjs) | Cancelling never applies; configured fixed overrides, native reasoning and the chosen default survive save; service responsibility is explained. |
+| Open an independent Codex Desktop connection | `codex.desktop.independent-launch-and-retry` in [Agent scenarios](v3/browser/agent-trust-scenarios.mjs), [production captures](v3/visual/agent-readback-captures.mjs) | CLI remains visible, first use opens route setup, configured use sends only a context ID, and launch retry never repeats Apply. Chinese/English light/dark, default/minimum viewport, configured/error/editor states use production styles. Native launch and actual Codex requests require separate acceptance. |
 | Configure Claude routing and collaboration | `claude.enable.shared-presets`, `agent.configuration.independent-facets`, `claude.collaboration.check-before-save`, `claude.collaboration.retry-preserves-edit` | Ordinary Claude entry and account Default limitations remain clear; prerequisite checks precede mutation; retry preserves edits. |
 | Enable, recover or disable Qoder task collaboration | `qoder.collaboration.enable-without-model`, `qoder.collaboration.retry-and-restore` | No model connection or published Plan is required; required capability checks happen during save. Login and changed-Skill failures retain edits and enabled collaboration with the shared retry action; restore keeps model configuration unchanged. |
 | Add and adjust Qoder model routes | `qoder.routing.additional-plans`, `qoder.routing.adjust-and-restore` | Cancelled drafts do not write; only selected Plans are submitted; unavailable choices stay visible; token changes and independent restores keep the other facet. Native default/provider preservation and real model calls require production acceptance. |
@@ -349,6 +350,21 @@ readback covers exact model proof, delayed/wrong-context responses, unrefreshed
 Skill states and fresh Skill editor selection. Readback captures use production
 styles in Chinese/dark and English/light at 1200×813 and 755×600. Native save
 confirmation and latency still require the normal Release app and real data.
+
+`agent.details.progressive-disclosure` protects concise default views, lazy technical
+details, management repair and scroll reset across the supported Agent families.
+Its production-style captures cover Chinese/dark and English/light at both supported
+sizes, checking aligned actions, wrapping and reachable controls. Independent Codex
+Desktop adds both languages/themes, first setup, configured, launch-error and editor
+states. These browser cases use controlled IPC; real launch, coexisting grants,
+installed skills and actual native requests require separate native acceptance.
+
+`codex.desktop.token-update-restart` covers both regenerated and custom tokens after
+a launch: stale launch feedback clears, quit/restart guidance remains visible, the
+saved selection and CLI connection stay independent, and no automatic client launch
+is introduced. The daemon Desktop lifecycle also refuses an overlapping inherited
+Codex home with native-context guidance, verifies files/keys stay unchanged, then
+reopens with the original home and permits only its owned restore.
 
 Home bounded-read regressions in `v3/browser/home-startup-scenarios.mjs` exercise
 shared queue capacity, typed busy recovery/exhaustion, terminal failures and

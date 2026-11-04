@@ -414,6 +414,11 @@ impl AgentConnectionControlPort for LocalControlAdapter {
         {
             let result = match agent_id {
                 "agent_codex_default" => self.scanner.check_codex_native_authentication(),
+                "agent_codex_desktop" => self
+                    .scanner
+                    .codex_desktop_scanner()
+                    .ok_or(ControlReadError::NotFound)?
+                    .check_codex_native_authentication(),
                 "agent_claude_default" => self.scanner.check_claude_native_authentication(),
                 _ => return Err(ControlReadError::NotFound),
             };

@@ -17,6 +17,8 @@ pub struct AgentEntry {
     pub native_target: Option<hiroute_domain::AgentNativeTargetV1>,
     #[serde(default)]
     pub codex_access: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_desktop: Option<hiroute_application_api::CodexDesktopInstanceViewV1>,
     pub agent_id: String,
     pub version: String,
     pub configuration_state: String,
@@ -606,6 +608,7 @@ impl Session {
                 })
                 .map(|agent| match agent.agent_id.as_str() {
                     "agent_codex_default" => "Codex".to_owned(),
+                    "agent_codex_desktop" => "Codex Desktop".to_owned(),
                     "agent_claude_default" => "Claude Code".to_owned(),
                     "agent_qoder_default" => "Qoder".to_owned(),
                     _ => if input.language == "en" {

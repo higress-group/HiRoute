@@ -8,6 +8,24 @@ published routes converge through the common recoverable settings workflow.
 
 ## Requirements
 
+### Requirement: Agent details prioritize current choices and actions
+
+The default details view SHALL use consistent rows for model routing, task routing
+and management, with the current selection or a short explanation beside the
+applicable actions. Desktop launch and CLI command copy remain directly reachable.
+Usage instructions, resource paths, known channel overrides, token controls and
+management repair SHALL be available through collapsed details rather than repeated
+as full paragraphs in the default view. A default Codex root connection retains a
+short visible session-history reminder; setup retains its full mode-specific notice.
+Conflicts, unfinished operations and required repair actions remain directly visible.
+Merely opening a details view SHALL NOT probe an unrelated CLI entry. Selecting
+another Agent resets detail scroll and the expanded secondary section.
+
+#### Scenario: Inspect configuration and then request technical detail
+
+- **WHEN** the user opens any supported Agent and expands its connection details
+- **THEN** the initial view presents concise current choices and actions; expansion exposes applicable usage, resource and recovery information without changing configuration, losing management repair or hiding active conflicts.
+
 ### Requirement: Settings confirmation reads its current target
 
 After a settings change, Desktop SHALL read the exact selected context and confirm
@@ -53,6 +71,30 @@ never implies a Worker process or shared main-Agent ownership of that plan.
 HiRoute SHALL manage management and collaboration Skills as distinct resources alongside the model facet. Each uses keep, configure and restore, with omission meaning keep. Either Skill can be enabled first or both requested together. Changing or restoring one SHALL preserve the other and model settings. Restoring model settings SHALL preserve both Skills unless their own restore intents are selected. Ownership SHALL distinguish the effective file target and Skill identity, preserve shared references and identically borrowed files, and reject foreign content conflicts. Existing accepted operations and recovery references SHALL retain their original meanings. Collaboration owns delegation-trigger policy when both Skills are loaded. Disabling a Skill SHALL report externally retained content and required native reload rather than claim revocation of same-user CLI access.
 
 Management preparation is available for all listed Agent families and requires neither a Plan nor a model grant. Hermes collaboration follows the same independent intent and trigger policy as other supported initiators, without adding a Hermes Worker executor. Neither Skill preparation nor model routing creates a new CLI authority.
+
+Codex CLI/root/profile and independent Codex Desktop SHALL present one management
+Skill owned by the original Codex root context in real HOME's `.agents/skills`.
+DSH Web and Desktop using the same DSH_HOME SHALL likewise present the Web context's
+single management Skill in `DSH_HOME/skills`. Desktop enable/disable and recovery
+SHALL operate on that existing shared owner, not add another reference or change
+either native model context. Full status and recorded summaries SHALL reflect the
+same management operation, drift and restore state in both views. The UI SHALL
+state the shared effect before editing. Model-only reads SHALL remain independent
+of Skill resources. No additional Worker or collaboration support is implied.
+
+Management preparation SHALL also work with an installed Desktop carrier and no
+separate CLI. It SHALL retain action-specific file/Skill-loading checks, reject a
+DSH composition disabling or redirecting its shared roots, preserve foreign Skill
+content and keep native runtime loading unobserved. Owned restore SHALL remain
+available after either application is removed. Existing strict public response
+shapes and accepted Skill ownership/recovery references SHALL keep their meanings.
+
+#### Scenario: Shared Desktop management with independent models
+
+- **WHEN** an owner enables, repairs, retries or disables management from either Codex or DSH Desktop
+- **THEN** the corresponding CLI/Web view reports the same management state and reference, while both model configurations and task routing remain unchanged.
+- **WHEN** the service reopens or the Desktop application is removed
+- **THEN** shared status and the original owned restore remain available without creating another installation reference.
 
 Prior contract source: https://github.com/higress-group/HiRoute/issues/125#issuecomment-6186244519
 
@@ -249,6 +291,94 @@ inside an owned provider are conflicts, not silently cleaned. Root selector
 `profile="hiroute"` conflicts just like the reserved inherited profile; other selectors
 remain independent. Collaboration uses the native root, not the model profile;
 misdirected collaboration configuration fails with its explicit root-context reason.
+
+### Requirement: Codex Desktop has an independent managed instance
+
+`agent_codex_desktop` is a peer connection to the ordinary Codex CLI profile/root
+slot. It uses the Codex model adapter with its own native target, context, access
+grant, catalog and restore point. Both connections can remain enabled across
+restart. Reconfiguring, rotating a token or restoring one cannot change the other
+home's configuration or authority. An inherited CODEX_HOME resolving to the same
+physical home cannot create two model slots. Existing publication/recovery fences
+still protect an incomplete shared-service cutover.
+
+A daemon whose ordinary CODEX_HOME overlaps its private Desktop namespace SHALL
+refuse startup with an actionable native-environment conflict, not storage-corruption
+guidance. It SHALL NOT deduplicate/rebind existing targets or infer the previous home.
+The closed `codex_home_conflict` startup reason SHALL reach both diagnostics and the
+Desktop's original-home restart instructions without transporting paths, credentials
+or arbitrary error text, and SHALL NOT authorize storage restoration or package repair.
+After restarting with the original home, the existing connection can use its exact
+context, journal, target and grant to restore; another connection's restore point
+cannot acquire ownership.
+Owned model restore SHALL use those same checks after the Codex Desktop application
+is uninstalled. New model configurations and launches still require the Desktop engine.
+
+On macOS, the native host resolves the installed Codex bundle and launches it with
+`open -n`, private CODEX_HOME and CODEX_SQLITE_HOME, private
+CODEX_ELECTRON_USER_DATA_PATH and matching `--user-data-dir`. Real HOME stays
+unchanged. No ordinary configuration, auth, instructions or session files are
+copied. Windows SHALL resolve the current user's installed `OpenAI.Codex` MSIX
+registration and desktop executable, and launch it directly with the same private
+environment and user-data argument. Shell activation through Explorer, which would
+lose the isolated environment, SHALL NOT be used. Native launching SHALL be exposed
+through HiRoute's Windows Shell as well as its macOS Desktop.
+Windows Shell SHALL explicitly advertise its optional `codex_desktop_launch` host
+capability; absence on an older Shell SHALL retain the local-command fallback.
+CLI is never substituted for a missing Desktop engine. The separate instance lives in a storage-root-specific
+sibling namespace, outside Core upgrade snapshots. Native history and login remain
+Codex-owned and survive routing restore.
+
+The launch command accepts only a context ID. Before native launch, a fresh trusted
+snapshot must prove the exact Desktop connection is configured and its Operation
+succeeded; preparation is followed by a fresh check of the same connection and
+Operation. UI-supplied paths, environment or commands are not accepted. Launch
+failure preserves the completed configuration and retries launch only. First use
+offers route configuration; configured use offers the separate window. CLI and
+Desktop remain distinct entries with visible scope and recovery information.
+
+Web consoles SHALL offer a copyable `hiroute agents desktop launch <CONTEXT_ID>
+--output json` local host command instead of dispatching a process launch over HTTP.
+The command SHALL run on the service computer in a graphical desktop session, read
+fresh exact-context model authority without loading unrelated Plans or skill
+inventories, prepare shared skills, recheck the same successful settings Operation,
+and then launch the installed desktop package. Linux SHALL discover the installed
+`chatgpt` desktop package and its bundled engine; a headless terminal without DISPLAY
+or WAYLAND_DISPLAY SHALL receive actionable graphical-session guidance. Missing
+desktop installation SHALL not fall back to the separate Codex CLI.
+
+Windows user skill folders SHALL use exclusive directory junctions without requiring
+administrator rights or Developer Mode. Unix SHALL retain per-directory symlinks.
+Both preserve same-name destinations and never acquire deletion authority over source
+skills. Native package and graphical-session execution require their actual platform
+evidence; UI mocks and cross-compilation alone do not prove a Windows or Linux desktop
+request succeeded.
+
+Windows/Linux package location facts SHALL refresh at full discovery, exact Desktop
+discovery and Desktop Configure admission, so installing or updating the application
+does not require rebinding the context or restarting the daemon. Other Agent-specific
+reads SHALL not query this package. Existing settings/home/grant identities remain
+unchanged, and removed installations lose the Desktop surface. Explicit fixture
+scanners retain their selected location unless their owner enables this refresh.
+Shared Windows junctions SHALL retain the lexical source skill entry, so replacing or
+removing a source link flows through to the private instance without copying its old
+target or granting source deletion authority.
+
+Model/token updates SHALL discard stale Desktop launch feedback. Guidance SHALL
+require quitting and restarting the separate instance after a successful route or
+token update, rather than claiming its running process automatically reloads credentials.
+Updating a token SHALL NOT launch, quit or reconfigure the ordinary client.
+
+User skills in real HOME's `.agents/skills` and project skills remain naturally
+shared. At launch preparation only, other valid CODEX_HOME user skill directories
+are linked individually into the private home's `skills`, including scripts and
+resources. Dot/system entries and names already present in `.agents/skills` are
+skipped. Existing destination entries are never replaced or deleted. Created links
+are recorded in a private informational receipt; the receipt confers no deletion
+authority. Source updates/removal flow through each lexical link; user replacements
+stay intact. Routing restore retains these links and native history. Management
+uses the existing shared user Skill and its original root-owned operation; the
+Desktop identity does not acquire a second installation or a Worker executor.
 
 ### Requirement: Codex native retention needs both metadata and account proof
 
@@ -487,8 +617,9 @@ a default dump. Capture SHALL bind executable/archive identity, home patch,
 Desktop patch and manifest, and recheck them before returning. A Web-profile
 change SHALL NOT invalidate an independent Desktop proof.
 
-Desktop model support SHALL NOT imply Worker, collaboration Skill or management
-Skill support. Those operations remain unavailable until independently supported.
+Desktop model support SHALL NOT imply Worker or collaboration Skill support.
+Management is explicitly supported through the same DSH_HOME user resource and
+canonical Web owner described above; it does not use the Desktop model journal.
 A composition dump or fixture SHALL NOT establish actual Desktop loading or
 Gateway request provenance; those require native client evidence.
 

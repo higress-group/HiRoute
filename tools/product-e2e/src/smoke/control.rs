@@ -492,35 +492,11 @@ fn response_is_private(value: &Value, runtime: &Path, secret: &str, discovery: b
         let Some(agents) = redacted["data"]["agents"].as_array_mut() else {
             return false;
         };
-        let Some(agent) = agents
-            .iter_mut()
-            .find(|a| a["agent_id"] == "agent_codex_default")
-        else {
-            return false;
-        };
-        let Some(access) = agent["codex_access"].as_object_mut() else {
-            return false;
-        };
-        let home = runtime.join("agent-home/.codex");
-        if access.remove("codex_home") != Some(json!(home))
-            || access.remove("target_file") != Some(json!(home.join("hiroute.config.toml")))
-        {
-            return false;
-        }
-        let Some(Value::Object(commands)) = access.remove("commands") else {
-            return false;
-        };
-        if commands.len() != 3
-            || !["bash/zsh", "fish", "PowerShell"].iter().all(|shell| {
-                commands
-                    .get(*shell)
-                    .and_then(Value::as_str)
-                    .is_some_and(|command| {
-                        command.contains(home.to_string_lossy().as_ref())
-                            && command.contains("codex --profile hiroute")
-                    })
-            })
-        {
+        if !crate::control::redact_discovery_connection_paths(
+            agents,
+            &runtime.join("agent-home"),
+            &runtime.join("storage.codex-desktop"),
+        ) {
             return false;
         }
     }
@@ -537,11 +513,18 @@ mod privacy_tests {
     fn only_connection_controls_allow_exact_paths_and_never_credentials() {
         let runtime = Path::new("/private/smoke");
         let home = runtime.join("agent-home/.codex");
+        let desktop = runtime.join("storage.codex-desktop");
         let command = format!("CODEX_HOME={} codex --profile hiroute", home.display());
-        let value = json!({"data":{"agents":[{"agent_id":"agent_codex_default","codex_access":{
-            "codex_home":home,"target_file":home.join("hiroute.config.toml"),
-            "commands":{"bash/zsh":command,"fish":command,"PowerShell":command}
-        }}]}});
+        let value = json!({"data":{"agents":[
+            {"agent_id":"agent_codex_default","codex_access":{
+                "codex_home":home,"target_file":home.join("hiroute.config.toml"),
+                "commands":{"bash/zsh":command,"fish":command,"PowerShell":command}
+            }},
+            {"agent_id":"agent_codex_desktop","codex_desktop":{
+                "codex_home":desktop.join("codex"), "user_data":desktop.join("desktop"),
+                "source_codex_home":home, "shared_skills":runtime.join("agent-home/.agents/skills")
+            }}
+        ]}});
         assert!(response_is_private(
             &value,
             runtime,
@@ -586,6 +569,22 @@ mod privacy_tests {
         wrong_target["data"]["agents"][0]["codex_access"]["target_file"] = json!(home);
         assert!(!response_is_private(
             &wrong_target,
+            runtime,
+            "sentinel-secret",
+            true
+        ));
+        let mut wrong_desktop = value.clone();
+        wrong_desktop["data"]["agents"][1]["codex_desktop"]["user_data"] = json!(home);
+        assert!(!response_is_private(
+            &wrong_desktop,
+            runtime,
+            "sentinel-secret",
+            true
+        ));
+        let mut extra_desktop_path = value.clone();
+        extra_desktop_path["data"]["agents"][1]["codex_desktop"]["unrecognized"] = json!(home);
+        assert!(!response_is_private(
+            &extra_desktop_path,
             runtime,
             "sentinel-secret",
             true

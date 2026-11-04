@@ -33,6 +33,9 @@ pub(crate) fn family(path: &[String]) -> Option<String> {
     {
         text.push_str("  options [--provider ID]\n    Installed decision presets and reusable saved connection identities (read-only local presentation; catalog works offline).\n");
     }
+    if path == ["agents"] {
+        text.push_str("  desktop launch <CONTEXT_ID> --output json\n    Open the configured separate Codex Desktop on this service computer (local host action; requires a graphical session).\n");
+    }
     text.push_str("\nAppend --help to a command for its options and effects.\nRead complete installed contracts with:\n  hiroute schema show --command-id <ID> --include-schema\n\nBusiness commands emit one complete JSON result on stdout; capture stderr and the exit status separately. Add --error-details to opt into bounded structured input diagnostics; ordinary errors retain their machine shape. Input files use --request-file <PATH>, or --request-stdin for one complete JSON document.\n");
     Some(text)
 }

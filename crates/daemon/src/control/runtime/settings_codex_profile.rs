@@ -85,6 +85,16 @@ impl LocalControlAdapter {
         if !class.is_codex() {
             return Ok(());
         }
+        if !matches!(spec.model, AgentFacetIntent::Keep)
+            && self.scanner.codex_home_overlaps_desktop()
+        {
+            // An inherited CODEX_HOME cannot turn the private Desktop into a second
+            // model slot over the same physical home.
+            return Err(ControlReadError::Denied);
+        }
+        if class == SettingsAgentClass::CodexDesktop {
+            return Ok(());
+        }
         if class == SettingsAgentClass::CodexProfile && !spec.keeps_skills() {
             return Err(ControlReadError::CollaborationRootRequired);
         }

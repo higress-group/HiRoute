@@ -21,13 +21,19 @@ use hiroute_integrations::{
 pub(super) fn is_settings_codex_model(intent: &ExternalEffectIntentV1) -> bool {
     intent.effect_id() == "agent-connection-managed-configuration"
         && intent.desired()["transaction"] == "settings"
-        && intent.desired()["subject"]["agent_id"] == "agent_codex_default"
+        && matches!(
+            intent.desired()["subject"]["agent_id"].as_str(),
+            Some("agent_codex_default" | "agent_codex_desktop")
+        )
 }
 
 pub(super) fn is_settings_codex_catalog(intent: &ExternalEffectIntentV1) -> bool {
     intent.effect_id() == "agent-connection-model-catalog"
         && intent.desired()["transaction"] == "settings"
-        && intent.desired()["subject"]["agent_id"] == "agent_codex_default"
+        && matches!(
+            intent.desired()["subject"]["agent_id"].as_str(),
+            Some("agent_codex_default" | "agent_codex_desktop")
+        )
 }
 
 /// The catalog baseline of the active managed edit: the user's pre-management pointer, so a
@@ -291,13 +297,19 @@ impl LocalControlAdapter {
             Err(error) if error.code != PortErrorCode::InvalidData => return Err(error),
             Err(_) => {}
         }
-        let derived = codex_catalog_plan_for(
-            &self.scanner.codex_user_config_target(),
-            settings,
-            &publication,
-            &baseline,
-        )
-        .map_err(|_| conflict("codex.catalog.context_drift"))?;
+        // Select the registered home by subject. Original Codex journals retain their
+        // released recovery behavior even when they use an older context identifier.
+        let config = if model_intent.desired()["subject"]["agent_id"]
+            == hiroute_integrations::CODEX_DESKTOP_AGENT_ID
+        {
+            self.scanner
+                .codex_desktop_config_target()
+                .ok_or_else(|| conflict("codex.catalog.context"))?
+        } else {
+            self.scanner.codex_user_config_target()
+        };
+        let derived = codex_catalog_plan_for(&config, settings, &publication, &baseline)
+            .map_err(|_| conflict("codex.catalog.context_drift"))?;
         let producer_kind = match derived.producer.metadata_source {
             hiroute_integrations::CodexCatalogMetadataSourceV1::UserConfigured => {
                 CodexCatalogProducerKindV1::UserConfigured

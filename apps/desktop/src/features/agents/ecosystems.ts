@@ -5,13 +5,20 @@ import type { Agent, AgentModelSelection, AgentModelSurface } from './types';
  * This entry is presentation only: no context or settings authority is invented.
  */
 export function agentPageEntries(agents: Agent[]): Agent[] {
-  const supported = ['agent_claude_default', 'agent_codex_default', 'agent_dsh_default', 'agent_dsh_desktop', 'agent_pi_default', 'agent_qoder_default', 'agent_hermes_default', 'agent_opencode_default'];
+  const supported = ['agent_claude_default', 'agent_codex_default', 'agent_codex_desktop', 'agent_dsh_default', 'agent_dsh_desktop', 'agent_pi_default', 'agent_qoder_default', 'agent_hermes_default', 'agent_opencode_default'];
   const missing: Agent[] = supported.filter(id => !agents.some(agent => agent.agent_id === id)).map(agent_id => ({
     agent_id, version: '', context_id: null,
     configuration_state: agent_id === 'agent_hermes_default' ? 'profile_not_selected' : 'not_discovered',
     settings: null, status_error: null,
   }));
-  return missing.length ? [...agents, ...missing] : agents;
+  const entries = missing.length ? [...agents, ...missing] : [...agents];
+  const desktop = entries.findIndex(agent => agent.agent_id === 'agent_codex_desktop');
+  const codex = entries.findIndex(agent => agent.agent_id === 'agent_codex_default');
+  if (desktop >= 0 && codex >= 0 && desktop !== codex + 1) {
+    const [entry] = entries.splice(desktop, 1);
+    entries.splice(entries.findIndex(agent => agent.agent_id === 'agent_codex_default') + 1, 0, entry);
+  }
+  return entries;
 }
 
 export type AgentEcosystem = 'codex' | 'claude' | 'qoder' | 'pi' | 'dsh' | 'hermes' | 'opencode';
@@ -19,7 +26,8 @@ export type AgentEcosystem = 'codex' | 'claude' | 'qoder' | 'pi' | 'dsh' | 'herm
 /** Only these current integrations have settings editors; discovery is independent. */
 export function agentEcosystem(agentId: string): AgentEcosystem | null {
   switch (agentId) {
-    case 'agent_codex_default': return 'codex';
+    case 'agent_codex_default':
+    case 'agent_codex_desktop': return 'codex';
     case 'agent_claude_default': return 'claude';
     case 'agent_opencode_default': return 'opencode';
     case 'agent_dsh_default':
@@ -52,7 +60,7 @@ export function agentModelSelectionMatches(agentId: string, selection: AgentMode
 
 export function agentDisplayName(agentId: string, language: 'zh' | 'en'): string {
   switch (agentEcosystem(agentId)) {
-    case 'codex': return 'Codex';
+    case 'codex': return agentId === 'agent_codex_desktop' ? 'Codex Desktop' : 'Codex';
     case 'claude': return 'Claude Code';
     case 'opencode': return 'OpenCode';
     case 'dsh': return agentId === 'agent_dsh_desktop' ? 'DeepSeek Harness Desktop' : 'DeepSeek Harness Web';
@@ -93,9 +101,9 @@ export function surfaceName(surface: AgentModelSurface): string {
 
 export function agentSupportsCollaboration(agentId: string): boolean {
   const ecosystem = agentEcosystem(agentId);
-  return ecosystem !== null && agentId !== 'agent_dsh_desktop';
+  return ecosystem !== null && !['agent_dsh_desktop', 'agent_codex_desktop'].includes(agentId);
 }
 
 export function agentSupportsManagement(agentId: string): boolean {
-  return agentEcosystem(agentId) !== null && agentId !== 'agent_dsh_desktop';
+  return agentEcosystem(agentId) !== null;
 }

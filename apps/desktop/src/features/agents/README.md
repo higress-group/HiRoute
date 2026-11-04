@@ -28,6 +28,8 @@ verified settings and actions.
 | --- | --- |
 | [types.ts](types.ts) | WebView projections and current serialized model choices. These describe the existing native/API contract, not a second capability authority. |
 | [status.ts](status.ts) | Reads the shared model/collaboration-only status union. A missing model capability is distinct from an unconfigured model or an unreadable status. |
+| [AgentCapabilityRow.tsx](AgentCapabilityRow.tsx), [agent-capabilities.css](agent-capabilities.css) | Current-choice/action sections shared by Agent details and the Hermes directory selector, using the production capability-section layout; actions remain reachable at the minimum supported size. |
+| [AgentUsageDetails.tsx](AgentUsageDetails.tsx) | Secondary usage, resource paths, known channel overrides and management repair. Mounted only when connection details are expanded, including CLI-entry reads. |
 | [discovery.ts](discovery.ts), [AgentDiscoveryFeedback.tsx](AgentDiscoveryFeedback.tsx) | Supported catalog, remembered non-secret target hints, common rescan and distinct undiscovered/unavailable states. Backend revalidation owns context and write authority. |
 | [AgentSkillDetails.tsx](AgentSkillDetails.tsx) | Backend-supplied Skill scope, shared/borrowed availability, unobserved native loading and the existing CLI-entry preparation commands. |
 | [ecosystems.ts](ecosystems.ts) | Explicit current Agent identity, display name, brand and surface labels. Unknown discovered identities have no settings editor. |
@@ -37,7 +39,8 @@ verified settings and actions.
 | [AgentSettingsFeedback.tsx](AgentSettingsFeedback.tsx) | Presentation of authoritative Preview blockers. |
 | [HermesModelEditor.tsx](HermesModelEditor.tsx), [HermesRootFields.tsx](HermesRootFields.tsx) | One Plan/protocol and explicit effective profile; root fields are shared with source scan. Automatic adapter preparation and unobserved native loading stay distinct. |
 | [collaboration-check-feedback.ts](collaboration-check-feedback.ts) | Versioned collaboration-check failures become safe login, Skill recovery and retry guidance; native output is never display text. |
-| [CodexAccessPanel.tsx](CodexAccessPanel.tsx) | Profile/root facts, mode controls, shared launch command/copy view (also used by the confirmed trial handoff), visible mode-specific session-history and original-entry guidance, ordinary file-conflict diagnosis and an existing pending Operation's recovery entry. |
+| [CodexAccessPanel.tsx](CodexAccessPanel.tsx) | Direct CLI command copy and shared trial launch instructions, mode controls, compact saved-root history reminder and expandable full launch/history guidance. Setup keeps its full notice visible; file conflicts and pending recovery remain direct. |
+| [CodexDesktopPanel.tsx](CodexDesktopPanel.tsx) | Peer Desktop connection scope, initial route setup, context-only native launch, local retry feedback and shared-skill/directory disclosure. Configuration and launch remain independent actions. |
 | [codex-launch.ts](codex-launch.ts), [codex-surfaces.ts](codex-surfaces.ts) | Confirmed command-copy eligibility and the distinction between detected executables and mode applicability. |
 | [mutation-feedback.ts](mutation-feedback.ts) | Submitted, pre-apply cancelled and uncertain outcomes; truthful disable/recovery messages. |
 | [Agents page](../../agents.tsx) | Snapshot refresh, selected Agent/tab, in-memory draft and mode, discard guard, native calls, Operation handoff, confirmation-dependent copy effect and task-history composition. |
@@ -52,7 +55,7 @@ retry entry. Statically known channel models are shown separately from unobserve
 live session selection. Hermes can independently prepare the shared collaboration
 Skill and either existing trigger mode, retaining its native model and requiring
 no model plugin. It is not a Worker executor.
-All six supported Agents remain in the common catalog even when discovery returns
+All supported Agents and separate Desktop connections remain in the common catalog even when discovery returns
 no usable installation/configuration. Common rescan preserves existing entries;
 absence is not proof of uninstallation. Hermes appears before a profile is selected. This
 presentation entry has no context or settings authority. Its details contain the
@@ -71,7 +74,11 @@ explicit root never falls back to another; an unreadable default remains visible
 without hiding other Agents. Known invalid paths, missing explicit roots/configuration
 and read errors remain distinct. Hermes uses its own bundled mark in the common icon component.
 
-Management is a separate enable/disable control for every supported family. It
+Management is a separate enable/disable action for supported families, including
+Codex Desktop and DSH Desktop. Their management state and actions use the original
+CLI/Web owner, with a visible shared-scope hint; neither Desktop creates a second
+installation reference. `management-context.ts` resolves that owner from native
+discovery metadata, while Preview and readback retain backend authority. It
 uses the same settings Preview/Apply/owned restore as the other facets, with no
 Plan or model requirement. Scope/shared/external facts come from backend status;
 retained native files are not presented as globally disabled. CLI entry installation
@@ -114,6 +121,16 @@ submission identity; the daemon owns persistent Operations, authorization, journ
 recovery. The top-level `agents.tsx` type exports and `agent-editor-state.ts` /
 `agent-mutation-feedback.ts` exports remain compatibility entry points for existing callers.
 New Agent feature code imports its local owners directly.
+
+Desktop model and token actions clear previous launch feedback. Token submission and
+the persistent usage hint explain quitting/restarting the separate instance after a
+successful update; they do not claim an already-running process reloaded its grant.
+Neither action automatically quits or relaunches either Codex instance.
+The optional native model on restore belongs only to ordinary Codex root mode;
+changing the selected connection clears that draft. Independent Desktop restores
+only its own model facet, including during uninstall. Uninstall restores the shared
+Skill once through its canonical CLI/Web context. Its trial handoff returns to
+this connection's existing launch action.
 
 ## Current call paths
 
@@ -158,6 +175,7 @@ additional enable/save steps or model-verification badges on the settings page.
 | Connect an Agent to HiRoute routing | These forms and settings intents, followed by native/backend Preview and Apply. |
 | Safely restore managed configuration | Application transaction and integration/storage effects. The UI presents progress and recovery actions; it cannot infer safety from file appearance. |
 | Copy a command / start an Agent | Copy is a host clipboard effect. It does not launch a process, enable service startup or prove a model call. Existing Codex profile/root applicability stays explicit. |
+| Open the independent Codex Desktop | macOS Desktop and Windows Shell use context-only native IPC. Other consoles copy `hiroute agents desktop launch <CONTEXT_ID> --output json` for a graphical terminal on the service host; HTTP never dispatches launch. Copy uses the trusted displayed context; execution performs fresh model-only Local Control reads before and after preparation, retaining the same successful Operation. The macOS Session reader preserves window/authority fences. Neither launch nor copy loads the unrelated Plan catalog or Skill inventory. |
 | Enable delegation / execute a Worker task | Collaboration configures the caller's task-routing skill. [Task history](../AgentTasks.tsx) and Worker contracts separately own execution, cancellation and results. Model routing support does not imply Worker harness support. |
 
 ## Product contract tests

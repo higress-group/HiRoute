@@ -11,6 +11,7 @@ a prerequisite, not a model call, installed Skill invocation or resumable task.
 
 | Capability | Shared owners | Native detail / evidence |
 | --- | --- | --- |
+| Inspect and operate an Agent without technical clutter | [Capability rows](../../apps/desktop/src/features/agents/AgentCapabilityRow.tsx), [secondary details](../../apps/desktop/src/features/agents/AgentUsageDetails.tsx), [layout](../../apps/desktop/src/features/agents/agent-details.css) | `agent.details.progressive-disclosure` and production geometry/captures in [Agent browser checks](../../apps/desktop/tests/v3/browser/agent-trust-scenarios.mjs) |
 | Scan, prepare and import model sources | [Source admission map](architecture.md#model-sources-and-native-configuration), [model connection assembly](../../crates/daemon/src/control/runtime/model_connections.rs) | [Pi acceptance](../../tools/product-e2e/tests/PI_INTEGRATION.md), [DSH acceptance](../../tools/product-e2e/tests/DSH_INTEGRATION.md) |
 | Configure, edit and restore models | [Settings transaction](../../crates/application/src/agent_connection/settings), [typed facts](../../crates/daemon/src/control/runtime/settings_facts), [Desktop Agent feature](../../apps/desktop/src/features/agents/README.md) | [Additional native provider guide](../../crates/integrations/src/agents/additional_native/README.md), [saved-model journey](../../crates/daemon/tests/support/additional_model_product.py), [Windows ordinary Pi/DSH clients](../../crates/daemon/tests/support/windows_user_models.rs), [Windows Qoder official-account journey](../../crates/daemon/tests/support/windows_qoder_user_models.rs) |
 | Choose an Agent for a model trial | [Choice/detail reads](../../crates/product-session/src/commands/trial_agents.rs), [flow lifetime](../../apps/desktop/src/features/trial/useTrialAgents.ts), [confirmed Codex launch handoff](../../apps/desktop/src/features/trial/TrialCodexHandoff.tsx), [model projection](../../crates/daemon/src/control/runtime/settings_status.rs) | [Trial read races and mapping refresh](../../apps/desktop/tests/v3/visual/trial-agent-read-checks.mjs), [mode-specific launch and recovery](../../apps/desktop/tests/v3/visual/trial-codex-handoff-active.mjs), [strict model/full query control](../../crates/daemon/src/control/runtime/settings_projection_tests.rs) |
@@ -82,12 +83,41 @@ explains native provider-scoped session discovery before enabling routing. Defau
 on-demand access preserves the ordinary entry for earlier sessions; advanced default
 takeover first requires configuration restoration. See [session recovery](../local-user-configuration.md#find-earlier-codex-sessions). Worker Continue below
 has its own exact-history binding and does not replace the native `/resume` picker.
+The separate [Codex Desktop instance](../../crates/integrations/src/agents/codex_desktop.rs)
+uses a distinct home and settings identity alongside that CLI slot. Its
+[native command](../../apps/desktop/src-tauri/src/bridge/codex_desktop.rs) binds launch
+to fresh configured status through the [model-only native Session reader](../../crates/product-session/src/commands/codex_desktop.rs),
+retaining the originating window, Session and service fences without loading Plans
+or Skill inventories; [host preparation](../../crates/desktop-host-effects/src/codex_instance.rs)
+shares user skills without replacing existing entries;
+the [Windows Shell entry](../../apps/shell/src-tauri/src/runtime/codex_desktop.rs) and
+[local CLI action](../../crates/cli/src/codex_desktop.rs) share the
+[exact-context launch reader](../../crates/product-session/src/codex_desktop.rs) and
+[native effect](../../crates/desktop-host-effects/src/codex_launch.rs). Web consoles
+copy that context-only local command without reading the Plan catalog; package
+discovery, fresh authority checks and graphical launch stay on its host.
+Windows skill junctions and Unix symlinks share the exclusive
+[directory-link boundary](../../crates/platform/src/directory_link.rs).
+Its model identity remains separate. The [settings planner](../../crates/daemon/src/control/runtime/settings_facts.rs)
+uses the private configuration and existing ownership records to restore even if the
+Desktop application has been removed. Management uses the original CLI/root owner
+and shared user file through the [UI owner resolver](../../apps/desktop/src/features/agents/management-context.ts)
+and [shared status projection](../../crates/daemon/src/control/runtime/settings_status.rs).
+DSH Desktop likewise uses its DSH_HOME Web owner's management Skill. Neither adds
+a Worker executor or collaboration control. [Desktop-only management admission](../../crates/integrations/src/agents/desktop_management.rs)
+and [wire/reopen/restore coverage](../../crates/daemon/src/control/runtime/settings_desktop_management_tests.rs)
+preserve canonical references when no separate CLI is installed.
+[Lifecycle coverage](../../crates/daemon/src/control/runtime/settings_codex_desktop_tests.rs)
+exercises both connections and recovery through the public settings wire.
+
 The trial flow preserves that selected mode. After confirmed mapping, its
 [handoff](../../apps/desktop/src/features/trial/TrialCodexHandoff.tsx) reads only
 the submitted native context, verifies its saved selection and reuses the shared
 profile command/copy view. Default mode instead explains restarting the matching
-CLI/Desktop. Explicit result refresh retires the earlier launch instructions;
-unverified, changed or revoked settings cannot supply a command.
+CLI/Desktop. The independent Desktop instead links back to its exact Agent
+connection for the separate-window or local-command action. Explicit result
+refresh retires the earlier launch instructions; unverified, changed or revoked
+settings cannot supply confirmed guidance.
 OpenCode's [startup target binding](../../crates/daemon/src/control/runtime.rs) keeps
 the physical JSON/JSONC file verified by existing recovery markers;
 [effective model facts](../../crates/integrations/src/agents/opencode_scanner.rs)

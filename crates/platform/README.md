@@ -24,6 +24,12 @@ broadcasts the environment change. `shell_open` admits bounded HTTP(S) URLs befo
 the native browser association. These leaves do not mint console credentials,
 select releases or authorize product operations.
 
+`directory_link` creates an exclusive directory link at a caller-owned destination:
+Unix uses a symlink and Windows uses a local NTFS junction without Developer Mode
+or administrator privileges. It never replaces an existing entry. Callers own skill
+selection, same-name handling and retention; this primitive grants no source deletion
+authority. Windows junction targets cannot be network shares.
+
 `windows::installed_apps` reads bounded current-user/machine uninstall registration
 locations in both registry views. These are discovery hints only; the Agent owner
 selects the product and validates executable/archive identity through the existing

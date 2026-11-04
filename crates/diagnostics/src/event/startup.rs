@@ -30,6 +30,7 @@ pub enum StartupOutcome {
 #[serde(rename_all = "snake_case")]
 pub enum StartupFailureCode {
     InvalidConfiguration,
+    CodexHomeConflict,
     StorageUnavailable,
     StorageAccessDenied,
     StorageLocked,

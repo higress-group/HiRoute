@@ -177,6 +177,7 @@ impl FilesystemAgentScannerV1 {
     }
     fn dsh_desktop_contract(
         &self,
+        skills: bool,
     ) -> Result<(CanonicalDigest, PathBuf, PathBuf), AgentFilesystemScanError> {
         let mut dependencies = Vec::new();
         for path in [
@@ -185,6 +186,27 @@ impl FilesystemAgentScannerV1 {
         ] {
             let bytes = super::super::dsh_config::read_patch_bytes(&path)?;
             let patch = super::super::dsh_config::Patch::parse(Some(&bytes)).map_err(invalid)?;
+            if skills {
+                let filesystem = patch
+                    .resource_config("skill-filesystem", "@deepseek-ai/dsh-skill-filesystem")
+                    .map_err(invalid)?;
+                let tool = patch
+                    .resource_config("tool-skill", "@deepseek-ai/dsh-tool-skill")
+                    .map_err(invalid)?;
+                let skill = patch
+                    .resource_config("skill", "@deepseek-ai/dsh-skill")
+                    .map_err(invalid)?;
+                if filesystem.is_some_and(|v| {
+                    v["includeDefaultRoots"] == false
+                        || v.get("dshHome")
+                            .is_some_and(|p| p.as_str() != self.layout.dsh_config_root.to_str())
+                }) {
+                    return Err(AgentFilesystemScanError::InvalidConfig);
+                }
+                dependencies
+                    .push(CanonicalDigest::of(&(filesystem, tool, skill)).map_err(invalid)?);
+                continue;
+            }
             if path == self.layout.dsh_config_root.join("cordis.patch.yml")
                 && patch.config("llm-pi-ai").map_err(invalid)?.is_some()
             {
@@ -233,7 +255,7 @@ impl FilesystemAgentScannerV1 {
     pub fn check_dsh_desktop_model_configuration(
         &self,
     ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
-        let (before, executable, archive) = self.dsh_desktop_contract()?;
+        let (before, executable, archive) = self.dsh_desktop_contract(false)?;
         let mut command = Self::dsh_desktop_command(&executable, &archive);
         // Upstream forbids dumping the Desktop profile. Its standard manifest uses
         // these same Web bundles; inspect that default, never pretend this runs Desktop.
@@ -251,8 +273,25 @@ impl FilesystemAgentScannerV1 {
         &self,
         checked: &CanonicalDigest,
     ) -> Result<bool, AgentFilesystemScanError> {
-        self.dsh_desktop_contract()
+        self.dsh_desktop_contract(false)
             .map(|(current, _, _)| current == *checked)
+    }
+
+    #[cfg(any(unix, windows))]
+    pub(super) fn check_dsh_desktop_management(
+        &self,
+    ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
+        let (before, executable, archive) = self.dsh_desktop_contract(true)?;
+        let mut command = Self::dsh_desktop_command(&executable, &archive);
+        command.args(["--profile", "web", "--dump-default-config"]);
+        super::dsh_native::check_composition(
+            &super::dsh_native::dsh_public_probe(command, false)?,
+            &["skill-filesystem", "tool-skill", "skill"],
+        )?;
+        if before != self.dsh_desktop_contract(true)?.0 {
+            return Err(AgentFilesystemScanError::SourceChanged);
+        }
+        Ok(before)
     }
 }
 

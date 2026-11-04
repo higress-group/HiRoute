@@ -121,6 +121,7 @@ export type AgentLiveCheckCompletion = {
   requested_call_count: number;
 };
 export type ModelStatus = {
+  context_id?: string;
   native_target?: AgentNativeTarget;
   management_skill?: ManagementSkillStatus;
   native_adapter?: { resources_installed: boolean; runtime_loading: 'unobserved'; next_action: 'reload_plugins_if_running' | 'repair_owned_resources'; known_channel_models?: string[] };
@@ -146,6 +147,12 @@ export type AgentSettingsStatus = ModelStatus | CollaborationOnlyStatus;
 export type Agent = {
   native_target?: AgentNativeTarget;
   codex_access?: CodexAccess | null;
+  codex_desktop?: {
+    codex_home: string;
+    user_data: string;
+    source_codex_home: string;
+    shared_skills: string;
+  } | null;
   agent_id: string;
   version: string;
   context_id: string | null;

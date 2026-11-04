@@ -192,7 +192,28 @@ pub fn codex_desktop_engine() -> Option<std::path::PathBuf> {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        None
+        codex_installation::installed().map(|app| app.engine)
+    }
+}
+
+mod codex_instance;
+pub use codex_instance::{SharedCodexSkills, prepare_codex_instance};
+#[cfg(any(not(target_os = "macos"), test))]
+mod codex_installation;
+mod codex_launch;
+pub use codex_launch::launch_configured_codex_instance;
+
+pub fn launch_codex_instance(
+    codex_home: &std::path::Path,
+    user_data: &std::path::Path,
+) -> Result<(), &'static str> {
+    #[cfg(target_os = "macos")]
+    {
+        codex_instance::launch(codex_home, user_data)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        codex_installation::launch(codex_home, user_data)
     }
 }
 

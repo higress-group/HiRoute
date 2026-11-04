@@ -48,6 +48,8 @@ pub use trial_agents::{trial_agent_choices, trial_agent_model};
 pub use trial_setup::trial_setup_snapshot;
 mod context;
 pub use context::*;
+mod codex_desktop;
+pub use codex_desktop::native_codex_desktop_launch_target;
 async fn confirmation_session<'a>(
     state: &'a CommandState<'_>,
     epoch: u64,

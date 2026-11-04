@@ -3,6 +3,7 @@ use super::*;
 impl LocalControlAdapter {
     pub(super) fn codex_restore_model_facts(
         &self,
+        class: SettingsAgentClass,
         original: &hiroute_domain::OperationId,
         target: &str,
     ) -> Result<CodexRestoreModelFacts, ControlReadError> {
@@ -56,7 +57,9 @@ impl LocalControlAdapter {
         };
         let restored_model =
             codex_explicit_model(&restored).map_err(|_| ControlReadError::Corrupt)?;
-        let scope = CodexConfigurationScope::user_file(self.scanner.codex_user_config_target());
+        let scope = CodexConfigurationScope::user_file(
+            class.scanner(&self.scanner).codex_user_config_target(),
+        );
         let catalog = sample_codex_catalog_plan(
             &scope,
             &[],
@@ -127,6 +130,7 @@ impl LocalControlAdapter {
     /// account evidence; API identity requires the exact endpoint and keyed credential fingerprint.
     pub(super) fn preserved_codex_model_selections(
         &self,
+        class: SettingsAgentClass,
         catalog: &CodexCatalogSummaryV1,
         candidates: &mut Vec<hiroute_application::compiler::CandidateCompilationFactV1>,
         managed_root: Option<(&hiroute_domain::OperationId, &str)>,
@@ -136,7 +140,7 @@ impl LocalControlAdapter {
             let operation = stores.control().load_operation(original).ok()??;
             if operation.state != hiroute_domain::OperationState::Succeeded
                 || operation.plan.spec().resource_id.as_deref()
-                    != Some(&self.settings_context(SettingsAgentClass::Codex))
+                    != Some(&self.settings_context(class))
             {
                 return None;
             }
@@ -153,7 +157,8 @@ impl LocalControlAdapter {
             let restore = CodexNativeRestore::decode_protected(&record[2..]).ok()?;
             drop(stores);
             Some(
-                self.scanner
+                class
+                    .scanner(&self.scanner)
                     .codex_source_before_managed_change(&restore)
                     .ok()??,
             )
@@ -163,8 +168,8 @@ impl LocalControlAdapter {
         let native = match &restored_source {
             Some((native, _)) => native.clone(),
             None => {
-                let mut sources = self
-                    .scanner
+                let mut sources = class
+                    .scanner(&self.scanner)
                     .codex_source_candidates(&CodexSelectionTarget::Root)
                     .ok()?;
                 if sources.len() != 1 {
@@ -390,6 +395,7 @@ impl LocalControlAdapter {
     /// not a Codex executable identity or version precheck.
     pub(super) fn codex_catalog_facts(
         &self,
+        class: SettingsAgentClass,
         settings: &hiroute_domain::AgentModelSelectionV2,
         publication: Option<&hiroute_domain::GatewayPublicationV1>,
         baseline: &hiroute_integrations::CodexCatalogBaseline,
@@ -397,7 +403,7 @@ impl LocalControlAdapter {
     ) -> Option<SettingsModelCatalogFacts> {
         let publication = publication?;
         let derived = super::native_model::codex_catalog_plan_for(
-            &self.scanner.codex_user_config_target(),
+            &class.scanner(&self.scanner).codex_user_config_target(),
             settings,
             publication,
             baseline,

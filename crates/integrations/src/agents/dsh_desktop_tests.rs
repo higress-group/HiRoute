@@ -17,7 +17,7 @@ case "$2" in */app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.j
 shift 2
 if [ "$1" = --version ]; then echo 0.2.1-rc.3; exit; fi
 [ "$1" = --profile ] && [ "$2" = web ] && [ "$3" = --dump-default-config ] || exit 94
-printf '%s\n' '- id: llm-pi-ai'
+printf '%s\n' '- id: llm-pi-ai' '- id: skill-filesystem' '- id: tool-skill' '- id: skill'
 "#).unwrap();
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
     selected.dsh_desktop_executable = Some(executable);
@@ -125,4 +125,81 @@ fn desktop_probe_failure_does_not_fall_back_to_web_cli_or_mutate_native_files() 
     assert!(scanner.check_dsh_desktop_model_configuration().is_err());
     assert!(!scanner.dsh_desktop_models_target().exists());
     assert!(!scanner.dsh_user_models_target().exists());
+}
+
+#[test]
+fn desktop_management_requires_its_shared_skill_roots_and_never_proves_delegation() {
+    use hiroute_domain::AgentAction;
+    let directory = tempfile::tempdir().unwrap();
+    let mut selected = desktop_layout(directory.path());
+    selected.codex_desktop_executable = selected.dsh_desktop_executable.clone();
+    let root = selected.dsh_config_root.clone();
+    let executable = selected.dsh_desktop_executable.clone().unwrap();
+    let scanner = FilesystemAgentScannerV1::new(selected, registry());
+    let target = root.join("skills/hiroute-management/SKILL.md");
+    for agent in ["agent_codex_default", "agent_dsh_default"] {
+        let installation = scanner
+            .desktop_management_installation(agent, &target, true)
+            .unwrap();
+        assert!(
+            installation
+                .require_action(AgentAction::InstallManagementSkill)
+                .is_ok()
+        );
+        assert!(
+            installation
+                .require_action(AgentAction::InstallCollaborationSkill)
+                .is_err()
+        );
+        assert!(!target.exists(), "discovery installed the Skill");
+    }
+    let patch = scanner.dsh_desktop_models_target();
+    fs::create_dir_all(patch.parent().unwrap()).unwrap();
+    for bytes in [
+        b"- id: skill-filesystem\n  config: {includeDefaultRoots: false}\n".as_slice(),
+        b"- id: skill-filesystem\n  config: {dshHome: /other/home}\n".as_slice(),
+        b"- id: skill-filesystem\n  name: custom-module\n".as_slice(),
+        b"- id: tool-skill\n  disabled: true\n".as_slice(),
+        b"- insert: {id: skill-filesystem, name: custom-module}\n".as_slice(),
+    ] {
+        fs::write(&patch, bytes).unwrap();
+        assert!(
+            scanner
+                .desktop_management_installation("agent_dsh_default", &target, true)
+                .is_none()
+        );
+    }
+    fs::remove_file(&patch).unwrap();
+    let before = scanner
+        .desktop_management_installation("agent_dsh_default", &target, true)
+        .unwrap();
+    fs::write(&patch, b"- id: llm-pi-ai\n  config: {providers: {}}\n").unwrap();
+    let after = scanner
+        .desktop_management_installation("agent_dsh_default", &target, true)
+        .unwrap();
+    assert_eq!(
+        before.observation_digest, after.observation_digest,
+        "model-only changes revoke a Skill proof"
+    );
+    fs::remove_file(executable).unwrap();
+    for agent in ["agent_codex_default", "agent_dsh_default"] {
+        assert!(
+            scanner
+                .desktop_management_installation(agent, &target, true)
+                .is_none()
+        );
+        let restore = scanner
+            .desktop_management_installation(agent, &target, false)
+            .unwrap();
+        assert!(
+            restore
+                .require_action(AgentAction::RemoveManagementSkill)
+                .is_ok()
+        );
+        assert!(
+            restore
+                .require_action(AgentAction::InstallManagementSkill)
+                .is_err()
+        );
+    }
 }

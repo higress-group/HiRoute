@@ -105,6 +105,7 @@ fn main() {
             "web_confirmation_snapshot",
             "resolve_web_confirmation",
             "agent_snapshot",
+            "launch_codex_desktop",
             "trial_setup_snapshot",
             "agent_home_summary",
             "agent_model_associations",

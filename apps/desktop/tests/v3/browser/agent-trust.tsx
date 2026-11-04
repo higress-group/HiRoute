@@ -1,7 +1,9 @@
 import { trialAgentRead } from './trial-agent-fixture';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mockIPC } from './host-mock';
+import { setHostTransport } from '../../../src/host/index';
+import { browserCapabilities } from '../../../src/host/types';
 import { Agents, type Agent, type AgentSnapshot, type ModelStatus } from '../../../src/agents';
 import type { OperationReference } from '../../../src/features/model-connections/types';
 import { PresentationRoot } from '../../../src/ui';
@@ -108,6 +110,27 @@ function protectedCodex(): AgentSnapshot {
   codexOf(snapshot).settings!.protected_native_model_ids = ['gpt-5.6-sol'];
   return snapshot;
 }
+function independentCodexDesktop(configured = true): AgentSnapshot {
+  const snapshot = splitCodexStatus();
+  const cli = codexOf(snapshot);
+  const desktop = structuredClone(cli);
+  desktop.agent_id = 'agent_codex_desktop';
+  desktop.context_id = `agent-context/codex-desktop/sha256:${'a'.repeat(64)}`;
+  desktop.codex_access = undefined;
+  desktop.codex_desktop = { codex_home: '/example/Application Support/HiRoute/data.codex-desktop/codex',
+    user_data: '/example/Application Support/HiRoute/data.codex-desktop/desktop', source_codex_home: cli.codex_access!.codex_home, shared_skills: '/example/.agents/skills' };
+  desktop.available_surfaces = ['codex_desktop'];
+  desktop.native_model_catalog = null;
+  if (configured && desktop.settings && 'state' in desktop.settings) {
+    desktop.settings.context_id = desktop.context_id;
+    desktop.settings.operation_state = 'succeeded';
+    desktop.settings.operation_id = 'operation/desktop-fixture';
+  }
+  if (!configured) desktop.settings = { state: 'not_configured', model_verified: false, restore_point_ref: null,
+    management_skill: structuredClone(cli.settings?.management_skill) };
+  snapshot.agents.push(desktop);
+  return snapshot;
+}
 function splitCodexStatus(): AgentSnapshot {
   const snapshot = registered();
   const agent = codexOf(snapshot);
@@ -168,7 +191,9 @@ function additionalRouted(ecosystem: 'qoder' | 'pi' | 'dsh' | 'opencode' = 'qode
 
 type Handler = (payload: Record<string, unknown>) => unknown;
 const control = {
-  agents: registered(),
+  agents: new URLSearchParams(location.search).get('view') === 'codex-desktop'
+    ? (() => { const snapshot = independentCodexDesktop(); snapshot.agents.sort(a => a.agent_id === 'agent_codex_desktop' ? -1 : 0); return snapshot; })()
+    : registered(),
   commands: [] as { command: string; payload: Record<string, unknown> }[],
   handlers: {} as Record<string, Handler>,
   mutations: 0,
@@ -176,6 +201,12 @@ const control = {
   refresh: () => {},
   setActive: (_active: boolean) => {},
   reset: () => {},
+  setPlatform: (platform: string) => {
+    setHostTransport(platform !== 'macos' ? {
+      capabilities: () => ({ ...browserCapabilities, host: platform === 'windows' ? 'shell-console' : 'console', platform, codex_desktop_launch: platform === 'windows' }),
+      call: async <T,>(command: string, args: Record<string, unknown> = {}) => await fixtureIPC(command, args) as T,
+    } : undefined);
+  },
   remount: () => {},
   registered,
   notRunnable,
@@ -186,6 +217,7 @@ const control = {
   protectedCodex,
   cliOnly: () => freshCodex('codex_cli'),
   splitCodexStatus,
+  independentCodexDesktop,
   qoderFresh: () => additionalAgent(false),
   qoderConfigured: () => additionalAgent(true),
   qoderRouted: () => additionalRouted(),
@@ -196,11 +228,13 @@ const control = {
 };
 Object.assign(window, { agentTrust: control });
 
-mockIPC(async (command, payload) => {
+async function fixtureIPC(command: string, payload?: unknown) {
   const args = (payload ?? {}) as Record<string, unknown>;
   control.commands.push({ command, payload: args });
   if (control.handlers[command]) return control.handlers[command](args);
   switch (command) {
+    case 'launch_codex_desktop':
+    case 'shell_launch_codex_desktop': return { preserved_skills: 0 };
     case 'cli_entry_status': return { state: 'valid', command_resolves_to_app_cli: true, path_contains_entry_directory: true };
     case 'trial_agent_model': return trialAgentRead(control.agents, command, args);
     case 'agent_snapshot': {
@@ -215,7 +249,8 @@ mockIPC(async (command, payload) => {
     case 'check_agent_live': return { accepted: true, scope: 'live', model_call: true, state: 'passed', call_count: 1, requested_call_count: 1 };
     default: throw new Error(`Unexpected agent-trust command: ${command}`);
   }
-});
+}
+mockIPC(fixtureIPC);
 
 function Harness() {
   const presentation = new URLSearchParams(location.search);
@@ -224,6 +259,14 @@ function Harness() {
   const [generation, setGeneration] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [active, setActive] = useState(true);
+  useEffect(() => {
+    if (presentation.get('view') !== 'codex-desktop') return;
+    const timer = window.setInterval(() => {
+      const row = [...document.querySelectorAll<HTMLButtonElement>('.native-list .list-row')].find(node => node.textContent?.includes('Codex Desktop'));
+      if (row) { row.click(); window.clearInterval(timer); }
+    }, 30);
+    return () => window.clearInterval(timer);
+  }, [generation]);
   control.setActive = setActive;
   const [operation, setOperation] = useState<OperationReference | null>(null);
   control.refresh = () => setRefresh(value => value + 1);

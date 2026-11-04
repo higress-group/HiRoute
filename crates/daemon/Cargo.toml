@@ -52,6 +52,9 @@ zeroize.workspace = true
 nix.workspace = true
 rustix = { workspace = true, features = ["fs"] }
 
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+hiroute-desktop-host-effects = { path = "../desktop-host-effects" }
+
 [[bin]]
 name = "hirouted"
 path = "src/control/bin.rs"

@@ -53,7 +53,7 @@ async function invokeHost<T>(command: string, args: Record<string, unknown> = {}
     return override.call<T>(command, args);
   }
   if (hostKind() === 'tauri') return (await import('./tauri.ts')).tauriTransport.call<T>(command, args);
-  if (hostKind() === 'shell-console' && (command.startsWith('update_') || command.startsWith('login_start_') || ['open_external_url', 'save_classifier_openapi', 'open_in_browser', 'restart_service', 'reconnect'].includes(command))) return (await import('@tauri-apps/api/core')).invoke<T>(`shell_${command}`, args);
+  if (hostKind() === 'shell-console' && (command.startsWith('update_') || command.startsWith('login_start_') || ['open_external_url', 'save_classifier_openapi', 'open_in_browser', 'restart_service', 'reconnect', 'launch_codex_desktop'].includes(command))) return (await import('@tauri-apps/api/core')).invoke<T>(`shell_${command}`, args);
   return browserCall(command, args) as Promise<T>;
 }
 export async function invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {

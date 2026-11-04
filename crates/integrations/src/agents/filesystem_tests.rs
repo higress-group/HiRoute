@@ -11,6 +11,8 @@ use crate::agents::{
 
 #[path = "filesystem_tests/claude_routing.rs"]
 mod claude_routing;
+#[path = "filesystem_tests/codex_desktop.rs"]
+mod codex_desktop;
 #[path = "filesystem_tests/dsh.rs"]
 mod dsh;
 #[path = "filesystem_tests/pi.rs"]
@@ -89,6 +91,7 @@ fn layout_with_claude_version(root: &Path, claude_version: &str) -> AgentFilesys
         opencode_executable: root.join("missing-opencode"),
         codex_executable: codex,
         codex_desktop_executable: None,
+        codex_desktop_instance_root: None,
         claude_executable: claude,
         qoder_executable: bin.join("qoder-not-installed"),
         pi_executable: root.join("bin/pi"),

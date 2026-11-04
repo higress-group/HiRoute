@@ -61,6 +61,9 @@ pub(crate) fn check(
                     hiroute_application_api::AgentModelSurfaceV2::CodexCli
                         | hiroute_application_api::AgentModelSurfaceV2::CodexDesktop
                 ),
+                "agent_codex_desktop" => {
+                    target.surface != hiroute_application_api::AgentModelSurfaceV2::CodexDesktop
+                }
                 "agent_claude_default" => {
                     target.surface != hiroute_application_api::AgentModelSurfaceV2::ClaudeCli
                 }
@@ -98,6 +101,7 @@ mod tests {
             Ok(vec![DiscoveredAgentV1 {
                 native_target: None,
                 codex_access: None,
+                codex_desktop: None,
                 context_id: Some("agent-context/codex/default".into()),
                 agent_id: "agent_codex_default".into(),
                 profile_id: "codex-responses-v1".into(),
