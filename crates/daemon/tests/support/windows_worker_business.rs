@@ -612,6 +612,7 @@ pub(super) fn wait_result(
     let run = accepted["data"]["run_id"].as_str().unwrap();
     let deadline = Instant::now() + Duration::from_secs(180);
     let mut current = accepted.clone();
+    let mut wait_exit = 0;
     while !matches!(
         current["data"]["run_state"].as_str(),
         Some("succeeded" | "failed" | "cancelled" | "unknown")
@@ -621,7 +622,7 @@ pub(super) fn wait_result(
             "actual public Worker did not finish within the admitted task deadline"
         );
         let revision = oracle::wait_revision(&current, run).to_string();
-        current = command(
+        let (exit, observed) = command_outcome(
             product,
             &[
                 "worker",
@@ -636,9 +637,19 @@ pub(super) fn wait_result(
             None,
             Duration::from_secs(30),
         );
+        current = observed;
+        if exit != 0 {
+            // Inspect the saved run even if the wait error omitted its data.
+            wait_exit = exit;
+            break;
+        }
+        assert!(matches!(
+            current["status"].as_str(),
+            Some("succeeded" | "accepted")
+        ));
         same_identity(&current["data"], &accepted["data"]);
     }
-    if current["data"]["run_state"] != "succeeded" {
+    if wait_exit != 0 || current["data"]["run_state"] != "succeeded" {
         // Query the real public result before the unchanged success assertion.
         // Arbitrary native/model text remains only in memory, never diagnostics.
         let (exit, result) = command_outcome(
@@ -655,6 +666,7 @@ pub(super) fn wait_result(
             failure_diagnostics::receipt(&current, &result, task, run, exit, &ledger, poisoned);
         println!("Windows public Worker terminal facts: {receipt}");
     }
+    assert_eq!(wait_exit, 0, "actual public Worker wait must succeed");
     assert_eq!(
         current["data"]["run_state"], "succeeded",
         "actual native public Worker run must succeed"

@@ -5,7 +5,7 @@ use hiroute_host_runtime::{
     RetainedRecoveryPackage, StandaloneLayout, read_standalone_install_record,
 };
 
-pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io::Result<()> {
+pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io::Result<bool> {
     let layout = StandaloneLayout::from_environment().map_err(|_| invalid())?;
     let Some(previous) = &value.previous_package else {
         // An uninstalled old data group still needs its matching package. The
@@ -16,13 +16,14 @@ pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io:
             &data()?.join("missing-original-package"),
         )
         .map_err(io::Error::other)?;
-        return windows::preflight_desktop_space(
+        windows::preflight_desktop_space(
             incoming,
             &data()?,
             fs::metadata(std::env::current_exe()?)?.len(),
             0,
             Some(&report),
-        );
+        )?;
+        return Ok(false);
     };
     // Ordinary install/repair must not export historical Task/Apps state or
     // duplicate the complete Desktop. Those are recovery inputs only when the
@@ -38,7 +39,7 @@ pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io:
         Some(&report),
     )?;
     if !report.history_cutover_required {
-        return Ok(());
+        return Ok(false);
     }
     let marker = read_standalone_install_record(&layout.marker_path).map_err(io::Error::other)?;
     if marker.install_root != *previous {
@@ -191,5 +192,6 @@ pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io:
         hiroute_host_runtime::checked_upgrade_preflight(daemon, &layout.storage_root(), &bundle)
             .map_err(io::Error::other)?;
     windows::preflight_desktop_space(incoming, &data()?, shell_bytes, 0, Some(&report))?;
-    retained.store()
+    retained.store()?;
+    Ok(true)
 }

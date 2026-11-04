@@ -18,7 +18,7 @@ asset_list=$(mktemp)
 object_headers=$(mktemp)
 head_error=$(mktemp)
 trap 'rm -f "$asset_list" "$object_headers" "$head_error"' EXIT
-node apps/website/scripts/release-manifest.mjs artifacts "$manifest" > "$asset_list"
+node apps/website/scripts/release-manifest.mjs publication-assets "$manifest" > "$asset_list"
 
 head_object() {
   local key=$1 status

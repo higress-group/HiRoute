@@ -1,7 +1,8 @@
 use super::{ShellState, startup_failure};
 use crate::ConsoleOrigin;
 use hiroute_application_api::{
-    ConsoleLaunchRequestV1, ConsoleLaunchV1, ErrorCode, MachineEnvelopeV2, SystemStatusV1,
+    ClientEmptyRequestV1, ConsoleLaunchRequestV1, ConsoleLaunchV1, ErrorCode, MachineEnvelopeV2,
+    STANDALONE_SERVICE_READINESS_OPERATION_V1,
 };
 use hiroute_client_core::{Client, LocalEndpoint};
 use hiroute_host_runtime::{
@@ -171,14 +172,13 @@ pub(super) async fn is_ready() -> bool {
         return false;
     };
     client
-        .query::<_, SystemStatusV1>("GetSystemStatus", "shell-ready", &serde_json::json!({}))
+        .query::<_, bool>(
+            STANDALONE_SERVICE_READINESS_OPERATION_V1,
+            "shell-ready",
+            &ClientEmptyRequestV1::default(),
+        )
         .await
-        .is_ok_and(|response| {
-            response.error.is_none()
-                && response
-                    .data
-                    .is_some_and(|s| s.gateway == "ready" && s.daemon == "role_all")
-        })
+        .is_ok_and(|response| response.error.is_none() && response.data == Some(true))
 }
 pub(super) fn available_blocking() -> bool {
     tokio::runtime::Builder::new_current_thread()

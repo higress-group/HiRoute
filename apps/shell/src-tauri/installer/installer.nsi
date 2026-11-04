@@ -75,13 +75,11 @@ Var WixMode
 Var OldMainBinaryName
 Var HiRouteInstallMutex
 
-{{#if installer_hooks}}
-!include "{{installer_hooks}}"
-{{/if}}
-
 Name "${PRODUCTNAME}"
-BrandingText "${COPYRIGHT}"
+BrandingText "HiRoute"
 OutFile "${OUTFILE}"
+ShowInstDetails hide
+ShowUninstDetails hide
 
 ; We don't actually use this value as default install path,
 ; it's just for nsis to append the product name folder in the directory selector
@@ -98,6 +96,10 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 # additional plugins
 !addplugindir "${ADDITIONALPLUGINSPATH}"
+
+{{#if installer_hooks}}
+!include "{{installer_hooks}}"
+{{/if}}
 
 ; Uninstaller signing command
 !if "${UNINSTALLERSIGNCOMMAND}" != ""
@@ -168,10 +170,6 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 !define MUI_LANGDLL_REGISTRY_VALUENAME "Installer Language"
 
 ; Installer pages, must be ordered as they appear
-; 1. Welcome Page
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-!insertmacro MUI_PAGE_WELCOME
-
 ; 2. License Page (if defined)
 !if "${LICENSE}" != ""
   !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
@@ -390,7 +388,6 @@ Function PageLeaveReinstall
 FunctionEnd
 
 ; Fixed per-user program directory; never a standalone state directory.
-Page custom HiRouteHistoryNotice
 Page custom HiRouteOptions HiRouteOptionsLeave
 
 ; 6. Start menu shortcut page
@@ -406,20 +403,7 @@ Var AppStartMenuFolder
 ; 7. Installation page
 !insertmacro MUI_PAGE_INSTFILES
 
-; 8. Finish page
-;
-; Don't auto jump to finish page after installation page,
-; because the installation page has useful info that can be used debug any issues with the installer.
-!define MUI_FINISHPAGE_NOAUTOCLOSE
-; Use show readme button in the finish page as a button create a desktop shortcut
-!define MUI_FINISHPAGE_SHOWREADME
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "$(createDesktop)"
-!define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateOrUpdateDesktopShortcut
-; Show run app after installation.
-!define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_FUNCTION RunMainBinary
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
-!insertmacro MUI_PAGE_FINISH
+Page custom HiRouteReady
 
 Function RunMainBinary
   nsis_tauri_utils::RunAsUser "$INSTDIR\${MAINBINARYNAME}.exe" ""
@@ -429,43 +413,26 @@ FunctionEnd
 ; 1. Confirm uninstall page
 Var DeleteAppDataCheckbox
 Var DeleteAppDataCheckboxState
-!define /ifndef WS_EX_LAYOUTRTL         0x00400000
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ConfirmShow
-Function un.ConfirmShow ; Add add a `Delete app data` check box
-  ; $1 inner dialog HWND
-  ; $2 window DPI
-  ; $3 style
-  ; $4 x
-  ; $5 y
-  ; $6 width
-  ; $7 height
-  FindWindow $1 "#32770" "" $HWNDPARENT ; Find inner dialog
-  System::Call "user32::GetDpiForWindow(p r1) i .r2"
-  ${If} $(^RTL) = 1
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE} | ${WS_EX_LAYOUTRTL}"
-    IntOp $4 50 * $2
-  ${Else}
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE}"
-    IntOp $4 0 * $2
-  ${EndIf}
-  IntOp $5 100 * $2
-  IntOp $6 400 * $2
-  IntOp $7 25 * $2
-  IntOp $4 $4 / 96
-  IntOp $5 $5 / 96
-  IntOp $6 $6 / 96
-  IntOp $7 $7 / 96
-  System::Call 'user32::CreateWindowEx(i r3, w "${__NSD_CheckBox_CLASS}", w "Remove standalone HiRoute data (Agent files and projects are preserved)", i ${__NSD_CheckBox_STYLE}, i r4, i r5, i r6, i r7, p r1, i0, i0, i0) i .s'
+UninstPage custom un.ConfirmShow un.ConfirmLeave
+Function un.ConfirmShow
+  ${IfThen} $PassiveMode = 1 ${|} Abort ${|}
+  nsDialogs::Create 1018
+  Pop $0
+  ${IfThen} $0 == error ${|} Abort ${|}
+  !insertmacro MUI_HEADER_TEXT "Uninstall HiRoute" "Remove HiRoute from this Windows account"
+  ${NSD_CreateLabel} 0 4u 100% 36u "HiRoute restores managed Agent settings before removing its programs and background service. Your HiRoute data is kept by default."
+  Pop $0
+  ${NSD_CreateCheckbox} 0 48u 100% 14u "Also remove local HiRoute data"
   Pop $DeleteAppDataCheckbox
-  SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
-  SendMessage $DeleteAppDataCheckbox ${WM_SETFONT} $1 1
+  ${NSD_CreateLabel} 10u 65u -10u 27u "This removes HiRoute settings and history. Agent files and projects are kept."
+  Pop $0
+  GetDlgItem $0 $HWNDPARENT 1
+  ${NSD_SetText} $0 "Uninstall"
+  nsDialogs::Show
 FunctionEnd
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
 Function un.ConfirmLeave
-  SendMessage $DeleteAppDataCheckbox ${BM_GETCHECK} 0 0 $DeleteAppDataCheckboxState
+  ${NSD_GetState} $DeleteAppDataCheckbox $DeleteAppDataCheckboxState
 FunctionEnd
-!define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
-!insertmacro MUI_UNPAGE_CONFIRM
 
 ; 2. Uninstalling Page
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -526,11 +493,8 @@ Function .onInit
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute cannot install over this background service. $1" /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify this installation." "preflight"
     Abort
-  ${EndIf}
-  ${IfNot} ${Silent}
-    !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
   ${EndIf}
   nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe"'
   Pop $0
@@ -544,7 +508,7 @@ Function .onInit
     ${EndIf}
   ${EndIf}
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute needs installation recovery. Existing data and changed files are preserved. $1" /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute needs installation recovery. Keep your existing files and data." "recover"
     Abort
   ${EndIf}
   ${If} ${Silent}
@@ -552,9 +516,14 @@ Function .onInit
     StrCpy $HiRouteLoginChoice 1
     StrCpy $HiRouteTrayChoice 2
   ${Else}
-    ExecWait '"$PLUGINSDIR\hiroute-preflight.exe" --installer-options' $0
-    ${If} $0 > 3
-      MessageBox MB_ICONSTOP "HiRoute could not read the existing installation options." /SD IDOK
+    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-options'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+    ${AndIf} $0 != 1
+    ${AndIf} $0 != 2
+    ${AndIf} $0 != 3
+      !insertmacro HiRouteDiagnostic "HiRoute could not read the existing installation options." "read-options"
       Abort
     ${EndIf}
     IntOp $HiRouteLoginChoice $0 & 1
@@ -600,6 +569,8 @@ Function .onInit
 
   ; Ignore stale registry locations and /D overrides. This directory is intentionally fixed.
   StrCpy $INSTDIR "$LOCALAPPDATA\Programs\HiRoute"
+  ReadRegStr $HiRouteInstalledVersion SHCTX "${UNINSTKEY}" "DisplayVersion"
+  StrCpy $HiRouteDesktopChoice 0
 
   !if "${INSTALLMODE}" == "both"
     !insertmacro MULTIUSER_INIT
@@ -723,6 +694,7 @@ Section Install
     !insertmacro NSIS_HOOK_PREINSTALL
   !endif
 
+  !insertmacro HiRoutePhase "Installing HiRoute program files..."
   SetOutPath $INSTDIR
 
   ; Copy main executable
@@ -781,7 +753,6 @@ Section Install
   ; Registry information for add/remove programs
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayName" "${PRODUCTNAME}"
   WriteRegStr SHCTX "${UNINSTKEY}" "DisplayIcon" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\""
-  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr SHCTX "${UNINSTKEY}" "Publisher" "${MANUFACTURER}"
   WriteRegStr SHCTX "${UNINSTKEY}" "InstallLocation" "$\"$INSTDIR$\""
   WriteRegStr SHCTX "${UNINSTKEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
@@ -804,21 +775,19 @@ Section Install
     Call CreateOrUpdateStartMenuShortcut
   !insertmacro MUI_STARTMENU_WRITE_END
 
-  ; Create desktop shortcut for silent and passive installers
-  ; because finish page will be skipped
-  ${If} $PassiveMode = 1
-  ${OrIf} ${Silent}
-    Call CreateOrUpdateDesktopShortcut
-  ${EndIf}
-
   !ifmacrodef NSIS_HOOK_POSTINSTALL
     !insertmacro NSIS_HOOK_POSTINSTALL
   !endif
+  ; Publish the version only once the service is ready and installation commits.
+  WriteRegStr SHCTX "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
 
-  ; Auto close this page for passive mode
   ${If} $PassiveMode = 1
-    SetAutoClose true
+  ${OrIf} ${Silent}
+  ${OrIf} $HiRouteDesktopChoice != 0
+    Call CreateOrUpdateDesktopShortcut
   ${EndIf}
+
+  SetAutoClose true
 SectionEnd
 
 Function .onInstSuccess
@@ -860,7 +829,7 @@ Function .onInstFailed
   ${EndIf}
   hiroute_rollback_registration_done:
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute could not safely restore the previous installation. Existing programs and data are preserved. $1" /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute could not safely restore the previous installation. Keep your existing files and data." "rollback"
   ${EndIf}
   SetErrorLevel 1
 FunctionEnd
@@ -870,9 +839,11 @@ Function un.onInit
     MessageBox MB_ICONSTOP "HiRoute uninstall directory is invalid. No files were removed." /SD IDOK
     Abort
   InitPluginsDir
-  System::Call 'kernel32::CopyFileW(w "$INSTDIR\hiroute-shell.exe", w "$PLUGINSDIR\hiroute-uninstall-helper.exe", i 1) i .r0'
+  System::Call 'kernel32::CopyFileW(w "$INSTDIR\hiroute-shell.exe", w "$PLUGINSDIR\hiroute-uninstall-helper.exe", i 1) i .r0 ?e'
+  Pop $1
   ${If} $0 = 0
-    MessageBox MB_ICONSTOP "HiRoute could not prepare its uninstall helper. No files were removed. Close HiRoute and try again." /SD IDOK
+    StrCpy $1 "Windows error: $1"
+    !insertmacro HiRouteDiagnostic "HiRoute could not prepare its uninstall helper. Close HiRoute and try again." "copy-uninstall-helper"
     Abort
   ${EndIf}
   nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-mutex'
@@ -909,14 +880,11 @@ Function un.onInit
 FunctionEnd
 
 Section Uninstall
+  !insertmacro HiRouteRequireDesktopExit
 
   !ifmacrodef NSIS_HOOK_PREUNINSTALL
     !insertmacro NSIS_HOOK_PREUNINSTALL
   !endif
-
-  ${IfNot} ${Silent}
-    !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
-  ${EndIf}
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
@@ -1023,10 +991,6 @@ FunctionEnd
 Function SkipIfPassive
   ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
 FunctionEnd
-Function un.SkipIfPassive
-  ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
-FunctionEnd
-
 Function CreateOrUpdateStartMenuShortcut
   ; We used to use product name as MAINBINARYNAME
   ; migrate old shortcuts to target the new MAINBINARYNAME

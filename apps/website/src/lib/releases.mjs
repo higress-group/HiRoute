@@ -1,4 +1,5 @@
 import manifest from '../../data/releases.json' with { type: 'json' };
+import shortDownloadVersions from '../../data/short-downloads.json' with { type: 'json' };
 import windowsAcceptance from '../../../../scripts/windows-desktop-cases.json' with { type: 'json' };
 
 export const RELEASE_SCHEMA = 'hiroute.website.releases/v3';
@@ -8,6 +9,7 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/;
 const REVISION = /^[0-9a-f]{40}$/;
 const FILENAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,239}$/;
+const SHORT_DOWNLOAD_VERSIONS = new Set(shortDownloadVersions);
 const STANDALONE_TARGETS = {
   Linux: { x86_64: 'x86_64-unknown-linux-gnu', aarch64: 'aarch64-unknown-linux-gnu' },
 };
@@ -85,6 +87,15 @@ export function validateReleaseManifest(value) {
         filenames.add(artifact.manifest_filename);
       }
     }
+    if (SHORT_DOWNLOAD_VERSIONS.has(release.version)) {
+      for (const artifact of release.artifacts) {
+        const name = shortDownloadName(release, artifact);
+        for (const filename of artifact.kind === 'standalone' ? [name, `${name}.json`] : [name]) {
+          if (!FILENAME.test(filename) || filenames.has(filename)) throw new Error(`invalid or duplicate short download filename: ${filename}`);
+          filenames.add(filename);
+        }
+      }
+    }
   }
   return value;
 }
@@ -102,21 +113,35 @@ export function projectReleaseManifest(value, schema = RELEASE_SCHEMA) {
   return validateReleaseManifest(projected);
 }
 
+function releaseKey(release, filename) {
+  return `releases/${release.version}/${filename}`;
+}
+
 export function artifactKey(release, artifact) {
-  return `releases/${release.version}/${artifact.filename}`;
+  return releaseKey(release, artifact.filename);
+}
+
+function shortDownloadName(release, artifact) {
+  const name = `HiRoute-${release.version}`;
+  if (artifact.platform === 'Windows') return `${name}.exe`;
+  if (artifact.platform === 'macOS') return `${name}-macos-${artifact.architecture}.dmg`;
+  return `${name}-linux-${artifact.architecture}.tar.gz`;
 }
 
 export function artifactUrl(release, artifact) {
-  return `${DOWNLOAD_ORIGIN}/${artifactKey(release, artifact)}`;
+  const filename = SHORT_DOWNLOAD_VERSIONS.has(release.version) ? shortDownloadName(release, artifact) : artifact.filename;
+  return `${DOWNLOAD_ORIGIN}/${releaseKey(release, filename)}`;
 }
 
 export function artifactManifestKey(release, artifact) {
   if (artifact.kind !== 'standalone') throw new Error('only standalone artifacts have package manifests');
-  return `releases/${release.version}/${artifact.manifest_filename}`;
+  return releaseKey(release, artifact.manifest_filename);
 }
 
 export function artifactManifestUrl(release, artifact) {
-  return `${DOWNLOAD_ORIGIN}/${artifactManifestKey(release, artifact)}`;
+  const originalKey = artifactManifestKey(release, artifact);
+  const key = SHORT_DOWNLOAD_VERSIONS.has(release.version) ? releaseKey(release, `${shortDownloadName(release, artifact)}.json`) : originalKey;
+  return `${DOWNLOAD_ORIGIN}/${key}`;
 }
 
 export function artifactAssets(release, artifact) {
@@ -133,6 +158,17 @@ export function artifactAssets(release, artifact) {
     size: artifact.manifest_size,
   });
   return assets;
+}
+
+export function publicationAssets(release, artifact) {
+  const assets = artifactAssets(release, artifact);
+  if (!SHORT_DOWNLOAD_VERSIONS.has(release.version)) return assets;
+  const name = shortDownloadName(release, artifact);
+  const aliases = assets.map((asset, index) => ({
+    ...asset,
+    key: releaseKey(release, index === 0 ? name : `${name}.json`),
+  }));
+  return [...assets, ...aliases];
 }
 
 export function verifyWindowsNativeAcceptance(identity, policy = windowsAcceptance) {

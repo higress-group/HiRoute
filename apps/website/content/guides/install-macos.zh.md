@@ -9,7 +9,7 @@ HiRoute 桌面应用当前支持 macOS 15.0 或更高版本。短期提供的是
 - Apple 芯片（M1、M2、M3、M4 等）选择 `arm64`。
 - Intel Mac 选择 `x86_64`。
 
-下载链接应来自 `hiroute.ai/releases/<版本>/`；文件名包含构建来源提交的短 SHA。用下载页给出的完整 SHA256 摘要核对文件：
+从 `hiroute.ai/releases/<版本>/` 下载，并用下载页给出的完整 SHA-256 核对文件。新版本的简短文件名为 `HiRoute-<版本>-macos-<架构>.dmg`：
 
 ```sh
 shasum -a 256 ~/Downloads/HiRoute-*.dmg

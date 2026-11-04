@@ -268,6 +268,8 @@ product fixes and retain each result at its actual source revision.
    headless `internal-payloads/` out of the release. Use the measured
    `website_artifact` rows in a new release record in
    `apps/website/data/releases.json`, with the intended version/channel/date/notes.
+   Add the finalized version to `apps/website/data/short-downloads.json` for
+   [short website download links](../apps/website/README.md#public-release-contract).
    Preserve historical records and regenerate website content twice, checking
    that the second run introduces no difference.
 3. Merge the reviewed website manifest into public `main`, tag the exact built

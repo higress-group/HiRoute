@@ -4,6 +4,7 @@ use hiroute_application_api::{
     MACHINE_ENVELOPE_SCHEMA_V2, MachineEnvelopeV2, RunStateV1, WORKER_COMMAND_DATA_SCHEMA_V1,
     WorkerCommandDataV1,
 };
+use hiroute_domain::delegation::WorkerExecutionFailureV1;
 use serde_json::{Value, json};
 
 use super::{dependency_selection, oracle::Ledger};
@@ -45,6 +46,9 @@ pub(super) fn receipt(
         .and_then(|data| serde_json::from_value::<WorkerCommandDataV1>(data.clone()).ok())
         .filter(|data| data.schema == WORKER_COMMAND_DATA_SCHEMA_V1 && data.operation == "result");
     let state = serde_json::from_value::<RunStateV1>(current["data"]["run_state"].clone()).ok();
+    let failure = data.as_ref().and_then(|data| data.failure).or_else(|| {
+        serde_json::from_value::<WorkerExecutionFailureV1>(current["data"]["failure"].clone()).ok()
+    });
     let bytes = data
         .as_ref()
         .and_then(|data| data.result.as_ref())
@@ -72,7 +76,8 @@ pub(super) fn receipt(
         "result_bytes_exceeded_bound":bytes.is_some_and(|bytes| bytes>MAX_RESULT_BYTES),
         "task_identity_equal":data.as_ref().is_some_and(|data| data.task_id.as_deref()==Some(task)),
         "run_identity_equal":data.as_ref().is_some_and(|data| data.run_id.as_deref()==Some(run)),
-        "typed_failure_reason_available":false,
+        "typed_failure_reason_available":failure.is_some(),
+        "typed_failure_message_key":failure.map(WorkerExecutionFailureV1::message_key),
         "oracle_scope":"oracle-lifetime",
         "per_run_stage_known":false,
         "oracle_poisoned":poisoned,

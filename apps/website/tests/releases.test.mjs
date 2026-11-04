@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import {
-  artifactAssets, artifactKey, artifactManifestUrl, artifactUrl, latestRelease, validateReleaseManifest,
+  artifactAssets, artifactKey, artifactManifestUrl, artifactUrl, latestRelease, publicationAssets, validateReleaseManifest,
   verifyDesktopIdentity,
   projectReleaseManifest, LEGACY_RELEASE_SCHEMA,
   verifyWindowsNativeAcceptance,
@@ -110,6 +110,40 @@ test('release links use the immutable hiroute.ai version path', () => {
   assert.equal(artifactKey(release, artifact), `releases/1.2.3/${artifact.filename}`);
   assert.equal(artifactUrl(release, artifact), `https://hiroute.ai/releases/1.2.3/${artifact.filename}`);
   assert.equal(latestRelease('stable', manifest), release);
+});
+
+test('short download links preserve the exact package bytes and native update catalog', () => {
+  const value = structuredClone(manifest);
+  value.schema = 'hiroute.website.releases/v3';
+  const current = value.releases[0];
+  current.version = '0.5.1';
+  const windows = { kind: 'desktop', platform: 'Windows', architecture: 'x86_64', format: 'nsis',
+    distribution: 'unsigned', filename: 'HiRoute-0.5.1-aaaaaaaaaaaa-windows-x86_64-setup.exe', sha256: 'c'.repeat(64), size: 512 };
+  current.artifacts = [windows, {
+    ...artifact, filename: artifact.filename.replace('1.2.3', current.version),
+  }, {
+    ...standalone, filename: standalone.filename.replace('1.2.3', current.version),
+    manifest_filename: standalone.manifest_filename.replace('1.2.3', current.version),
+  }];
+  assert.equal(validateReleaseManifest(value), value);
+  assert.deepEqual(projectReleaseManifest(value), value);
+  assert.deepEqual(projectReleaseManifest(value, LEGACY_RELEASE_SCHEMA).releases[0].artifacts, current.artifacts.slice(1));
+  const names = ['HiRoute-0.5.1.exe', 'HiRoute-0.5.1-macos-arm64.dmg', 'HiRoute-0.5.1-linux-x86_64.tar.gz'];
+  for (const [index, row] of current.artifacts.entries()) {
+    const key = `releases/0.5.1/${names[index]}`;
+    assert.equal(artifactUrl(current, row), `https://hiroute.ai/${key}`);
+    const canonical = artifactAssets(current, row);
+    const aliasKeys = row.kind === 'standalone' ? [key, `${key}.json`] : [key];
+    assert.deepEqual(publicationAssets(current, row), [
+      ...canonical, ...canonical.map((entry, n) => ({ ...entry, key: aliasKeys[n] })),
+    ]);
+  }
+  assert.equal(artifactManifestUrl(current, current.artifacts[2]), `https://hiroute.ai/releases/0.5.1/${names[2]}.json`);
+  current.artifacts.push({
+    ...current.artifacts[1], distribution: 'developer-id',
+    filename: current.artifacts[1].filename.replace('-trial.dmg', '-developer-id.dmg'),
+  });
+  assert.throws(() => validateReleaseManifest(value), /duplicate short download filename/);
 });
 
 test('public release manifest accepts declared self-signed and developer-id artifacts', () => {

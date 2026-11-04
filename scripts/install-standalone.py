@@ -212,6 +212,13 @@ def fetch_https(url, destination, limit, expected_size=None):
         etag, offset = identity, end + 1
 
 
+def short_linux_archive(manifest):
+    architecture, _, target = manifest["target"].partition("-")
+    if target == "unknown-linux-gnu":
+        return f"HiRoute-{manifest['version']}-linux-{architecture}.tar.gz"
+    return None
+
+
 def acquire(args, temporary):
     if bool(args.manifest_url) == bool(args.manifest):
         raise ValueError("choose exactly one local manifest or HTTPS manifest URL")
@@ -301,7 +308,7 @@ def validate_manifest_shape(manifest):
 def validate_manifest(manifest, archive):
     validate_manifest_shape(manifest)
     if (
-        archive.name != manifest["archive"]["filename"]
+        archive.name not in (manifest["archive"]["filename"], short_linux_archive(manifest))
         or archive.stat().st_size != manifest["archive"]["size"]
         or digest(archive) != manifest["archive"]["sha256"]
     ):

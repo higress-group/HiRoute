@@ -284,6 +284,7 @@ impl LocalControlDaemon {
         if self.released_commands_only
             // The released decision connections CLI prepares its probe through this read.
             && request.operation_id != RESOLVE_DECISION_TEST_REVISION_V1
+            && request.operation_id != hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1
             && !command_by_operation(&request.operation_id)
                 .is_some_and(|command| command.lifecycle == CommandLifecycle::Released)
         {
@@ -979,6 +980,16 @@ mod tests {
             released_status.error.unwrap().code,
             ErrorCode::DaemonUnavailable
         );
+
+        let readiness = daemon.dispatch_wire(LocalControlWireRequestV2 {
+            schema_version: LOCAL_CONTROL_SCHEMA_V2,
+            request_id: "standalone-readiness".to_owned(),
+            operation_id: hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1
+                .to_owned(),
+            payload: json!({}),
+            protected_grant: None,
+        });
+        assert_eq!(readiness.data, Some(json!(false)));
 
         let internal = daemon.dispatch_wire(LocalControlWireRequestV2 {
             schema_version: LOCAL_CONTROL_SCHEMA_V2,

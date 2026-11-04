@@ -214,6 +214,7 @@ function Invoke-LibraryTests {
     }
     if ($Package -eq 'hiroute-integrations') {
       $optIn = @(
+        'agents::filesystem::dsh_desktop::windows_tests::windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_changing_profiles',
         'agents::native_ingress_probe::ephemeral::tests::real_codex_ephemeral_authentication_without_managed_configuration',
         'agents::qoder_probe::tests::real_qoder_discovers_skill_and_runs_read_only_cli_in_selected_context',
         'agents::qoder_probe::windows_cli::tests::windows_qoder_bash_executes_the_same_cli_with_literal_drive_path',
@@ -296,6 +297,8 @@ if ($Scope -eq 'components') {
     'read_lease_preserves_borrowed_acl_and_pins_file_and_all_ancestors',
     'read_lease_rejects_aliases_without_mutating_their_targets')
   Invoke-RequiredTests 'platform-unit' @('-p','hiroute-platform','--lib') @(
+    'directory_link::tests::codex_skill_directory_link_shares_updates_without_replacing_private_entries',
+    'directory_link::tests::codex_skill_source_link_replacement_and_removal_flow_through_shared_link',
     'durable::tests::initial_private_publication_never_replaces_a_committed_key',
     'local_record::tests::rejects_wrong_channel_direction_truncation_end_and_oversize',
     'private_fs::tests::owned_cleanup_is_idempotent_and_preserves_neighbor_materials',
@@ -310,6 +313,7 @@ if ($Scope -eq 'components') {
     'windows::read_lease::tests::admitted_installed_hardlinks_keep_identity_and_write_delete_fences',
     'windows::background::tests::native_argv_quotes_spaces_quotes_and_trailing_slashes_without_shell',
     'windows::background::tests::profile_is_absolute_and_definition_rejects_unknown_or_foreign_owner',
+    'windows::installed_apps::tests::windows_uninstall_locations_select_exact_app_and_versioned_names_read_only',
     'windows::lifecycle::tests::lifecycle_payload_is_closed_and_does_not_accept_extra_authority',
     'windows::service::token::tests::restricted_business_child_runs_with_owner_medium_token',
     'windows::shell_login::tests::fixed_login_command_is_quoted_even_for_paths_without_spaces',

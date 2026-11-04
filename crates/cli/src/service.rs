@@ -500,10 +500,15 @@ fn wait_stopped(layout: &StandaloneLayout, timeout: Duration) -> Result<(), Serv
 }
 
 fn control_ready(timeout: Duration) -> bool {
+    let operation = if cfg!(windows) {
+        hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1
+    } else {
+        "GetSystemStatus"
+    };
     let request = LocalControlWireRequestV2 {
         schema_version: LOCAL_CONTROL_SCHEMA_V2,
         request_id: format!("service-status-{}", std::process::id()),
-        operation_id: "GetSystemStatus".into(),
+        operation_id: operation.into(),
         payload: json!({}),
         protected_grant: None,
     };
@@ -513,9 +518,13 @@ fn control_ready(timeout: Duration) -> bool {
         .is_ok_and(|response| {
             response.status == MachineStatus::Succeeded
                 && response.error.is_none()
-                && response
-                    .data
-                    .is_some_and(|data| data["daemon"] == "role_all" && data["gateway"] == "ready")
+                && response.data.is_some_and(|data| {
+                    if cfg!(windows) {
+                        data == true
+                    } else {
+                        data["daemon"] == "role_all" && data["gateway"] == "ready"
+                    }
+                })
         })
 }
 

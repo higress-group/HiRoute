@@ -94,6 +94,28 @@ impl ApplicationService {
             return self.resolve_decision_test_revision(request);
         }
 
+        if request.operation_id
+            == hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1
+        {
+            if serde_json::from_value::<hiroute_application_api::ClientEmptyRequestV1>(
+                request.payload,
+            )
+            .is_err()
+            {
+                return failed(ErrorCode::InvalidArguments, request.request_id);
+            }
+            // The combined role publishes this fact only after composing its Gateway.
+            // Startup polling must not scan Agents or read a full control snapshot.
+            return MachineEnvelopeV2::succeeded(
+                Value::Bool(
+                    self.ports
+                        .as_ref()
+                        .is_some_and(|ports| ports.role_all_ready),
+                ),
+                Some(request.request_id),
+            );
+        }
+
         let Some(descriptor) = command_by_operation(&request.operation_id) else {
             return failed(ErrorCode::UnknownCommand, request.request_id);
         };

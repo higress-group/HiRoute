@@ -4,7 +4,7 @@ HiRoute Desktop for Windows uses a current-user NSIS installer for native Window
 
 ## Verify the download
 
-The filename is `HiRoute-<version>-<revision>-windows-x86_64-setup.exe`. Download from `hiroute.ai/releases/<version>/` and compare the full SHA-256 shown beside that exact file:
+Download from `hiroute.ai/releases/<version>/` and compare the full SHA-256 shown beside the file. The short filename for new releases is `HiRoute-<version>.exe`:
 
 ```powershell
 Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\YOUR-INSTALLER.exe"

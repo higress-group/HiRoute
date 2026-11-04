@@ -9,7 +9,7 @@ Choose a DMG for your Mac on the [download page](/en/download/):
 - Choose `arm64` for Apple silicon (M1, M2, M3, M4, and later).
 - Choose `x86_64` for an Intel Mac.
 
-The download must come from `hiroute.ai/releases/<version>/`; its filename includes the abbreviated source revision. Verify it against the full SHA256 digest on the download page:
+Download from `hiroute.ai/releases/<version>/` and verify the file against the full SHA-256 on the download page. New releases use the short filename `HiRoute-<version>-macos-<arch>.dmg`:
 
 ```sh
 shasum -a 256 ~/Downloads/HiRoute-*.dmg

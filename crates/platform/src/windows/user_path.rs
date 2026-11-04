@@ -1,15 +1,73 @@
 //! Only the fixed current-account standalone CLI directory enters the user PATH.
+use std::ffi::OsString;
+use std::os::windows::ffi::OsStringExt;
+use std::os::windows::io::{FromRawHandle, OwnedHandle};
 use std::{io, ptr};
 use windows_sys::Win32::{
     Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS},
+    Security::{TOKEN_DUPLICATE, TOKEN_QUERY},
+    System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock},
     System::Registry::{
         HKEY_CURRENT_USER, REG_EXPAND_SZ, REG_SZ, RRF_NOEXPAND, RRF_RT_REG_EXPAND_SZ,
         RRF_RT_REG_SZ, RegGetValueW, RegSetKeyValueW,
     },
+    System::Threading::{GetCurrentProcess, OpenProcessToken},
     UI::WindowsAndMessaging::{
         HWND_BROADCAST, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_SETTINGCHANGE,
     },
 };
+
+/// Let Windows merge and expand the machine and current user's registered PATH.
+/// Task Scheduler's process environment can predate changes to either source.
+pub fn current_environment_path() -> io::Result<Option<OsString>> {
+    let mut token = ptr::null_mut();
+    // SAFETY: the out parameter receives a new handle for this process token.
+    if unsafe {
+        OpenProcessToken(
+            GetCurrentProcess(),
+            TOKEN_QUERY | TOKEN_DUPLICATE,
+            &mut token,
+        )
+    } == 0
+    {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: ownership of the successfully opened token is transferred here.
+    let _token = unsafe { OwnedHandle::from_raw_handle(token) };
+    let mut block = ptr::null_mut();
+    // SAFETY: the token is live and the out pointer is writable. FALSE excludes
+    // the caller's inherited environment from the result.
+    if unsafe { CreateEnvironmentBlock(&mut block, token, 0) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: Windows supplies NUL-terminated UTF-16 entries ending in an
+    // extra NUL. Read only within those entries, then free the owning block.
+    let path = unsafe {
+        let mut entry = block.cast::<u16>();
+        let mut path = None;
+        while *entry != 0 {
+            let mut length = 0;
+            while *entry.add(length) != 0 {
+                length += 1;
+            }
+            let variable = std::slice::from_raw_parts(entry, length);
+            if let Some(value) = variable.get(5..)
+                && variable[..5]
+                    .iter()
+                    .zip(b"PATH=")
+                    .all(|(&unit, &ascii)| unit <= 127 && (unit as u8).eq_ignore_ascii_case(&ascii))
+            {
+                path = Some(OsString::from_wide(value));
+                break;
+            }
+            entry = entry.add(length + 1);
+        }
+        DestroyEnvironmentBlock(block);
+        path
+    };
+    Ok(path)
+}
+
 fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
 }

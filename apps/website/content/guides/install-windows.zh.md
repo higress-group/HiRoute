@@ -4,7 +4,7 @@ HiRoute Windows 桌面版提供按当前用户安装的 NSIS 安装包，只支�
 
 ## 校验下载
 
-文件名为 `HiRoute-<版本>-<源码修订>-windows-x86_64-setup.exe`。从 `hiroute.ai/releases/<版本>/` 下载，在 PowerShell 中计算摘要，与下载页该文件旁的完整 SHA-256 比较：
+从 `hiroute.ai/releases/<版本>/` 下载，在 PowerShell 中计算摘要，与下载页该文件旁的完整 SHA-256 比较。新版本的简短文件名为 `HiRoute-<版本>.exe`：
 
 ```powershell
 Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\YOUR-INSTALLER.exe"

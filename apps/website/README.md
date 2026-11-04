@@ -104,6 +104,15 @@ derives the immutable URL rather than storing another configurable URL:
 https://hiroute.ai/releases/<version>/<packager-filename>
 ```
 
+For a finalized release, list its version in `data/short-downloads.json`. The
+website links then use `HiRoute-<version>.exe`, `HiRoute-<version>-macos-<arch>.dmg`,
+and `HiRoute-<version>-linux-<arch>.tar.gz` with its `.json` companion under the
+same version directory. The release workflow publishes both names from the
+same verified bytes and checks their size and SHA-256 before deploying the
+site. The Linux installer accepts the short archive name with the original
+verified manifest. The GitHub assets and update feeds continue to use the
+packager filenames, including the source revision.
+
 The canonical manifest uses schema `hiroute.website.releases/v3`. Preparation emits
 `releases-v3.json` for Windows Desktop and a `releases.json` V2 projection without
 Windows artifacts for supported older macOS readers. Linux archives include the
@@ -136,6 +145,8 @@ artifacts additionally pass the packager's stapling and Gatekeeper checks.
 
 Release objects are create-once: an identical existing object is accepted, a
 different object at the same key fails, and the workflow never overwrites it.
+Wait for the final package selection before enabling short download names.
+Replacing bytes at an already-published short URL requires a new version.
 Only after all objects exist with matching size and SHA metadata does it deploy
 the frozen current website. Hosted CI does not build or silently change an
 artifact's distribution.

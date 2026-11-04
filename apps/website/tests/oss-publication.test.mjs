@@ -8,18 +8,18 @@ import test from 'node:test';
 
 const repository = path.resolve(import.meta.dirname, '../../..');
 
-function fixture() {
+function fixture(version = '1.2.3') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hiroute-oss-test-'));
   const assets = path.join(root, 'assets'), bin = path.join(root, 'bin'), dist = path.join(root, 'dist');
   fs.mkdirSync(assets); fs.mkdirSync(bin); fs.mkdirSync(dist);
   fs.writeFileSync(path.join(dist, 'index.html'), '<h1>HiRoute</h1>');
   const bytes = Buffer.from('not-a-real-dmg-publication-script-fixture');
   const revision = 'a'.repeat(40);
-  const filename = `HiRoute-1.2.3-${revision.slice(0, 12)}-macos-arm64-trial.dmg`;
+  const filename = `HiRoute-${version}-${revision.slice(0, 12)}-macos-arm64-trial.dmg`;
   fs.writeFileSync(path.join(assets, filename), bytes);
   const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
   const manifest = { schema: 'hiroute.website.releases/v2', releases: [{
-    version: '1.2.3', channel: 'stable', published_at: '2026-09-21T00:00:00Z',
+    version, channel: 'stable', published_at: '2026-09-21T00:00:00Z',
     notes: { zh: '版本。', en: 'Release.' }, artifacts: [{
       kind: 'desktop', platform: 'macOS', architecture: 'arm64', format: 'dmg', minimum_os: '15.0',
       distribution: 'self-signed', filename, sha256, size: bytes.length,
@@ -78,6 +78,34 @@ test('release publisher creates only a missing object and never forces an overwr
   assert.match(log, new RegExp(`X-Oss-Meta-Sha256:${data.sha256}`));
   assert.doesNotMatch(log, /--force/);
   assert.doesNotMatch(log, /oss stat/);
+});
+
+test('short download objects are required before website deployment and use the public filename', () => {
+  const data = fixture('0.5.1');
+  const shortName = 'HiRoute-0.5.1-macos-arm64.dmg';
+  // Start with the canonical object only. Each OSS path has its own receipt.
+  fs.appendFileSync(path.join(data.bin, 'aliyun'), `
+if [[ "$4" == */${shortName} ]]; then touch "$OSS_TEST_STATE.short"; fi
+`);
+  const curl = path.join(data.bin, 'curl');
+  const stub = fs.readFileSync(curl, 'utf8').replace('output=\n', `output=
+case "$*" in *${shortName}) OSS_TEST_STATE="$OSS_TEST_STATE.short" ;; esac
+`);
+  fs.writeFileSync(curl, stub);
+  const deploy = () => execute('.github/scripts/deploy-website-oss.sh', [data.dist, data.manifestPath], data);
+  const missing = deploy();
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /HTTP 404.*HiRoute-0\.5\.1-macos-arm64\.dmg/);
+  assert.doesNotMatch(readLog(data.log), /oss cp/);
+  const publish = () => run('.github/scripts/publish-release-oss.sh', [data.assets, data.manifestPath, 'v0.5.1'], data);
+  publish();
+  const log = readLog(data.log);
+  assert.ok(log.includes(`/${data.filename} oss://hiroute-ai/releases/0.5.1/${shortName}`));
+  assert.ok(log.includes(`Content-Disposition:attachment; filename=${shortName}#X-Oss-Meta-Sha256:${data.sha256}`));
+  publish();
+  assert.equal(readLog(data.log), log);
+  const deployed = deploy();
+  assert.equal(deployed.status, 0, deployed.stderr);
 });
 
 test('release publisher rejects an existing object with different immutable metadata', () => {
