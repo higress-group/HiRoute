@@ -216,6 +216,8 @@ change; it never silently publishes.
 
 Work deferred by the bounded suggestion-read budget MUST be disclosed as pending,
 separately from actual unavailable/oversized reads and a complete empty result.
+The suggestion read checks current control revisions without loading the full
+desired state or the recovery operation list for those checks.
 The visible view SHALL continue pending reads automatically with bounded backoff,
 retaining the normal budget, current-evidence checks and actionable real errors.
 Completed work may be reused only under the existing reader, revision, visibility

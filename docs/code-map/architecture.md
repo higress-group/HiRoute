@@ -252,10 +252,10 @@ Format 6 owns semantic messages/parts and shared bodies. [Input selection and re
 | Native reasoning-history projection | [Ingress shape owner](../../crates/gateway/src/adapters/responses_options.rs), [reasoning-extension cases](../../crates/gateway/src/adapters/tests/reasoning_extensions.rs) | Known plaintext and opaque reasoning keep declared projection/loss accounting; unknown fields remain native-only before Replay and cannot authorize prefix reuse or cleanup |
 | Decision and competence attribution | [Decision observation map](decision-foundation.md#observation-and-public-consumers) | Attribute scores to the stage that actually ran, with its frozen category/group/candidate and rubric |
 
-Home activity and usage enter the shared bounded observation reader through
-[`home-observation`](../../apps/desktop/src/product/home-observation.ts). They opt
-into typed bounded-read failures, retry only reader-busy results, and cancel
-superseded reads while retaining current authority and stale-result fences.
+Web and Desktop observation views use the shared bounded
+[`observation reader`](../../apps/desktop/src/features/observation-client.ts).
+It opts into typed failures and retries reader-busy results once, releasing its
+slot during backoff. Views cancel superseded reads and fence stale results.
 The option is part of the request digest; default v2 callers keep their released
 error shape and canonical bytes.
 

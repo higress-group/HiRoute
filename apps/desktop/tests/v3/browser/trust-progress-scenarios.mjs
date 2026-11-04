@@ -58,6 +58,27 @@ export function trustProgressScenarios({ fresh, until, control }) {
         assert(reads === 2 && !attention().querySelector('[role="alert"]'), 'Completed continuation retried or retained a warning');
       }
     }),
+    scenario('desktop.home.trust-busy-recovers', ['home-trust-progress'], 'Suggestions quietly recover from one busy read', async () => {
+      let attempts = 0;
+      let firstAt = 0;
+      await fresh(() => {
+        c().handlers.observation_read = payload => {
+          if (payload.request.intent.view !== 'plan_trust_suggestions') return c().fixtureResponse('observation_read', payload);
+          assert(payload.request.read_failure_details === true, 'Suggestions must request typed busy details');
+          if (++attempts === 1) {
+            firstAt = performance.now();
+            throw { source: 'backend', envelope: { error: { code: 'OBSERVATION_UNAVAILABLE',
+              observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } } };
+          }
+          assert(performance.now() - firstAt >= 90, 'Retry did not honor the busy delay');
+          return { suggestions: [], unavailable: [], pending: [] };
+        };
+      });
+      await until(() => attempts === 1 && attention(), 'first suggestion read');
+      assert(!attention().querySelector('[role="alert"]'), 'The first busy read interrupted the user');
+      await until(() => attention().textContent.includes('当前没有路由调整建议'), 'suggestions recovered without a click');
+      assert(attempts === 2 && !attention().querySelector('[role="alert"]'), 'Suggestion recovery used more than one retry');
+    }),
     scenario('desktop.home.trust-error-and-legacy-retry', ['home-trust-progress'], 'Actual read errors stay actionable and a legacy complete response still clears them', async () => {
       let reads = 0;
       await fresh(() => {

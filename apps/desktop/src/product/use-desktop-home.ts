@@ -29,7 +29,7 @@ import {
   type ObservationValueSummary,
 } from './home-projections';
 import { safeDiagnosticCode } from '../error-code';
-import { readHomeObservation } from './home-observation';
+import { observationRead } from '../features/observation-client';
 
 const HOME_TARGET = 'desktop/local-home';
 const loading = <T,>(): DomainReadSlot<T> => ({
@@ -204,7 +204,7 @@ export function useDesktopHome() {
     setActivity(current => beginDomainRead(current, request, HOME_TARGET));
     const to = Date.now();
     try {
-      const page = await readHomeObservation<ObservationSessionPage>(
+      const page = await observationRead<ObservationSessionPage>(
         'sessions', {
           from_ms: to - 7 * 86_400_000,
           to_ms: to,
@@ -242,7 +242,7 @@ export function useDesktopHome() {
     const request = requestId('value');
     setValue(current => beginDomainRead(current, request, HOME_TARGET));
     try {
-      const summary = await readHomeObservation<ObservationValueSummary>(
+      const summary = await observationRead<ObservationValueSummary>(
         'home_value', {
           period: 'seven_days',
           session_id: null,

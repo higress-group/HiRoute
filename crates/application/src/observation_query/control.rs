@@ -482,6 +482,13 @@ mod tests {
     }
 
     impl ControlStatePort for FixedPorts {
+        fn revisions(
+            &self,
+            workspace: &WorkspaceId,
+        ) -> Result<hiroute_application_api::RevisionSetV1, ControlReadError> {
+            Ok(self.snapshot(workspace)?.revisions)
+        }
+
         fn try_observation_revision(
             &self,
             _: &WorkspaceId,

@@ -65,7 +65,7 @@ export function homeStartupScenarios({ until, control }) {
         };
         c.remount();
         await until(() => document.querySelector('.home-read-error'), 'persistent busy warning');
-        assert(attempts === 3, `Home did not use exactly its bounded three read attempts: ${attempts}`);
+        assert(attempts === 2, `Home did not use exactly one automatic retry: ${attempts}`);
         assert(document.querySelector('.home-read-error button')?.textContent.includes('会话'), 'Persistent failure has no exact-domain retry');
       } finally { c.reset(); await settled(); }
     }),

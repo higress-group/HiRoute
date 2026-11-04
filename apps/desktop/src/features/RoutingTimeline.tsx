@@ -2,7 +2,6 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { Disclosure } from '../ui';
 import { formatEstimateMoney } from './estimate-money';
 import { safeDiagnosticCode } from '../error-code';
-import { observationBusyRetryMs } from './observation-failure';
 import { observationRead } from './observation-client';
 import { formatTokenCount } from './usage-presentation';
 import { ContentExcerpt } from './Sessions';
@@ -127,8 +126,6 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
       } catch (e) {
         if (controller.signal.aborted) return;
         const code = safeDiagnosticCode(e, 'OBSERVATION_UNAVAILABLE');
-        const busyDelay = observationBusyRetryMs(e);
-        if (busyDelay !== null) { schedule(busyDelay); return; }
         blockedScope.current = code.toLowerCase().includes('scope_too_large');
         const stale = code.toLowerCase().includes('stale') && watermark.current !== null;
         if (stale) { watermark.current = null; stored.current.clear(); setTurns([]); setLoaded(false); setArrivals(new Set()); setUnseen([]); }

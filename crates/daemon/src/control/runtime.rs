@@ -1468,6 +1468,14 @@ impl ControlStatePort for LocalControlAdapter {
         self.read_trust_runs(workspace, ids)
     }
 
+    fn revisions(&self, workspace: &WorkspaceId) -> Result<RevisionSetV1, ControlReadError> {
+        self.stores_lock()
+            .map_err(map_port)?
+            .control()
+            .current_revisions(workspace)
+            .map_err(map_port)
+    }
+
     fn snapshot(
         &self,
         workspace_id: &WorkspaceId,

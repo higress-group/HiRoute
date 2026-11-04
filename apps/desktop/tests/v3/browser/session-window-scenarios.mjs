@@ -742,6 +742,31 @@ const scenarios = [
     assert(rows().length === 1 && !text().includes('9 个请求'), 'Late response replaced the newer result');
     assert(!document.querySelector('[data-error-code]'), 'Late response produced an error');
   }],
+  ['session and model performance reads recover from a single busy response', async () => {
+    const busy = { source: 'backend', envelope: { error: { code: 'OBSERVATION_UNAVAILABLE',
+      observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } } };
+    let listReads = 0, qualityReads = 0;
+    await fresh(control => {
+      seedSimple(control);
+      control.views.sessions = query => {
+        if (!query.session_id && ++listReads === 1) throw busy;
+        return { next_cursor: null, sessions: [{ session_id: 'observation-session/simple', request_count: 1,
+          fallback_request_count: 0, first_request_at_ms: Date.now() - 60000,
+          last_request_at_ms: Date.now() - 60000, content_completeness: 'complete' }] };
+      };
+      control.views.plan_quality = () => {
+        if (++qualityReads === 1) throw busy;
+        return { samples: [], summary: { ...emptySummary, scored_stage_count: 1 }, next_cursor: null };
+      };
+    });
+    await until(() => rows().length === 1, 'sessions recovered');
+    rows()[0].click();
+    await until(() => document.querySelector('.session-model-performance summary'), 'session detail');
+    openQuality();
+    await until(() => document.querySelector('.quality-scope-meta')?.textContent.includes('1 完整评分'), 'model performance recovered');
+    assert(listReads === 2 && qualityReads === 2, 'Each busy read needs exactly one extra attempt');
+    assert(!document.querySelector('[data-error-code]'), 'Automatic recovery left an error visible');
+  }],
   ['a failed refresh keeps loaded rows and retry uses a fresh window', async () => {
     await fresh(control => { seedSimple(control); });
     const mountWindow = queryOf(reads('sessions')[0]);

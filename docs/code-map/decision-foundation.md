@@ -348,7 +348,10 @@ Product requirements belong to
 
 The [suggestion read](../../crates/application/src/observation_query/control/trust.rs)
 keeps its bounded work budget and returns deferred Plan IDs separately from real
-read failures. The [visible-view loader](../../apps/desktop/src/features/trust/use-trust-suggestions.ts)
+read failures. Freshness checks read only the control revision set.
+The [shared Web and Desktop observation reader](../../apps/desktop/src/features/observation-client.ts)
+releases its slot during a single short retry for a busy read. The
+[visible-view loader](../../apps/desktop/src/features/trust/use-trust-suggestions.ts)
 continues those reads with bounded backoff and pauses while hidden/inactive;
 [Attention](../../apps/desktop/src/features/trust/TrustAttention.tsx) distinguishes
 pending, unavailable and a complete empty result. Missing pending fields from an

@@ -16,6 +16,7 @@ use std::{
 #[derive(Default)]
 struct Ports {
     control: AtomicU64,
+    snapshots: AtomicUsize,
     evidence: AtomicU64,
     visibility: AtomicU64,
     context: AtomicU64,
@@ -26,12 +27,17 @@ struct Ports {
     fail_first: Mutex<bool>,
 }
 impl ControlStatePort for Ports {
-    fn snapshot(&self, _: &WorkspaceId) -> Result<ControlStateSnapshotV1, ControlReadError> {
+    fn revisions(&self, _: &WorkspaceId) -> Result<RevisionSetV1, ControlReadError> {
+        Ok(RevisionSetV1 {
+            target: self.control.load(Ordering::Relaxed),
+            dependencies: Default::default(),
+        })
+    }
+
+    fn snapshot(&self, workspace: &WorkspaceId) -> Result<ControlStateSnapshotV1, ControlReadError> {
+        self.snapshots.fetch_add(1, Ordering::Relaxed);
         Ok(ControlStateSnapshotV1 {
-            revisions: RevisionSetV1 {
-                target: self.control.load(Ordering::Relaxed),
-                dependencies: Default::default(),
-            },
+            revisions: self.revisions(workspace)?,
             desired_state: None,
             recoverable_operations: vec![],
         })
@@ -176,6 +182,11 @@ fn trust_suggestion_cache_rechecks_all_mutation_inputs_and_time() {
     )
     .unwrap();
     let first = control.trust_suggestions(&reader, 5000).unwrap();
+    assert_eq!(
+        ports.snapshots.load(Ordering::Relaxed),
+        0,
+        "suggestion freshness only needs revisions"
+    );
     assert_eq!(first["suggestions"].as_array().unwrap().len(), 2);
     assert_eq!(ports.reads.load(Ordering::Relaxed), 2);
     assert_eq!(first, control.trust_suggestions(&reader, 5001).unwrap());
