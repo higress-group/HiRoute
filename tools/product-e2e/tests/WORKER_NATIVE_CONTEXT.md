@@ -32,8 +32,18 @@ for its observations and cleanup ownership. The core report still marks its four
 `related_contracts` as `not_executed`; boundary results do not rewrite that report.
 The lifecycle/read targets, component contracts and native Desktop each need their
 own selected evidence. Keep missing, duplicate, non-green and zero-selected cases
-failing. Default Cargo runs ignore both installed-Agent tests, even when the rest
+failing. Default Cargo runs ignore the installed-Agent tests, even when the rest
 of the workspace is green.
+
+The separate [shutdown journey](../../../crates/daemon/tests/support/worker_shutdown_product.py)
+uses the same installed Codex/Claude entry points. It stops a real daemon while a
+native heartbeat tool is active, verifies the child and its side effects stop,
+reopens the product and checks complete cleanup. Repeated cancel and original
+submission replay preserve that ended outcome. A previously completed independent
+task then continues on its exact original history and frozen Plan. Its three
+required outcomes are `worker.lifecycle.running-restart`,
+`worker.lifecycle.ended-cancel-idempotency` and `worker.context.exact-continue`;
+missing or unknown stop proof is a failure, not a successful cancellation.
 
 ## Exact-candidate execution
 

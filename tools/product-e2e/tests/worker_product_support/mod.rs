@@ -105,6 +105,7 @@ pub fn run_real_worker_scenario(mode: &str, expected_scenario: &str) {
     let script = match mode {
         "HIROUTE_PRODUCT_NATIVE_CONTEXT" => "native_context_product.py",
         "HIROUTE_PRODUCT_NATIVE_CONTEXT_BOUNDARIES" => "native_context_boundaries.py",
+        "HIROUTE_PRODUCT_NATIVE_SHUTDOWN" => "worker_shutdown_product.py",
         _ => "delegation_product.py",
     };
     run_scenario(
@@ -238,6 +239,11 @@ fn assert_scenario(output: Output, scenario: &str, harness: &str, candidate: &st
         "worker-native-context-boundaries" => &[
             "worker.context.concurrent-routing",
             "worker.context.cancel-owned-work",
+            "worker.context.exact-continue",
+        ],
+        "worker-native-shutdown" => &[
+            "worker.lifecycle.running-restart",
+            "worker.lifecycle.ended-cancel-idempotency",
             "worker.context.exact-continue",
         ],
         "qoder-worker-compaction-route" => &[

@@ -357,6 +357,7 @@ impl RoleAllHandle {
         // Reverse startup order: reject new control work before stopping request traffic. The
         // Gateway-owned bounded observation producers drain as their runtime is dropped.
         self.control.shutdown();
+        self._runtime.shutdown_workers();
         self.gateway.shutdown();
     }
 
@@ -364,9 +365,19 @@ impl RoleAllHandle {
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or(RoleAllError::JoinTimeout("role-all"))?;
-        self.control
+        let control = self
+            .control
             .join(remaining(deadline, "Local Control")?)
-            .map_err(|error| RoleAllError::Component("Local Control", error.to_string()))?;
+            .map_err(|error| RoleAllError::Component("Local Control", error.to_string()));
+        // Keep the stores and current OS objects alive until interrupted Worker runs
+        // have recorded their outcome and owned-scope stop evidence.
+        // Even a Control drain error must not skip the already requested Worker stop.
+        let workers = self
+            ._runtime
+            .join_workers(deadline.saturating_duration_since(Instant::now()))
+            .map_err(|error| RoleAllError::Component("Worker", error));
+        control?;
+        workers?;
         self.gateway
             .join(remaining(deadline, "Gateway")?)
             .map_err(|error| RoleAllError::Component("Gateway", error.to_string()))?;

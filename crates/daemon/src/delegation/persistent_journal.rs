@@ -385,6 +385,8 @@ impl PersistentWorkerRunJournal {
             stage,
             &DelegationCheckpointV1::ExecutionFailed { event, failure },
         )?;
+        // Attempt authorization is in memory. Close it before waiting for ACP or OS cleanup.
+        self.verifier.revoke();
         state.failed = true;
         if state.run.process.is_some() {
             state.pending_failure = Some(error);

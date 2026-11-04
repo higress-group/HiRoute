@@ -324,6 +324,8 @@ fn persistent_journal_streams_result_before_revoking_the_exact_run_credential() 
     );
 }
 
+const FIXTURE_MODEL_CREDENTIAL: &[u8] = b"worker-model-fixture";
+
 fn cancellation_fixture() -> (
     tempfile::TempDir,
     Arc<MemoryRuntime>,
@@ -331,7 +333,6 @@ fn cancellation_fixture() -> (
 ) {
     let deadline_ms = now_ms().unwrap() + 30_000;
     let run = run(deadline_ms);
-    let pair = RunCredentialPair::generate().unwrap();
     let safety = Arc::new(
         RunSafetyProjection::new(Arc::new(SharedAdmissionGate::new()), "epoch".into()).unwrap(),
     );
@@ -346,8 +347,8 @@ fn cancellation_fixture() -> (
                 model_alias: "worker-model".into(),
                 protocol: AgentIngressProtocolV1::Responses,
                 fingerprints: RunCredentialFingerprints {
-                    model: pair.fingerprints().model,
-                    self_query: pair.fingerprints().self_query,
+                    model: CanonicalDigest::of_bytes(FIXTURE_MODEL_CREDENTIAL),
+                    self_query: CanonicalDigest::of_bytes(b"worker-self-query-fixture"),
                 },
             },
             Arc::clone(&safety),
@@ -415,6 +416,14 @@ fn native_failure_deadline_and_lost_connection_survive_cleanup_with_owned_progre
     ] {
         let (temporary, _runtime, journal) = cancellation_fixture();
         start_fixture_prompt(&journal);
+        let model = journal
+            .verifier
+            .authenticate(
+                FIXTURE_MODEL_CREDENTIAL,
+                RunCredentialAudience::Model,
+                now_ms().unwrap(),
+            )
+            .unwrap();
         journal.qoder_context(
             "/native/second-account\n[HiRoute] forged",
             now_ms().unwrap() as i64,
@@ -426,6 +435,15 @@ fn native_failure_deadline_and_lost_connection_survive_cleanup_with_owned_progre
             },
         );
         journal.execution_failed(error).unwrap();
+        assert_eq!(
+            model.check_model(
+                "worker-model",
+                AgentIngressProtocolV1::Responses,
+                now_ms().unwrap(),
+            ),
+            Err(DelegationErrorV1::PermissionDenied),
+            "an authenticated request must lose attempt authority as soon as failure is recorded"
+        );
         journal.stop_intent().unwrap();
         // A late native progress flush can reset an evicted segment. The final host
         // explanation must follow that reset and retain the actual directory as well.
