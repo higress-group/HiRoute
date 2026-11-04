@@ -11,7 +11,8 @@ use hiroute_application_api::{
     APPLY_SUBSCRIPTION_CHECK_OPERATION_V2, ClientHelloV1, CommandLifecycle, ErrorCode, ErrorV1,
     LOCAL_CONTROL_MAX_FRAME_BYTES, LOCAL_CONTROL_SCHEMA_V2, LocalControlWireRequestV2,
     MachineEnvelopeV2, PREPARE_DISCOVERED_MODEL_CONNECTION_OPERATION_V1, PrincipalKind,
-    RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2, command_by_operation, negotiate_hello,
+    RELEASE_SUBSCRIPTION_CHECK_OPERATION_V2, RESOLVE_DECISION_TEST_REVISION_V1,
+    command_by_operation, negotiate_hello,
 };
 use hiroute_diagnostics::context::DiagnosticHandle;
 use hiroute_diagnostics::correlation::CorrelationDomain;
@@ -281,6 +282,8 @@ impl LocalControlDaemon {
         request: LocalControlWireRequestV2,
     ) -> MachineEnvelopeV2<serde_json::Value> {
         if self.released_commands_only
+            // The released decision connections CLI prepares its probe through this read.
+            && request.operation_id != RESOLVE_DECISION_TEST_REVISION_V1
             && !command_by_operation(&request.operation_id)
                 .is_some_and(|command| command.lifecycle == CommandLifecycle::Released)
         {

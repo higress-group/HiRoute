@@ -4,6 +4,7 @@ import copy
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import subprocess
 import sys
 import threading
 import time
@@ -296,6 +297,43 @@ def run(repository):
         assert len(Endpoint.requests) == before + 1
         assert Endpoint.requests[-1][1]['model'] == shared['connection']['model']
 
+        # Current Desktop records still fail the strict V1 reader with its
+        # released machine error. The CLI gives the migration path on stderr.
+        before = len(Endpoint.requests)
+        for command in ('decision services list', f'decision services test --service {shared["id"]}@2'):
+            code, envelope = product.public_cli(command, success=False)
+            assert code == 2, envelope
+            assert envelope['error']['code'] == 'SCHEMA_INCOMPATIBLE', envelope
+            assert envelope['error']['message_key'] == 'decision_service.client_version_required', envelope
+            assert b'hiroute decision connections test --service ID@REVISION' in product.outputs[-1]
+        for command, hint in (('decision services list', b'decision connections list'),
+                              ('decision services test', b'decision connections test'),
+                              ('decision connections test', b'historical revision')):
+            help_result = subprocess.run([str(product.bin / 'hiroute'), *command.split(), '--help'],
+                                         env=product.env, cwd=product.project, capture_output=True,
+                                         timeout=30, check=True)
+            assert hint in help_result.stdout, help_result.stdout
+        assert len(Endpoint.requests) == before, 'legacy errors or help reached the provider'
+
+        head = current(shared['id'])
+        assert head['service']['revision'] == 2
+        for revision, model in ((1, shared['connection']['model']), (2, newer['connection']['model'])):
+            before = len(Endpoint.requests)
+            result = data(f'decision connections test --service {shared["id"]}@{revision}')
+            assert result['outcome'] == 'passed', result
+            assert len(Endpoint.requests) == before + 1
+            assert Endpoint.requests[-1][1]['model'] == model
+            if revision == 1:
+                assert result['tested_configuration_digest'] == view['configuration_digest']
+        before = len(Endpoint.requests)
+        code, missing = product.public_cli(
+            f'decision connections test --service {shared["id"]}@999', success=False)
+        assert code != 0 and missing['error']['code'] == 'RESOURCE_NOT_FOUND', missing
+        assert len(Endpoint.requests) == before, 'missing revision reached the provider'
+        assert test(view)['outcome'] == 'passed'
+        assert len(Endpoint.requests) == before + 1
+        assert Endpoint.requests[-1][1]['model'] == shared['connection']['model']
+
         # Shared to independent needs no source revisions; both old memberships
         # remain available to their frozen versions.
         independent = copy.deepcopy(newer)
@@ -327,7 +365,8 @@ def run(repository):
         assert len(Endpoint.requests) == before + 1
         assert Endpoint.requests[-1][1]['model'] == shared['connection']['model']
         print(json.dumps({'scenario': 'decision-v2-real-source-loopback', 'state': 'green',
-            'cases': ['save-without-network', 'exact-admission', '401-key-failover', '400-no-retry',
+            'cases': ['legacy-cli-migration', 'exact-revision-cli-test',
+                      'save-without-network', 'exact-admission', '401-key-failover', '400-no-retry',
                       'stale-digest', 'disabled-source', 'restart', 'published-gateway-route',
                       'frozen-revision', 'source-switch', 'independent-switch',
                       'published-source-disable', 'explicit-compatible-codec',

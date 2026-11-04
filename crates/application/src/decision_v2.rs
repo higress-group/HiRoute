@@ -3,7 +3,7 @@ use super::*;
 use hiroute_application_api::{
     ClientEmptyRequestV1, DecisionFailureCodeV2, DecisionServiceTestRequestV2,
     DecisionServiceTestResultSchemaV2, DecisionServiceTestResultV2, DecisionSourceStateV1,
-    DecisionTestOutcomeV2,
+    DecisionTestOutcomeV2, DecisionTestRevisionQueryV1,
 };
 use hiroute_domain::{DecisionAuthenticationV2, DecisionConnectionV2};
 
@@ -72,6 +72,58 @@ impl ApplicationService {
                 Err(error) => failed(map_control_error(error), request.request_id),
             }
         }
+    }
+
+    pub(super) fn resolve_decision_test_revision(
+        &self,
+        request: LocalControlRequestV2,
+    ) -> MachineEnvelopeV2<Value> {
+        if request.protected_grant.is_some()
+            || !request
+                .principal
+                .capabilities
+                .iter()
+                .any(|capability| capability == "same-os-user:query-preview")
+        {
+            return failed(ErrorCode::CapabilityDenied, request.request_id);
+        }
+        let Ok(query) = serde_json::from_value::<DecisionTestRevisionQueryV1>(request.payload)
+        else {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        };
+        if query.id.is_empty()
+            || query.id.len() > 128
+            || !(1..=i64::MAX as u64).contains(&query.revision)
+        {
+            return failed(ErrorCode::InvalidArguments, request.request_id);
+        }
+        let Some(routing) = self
+            .ports
+            .as_ref()
+            .and_then(|ports| ports.routing.as_deref())
+        else {
+            return failed(ErrorCode::DaemonUnavailable, request.request_id);
+        };
+        let service = match routing.decision_service_record(
+            &WorkspaceId::default(),
+            &query.id,
+            query.revision,
+        ) {
+            Ok(Some(service)) => service,
+            Ok(None) => return failed(ErrorCode::ResourceNotFound, request.request_id),
+            Err(error) => return failed(map_control_error(error), request.request_id),
+        };
+        let Ok(expected_configuration_digest) = CanonicalDigest::of(&service) else {
+            return failed(ErrorCode::Internal, request.request_id);
+        };
+        succeeded(
+            DecisionServiceTestRequestV2 {
+                id: query.id,
+                revision: query.revision,
+                expected_configuration_digest,
+            },
+            request.request_id,
+        )
     }
 
     pub(super) fn test_decision_v2(

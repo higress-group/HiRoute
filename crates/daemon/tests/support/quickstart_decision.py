@@ -159,6 +159,7 @@ def run(product, plan, submit):
         tested = product.cli('decision', 'services', 'test', '--service', 'decision-quickstart@1')['data']
         assert tested['outcome'] == 'passed', tested
         assert len(Decisions.requests) == 1
+        first_connection, = product.cli('decision', 'connections', 'list')['data']['services']
         product.cli('decision', 'services', 'test', '--service', 'decision-quickstart@2', expected=2)
         product.cli('decision', 'services', 'apply', '--id', 'decision-quickstart',
                     '--endpoint', 'https://another.example/systemone', expected=2)
@@ -174,6 +175,20 @@ def run(product, plan, submit):
         saved = product.cli('decision', 'services', 'list')['data']['services']
         assert len(saved) == 1 and saved[0]['revision'] == 2
         assert saved[0]['connection'] == current[0]['connection']
+        head_connection, = product.cli('decision', 'connections', 'list')['data']['services']
+        assert head_connection['configuration_digest'] != first_connection['configuration_digest']
+        for revision, connection in [(1, first_connection), (2, head_connection)]:
+            before = len(Decisions.requests)
+            tested = product.cli('decision', 'connections', 'test', '--service',
+                                 f'decision-quickstart@{revision}')['data']
+            assert tested['outcome'] == 'passed', tested
+            assert tested['tested_configuration_digest'] == connection['configuration_digest'], tested
+            assert len(Decisions.requests) == before + 1
+        before = len(Decisions.requests)
+        missing = product.cli('decision', 'connections', 'test', '--service',
+                              'decision-quickstart@999', expected=5)
+        assert missing['error']['code'] == 'RESOURCE_NOT_FOUND', missing
+        assert len(Decisions.requests) == before
         route_file = product.project / 'decision-route.json'
         route = product.cli('routing', 'preview', '--plan', plan, '--decision-service',
                             'decision-quickstart@2', '--apply-file', str(route_file))['data']

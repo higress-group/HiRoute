@@ -57,6 +57,13 @@ reports that the configuration was saved but the test failed; it is not a rollba
 or ongoing health/answer-quality verdict. Tests do not read real conversation history,
 invoke a business model, or create competence samples.
 
+The CLI `decision connections test --service ID@REVISION` SHALL resolve the exact saved revision,
+including historical revisions. Resolution uses a same-user Local Control read of that record
+and its configuration digest. Missing revisions SHALL fail before provider I/O. The existing
+typed test request still validates the digest at admission. Legacy `decision services` callers
+retain their V1 schemas and machine errors. Help and stderr direct current Desktop connections
+to `decision connections list` and `decision connections test`.
+
 HTTP/2 authority, total deadline, DNS/transport policy, authentication, and no-redirect
 rules are shared with execution. Closed error codes distinguish recognized auth,
 quota, and endpoint rejections without native text, credentials, account identifiers,
