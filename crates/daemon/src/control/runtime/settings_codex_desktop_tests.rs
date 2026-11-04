@@ -252,7 +252,19 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
     let scan = scan.data.unwrap();
     let desktop = &scan["agents"][0];
     assert_eq!(desktop["context_id"], desktop_context);
-    assert_eq!(desktop["available_surfaces"], json!([]));
+    assert!(desktop.get("available_surfaces").is_none());
+    let status_without_app = service.dispatch_wire(request(
+        "GetAgentConnectionStatus",
+        json!({"schema_version":{"major":2,"minor":0},"context_id":desktop_context,"include_skills":true}),
+        None,
+    ));
+    assert!(status_without_app.error.is_none(), "{status_without_app:?}");
+    let status_without_app = status_without_app.data.unwrap();
+    assert_eq!(status_without_app["state"], "configured");
+    assert_eq!(
+        status_without_app["restore_point_ref"],
+        desktop_status["restore_point_ref"]
+    );
     let configure_without_app = service.dispatch_wire(request(
         "PreviewAgentConnectionChange",
         json!({"spec":configure(&desktop_context)}),
@@ -282,7 +294,7 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
     apply(
         &service,
         &recovered,
-        restore(&desktop_context, &desktop_status["restore_point_ref"]),
+        restore(&desktop_context, &status_without_app["restore_point_ref"]),
         "disable-desktop-after-app-removal",
     );
     let restored = service.dispatch_wire(request(
