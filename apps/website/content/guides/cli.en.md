@@ -249,7 +249,11 @@ hiroute worker wait --run <RUN_ID>
 hiroute worker result --run <RUN_ID>
 ```
 
-`wait` is bounded and never cancels a task that is still running. `result` supports offset and maximum-byte options for paging through a large result.
+`status` returns immediately. `wait` blocks until the run finishes and includes saved result text on success when available. An Agent can run it in a background terminal that notifies on exit.
+
+`--wait-timeout SECONDS` sets a total budget of 1 to 30 seconds, including result retrieval. If the budget expires while the run is still pending, `wait` returns the latest observed state. If success is already known, it returns that state even when the result text is unavailable or the budget expires while fetching it. Use `--after-revision N` for one progress observation, with a 30-second default. Timing out or interrupting `wait` leaves the task running.
+
+`result` supports offset and maximum-byte options for paging through a large result.
 
 ## Continue or cancel
 

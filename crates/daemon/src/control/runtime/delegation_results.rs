@@ -6,7 +6,7 @@ use super::{
 use hiroute_application_api::{DelegationResultRequestV1, DelegationResultV1};
 use hiroute_domain::delegation::{DelegationErrorV1, DelegationRuntimePort};
 use hiroute_observation::managed_text::{
-    CHUNK_BYTES, ManagedTextRef, ManagedTextScope, ManagedTextState, PAGE_BYTES,
+    CHUNK_BYTES, ManagedTextError, ManagedTextRef, ManagedTextScope, ManagedTextState, PAGE_BYTES,
 };
 
 impl LocalControlAdapter {
@@ -45,7 +45,7 @@ impl LocalControlAdapter {
         };
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|_| DelegationErrorV1::ContentUnavailable)?
+            .map_err(|_| DelegationErrorV1::StorageUnavailable)?
             .as_millis() as i64;
         let start = request.offset.unwrap_or(0) as usize;
         let limit = request.effective_max_bytes() as usize;
@@ -57,9 +57,9 @@ impl LocalControlAdapter {
             let page = self
                 .delegation_observation
                 .managed_text_read(&scope, &reference, first, PAGE_BYTES / CHUNK_BYTES, now)
-                .map_err(|_| DelegationErrorV1::ContentUnavailable)?;
+                .map_err(map_result_read_error)?;
             if page.reference.state != ManagedTextState::Complete {
-                return Err(DelegationErrorV1::ContentUnavailable);
+                return Err(DelegationErrorV1::StorageUnavailable);
             }
             let skip = start.saturating_sub(position).min(page.bytes.len());
             let count = (limit - bytes.len()).min(page.bytes.len() - skip);
@@ -72,7 +72,7 @@ impl LocalControlAdapter {
             match page.next_chunk {
                 Some(next) if next > first => first = next,
                 None => break,
-                _ => return Err(DelegationErrorV1::ContentUnavailable),
+                _ => return Err(DelegationErrorV1::StorageUnavailable),
             }
         }
         if start > position {
@@ -87,14 +87,14 @@ impl LocalControlAdapter {
                     return Err(DelegationErrorV1::InvalidArguments);
                 }
                 String::from_utf8(error.into_bytes()[..valid].to_vec())
-                    .map_err(|_| DelegationErrorV1::ContentUnavailable)?
+                    .map_err(|_| DelegationErrorV1::StorageUnavailable)?
             }
             Err(_) => return Err(DelegationErrorV1::InvalidArguments),
         };
         let current = self
             .delegation_observation
             .managed_text_resolve(&scope, &reference, now)
-            .map_err(|_| DelegationErrorV1::ContentUnavailable)?;
+            .map_err(map_result_read_error)?;
         if current.state != ManagedTextState::Complete
             || current.visibility_generation != reference.visibility_generation
         {
@@ -103,10 +103,19 @@ impl LocalControlAdapter {
         if has_more {
             result.next_offset = Some(
                 u32::try_from(start + text.len())
-                    .map_err(|_| DelegationErrorV1::ContentUnavailable)?,
+                    .map_err(|_| DelegationErrorV1::StorageUnavailable)?,
             );
         }
         result.text = Some(text);
         Ok(result)
+    }
+}
+
+fn map_result_read_error(error: ManagedTextError) -> DelegationErrorV1 {
+    match error {
+        ManagedTextError::Unavailable | ManagedTextError::Stale => {
+            DelegationErrorV1::ContentUnavailable
+        }
+        _ => DelegationErrorV1::StorageUnavailable,
     }
 }

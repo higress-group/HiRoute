@@ -161,7 +161,12 @@ pub(super) fn parse_status(options: &[String]) -> Result<WorkerStatusRequestV1, 
         .ok_or(ErrorCode::InvalidArguments)
 }
 
-pub(super) fn parse_wait(options: &[String]) -> Result<WorkerWaitRequestV1, ErrorCode> {
+pub(super) struct ParsedWait {
+    pub(super) request: WorkerWaitRequestV1,
+    pub(super) timeout: Option<std::time::Duration>,
+}
+
+pub(super) fn parse_wait(options: &[String]) -> Result<ParsedWait, ErrorCode> {
     let mut run_id = None;
     let mut after_revision = None;
     let mut wait_timeout_secs = DEFAULT_WORKER_WAIT_SECS;
@@ -186,10 +191,13 @@ pub(super) fn parse_wait(options: &[String]) -> Result<WorkerWaitRequestV1, Erro
         after_revision,
         wait_timeout_secs,
     };
-    request
-        .valid()
-        .then_some(request)
-        .ok_or(ErrorCode::InvalidArguments)
+    if !request.valid() {
+        return Err(ErrorCode::InvalidArguments);
+    }
+    Ok(ParsedWait {
+        request,
+        timeout: wait_set.then(|| std::time::Duration::from_secs(u64::from(wait_timeout_secs))),
+    })
 }
 
 pub(super) fn parse_result(options: &[String]) -> Result<WorkerResultRequestV1, ErrorCode> {

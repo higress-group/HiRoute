@@ -777,6 +777,9 @@ fn failed_delegation(
         DelegationErrorV1::DependenciesMissing => "worker.dependencies.missing",
         DelegationErrorV1::DependenciesInvalid => "worker.dependencies.invalid",
         DelegationErrorV1::DependenciesUnavailable => "worker.dependencies.unavailable",
+        DelegationErrorV1::ContentUnavailable => {
+            hiroute_application_api::WORKER_CONTENT_UNAVAILABLE_MESSAGE_KEY
+        }
         _ => return MachineEnvelopeV2::failed(failure, Some(request_id)),
     }
     .to_owned();

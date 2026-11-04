@@ -1086,7 +1086,8 @@ hiroute worker exec --plan PLAN_ID --cwd /absolute/project \
 hiroute worker status \
   --submission task-20260921-1 --operation start --output json
 hiroute worker status --run RUN_ID --output json
-hiroute worker wait --run RUN_ID --wait-timeout 30 --output json
+hiroute worker wait --run RUN_ID --output json
+hiroute worker wait --run RUN_ID --after-revision REVISION --output json
 hiroute worker result --run RUN_ID --output json
 hiroute worker list --output json
 ```
@@ -1101,6 +1102,27 @@ independently of model routing and the management Skill. Use collaboration statu
 to inspect the result and collaboration disable or owned facet Restore to remove
 it. Native Skill loading may require a fresh session. See
 [the collaboration workflow](#configure-agent-collaboration) for complete commands.
+
+`worker wait --run RUN_ID` blocks until the exact run reaches `succeeded`, `failed`,
+`cancelled` or `unknown`. Intermediate progress and individual 30-second Local Control
+wait windows do not end the command. Success includes the saved result when available;
+failed, cancelled and unknown completion exits nonzero with the recorded cause.
+Run it in the main Agent's background terminal with notification on process exit to
+wake that Agent when the run ends. Daemon or transport failures exit with an error.
+
+Add `--wait-timeout SECONDS` to set a total budget of 1 to 30 seconds across
+progress updates and result retrieval. Omit it for no total limit. If the budget
+runs out before completion, the last observation reports `timed_out=true`. If
+success is already known but result text is unavailable or the budget runs out
+while fetching it, the command returns `succeeded` without text.
+`--after-revision REVISION` retains
+the one-observation behavior: the next revision or terminal state returns, with a
+30-second default. Suggested foreground next actions use this form.
+
+Compatibility note: `worker wait` without `--after-revision` previously returned the
+current state immediately. Use `worker status` for that immediate query. The Local
+Control wait contract and the default bounded wait of `worker exec` are unchanged.
+Stopping the waiting CLI or reaching its timeout leaves the Worker run executing.
 
 A wait timeout means only that work is still running and does not cancel it. After an
 uncertain response, query with the original submission key or replay that exact JSON unchanged

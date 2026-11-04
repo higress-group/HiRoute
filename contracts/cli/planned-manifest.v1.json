@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:dc43cd321b0c2c0597801020c63b6d4fd702687a984b4718748b4066f474921d",
+  "descriptor_digest": "sha256:a8f827f6239825a97defbb26217c2f6e20766202757d3f9b677a8ccd2f18b622",
   "visibility": "planned",
   "commands": [
     {
@@ -2631,14 +2631,14 @@
       "stdin_channels": [],
       "idempotency": "not_applicable",
       "help": {
-        "purpose": "Wait up to thirty seconds for a Worker run revision without cancelling it.",
-        "usage": "hiroute worker wait --run <ID> [--after-revision <N>] [--wait-timeout <1..30>]",
-        "arguments_and_options": "Wait is bounded to 1..30 seconds and never cancels the run. A timeout is a pending observation with a reusable run locator.",
+        "purpose": "Wait until a Worker run finishes, or observe its next revision, without cancelling it.",
+        "usage": "hiroute worker wait --run <ID> [--after-revision <N>] [--wait-timeout <SECONDS>]",
+        "arguments_and_options": "Without --after-revision, wait until succeeded, failed, cancelled or unknown. Include result text on success when available within the budget. --wait-timeout SECONDS sets a total budget of 1 to 30 seconds, including result retrieval. Omission means no total limit. With --after-revision, return on the next revision or terminal state, with the existing 30-second default. Stopping or timing out the wait leaves the run active. Daemon/transport failures end the command. Use worker status for an immediate query.",
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
-        "automation": "Use stable submission keys and task/run locators. A bounded wait timing out is pending, never cancellation; query status or wait again, and read result only when available.",
+        "automation": "By default, block until the exact run reaches succeeded, failed, cancelled or unknown. The CLI repeats bounded Local Control waits using the latest revision. --wait-timeout SECONDS sets a total budget of 1 to 30 seconds, including result retrieval. Omit it for no total limit. If the result is unavailable or the budget expires after success is observed, return succeeded without result text. Use this command in a background process that notifies on exit. --after-revision retains one progress observation with a 30-second default. Suggested foreground actions include it. Stopping or timing out the wait leaves the run active. Daemon/transport failures exit without indefinite retries. Use worker status to query immediately.",
         "output": "Default text renders the response for people. --output json emits the unchanged hiroute.machine-envelope/v2 object; --output quiet prints only a completed result and sends pending locators to stderr.",
-        "exit_status": "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run.",
+        "exit_status": "0 succeeded/pending; 1 failed/cancelled/unknown in completion mode; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention. With --after-revision, a terminal observation retains its existing query exit status. A timeout before completion reports pending and the run continues.",
         "examples": [
           "hiroute worker wait --run run/one"
         ],

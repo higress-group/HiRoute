@@ -712,7 +712,7 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         [],
         Released,
         Watch,
-        "Wait up to thirty seconds for a Worker run revision without cancelling it."
+        "Wait until a Worker run finishes, or observe its next revision, without cancelling it."
     ),
     command!(
         "worker.result",

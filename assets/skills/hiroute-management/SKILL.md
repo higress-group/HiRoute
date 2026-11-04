@@ -231,27 +231,26 @@ Quickstart/status never call models.
 ## Worker and collaboration
 
 worker exec needs no collaboration Skill; standing policy requires user intent.
-Enable a Plan; new Plans also need routing choices:
+Enable via routing preview --plan ID --delegation enable --worker-harness codex_cli --worker-protocol
+responses --apply-file FILE, then routing apply --request-file FILE. New Plans need routing choices.
 
-```sh
-hiroute routing preview --plan PLAN_ID --delegation enable --worker-harness codex_cli --worker-protocol responses --apply-file work.json
-hiroute routing apply --request-file work.json
-```
+Harness/protocol required; absent work returns choices. Omit both to retain work.
+--delegation disable retains work, stops delegation. Preview never publishes.
 
-Choose Harness/protocol; missing work returns choices. Omit both Worker flags to keep work;
---delegation disable keeps work but stops new delegation. Preview never publishes.
-
-Run worker dependencies discover --harness codex_cli then worker dependencies select --request-stdin.
+worker dependencies discover --harness codex_cli; worker dependencies select --request-stdin.
 Use found tuples: expected_selection_revision = selection_revisions[].revision, not a CLI/package version.
-Discovery installs nothing; read executors/plans. worker exec needs absolute cwd, text and
-stable key; exec/continue use approve-all, omit permission options. Keep submission/run IDs for
-status/wait/result/list; timeout is pending. Replay identical request/key after uncertainty;
-cancel only on request. Readiness proves no success.
+Discovery installs nothing. exec: absolute cwd, text, stable key. Read executors/plans.
+exec/continue: approve-all, no permission options. Keep submission/run IDs.
+status is immediate. Run wait to completion in background with exit notification.
+--wait-timeout SECONDS: 1 to 30 seconds total, including result reads.
+--after-revision N observes once (default 30s). Timeout/interrupt leaves work running.
+Replay identical request/key if uncertain; cancel only on request.
 
-Standing policy: preview agents collaboration configure AGENT_ID --trigger explicit --preview; to save,
-omit --preview; set --idempotency-key KEY. explicit delegates only when asked; delegate-by-default
-permits suitable delegation within the user's task. This installs hiroute-collaboration independently
-of models/management. Read agents collaboration status AGENT_ID; remove via owned facet Restore. Reload Skills in a fresh session if needed. No recursive or coordination/status/result-summary delegation.
+Policy: agents collaboration configure AGENT_ID --trigger explicit --preview; save without
+--preview, with --idempotency-key KEY. explicit: only on request; delegate-by-default: suitable tasks
+within scope. hiroute-collaboration is independent of models/management.
+Read agents collaboration status AGENT_ID; remove via facet Restore. Reload Skills in a fresh session.
+No recursive or coordination/status/result-summary delegation.
 
 ## Listener and service changes
 
