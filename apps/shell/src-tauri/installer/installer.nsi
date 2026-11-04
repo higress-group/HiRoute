@@ -493,7 +493,7 @@ Function .onInit
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute cannot install over this background service. $1" /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify this installation." "preflight"
     Abort
   ${EndIf}
   nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe"'
@@ -508,7 +508,7 @@ Function .onInit
     ${EndIf}
   ${EndIf}
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute needs installation recovery. Existing data and changed files are preserved. $1" /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute needs installation recovery. Keep your existing files and data." "recover"
     Abort
   ${EndIf}
   ${If} ${Silent}
@@ -516,9 +516,14 @@ Function .onInit
     StrCpy $HiRouteLoginChoice 1
     StrCpy $HiRouteTrayChoice 2
   ${Else}
-    ExecWait '"$PLUGINSDIR\hiroute-preflight.exe" --installer-options' $0
-    ${If} $0 > 3
-      MessageBox MB_ICONSTOP "HiRoute could not read the existing installation options." /SD IDOK
+    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-options'
+    Pop $0
+    Pop $1
+    ${If} $0 != 0
+    ${AndIf} $0 != 1
+    ${AndIf} $0 != 2
+    ${AndIf} $0 != 3
+      !insertmacro HiRouteDiagnostic "HiRoute could not read the existing installation options." "read-options"
       Abort
     ${EndIf}
     IntOp $HiRouteLoginChoice $0 & 1
@@ -824,7 +829,7 @@ Function .onInstFailed
   ${EndIf}
   hiroute_rollback_registration_done:
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute could not safely restore the previous installation. Existing programs and data are preserved. $1" /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute could not safely restore the previous installation. Keep your existing files and data." "rollback"
   ${EndIf}
   SetErrorLevel 1
 FunctionEnd
@@ -834,9 +839,11 @@ Function un.onInit
     MessageBox MB_ICONSTOP "HiRoute uninstall directory is invalid. No files were removed." /SD IDOK
     Abort
   InitPluginsDir
-  System::Call 'kernel32::CopyFileW(w "$INSTDIR\hiroute-shell.exe", w "$PLUGINSDIR\hiroute-uninstall-helper.exe", i 1) i .r0'
+  System::Call 'kernel32::CopyFileW(w "$INSTDIR\hiroute-shell.exe", w "$PLUGINSDIR\hiroute-uninstall-helper.exe", i 1) i .r0 ?e'
+  Pop $1
   ${If} $0 = 0
-    MessageBox MB_ICONSTOP "HiRoute could not prepare its uninstall helper. No files were removed. Close HiRoute and try again." /SD IDOK
+    StrCpy $1 "Windows error: $1"
+    !insertmacro HiRouteDiagnostic "HiRoute could not prepare its uninstall helper. Close HiRoute and try again." "copy-uninstall-helper"
     Abort
   ${EndIf}
   nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-mutex'

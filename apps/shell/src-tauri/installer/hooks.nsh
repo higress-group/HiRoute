@@ -1,5 +1,9 @@
 !include nsDialogs.nsh
 !include LogicLib.nsh
+
+!macro HiRouteDiagnostic SUMMARY STEP
+  MessageBox MB_ICONSTOP "${SUMMARY} Press Ctrl+C to copy the diagnostic.$\r$\n$\r$\nHiRoute ${VERSION} | Setup step: ${STEP} | Exit: $0$\r$\n$1" /SD IDOK
+!macroend
 Var HiRouteLoginChoice
 Var HiRouteTrayChoice
 Var HiRouteLoginCheckbox
@@ -183,7 +187,7 @@ FunctionEnd
   ${If} $0 != 0
   ${AndIf} $0 != 24
     DetailPrint "$1"
-    MessageBox MB_ICONSTOP "HiRoute could not prepare the installation. Installed programs and data are preserved. Press Ctrl+C to copy the diagnostic.$\r$\n$\r$\n$1" /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute could not prepare the installation. Keep your existing data." "prepare-installation"
     Abort
   ${EndIf}
   StrCpy $HiRoutePrepared 1
@@ -219,7 +223,7 @@ FunctionEnd
   ${If} $0 != 0
     hiroute_install_failed:
     DetailPrint "$1"
-    MessageBox MB_ICONSTOP "HiRoute installation did not complete. Press Ctrl+C to copy the diagnostic.$\r$\n$\r$\n$1" /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute installation did not complete. Keep your existing data." "install"
     Abort
   ${EndIf}
 !macroend
@@ -255,7 +259,7 @@ FunctionEnd
     ${EndIf}
     ${If} $0 != 0
       hiroute_uninstall_failed:
-      MessageBox MB_ICONSTOP "HiRoute was not removed. Resolve any Agent restore decisions or active work, then retry. $1" /SD IDOK
+      !insertmacro HiRouteDiagnostic "HiRoute was not removed. Resolve any Agent restore decisions or active work, then retry." "uninstall"
       Abort
     ${EndIf}
   ${EndIf}

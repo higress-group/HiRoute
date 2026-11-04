@@ -190,17 +190,26 @@ fn same_repair_payload(
                 )
         })
 }
-pub(super) fn recover_for_candidate(manifest: &Path, daemon: &Path, allow: bool) -> io::Result<()> {
-    let layout =
-        hiroute_host_runtime::StandaloneLayout::from_environment().map_err(|_| invalid())?;
-    if has_pending()?
-        && pending()?.phase == Phase::Prepared
-        && hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())?
+pub(super) fn recover_for_candidate(
+    manifest: &Path,
+    daemon: &Path,
+    allow: bool,
+) -> Result<(), crate::installer_diagnostic::Failure> {
+    use crate::installer_diagnostic::Failure;
+    let read_journal = |error| Failure::io("read-desktop-journal", error);
+    let layout = hiroute_host_runtime::StandaloneLayout::from_environment()
+        .map_err(|_| Failure::new("resolve-service-layout", "INSTALLATION_UNAVAILABLE"))?;
+    if has_pending().map_err(read_journal)?
+        && pending().map_err(read_journal)?.phase == Phase::Prepared
+        && hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())
+            .map_err(|error| Failure::io("check-storage-recovery", error))?
     {
-        return prepare(manifest, daemon).map(|_| ());
+        return prepare(manifest, daemon)
+            .map(|_| ())
+            .map_err(|error| Failure::io("resume-desktop-install", error));
     }
-    windows::recover_pending()?;
-    rollback(allow)
+    windows::recover_pending().map_err(|error| Failure::io("recover-standalone", error))?;
+    rollback(allow).map_err(|error| Failure::io("rollback-desktop", error))
 }
 pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
     windows::preflight()?;
@@ -235,7 +244,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
             requested.insert("standalone/package-manifest.json".into(), hash(manifest)?);
             requested.insert("hiroute-shell.exe".into(), hash(&std::env::current_exe()?)?);
             if value.phase != Phase::Prepared || !same_repair_payload(&value.new, &requested) {
-                return Err(invalid());
+                return Err(io::Error::other("SHELL_RECOVERY_PAYLOAD_MISMATCH"));
             }
             // Re-running the exact current installer continues its existing
             // journal forward. Never replace its retained original rollback set.
@@ -245,7 +254,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
                     let actual = hash(&path)?;
                     if value.old.get(name) != Some(&actual) && value.new.get(name) != Some(&actual)
                     {
-                        return Err(invalid());
+                        return Err(io::Error::other("SHELL_RECOVERY_FILE_CHANGED"));
                     }
                 }
             }
@@ -522,7 +531,7 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
         if present(&path)? {
             let actual = hash(&path)?;
             if value.old.get(name) != Some(&actual) && value.new.get(name) != Some(&actual) {
-                return Err(invalid());
+                return Err(io::Error::other("SHELL_RECOVERY_FILE_CHANGED"));
             }
         }
     }
@@ -592,7 +601,7 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
     for (name, expected) in &value.old {
         let backup = data()?.join("install-backups").join(name);
         if hash(&backup)? != *expected {
-            return Err(invalid());
+            return Err(io::Error::other("SHELL_RECOVERY_BACKUP_MISMATCH"));
         }
         let dest = root.join(name);
         if let Some(parent) = dest.parent() {

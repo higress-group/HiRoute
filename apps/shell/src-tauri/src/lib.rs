@@ -3,6 +3,8 @@ use url::Url;
 #[cfg(any(test, all(windows, feature = "shell-runtime")))]
 mod handoff;
 #[cfg(any(test, all(windows, feature = "shell-runtime")))]
+mod installer_diagnostic;
+#[cfg(any(test, all(windows, feature = "shell-runtime")))]
 #[path = "runtime/startup_failure.rs"]
 mod startup_failure;
 
