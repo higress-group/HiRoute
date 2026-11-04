@@ -34,7 +34,10 @@ impl ControlStatePort for Ports {
         })
     }
 
-    fn snapshot(&self, workspace: &WorkspaceId) -> Result<ControlStateSnapshotV1, ControlReadError> {
+    fn snapshot(
+        &self,
+        workspace: &WorkspaceId,
+    ) -> Result<ControlStateSnapshotV1, ControlReadError> {
         self.snapshots.fetch_add(1, Ordering::Relaxed);
         Ok(ControlStateSnapshotV1 {
             revisions: self.revisions(workspace)?,
