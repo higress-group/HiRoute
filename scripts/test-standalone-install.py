@@ -747,6 +747,26 @@ class InstallerTests(StandaloneFixture):
                                   manifest_url="https://downloads.example/" + manifest.name)
         return args, response, calls
 
+    @patch.object(installer.platform, "system", return_value="Linux")
+    def test_short_linux_downloads_install_from_https_and_local_files(self, _system):
+        manifest, archive = self.build("0.5.1")
+        architecture = installer.host_target().split("-")[0]
+        short_archive = archive.with_name(f"HiRoute-0.5.1-linux-{architecture}.tar.gz")
+        short_manifest = short_archive.with_name(short_archive.name + ".json")
+        short_archive.write_bytes(archive.read_bytes())
+        short_manifest.write_bytes(manifest.read_bytes())
+        args, response, calls = self.https_package(short_manifest, short_archive, "ignore-ranges")
+        with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
+            installer.install(self.install_args(short_manifest, short_archive))
+            with patch.object(installer.urllib.request, "urlopen", side_effect=response):
+                installer.install(args)
+            self.assertTrue(calls)
+            marker = json.loads((self.home / ".local/share/hiroute/standalone.json").read_text())
+            self.assertEqual(marker["version"], "0.5.1")
+            short_archive.write_bytes(b"x" * short_archive.stat().st_size)
+            with self.assertRaisesRegex(ValueError, "checksum verification failed"):
+                installer.install(self.install_args(short_manifest, short_archive))
+
     def test_https_partial_transfer_recovers_through_verified_install(self):
         manifest, archive = self.build()
         args, response, calls = self.https_package(manifest, archive, "short-once")

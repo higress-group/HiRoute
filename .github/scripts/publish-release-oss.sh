@@ -16,7 +16,7 @@ asset_list=$(mktemp)
 object_headers=$(mktemp)
 head_error=$(mktemp)
 trap 'rm -f "$asset_list" "$object_headers" "$head_error"' EXIT
-node apps/website/scripts/release-manifest.mjs artifacts "$manifest" --tag "$tag" > "$asset_list"
+node apps/website/scripts/release-manifest.mjs publication-assets "$manifest" --tag "$tag" > "$asset_list"
 
 head_object() {
   local key=$1 status
@@ -39,7 +39,7 @@ while IFS=$'\t' read -r filename key sha size; do
 done < "$asset_list"
 
 while IFS=$'\t' read -r filename key sha size; do
-  metadata="Cache-Control:public,max-age=31536000,immutable#Content-Disposition:attachment; filename=$filename#X-Oss-Meta-Sha256:$sha"
+  metadata="Cache-Control:public,max-age=31536000,immutable#Content-Disposition:attachment; filename=${key##*/}#X-Oss-Meta-Sha256:$sha"
   status=$(head_object "$key") || exit 1
   case "$status" in
     200)

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
-import { artifactAssets, validateReleaseManifest, verifyDesktopIdentity } from '../src/lib/releases.mjs';
+import { artifactAssets, publicationAssets, validateReleaseManifest, verifyDesktopIdentity } from '../src/lib/releases.mjs';
 
 const [command, manifestPath, ...args] = process.argv.slice(2);
-if (!command || !manifestPath) throw new Error('usage: release-manifest.mjs <validate|artifacts|desktop-artifacts|standalone-packages|verify-assets|verify-desktop-identity> MANIFEST [options]');
+if (!command || !manifestPath) throw new Error('usage: release-manifest.mjs <validate|artifacts|publication-assets|desktop-artifacts|standalone-packages|verify-assets|verify-desktop-identity> MANIFEST [options]');
 const manifest = validateReleaseManifest(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
 const tagIndex = args.indexOf('--tag');
 const tag = tagIndex >= 0 ? args[tagIndex + 1] : null;
@@ -28,11 +28,12 @@ function expectedFilename(artifact) {
 
 if (command === 'validate') {
   process.stdout.write(`${manifest.releases.length} release(s) valid\n`);
-} else if (command === 'artifacts') {
+} else if (command === 'artifacts' || command === 'publication-assets') {
   const selected = release ? [release] : manifest.releases;
+  const listAssets = command === 'artifacts' ? artifactAssets : publicationAssets;
   for (const item of selected) {
     for (const artifact of item.artifacts) {
-      for (const asset of artifactAssets(item, artifact)) {
+      for (const asset of listAssets(item, artifact)) {
         process.stdout.write([asset.filename, asset.key, asset.sha256, asset.size].join('\t') + '\n');
       }
     }
