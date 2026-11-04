@@ -61,7 +61,10 @@ The optional controls show the fixed installation path and the login, notificati
 area and desktop shortcut choices. To upgrade a running Desktop from a downloaded
 installer, exit it from its notification area icon, then continue in the installer.
 The installer checks again before replacing files. It shows Open HiRoute after
-the background service is ready.
+the background service is ready. Windows service management and Desktop startup
+use the packaged daemon's authenticated Control and Gateway readiness check,
+which does not scan installed Agents. Installed Apps reports the new version
+after installation commits.
 
 Login-start and tray choices default on and can be deselected independently.
 Login start updates the user's Task and the fixed HKCU Run command together,

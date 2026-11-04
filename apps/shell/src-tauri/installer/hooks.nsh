@@ -125,6 +125,8 @@ Function HiRouteOptions
   Call HiRouteSetOptionsVisibility
   GetDlgItem $0 $HWNDPARENT 1
   ${NSD_SetText} $0 $HiRoutePrimary
+  GetDlgItem $0 $HWNDPARENT 3
+  ShowWindow $0 ${SW_HIDE}
   nsDialogs::Show
   ${NSD_FreeIcon} $HiRoutePageIcon
 FunctionEnd

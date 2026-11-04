@@ -5,6 +5,9 @@ use hiroute_domain::{
 };
 use serde::{Deserialize, Serialize};
 
+/// Private Windows service and Desktop startup probe. The response is a readiness boolean.
+pub const STANDALONE_SERVICE_READINESS_OPERATION_V1: &str = "GetStandaloneServiceReadinessV1";
+
 #[derive(schemars::JsonSchema, Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientEmptyRequestV1 {}

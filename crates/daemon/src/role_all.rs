@@ -1028,6 +1028,21 @@ mod tests {
             role.phases(),
             (ManagedControlPhase::Ready, ManagedGatewayPhase::Ready)
         );
+        let readiness = hiroute_client_core::Client::new(
+            "role-all-readiness-test",
+            hiroute_client_core::LocalEndpoint::from_runtime_root(directory.path().join("runtime")),
+        );
+        let readiness = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(readiness.query::<_, bool>(
+                hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1,
+                "role-all-readiness",
+                &hiroute_application_api::ClientEmptyRequestV1::default(),
+            ))
+            .unwrap();
+        assert_eq!(readiness.data, Some(true));
         let capability = "0123456789abcdef0123456789abcdef0123456789abcdef";
         let revisions = RevisionSetV1 {
             target: 0,
