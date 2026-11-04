@@ -166,6 +166,41 @@ fn delegation_disconnect_before_and_after_send_are_distinct() {
 }
 
 #[test]
+fn delegation_cancel_keeps_released_unknown_terminal_and_preserves_uncertainty() {
+    for acknowledged in [false, true] {
+        let mut run = RunProgressV1::default();
+        run.advance(RunEventV1::Preparing).unwrap();
+        run.advance(RunEventV1::PromptSendIntent).unwrap();
+        run.advance(RunEventV1::ConnectionLost).unwrap();
+        if acknowledged {
+            run.advance(RunEventV1::ResidualAcknowledged).unwrap();
+        } else {
+            run.advance(RunEventV1::ManagedScopeStopped { success: true })
+                .unwrap();
+        }
+        assert_eq!(run.state, RunStateV1::Unknown);
+        assert!(run.workspace_releasable());
+        let before = run.clone();
+        for _ in 0..2 {
+            run.advance(RunEventV1::CancelRequested).unwrap();
+            assert_eq!(run, before);
+        }
+    }
+
+    let mut run = RunProgressV1::default();
+    run.advance(RunEventV1::Preparing).unwrap();
+    run.advance(RunEventV1::PromptSendIntent).unwrap();
+    run.advance(RunEventV1::ConnectionLost).unwrap();
+    run.advance(RunEventV1::CancelRequested).unwrap();
+    assert_eq!(run.state, RunStateV1::Cancelling);
+    assert!(!run.workspace_releasable());
+    run.advance(RunEventV1::ManagedScopeStopped { success: false })
+        .unwrap();
+    assert_eq!(run.state, RunStateV1::Cancelled);
+    assert!(run.workspace_releasable());
+}
+
+#[test]
 fn stored_strict_permit_requires_explicit_native_mode_approval() {
     let mut p = permit();
     let intent = WorkerExecutionIntentV1 {

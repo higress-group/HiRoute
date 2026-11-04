@@ -286,6 +286,10 @@ not replace real native compaction, Continue or concurrent-route journeys.
 
 [Official Desktop admission](../../crates/integrations/src/agents/dsh_desktop.rs)
 uses the app's bundled public CLI and independent `profiles/desktop` settings.
+Windows rescans check Programs directories and read-only uninstall hints
+through [native registration inspection](../../crates/platform/src/windows/installed_apps.rs).
+The [scan response](../../crates/application/src/control_plane/agent_discovery.rs)
+retains Web lookup and launch failures and supplies context-scoped remediation actions.
 The Web entry retains `profiles/web` ownership; both reuse protected additional
 provider effects and bundled routing registration. Desktop discovery does not
 require npm DSH, and its model support does not advertise Worker/Skill support.
@@ -343,6 +347,17 @@ a stale executor cannot cross the preparation revision check. Once preparation
 has started, cancellation still needs owned-process stop evidence. Startup may
 settle the old revision-2 `Cancelling` record only when the exact record proves
 that preparation, process binding and prompt intent never occurred.
+
+An ended `Unknown` outcome can have complete cleanup. Its cancel is idempotent;
+[stored checkpoints](../../crates/local-storage/src/runtime/delegation/events.rs)
+reject later observations that would revoke the same run's complete scope-stop
+proof. [Role shutdown](../../crates/daemon/src/role_all.rs) signals the
+[executor](../../crates/daemon/src/delegation/executor/control.rs) and joins Worker
+finalization under its existing deadline before process/store teardown.
+[Interrupted lifecycle runs](../../crates/daemon/src/delegation/lifecycle.rs)
+stop their scopes concurrently before taking the finalization lease to record
+stop evidence. The [persistent journal](../../crates/daemon/src/delegation/persistent_journal.rs)
+revokes the attempt credential as soon as it persists an execution failure.
 
 The shared [startup coordinator](../../crates/daemon/src/delegation/lifecycle/startup.rs)
 protects same-daemon Codex borrowed-root initialization and OpenCode database

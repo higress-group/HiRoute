@@ -942,6 +942,35 @@ class Runner(unittest.TestCase):
             ignored=True, case='actual_windows_complete_public_headless_business'), home, local),
             'disposable_installation_profile')
 
+    def test_dsh_discovery_admits_only_exact_read_only_or_temporary_cases_with_installed_product(self):
+        home, local = self.root / 'home', self.root / 'local'
+        marker = home / '.local/share/hiroute/standalone.json'
+        marker.parent.mkdir(parents=True)
+        marker.write_bytes(b'preserve installed product')
+        prefix = 'agents::filesystem::dsh_desktop::windows_tests::'
+        cases = [
+            ('hiroute_integrations.exe', False, prefix +
+             'windows_dsh_desktop_resolves_standard_user_and_machine_installations_without_path'),
+            ('hiroute_integrations.exe', False, prefix +
+             'windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases'),
+            ('hiroute_integrations.exe', True, prefix +
+             'windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_changing_profiles'),
+            ('hiroute_integrations.exe', False,
+             'agents::filesystem::tests::dsh::dsh_scan_preserves_unusable_executable_reasons_instead_of_reporting_absence'),
+            ('hiroute_platform.exe', False,
+             'windows::installed_apps::tests::windows_uninstall_locations_select_exact_app_and_versioned_names_read_only'),
+        ]
+        for binary, ignored, case in cases:
+            request = dict(binary=binary, ignored=ignored, case=case)
+            with self.subTest(case=case):
+                expected = 'read_only_dsh_discovery' if ignored else 'temporary_artifact_component'
+                self.assertEqual(host.admit_test_profile(request, home, local), expected)
+                for changed in ({'binary': 'windows_headless.exe'}, {'ignored': not ignored},
+                                {'case': case + '_unknown'}):
+                    with self.assertRaisesRegex(ValueError, 'existing installation'):
+                        host.admit_test_profile({**request, **changed}, home, local)
+        self.assertEqual(marker.read_bytes(), b'preserve installed product')
+
     def test_shell_payload_preserves_quotes_without_interpolation(self):
         value = "C:/space ' $env:PATH ; directory/file.py"
         script = '& ' + controller.ps_literal(value)

@@ -4,6 +4,7 @@ use hiroute_domain::{AgentPlanId, CanonicalDigest};
 mod execution_failure;
 mod listing;
 mod native_lifecycle;
+mod stop_evidence;
 
 fn sample(task_id: &str, run_id: &str, root: &str) -> DelegationAcceptanceV1 {
     let workspace_id = WorkspaceId::parse("workspace").unwrap();

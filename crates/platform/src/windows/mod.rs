@@ -5,6 +5,7 @@ pub mod diagnostic_files;
 pub mod durable;
 pub(crate) mod file_security;
 pub mod install;
+pub mod installed_apps;
 pub mod job;
 pub mod launcher;
 pub mod lifecycle;

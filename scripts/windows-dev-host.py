@@ -304,6 +304,25 @@ def admit_test_profile(request, home, localappdata):
     if (request['binary'] == 'hiroute_local_storage.exe' and not request['ignored']
             and request['case'] in {prefix + name for name in artifact_cases}):
         return 'temporary_artifact_component'
+    # DSH discovery checks either use only owned temporary files/registry keys or
+    # read the installed official client. They never install/stop HiRoute, change
+    # HOME, or write the account's native configuration. Keep this an exact list;
+    # ordinary product/install cases still require a disposable profile below.
+    dsh_prefix = 'agents::filesystem::dsh_desktop::windows_tests::'
+    discovery_cases = {
+        ('hiroute_integrations.exe', False, dsh_prefix +
+         'windows_dsh_desktop_resolves_standard_user_and_machine_installations_without_path'),
+        ('hiroute_integrations.exe', False, dsh_prefix +
+         'windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases'),
+        ('hiroute_integrations.exe', True, dsh_prefix +
+         'windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_changing_profiles'),
+        ('hiroute_integrations.exe', False,
+         'agents::filesystem::tests::dsh::dsh_scan_preserves_unusable_executable_reasons_instead_of_reporting_absence'),
+        ('hiroute_platform.exe', False,
+         'windows::installed_apps::tests::windows_uninstall_locations_select_exact_app_and_versioned_names_read_only'),
+    }
+    if (request['binary'], request['ignored'], request['case']) in discovery_cases:
+        return 'read_only_dsh_discovery' if request['ignored'] else 'temporary_artifact_component'
     # Never manufacture HOME or remove an existing installation to make a gate pass.
     for path in (localappdata / 'HiRoute/cli', home / '.local/share/hiroute/standalone.json',
                  home / '.local/bin/hiroute.exe'):

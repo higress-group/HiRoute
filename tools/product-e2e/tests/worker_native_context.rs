@@ -19,3 +19,12 @@ fn concurrent_native_workers_keep_routes_and_cancel_only_owned_work() {
         "worker-native-context-boundaries",
     );
 }
+
+#[test]
+#[ignore = "requires explicitly selected real Codex and Claude ACP installations"]
+fn native_worker_shutdown_preserves_stop_proof_and_exact_continue_after_restart() {
+    worker_product_support::run_real_worker_scenario(
+        "HIROUTE_PRODUCT_NATIVE_SHUTDOWN",
+        "worker-native-shutdown",
+    );
+}
