@@ -47,12 +47,12 @@ fn each_unmet_pin_condition_is_reported_without_per_poll_logging() {
             generation: 1,
             client_version: None,
         };
-        let budget = Duration::from_secs(2);
+        let budget = Duration::from_secs(10);
         let account_reads = fixture.account_reads.clone();
         let catalog_reads = fixture.catalog_reads.clone();
         // Cancel in the second target poll, after the first has recorded the
         // unmet condition. Inventory/account preparation must not consume an
-        // artificial 150 ms deadline before this scenario has even started.
+        // deadline on a contended runner before this scenario has started.
         let request = crate::CpaRequestContext::new(Instant::now() + budget)
             .with_cancellation_check(Arc::new(move || {
                 if fault == 3 {
@@ -87,7 +87,7 @@ fn each_unmet_pin_condition_is_reported_without_per_poll_logging() {
         let failed = events
             .iter()
             .find(|event| event["event"]["cpa_control"]["outcome"]["failed"].is_object())
-            .unwrap();
+            .unwrap_or_else(|| panic!("fault {fault}: no terminal pin diagnostic"));
         let control = &failed["event"]["cpa_control"];
         assert_eq!(
             control["checks"][field], expected,

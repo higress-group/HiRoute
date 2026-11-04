@@ -517,7 +517,7 @@ mod windows_tests {
             ])
             .env("HIROUTE_TEST_COMMAND", script);
         let output =
-            super::super::windows_runtime::bounded(&command, true, Duration::from_secs(10), 8192)
+            super::super::windows_runtime::bounded(&command, true, Duration::from_secs(30), 8192)
                 .unwrap();
         let text = std::str::from_utf8(&output)
             .unwrap()

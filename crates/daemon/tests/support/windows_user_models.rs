@@ -148,7 +148,7 @@ impl UserModels {
                 "model authority rotation must issue a fresh private grant"
             );
             let before = model.oracle.ledger.lock().unwrap().requests.len();
-            let rejected = http::post_with_headers(
+            let rejected = http::post_expect_continue_with_headers(
                 gateway,
                 "/v1/responses",
                 None,

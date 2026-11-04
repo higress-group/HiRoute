@@ -443,7 +443,35 @@ fn display_name(prefix: &str, candidate_ref: &str) -> String {
 }
 
 pub(crate) fn cli(product: &InstalledProduct, args: &[&str], payload: Option<&Value>) -> Value {
-    let (exit, value) = command(product, args, payload);
+    let detailed = payload
+        .filter(|request| {
+            matches!(args, ["sessions", "list" | "show" | "receipt"])
+                && request["schema"] == "hiroute.observation.query/v2"
+        })
+        .cloned()
+        .map(|mut request| {
+            request["read_failure_details"] = json!(true);
+            request
+        });
+    let payload = detailed.as_ref().or(payload);
+    let (mut exit, mut value) = command(product, args, payload);
+    for _ in 0..2 {
+        if exit == 0
+            || detailed.is_none()
+            || value["error"]["code"] != "OBSERVATION_UNAVAILABLE"
+            || value["error"]["retryable"] != true
+            || !matches!(
+                value["error"]["observation_read"]["reason"].as_str(),
+                Some("timeout" | "reader_busy")
+            )
+        {
+            break;
+        }
+        // Observe only a bounded transient read failure. The caller still
+        // requires the complete session and its exact persisted receipts.
+        thread::sleep(Duration::from_millis(100));
+        (exit, value) = command(product, args, payload);
+    }
     let (command, stage) = checkpoint(args, payload);
     if exit != 0 {
         let status = serde_json::from_value::<hiroute_application_api::MachineStatus>(
@@ -454,8 +482,12 @@ pub(crate) fn cli(product: &InstalledProduct, args: &[&str], payload: Option<&Va
             value["error"]["code"].clone(),
         )
         .ok();
+        let reason = serde_json::from_value::<
+            hiroute_application_api::ObservationReadFailureReasonV1,
+        >(value["error"]["observation_read"]["reason"].clone())
+        .ok();
         eprintln!(
-            "Windows public business failure: command={command}, stage={stage}, status={status:?}, code={code:?}"
+            "Windows public business failure: command={command}, stage={stage}, status={status:?}, code={code:?}, observation_reason={reason:?}"
         );
     }
     assert_eq!(

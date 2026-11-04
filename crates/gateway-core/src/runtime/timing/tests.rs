@@ -93,25 +93,22 @@ async fn decision_transport_waits_are_not_counted_again_as_model_waits() {
     assert_eq!(partition(&snapshot), snapshot.elapsed_us);
 }
 
-#[tokio::test]
-async fn concurrent_different_waits_remain_unclassified() {
+#[test]
+fn concurrent_different_waits_remain_unclassified() {
     let clock = RequestClock::new();
-    clock
-        .run(async {
-            tokio::join!(
-                wait(
-                    WaitKind::ClientRead,
-                    tokio::time::sleep(Duration::from_millis(3))
-                ),
-                wait(
-                    WaitKind::DownstreamWrite,
-                    tokio::time::sleep(Duration::from_millis(3))
-                ),
-            );
-        })
-        .await;
+    let mut request = pin!(clock.run(async {
+        tokio::join!(
+            wait(WaitKind::ClientRead, std::future::pending::<()>()),
+            wait(WaitKind::DownstreamWrite, std::future::pending::<()>()),
+        );
+    }));
+    let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
+    assert!(request.as_mut().poll(&mut cx).is_pending());
+    std::thread::sleep(Duration::from_millis(3));
     let snapshot = clock.finish();
     assert!(snapshot.wait_us[WaitKind::Other as usize] >= 3_000);
+    assert_eq!(snapshot.wait_us[WaitKind::ClientRead as usize], 0);
+    assert_eq!(snapshot.wait_us[WaitKind::DownstreamWrite as usize], 0);
     assert_eq!(partition(&snapshot), snapshot.elapsed_us);
 }
 

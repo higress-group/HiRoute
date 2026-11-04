@@ -5,6 +5,21 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::{Duration, Instant};
 
+const FRAME_TIMEOUT: Duration = Duration::from_secs(2);
+
+fn read_before(
+    stream: &mut TcpStream,
+    deadline: Instant,
+    chunk: &mut [u8],
+) -> std::io::Result<usize> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(std::io::ErrorKind::TimedOut.into());
+    }
+    stream.set_read_timeout(Some(remaining))?;
+    stream.read(chunk)
+}
+
 pub(super) fn serve(
     stream: &mut TcpStream,
     expected_auth: &str,
@@ -12,15 +27,12 @@ pub(super) fn serve(
     challenge: Option<&mut CollaborationChallenge>,
 ) -> Result<bool, &'static str> {
     stream
-        .set_read_timeout(Some(Duration::from_millis(500)))
-        .map_err(|_| "timeout")?;
-    stream
         .set_write_timeout(Some(Duration::from_millis(500)))
         .map_err(|_| "timeout")?;
-    let started = Instant::now();
+    let deadline = Instant::now() + FRAME_TIMEOUT;
     let mut bytes = zeroize::Zeroizing::new(Vec::new());
     let (end, length, counting) = loop {
-        if bytes.len() > 128 * 1024 || started.elapsed() > Duration::from_secs(2) {
+        if bytes.len() > 128 * 1024 || Instant::now() >= deadline {
             return Err("request bound");
         }
         if let Some(end) = bytes.windows(4).position(|value| value == b"\r\n\r\n") {
@@ -78,18 +90,15 @@ pub(super) fn serve(
             );
         }
         let mut chunk = [0; 4096];
-        let count = stream.read(&mut chunk).map_err(|_| "header read")?;
+        let count = read_before(stream, deadline, &mut chunk).map_err(|_| "header read")?;
         if count == 0 {
             return Err("short header");
         }
         bytes.extend_from_slice(&chunk[..count]);
     };
     while bytes.len() < end + length {
-        if started.elapsed() > Duration::from_secs(2) {
-            return Err("body deadline");
-        }
         let mut chunk = [0; 4096];
-        let count = stream.read(&mut chunk).map_err(|_| "body read")?;
+        let count = read_before(stream, deadline, &mut chunk).map_err(|_| "body read")?;
         if count == 0 {
             return Err("short body");
         }
@@ -211,5 +220,29 @@ mod tests {
             assert_eq!(body["type"], "message");
             assert_eq!(body["model"], "frozen-model");
         }
+    }
+
+    #[test]
+    fn waits_for_a_fragmented_request_within_the_existing_frame_deadline() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            serve(&mut stream, "local-challenge", "frozen-model", None)
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client.write_all(b"POST /v1/messages HTTP/1.1\r\n").unwrap();
+        std::thread::sleep(Duration::from_millis(650));
+        let body = r#"{"model":"frozen-model"}"#;
+        write!(
+            client,
+            "Host: localhost\r\nAuthorization: Bearer local-challenge\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        assert_eq!(server.join().unwrap(), Ok(true));
+        assert!(response.starts_with("HTTP/1.1 200"));
     }
 }
