@@ -263,7 +263,7 @@ impl LocalControlAdapter {
             self.scanner.codex_profile_settings_discovery()
         } else if class == SettingsAgentClass::CodexDesktop {
             self.scanner
-                .codex_desktop_settings_discovery()
+                .codex_desktop_settings_discovery(spec.is_restore_only())
                 .ok_or(ControlReadError::NotFound)?
         } else {
             self.scanner.codex_settings_discovery(configure_skill)

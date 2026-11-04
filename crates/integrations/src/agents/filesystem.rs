@@ -474,7 +474,7 @@ impl FilesystemAgentScannerV1 {
             let discovery = match agent_id {
                 "agent_codex_default" => self.scan_codex(),
                 super::CODEX_DESKTOP_AGENT_ID => {
-                    let Some(discovery) = self.codex_desktop_settings_discovery() else {
+                    let Some(discovery) = self.codex_desktop_settings_discovery(false) else {
                         continue;
                     };
                     discovery
@@ -560,36 +560,38 @@ impl FilesystemAgentScannerV1 {
 
     pub(super) fn scan_codex_for(&self, agent_id: &str) -> FilesystemAgentDiscoveryV1 {
         match self.located_codex_engine() {
-            Ok(Some(_)) => {
-                let mut observation =
-                    base_observation(agent_id, AgentKindV1::Codex, "not-probed".to_owned());
-                match super::sample_codex_configuration(&super::CodexConfigurationScope::user_file(
-                    self.layout.codex_user_config.clone(),
-                )) {
-                    Ok(sample) => {
-                        observation.config = sample.observations;
-                        FilesystemAgentDiscoveryV1 {
-                            outcome: resolve_agent_observation(observation),
-                            configuration_issue: None,
-                            claude_configuration: None,
-                            discovered_credential: None,
-                            permission_hardening: None,
-                            managed_launch: None,
-                        }
-                    }
-                    Err(error) => report_only_agent(
-                        agent_id,
-                        AgentKindV1::Codex,
-                        "not-probed".to_owned(),
-                        error.report_reason(),
-                    ),
-                }
-            }
+            Ok(Some(_)) => self.codex_file_discovery(agent_id),
             Ok(None) => probe_report(agent_id, AgentKindV1::Codex, ExecutableProbe::NotFound),
             Err(reason) => probe_report(
                 agent_id,
                 AgentKindV1::Codex,
                 ExecutableProbe::Unknown(reason),
+            ),
+        }
+    }
+
+    pub(super) fn codex_file_discovery(&self, agent_id: &str) -> FilesystemAgentDiscoveryV1 {
+        let mut observation =
+            base_observation(agent_id, AgentKindV1::Codex, "not-probed".to_owned());
+        match super::sample_codex_configuration(&super::CodexConfigurationScope::user_file(
+            self.layout.codex_user_config.clone(),
+        )) {
+            Ok(sample) => {
+                observation.config = sample.observations;
+                FilesystemAgentDiscoveryV1 {
+                    outcome: resolve_agent_observation(observation),
+                    configuration_issue: None,
+                    claude_configuration: None,
+                    discovered_credential: None,
+                    permission_hardening: None,
+                    managed_launch: None,
+                }
+            }
+            Err(error) => report_only_agent(
+                agent_id,
+                AgentKindV1::Codex,
+                "not-probed".to_owned(),
+                error.report_reason(),
             ),
         }
     }

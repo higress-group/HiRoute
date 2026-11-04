@@ -311,6 +311,8 @@ or arbitrary error text, and SHALL NOT authorize storage restoration or package 
 After restarting with the original home, the existing connection can use its exact
 context, journal, target and grant to restore; another connection's restore point
 cannot acquire ownership.
+Owned model restore SHALL use those same checks after the Codex Desktop application
+is uninstalled. New model configurations and launches still require the Desktop engine.
 
 On macOS, the native host resolves the installed Codex bundle and launches it with
 `open -n`, private CODEX_HOME and CODEX_SQLITE_HOME, private

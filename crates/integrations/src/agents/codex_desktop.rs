@@ -104,9 +104,17 @@ impl FilesystemAgentScannerV1 {
         Some(scanner)
     }
 
-    pub fn codex_desktop_settings_discovery(&self) -> Option<FilesystemAgentDiscoveryV1> {
+    pub fn codex_desktop_settings_discovery(
+        &self,
+        restore_only: bool,
+    ) -> Option<FilesystemAgentDiscoveryV1> {
         let scanner = self.codex_desktop_scanner()?;
-        let mut discovery = scanner.scan_codex_for(CODEX_DESKTOP_AGENT_ID);
+        // An owned restore needs the exact private file, even after the app is removed.
+        let mut discovery = if restore_only {
+            scanner.codex_file_discovery(CODEX_DESKTOP_AGENT_ID)
+        } else {
+            scanner.scan_codex_for(CODEX_DESKTOP_AGENT_ID)
+        };
         if let super::AgentDiscoveryOutcomeV1::Supported { installation } = &mut discovery.outcome {
             super::observed_capabilities::attach_target_file_capabilities(
                 installation,

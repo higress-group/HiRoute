@@ -234,7 +234,8 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
         "native-auth-placeholder"
     );
 
-    // Returning to the original environment preserves both connections and their ownership.
+    // The independent connection still owns its configuration after app removal.
+    fs::remove_file(storage.join("codex-desktop-fixture")).unwrap();
     let recovered = open_with_scanner(&storage, original_scanner);
     recovered.adapter.reconcile_startup_and_open().unwrap();
     recovered
@@ -242,6 +243,29 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
         .finish_startup_publication_recovery()
         .unwrap();
     let service = LocalControlDaemon::new(ApplicationService::new(recovered.application_ports()));
+    let scan = service.dispatch_wire(request(
+        "ScanAgents",
+        json!({"context_id":desktop_context}),
+        None,
+    ));
+    assert!(scan.error.is_none(), "{scan:?}");
+    let scan = scan.data.unwrap();
+    let desktop = &scan["agents"][0];
+    assert_eq!(desktop["context_id"], desktop_context);
+    assert_eq!(desktop["available_surfaces"], json!([]));
+    let configure_without_app = service.dispatch_wire(request(
+        "PreviewAgentConnectionChange",
+        json!({"spec":configure(&desktop_context)}),
+        None,
+    ));
+    assert!(
+        configure_without_app.error.is_some()
+            || configure_without_app
+                .data
+                .as_ref()
+                .is_some_and(|data| data["applicable"] != true),
+        "missing Desktop must not admit new model settings: {configure_without_app:?}"
+    );
     let wrong = service.dispatch_wire(request(
         "PreviewAgentConnectionRestore",
         json!({"spec":restore(&desktop_context, &cli_before["restore_point_ref"])}),
@@ -259,7 +283,7 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
         &service,
         &recovered,
         restore(&desktop_context, &desktop_status["restore_point_ref"]),
-        "disable-desktop-after-home-conflict",
+        "disable-desktop-after-app-removal",
     );
     let restored = service.dispatch_wire(request(
         "GetAgentConnectionStatus",
@@ -268,6 +292,10 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
     ));
     assert!(restored.error.is_none(), "{restored:?}");
     assert_eq!(restored.data.unwrap()["state"], "not_configured");
+    assert!(
+        !desktop_config.exists(),
+        "restore must remove the owned config"
+    );
     assert!(
         recovered
             .adapter

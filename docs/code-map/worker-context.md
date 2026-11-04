@@ -98,7 +98,9 @@ copy that context-only local command without reading the Plan catalog; package
 discovery, fresh authority checks and graphical launch stay on its host.
 Windows skill junctions and Unix symlinks share the exclusive
 [directory-link boundary](../../crates/platform/src/directory_link.rs).
-Its model identity remains separate. Management uses the original CLI/root owner
+Its model identity remains separate. The [settings planner](../../crates/daemon/src/control/runtime/settings_facts.rs)
+uses the private configuration and existing ownership records to restore even if the
+Desktop application has been removed. Management uses the original CLI/root owner
 and shared user file through the [UI owner resolver](../../apps/desktop/src/features/agents/management-context.ts)
 and [shared status projection](../../crates/daemon/src/control/runtime/settings_status.rs).
 DSH Desktop likewise uses its DSH_HOME Web owner's management Skill. Neither adds
