@@ -1,4 +1,5 @@
 mod agent_connection;
+pub(crate) mod agent_discovery;
 pub(crate) mod agent_settings;
 mod compute;
 mod plan_content;
