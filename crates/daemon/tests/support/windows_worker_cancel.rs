@@ -44,6 +44,44 @@ pub(super) struct CancellationReceipts {
     pub residual_task: String,
 }
 
+fn wait_for_cancellation(
+    product: &InstalledProduct,
+    run_id: &str,
+    wait_secs: &str,
+    command_deadline: Duration,
+) -> Value {
+    let (exit, observed) = command_outcome(
+        product,
+        &[
+            "worker",
+            "wait",
+            "--run",
+            run_id,
+            "--wait-timeout",
+            wait_secs,
+        ],
+        None,
+        command_deadline,
+    );
+    assert_eq!(observed["data"]["run_id"], run_id);
+    // Completion wait reports interrupted terminal runs as a CLI error. The
+    // callers still require the exact cancellation or residual state and proof.
+    if matches!(
+        observed["data"]["run_state"].as_str(),
+        Some("cancelled" | "unknown")
+    ) {
+        assert_eq!(exit, 1);
+        assert_eq!(observed["error"]["code"], "WORKER_EXECUTION_FAILED");
+    } else {
+        assert_eq!(exit, 0);
+        assert!(matches!(
+            observed["status"].as_str(),
+            Some("succeeded" | "accepted")
+        ));
+    }
+    observed
+}
+
 pub(super) fn verify(
     product: &InstalledProduct,
     workspace: &Path,
@@ -134,12 +172,7 @@ fn verify_for(
         Duration::from_secs(30),
     );
     assert_eq!(cancelled["data"]["run_id"], run_id);
-    let mut current = command(
-        product,
-        &["worker", "wait", "--run", run_id, "--wait-timeout", "20"],
-        None,
-        Duration::from_secs(30),
-    );
+    let mut current = wait_for_cancellation(product, run_id, "20", Duration::from_secs(30));
     let deadline = Instant::now() + Duration::from_secs(30);
     while current["data"]["run_state"] != "cancelled" {
         // ACP interruption may publish Unknown before the owned stop checkpoint
@@ -153,12 +186,7 @@ fn verify_for(
             Instant::now() < deadline,
             "cancelled public Worker did not settle its exact native scope"
         );
-        current = command(
-            product,
-            &["worker", "wait", "--run", run_id, "--wait-timeout", "5"],
-            None,
-            Duration::from_secs(10),
-        );
+        current = wait_for_cancellation(product, run_id, "5", Duration::from_secs(10));
     }
     assert!(
         !current["next_actions"]
@@ -352,12 +380,7 @@ fn residual(
     // handling; it only confirms Cancelled when the managed scope AND cleanup are
     // complete. Acknowledgement must preserve that execution uncertainty.
     loop {
-        let observed = command(
-            product,
-            &["worker", "wait", "--run", run_id, "--wait-timeout", "5"],
-            None,
-            Duration::from_secs(10),
-        );
+        let observed = wait_for_cancellation(product, run_id, "5", Duration::from_secs(10));
         if observed["data"]["run_state"] == "unknown" {
             break;
         }

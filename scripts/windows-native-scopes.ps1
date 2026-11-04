@@ -23,6 +23,7 @@ function Get-WindowsLiveHistoryCases {
     ($prefix + 'eof_before_claude_checkpoint_prevents_final_tail'),
     ($prefix + 'unsolicited_native_cancel_and_protocol_error_do_not_wait_for_history'),
     ($prefix + 'claude_disconnect_after_terminal_keeps_completion_without_history_ready'),
+    ($prefix + 'daemon_shutdown_stops_independent_workers_concurrently'),
     ($prefix + 'interrupted_terminal_checkpoint_retains_lease_completion_and_false_readiness'),
     ($prefix + 'terminal_publication_failure_does_not_wait_or_double_write'),
     ($prefix + 'execute_outer_interruptions_after_completion_preserve_terminal_receipt'),
