@@ -274,7 +274,8 @@ pub fn run_if_requested() -> Option<i32> {
             Err(std::io::ErrorKind::InvalidInput.into())
         };
         return Some(match result {
-            Ok(()) => 0,
+            Ok(true) => 24,
+            Ok(false) => 0,
             Err(error) => {
                 eprintln!("{}", prepare_failure(&error));
                 1

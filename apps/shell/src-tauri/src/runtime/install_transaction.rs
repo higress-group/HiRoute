@@ -197,12 +197,12 @@ pub(super) fn recover_for_candidate(manifest: &Path, daemon: &Path, allow: bool)
         && pending()?.phase == Phase::Prepared
         && hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())?
     {
-        return prepare(manifest, daemon);
+        return prepare(manifest, daemon).map(|_| ());
     }
     windows::recover_pending()?;
     rollback(allow)
 }
-pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<()> {
+pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
     windows::preflight()?;
     let package: Package = read(manifest, false)?;
     package.validate()?;
@@ -249,7 +249,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<()> {
                     }
                 }
             }
-            return Ok(());
+            return Ok(false);
         }
         rollback(false)?;
     }
@@ -341,8 +341,9 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<()> {
         console_desired,
         shell_login,
     };
-    recovery::prepare(&value, &package, daemon)?;
-    write(&data.join(PENDING), &value)
+    let history_cutover = recovery::prepare(&value, &package, daemon)?;
+    write(&data.join(PENDING), &value)?;
+    Ok(history_cutover)
 }
 /// NSIS overlays files, so old content-hashed assets must leave the package's
 /// closed file set before the Rust package reader admits the new payload.

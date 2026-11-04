@@ -36,6 +36,8 @@
       },
       "nsis": {
         "installMode": "currentUser",
+        "installerIcon": "../../desktop/src-tauri/icons/icon.ico",
+        "uninstallerIcon": "../../desktop/src-tauri/icons/icon.ico",
         "template": "installer/installer.nsi",
         "installerHooks": "installer/hooks.nsh",
         "languages": [

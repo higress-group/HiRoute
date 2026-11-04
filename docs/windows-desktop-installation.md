@@ -56,6 +56,13 @@ uninstall or skipping an explicitly requested removal of standalone data.
 The installer accepts `/S` for unattended installation with the default login-start
 and tray choices and no prompts. Failures return a nonzero process exit code.
 
+The interactive installer shows Install, Upgrade or Repair on its first screen.
+The optional controls show the fixed installation path and the login, notification
+area and desktop shortcut choices. To upgrade a running Desktop from a downloaded
+installer, exit it from its notification area icon, then continue in the installer.
+The installer checks again before replacing files. It shows Open HiRoute after
+the background service is ready.
+
 Login-start and tray choices default on and can be deselected independently.
 Login start updates the user's Task and the fixed HKCU Run command together,
 compensating a failed Run update. Disabling the tray makes window close exit the
@@ -101,6 +108,8 @@ flag. The installer repeats drain before stopping the owned daemon. A manual
 installer uses that same hook and a bounded wait. An older daemon without drain
 support requires a separate explicit interactive confirmation; passive updates
 refuse it.
+Every Task launch of the service reads the current account's Windows PATH, including
+the system entries. Restart the service after changing PATH, then rescan for Agents.
 Passive updates skip the login/tray options page and reuse the saved choices;
 silent `/S` installations continue to use the documented defaults.
 
