@@ -96,9 +96,22 @@ impl ApplicationService {
         let Some(ports) = self.ports.as_ref() else {
             return failed(ErrorCode::DaemonUnavailable, request.request_id);
         };
-        let Ok(test) = serde_json::from_value::<DecisionServiceTestRequestV2>(request.payload)
-        else {
-            return failed(ErrorCode::InvalidArguments, request.request_id);
+        let (test, include_decision_failure, request_digest) = if network_aware {
+            let Ok(input) = serde_json::from_value::<
+                hiroute_application_api::DecisionServiceNetworkTestRequestV3,
+            >(request.payload) else {
+                return failed(ErrorCode::InvalidArguments, request.request_id);
+            };
+            let digest = CanonicalDigest::of(&input);
+            let include = input.include_decision_failure;
+            (input.into(), include, digest)
+        } else {
+            let Ok(test) = serde_json::from_value::<DecisionServiceTestRequestV2>(request.payload)
+            else {
+                return failed(ErrorCode::InvalidArguments, request.request_id);
+            };
+            let digest = CanonicalDigest::of(&test);
+            (test, false, digest)
         };
         if test.id.is_empty()
             || test.id.len() > 128
@@ -107,7 +120,7 @@ impl ApplicationService {
         {
             return failed(ErrorCode::InvalidArguments, request.request_id);
         }
-        let Ok(request_digest) = CanonicalDigest::of(&test) else {
+        let Ok(request_digest) = request_digest else {
             return failed(ErrorCode::InvalidArguments, request.request_id);
         };
         if let Some(grant) = request.protected_grant.as_ref() {
@@ -193,7 +206,12 @@ impl ApplicationService {
         };
         if network_aware {
             match diagnostic.test_decision_service_v3(&service, &digest) {
-                Ok(result) => succeeded(result, request.request_id),
+                Ok(mut result) => {
+                    if !include_decision_failure {
+                        result.decision_failure = None;
+                    }
+                    succeeded(result, request.request_id)
+                }
                 Err(_) => failed(ErrorCode::GatewayUnavailable, request.request_id),
             }
         } else {
@@ -252,6 +270,7 @@ fn rejected(network_aware: bool, digest: CanonicalDigest, failure: DecisionFailu
             check,
             network: None,
             failure: None,
+            decision_failure: None,
         })
     } else {
         serde_json::to_value(check)

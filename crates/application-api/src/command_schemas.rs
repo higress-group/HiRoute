@@ -392,7 +392,7 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             response!(ClassifierDecisionTestResultV1),
         ),
         "decision.network.test" => (
-            request!(DecisionServiceTestRequestV2),
+            request!(DecisionServiceNetworkTestRequestV3),
             response!(DecisionServiceTestResultV3),
         ),
         "decision.connections.test" => (

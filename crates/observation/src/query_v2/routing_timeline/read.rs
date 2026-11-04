@@ -38,6 +38,7 @@ pub(super) fn read(
     target: Position,
     now: i64,
     selected: Option<&std::collections::BTreeSet<String>>,
+    include_decision_failure: bool,
 ) -> Result<(BTreeMap<String, Request>, Vec<Fact>), ObservationV2Error> {
     let selected = selected
         .map(serde_json::to_string)
@@ -146,6 +147,7 @@ pub(super) fn read(
             Request {
                 view: RoutingTimelineRequestV1 {
                     request_id: id,
+                    decision_failure: None,
                     started_at_ms: start,
                     duration_ms: finish.and_then(|end| u64::try_from(end - start).ok()),
                     native_model: None,
@@ -345,7 +347,7 @@ pub(super) fn read(
             request.view.costs = costs(Some(&retained.record))?;
         }
     }
-    projection::hydrate(&mut requests, &facts);
+    projection::hydrate(&mut requests, &facts, include_decision_failure);
     Ok((requests, facts))
 }
 

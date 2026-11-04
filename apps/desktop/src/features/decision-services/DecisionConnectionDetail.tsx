@@ -4,7 +4,7 @@ import { networkFailureText, networkRepairable, type NativeNetworkRoute } from '
 import { Disclosure, UiIcon } from '../../ui';
 import type { Draft, Plan } from '../../plan-editor';
 import type { DecisionServiceView } from './contracts';
-import { decisionFailureHelp, decisionReferences, providerLabel } from './presentation';
+import { decisionFailureDetail, decisionFailureHelp, decisionReferences, providerLabel } from './presentation';
 import { recordProtocol, recordProvider, recordSharedSource, repairActions, sourceName, sourceStateLabel, type RepairAction, type TestPresentation, type TestRecord } from './form-state';
 import { DecisionIcon } from './DecisionIcon';
 
@@ -47,7 +47,7 @@ export function DecisionConnectionDetail({ view, language, mutable, busy, state,
     <header className="editor-section decision-heading"><DecisionIcon provider={recordProvider(service)} language={language} /><div><h2>{service.name}</h2><p>{providerLabel(connection, language)}</p></div><button className="btn" type="button" disabled={!mutable || busy || networkDirty} onClick={onEdit}>{t('编辑', 'Edit')}</button></header>
     <section className="editor-section decision-connectivity"><div className={'decision-test-result' + (state === 'passed' ? ' passed' : state === 'failed' ? ' failed' : state === 'stale' || state === 'unverified' ? ' stale' : '')} role="status" data-test-state={state}><UiIcon name={state === 'testing' ? 'clock' : state === 'passed' ? 'check' : state === 'failed' || state === 'stale' || state === 'unverified' ? 'warning' : 'plug'} /><div><strong>{heading}</strong>
       {result && state === 'passed' && <p>{t(`配置版本 ${service.revision} · ${result.duration ?? '—'} ms · ${new Date(result.at).toLocaleTimeString()}`, `Configuration ${service.revision} · ${result.duration ?? '—'} ms · ${new Date(result.at).toLocaleTimeString()}`)}</p>}
-      {result && state === 'failed' && <p>{result.network_failure ? networkFailureText(result.network_failure, language === 'zh') : decisionFailureHelp(result.code ?? '', language)}</p>}
+      {result && state === 'failed' && <p>{result.decision_failure ? decisionFailureDetail(result.decision_failure, language) : result.network_failure ? networkFailureText(result.network_failure, language === 'zh') : decisionFailureHelp(result.code ?? '', language)}</p>}
       {sharedId && state === 'failed' && networkRepairable(result?.network_failure) && <button className="btn" type="button" disabled={busy} onClick={() => setNetworkReveal(value => value + 1)}>{t('检查网络设置', 'Review network settings')}</button>}
       {state === 'failed' && result?.code && <Disclosure label={t('诊断详情', 'Diagnostic details')} language={language}><dl className="decision-facts decision-diagnostics"><div><dt>{t('错误代码', 'Error code')}</dt><dd><code>{result.code}</code></dd></div></dl></Disclosure>}
     </div></div>

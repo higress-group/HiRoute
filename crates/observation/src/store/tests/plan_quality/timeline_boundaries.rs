@@ -82,6 +82,7 @@ fn timeline_boundaries_follow_fresh_gateway_continuity_not_group_changes() {
     }
     let query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -121,6 +122,7 @@ fn timeline_retained_tail_is_not_the_first_session_turn() {
             &reader(),
             &RoutingTimelineQueryV1 {
                 include_presentation: false,
+                include_decision_failure: false,
                 session_id: fixture.session.to_string(),
                 after_watermark: None,
                 limit: 50,
@@ -181,6 +183,7 @@ fn recorded_opening_cause_overrides_legacy_ledger_inference_and_survives_reopen(
             &reader(),
             &RoutingTimelineQueryV1 {
                 include_presentation: false,
+                include_decision_failure: false,
                 session_id: first.session.to_string(),
                 after_watermark: None,
                 limit: 50,
@@ -240,6 +243,7 @@ fn pre_opening_facts_keep_canonical_bytes_and_cannot_authenticate_new_causes() {
             &reader(),
             &RoutingTimelineQueryV1 {
                 include_presentation: false,
+                include_decision_failure: false,
                 session_id: fixture.session.to_string(),
                 after_watermark: None,
                 limit: 50,

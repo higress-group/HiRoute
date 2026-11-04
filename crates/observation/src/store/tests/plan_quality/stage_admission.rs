@@ -55,6 +55,7 @@ fn pending_admission_keeps_interleaved_stages_separate_without_affinity_and_surv
     }
     let query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -163,6 +164,7 @@ fn later_admission_reopens_display_without_expanding_frozen_assessment() {
     write(&scoring, score, 1020);
     let query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -248,6 +250,7 @@ fn conflicting_admission_is_not_resolved_by_routing_or_native_id_guessing() {
                 &reader(),
                 &RoutingTimelineQueryV1 {
                     include_presentation: false,
+                    include_decision_failure: false,
                     session_id: f.session.to_string(),
                     after_watermark: None,
                     limit: 50
@@ -309,6 +312,7 @@ fn finished_request_without_stage_closure_cannot_remain_running_or_claim_task_co
                 &reader(),
                 &RoutingTimelineQueryV1 {
                     include_presentation: false,
+                    include_decision_failure: false,
                     session_id: f.session.to_string(),
                     after_watermark: None,
                     limit: 50,
@@ -357,6 +361,7 @@ fn presentation_is_opt_in_and_transitions_follow_recorded_facts() {
     let old_id = old.turns[0].turn_id.clone();
     let mut rich = RoutingTimelineQueryV1 {
         include_presentation: true,
+        include_decision_failure: false,
         ..legacy.clone()
     };
     let page = store
@@ -598,6 +603,7 @@ fn missing_or_partial_terminal_evidence_is_not_pending() {
     }
     let query = RoutingTimelineQueryV1 {
         include_presentation: true,
+        include_decision_failure: false,
         session_id: f.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -646,12 +652,14 @@ fn presentation_modes_isolate_frozen_pages_and_incremental_updates() {
     }
     let mut legacy = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 1,
     };
     let mut rich = RoutingTimelineQueryV1 {
         include_presentation: true,
+        include_decision_failure: false,
         ..legacy.clone()
     };
     let old_first = store
@@ -718,6 +726,7 @@ fn frozen_baseline_timeline_output() {
     ));
     let query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: f.session.to_string(),
         after_watermark: None,
         limit: 50,

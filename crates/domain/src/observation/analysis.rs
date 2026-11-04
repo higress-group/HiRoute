@@ -96,6 +96,8 @@ pub enum AnalysisCostGroupV1 {
 #[serde(deny_unknown_fields)]
 pub struct ObservationAnalysisQueryV1 {
     pub view: AnalysisViewV1,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub include_decision_failure: bool,
     #[serde(default)]
     pub time: AnalysisTimeInputV1,
     #[serde(default)]
@@ -134,6 +136,7 @@ impl ObservationAnalysisQueryV1 {
     pub fn new(view: AnalysisViewV1) -> Self {
         Self {
             view,
+            include_decision_failure: false,
             time: AnalysisTimeInputV1::default(),
             analysis_scope: None,
             session_id: None,

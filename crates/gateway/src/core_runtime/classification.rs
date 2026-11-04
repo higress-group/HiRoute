@@ -17,8 +17,6 @@ use tokio_util::sync::CancellationToken;
 
 #[path = "classification/diagnostic.rs"]
 mod diagnostic;
-#[cfg(test)]
-use diagnostic::classifier_status_failure;
 use diagnostic::{CallDiagnostic, classifier_response_failure, diagnostic_request};
 
 #[path = "classification/adaptive_history.rs"]
@@ -67,6 +65,7 @@ use crate::runtime::TargetResolver;
 use crate::server::request_plan::{
     ClassifierAuthenticationAuthorityV1, RestBranchClassifierAuthorityV1,
 };
+use hiroute_domain::{DecisionFailureKindV1 as FailureKind, DecisionFailureV1};
 use protocol::{ClassifierAssessment, ClassifierResponse};
 
 const CLASSIFIER_CLEANUP_TIMEOUT: Duration = Duration::from_millis(250);
@@ -89,9 +88,8 @@ pub enum ClassifierDiagnosticError {
     Timeout,
     Unavailable,
     RejectedInput,
-    AuthenticationRejected,
-    RateLimited,
-    EndpointRejected,
+    Http(DecisionFailureV1),
+    ContextLimit,
     InvalidOutput,
     Cancelled,
     Resource,
@@ -107,13 +105,40 @@ impl ClassifierDiagnosticError {
             Self::Timeout => "CLASSIFIER_TIMEOUT",
             Self::Unavailable => "CLASSIFIER_UNAVAILABLE",
             Self::RejectedInput => "CLASSIFIER_INPUT_REJECTED",
-            Self::AuthenticationRejected => "CLASSIFIER_AUTH_REJECTED",
-            Self::RateLimited => "CLASSIFIER_RATE_LIMITED",
-            Self::EndpointRejected => "CLASSIFIER_ENDPOINT_REJECTED",
+            Self::Http(failure) => match failure.kind {
+                FailureKind::AuthenticationRejected => "CLASSIFIER_AUTH_REJECTED",
+                FailureKind::RateLimited => "CLASSIFIER_RATE_LIMITED",
+                FailureKind::EndpointRejected => "CLASSIFIER_ENDPOINT_REJECTED",
+                FailureKind::InputRejected | FailureKind::ContextLimit => {
+                    "CLASSIFIER_INPUT_REJECTED"
+                }
+                FailureKind::InvalidOutput => "CLASSIFIER_OUTPUT_INVALID",
+                _ => "CLASSIFIER_UNAVAILABLE",
+            },
+            Self::ContextLimit => "CLASSIFIER_INPUT_REJECTED",
             Self::InvalidOutput => "CLASSIFIER_OUTPUT_INVALID",
             Self::Cancelled => "CLASSIFIER_TEST_CANCELLED",
             Self::Resource => "CLASSIFIER_TEST_RESOURCE_UNAVAILABLE",
             Self::Integrity => "CLASSIFIER_TEST_INTEGRITY_FAILED",
+        }
+    }
+
+    pub fn detail(self) -> DecisionFailureV1 {
+        let kind = match self {
+            Self::Http(failure) => return failure,
+            Self::Timeout | Self::Cancelled => FailureKind::Timeout,
+            Self::SourceDisabled => FailureKind::SourceDisabled,
+            Self::NoUsableCredentials => FailureKind::NoUsableCredentials,
+            Self::RejectedInput => FailureKind::InputRejected,
+            Self::ContextLimit => FailureKind::ContextLimit,
+            Self::InvalidOutput => FailureKind::InvalidOutput,
+            Self::Unavailable | Self::InvalidConfig | Self::Integrity | Self::Resource => {
+                FailureKind::Unavailable
+            }
+        };
+        DecisionFailureV1 {
+            kind,
+            http_status: None,
         }
     }
 }
@@ -193,7 +218,7 @@ struct PreparedDecisionRequest {
 }
 
 pub(super) struct ClassificationOutcome {
-    diagnostic_failure: Option<ClassifierDiagnosticError>,
+    pub(super) diagnostic_failure: Option<ClassifierDiagnosticError>,
     pub(super) decision: BranchDecisionV1,
     pub(super) facts: SanitizedStructuralFactsV1,
     pub(super) assessment: Option<BoundAssessment>,
@@ -214,23 +239,21 @@ enum CallFailure {
     NoUsableCredentials,
     RejectedInput,
     BudgetRejected(context_budget::BudgetRejection),
-    AuthenticationRejected,
-    RateLimited,
-    EndpointRejected,
+    Http(DecisionFailureV1),
     InvalidOutput,
 }
 
 impl CallFailure {
     fn applicability_reason(self) -> hiroute_domain::ApplicabilityReasonV1 {
         use hiroute_domain::ApplicabilityReasonV1 as R;
-        match self {
-            Self::Timeout => R::Timeout,
-            Self::Unavailable | Self::SourceDisabled | Self::NoUsableCredentials => R::Unavailable,
-            Self::RejectedInput | Self::BudgetRejected(_) => R::RejectedInput,
-            Self::AuthenticationRejected => R::AuthenticationRejected,
-            Self::RateLimited => R::RateLimited,
-            Self::EndpointRejected => R::EndpointRejected,
-            Self::InvalidOutput => R::InvalidOutput,
+        match self.diagnostic().detail().kind {
+            FailureKind::Timeout => R::Timeout,
+            FailureKind::InputRejected | FailureKind::ContextLimit => R::RejectedInput,
+            FailureKind::AuthenticationRejected => R::AuthenticationRejected,
+            FailureKind::RateLimited => R::RateLimited,
+            FailureKind::EndpointRejected => R::EndpointRejected,
+            FailureKind::InvalidOutput => R::InvalidOutput,
+            _ => R::Unavailable,
         }
     }
 }
@@ -680,17 +703,13 @@ impl ProductionGatewayRuntime {
                 fallback.routing_observation = routing_observation;
                 fallback.fallback_used = true;
                 fallback.classification_duration_micros = Some(classification_duration_micros);
-                fallback.fallback_reason = Some(match failure {
-                    CallFailure::Timeout => ClassifierFallbackReasonV1::Timeout,
-                    CallFailure::Unavailable
-                    | CallFailure::SourceDisabled
-                    | CallFailure::NoUsableCredentials
-                    | CallFailure::AuthenticationRejected
-                    | CallFailure::RateLimited => ClassifierFallbackReasonV1::Unavailable,
-                    CallFailure::RejectedInput
-                    | CallFailure::BudgetRejected(_)
-                    | CallFailure::EndpointRejected => ClassifierFallbackReasonV1::RejectedInput,
-                    CallFailure::InvalidOutput => ClassifierFallbackReasonV1::InvalidOutput,
+                fallback.fallback_reason = Some(match failure.diagnostic().detail().kind {
+                    FailureKind::Timeout => ClassifierFallbackReasonV1::Timeout,
+                    FailureKind::InputRejected
+                    | FailureKind::ContextLimit
+                    | FailureKind::EndpointRejected => ClassifierFallbackReasonV1::RejectedInput,
+                    FailureKind::InvalidOutput => ClassifierFallbackReasonV1::InvalidOutput,
+                    _ => ClassifierFallbackReasonV1::Unavailable,
                 });
                 Ok(ClassificationOutcome {
                     diagnostic_failure: Some(failure.diagnostic()),
@@ -957,10 +976,12 @@ impl ProductionGatewayRuntime {
                     }
                     return result;
                 }
-                Ok(Err(CallFailure::AuthenticationRejected)) => {
+                Ok(Err(CallFailure::Http(failure)))
+                    if failure.kind == FailureKind::AuthenticationRejected =>
+                {
                     crate::attempt_outcome::AttemptFailureClass::Credential
                 }
-                Ok(Err(CallFailure::RateLimited)) => {
+                Ok(Err(CallFailure::Http(failure))) if failure.kind == FailureKind::RateLimited => {
                     crate::attempt_outcome::AttemptFailureClass::Quota
                 }
                 _ => crate::attempt_outcome::AttemptFailureClass::Unclassified,
@@ -983,9 +1004,12 @@ impl ProductionGatewayRuntime {
                 );
             }
             match result {
-                Ok(Err(
-                    failure @ (CallFailure::AuthenticationRejected | CallFailure::RateLimited),
-                )) => {
+                Ok(Err(failure))
+                    if matches!(
+                        failure.diagnostic().detail().kind,
+                        FailureKind::AuthenticationRejected | FailureKind::RateLimited
+                    ) =>
+                {
                     last_failure = failure;
                     excluded.push(key.key_id.clone());
                 }
@@ -1345,8 +1369,12 @@ impl ProductionGatewayRuntime {
             if let Some(Some(network)) = network_diagnostic.as_deref_mut() {
                 network.failure = Some(hiroute_domain::NativeNetworkFailurePhaseV1::ProxyAuth);
             }
-            diagnostic.finish(Some(CallFailure::Unavailable));
-            return Ok(Err(CallFailure::Unavailable));
+            let failure = CallFailure::Http(DecisionFailureV1 {
+                kind: FailureKind::ProxyAuthenticationRejected,
+                http_status: Some(status.as_u16()),
+            });
+            diagnostic.finish(Some(failure));
+            return Ok(Err(failure));
         }
         if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN)
             && let Some(Some(network)) = network_diagnostic
@@ -1743,54 +1771,45 @@ mod tests {
     }
 
     #[test]
-    fn classifier_statuses_keep_request_rejection_distinct_from_unavailability() {
-        for status in [
-            StatusCode::BAD_REQUEST,
-            StatusCode::PAYLOAD_TOO_LARGE,
-            StatusCode::UNPROCESSABLE_ENTITY,
+    fn classifier_status_and_safe_code_preserve_the_observed_failure() {
+        for (status, body, kind) in [
+            (
+                404,
+                b"private response".as_slice(),
+                FailureKind::EndpointRejected,
+            ),
+            (405, b"", FailureKind::EndpointRejected),
+            (422, b"", FailureKind::InputRejected),
+            (
+                422,
+                br#"{"error":{"code":"context_length_exceeded"}}"#,
+                FailureKind::ContextLimit,
+            ),
+            (500, b"private response", FailureKind::UpstreamError),
+            (529, b"", FailureKind::UpstreamError),
+            (401, b"", FailureKind::AuthenticationRejected),
+            (403, b"", FailureKind::AuthenticationRejected),
+            (429, b"", FailureKind::RateLimited),
+            (307, b"", FailureKind::InvalidOutput),
+            (
+                400,
+                br#"{"error":{"message":"Workspace endpoint is invalid."}}"#,
+                FailureKind::EndpointRejected,
+            ),
         ] {
+            let failure = classifier_response_failure(StatusCode::from_u16(status).unwrap(), body);
             assert_eq!(
-                classifier_status_failure(status),
-                CallFailure::RejectedInput
+                failure.diagnostic().detail(),
+                DecisionFailureV1 {
+                    kind,
+                    http_status: Some(status)
+                }
             );
         }
-        for status in [
-            StatusCode::INTERNAL_SERVER_ERROR,
-            StatusCode::from_u16(529).unwrap(),
-        ] {
-            assert_eq!(classifier_status_failure(status), CallFailure::Unavailable);
-        }
-        assert_eq!(
-            classifier_status_failure(StatusCode::TEMPORARY_REDIRECT),
-            CallFailure::InvalidOutput
-        );
         assert_eq!(
             classify_attempt_failure(&AttemptError::Body(BodyError::BodyLimitExceeded)),
             CallFailure::InvalidOutput
         );
-        for status in [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN] {
-            assert_eq!(
-                classifier_response_failure(status, b"private token"),
-                CallFailure::AuthenticationRejected
-            );
-        }
-        assert_eq!(
-            classifier_status_failure(StatusCode::TOO_MANY_REQUESTS),
-            CallFailure::RateLimited
-        );
-        assert_eq!(
-            classifier_response_failure(
-                StatusCode::BAD_REQUEST,
-                br#"{"error":{"message":"Workspace endpoint is invalid."}}"#
-            ),
-            CallFailure::EndpointRejected
-        );
-        let failure = classifier_response_failure(
-            StatusCode::BAD_REQUEST,
-            br#"{"error":{"message":"private token details"}}"#,
-        );
-        assert_eq!(failure, CallFailure::RejectedInput);
-        assert_eq!(failure.diagnostic().code(), "CLASSIFIER_INPUT_REJECTED");
     }
 
     #[tokio::test(flavor = "current_thread")]

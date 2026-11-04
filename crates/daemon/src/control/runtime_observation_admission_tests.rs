@@ -113,6 +113,7 @@ fn ordinary_v2_reads_do_not_wait_for_a_busy_control_writer() {
             after_watermark: None,
             limit: 50,
             include_presentation: false,
+            include_decision_failure: false,
         }),
         ObservationReadIntentV2::Status(hiroute_application_api::ObservationStatusQueryV2 {}),
         ObservationReadIntentV2::Sessions(

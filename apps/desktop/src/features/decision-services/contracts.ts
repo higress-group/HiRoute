@@ -82,6 +82,14 @@ export type DecisionServiceTestResult = {
 export type DecisionServiceNetworkTestResult = {
   schema: 'hiroute.decision-service-test-result/v3'; check: DecisionServiceTestResult;
   network: NetworkCheckResponse['network'] | null; failure: NativeNetworkFailure | null;
+  decision_failure?: DecisionFailureDetail;
+};
+
+export type DecisionFailureDetail = {
+  kind: 'timeout' | 'unavailable' | 'source_disabled' | 'no_usable_credentials'
+    | 'authentication_rejected' | 'proxy_authentication_rejected' | 'rate_limited'
+    | 'endpoint_rejected' | 'input_rejected' | 'context_limit' | 'upstream_error' | 'invalid_output';
+  http_status: number | null;
 };
 
 /** Names and wrappers are identical for Tauri and web-console invoke. */

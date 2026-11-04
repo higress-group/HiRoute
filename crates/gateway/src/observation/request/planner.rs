@@ -4,7 +4,13 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::runtime::native_endpoint_state_key;
-use crate::server::core_runtime::profiles::{PlannerInputV1, PlannerOutputV1};
+use crate::server::core_runtime::profiles::{
+    ComplexityDecisionSourceV1, PlannerInputV1, PlannerOutputV1,
+};
+use hiroute_domain::{
+    ComplexityDecisionSourceV1 as FactSource, DecisionFailureV1, DecisionFallbackEvidenceV1,
+    DecisionServiceRevisionV1,
+};
 
 use super::super::schema::{CandidateDecisionFactV1, ExecutionFactV1};
 use super::{CandidateObservation, RequestObservation};
@@ -15,6 +21,7 @@ impl RequestObservation {
         input: &PlannerInputV1,
         output: &PlannerOutputV1,
         native_auxiliary: bool,
+        decision_failure: Option<(Option<DecisionServiceRevisionV1>, DecisionFailureV1)>,
     ) {
         if !self.tracks_attempts() {
             return;
@@ -34,6 +41,24 @@ impl RequestObservation {
                 code,
             } => ("no_eligible_candidates".into(), Some(schema_name(&code))),
         };
+        let decision_failure = decision_failure.and_then(|(service, failure)| {
+            let decision = output
+                .complexity
+                .as_ref()
+                .filter(|decision| decision.fallback_used)?;
+            let source = match decision.decision_source {
+                ComplexityDecisionSourceV1::UserPhrase => FactSource::UserPhrase,
+                ComplexityDecisionSourceV1::BuiltinRules => FactSource::BuiltinRules,
+                ComplexityDecisionSourceV1::Unresolved => FactSource::Unresolved,
+                ComplexityDecisionSourceV1::Inherited
+                | ComplexityDecisionSourceV1::ExternalClassifier => return None,
+            };
+            Some(DecisionFallbackEvidenceV1 {
+                service,
+                failure,
+                source,
+            })
+        });
         self.emit_execution(
             ExecutionFactV1::RouteDecision {
                 planner_version: output.planner_version.clone(),
@@ -48,6 +73,7 @@ impl RequestObservation {
                     .complexity
                     .as_ref()
                     .and_then(|value| serde_json::to_value(value).ok()),
+                decision_failure,
                 groups: serde_json::to_value(&output.groups).unwrap_or(Value::Null),
                 reason_ledger: serde_json::to_value(&output.reason_ledger).unwrap_or(Value::Null),
                 requirements: input.request.requirements(),

@@ -10,6 +10,8 @@ pub use agent_turn_admission::*;
 mod analysis;
 mod analysis_results;
 mod assessment_record;
+mod decision_failure;
+pub use decision_failure::*;
 mod envelope;
 mod execution;
 mod execution_attempt;

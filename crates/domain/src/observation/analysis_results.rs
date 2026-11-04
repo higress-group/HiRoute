@@ -120,6 +120,8 @@ pub struct AnalysisTransitionV1 {
     pub completeness: String,
     pub receipt_id: Option<String>,
     pub reason: Option<PlanQualitySample>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_failure: Option<super::DecisionFallbackEvidenceV1>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]

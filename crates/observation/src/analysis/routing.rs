@@ -184,6 +184,7 @@ pub(crate) fn transitions(rows: &[Row]) -> Vec<AnalysisTransitionV1> {
             completeness: completeness.into(),
             receipt_id: own.receipt_id.clone(),
             reason: None,
+            decision_failure: None,
         };
         result.push(transition.clone());
         for kind in [
@@ -216,21 +217,61 @@ pub(super) fn reasons(
     db: &Connection,
     reader: &ObservationReaderContext,
     values: &mut [AnalysisTransitionV1],
+    include_decision_failure: bool,
 ) -> Result<(), Error> {
     let mut cache = BTreeMap::new();
+    let mut decision = include_decision_failure
+        .then(|| {
+            db.prepare_cached(
+                "SELECT CASE WHEN length(CAST(p.body_json AS BLOB))<=1048576
+             THEN json_extract(p.body_json,'$.fact.decision_failure') END
+         FROM observation_safe_facts_v2 f INDEXED BY observation_safe_route_payloads
+         JOIN observation_sensitive_payloads_v2 p ON p.id='fact:'||f.original_digest
+         WHERE f.workspace_id=?1 AND f.request_id=?2
+           AND p.workspace_id=f.workspace_id AND p.request_id=f.request_id AND p.session_id=?3
+           AND CASE WHEN json_valid(f.body_json) THEN json_extract(f.body_json,'$.event_kind')
+                    ELSE 'route_decision' END='route_decision'
+         LIMIT 2",
+            )
+        })
+        .transpose()?;
     for t in values {
         if !cache.contains_key(&t.request_id) {
+            let mut detail = None;
+            if let Some(decision) = decision.as_mut() {
+                let mut rows = decision.query(rusqlite::params![
+                    reader.workspace().as_str(),
+                    &t.request_id,
+                    &t.session_id
+                ])?;
+                if let Some(row) = rows.next()? {
+                    let body = row.get::<_, Option<String>>(0)?;
+                    if rows.next()?.is_none() {
+                        detail = body
+                            .as_deref()
+                            .map(serde_json::from_str::<DecisionFallbackEvidenceV1>)
+                            .transpose()
+                            .map_err(|_| Error::Unavailable)?;
+                    }
+                }
+            }
             cache.insert(
                 t.request_id.clone(),
-                crate::query_v2::routing_reason(
-                    db,
-                    reader.workspace().as_str(),
-                    &t.session_id,
-                    &t.request_id,
-                )?,
+                (
+                    crate::query_v2::routing_reason(
+                        db,
+                        reader.workspace().as_str(),
+                        &t.session_id,
+                        &t.request_id,
+                    )?,
+                    detail,
+                ),
             );
         }
-        t.reason = cache.get(&t.request_id).cloned().flatten();
+        if let Some((reason, detail)) = cache.get(&t.request_id) {
+            t.reason = reason.clone();
+            t.decision_failure = detail.clone();
+        }
     }
     Ok(())
 }

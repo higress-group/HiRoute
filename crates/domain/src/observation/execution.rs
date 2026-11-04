@@ -31,7 +31,7 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
-    "sha256:ba2cb7b8fd9f9724d6d167bf1f3c35b32ade94cfa361831f449bb7271885745c";
+    "sha256:8435698d0ba7e3dedfffbb37618fbbb251a23425618c53f1a98eb9cd88c01eab";
 
 /// Exact bounded membership of an immutable captured stage revision. Source
 /// uncertainty and association uncertainty do not mean execution is missing.
@@ -586,6 +586,8 @@ pub struct RouteDecisionFactV1 {
     pub output_digest: CanonicalDigest,
     pub branch: PlannedBranchV1,
     pub complexity: Option<BranchDecisionV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_failure: Option<super::DecisionFallbackEvidenceV1>,
     pub groups: Vec<GroupPlanV1>,
     pub reason_ledger: Vec<ReasonLedgerEntryV1>,
     pub requirements: RequestCapabilityRequirementsV1,

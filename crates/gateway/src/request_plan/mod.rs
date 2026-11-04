@@ -106,6 +106,7 @@ pub(crate) enum ClassifierAuthenticationAuthorityV1 {
 /// It contains no secret material and cannot authorize an ordinary model route.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RestBranchClassifierAuthorityV1 {
+    pub(crate) service: Option<hiroute_domain::DecisionServiceRevisionV1>,
     pub(crate) extension_identity: Option<hiroute_domain::DecisionExtensionIdentityV1>,
     pub(crate) plan_identity: Option<(String, u64)>,
     pub(crate) default_category: Option<String>,

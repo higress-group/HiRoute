@@ -1644,6 +1644,13 @@ Missing proof leaves physical sessions separate. Credential relay and within-req
 kinds. Compare actual accepted endpoints and explicit reasoning settings, not whole-profile digests. Open
 linked physical members, request IDs and receipts; count each request and attempt once.
 
+Add `--include-decision-failure` to `sessions show SESSION_ID --view routing` or
+`sessions timeline SESSION_ID` to include `decision_failure` on requests that use a decision
+fallback. It gives the attempted saved service revision when available, a failure kind and
+observed HTTP status, and the decision source actually used. Use the same option when following
+a timeline watermark. For `decision network test`, set `"include_decision_failure": true` in the
+typed request to include the same failure classification.
+
 Conversation pages return bounded messages/tools. For `reference_only` or partial entries, the installed
 `sessions.show` schema describes V2 catalog/content pagination using their returned IDs. `sessions receipt`
 opens immutable facts and `observation plan-quality samples` opens recorded stages. Legacy `sessions list

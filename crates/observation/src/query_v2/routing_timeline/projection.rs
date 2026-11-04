@@ -8,7 +8,11 @@ fn held(request: &Request, code: LedgerReasonCodeV1) -> bool {
         .is_some_and(|d| d.reason_ledger.iter().any(|r| r.code == code))
 }
 
-pub(super) fn hydrate(requests: &mut BTreeMap<String, Request>, facts: &[Fact]) {
+pub(super) fn hydrate(
+    requests: &mut BTreeMap<String, Request>,
+    facts: &[Fact],
+    include_decision_failure: bool,
+) {
     let candidates: BTreeMap<_, _> = facts
         .iter()
         .filter_map(|fact| match &fact.value {
@@ -26,6 +30,9 @@ pub(super) fn hydrate(requests: &mut BTreeMap<String, Request>, facts: &[Fact]) 
         };
         match &fact.value {
             ExecutionFactV1::RouteDecision(decision) => {
+                if include_decision_failure {
+                    request.view.decision_failure = decision.decision_failure.clone();
+                }
                 request.decision = Some((**decision).clone());
             }
             ExecutionFactV1::AttemptStarted {

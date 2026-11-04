@@ -97,5 +97,6 @@
 .routing-request-main { display: grid; gap: 2px; min-width: 0; font-size: calc(13px * var(--hr-text-scale)); font-variant-numeric: tabular-nums; }
 .routing-request-main small { color: var(--text-muted); font-size: calc(11px * var(--hr-text-scale)); overflow-wrap: anywhere; }
 .routing-request.failed .routing-request-main small { color: var(--red); }
+.routing-request-decision-failure { grid-column: 2 / -1; min-width: 0; overflow-wrap: anywhere; color: var(--text-muted); font-size: calc(11px * var(--hr-text-scale)); }
 .routing-detail-requests > .btn { justify-self: start; }
 .session-view-tabs { flex-shrink: 0; }
