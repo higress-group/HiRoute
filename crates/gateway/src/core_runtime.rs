@@ -1011,13 +1011,10 @@ impl ProductionGatewayRuntime {
                     );
                 }
                 decision_failure = outcome.diagnostic_failure.map(|failure| {
-                    hiroute_domain::DecisionFallbackEvidenceV1 {
-                        service: authorized
-                            .classifier()
-                            .and_then(|classifier| classifier.service.clone()),
-                        failure: failure.detail(),
-                        source: outcome.decision.decision_source,
-                    }
+                    let service = authorized
+                        .classifier()
+                        .and_then(|classifier| classifier.service.clone());
+                    (service, failure.detail())
                 });
                 planner_input.classification_decision = Some(outcome.decision);
                 planner_input.classification_facts = Some(outcome.facts);
