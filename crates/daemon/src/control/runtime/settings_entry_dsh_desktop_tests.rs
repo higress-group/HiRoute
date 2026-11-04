@@ -3,6 +3,40 @@ use super::models::{model_spec, model_status, restore_spec};
 use super::*;
 
 #[test]
+fn web_scan_reports_a_context_scoped_action_when_the_executable_cannot_start() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::native_model::tests::settings_entry_tests::qoder::dsh_desktop::web_scan_reports_a_context_scoped_action_when_the_executable_cannot_start",
+    ) {
+        return;
+    }
+    let fixture = QoderFixture::with_desktop_models();
+    let scanner = &fixture.runtime.adapter.scanner;
+    let executable = scanner.dsh_executable_target().unwrap();
+    fs::write(executable, b"#!/hiroute-test-missing-interpreter\n").unwrap();
+    let context = fixture
+        .runtime
+        .adapter
+        .settings_context_for_agent("agent_dsh_default")
+        .unwrap();
+    let scan =
+        fixture
+            .service
+            .dispatch_wire(request("ScanAgents", json!({"context_id":context}), None));
+    assert!(scan.error.is_none());
+    let agents = &scan.data.unwrap()["agents"];
+    assert_eq!(agents.as_array().unwrap().len(), 1);
+    assert_eq!(agents[0]["configuration_state"], "executable_not_runnable");
+    assert_eq!(agents[0]["supported"], false);
+    assert_eq!(scan.next_actions.len(), 1);
+    assert_eq!(scan.next_actions[0].command_id, "agents.scan");
+    assert_eq!(scan.next_actions[0].input, json!({"context_id":context}));
+    assert_eq!(
+        scan.next_actions[0].reason_code,
+        "DSH_WEB_EXECUTABLE_NOT_RUNNABLE_CHECK_INSTALLATION"
+    );
+}
+
+#[test]
 fn desktop_and_web_models_install_independently_and_restore_after_reopen_without_app() {
     if crate::test_support::isolated_agent_home(
         "control::runtime::native_model::tests::settings_entry_tests::qoder::dsh_desktop::desktop_and_web_models_install_independently_and_restore_after_reopen_without_app",

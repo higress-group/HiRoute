@@ -95,6 +95,8 @@ fn layout_with_claude_version(root: &Path, claude_version: &str) -> AgentFilesys
         pi_config_root: root.join("home/.pi/agent"),
         dsh_executable: root.join("bin/dsh-not-installed"),
         dsh_desktop_executable: None,
+        #[cfg(windows)]
+        dsh_desktop_installation_roots: Vec::new(),
         dsh_config_root: root.join("home/.dsh"),
         qoder_home: home.clone(),
         qoder_config_root: home.join(".qoder"),

@@ -165,12 +165,13 @@ Desktop Restore uses retained file ownership even when the app is gone; custom
 Desktop bundle/dependency composition blocks new Configure. Passive source import,
 Worker ACP and shared Skills remain under the existing Web/CLI entry.
 
-Windows Desktop discovery checks per-user and machine Programs directories, then
+Windows Desktop discovery checks current per-user and machine Programs directories, then
 bounded matching uninstall registrations for custom installation locations.
 The carrier uses its sibling `resources/app.asar`; macOS retains the app bundle
 layout. Registry locations are hints and still require native path admission.
-Web discovery uses the daemon's PATH and preserves unavailable/unrunnable lookup
-failures instead of reporting all failures as absence. Explicit scans return
+Windows probes launch with explicit environment values and isolated AppData roots.
+Web discovery uses the daemon's PATH and preserves lookup and startup failures.
+Explicit scans return
 context-scoped rescan actions with closed remediation reasons; no PATH or native
 output is returned.
 

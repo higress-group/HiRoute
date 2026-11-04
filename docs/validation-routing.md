@@ -319,6 +319,8 @@ alongside an installed HiRoute. Component cases use only temporary files or a
 unique test-owned registry subtree. The explicitly ignored installed-DSH case
 reads the official client's real installation and profiles, probes its bundled
 public CLI in isolated roots, and verifies unchanged native profile bytes.
+The installed case sets `ELECTRON_NO_ASAR` in a test child that performs the scan
+and composition check to detect accidental environment inheritance.
 It records `read_only_dsh_discovery`; it does not establish model configuration,
 an actual model request or UI acceptance. Other test names and mismatched ignored
 selection retain the ordinary fresh-profile admission.

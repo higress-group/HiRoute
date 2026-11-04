@@ -22,16 +22,29 @@ fn windows_dsh_desktop_resolves_standard_user_and_machine_installations_without_
         windows_installation_roots(&home, |_| None),
         vec![home.join("AppData/Local/Programs/DeepSeek Harness")]
     );
-    for root in roots {
-        std::fs::create_dir_all(&root).unwrap();
+    let mut layout = AgentFilesystemLayoutV1::from_process(&home, directory.path());
+    layout.dsh_desktop_installation_roots = roots.clone();
+    layout.dsh_config_root = directory.path().join(".dsh");
+    let scanner = FilesystemAgentScannerV1::new(layout, super::super::tests::registry());
+    let initial = scanner.dsh_desktop_executable_target();
+    // Install the machine copy first, then the preferred per-user copy, using
+    // the same scanner throughout. The test machine may have a registry fallback.
+    for root in roots.iter().rev() {
+        std::fs::create_dir_all(root).unwrap();
         let executable = root.join("DeepSeek Harness.exe");
         std::fs::copy(std::env::current_exe().unwrap(), &executable).unwrap();
+        let discovered = scanner.dsh_desktop_executable_target();
+        assert_ne!(initial, discovered);
         assert_eq!(
-            std::fs::canonicalize(windows_installed_executable(root).unwrap()).unwrap(),
+            std::fs::canonicalize(discovered.unwrap()).unwrap(),
             std::fs::canonicalize(executable).unwrap()
         );
+        assert!(matches!(
+            scanner.scan_agent("agent_dsh_desktop").unwrap().outcome,
+            AgentDiscoveryOutcomeV1::Supported { .. }
+        ));
     }
-    assert!(windows_installed_executable(PathBuf::from("relative")).is_none());
+    assert!(windows_installed_executable(Path::new("relative")).is_none());
 }
 
 #[test]
@@ -48,7 +61,9 @@ fn windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases() {
     layout.dsh_config_root = directory.path().join(".dsh");
     let registry = super::super::tests::registry();
     let scanner = FilesystemAgentScannerV1::new(layout, registry);
-    let command = scanner.dsh_desktop_command().unwrap();
+    let carrier = scanner.dsh_desktop_executable_target().unwrap();
+    let admitted_archive = FilesystemAgentScannerV1::dsh_desktop_archive(&carrier).unwrap();
+    let command = FilesystemAgentScannerV1::dsh_desktop_command(&carrier, &admitted_archive);
     let args: Vec<_> = command.get_args().collect();
     assert_eq!(args[0], "--expose-internals");
     // GetTempPath can use an 8.3 account name. Production admission returns the
@@ -85,13 +100,34 @@ fn windows_dsh_desktop_uses_sibling_resources_and_rejects_archive_aliases() {
 #[test]
 #[ignore = "requires the official DSH Desktop installed in the existing Windows account"]
 fn windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_changing_profiles() {
+    const CHILD: &str = "HIROUTE_DSH_DESKTOP_ISOLATION_TEST_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let (_, module) = module_path!().split_once("::").unwrap();
+        let case = format!(
+            "{module}::windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_changing_profiles"
+        );
+        // Set the ASAR override only in the test child.
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", &case, "--ignored"])
+            .env(CHILD, "1")
+            .env("ELECTRON_NO_ASAR", "1")
+            .output()
+            .unwrap();
+        assert!(
+            child.status.success()
+                && String::from_utf8_lossy(&child.stdout).contains("1 passed; 0 failed"),
+            "the installed bundled CLI must work with ASAR disabled in the scanner's parent environment"
+        );
+        return;
+    }
     let home = hiroute_platform::windows::background::profile().unwrap();
     let layout = AgentFilesystemLayoutV1::from_process(&home, &home);
+    let root = layout.dsh_config_root.clone();
+    let scanner = FilesystemAgentScannerV1::new(layout, super::super::tests::registry());
     assert!(
-        layout.dsh_desktop_executable.is_some(),
+        scanner.dsh_desktop_executable_target().is_some(),
         "official Desktop must be independently discovered"
     );
-    let root = layout.dsh_config_root.clone();
     let profiles = [
         "cordis.patch.yml",
         "profiles/web/cordis.patch.yml",
@@ -106,7 +142,6 @@ fn windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_ch
         })
     };
     let before = read();
-    let scanner = FilesystemAgentScannerV1::new(layout, super::super::tests::registry());
     let result = scanner.scan_dsh_desktop();
     let AgentDiscoveryOutcomeV1::Supported { installation } = result.outcome else {
         panic!("the installed Windows Desktop must be discovered");

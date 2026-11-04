@@ -2,18 +2,8 @@
 //! Never redirect Web ownership or require a separately installed npm CLI.
 use super::*;
 
+#[cfg(not(windows))]
 pub(super) fn installed_executable(home: &Path) -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        windows_installation_roots(home, |key| std::env::var_os(key))
-            .into_iter()
-            .find_map(windows_installed_executable)
-            .or_else(|| {
-                hiroute_platform::windows::installed_apps::uninstall_locations("DeepSeek Harness")
-                    .into_iter()
-                    .find_map(windows_installed_executable)
-            })
-    }
     #[cfg(target_os = "macos")]
     {
         [home.join("Applications"), PathBuf::from("/Applications")]
@@ -26,7 +16,7 @@ pub(super) fn installed_executable(home: &Path) -> Option<PathBuf> {
                     .is_some()
             })
     }
-    #[cfg(not(any(target_os = "macos", windows)))]
+    #[cfg(not(target_os = "macos"))]
     {
         let _ = home;
         None
@@ -34,7 +24,7 @@ pub(super) fn installed_executable(home: &Path) -> Option<PathBuf> {
 }
 
 #[cfg(windows)]
-fn windows_installation_roots(
+pub(super) fn windows_installation_roots(
     home: &Path,
     lookup: impl Fn(&str) -> Option<std::ffi::OsString>,
 ) -> Vec<PathBuf> {
@@ -58,7 +48,7 @@ fn windows_installation_roots(
 }
 
 #[cfg(windows)]
-fn windows_installed_executable(root: PathBuf) -> Option<PathBuf> {
+fn windows_installed_executable(root: &Path) -> Option<PathBuf> {
     if !root.is_absolute() {
         return None;
     }
@@ -79,14 +69,30 @@ impl FilesystemAgentScannerV1 {
             .join("profiles/desktop/hiroute-routing.mjs")
     }
     pub fn dsh_desktop_executable_target(&self) -> Option<PathBuf> {
-        super::super::executable::resolve(self.layout.dsh_desktop_executable.as_deref()?)
-            .ok()
-            .flatten()
+        if let Some(executable) = &self.layout.dsh_desktop_executable {
+            return super::super::executable::resolve(executable).ok().flatten();
+        }
+        #[cfg(windows)]
+        {
+            let roots = &self.layout.dsh_desktop_installation_roots;
+            if roots.is_empty() {
+                return None;
+            }
+            roots
+                .iter()
+                .find_map(|root| windows_installed_executable(root))
+                .or_else(|| {
+                    hiroute_platform::windows::installed_apps::uninstall_locations(
+                        "DeepSeek Harness",
+                    )
+                    .iter()
+                    .find_map(|root| windows_installed_executable(root))
+                })
+        }
+        #[cfg(not(windows))]
+        None
     }
-    fn dsh_desktop_archive(&self) -> Result<PathBuf, AgentFilesystemScanError> {
-        let executable = self
-            .dsh_desktop_executable_target()
-            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
+    fn dsh_desktop_archive(executable: &Path) -> Result<PathBuf, AgentFilesystemScanError> {
         #[cfg(not(windows))]
         let archive = executable
             .parent()
@@ -105,21 +111,15 @@ impl FilesystemAgentScannerV1 {
         Ok(archive)
     }
     #[cfg(any(unix, windows))]
-    fn dsh_desktop_command(&self) -> Result<std::process::Command, AgentFilesystemScanError> {
-        let mut command = std::process::Command::new(
-            self.dsh_desktop_executable_target()
-                .ok_or(AgentFilesystemScanError::SourceUnavailable)?,
-        );
+    fn dsh_desktop_command(executable: &Path, archive: &Path) -> std::process::Command {
+        let mut command = std::process::Command::new(executable);
         command
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
             .env("ELECTRON_RUN_AS_NODE", "1")
             .arg("--expose-internals")
-            .arg(
-                self.dsh_desktop_archive()?
-                    .join("dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js"),
-            );
-        Ok(command)
+            .arg(archive.join("dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/cli.js"));
+        command
     }
     pub fn dsh_desktop_settings_discovery(&self) -> FilesystemAgentDiscoveryV1 {
         self.dsh_desktop_discovery(false)
@@ -138,9 +138,13 @@ impl FilesystemAgentScannerV1 {
         }
         let mut version = String::new();
         #[cfg(any(unix, windows))]
-        if diagnostic && let Ok(mut command) = self.dsh_desktop_command() {
+        if diagnostic
+            && let Some(executable) = executable.as_deref()
+            && let Ok(archive) = Self::dsh_desktop_archive(executable)
+        {
+            let mut command = Self::dsh_desktop_command(executable, &archive);
             command.arg("--version");
-            if let Ok(bytes) = super::dsh_native::dsh_public_probe(command)
+            if let Ok(bytes) = super::dsh_native::dsh_public_probe(command, false)
                 && let Ok(value) = std::str::from_utf8(&bytes)
                 && value.trim().len() <= 128
                 && !value.trim().chars().any(char::is_control)
@@ -171,7 +175,9 @@ impl FilesystemAgentScannerV1 {
             managed_launch: None,
         }
     }
-    fn dsh_desktop_contract(&self) -> Result<CanonicalDigest, AgentFilesystemScanError> {
+    fn dsh_desktop_contract(
+        &self,
+    ) -> Result<(CanonicalDigest, PathBuf, PathBuf), AgentFilesystemScanError> {
         let mut dependencies = Vec::new();
         for path in [
             self.layout.dsh_config_root.join("cordis.patch.yml"),
@@ -208,7 +214,8 @@ impl FilesystemAgentScannerV1 {
         let executable = self
             .dsh_desktop_executable_target()
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
-        for path in [&executable, &self.dsh_desktop_archive()?] {
+        let archive = Self::dsh_desktop_archive(&executable)?;
+        for path in [&executable, &archive] {
             let metadata =
                 std::fs::metadata(path).map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
             if !metadata.is_file() {
@@ -219,22 +226,23 @@ impl FilesystemAgentScannerV1 {
                     .map_err(invalid)?,
             );
         }
-        CanonicalDigest::of(&dependencies).map_err(invalid)
+        let digest = CanonicalDigest::of(&dependencies).map_err(invalid)?;
+        Ok((digest, executable, archive))
     }
     #[cfg(any(unix, windows))]
     pub fn check_dsh_desktop_model_configuration(
         &self,
     ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
-        let before = self.dsh_desktop_contract()?;
-        let mut command = self.dsh_desktop_command()?;
+        let (before, executable, archive) = self.dsh_desktop_contract()?;
+        let mut command = Self::dsh_desktop_command(&executable, &archive);
         // Upstream forbids dumping the Desktop profile. Its standard manifest uses
         // these same Web bundles; inspect that default, never pretend this runs Desktop.
         command.args(["--profile", "web", "--dump-default-config"]);
         super::dsh_native::check_composition(
-            &super::dsh_native::dsh_public_probe(command)?,
+            &super::dsh_native::dsh_public_probe(command, false)?,
             &["llm-pi-ai"],
         )?;
-        if before != self.dsh_desktop_contract()? {
+        if !self.dsh_desktop_model_configuration_is_current(&before)? {
             return Err(AgentFilesystemScanError::SourceChanged);
         }
         Ok(before)
@@ -244,7 +252,7 @@ impl FilesystemAgentScannerV1 {
         checked: &CanonicalDigest,
     ) -> Result<bool, AgentFilesystemScanError> {
         self.dsh_desktop_contract()
-            .map(|current| current == *checked)
+            .map(|(current, _, _)| current == *checked)
     }
 }
 
