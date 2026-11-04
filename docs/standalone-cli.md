@@ -1644,6 +1644,10 @@ Missing proof leaves physical sessions separate. Credential relay and within-req
 kinds. Compare actual accepted endpoints and explicit reasoning settings, not whole-profile digests. Open
 linked physical members, request IDs and receipts; count each request and attempt once.
 
+When a decision classifier fails and routing falls back, the affected request's routing entry includes
+`decision_failure`. It gives the attempted saved service revision when available, a failure kind and
+observed HTTP status, and the decision source actually used. The executing model can still succeed.
+
 Conversation pages return bounded messages/tools. For `reference_only` or partial entries, the installed
 `sessions.show` schema describes V2 catalog/content pagination using their returned IDs. `sessions receipt`
 opens immutable facts and `observation plan-quality samples` opens recorded stages. Legacy `sessions list

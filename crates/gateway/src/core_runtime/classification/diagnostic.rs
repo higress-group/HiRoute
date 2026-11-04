@@ -13,7 +13,10 @@ use hiroute_diagnostics::{
 use hiroute_gateway_core::transport::HttpProtocol;
 use http::{HeaderMap, StatusCode};
 
-use super::{CLASSIFIER_DIAGNOSTIC_LATEST_USER, CallFailure, ClassifierDiagnosticError};
+use super::{
+    CLASSIFIER_DIAGNOSTIC_LATEST_USER, CallFailure, ClassifierDiagnosticError, DecisionFailureV1,
+    FailureKind,
+};
 use crate::server::core_runtime::model_ir::{
     CanonicalMessage, ContentPart, MODEL_REQUEST_IR_SCHEMA, MessageRole, ModelRequestIRV1,
     RequestedReasoningControl, ToolChoice,
@@ -78,18 +81,16 @@ impl CallDiagnostic {
     }
 
     pub(super) fn failure(&mut self, failure: CallFailure) {
-        self.final_event.provider_error = Some(match failure {
-            CallFailure::Timeout => WireProviderError::Timeout,
-            CallFailure::Unavailable
-            | CallFailure::SourceDisabled
-            | CallFailure::NoUsableCredentials => WireProviderError::UpstreamUnavailable,
-            CallFailure::RejectedInput | CallFailure::BudgetRejected(_) => {
+        self.final_event.provider_error = Some(match failure.diagnostic().detail().kind {
+            FailureKind::Timeout => WireProviderError::Timeout,
+            FailureKind::InputRejected | FailureKind::ContextLimit => {
                 WireProviderError::InputRejected
             }
-            CallFailure::AuthenticationRejected => WireProviderError::AuthenticationRejected,
-            CallFailure::RateLimited => WireProviderError::RateLimited,
-            CallFailure::EndpointRejected => WireProviderError::EndpointRejected,
-            CallFailure::InvalidOutput => WireProviderError::InvalidOutput,
+            FailureKind::AuthenticationRejected => WireProviderError::AuthenticationRejected,
+            FailureKind::RateLimited => WireProviderError::RateLimited,
+            FailureKind::EndpointRejected => WireProviderError::EndpointRejected,
+            FailureKind::InvalidOutput => WireProviderError::InvalidOutput,
+            _ => WireProviderError::UpstreamUnavailable,
         });
     }
 
@@ -117,34 +118,45 @@ impl Drop for CallDiagnostic {
 }
 
 pub(super) fn classifier_response_failure(status: StatusCode, body: &[u8]) -> CallFailure {
-    if status == StatusCode::BAD_REQUEST
-        && let Ok(value) = serde_json::from_slice::<serde_json::Value>(body)
-        && value
-            .get("error")
-            .unwrap_or(&value)
-            .get("message")
-            .and_then(serde_json::Value::as_str)
-            == Some("Workspace endpoint is invalid.")
+    if matches!(
+        status,
+        StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
+    ) && let Ok(value) = serde_json::from_slice::<serde_json::Value>(body)
     {
-        return CallFailure::EndpointRejected;
+        let error = value.get("error").unwrap_or(&value);
+        if matches!(
+            error.get("code").and_then(serde_json::Value::as_str),
+            Some("context_length_exceeded" | "context_window_exceeded")
+        ) {
+            return http_failure(status, FailureKind::ContextLimit);
+        }
+        if status == StatusCode::BAD_REQUEST
+            && error.get("message").and_then(serde_json::Value::as_str)
+                == Some("Workspace endpoint is invalid.")
+        {
+            return http_failure(status, FailureKind::EndpointRejected);
+        }
     }
     classifier_status_failure(status)
 }
 
 pub(super) fn classifier_status_failure(status: StatusCode) -> CallFailure {
-    if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
-        return CallFailure::AuthenticationRejected;
-    }
-    if status == StatusCode::TOO_MANY_REQUESTS {
-        return CallFailure::RateLimited;
-    }
-    if status.as_u16() == 529 || status.is_server_error() {
-        CallFailure::Unavailable
-    } else if status.is_client_error() {
-        CallFailure::RejectedInput
-    } else {
-        CallFailure::InvalidOutput
-    }
+    let kind = match status {
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => FailureKind::AuthenticationRejected,
+        StatusCode::TOO_MANY_REQUESTS => FailureKind::RateLimited,
+        StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED => FailureKind::EndpointRejected,
+        status if status.is_server_error() => FailureKind::UpstreamError,
+        status if status.is_client_error() => FailureKind::InputRejected,
+        _ => FailureKind::InvalidOutput,
+    };
+    http_failure(status, kind)
+}
+
+fn http_failure(status: StatusCode, kind: FailureKind) -> CallFailure {
+    CallFailure::Http(DecisionFailureV1 {
+        kind,
+        http_status: Some(status.as_u16()),
+    })
 }
 
 pub(super) fn diagnostic_request() -> ModelRequestIRV1 {
@@ -191,13 +203,15 @@ impl CallFailure {
             Self::Unavailable => ClassifierDiagnosticError::Unavailable,
             Self::SourceDisabled => ClassifierDiagnosticError::SourceDisabled,
             Self::NoUsableCredentials => ClassifierDiagnosticError::NoUsableCredentials,
-            Self::RejectedInput | Self::BudgetRejected(_) => {
-                ClassifierDiagnosticError::RejectedInput
+            Self::RejectedInput => ClassifierDiagnosticError::RejectedInput,
+            Self::BudgetRejected(rejection)
+                if rejection.reason == hiroute_domain::DecisionContextNoFitV1::MandatoryCore =>
+            {
+                ClassifierDiagnosticError::ContextLimit
             }
+            Self::BudgetRejected(_) => ClassifierDiagnosticError::RejectedInput,
             Self::InvalidOutput => ClassifierDiagnosticError::InvalidOutput,
-            Self::AuthenticationRejected => ClassifierDiagnosticError::AuthenticationRejected,
-            Self::RateLimited => ClassifierDiagnosticError::RateLimited,
-            Self::EndpointRejected => ClassifierDiagnosticError::EndpointRejected,
+            Self::Http(failure) => ClassifierDiagnosticError::Http(failure),
         }
     }
 }
@@ -225,9 +239,12 @@ mod tests {
         for (status, failure) in [
             (
                 StatusCode::UNAUTHORIZED,
-                CallFailure::AuthenticationRejected,
+                classifier_status_failure(StatusCode::UNAUTHORIZED),
             ),
-            (StatusCode::BAD_REQUEST, CallFailure::EndpointRejected),
+            (
+                StatusCode::NOT_FOUND,
+                classifier_status_failure(StatusCode::NOT_FOUND),
+            ),
         ] {
             let mut diagnostic = CallDiagnostic::new(runtime.port().handle().context());
             diagnostic.prepared(

@@ -26,6 +26,7 @@ pub(super) fn hydrate(requests: &mut BTreeMap<String, Request>, facts: &[Fact]) 
         };
         match &fact.value {
             ExecutionFactV1::RouteDecision(decision) => {
+                request.view.decision_failure = decision.decision_failure.clone();
                 request.decision = Some((**decision).clone());
             }
             ExecutionFactV1::AttemptStarted {

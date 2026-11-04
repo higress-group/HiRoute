@@ -9,10 +9,13 @@ import { ContentExcerpt } from './Sessions';
 import { selectionReasonLabel } from './selection-reasons';
 import { qualityReasoningLabel } from './plan-quality-state';
 import { modelLabel, type ModelLabelIndex } from './model-labels';
+import type { DecisionFailureDetail } from './decision-services/contracts';
+import { decisionFailureDetail } from './decision-services/presentation';
 import './routing-timeline.css';
 
 type Cost = { model_configuration_id: string | null; currency: string | null; valuation_kind: string | null; known_micros: number | null; unknown_contributions: number };
-export type TimelineRequest = { request_id: string; started_at_ms: number; duration_ms: number | null; native_model: string | null; input_tokens: number | null; output_tokens: number | null; cache_read_tokens: number | null; cache_read_share: number | null; costs: Cost[]; outcome: string | null };
+type DecisionFallback = { service: { id: string; revision: number } | null; failure: DecisionFailureDetail; source: string };
+export type TimelineRequest = { request_id: string; started_at_ms: number; duration_ms: number | null; native_model: string | null; input_tokens: number | null; output_tokens: number | null; cache_read_tokens: number | null; cache_read_share: number | null; costs: Cost[]; outcome: string | null; decision_failure?: DecisionFallback };
 export type TimelineProtection = {
   outcome: 'applied' | 'suppressed' | 'retained_unavailable' | 'not_needed' | 'not_considered';
   previous_score: number | null; competence_floor_millis: number;
@@ -49,6 +52,13 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   onViewConversation?(request: TimelineRequest): void; onAvailability?(availability: TimelineAvailability): void;
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
+  const fallbackText = ({ service, failure, source }: DecisionFallback) => [
+    service ? `${service.id}@${service.revision}` : text('决策服务', 'Decision service'),
+    decisionFailureDetail(failure, language),
+    source === 'builtin_rules' ? text('已使用内置规则', 'Used built-in rules')
+      : source === 'user_phrase' ? text('已使用用户短语规则', 'Used user phrase rules')
+      : text('已使用本地回退', 'Used local fallback'),
+  ].join(' · ');
   const [turns, setTurns] = useState<TimelineTurn[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -389,6 +399,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           <span className="routing-request-index">#{i + 1}</span>
           <span className="routing-request-main"><span>{text('输入', 'In')} {tokens(request.input_tokens, request)} · {text('输出', 'Out')} {tokens(request.output_tokens, request)}</span><small title={requestModel(selectedTurn, request).detail ?? undefined}>{[requestModel(selectedTurn, request).text, request.duration_ms === null ? '' : `${(request.duration_ms / 1000).toFixed(1)} s`, request.costs.map(costAmount).join(' · '), failed(request) ? text('失败', 'Failed') : ''].filter(Boolean).join(' · ')}{requestModel(selectedTurn, request).detail && <span className="sr-only"> · {requestModel(selectedTurn, request).detail}</span>}</small></span>
           <span className={`badge no-dot ${request.cache_read_share !== null && request.cache_read_share >= 0.5 ? 'good' : ''}`}>{text('缓存', 'Cache')} {percent(request.cache_read_share)}</span>
+          {request.decision_failure && <span className="routing-request-decision-failure">{fallbackText(request.decision_failure)}</span>}
         </button>)}</div>
         {!allRequests && selectedTurn.requests.length > REQUESTS && <button type="button" className="btn btn-quiet" onClick={() => setAllRequests(true)}>{text(`显示全部 ${selectedTurn.requests.length} 个请求`, `Show all ${selectedTurn.requests.length} requests`)}</button>}
         {selectedTurn.cost_by_model.length > 0 && <p className="routing-detail-facts">{text('这一轮按模型估算：', 'This turn by model: ')}{selectedTurn.cost_by_model.map(cost => `${names.get(cost.model_configuration_id ?? '') ?? cost.model_configuration_id ?? text('模型未知', 'unknown model')} ${costAmount(cost)}`).join(' · ')}</p>}

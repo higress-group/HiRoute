@@ -1,4 +1,5 @@
 import type { Draft, Plan } from '../../plan-editor';
+import type { DecisionFailureDetail } from './contracts';
 import { emptyService, providers, type DecisionConnection, type DecisionService } from './types.ts';
 import { presetName } from './form-state.ts';
 export { sameEndpointOrigin, testKey } from './form-state.ts';
@@ -66,6 +67,26 @@ export function decisionFailureHelp(code: string, language: 'zh' | 'en'): string
     case 'DECISION_TRANSPORT_UNAVAILABLE': return t('无法连接到服务。请检查网络后重试。', 'The service could not be reached. Check the network and retry.');
     default: return t('暂时无法完成连接。请检查网络、服务状态及认证后重试。', 'The connection could not complete. Check the network, service and credentials, then try again.');
   }
+}
+
+export function decisionFailureDetail(detail: DecisionFailureDetail, language: 'zh' | 'en'): string {
+  const labels: Record<DecisionFailureDetail['kind'], [string, string]> = {
+    timeout: ['决策请求超时', 'Decision request timed out'],
+    unavailable: ['决策服务暂不可用', 'Decision service unavailable'],
+    source_disabled: ['决策服务的 API 接入已停用', 'Decision API connection is disabled'],
+    no_usable_credentials: ['没有可用的决策凭据', 'No usable decision credentials'],
+    authentication_rejected: ['服务拒绝了凭据', 'Service rejected the credentials'],
+    proxy_authentication_rejected: ['代理认证失败', 'Proxy authentication failed'],
+    rate_limited: ['决策服务限流', 'Decision service rate limited'],
+    endpoint_rejected: ['请检查决策服务的完整地址和协议', 'Check the complete decision URL and protocol'],
+    input_rejected: ['决策服务拒绝了请求', 'Decision service rejected the request'],
+    context_limit: ['决策请求超出上下文限制', 'Decision request exceeds the context limit'],
+    upstream_error: ['决策服务返回服务端错误', 'Decision service returned a server error'],
+    invalid_output: ['决策响应不符合所选协议', 'Decision response did not match the selected protocol'],
+  };
+  const index = language === 'zh' ? 0 : 1;
+  const label = (labels[detail.kind] ?? labels.unavailable)[index];
+  return detail.http_status == null ? label : `HTTP ${detail.http_status} · ${label}`;
 }
 
 export function decisionReferences(id: string, plans: Plan[], drafts: Draft[]) {

@@ -648,6 +648,20 @@ pub(crate) fn compile_classifier_mode_authority(
         (Some(_), Some(_)) => return Err(PublicationInstallError::InvalidPlannerPolicy),
     };
     Ok(Arc::new(RestBranchClassifierAuthorityV1 {
+        service: match mode {
+            hiroute_domain::ComplexityClassifierModeV1::DecisionService { service } => {
+                Some(hiroute_domain::DecisionServiceRevisionV1 {
+                    id: service.id.clone(),
+                    revision: service.revision,
+                })
+            }
+            _ => mode.versioned_connection().map(|(id, revision, _)| {
+                hiroute_domain::DecisionServiceRevisionV1 {
+                    id: id.to_owned(),
+                    revision,
+                }
+            }),
+        },
         extension_identity: mode.extension_identity(),
         plan_identity: None,
         default_category: None,

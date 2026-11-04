@@ -3,6 +3,7 @@ use super::*;
 fn request(id: &str, model: &str, at: i64) -> Request {
     Request {
         view: RoutingTimelineRequestV1 {
+            decision_failure: None,
             request_id: id.into(),
             started_at_ms: at,
             duration_ms: Some(1),

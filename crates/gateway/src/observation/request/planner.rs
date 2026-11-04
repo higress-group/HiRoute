@@ -15,6 +15,7 @@ impl RequestObservation {
         input: &PlannerInputV1,
         output: &PlannerOutputV1,
         native_auxiliary: bool,
+        decision_failure: Option<hiroute_domain::DecisionFallbackEvidenceV1>,
     ) {
         if !self.tracks_attempts() {
             return;
@@ -48,6 +49,7 @@ impl RequestObservation {
                     .complexity
                     .as_ref()
                     .and_then(|value| serde_json::to_value(value).ok()),
+                decision_failure,
                 groups: serde_json::to_value(&output.groups).unwrap_or(Value::Null),
                 reason_ledger: serde_json::to_value(&output.reason_ledger).unwrap_or(Value::Null),
                 requirements: input.request.requirements(),

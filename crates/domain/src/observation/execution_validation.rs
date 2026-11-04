@@ -18,12 +18,22 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current_wire = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_pre_decision_failure = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str()
+                == "sha256:ba2cb7b8fd9f9724d6d167bf1f3c35b32ade94cfa361831f449bb7271885745c";
+        let context_wire = current_wire || persisted_pre_decision_failure;
+        if !current_wire
+            && matches!(&self.fact, ExecutionFactV1::RouteDecision(route) if route.decision_failure.is_some())
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
         let persisted_pre_context = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
                 == "sha256:9e6d31fead103a6203f3bd4c6464b5a63c0ddd5ea0e2cad6674be31f2cc03c38";
-        let reasoning_wire = current_wire || persisted_pre_context;
-        if !current_wire
+        let reasoning_wire = context_wire || persisted_pre_context;
+        if !context_wire
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route)
                 if route.complexity.as_ref().and_then(|d| d.routing_observation.as_ref())
                     .is_some_and(|observation| observation.context_budget.is_some()))
@@ -567,6 +577,25 @@ impl ExecutionFactV1 {
 impl RouteDecisionFactV1 {
     fn validate(&self) -> Result<(), ExecutionFactError> {
         nonempty([&self.planner_version])?;
+        if let Some(evidence) = &self.decision_failure
+            && (self.complexity.as_ref().is_none_or(|decision| {
+                !decision.fallback_used
+                    || decision.decision_source != evidence.source
+                    || matches!(
+                        evidence.source,
+                        ComplexityDecisionSourceV1::Inherited
+                            | ComplexityDecisionSourceV1::ExternalClassifier
+                    )
+            }) || evidence
+                .failure
+                .http_status
+                .is_some_and(|status| !(100..=999).contains(&status))
+                || evidence.service.as_ref().is_some_and(|service| {
+                    service.revision == 0 || service.id.trim().is_empty() || service.id.len() > 128
+                }))
+        {
+            return Err(ExecutionFactError::InvalidFact);
+        }
         if self.route.validate().is_err()
             || self.max_attempts == 0
             || match &self.route {

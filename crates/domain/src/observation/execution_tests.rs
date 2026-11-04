@@ -362,6 +362,41 @@ fn pre_context_rows_reopen_unchanged_but_cannot_authenticate_budget_diagnostics(
 }
 
 #[test]
+fn pre_decision_failure_rows_reopen_but_cannot_authenticate_new_failure_evidence() {
+    let mut old = gateway_fact_envelopes().remove(0);
+    old.schema_digest = CanonicalDigest::parse(
+        "sha256:ba2cb7b8fd9f9724d6d167bf1f3c35b32ade94cfa361831f449bb7271885745c",
+    )
+    .unwrap();
+    old.validate_persisted_contract().unwrap();
+    assert_eq!(old.validate(), Err(ExecutionFactError::UnsupportedSchema));
+    let ExecutionFactV1::RouteDecision(route) = &mut old.fact else {
+        unreachable!()
+    };
+    let decision = route.complexity.as_mut().unwrap();
+    decision.fallback_used = true;
+    decision.fallback_reason = Some(ClassifierFallbackReasonV1::RejectedInput);
+    decision.classification_duration_micros = Some(125);
+    route.decision_failure = Some(crate::DecisionFallbackEvidenceV1 {
+        service: Some(crate::DecisionServiceRevisionV1 {
+            id: "decision/fixture".into(),
+            revision: 1,
+        }),
+        failure: crate::DecisionFailureV1 {
+            kind: crate::DecisionFailureKindV1::EndpointRejected,
+            http_status: Some(405),
+        },
+        source: decision.decision_source,
+    });
+    assert_eq!(
+        old.validate_persisted_contract(),
+        Err(ExecutionFactError::InvalidFact)
+    );
+    old.schema_digest = CanonicalDigest::parse(EXECUTION_FACT_PORT_DIGEST_V2).unwrap();
+    old.validate().unwrap();
+}
+
+#[test]
 fn legacy_execution_trust_without_plan_display_name_remains_readable() {
     let mut value = serde_json::to_value(envelope(
         1,
@@ -693,6 +728,7 @@ fn native_auxiliary_marker_is_optional_for_retained_route_facts() {
 
 fn route() -> RouteDecisionFactV1 {
     RouteDecisionFactV1 {
+        decision_failure: None,
         native_auxiliary: false,
         planner_version: "planner-v1".to_owned(),
         plan_id: Some(AgentPlanId::parse("plan/coding").unwrap()),

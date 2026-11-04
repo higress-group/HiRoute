@@ -146,6 +146,7 @@ pub(super) fn read(
             Request {
                 view: RoutingTimelineRequestV1 {
                     request_id: id,
+                    decision_failure: None,
                     started_at_ms: start,
                     duration_ms: finish.and_then(|end| u64::try_from(end - start).ok()),
                     native_model: None,

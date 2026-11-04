@@ -419,6 +419,17 @@ present, otherwise regular. Valid decision plus invalid assessment keeps the dec
 Cancellation, source deadline, and replay integrity failures terminate instead of fallback. One decision call uses the
 shared total deadline without a new retry/state machine.
 
+When a classifier fails and the request uses its decision fallback, record the failure on that request
+with the attempted saved service ID and revision when available, and the decision source actually used.
+Show this evidence in the Console routing timeline and CLI routing analysis. Inherited decisions and
+older observations without evidence have no failure of their own.
+
+Classifier HTTP failure evidence contains a closed kind and the observed HTTP status. HTTP 404 and
+405 indicate an endpoint or protocol mismatch, 422 indicates rejected input, and 5xx indicates an
+upstream failure. A recognized context-limit error code distinguishes context rejection from generic
+input rejection. Explicit connection diagnostics use the same failure detail. Provider response bodies,
+request content and credentials are excluded from the evidence.
+
 #### Scenario: Review selected but degree is missing
 
 - **WHEN** the response selects review, while writing is the plan default

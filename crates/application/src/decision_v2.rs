@@ -252,6 +252,7 @@ fn rejected(network_aware: bool, digest: CanonicalDigest, failure: DecisionFailu
             check,
             network: None,
             failure: None,
+            decision_failure: None,
         })
     } else {
         serde_json::to_value(check)

@@ -976,6 +976,7 @@ impl ProductionGatewayRuntime {
             }
             planner_input.correlated_branch = correlated_branch.map(|decision| *decision);
             let mut assessment = None;
+            let mut decision_failure = None;
             if let Some(mut outcome) = classification_outcome {
                 if let Some(history) = classification_context {
                     classification::apply_group_policy(&planner_input, &history, &mut outcome);
@@ -1009,6 +1010,15 @@ impl ProductionGatewayRuntime {
                         guard.ticket().clone(),
                     );
                 }
+                decision_failure = outcome.diagnostic_failure.map(|failure| {
+                    hiroute_domain::DecisionFallbackEvidenceV1 {
+                        service: authorized
+                            .classifier()
+                            .and_then(|classifier| classifier.service.clone()),
+                        failure: failure.detail(),
+                        source: outcome.decision.decision_source,
+                    }
+                });
                 planner_input.classification_decision = Some(outcome.decision);
                 planner_input.classification_facts = Some(outcome.facts);
                 assessment = outcome.assessment;
@@ -1039,6 +1049,7 @@ impl ProductionGatewayRuntime {
                 &planner_input,
                 &planner_output,
                 identity.native_auxiliary(),
+                decision_failure,
             );
             // The planner establishes the trusted Plan identity used by every execution fact.
             if let Some(assessment) = &assessment {

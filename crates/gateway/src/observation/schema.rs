@@ -148,6 +148,8 @@ pub enum ExecutionFactV1 {
         output_digest: String,
         branch: Value,
         complexity: Option<Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        decision_failure: Option<hiroute_domain::DecisionFallbackEvidenceV1>,
         groups: Value,
         reason_ledger: Value,
         requirements: RequestCapabilityRequirementsV1,

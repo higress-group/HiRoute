@@ -34,15 +34,30 @@ pub(super) fn test(
     let started = std::time::Instant::now();
     let (result, admitted, network) =
         runtime.block_on(gateway.test_classifier_decision_with_network(&mode));
+    let decision_failure = result.as_ref().err().and_then(|error| match *error {
+        Error::Http(detail) => Some(detail),
+        Error::ContextLimit => Some(error.detail()),
+        _ => None,
+    });
     let failure_code = match result {
         Ok(_) => None,
         Err(Error::SourceDisabled) => Some(Failure::DecisionSourceDisabled),
         Err(Error::NoUsableCredentials) => Some(Failure::DecisionNoUsableCredentials),
         Err(Error::InvalidConfig | Error::Integrity) => Some(Failure::DecisionInvalidConfiguration),
         Err(Error::Timeout | Error::Cancelled) => Some(Failure::DecisionTimeout),
-        Err(Error::AuthenticationRejected) => Some(Failure::DecisionAuthenticationRejected),
-        Err(Error::RateLimited) => Some(Failure::DecisionRateLimited),
-        Err(Error::RejectedInput | Error::EndpointRejected) => Some(Failure::DecisionInputRejected),
+        Err(Error::Http(detail)) => {
+            use hiroute_domain::DecisionFailureKindV1 as Kind;
+            Some(match detail.kind {
+                Kind::AuthenticationRejected => Failure::DecisionAuthenticationRejected,
+                Kind::RateLimited => Failure::DecisionRateLimited,
+                Kind::EndpointRejected | Kind::InputRejected | Kind::ContextLimit => {
+                    Failure::DecisionInputRejected
+                }
+                Kind::InvalidOutput => Failure::DecisionMalformedOutput,
+                _ => Failure::DecisionTransportUnavailable,
+            })
+        }
+        Err(Error::RejectedInput | Error::ContextLimit) => Some(Failure::DecisionInputRejected),
         Err(Error::InvalidOutput) => Some(Failure::DecisionMalformedOutput),
         Err(Error::Unavailable | Error::Resource) => Some(Failure::DecisionTransportUnavailable),
     };
@@ -63,6 +78,7 @@ pub(super) fn test(
         },
         network,
         failure,
+        decision_failure,
     })
 }
 

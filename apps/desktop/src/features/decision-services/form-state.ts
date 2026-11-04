@@ -2,6 +2,7 @@ import type { NativeNetworkFailure, NativeNetworkRoute } from "../model-connecti
 import type {
   DecisionAuthHeader, DecisionExpectedSourceRevision, DecisionServiceRecord, DecisionServiceTestResult, DecisionServiceNetworkTestResult, DecisionServiceV2, DecisionServiceV3, ResolvedDecisionContext,
   DecisionServiceView, DecisionSourceSummary, DecisionWireProtocol,
+  DecisionFailureDetail,
 } from './contracts.ts';
 import { providers } from './types.ts';
 import { contextErrors, contextFromPolicy, contextPolicy, type DecisionContextDraft } from './context-state.ts';
@@ -271,6 +272,7 @@ export function expectedSourceRevisions(sourceIds: (string | null | undefined)[]
 export type TestRecord = {
   outcome: 'passed' | 'failed'; code?: string; duration?: number | null; at: number;
   tested_network_state_revision?: string | null; network_failure?: NativeNetworkFailure | null;
+  decision_failure?: DecisionFailureDetail;
   tested_configuration_digest?: string; tested_credential_state_revision?: string | null; savedBeforeTest?: boolean;
 };
 /** `unverified`: a prior pass whose current credential state could not be read back; never shown as passed. */
@@ -280,7 +282,12 @@ export function testRecord(result: DecisionServiceTestResult, at: number): TestR
     tested_configuration_digest: result.tested_configuration_digest, tested_credential_state_revision: result.tested_credential_state_revision };
 }
 export function networkTestRecord(result: DecisionServiceNetworkTestResult, at: number): TestRecord {
-  return { ...testRecord(result.check, at), tested_network_state_revision: result.network?.route.state_revision ?? null, network_failure: result.failure };
+  return {
+    ...testRecord(result.check, at),
+    tested_network_state_revision: result.network?.route.state_revision ?? null,
+    network_failure: result.failure,
+    ...(result.decision_failure ? { decision_failure: result.decision_failure } : {}),
+  };
 }
 
 /** Current network evidence is read for the selected service only; no provider call. */

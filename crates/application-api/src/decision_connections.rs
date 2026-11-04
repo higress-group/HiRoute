@@ -158,6 +158,8 @@ pub struct DecisionServiceTestResultV3 {
     pub check: DecisionServiceTestResultV2,
     pub network: Option<crate::NativeNetworkCheckEvidenceV1>,
     pub failure: Option<crate::NativeNetworkFailureV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_failure: Option<hiroute_domain::DecisionFailureV1>,
 }
 
 #[cfg(test)]
@@ -268,6 +270,7 @@ mod tests {
             check: check.clone(),
             network: None,
             failure: None,
+            decision_failure: None,
         };
         let encoded = serde_json::to_value(&value).unwrap();
         assert!(serde_json::from_value::<DecisionServiceTestResultV2>(encoded.clone()).is_err());

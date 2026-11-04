@@ -218,6 +218,8 @@ pub struct RoutingTimelineRelayV1 {
 #[serde(deny_unknown_fields)]
 pub struct RoutingTimelineRequestV1 {
     pub request_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_failure: Option<super::DecisionFallbackEvidenceV1>,
     pub started_at_ms: i64,
     pub duration_ms: Option<u64>,
     pub native_model: Option<String>,

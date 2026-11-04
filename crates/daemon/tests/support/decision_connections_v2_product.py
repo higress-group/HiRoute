@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import sys
 import threading
+import time
 
 from publication_product import Product, SENTINEL, V1, encoded
 from publication_process import bootstrap
@@ -16,6 +17,7 @@ from model_connections_product import (MODEL, NATIVE_TOKEN, NativeUpstream, gate
 class Endpoint(BaseHTTPRequestHandler):
     requests = []
     reject_input = False
+    failure = None
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
@@ -26,6 +28,10 @@ class Endpoint(BaseHTTPRequestHandler):
             return
         if authorization == 'Bearer ' + SENTINEL:
             self.respond(401, {'error': {'message': 'fixture key rejected'}})
+            return
+        if self.failure is not None:
+            status, code = self.failure
+            self.respond(status, {'error': {'code': code, 'message': 'unpublished provider detail'}})
             return
         answers = []
         for question in body['questions']:
@@ -207,6 +213,56 @@ def run(repository):
         assert Endpoint.requests[-1][1]['model'] == shared['connection']['model']
         assert model_upstream.requests[-1]['path'] == '/v1/responses'
 
+        expected = []
+        for status, code, kind in ((404, 'not_found', 'endpoint_rejected'),
+                                   (405, 'method_not_allowed', 'endpoint_rejected'),
+                                   (422, 'validation_error', 'input_rejected'),
+                                   (422, 'context_length_exceeded', 'context_limit'),
+                                   (500, 'internal_error', 'upstream_error')):
+            Endpoint.failure = (status, code)
+            failure = {'kind': kind, 'http_status': status}
+            view = current(shared['id'])
+            before = len(Endpoint.requests)
+            diagnostic = data('decision network test', {
+                'id': shared['id'], 'revision': 1,
+                'expected_configuration_digest': view['configuration_digest']})
+            assert diagnostic['decision_failure'] == failure, diagnostic
+            assert 'unpublished provider detail' not in json.dumps(diagnostic), diagnostic
+            assert len(Endpoint.requests) == before + 1, 'HTTP failure retried another Key'
+            gateway_request(product)
+            assert len(Endpoint.requests) == before + 2, 'routing failure retried another Key'
+            expected.append(failure)
+        Endpoint.failure = None
+
+        deadline = time.monotonic() + 30
+        while True:
+            sessions = data('sessions list --include-unlinked --limit 50')['sessions']
+            if sessions:
+                session_id = sessions[0]['session_id']
+                timeline = data('sessions timeline ' + session_id)
+                requests = [request for turn in timeline['turns'] for request in turn['requests']]
+                failures = [request for request in requests if request.get('decision_failure')]
+                if len(failures) == len(expected):
+                    break
+            assert time.monotonic() < deadline, 'decision fallback evidence did not reach the timeline'
+            time.sleep(.05)
+        assert len(requests) == 1 + len(expected), requests
+        assert all(request['outcome'] == 'accepted' for request in requests), requests
+        assert all(request['decision_failure']['service'] == {'id': shared['id'], 'revision': 1}
+                   for request in failures), failures
+        failure_key = lambda failure: (failure['http_status'], failure['kind'])
+        assert sorted(failure_key(request['decision_failure']['failure']) for request in failures) == sorted(
+            map(failure_key, expected)), failures
+        assert 'unpublished provider detail' not in json.dumps(timeline), timeline
+
+        conversations = data('sessions list --view conversations --period today')
+        anchor = next(conversation['analysis_session_id'] for conversation in conversations['conversations']
+                      if any(member['session_id'] == session_id for member in conversation['members']))
+        routing = data(f'sessions show {anchor} --view routing --analysis-scope {conversations["analysis_scope"]}')
+        details = {transition['request_id']: transition['decision_failure']
+                   for transition in routing['transitions'] if transition.get('decision_failure')}
+        assert details == {request['request_id']: request['decision_failure'] for request in failures}, routing
+
         # Switch A to B with only B's revision. A remains the authority for the
         # already published version, while the new version joins B.
         newer = copy.deepcopy(shared)
@@ -262,8 +318,9 @@ def run(repository):
                       'stale-digest', 'disabled-source', 'restart', 'published-gateway-route',
                       'frozen-revision', 'source-switch', 'independent-switch',
                       'published-source-disable', 'explicit-compatible-codec',
-                      'stale-source-preview-and-apply']}), flush=True)
+                      'stale-source-preview-and-apply', 'request-local-http-fallback-evidence']}), flush=True)
     finally:
+        Endpoint.failure = None
         if model_upstream is not None:
             model_upstream.close()
         endpoint.shutdown()

@@ -34,6 +34,20 @@ try {
       results.push({id,status:'passed'});
     } catch (error) { await shot(`failure-${id}`); results.push({id,status:'failed',error:String(error.stack ?? error)}); }
   }
+  for (const [lang, theme, width, height] of [['en','light',1200,813], ['zh','dark',755,600]]) {
+    const id = `decision-failure-${lang}-${theme}`;
+    try {
+      await open(lang, theme, width, height, 'decision-failure');
+      await waitFor(client, `!!document.querySelector('.routing-request-decision-failure')`);
+      const detail = await evaluate(client, `document.querySelector('.routing-request-decision-failure').textContent`);
+      assert.ok(detail.includes('decision/production-classifier@12') && detail.includes('HTTP 405'));
+      assert.ok(detail.includes(lang === 'zh' ? '已使用内置规则' : 'Used built-in rules'));
+      assert.ok(await evaluate(client, `document.querySelector('.routing-request').scrollWidth<=document.querySelector('.routing-request').clientWidth+1 && document.documentElement.scrollWidth<=innerWidth+1`));
+      await evaluate(client, `document.querySelector('.routing-request-decision-failure').scrollIntoView({block:'center'});true`);
+      await shot(id);
+      results.push({id,status:'passed'});
+    } catch (error) { await shot(`failure-${id}`); results.push({id,status:'failed',error:String(error.stack ?? error)}); }
+  }
   try {
     await open('en','light',1200,813,'many');
     await waitFor(client, `routingPresentation.trace.filter(x=>x.command==='compute_management_snapshot').length===1`);

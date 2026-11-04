@@ -2642,6 +2642,19 @@
       ]
     },
     {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "pre-decision-failure digest sha256:ba2cb7b8fd9f9724d6d167bf1f3c35b32ade94cfa361831f449bb7271885745c",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate released route decisions with their original context evidence. The old digest cannot authenticate request-local decision failure details.",
+      "removal_condition": "Retire only with supported retained observation and backup retirement.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/fixtures/pre-decision-failure-contract.json"
+      ]
+    },
+    {
       "contract": "hiroute.sqlite-backup-set/v2",
       "field": "target_schema_version=30 with original schema29 control/runtime/secrets sources",
       "mode": "recovery_read_only",
