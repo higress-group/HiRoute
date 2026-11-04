@@ -73,13 +73,13 @@ export function PlanQuality({
   const readScope = useMemo(() => ({ window, revision }), [window, revision]);
   const pairedScope = useRef<typeof readScope | null>(null);
 
-  async function load(next: string | null = null, captureRouting = false) {
+  async function load(next: string | null = null) {
     if (!active || !revisionReady || (!planId && !sessionId)) return;
     pendingRead.current?.abort();
     const controller = new AbortController();
     pendingRead.current = controller;
     const epoch = ++generation.current;
-    if (captureRouting) pairedScope.current = readScope;
+    const captureRouting = pairedScope.current !== readScope;
     setBusy(true); setError('');
     try {
       const page = await observationRead<Page>('plan_quality', {
@@ -91,10 +91,13 @@ export function PlanQuality({
         competence: score === 'high' ? 'meets_floor' : score === 'low' ? 'below_floor' : null,
         unrated_only: score === 'unrated', limit: 20, cursor: next,
       }, controller.signal);
-      // Aggregate routing evidence belongs to the base read paired with PlanTrust.
-      // Detail reads can be clipped by a later retention clock and must not replace it.
-      if (captureRouting && pairedScope.current === readScope) setRoutingSummary(page.routing_observations ?? null);
       if (epoch !== generation.current) return;
+      // Keep the first accepted routing evidence for the PlanTrust scope.
+      // Later detail reads can be clipped by a newer retention clock.
+      if (captureRouting) {
+        pairedScope.current = readScope;
+        setRoutingSummary(page.routing_observations ?? null);
+      }
       setSummary(page.summary);
       const stages = selected && !selected.execution && !selected.trustRow ? [] : page.samples;
       setSamples(current => next ? [...current, ...stages] : stages);
@@ -127,7 +130,7 @@ export function PlanQuality({
   useEffect(() => {
     if (!active || !revisionReady) { generation.current++; setBusy(false); setLoaded(false); return; }
     setSamples([]); setExecutionModels({}); setCursor(null); setLoaded(false);
-    void load(null, pairedScope.current !== readScope);
+    void load();
     return () => { generation.current++; pendingRead.current?.abort(); };
   }, [planId, sessionId, readScope, revisionReady, score, selected?.key, active]);
 
