@@ -232,7 +232,17 @@ pub fn post_expect_continue(
     token: Option<&str>,
     body: &Value,
 ) -> Response {
-    post_exchange(address, path, token, &[], body, true)
+    post_expect_continue_with_headers(address, path, token, &[], body)
+}
+
+pub fn post_expect_continue_with_headers(
+    address: SocketAddr,
+    path: &str,
+    token: Option<&str>,
+    headers: &[(&str, &str)],
+    body: &Value,
+) -> Response {
+    post_exchange(address, path, token, headers, body, true)
 }
 
 fn post_exchange(

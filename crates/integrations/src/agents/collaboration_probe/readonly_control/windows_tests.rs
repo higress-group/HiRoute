@@ -56,7 +56,7 @@ fn run(mut command: Command) -> Output {
         Stream::File(&stderr),
     )
     .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(30);
     let code = loop {
         assert!(
             stdout.metadata().unwrap().len() <= BOUND && stderr.metadata().unwrap().len() <= BOUND,

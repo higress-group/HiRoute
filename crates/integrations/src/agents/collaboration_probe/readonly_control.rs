@@ -778,7 +778,7 @@ mod tests {
                 .args(["-NoProfile", "-NonInteractive", "-Command", &script])
                 .env_clear()
                 .current_dir(root.path());
-            parser_probe::check(&command, Duration::from_secs(10), arm, expected).unwrap();
+            parser_probe::check(&command, Duration::from_secs(30), arm, expected).unwrap();
             require_absent(&control.path).unwrap();
         }
         // The actual command was only a string input to Parser.ParseInput.

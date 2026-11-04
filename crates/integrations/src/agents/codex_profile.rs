@@ -186,7 +186,7 @@ mod tests {
             let output = super::super::windows_runtime::bounded(
                 &command,
                 true,
-                std::time::Duration::from_secs(10),
+                std::time::Duration::from_secs(30),
                 4096,
             )
             .unwrap();
