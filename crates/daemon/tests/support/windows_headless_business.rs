@@ -443,14 +443,16 @@ fn display_name(prefix: &str, candidate_ref: &str) -> String {
 }
 
 pub(crate) fn cli(product: &InstalledProduct, args: &[&str], payload: Option<&Value>) -> Value {
-    let detailed = if args == ["sessions", "list"] {
-        payload.cloned().map(|mut request| {
+    let detailed = payload
+        .filter(|request| {
+            matches!(args, ["sessions", "list" | "show" | "receipt"])
+                && request["schema"] == "hiroute.observation.query/v2"
+        })
+        .cloned()
+        .map(|mut request| {
             request["read_failure_details"] = json!(true);
             request
-        })
-    } else {
-        None
-    };
+        });
     let payload = detailed.as_ref().or(payload);
     let (mut exit, mut value) = command(product, args, payload);
     for _ in 0..2 {
@@ -480,8 +482,12 @@ pub(crate) fn cli(product: &InstalledProduct, args: &[&str], payload: Option<&Va
             value["error"]["code"].clone(),
         )
         .ok();
+        let reason = serde_json::from_value::<
+            hiroute_application_api::ObservationReadFailureReasonV1,
+        >(value["error"]["observation_read"]["reason"].clone())
+        .ok();
         eprintln!(
-            "Windows public business failure: command={command}, stage={stage}, status={status:?}, code={code:?}"
+            "Windows public business failure: command={command}, stage={stage}, status={status:?}, code={code:?}, observation_reason={reason:?}"
         );
     }
     assert_eq!(
