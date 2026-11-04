@@ -65,7 +65,7 @@ export function homeStartupScenarios({ until, control }) {
         };
         c.remount();
         await until(() => document.querySelector('.home-read-error'), 'persistent busy warning');
-        assert(attempts === 3, `Home did not use exactly its bounded three read attempts: ${attempts}`);
+        assert(attempts === 2, `Home did not use exactly one automatic retry: ${attempts}`);
         assert(document.querySelector('.home-read-error button')?.textContent.includes('会话'), 'Persistent failure has no exact-domain retry');
       } finally { c.reset(); await settled(); }
     }),
@@ -100,7 +100,7 @@ export function homeStartupScenarios({ until, control }) {
         window.dispatchEvent(new Event('focus'));
         await until(() => attempts === 2 && !document.querySelector('.home-read-error'), 'replacement focus read');
         rejectFirst(busy); rejectFirst = null;
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise(resolve => setTimeout(resolve, 450));
         assert(attempts === 2, 'Obsolete Home read retried after a newer refresh');
         assert(!document.querySelector('.home-read-error'), 'Obsolete failure replaced the current successful read');
       } finally { rejectFirst?.(busy); c.reset(); await settled(); }

@@ -14,12 +14,13 @@ export function usePlanTrust({ planId, revision, fromMs, toMs, active, groupBy, 
   const [result, setResult] = useState<{ scope: string; report: TrustReport | null; error: string } | null>(null);
   useEffect(() => {
     if (!active || !planId) return;
+    const controller = new AbortController();
     let current = true;
     setResult({ scope, report: null, error: '' });
-    observationRead<TrustReport>('plan_trust', { plan_id: planId, revision, from_ms: fromMs, to_ms: toMs, group_by: groupBy })
+    observationRead<TrustReport>('plan_trust', { plan_id: planId, revision, from_ms: fromMs, to_ms: toMs, group_by: groupBy }, controller.signal)
       .then(report => { if (current) setResult({ scope, report, error: '' }); })
       .catch(cause => { if (current) setResult({ scope, report: null, error: safeDiagnosticCode(cause, 'OBSERVATION_UNAVAILABLE') }); });
-    return () => { current = false; };
+    return () => { current = false; controller.abort(); };
   }, [scope]);
   // Effect cleanup happens after rendering. Never expose the previous read's
   // revision/window even for that render while its replacement is pending.

@@ -163,6 +163,8 @@ pub trait ControlStatePort: Send + Sync {
         Err(ControlReadError::Unavailable)
     }
 
+    fn revisions(&self, workspace: &WorkspaceId) -> Result<RevisionSetV1, ControlReadError>;
+
     fn snapshot(
         &self,
         workspace_id: &WorkspaceId,

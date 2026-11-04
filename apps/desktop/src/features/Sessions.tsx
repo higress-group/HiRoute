@@ -88,10 +88,17 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   const generation = useRef(0);
   const timelineGeneration = useRef(0);
   const factGeneration = useRef(0);
+  const pendingReads = useRef<Partial<Record<'list' | 'timeline' | 'facts', AbortController>>>({});
   const searchMounted = useRef(false);
   const keywordTimer = useRef<number | null>(null);
   const initialTarget = useRef(initialSession);
   const initialRequestTarget = useRef(initialRequest);
+  function startRead(kind: keyof typeof pendingReads.current) {
+    pendingReads.current[kind]?.abort();
+    const controller = new AbortController();
+    pendingReads.current[kind] = controller;
+    return controller.signal;
+  }
   function acceptSummaryVisibility(summaries: Summary[]) {
     // Called only after the read's generation guard. Current metadata supersedes
     // a local cleanup-success hint, including a session revived by new traffic.
@@ -103,6 +110,8 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     });
   }
   function clearTimelineSelection() {
+    pendingReads.current.timeline?.abort();
+    pendingReads.current.facts?.abort();
     timelineGeneration.current++;
     setBusy(false); setTimelineError('');
     setSession(null); setRequests([]); setReadingRequests([]); setRequest(null);
@@ -123,15 +132,16 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
       else { sessionQuery.current = currentWindow(); setSessionCursor(null); }
     }
     const queryWindow = searching ? searchQuery.current : sessionQuery.current;
+    const signal = startRead('list');
     const epoch = ++generation.current; setListBusy(true); setListError('');
     try {
       if (searching) {
-        const page = await read<Page<{ hits: Hit[]; index_partial: boolean }>>('session_search', { ...queryWindow, session_id: null, keyword: effectiveKeyword.trim(), limit: 50, cursor, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: effectiveOnlySwitch });
+        const page = await read<Page<{ hits: Hit[]; index_partial: boolean }>>('session_search', { ...queryWindow, session_id: null, keyword: effectiveKeyword.trim(), limit: 50, cursor, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: effectiveOnlySwitch }, signal);
         if (epoch !== generation.current) return;
         setHits(current => [...new Map((cursor ? [...current, ...page.hits] : page.hits).map(hit => [hit.session_id, hit])).values()]); setSearchCursor(page.next_cursor); setPartial(page.index_partial);
         if (!cursor) clearTimelineSelection();
       } else {
-        const page = await read<Page<{ sessions: Summary[] }>>('sessions', { ...queryWindow, session_id: null, limit: 50, cursor, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: effectiveOnlySwitch });
+        const page = await read<Page<{ sessions: Summary[] }>>('sessions', { ...queryWindow, session_id: null, limit: 50, cursor, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: effectiveOnlySwitch }, signal);
         if (epoch !== generation.current) return;
         acceptSummaryVisibility(page.sessions);
         setListLoaded(true); setSessions(current => cursor ? [...current, ...page.sessions] : page.sessions); setSessionCursor(page.next_cursor); setHits([]); setPartial(false);
@@ -148,7 +158,10 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     initialRequestTarget.current = null;
     if (target) void timeline(target, null, undefined, targetRequest);
     void load();
-    return () => { generation.current++; };
+    return () => {
+      generation.current++;
+      for (const controller of Object.values(pendingReads.current)) controller.abort();
+    };
   }, [reload, refreshVersion, active]);
   // Refresh just the selected summary. List pagination keeps its original window
   // and order; a newer selected row must not restart that query or its selection.
@@ -193,8 +206,10 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     return () => { window.clearTimeout(timer); if (keywordTimer.current === timer) keywordTimer.current = null; };
   }, [keyword]);
   async function timeline(id: string, cursor: string | null = null, hit?: Hit, exactRequest?: string | null) {
+    const signal = startRead('timeline');
     const epoch = ++timelineGeneration.current; setBusy(true); setTimelineError('');
     if (!cursor) {
+      pendingReads.current.facts?.abort();
       timelineQuery.current = { from_ms: 0, to_ms: Date.now() + 1 };
       const initialRequest = hit?.request_id ?? exactRequest ?? null;
       setFocusedRequest(exactRequest ?? null); setSessionView(hit || exactRequest ? 'conversation' : null);
@@ -211,12 +226,12 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
         only_model_switch: false,
       };
       const [page, summaryPage] = await Promise.all([
-        read<Page<{ requests: Request[] }>>('timeline', { ...exactQuery, limit: 50, cursor }),
+        read<Page<{ requests: Request[] }>>('timeline', { ...exactQuery, limit: 50, cursor }, signal),
         cursor || sessions.some(item => item.session_id === id)
           ? Promise.resolve(null)
-          : read<Page<{ sessions: Summary[] }>>('sessions', { ...exactQuery, limit: 1, cursor: null }),
+          : read<Page<{ sessions: Summary[] }>>('sessions', { ...exactQuery, limit: 1, cursor: null }, signal),
       ]);
-      if (epoch !== timelineGeneration.current) return;
+      if (signal.aborted || epoch !== timelineGeneration.current) return;
       if (exactRequest && !page.requests.some(item => item.request_id === exactRequest)) setTimelineError('OBSERVATION_REQUEST_UNAVAILABLE');
       if (!cursor && summaryPage?.sessions[0]) { acceptSummaryVisibility(summaryPage.sessions); setFocusedSummary(summaryPage.sessions[0]); }
       setRequests(current => cursor ? [...current, ...page.requests] : page.requests); setRequestCursor(page.next_cursor);
@@ -225,22 +240,23 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
         setRequest(first);
         setReadingRequests(first ? [first] : []);
       }
-    } catch (e) { if (epoch === timelineGeneration.current) setTimelineError(errorCode(e)); }
+    } catch (e) { if (!signal.aborted && epoch === timelineGeneration.current) setTimelineError(errorCode(e)); }
     finally { if (epoch === timelineGeneration.current) setBusy(false); }
   }
   async function loadFacts(next: string | null = null) {
     if (!request) return;
+    const signal = startRead('facts');
     const selectedRequest = request;
     if (!next) setFactsRequest(selectedRequest);
     const epoch = ++factGeneration.current; setFactsBusy(true); setFactsError('');
     try {
-      const page = await read<Page<{ facts: SafeFact[]; projection_partial: boolean }>>('facts', { request_id: selectedRequest, limit: 50, cursor: next });
-      if (epoch !== factGeneration.current || request !== selectedRequest) return;
+      const page = await read<Page<{ facts: SafeFact[]; projection_partial: boolean }>>('facts', { request_id: selectedRequest, limit: 50, cursor: next }, signal);
+      if (signal.aborted || epoch !== factGeneration.current || request !== selectedRequest) return;
       setFacts(current => next ? [...current, ...page.facts] : page.facts);
       setFactCursor(page.next_cursor);
       setFactPartial(page.projection_partial);
     } catch (e) {
-      if (epoch === factGeneration.current) setFactsError(errorCode(e));
+      if (!signal.aborted && epoch === factGeneration.current) setFactsError(errorCode(e));
     } finally {
       if (epoch === factGeneration.current) setFactsBusy(false);
     }
@@ -250,6 +266,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   }
   async function clearSession(data_class: 'content_only' | 'facts_and_content') {
     if (!session) return;
+    for (const controller of Object.values(pendingReads.current)) controller.abort();
     setBusy(true); setCleanupError(''); generation.current++; timelineGeneration.current++; factGeneration.current++;
     try {
       const selectedSession = session;
@@ -318,6 +335,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     setFactsRequest(null);
     factGeneration.current++;
     if ((factsOpen || selectedRequest?.within_request_fallback === true) && request) void loadFacts();
+    return () => pendingReads.current.facts?.abort();
   }, [factsOpen, request, selectedRequest?.within_request_fallback]);
 
   // A failed read keeps the tab so its explanation and Retry stay reachable; only a confirmed empty read hides it.

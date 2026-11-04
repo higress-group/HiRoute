@@ -14,9 +14,8 @@ impl ObservationControl {
         let started = std::time::Instant::now();
         let generation = self
             .state
-            .snapshot(&self.workspace_id)
-            .map_err(map_control)?
-            .revisions;
+            .revisions(&self.workspace_id)
+            .map_err(map_control)?;
         let observation = self.service.observed_trust_generation(reader, now)?;
         let binding = reader.binding()?;
         let mut ids = self
@@ -176,9 +175,8 @@ impl ObservationControl {
         }
         if self
             .state
-            .snapshot(&self.workspace_id)
+            .revisions(&self.workspace_id)
             .map_err(map_control)?
-            .revisions
             != generation
         {
             return Err(ObservationQueryError::StalePreview);

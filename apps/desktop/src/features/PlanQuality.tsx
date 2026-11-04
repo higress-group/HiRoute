@@ -55,6 +55,7 @@ export function PlanQuality({
   const [error, setError] = useState('');
   const [groupBy, setGroupBy] = useState<TrustGrouping>('model');
   const generation = useRef(0);
+  const pendingRead = useRef<AbortController | null>(null);
   // A detail filter or next page must retain exactly the same time window.
   const window = useMemo(() => {
     return planQualityWindow(period, Date.now());
@@ -72,10 +73,13 @@ export function PlanQuality({
   const readScope = useMemo(() => ({ window, revision }), [window, revision]);
   const pairedScope = useRef<typeof readScope | null>(null);
 
-  async function load(next: string | null = null, captureRouting = false) {
+  async function load(next: string | null = null) {
     if (!active || !revisionReady || (!planId && !sessionId)) return;
+    pendingRead.current?.abort();
+    const controller = new AbortController();
+    pendingRead.current = controller;
     const epoch = ++generation.current;
-    if (captureRouting) pairedScope.current = readScope;
+    const captureRouting = pairedScope.current !== readScope;
     setBusy(true); setError('');
     try {
       const page = await observationRead<Page>('plan_quality', {
@@ -86,11 +90,14 @@ export function PlanQuality({
         from_ms: window.from, to_ms: window.to,
         competence: score === 'high' ? 'meets_floor' : score === 'low' ? 'below_floor' : null,
         unrated_only: score === 'unrated', limit: 20, cursor: next,
-      });
-      // Aggregate routing evidence belongs to the base read paired with PlanTrust.
-      // Detail reads can be clipped by a later retention clock and must not replace it.
-      if (captureRouting && pairedScope.current === readScope) setRoutingSummary(page.routing_observations ?? null);
+      }, controller.signal);
       if (epoch !== generation.current) return;
+      // Keep the first accepted routing evidence for the PlanTrust scope.
+      // Later detail reads can be clipped by a newer retention clock.
+      if (captureRouting) {
+        pairedScope.current = readScope;
+        setRoutingSummary(page.routing_observations ?? null);
+      }
       setSummary(page.summary);
       const stages = selected && !selected.execution && !selected.trustRow ? [] : page.samples;
       setSamples(current => next ? [...current, ...stages] : stages);
@@ -102,7 +109,7 @@ export function PlanQuality({
         const result = await observationRead<{ requests: { session_id: string; request_id: string; final_native_model: string | null }[] }>('timeline', {
           session_id: session, request_id: request, from_ms: 0, to_ms: window.to,
           only_model_switch: false, limit: 1, cursor: null,
-        });
+        }, controller.signal);
         return result.requests;
       });
       if (epoch === generation.current) setExecutionModels(current => next ? { ...current, ...models } : models);
@@ -123,8 +130,8 @@ export function PlanQuality({
   useEffect(() => {
     if (!active || !revisionReady) { generation.current++; setBusy(false); setLoaded(false); return; }
     setSamples([]); setExecutionModels({}); setCursor(null); setLoaded(false);
-    void load(null, pairedScope.current !== readScope);
-    return () => { generation.current++; };
+    void load();
+    return () => { generation.current++; pendingRead.current?.abort(); };
   }, [planId, sessionId, readScope, revisionReady, score, selected?.key, active]);
 
   const rows = qualityModelRows(revision !== null && revision === planRevision ? currentModels : [], summary.models);
@@ -174,11 +181,12 @@ export function PlanQuality({
   useEffect(() => {
     setCaught(null);
     if (!active || !planId || !report || groupBy !== 'model' || !regularExecution || !triggers.size) return;
+    const controller = new AbortController();
     let current = true;
-    observationRead<Page>('plan_quality', { plan_id: planId, session_id: null, plan_revision: revision, execution: regularExecution, trust_row: null, from_ms: window.from, to_ms: window.to, competence: 'below_floor', unrated_only: false, limit: 20, cursor: null })
+    observationRead<Page>('plan_quality', { plan_id: planId, session_id: null, plan_revision: revision, execution: regularExecution, trust_row: null, from_ms: window.from, to_ms: window.to, competence: 'below_floor', unrated_only: false, limit: 20, cursor: null }, controller.signal)
       .then(page => { if (current) setCaught(page.samples.filter(sample => triggers.has(sample.segment_id)).slice(0, 4)); })
       .catch(() => { if (current) setCaught([]); });
-    return () => { current = false; };
+    return () => { current = false; controller.abort(); };
   }, [active, planId, report, groupBy, regularKey, revision, window, triggers]);
   const trustRowName = (row: TrustRow) => row.attribution !== 'single' ? text(row.attribution === 'mixed' ? '多个执行模型' : '执行模型未确认', row.attribution === 'mixed' ? 'Multiple execution models' : 'Execution model unknown') : modelNames.get(row.model_configuration_id ?? '') ?? row.model_configuration_id ?? text('未知模型', 'Unknown model');
   const groupTone = (group: 'regular' | 'primary' | null) => group === 'regular' ? 'cyan' : group === 'primary' ? 'purple' : '';

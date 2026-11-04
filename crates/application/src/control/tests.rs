@@ -6,6 +6,10 @@ use super::*;
 struct MemoryControl;
 
 impl ControlStatePort for MemoryControl {
+    fn revisions(&self, workspace: &WorkspaceId) -> Result<RevisionSetV1, ControlReadError> {
+        Ok(self.snapshot(workspace)?.revisions)
+    }
+
     fn snapshot(
         &self,
         _workspace_id: &WorkspaceId,
