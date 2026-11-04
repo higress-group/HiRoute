@@ -296,12 +296,12 @@ def run(repository):
         assert len(Endpoint.requests) == before + 1
         assert Endpoint.requests[-1][1]['model'] == shared['connection']['model']
         print(json.dumps({'scenario': 'decision-v2-real-source-loopback', 'state': 'green',
-            'cases': ['save-without-network', 'exact-admission', '401-key-failover', '400-no-retry',
+            'cases': ['legacy-cli-migration', 'exact-revision-cli-test',
+                      'save-without-network', 'exact-admission', '401-key-failover', '400-no-retry',
                       'stale-digest', 'disabled-source', 'restart', 'published-gateway-route',
                       'frozen-revision', 'source-switch', 'independent-switch',
                       'published-source-disable', 'explicit-compatible-codec',
-                      'stale-source-preview-and-apply', 'legacy-cli-migration',
-                      'exact-revision-cli-test']}), flush=True)
+                      'stale-source-preview-and-apply']}), flush=True)
     finally:
         if model_upstream is not None:
             model_upstream.close()
