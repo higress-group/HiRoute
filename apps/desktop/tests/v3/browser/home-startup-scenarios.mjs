@@ -100,7 +100,7 @@ export function homeStartupScenarios({ until, control }) {
         window.dispatchEvent(new Event('focus'));
         await until(() => attempts === 2 && !document.querySelector('.home-read-error'), 'replacement focus read');
         rejectFirst(busy); rejectFirst = null;
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise(resolve => setTimeout(resolve, 450));
         assert(attempts === 2, 'Obsolete Home read retried after a newer refresh');
         assert(!document.querySelector('.home-read-error'), 'Obsolete failure replaced the current successful read');
       } finally { rejectFirst?.(busy); c.reset(); await settled(); }

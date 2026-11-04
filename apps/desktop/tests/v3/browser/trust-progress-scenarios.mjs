@@ -70,7 +70,7 @@ export function trustProgressScenarios({ fresh, until, control }) {
             throw { source: 'backend', envelope: { error: { code: 'OBSERVATION_UNAVAILABLE',
               observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } } };
           }
-          assert(performance.now() - firstAt >= 90, 'Retry did not honor the busy delay');
+          assert(performance.now() - firstAt >= 390, 'Retry did not honor the busy delay');
           return { suggestions: [], unavailable: [], pending: [] };
         };
       });

@@ -96,6 +96,7 @@ export const productShellRequired = [
   'desktop.home.stale-startup-poll',
   'desktop.home.trust-waits-for-recovery',
   'desktop.home.trust-pending-continues',
+  'desktop.home.trust-busy-recovers',
   'desktop.home.trust-error-and-legacy-retry',
   'desktop.routing.recovered-mapping-session',
   'desktop.connection.unowned-service',
