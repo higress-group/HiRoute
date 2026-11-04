@@ -348,8 +348,11 @@ An ended `Unknown` outcome can have complete cleanup. Its cancel is idempotent;
 reject later observations that would revoke the same run's complete scope-stop
 proof. [Role shutdown](../../crates/daemon/src/role_all.rs) signals the
 [executor](../../crates/daemon/src/delegation/executor/control.rs) and joins Worker
-finalization under its existing deadline before process/store teardown. This
-does not infer ownership from a previous daemon's missing process handle.
+finalization under its existing deadline before process/store teardown.
+[Interrupted lifecycle runs](../../crates/daemon/src/delegation/lifecycle.rs)
+stop their scopes concurrently before taking the finalization lease to record
+stop evidence. The [persistent journal](../../crates/daemon/src/delegation/persistent_journal.rs)
+revokes the attempt credential as soon as it persists an execution failure.
 
 The shared [startup coordinator](../../crates/daemon/src/delegation/lifecycle/startup.rs)
 protects same-daemon Codex borrowed-root initialization and OpenCode database

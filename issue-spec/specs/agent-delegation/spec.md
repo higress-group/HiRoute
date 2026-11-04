@@ -251,8 +251,10 @@ retains its existing idempotency.
 Normal daemon shutdown MUST fence new Worker starts, interrupt admitted execution
 without inventing user cancellation, and join current Worker finalization within
 the existing role shutdown deadline while the stores and owned process objects
-remain available. Stops are requested concurrently rather than granting a fresh
-deadline per task. Already published results retain their outcome. Missing stop
+remain available. Interrupted runs stop their owned scopes concurrently before
+waiting for the shared finalization lease. A persisted execution failure revokes
+model attempt authority before awaiting native cancellation or process cleanup.
+Already published results retain their outcome. Missing stop
 proof after a crash, forced exit or failed cleanup remains explicit and requires
 the existing recovery path; daemon restart alone cannot prove process termination.
 
@@ -265,6 +267,11 @@ the existing recovery path; daemon restart alone cannot prove process terminatio
 
 - **WHEN** the daemon normally shuts down with an admitted native Worker tool running
 - **THEN** it joins bounded owned-process cleanup and durable outcome recording before teardown; after restart the saved stop proof remains authoritative, cancellation cannot reopen a released run, and an independently completed task retains its exact native continuation.
+
+#### Scenario: Stop multiple interrupted Workers during shutdown
+
+- **WHEN** normal shutdown interrupts two running Workers
+- **THEN** each persisted execution failure closes that run's model attempt authority before waiting for ACP cancellation, and both owned process scopes can start stopping before either run records its final stop proof.
 
 ### Requirement: Continue restores exactly the original session
 

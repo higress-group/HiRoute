@@ -534,9 +534,8 @@ impl DelegationRunExecutor {
         .await;
         match worker {
             Ok(result) => {
-                // `lifecycle::execute` acquired this owned lease immediately before making the
-                // terminal state visible. Keep it through stop recording and continuation
-                // retention so Continue can never observe the half-finalized task.
+                // Hold this lease through stop recording and continuation retention so Continue
+                // can never observe a successful but half-finalized task.
                 let _finalizing = result
                     .finalization
                     .expect("the persistent Worker journal acquires finalization");

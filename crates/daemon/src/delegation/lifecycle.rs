@@ -165,8 +165,8 @@ pub struct WorkerRunResult {
     /// True when any adapter-specific native tail needed for a later Continue was durably quiet
     /// before the owned process scope was stopped. Non-Claude profiles have no extra tail gate.
     pub native_history_settled: bool,
-    /// Held from immediately before terminal publication until the executor has recorded stop
-    /// evidence and retained the exact native continuation materials.
+    /// Protects terminal result publication and continuation retention. An interrupted run
+    /// can stop its process before taking the lease to record the stop proof.
     pub(super) finalization: Option<DelegationFinalizationLease>,
 }
 
@@ -357,17 +357,25 @@ pub(crate) async fn execute_with_shutdown(
             }
         }
     };
-    let (execution, finalization, native_history_settled) = match terminal_checkpoint
+    let receipt = terminal_checkpoint
         .as_ref()
-        .and_then(|checkpoint| checkpoint.take_receipt())
-    {
+        .and_then(|checkpoint| checkpoint.take_receipt());
+    // Interrupted runs have no successful result to publish or continuation to retain.
+    // Let their independent OS scopes drain concurrently under the role's shared deadline.
+    let stop_before_finalization =
+        shutdown.is_cancelled() && execution.is_err() && receipt.is_none();
+    let (execution, finalization, native_history_settled) = match receipt {
         Some(receipt) => (
             receipt.execution,
             receipt.finalization,
             receipt.history_settled,
         ),
         None => {
-            let finalization = journal.begin_finalization();
+            let finalization = if stop_before_finalization {
+                None
+            } else {
+                journal.begin_finalization()
+            };
             let execution = match execution {
                 Ok(outcome) => journal.completed(&outcome).map(|()| outcome),
                 Err(error) => {
@@ -385,14 +393,18 @@ pub(crate) async fn execute_with_shutdown(
     );
     let stop_intent_error = early_stop_error.or(cleanup_stop_error);
     // Claude's terminal callback already published/revoked and observed the exact
-    // native file before ACP EOF. Non-Claude/error/cancel paths retain the usual
-    // finalization above; only the outer lifecycle stops the held process scope.
+    // native file before ACP EOF. Only the outer lifecycle stops the held process scope.
     // Even if persistence fails, do not abandon a held child. Return both pieces of evidence.
     let stop = stop_owned(platform, &worker.identity).await;
     if let Some(capture) = progress_capture {
         capture.stop_and_flush().await;
     }
     journal.flush_diagnostics();
+    let finalization = if stop_before_finalization {
+        journal.begin_finalization()
+    } else {
+        finalization
+    };
     Ok(WorkerRunResult {
         execution,
         identity: worker.identity,
