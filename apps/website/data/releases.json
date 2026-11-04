@@ -4,7 +4,7 @@
     {
       "version": "0.5.1",
       "channel": "stable",
-      "published_at": "2026-11-04T22:54:49Z",
+      "published_at": "2026-11-05T00:00:00Z",
       "notes": {
         "zh": "改进 Windows 安装、卸载与手动升级流程，支持运行检测和复制失败诊断；修复后台服务启动 Agent 时未读取最新用户 PATH 的问题。支持独立连接 Codex Desktop，改善 Windows DSH Desktop 发现、Worker 等待与停止、决策错误提示和首页加载。各平台使用更简洁的下载文件名。",
         "en": "Improves Windows setup and manual upgrades with running-app detection and copyable failure diagnostics, and refreshes the user PATH for new Agent processes. Adds an independent Codex Desktop connection and improves Windows DSH Desktop discovery, Worker lifecycle, decision errors, and Home loading. Downloads use shorter versioned filenames."
