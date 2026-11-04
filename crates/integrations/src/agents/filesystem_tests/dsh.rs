@@ -1,6 +1,54 @@
 //! DSH's supported passive source and CLI capability boundaries.
 use super::*;
 
+#[test]
+fn dsh_scan_preserves_unusable_executable_reasons_instead_of_reporting_absence() {
+    let root = tempfile::tempdir().unwrap();
+    let mut selected = layout(root.path());
+    let missing = FilesystemAgentScannerV1::new(selected.clone(), registry());
+    assert!(matches!(
+        missing.scan_dsh().outcome,
+        AgentDiscoveryOutcomeV1::ReportOnly {
+            reason: AgentReportOnlyReasonV1::NotFoundInScope,
+            ..
+        }
+    ));
+    // An existing directory cannot be used as a native executable on either OS.
+    selected.dsh_executable = root.path().to_owned();
+    let scanner = FilesystemAgentScannerV1::new(selected.clone(), registry());
+    for result in [scanner.scan_dsh(), scanner.dsh_settings_discovery()] {
+        #[cfg(unix)]
+        let expected = AgentReportOnlyReasonV1::ExecutableNotRunnable;
+        #[cfg(windows)]
+        let expected = AgentReportOnlyReasonV1::ExecutableProbeUnavailable;
+        assert!(
+            matches!(result.outcome, AgentDiscoveryOutcomeV1::ReportOnly { reason, .. } if reason == expected)
+        );
+    }
+
+    // An existing regular file can pass path admission and still fail to start.
+    let executable = root.path().join("broken-dsh.exe");
+    fs::write(&executable, b"#!/hiroute-test-missing-interpreter\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    selected.dsh_executable = executable;
+    let scanner = FilesystemAgentScannerV1::new(selected, registry());
+    assert!(matches!(
+        scanner.dsh_settings_discovery().outcome,
+        AgentDiscoveryOutcomeV1::Supported { .. }
+    ));
+    assert!(matches!(
+        scanner.scan_dsh().outcome,
+        AgentDiscoveryOutcomeV1::ReportOnly {
+            reason: AgentReportOnlyReasonV1::ExecutableNotRunnable,
+            ..
+        }
+    ));
+}
+
 fn scanner(root: &Path) -> FilesystemAgentScannerV1 {
     let mut layout = layout(root);
     layout.dsh_executable = root.join("bin/dsh");

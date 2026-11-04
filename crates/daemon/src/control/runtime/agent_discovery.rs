@@ -256,7 +256,17 @@ impl LocalControlAdapter {
             .map(|discovery| {
                 let mut agent = discovered_agent(discovery)?;
                 agent.context_id = self.settings_context_for_agent(&agent.agent_id);
-                agent.available_surfaces = self.scanner.available_model_surfaces(&agent.agent_id);
+                agent.available_surfaces = if agent.agent_id == "agent_dsh_desktop" {
+                    // The scan has already checked the current carrier. Avoid repeating
+                    // the Windows installation search just to describe its surface.
+                    agent
+                        .supported
+                        .then_some(hiroute_domain::AgentModelSurfaceV2::DshDesktop)
+                        .into_iter()
+                        .collect()
+                } else {
+                    self.scanner.available_model_surfaces(&agent.agent_id)
+                };
                 if agent.agent_id == "agent_codex_default" {
                     agent.native_model_catalog = codex_catalog.clone();
                     let access = self.codex_access_view()?;

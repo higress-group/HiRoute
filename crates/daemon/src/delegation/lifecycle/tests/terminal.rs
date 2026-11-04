@@ -5,7 +5,7 @@ use crate::delegation::acp::{AcpNativeIdentityContract, AcpTerminalCheckpoint, r
 use crate::delegation::finalization::DelegationFinalization;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use tokio::sync::Notify;
+use tokio::sync::{Barrier, Notify};
 use tokio::task::JoinHandle;
 
 #[derive(Default)]
@@ -89,6 +89,8 @@ struct TailFixture {
     history: PathBuf,
     terminal: Terminal,
     tail_written: Arc<AtomicBool>,
+    prompt_received: Arc<Notify>,
+    concurrent_stops: Option<Arc<Barrier>>,
     task: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -102,6 +104,8 @@ impl TailFixture {
             history: projects.join("native-session.jsonl"),
             terminal,
             tail_written: Arc::default(),
+            prompt_received: Arc::default(),
+            concurrent_stops: None,
             task: Mutex::default(),
         }
     }
@@ -188,6 +192,7 @@ impl WorkerPlatformPort for TailFixture {
         let history = self.history.clone();
         let terminal = self.terminal;
         let tail_written = self.tail_written.clone();
+        let prompt_received = self.prompt_received.clone();
         let task = tokio::spawn(async move {
             let (read, mut write) = tokio::io::split(server);
             let mut lines = BufReader::new(read).lines();
@@ -201,6 +206,7 @@ impl WorkerPlatformPort for TailFixture {
                     "session/prompt" => match terminal {
                         Terminal::WaitForCancel => {
                             pending_prompt = Some(request["id"].clone());
+                            prompt_received.notify_one();
                             continue;
                         }
                         Terminal::Cancelled => json!({"stopReason":"cancelled"}),
@@ -306,7 +312,13 @@ impl WorkerPlatformPort for TailFixture {
     ) -> Result<WorkerStopEvidence, DelegationErrorV1> {
         assert_eq!(identity.handle_id, "held-tail-fixture");
         assert_eq!(bound, STOP_WAIT_MS);
-        assert!(self.journal.finalization.try_acquire().is_none());
+        if let Some(stops) = &self.concurrent_stops {
+            timeout(Duration::from_secs(2), stops.wait())
+                .await
+                .expect("both interrupted Workers must start stopping before either finishes");
+        } else {
+            assert!(self.journal.finalization.try_acquire().is_none());
+        }
         self.journal.events.lock().unwrap().push("stop");
         Ok(WorkerStopEvidence {
             scope: WorkerStopScope::Root,
@@ -552,9 +564,9 @@ async fn interrupted_terminal_checkpoint_retains_lease_completion_and_false_read
 }
 
 #[tokio::test]
-async fn execute_outer_cancel_and_deadline_after_completion_preserve_terminal_receipt() {
+async fn execute_outer_interruptions_after_completion_preserve_terminal_receipt() {
     let mut exercised = Vec::new();
-    for interruption in ["outer-cancel", "deadline"] {
+    for interruption in ["outer-cancel", "deadline", "daemon-shutdown"] {
         let (request, mut input, _directory) = claude_inputs();
         if interruption == "deadline" {
             // The terminal response precedes this bound; the missing native tail
@@ -563,6 +575,7 @@ async fn execute_outer_cancel_and_deadline_after_completion_preserve_terminal_re
         }
         let deadline = input.deadline;
         let cancellation = input.cancellation.clone();
+        let shutdown = CancellationToken::new();
         let journal = Arc::new(TerminalJournal::default());
         let fixture = TailFixture::new(
             journal.clone(),
@@ -584,18 +597,21 @@ async fn execute_outer_cancel_and_deadline_after_completion_preserve_terminal_re
             if interruption == "outer-cancel" {
                 cancellation.cancel();
                 assert!(cancellation.is_cancelled());
+            } else if interruption == "daemon-shutdown" {
+                shutdown.cancel();
+                assert!(shutdown.is_cancelled());
             } else {
                 tokio::time::sleep_until(deadline).await;
                 assert!(Instant::now() >= deadline);
             }
-            // Neither interruption may publish another outcome, revoke twice or
+            // No interruption may publish another outcome, revoke twice or
             // release the finalization lease while the live transport is draining.
             assert_eq!(*journal.events.lock().unwrap(), ["completed", "revoke"]);
             assert!(journal.finalization.try_acquire().is_none());
             assert!(!fixture.task.lock().unwrap().as_ref().unwrap().is_finished());
         };
         let (result, ()) = timeout(Duration::from_secs(4), async {
-            tokio::join!(biased; execute(&fixture, request, input, journal.clone()), interrupt)
+            tokio::join!(biased; execute_with_shutdown(&fixture, request, input, journal.clone(), shutdown.clone()), interrupt)
         })
         .await
         .unwrap();
@@ -616,7 +632,58 @@ async fn execute_outer_cancel_and_deadline_after_completion_preserve_terminal_re
         assert!(journal.finalization.try_acquire().is_some());
         exercised.push(interruption);
     }
-    assert_eq!(exercised, ["outer-cancel", "deadline"]);
+    assert_eq!(exercised, ["outer-cancel", "deadline", "daemon-shutdown"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+async fn daemon_shutdown_stops_independent_workers_concurrently() {
+    let finalization = Arc::new(DelegationFinalization::default());
+    let stops = Arc::new(Barrier::new(2));
+    let shutdown = CancellationToken::new();
+    let mut workers = Vec::new();
+    for _ in 0..2 {
+        let (request, mut input, directory) = claude_inputs();
+        input.deadline = Instant::now() + Duration::from_secs(15);
+        let journal = Arc::new(TerminalJournal {
+            finalization: finalization.clone(),
+            ..Default::default()
+        });
+        let mut fixture = TailFixture::new(
+            journal.clone(),
+            &request.profile.session_root,
+            Terminal::WaitForCancel,
+        );
+        fixture.concurrent_stops = Some(stops.clone());
+        let ready = fixture.prompt_received.clone();
+        let shutdown = shutdown.clone();
+        let worker = tokio::spawn(async move {
+            let _directory = directory;
+            let result = execute_with_shutdown(&fixture, request, input, journal, shutdown)
+                .await
+                .unwrap();
+            assert!(matches!(
+                result.execution,
+                Err(DelegationErrorV1::ProtocolFailed)
+            ));
+            assert!(result.stop.as_ref().unwrap().scope_stopped);
+            assert!(result.finalization.is_some());
+            drop(result);
+            fixture.joined().await;
+        });
+        workers.push((worker, ready));
+    }
+    for (_, ready) in &workers {
+        timeout(Duration::from_secs(5), ready.notified())
+            .await
+            .expect("Worker prompt must be active before shutdown");
+    }
+    shutdown.cancel();
+    for (worker, _) in workers {
+        timeout(Duration::from_secs(6), worker)
+            .await
+            .expect("Worker did not finish shutdown")
+            .unwrap();
+    }
 }
 
 /// ACP EOF belongs to the transport. This independently retained platform object

@@ -327,9 +327,10 @@ impl ApplicationService {
             }
         };
         match result {
-            Ok(agents) => succeeded(
-                hiroute_application_api::AgentDiscoveryListV1 { agents },
+            Ok(agents) => control_plane::agent_discovery::response(
+                agents,
                 request.request_id,
+                request.operation_id == "ScanAgents",
             ),
             Err(error) => failed(map_control_error(error), request.request_id),
         }

@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hiroute_application::delegation::safety::{RunSafetyBinding, RunSafetyProjection};
@@ -107,6 +107,8 @@ pub struct DelegationRunExecutor {
     gateway: RwLock<Option<SocketAddr>>,
     diagnostics: RwLock<DiagnosticsPort>,
     active: Mutex<BTreeSet<(String, String, String)>>,
+    idle: Condvar,
+    shutdown: CancellationToken,
 }
 
 impl DelegationRunExecutor {
@@ -137,6 +139,8 @@ impl DelegationRunExecutor {
             gateway: RwLock::new(None),
             diagnostics: RwLock::new(DiagnosticsPort::default()),
             active: Mutex::new(BTreeSet::new()),
+            idle: Condvar::new(),
+            shutdown: CancellationToken::new(),
         }
     }
 
@@ -224,6 +228,17 @@ impl DelegationRunExecutor {
                 .active
                 .lock()
                 .map_err(|_| DelegationErrorV1::StorageUnavailable)?;
+            if self.shutdown.is_cancelled() {
+                drop(active);
+                self.fail_before_launch(
+                    &context,
+                    workspace,
+                    run_id,
+                    "daemon-shutdown",
+                    DelegationErrorV1::ProtocolFailed,
+                )?;
+                return Err(DelegationErrorV1::CapabilityUnavailable);
+            }
             if !active.insert(key.clone()) {
                 // Another run of this workspace already holds the single execution slot.
                 context.emit(DiagnosticEvent::RunAdmission(RunAdmission {
@@ -263,13 +278,21 @@ impl DelegationRunExecutor {
                         &thread_workspace,
                         &thread_run_id,
                         "runtime-build",
+                        DelegationErrorV1::CapabilityUnavailable,
                     );
                 }
                 executor.remove_active(&thread_key);
             });
         if spawned.is_err() {
+            let failed = self.fail_before_launch(
+                &context,
+                &workspace,
+                &run_id,
+                "thread-spawn",
+                DelegationErrorV1::CapabilityUnavailable,
+            );
             self.remove_active(&key);
-            self.fail_before_launch(&context, &workspace, &run_id, "thread-spawn")?;
+            failed?;
         }
         Ok(())
     }
@@ -277,6 +300,7 @@ impl DelegationRunExecutor {
     fn remove_active(&self, key: &(String, String, String)) {
         if let Ok(mut active) = self.active.lock() {
             active.remove(key);
+            self.idle.notify_all();
         }
     }
 
@@ -290,8 +314,9 @@ impl DelegationRunExecutor {
         let result = self
             .execute_inner(context, workspace, run_id, workspace_path)
             .await;
-        if result.is_err() {
-            let _ = self.fail_before_launch(context, workspace, run_id, "executor-unexpected");
+        if let Err(error) = result {
+            let _ =
+                self.fail_before_launch(context, workspace, run_id, "executor-unexpected", error);
         }
     }
 
@@ -302,6 +327,15 @@ impl DelegationRunExecutor {
         run_id: &str,
         workspace_path: PathBuf,
     ) -> Result<(), DelegationErrorV1> {
+        if self.shutdown.is_cancelled() {
+            return self.fail_before_launch(
+                context,
+                workspace,
+                run_id,
+                "daemon-shutdown",
+                DelegationErrorV1::ProtocolFailed,
+            );
+        }
         let run = self
             .runtime
             .run(workspace, run_id)?
@@ -341,12 +375,24 @@ impl DelegationRunExecutor {
         let version = match self.versions.lookup_exact(&plan_reference(&task)) {
             Ok(version) => version,
             Err(_) => {
-                self.fail_before_launch(context, workspace, run_id, "exact-version")?;
+                self.fail_before_launch(
+                    context,
+                    workspace,
+                    run_id,
+                    "exact-version",
+                    DelegationErrorV1::ResumeUnavailable,
+                )?;
                 return Ok(());
             }
         };
         let Some(work) = version.configuration.work.as_ref() else {
-            self.fail_before_launch(context, workspace, run_id, "missing-worker-plan")?;
+            self.fail_before_launch(
+                context,
+                workspace,
+                run_id,
+                "missing-worker-plan",
+                DelegationErrorV1::CapabilityUnavailable,
+            )?;
             return Ok(());
         };
         if !version_matches_task(
@@ -355,7 +401,13 @@ impl DelegationRunExecutor {
             work,
             version.compiled.model_alias().as_str(),
         ) {
-            self.fail_before_launch(context, workspace, run_id, "version-mismatch")?;
+            self.fail_before_launch(
+                context,
+                workspace,
+                run_id,
+                "version-mismatch",
+                DelegationErrorV1::Conflict,
+            )?;
             return Ok(());
         }
         let pair = RunCredentialPair::generate()?;
@@ -461,7 +513,7 @@ impl DelegationRunExecutor {
             profile,
             deadline_unix_ms: run.deadline_ms,
         };
-        let worker = lifecycle::execute(
+        let worker = lifecycle::execute_with_shutdown(
             self.platform.as_ref(),
             launch,
             AcpRunInput {
@@ -477,13 +529,13 @@ impl DelegationRunExecutor {
                 cancellation,
             },
             journal.clone(),
+            self.shutdown.clone(),
         )
         .await;
         match worker {
             Ok(result) => {
-                // `lifecycle::execute` acquired this owned lease immediately before making the
-                // terminal state visible. Keep it through stop recording and continuation
-                // retention so Continue can never observe the half-finalized task.
+                // Hold this lease through stop recording and continuation retention so Continue
+                // can never observe a successful but half-finalized task.
                 let _finalizing = result
                     .finalization
                     .expect("the persistent Worker journal acquires finalization");
@@ -579,6 +631,7 @@ impl DelegationRunExecutor {
         workspace: &WorkspaceId,
         run_id: &str,
         stage: &str,
+        error: DelegationErrorV1,
     ) -> Result<(), DelegationErrorV1> {
         let run = self
             .runtime
@@ -600,8 +653,12 @@ impl DelegationRunExecutor {
             run_id,
             run.progress.revision,
             &event_id,
-            &hiroute_domain::delegation::DelegationCheckpointV1::Progress {
+            &hiroute_domain::delegation::DelegationCheckpointV1::ExecutionFailed {
                 event: RunEventV1::LaunchFailedBeforeSpawn,
+                failure: hiroute_domain::delegation::WorkerExecutionFailureV1 {
+                    stage: hiroute_domain::delegation::WorkerExecutionStageV1::Preparation,
+                    error,
+                },
             },
         )?;
         context.emit(DiagnosticEvent::TaskLifecycle(TaskLifecycle {

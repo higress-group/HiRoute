@@ -129,6 +129,10 @@ struct StartupJournal {
 }
 
 impl AcpRunJournal for StartupJournal {
+    fn phase_started(&self, stage: hiroute_domain::delegation::WorkerExecutionStageV1) {
+        self.inner.phase_started(stage);
+    }
+
     fn initialized(&self) {
         self.permit.initialized();
         self.inner.initialized();

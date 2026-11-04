@@ -154,7 +154,7 @@ verification button or status badge.
 
 ## DSH static composition
 
-The Web and official macOS Desktop entries have separate subjects and native
+The Web and official macOS/Windows Desktop entries have separate subjects and native
 profiles. [Desktop admission](../dsh_desktop.rs) uses the app-owned Electron
 carrier and public bundled CLI, with standard Desktop manifest validation; it
 never changes the existing Web target or requires an npm CLI. Each profile owns
@@ -164,6 +164,16 @@ composition evidence. Actual Desktop loading and provenance need native acceptan
 Desktop Restore uses retained file ownership even when the app is gone; custom
 Desktop bundle/dependency composition blocks new Configure. Passive source import,
 Worker ACP and shared Skills remain under the existing Web/CLI entry.
+
+Windows Desktop discovery checks current per-user and machine Programs directories, then
+bounded matching uninstall registrations for custom installation locations.
+The carrier uses its sibling `resources/app.asar`; macOS retains the app bundle
+layout. Registry locations are hints and still require native path admission.
+Windows probes launch with explicit environment values and isolated AppData roots.
+Web discovery uses the daemon's PATH and preserves lookup and startup failures.
+Explicit scans return
+context-scoped rescan actions with closed remediation reasons; no PATH or native
+output is returned.
 
 DSH uses the same per-provider ownership, protected grant, stale-preview and
 restore engine. Its leaf is [dsh_config.rs](../dsh_config.rs): bounded static YAML

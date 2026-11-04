@@ -16,7 +16,7 @@ use hiroute_application_api::{
     ClientHelloV1, LOCAL_CONTROL_SCHEMA_V2, LocalControlWireRequestV2, MACHINE_ENVELOPE_SCHEMA_V2,
     MachineEnvelopeV2, SchemaVersion, ServerHelloV1,
 };
-use hiroute_product_e2e::control::ControlShellScenarioV1;
+use hiroute_product_e2e::control::{ControlShellScenarioV1, redact_discovery_connection_paths};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -198,34 +198,16 @@ fn control_shell_uses_real_hiroute_and_hirouted_processes() {
         assert!(qoder["registered_configuration"].is_null());
         assert!(qoder["discovered_credential"].is_null());
         assert!(!internal.to_string().contains(secret_sentinel));
-        // Owner-only connection controls intentionally expose the exact directory
-        // used by copied commands. No other discovery field may expose paths.
+        // Only verified owner-local connection paths are excluded from the privacy check.
         let mut redacted = internal.clone();
         let agents = redacted["data"]["agents"].as_array_mut().unwrap();
-        let codex = agents
-            .iter_mut()
-            .find(|agent| agent["agent_id"] == "agent_codex_default")
-            .unwrap();
-        let access = codex["codex_access"].as_object_mut().unwrap();
-        let home = agent_home.join(".codex");
-        assert_eq!(access.remove("codex_home").unwrap(), json!(home));
-        assert_eq!(
-            access.remove("target_file").unwrap(),
-            json!(home.join("hiroute.config.toml"))
-        );
-        let commands = access.remove("commands").unwrap();
-        let commands = commands.as_object().unwrap();
-        assert_eq!(commands.len(), 3);
-        for shell in ["bash/zsh", "fish", "PowerShell"] {
-            let command = commands[shell].as_str().unwrap();
-            assert!(command.contains(home.to_str().unwrap()));
-            assert!(command.contains("codex --profile hiroute"));
-        }
-        assert!(
-            !redacted
-                .to_string()
-                .contains(agent_home.to_string_lossy().as_ref())
-        );
+        assert!(redact_discovery_connection_paths(
+            agents,
+            &agent_home,
+            &storage_root.with_file_name("storage.codex-desktop"),
+        ));
+        let redacted = redacted.to_string();
+        assert!(!redacted.contains(temporary.path().to_string_lossy().as_ref()));
     }
 
     for (command_id, arguments) in [

@@ -30,6 +30,12 @@ or administrator privileges. It never replaces an existing entry. Callers own sk
 selection, same-name handling and retention; this primitive grants no source deletion
 authority. Windows junction targets cannot be network shares.
 
+`windows::installed_apps` reads bounded current-user/machine uninstall registration
+locations in both registry views. These are discovery hints only; the Agent owner
+selects the product and validates executable/archive identity through the existing
+native path boundary. Registry inspection never launches registered commands or
+changes borrowed files, permissions or registration.
+
 `private_fs` is the cross-platform entry for new private directories/files, storage
 directory preparation, regular/private handle reads, single-link checks and owned
 temporary directory removal. Unix and Windows implementations stay in separate

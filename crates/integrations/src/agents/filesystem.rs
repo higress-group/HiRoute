@@ -141,8 +141,11 @@ pub struct AgentFilesystemLayoutV1 {
     pub opencode_executable: PathBuf,
     pub opencode_context: Option<super::OpenCodeNativeContext>,
     pub dsh_executable: PathBuf,
-    /// Official macOS Desktop carrier, independently installed from the npm CLI.
+    /// Selected Desktop carrier. Windows resolves the installed carrier on demand
+    /// when this path is unset.
     pub dsh_desktop_executable: Option<PathBuf>,
+    #[cfg(windows)]
+    dsh_desktop_installation_roots: Vec<PathBuf>,
     pub dsh_config_root: PathBuf,
     pub qoder_home: PathBuf,
     pub qoder_config_root: PathBuf,
@@ -192,7 +195,14 @@ impl AgentFilesystemLayoutV1 {
             qoder_executable: PathBuf::from("qoder"),
             pi_executable: PathBuf::from("pi"),
             dsh_executable: PathBuf::from("dsh"),
+            #[cfg(not(windows))]
             dsh_desktop_executable: dsh_desktop::installed_executable(home),
+            #[cfg(windows)]
+            dsh_desktop_executable: None,
+            #[cfg(windows)]
+            dsh_desktop_installation_roots: dsh_desktop::windows_installation_roots(home, |key| {
+                std::env::var_os(key)
+            }),
             opencode_executable: PathBuf::from("opencode"),
             opencode_context: super::OpenCodeNativeContext::from_environment(home).ok(),
             dsh_config_root: std::env::var_os("DSH_HOME")

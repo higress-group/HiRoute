@@ -580,11 +580,21 @@ Source SPEC comments:
 
 ### Requirement: DSH Desktop owns an independent native model target
 
-The official macOS DSH Desktop installation SHALL be discoverable independently of
+The official macOS and Windows DSH Desktop installations SHALL be discoverable independently of
 an npm DSH CLI. Its model entry SHALL use `agent_dsh_desktop` and surface
 `dsh_desktop`, retaining the registered DSH integration profile. Existing
 `agent_dsh_default` Web settings and their restoration authority SHALL retain
 their identity and `profiles/web/cordis.patch.yml` target.
+
+Windows discovery SHALL inspect the standard per-user Programs directory and
+machine Programs directories without requiring a shell PATH entry. A rescan SHALL
+observe installations added since HiRoute started. It SHALL also
+accept absolute installation-location hints from matching current-user and machine
+uninstall registrations. Registry inspection SHALL be bounded and read-only;
+registration alone SHALL NOT prove an executable or configuration capability.
+The Windows carrier SHALL use its sibling `resources/app.asar`; macOS SHALL retain
+its bundle-owned `Contents/Resources/app.asar`. Native path/alias admission and
+configuration ownership SHALL remain unchanged.
 
 Desktop configuration SHALL use the selected DSH_HOME's
 `profiles/desktop/cordis.patch.yml`. Provider mapping, bundled routing adapter and
@@ -597,6 +607,8 @@ removed; missing or unsupported installation SHALL block new Configure attempts.
 
 Configure SHALL verify the installed app's bundled public CLI in an isolated
 HOME, DSH_HOME and working directory, without activating user plugins or models.
+On Windows, bundled version and composition probes SHALL exclude the daemon's
+ambient environment and use isolated AppData roots.
 The shipped Desktop profile uses the standard Web bundles; because upstream
 forbids a Desktop-profile CLI dump, admission SHALL combine the bundled CLI's
 standard Web composition with the actual Desktop manifest and static patches.
@@ -619,6 +631,16 @@ Gateway request provenance; those require native client evidence.
 - **AND** Web configuration SHALL retain its previous content and ownership
 - **WHEN** HiRoute restarts and the Desktop app is removed
 - **THEN** the retained Desktop operation SHALL still restore only its owned model configuration and adapter.
+
+#### Scenario: Windows installation discovery and Web scan diagnostics
+
+- **GIVEN** official DSH Desktop is installed in a standard Windows Programs directory or a matching registered custom directory
+- **WHEN** the user scans Agents without an npm DSH CLI on PATH
+- **THEN** the Desktop entry SHALL be discovered independently of the Web entry and use the bundled public CLI and Windows archive location
+- **WHEN** Web executable lookup or launch fails
+- **THEN** scanning SHALL distinguish no matching executable from an unusable or unavailable entry, preserving the existing report-only states
+- **AND** the scan envelope SHALL offer a context-scoped rescan with a fixed reason indicating whether to check the daemon PATH, executable installation or path access
+- **AND** diagnostics SHALL NOT disclose environment values, native output, credentials or user configuration contents.
 
 ### Requirement: DSH configuration uses public static composition
 
@@ -1238,6 +1260,7 @@ Source SPEC comments:
 
 ## Implementation references
 
+- [Windows DSH Desktop discovery and Web scan diagnostics](https://github.com/higress-group/HiRoute/issues/361).
 - [Shared settings transaction](../../../crates/application/src/agent_connection/settings/transaction.rs)
   and [native supplemental-provider guide](../../../crates/integrations/src/agents/additional_native/README.md).
 - [Codex slot/restore scenarios](../../../crates/daemon/src/control/runtime/settings_profile_tests.rs)

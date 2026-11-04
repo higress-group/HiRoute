@@ -36,6 +36,24 @@ pub(super) fn checkpoint(
     if run.progress.revision != revision {
         return Err(DelegationErrorV1::Conflict);
     }
+    // A run has one immutable process binding. Once its owned scope is proven stopped,
+    // a later lookup of a released/lost handle cannot revoke that durable proof.
+    if run
+        .stop_evidence
+        .is_some_and(|evidence| evidence.scope_stopped && !evidence.residual_unknown)
+        && matches!(
+            event,
+            DelegationCheckpointV1::ProcessObserved { .. }
+                | DelegationCheckpointV1::ProcessStopped { .. }
+                | DelegationCheckpointV1::Progress {
+                    event: RunEventV1::ProcessRunning
+                        | RunEventV1::ProcessUnknown
+                        | RunEventV1::RootProcessExited { .. }
+                }
+        )
+    {
+        return Err(DelegationErrorV1::Conflict);
+    }
     if let DelegationCheckpointV1::ExecutionFailed { event, failure } = event {
         if !matches!(
             event,

@@ -1,4 +1,5 @@
 //! DSH standard Web model target and native Skill resources; no internal SDK or history reader.
+use super::super::executable::{self, ProbeFailure};
 use super::*;
 use hiroute_domain::{AgentCapability, CapabilityState};
 
@@ -50,7 +51,7 @@ impl FilesystemAgentScannerV1 {
             .join("skills/hiroute-collaboration/SKILL.md")
     }
     pub fn dsh_executable_target(&self) -> Option<PathBuf> {
-        super::super::executable::resolve(&self.layout.dsh_executable)
+        executable::resolve(&self.layout.dsh_executable)
             .ok()
             .flatten()
     }
@@ -132,19 +133,36 @@ impl FilesystemAgentScannerV1 {
         self.dsh_discovery(true)
     }
     fn dsh_discovery(&self, version_diagnostic: bool) -> FilesystemAgentDiscoveryV1 {
-        let Some(executable) = self.dsh_executable_target() else {
-            return probe_report(
-                "agent_dsh_default",
-                AgentKindV1::DeepseekHarness,
-                ExecutableProbe::NotFound,
-            );
+        // Do not erase a denied/invalid PATH candidate as "not installed". In
+        // particular, Windows rejects reparse aliases before looking further.
+        let executable = match executable::resolve(&self.layout.dsh_executable) {
+            Ok(Some(executable)) => executable,
+            result => {
+                return probe_report(
+                    "agent_dsh_default",
+                    AgentKindV1::DeepseekHarness,
+                    match result {
+                        Ok(None) => ExecutableProbe::NotFound,
+                        Err(reason) => ExecutableProbe::Unknown(reason),
+                        Ok(Some(_)) => unreachable!(),
+                    },
+                );
+            }
         };
-        // Version output is diagnostic, not configuration authority. Settings
-        // snapshots recheck the native files/path without launching the engine.
+        // A process that starts does not need to report a version. Settings
+        // snapshots recheck native files/path without launching the engine.
         let version = if version_diagnostic {
             match executable_probe(&executable) {
                 ExecutableProbe::Installed(value) => value.version,
-                _ => String::new(),
+                result => {
+                    let result = match result {
+                        ExecutableProbe::Unknown(ProbeFailure::LaunchFailed(_)) => {
+                            ExecutableProbe::Unknown(ProbeFailure::NotExecutable)
+                        }
+                        other => other,
+                    };
+                    return probe_report("agent_dsh_default", AgentKindV1::DeepseekHarness, result);
+                }
             }
         } else {
             "not-probed".into()
@@ -236,7 +254,7 @@ impl FilesystemAgentScannerV1 {
             },
             "skill",
         ])?;
-        let cli = super::super::executable::resolve(cli)
+        let cli = executable::resolve(cli)
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
         if before != self.dsh_native_contract(false)? {
@@ -255,7 +273,7 @@ impl FilesystemAgentScannerV1 {
                 .ok_or(AgentFilesystemScanError::SourceUnavailable)?,
         );
         command.args(["--profile", "acp", "--dump-default-config"]);
-        check_composition(&dsh_public_probe(command)?, required)
+        check_composition(&dsh_public_probe(command, true)?, required)
     }
 }
 
@@ -278,6 +296,7 @@ pub(super) fn check_composition(
 #[cfg(any(unix, windows))]
 pub(super) fn dsh_public_probe(
     mut command: std::process::Command,
+    _inherit_windows_environment: bool,
 ) -> Result<zeroize::Zeroizing<Vec<u8>>, AgentFilesystemScanError> {
     let root = tempfile::tempdir().map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
     command
@@ -327,7 +346,7 @@ pub(super) fn dsh_public_probe(
     {
         let result = super::super::windows_runtime::bounded(
             &command,
-            true,
+            _inherit_windows_environment,
             std::time::Duration::from_secs(15),
             2 * 1024 * 1024,
         );

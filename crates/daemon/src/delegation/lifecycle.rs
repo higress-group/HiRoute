@@ -165,16 +165,34 @@ pub struct WorkerRunResult {
     /// True when any adapter-specific native tail needed for a later Continue was durably quiet
     /// before the owned process scope was stopped. Non-Claude profiles have no extra tail gate.
     pub native_history_settled: bool,
-    /// Held from immediately before terminal publication until the executor has recorded stop
-    /// evidence and retained the exact native continuation materials.
+    /// Protects terminal result publication and continuation retention. An interrupted run
+    /// can stop its process before taking the lease to record the stop proof.
     pub(super) finalization: Option<DelegationFinalizationLease>,
 }
 
+#[cfg(test)]
 pub(crate) async fn execute(
+    platform: &dyn WorkerPlatformPort,
+    request: WorkerLaunchRequest,
+    input: AcpRunInput,
+    journal: Arc<dyn WorkerRunJournal>,
+) -> Result<WorkerRunResult, DelegationErrorV1> {
+    execute_with_shutdown(
+        platform,
+        request,
+        input,
+        journal,
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+}
+
+pub(crate) async fn execute_with_shutdown(
     platform: &dyn WorkerPlatformPort,
     request: WorkerLaunchRequest,
     mut input: AcpRunInput,
     journal: Arc<dyn WorkerRunJournal>,
+    shutdown: tokio_util::sync::CancellationToken,
 ) -> Result<WorkerRunResult, DelegationErrorV1> {
     let platform_facts = match platform.capabilities(&request.profile) {
         Ok(facts) => facts,
@@ -204,13 +222,15 @@ pub(crate) async fn execute(
     }
     let terminal_checkpoint = ClaudeHistoryCheckpoint::capture(&request.profile, &input)
         .map(|history| Arc::new(LiveTerminalCheckpoint::new(journal.clone(), history)));
-    let startup = match startup::StartupPermit::acquire(
-        request.profile.native_initialization_root(),
-        input.deadline,
-        &input.cancellation,
-    )
-    .await
-    {
+    let startup = match tokio::select! {
+        biased;
+        _ = shutdown.cancelled() => Err(DelegationErrorV1::ProtocolFailed),
+        result = startup::StartupPermit::acquire(
+            request.profile.native_initialization_root(),
+            input.deadline,
+            &input.cancellation,
+        ) => result,
+    } {
         Ok(permit) => permit,
         Err(error) => {
             let _ = journal.execution_failed(error);
@@ -234,6 +254,10 @@ pub(crate) async fn execute(
         _ = input.cancellation.cancelled() => {
             let _ = journal.execution_failed(DelegationErrorV1::Cancelled);
             return Err(DelegationErrorV1::Cancelled);
+        }
+        _ = shutdown.cancelled() => {
+            let _ = journal.execution_failed(DelegationErrorV1::ProtocolFailed);
+            return Err(DelegationErrorV1::ProtocolFailed);
         }
         result = timeout_at(input.deadline, platform.launch(request)) => {
             let result = match result {
@@ -304,6 +328,17 @@ pub(crate) async fn execute(
                     acp_cancel.cancel();
                     future.await
                 },
+                _ = shutdown.cancelled() => {
+                    // Daemon shutdown interrupts execution without inventing user intent.
+                    // Persist that uncertainty before native cancellation, then use the
+                    // ordinary bounded ACP shutdown and owned-process cleanup below.
+                    if !terminal_checkpoint.as_ref().is_some_and(|checkpoint| checkpoint.has_receipt()) {
+                        let _ = journal.execution_failed(DelegationErrorV1::ProtocolFailed);
+                    }
+                    acp_cancel.cancel();
+                    let _ = future.await;
+                    Err(DelegationErrorV1::ProtocolFailed)
+                },
                 _ = tokio::time::sleep_until(deadline) => {
                     // An already published terminal receipt wins while its history drains.
                     // Otherwise record the deadline before ACP shutdown/owned cleanup.
@@ -322,17 +357,25 @@ pub(crate) async fn execute(
             }
         }
     };
-    let (execution, finalization, native_history_settled) = match terminal_checkpoint
+    let receipt = terminal_checkpoint
         .as_ref()
-        .and_then(|checkpoint| checkpoint.take_receipt())
-    {
+        .and_then(|checkpoint| checkpoint.take_receipt());
+    // Interrupted runs have no successful result to publish or continuation to retain.
+    // Let their independent OS scopes drain concurrently under the role's shared deadline.
+    let stop_before_finalization =
+        shutdown.is_cancelled() && execution.is_err() && receipt.is_none();
+    let (execution, finalization, native_history_settled) = match receipt {
         Some(receipt) => (
             receipt.execution,
             receipt.finalization,
             receipt.history_settled,
         ),
         None => {
-            let finalization = journal.begin_finalization();
+            let finalization = if stop_before_finalization {
+                None
+            } else {
+                journal.begin_finalization()
+            };
             let execution = match execution {
                 Ok(outcome) => journal.completed(&outcome).map(|()| outcome),
                 Err(error) => {
@@ -350,14 +393,18 @@ pub(crate) async fn execute(
     );
     let stop_intent_error = early_stop_error.or(cleanup_stop_error);
     // Claude's terminal callback already published/revoked and observed the exact
-    // native file before ACP EOF. Non-Claude/error/cancel paths retain the usual
-    // finalization above; only the outer lifecycle stops the held process scope.
+    // native file before ACP EOF. Only the outer lifecycle stops the held process scope.
     // Even if persistence fails, do not abandon a held child. Return both pieces of evidence.
     let stop = stop_owned(platform, &worker.identity).await;
     if let Some(capture) = progress_capture {
         capture.stop_and_flush().await;
     }
     journal.flush_diagnostics();
+    let finalization = if stop_before_finalization {
+        journal.begin_finalization()
+    } else {
+        finalization
+    };
     Ok(WorkerRunResult {
         execution,
         identity: worker.identity,
