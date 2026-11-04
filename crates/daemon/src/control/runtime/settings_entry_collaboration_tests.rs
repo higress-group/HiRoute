@@ -178,7 +178,7 @@ fn v2_settings_skill_only_enable_change_and_disable_keep_model_untouched() {
         &runtime,
         &released_id,
         &released_operation,
-        "default",
+        "worker-instance-default-v5",
         &content,
     );
 
@@ -236,7 +236,7 @@ fn v2_settings_skill_only_enable_change_and_disable_keep_model_untouched() {
         &runtime,
         &released_id,
         &released_operation,
-        "explicit",
+        "worker-instance-explicit-v4",
         &changed_content,
     );
     let inode = fs::metadata(&skill).unwrap().ino();
@@ -272,7 +272,7 @@ fn assert_skill_upgrade(
     runtime: &ProductionControlRuntime,
     released_id: &OperationId,
     released_operation: &[u8],
-    mode: &str,
+    expected_revision: &str,
     content: &str,
 ) {
     let stores = runtime.adapter.stores_lock().unwrap();
@@ -281,13 +281,7 @@ fn assert_skill_upgrade(
         .skill_installation(&WorkspaceId::default(), "skill-root/agent_codex_default")
         .unwrap()
         .unwrap();
-    assert_eq!(
-        record.template_revision,
-        format!(
-            "worker-instance-{mode}-v{}",
-            if mode == "default" { 4 } else { 3 }
-        )
-    );
+    assert_eq!(record.template_revision, expected_revision);
     assert!(record.revision > 1);
     assert_eq!(
         record.content_digest,
