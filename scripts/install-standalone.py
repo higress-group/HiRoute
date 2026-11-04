@@ -227,12 +227,8 @@ def acquire(args, temporary):
         fetch_https(args.manifest_url, manifest_path, MAX_MANIFEST)
         manifest = load_json_bytes(manifest_path.read_bytes())
         validate_manifest_shape(manifest)
-        filename = manifest["archive"]["filename"]
-        short_name = short_linux_archive(manifest)
-        if short_name and urllib.parse.urlsplit(args.manifest_url).path.rsplit("/", 1)[-1] == f"{short_name}.json":
-            filename = short_name
-        archive_path = temporary / filename
-        archive_url = urllib.parse.urljoin(args.manifest_url, filename)
+        archive_path = temporary / manifest["archive"]["filename"]
+        archive_url = urllib.parse.urljoin(args.manifest_url, manifest["archive"]["filename"])
         fetch_https(archive_url, archive_path, MAX_ARCHIVE, manifest["archive"]["size"])
     else:
         if args.archive is None:

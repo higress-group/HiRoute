@@ -755,7 +755,8 @@ class InstallerTests(StandaloneFixture):
         short_manifest = short_archive.with_name(short_archive.name + ".json")
         short_archive.write_bytes(archive.read_bytes())
         short_manifest.write_bytes(manifest.read_bytes())
-        args, response, calls = self.https_package(short_manifest, short_archive, "ignore-ranges")
+        # HTTPS keeps following the verified manifest even when the JSON has a short name.
+        args, response, calls = self.https_package(short_manifest, archive, "ignore-ranges")
         with self.environment(), patch.object(installer.subprocess, "run"), patch("builtins.print"):
             installer.install(self.install_args(short_manifest, short_archive))
             with patch.object(installer.urllib.request, "urlopen", side_effect=response):
