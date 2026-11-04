@@ -69,6 +69,14 @@ discovered CLI or replaces a missing explicit selection with another candidate.
   hooks without disabling plugin skills. Native managed-policy hooks and adapter
   callbacks remain separate. These options are not a claim that every extension
   is available or universally disabled.
+  Approve-all uses `auto` when the daemon's effective Unix UID is zero, and
+  `bypassPermissions` otherwise. Windows elevation keeps its native bypass mode.
+  Under root, Claude retains its native Auto permission decisions. The host first
+  confirms the frozen model, then requires typed `auto` confirmation and the same
+  returned model. An adapter fallback to Accept edits or a model change fails
+  before prompt. Non-root bypass uses the New/Load session mode catalog;
+  `initialize` does not carry that catalog. Missing or unconfirmed mode support
+  reports fixed guidance without selecting another mode or declaring a sandbox.
 - [Qoder](qoder.rs) starts the selected native CLI with `--acp`, explicit
   `--config-dir` and user/project/local resource sources. It consumes the single
   [shared Qoder renderer](../../../../integrations/src/agents/qoder.rs) for a

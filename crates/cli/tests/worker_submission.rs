@@ -304,46 +304,59 @@ fn waited_native_failure_keeps_its_stage_and_does_not_become_an_internal_error()
 
 #[test]
 fn terminal_failure_and_submission_replay_keep_the_actual_cause_and_locators() {
-    with_control(|fixture, tasks| {
-        let failure = hiroute_domain::delegation::WorkerExecutionFailureV1 {
-            stage: hiroute_domain::delegation::WorkerExecutionStageV1::ModelSelection,
-            error: DelegationErrorV1::CapabilityUnavailable,
-        };
-        *tasks.failure.lock().unwrap() = Some(failure);
-        for replay in [false, true] {
-            let output = fixture
-                .command()
-                .args(fixture.exec_args(Some("submission/failure"), "goal"))
-                .output()
-                .unwrap();
+    use hiroute_domain::delegation::WorkerExecutionStageV1;
+    for (stage, error, reason, stage_key, hint) in [
+        (
+            WorkerExecutionStageV1::ModelSelection,
+            DelegationErrorV1::CapabilityUnavailable,
+            "worker.execution.model_selection.capability_unavailable",
+            "model_selection",
+            "No task prompt was sent",
+        ),
+        (
+            WorkerExecutionStageV1::ModeSelection,
+            DelegationErrorV1::CapabilityUnavailable,
+            "worker.execution.mode_selection.capability_unavailable",
+            "mode_selection",
+            "Auto model support",
+        ),
+    ] {
+        with_control(|fixture, tasks| {
+            let failure = hiroute_domain::delegation::WorkerExecutionFailureV1 { stage, error };
+            *tasks.failure.lock().unwrap() = Some(failure);
+            for replay in [false, true] {
+                let output = fixture
+                    .command()
+                    .args(fixture.exec_args(Some("submission/failure"), "goal"))
+                    .output()
+                    .unwrap();
+                assert_eq!(output.status.code(), Some(1));
+                let json = response(&output);
+                assert_eq!(json["error"]["code"], "WORKER_EXECUTION_FAILED");
+                assert_eq!(json["error"]["message_key"], reason);
+                assert_eq!(json["data"]["failure"]["stage"], stage_key);
+                assert_eq!(json["data"]["run_id"], "run/1");
+                assert_eq!(json["data"]["replayed"], replay);
+                assert!(
+                    json["next_actions"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|action| action["command_id"] == "worker.read")
+                );
+            }
+            let mut args = fixture.exec_args(Some("submission/failure"), "goal");
+            args.retain(|arg| arg != "--no-wait");
+            let index = args.iter().position(|arg| arg == "json").unwrap();
+            args[index] = "text".into();
+            let output = fixture.command().args(args).output().unwrap();
             assert_eq!(output.status.code(), Some(1));
-            let json = response(&output);
-            assert_eq!(json["error"]["code"], "WORKER_EXECUTION_FAILED");
-            assert_eq!(
-                json["error"]["message_key"],
-                "worker.execution.model_selection.capability_unavailable"
-            );
-            assert_eq!(json["data"]["failure"]["stage"], "model_selection");
-            assert_eq!(json["data"]["run_id"], "run/1");
-            assert_eq!(json["data"]["replayed"], replay);
-            assert!(
-                json["next_actions"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|action| action["command_id"] == "worker.read")
-            );
-        }
-        let mut args = fixture.exec_args(Some("submission/failure"), "goal");
-        args.retain(|arg| arg != "--no-wait");
-        let index = args.iter().position(|arg| arg == "json").unwrap();
-        args[index] = "text".into();
-        let output = fixture.command().args(args).output().unwrap();
-        assert_eq!(output.status.code(), Some(1));
-        let stderr = String::from_utf8(output.stderr).unwrap();
-        assert!(stderr.contains("model_selection.capability_unavailable"));
-        assert!(stderr.contains("No task prompt was sent"));
-    });
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            assert!(stderr.contains(reason));
+            assert!(stderr.contains(hint));
+            assert!(stderr.contains("No task prompt was sent"));
+        });
+    }
 }
 
 #[test]

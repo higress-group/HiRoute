@@ -191,6 +191,10 @@ the existing local Worker CLI and does not become a Worker executor.
 The public Worker CLI submits autonomous runs with `approve-all`. Its input owner
 rejects explicit permission options before submission; the native profile owner
 still enforces policies carried by existing Local Control or persisted runs.
+Claude's session-mode admission and root/native-policy guidance belong to the
+[ACP driver](../../crates/daemon/src/delegation/acp/mod.rs) and
+[profile guide](../../crates/daemon/src/delegation/profile/README.md); discovery
+of executable dependencies does not establish autonomous-mode availability.
 
 ## Ecosystem differences
 

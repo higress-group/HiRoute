@@ -141,9 +141,49 @@ def is_native_compaction(body):
     return 'detailed summary' in last.lower() and 'summarization' in last.lower()
 
 
+def receipt_command(fixture):
+    return ' && '.join('/bin/cat ' + shlex.quote(skill['skill']) + ' && /bin/sh '
+                       + shlex.quote(skill['script']) for skill in fixture['skills'])
+
+
+def claude_permission_review(fixture, body):
+    """Auto's native security monitor is not another task or Continue request.
+
+    Only authorize the exact receipt command produced by this controlled fixture.
+    Unknown actions remain red rather than receiving a blanket approval model.
+    """
+    system = body.get('system', [])
+    if not isinstance(system, list) or not any(
+            block.get('type') == 'text' and block.get('text', '').startswith(
+                'You are a security monitor for autonomous AI coding agents.\n')
+            for block in system):
+        return None
+    assert (body.get('stream') is False and not body.get('tools')
+            and body.get('stop_sequences') == ['</block>']), \
+        'unexpected native Auto permission-review envelope'
+    messages = body.get('messages', [])
+    assert len(messages) == 1 and messages[0].get('role') == 'user', \
+        'unexpected native Auto permission-review conversation'
+    blocks = messages[0].get('content', [])
+    assert (isinstance(blocks, list) and len(blocks) >= 4
+            and all(block.get('type') == 'text' for block in blocks)
+            and blocks[0].get('text') == '<transcript>\n'
+            and blocks[-2].get('text') == '</transcript>\n'
+            and blocks[-1].get('text', '').startswith('\nErr on the side of blocking.')), \
+        'unexpected native Auto permission-review transcript'
+    assert blocks[-3].get('text') == 'Bash ' + receipt_command(fixture) + '\n', \
+        'native Auto requested an action outside the controlled receipt command'
+    return dict(kind='text', text='<block>no</block>',
+                request_kind='permission-review', continued=False)
+
+
 def decision(fixture, body):
     """Small deterministic model: require native discovery, then real tools, then history."""
     harness = fixture['harness']
+    if harness == 'claude':
+        review = claude_permission_review(fixture, body)
+        if review is not None:
+            return review
     if harness == 'qoder' and 'expected_max_output_tokens' in fixture:
         budget_field = 'max_tokens' if 'messages' in body else 'max_output_tokens'
         assert body.get(budget_field) == fixture['expected_max_output_tokens'], \
@@ -236,8 +276,7 @@ def decision(fixture, body):
     else:
         name = next((name for name in ('exec_command', 'shell_command') if name in names), None)
         assert name, 'native shell tool unavailable'
-    command = ' && '.join('/bin/cat ' + shlex.quote(skill['skill']) + ' && /bin/sh '
-                          + shlex.quote(skill['script']) for skill in fixture['skills'])
+    command = receipt_command(fixture)
     arguments = ({'cmd': command, 'max_output_tokens': 2000, 'yield_time_ms': 1000}
                  if name == 'exec_command' else {'command': command, 'timeout_ms': 10000}
                  if name == 'shell_command' else {'command': command, 'description':'Read Skills and execute receipt scripts', 'timeout': 10 if harness == 'pi' else 10000})
@@ -316,10 +355,10 @@ def handle(handler, body, controls, lock, reply=decision):
                                 'call_id': action.get('id'), 'continued': action.get('continued'),
                                 'model': body['model'], 'protocol': protocol,
                                 **({'request_kind': action['request_kind']} if 'request_kind' in action else {})}) + '\n')
-    if action.get('request_kind') == 'model-probe':
+    if action.get('request_kind') in ('model-probe', 'permission-review'):
         handler.send({'id': 'msg_native_model_probe', 'type': 'message', 'role': 'assistant',
                       'model': body['model'], 'content': [{'type': 'text', 'text': action['text']}],
-                      'stop_reason': 'max_tokens', 'stop_sequence': None,
+                      'stop_reason': 'max_tokens' if action['request_kind'] == 'model-probe' else 'end_turn', 'stop_sequence': None,
                       'usage': {'input_tokens': 1, 'output_tokens': 1}})
     else:
         handler.send_messages_stream(events(body, action, protocol))
