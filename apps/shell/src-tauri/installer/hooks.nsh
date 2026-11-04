@@ -36,7 +36,6 @@ FunctionEnd
   DetailPrint "${TEXT}"
   SetDetailsPrint listonly
   DetailPrint "${TEXT}"
-  SetDetailsPrint both
 !macroend
 
 !macro HiRouteRequireDesktopExit

@@ -75,10 +75,6 @@ Var WixMode
 Var OldMainBinaryName
 Var HiRouteInstallMutex
 
-{{#if installer_hooks}}
-!include "{{installer_hooks}}"
-{{/if}}
-
 Name "${PRODUCTNAME}"
 BrandingText "HiRoute"
 OutFile "${OUTFILE}"
@@ -100,6 +96,10 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 # additional plugins
 !addplugindir "${ADDITIONALPLUGINSPATH}"
+
+{{#if installer_hooks}}
+!include "{{installer_hooks}}"
+{{/if}}
 
 ; Uninstaller signing command
 !if "${UNINSTALLERSIGNCOMMAND}" != ""
@@ -983,10 +983,6 @@ FunctionEnd
 Function SkipIfPassive
   ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
 FunctionEnd
-Function un.SkipIfPassive
-  ${IfThen} $PassiveMode = 1  ${|} Abort ${|}
-FunctionEnd
-
 Function CreateOrUpdateStartMenuShortcut
   ; We used to use product name as MAINBINARYNAME
   ; migrate old shortcuts to target the new MAINBINARYNAME
