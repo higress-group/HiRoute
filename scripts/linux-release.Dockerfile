@@ -4,6 +4,8 @@ FROM ${BASE_IMAGE}
 ARG APT_SNAPSHOT
 # Fetch signed indices before admitting package mirrors. APT verifies package
 # files against the hashes in those pinned indices.
+# The ARM64 snapshot's libarchive13 pool URL can fail. Seed APT's cache
+# from the same Snapshot object, using the SHA-256 in the signed index.
 RUN printf 'https://snapshot.debian.org/archive/debian/%s/\tpriority:2\nhttps://snapshot-cloudflare.debian.org/archive/debian/%s/\tpriority:3\n' \
         "$APT_SNAPSHOT" "$APT_SNAPSHOT" > /etc/apt/bullseye-mirrors \
     && printf 'https://snapshot.debian.org/archive/debian-security/%s/\tpriority:2\nhttps://snapshot-cloudflare.debian.org/archive/debian-security/%s/\tpriority:3\n' \
@@ -13,6 +15,18 @@ RUN printf 'https://snapshot.debian.org/archive/debian/%s/\tpriority:2\nhttps://
     && apt-get -o Acquire::Retries=3 update --error-on=any \
     && printf 'https://deb.debian.org/debian/\tpriority:1 type:deb\n' >> /etc/apt/bullseye-mirrors \
     && printf 'https://deb.debian.org/debian-security/\tpriority:1 type:deb\n' >> /etc/apt/bullseye-security-mirrors \
+    && case "$(dpkg --print-architecture):$APT_SNAPSHOT" in \
+        arm64:20250815T000000Z) \
+            version=3.4.3-2+deb11u2; \
+            archive=/var/cache/apt/archives/libarchive13_${version}_arm64.deb; \
+            object=f65a39e2044fdf6ea254ea1702b84b846fb48ac0; \
+            sha256="$(apt-cache show "libarchive13=$version" | awk '$1 == "SHA256:" {print $2; exit}')"; \
+            test -n "$sha256" \
+            && (/usr/lib/apt/apt-helper -o Acquire::https::Timeout=25 download-file \
+                    "https://snapshot.debian.org/file/$object" "$archive" "SHA256:$sha256" \
+                || /usr/lib/apt/apt-helper -o Acquire::https::Timeout=25 download-file \
+                    "https://snapshot-cloudflare.debian.org/file/$object" "$archive" "SHA256:$sha256");; \
+    esac \
     && apt-get -o Acquire::Retries=3 install --yes --no-install-recommends cmake clang pkg-config binutils ca-certificates curl xz-utils \
     && rm -rf /var/lib/apt/lists/* \
     && test "$(getconf GNU_LIBC_VERSION)" = 'glibc 2.31'

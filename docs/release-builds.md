@@ -59,7 +59,9 @@ runtime image. Host distribution libraries are never used as the release ABI
 baseline. The native architecture check applies to the host and both containers.
 APT resolves versions and verifies signatures using the pinned Debian snapshot
 indexes. After that update, official Debian mirrors may supply package files
-whose hashes match those indexes.
+whose hashes match those indexes. For the pinned ARM64 snapshot, the
+`libarchive13` package is also available by object ID from Debian Snapshot.
+APT checks it against the SHA-256 in the signed index before using it.
 Linux frontend preparation uses Node from the pinned build image, not the host.
 The policy pins its version and each native architecture's official archive
 SHA-256 from [Node's published checksums](https://nodejs.org/dist/v22.19.0/SHASUMS256.txt).
