@@ -33,7 +33,7 @@ pub const OTEL_SCHEMA: &str = "hiroute.otel.gen-ai-mapping/v1";
 pub const LEGACY_AGGREGATE_PORT_DIGEST: &str =
     "sha256:05755b4351c7c7bc3c33fbd2e8406c313b4231e50e28cce1b3e1f57c47f43cfa";
 pub const CURRENT_AGGREGATE_PORT_DIGEST: &str =
-    "sha256:72bb25d2434e34023e08f9258e3ab641b4698b0b14e526d3b1fe3d9e5236d8e1";
+    "sha256:5c42ebbd44a6b5697ae6b08a42744d6ce9fb7bd40bb7fa7d4c663c696abf9e78";
 pub const SEALED_SUT_REVISION: &str = "8af977300795c467894371055f7fbfc9716252fa";
 pub const SEALED_SUT_TREE: &str = "5ed527f53fa4e8ba9395b5a89b155a1b67228e6e";
 pub const SEALED_SUT_BUILD_INPUT_DIGEST: &str =
