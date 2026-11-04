@@ -27,6 +27,7 @@ fn interleaved_branches_use_exact_membership_and_late_execution_cannot_extend_a_
     }
     let query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,

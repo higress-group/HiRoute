@@ -139,7 +139,15 @@ impl crate::LocalObservationStore {
         connection.pragma_update(None, "cache_size", -16_384)?;
         let tx = connection.transaction()?;
         let visibility: u64 = tx.query_row("SELECT CAST(value AS INTEGER) FROM observation_meta WHERE key='query_visibility_generation'", [], |r| r.get(0))?;
-        let binding = if query.include_presentation {
+        let binding = if query.include_decision_failure {
+            CanonicalDigest::of(&(
+                reader.binding()?,
+                &query.session_id,
+                query.limit,
+                query.include_presentation,
+                "decision-failure/v1",
+            ))
+        } else if query.include_presentation {
             CanonicalDigest::of(&(
                 reader.binding()?,
                 &query.session_id,
@@ -292,6 +300,7 @@ mod tests {
                     .unwrap();
                     let query = RoutingTimelineQueryV1 {
                         include_presentation: false,
+                        include_decision_failure: false,
                         session_id: id.into(),
                         after_watermark: None,
                         limit: 50,
@@ -353,6 +362,7 @@ mod tests {
         .with_query_deadline(std::time::Instant::now() - std::time::Duration::from_millis(1));
         let query = RoutingTimelineQueryV1 {
             include_presentation: false,
+            include_decision_failure: false,
             session_id: "session/test".into(),
             after_watermark: None,
             limit: 50,
@@ -394,6 +404,7 @@ mod tests {
         .unwrap();
         let query = RoutingTimelineQueryV1 {
             include_presentation: false,
+            include_decision_failure: false,
             session_id: "session/test".into(),
             after_watermark: None,
             limit: 50,
@@ -434,6 +445,7 @@ mod tests {
         .unwrap();
         let query = RoutingTimelineQueryV1 {
             include_presentation: false,
+            include_decision_failure: false,
             session_id: "session/test".into(),
             after_watermark: None,
             limit: 50,
@@ -498,6 +510,7 @@ mod tests {
         .unwrap();
         let mut query = RoutingTimelineQueryV1 {
             include_presentation: false,
+            include_decision_failure: false,
             session_id: "session/test".into(),
             after_watermark: None,
             limit: 50,

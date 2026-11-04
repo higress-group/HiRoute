@@ -223,15 +223,19 @@ def run(repository):
             failure = {'kind': kind, 'http_status': status}
             view = current(shared['id'])
             before = len(Endpoint.requests)
-            diagnostic = data('decision network test', {
+            probe = {
                 'id': shared['id'], 'revision': 1,
-                'expected_configuration_digest': view['configuration_digest']})
+                'expected_configuration_digest': view['configuration_digest']}
+            diagnostic = data('decision network test', {**probe, 'include_decision_failure': True})
             assert diagnostic['decision_failure'] == failure, diagnostic
             assert 'unpublished provider detail' not in json.dumps(diagnostic), diagnostic
             assert len(Endpoint.requests) == before + 1, 'HTTP failure retried another Key'
             gateway_request(product)
             assert len(Endpoint.requests) == before + 2, 'routing failure retried another Key'
             expected.append(failure)
+        legacy_probe = data('decision network test', probe)
+        assert set(legacy_probe) == {'schema', 'check', 'network', 'failure'}, legacy_probe
+        assert legacy_probe['check']['failure_code'] == 'DECISION_TRANSPORT_UNAVAILABLE', legacy_probe
         Endpoint.failure = None
 
         deadline = time.monotonic() + 30
@@ -239,7 +243,7 @@ def run(repository):
             sessions = data('sessions list --include-unlinked --limit 50')['sessions']
             if sessions:
                 session_id = sessions[0]['session_id']
-                timeline = data('sessions timeline ' + session_id)
+                timeline = data('sessions timeline ' + session_id + ' --include-decision-failure')
                 requests = [request for turn in timeline['turns'] for request in turn['requests']]
                 failures = [request for request in requests if request.get('decision_failure')]
                 if (len(failures) == len(expected) and len(requests) == 1 + len(expected)
@@ -254,14 +258,23 @@ def run(repository):
         assert sorted(failure_key(request['decision_failure']['failure']) for request in failures) == sorted(
             map(failure_key, expected)), failures
         assert 'unpublished provider detail' not in json.dumps(timeline), timeline
+        legacy_timeline = data('sessions timeline ' + session_id)
+        legacy_requests = [request for turn in legacy_timeline['turns'] for request in turn['requests']]
+        assert len(legacy_requests) == len(requests)
+        assert all('decision_failure' not in request for request in legacy_requests), legacy_requests
 
         conversations = data('sessions list --view conversations --period today')
         anchor = next(conversation['analysis_session_id'] for conversation in conversations['conversations']
                       if any(member['session_id'] == session_id for member in conversation['members']))
-        routing = data(f'sessions show {anchor} --view routing --analysis-scope {conversations["analysis_scope"]}')
+        routing_command = f'sessions show {anchor} --view routing --analysis-scope {conversations["analysis_scope"]}'
+        routing = data(routing_command + ' --include-decision-failure')
         details = {transition['request_id']: transition['decision_failure']
                    for transition in routing['transitions'] if transition.get('decision_failure')}
         assert details == {request['request_id']: request['decision_failure'] for request in failures}, routing
+        legacy_routing = data(routing_command)
+        assert {transition['request_id'] for transition in legacy_routing['transitions']} == {
+            transition['request_id'] for transition in routing['transitions']}
+        assert all('decision_failure' not in transition for transition in legacy_routing['transitions']), legacy_routing
 
         # Switch A to B with only B's revision. A remains the authority for the
         # already published version, while the new version joins B.

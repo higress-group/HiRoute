@@ -62,7 +62,7 @@ try {
     assert.equal(await evaluate(client, `routingPresentation.trace.filter(x=>x.command==='plan_editor_options').length`), 1);
     assert.equal(await evaluate(client, `routingPresentation.trace.filter(x=>x.command==='compute_management_snapshot').length`), 1);
     assert.ok(await evaluate(client, `document.querySelector('.routing-lane-label.cyan').textContent.includes('Latest: Astra')`));
-    assert.equal(await evaluate(client, `routingPresentation.trace.filter(x=>x.command==='routing_timeline').every(x=>x.query.include_presentation===true)`), true);
+    assert.equal(await evaluate(client, `routingPresentation.trace.filter(x=>x.command==='routing_timeline').every(x=>x.query.include_presentation===true && x.query.include_decision_failure===true)`), true);
     results.push({id:'bounded-label-reads',status:'passed'});
   } catch (error) { await shot('failure-bounded-label-reads'); results.push({id:'bounded-label-reads',status:'failed',error:String(error.stack ?? error)}); }
   try {

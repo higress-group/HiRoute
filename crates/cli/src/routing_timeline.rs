@@ -15,6 +15,7 @@ fn parse(options: &[String]) -> Result<RoutingTimelineQueryV1, ErrorCode> {
     };
     let mut query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: session.clone(),
         after_watermark: None,
         limit: 50,
@@ -25,6 +26,9 @@ fn parse(options: &[String]) -> Result<RoutingTimelineQueryV1, ErrorCode> {
     while index < options.len() {
         match options[index].as_str() {
             "--follow" if !follow => follow = true,
+            "--include-decision-failure" if !query.include_decision_failure => {
+                query.include_decision_failure = true;
+            }
             "--after-watermark" if query.after_watermark.is_none() => {
                 query.after_watermark = Some(next(options, &mut index)?)
             }

@@ -99,6 +99,27 @@ pub struct DecisionServiceTestRequestV2 {
     pub expected_configuration_digest: CanonicalDigest,
 }
 
+#[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DecisionServiceNetworkTestRequestV3 {
+    pub id: String,
+    pub revision: u64,
+    pub expected_configuration_digest: CanonicalDigest,
+    /// Opt into typed decision failures while keeping the released V3 result by default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub include_decision_failure: bool,
+}
+
+impl From<DecisionServiceNetworkTestRequestV3> for DecisionServiceTestRequestV2 {
+    fn from(request: DecisionServiceNetworkTestRequestV3) -> Self {
+        Self {
+            id: request.id,
+            revision: request.revision,
+            expected_configuration_digest: request.expected_configuration_digest,
+        }
+    }
+}
+
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DecisionTestOutcomeV2 {
@@ -283,6 +304,35 @@ mod tests {
         let mut extra = encoded;
         extra["network_state_revision"] = "not-an-admitted-route".into();
         assert!(serde_json::from_value::<DecisionServiceTestResultV3>(extra).is_err());
+    }
+
+    #[test]
+    fn legacy_network_probe_request_preserves_its_canonical_digest() {
+        let legacy = DecisionServiceTestRequestV2 {
+            id: "decision/fixture".into(),
+            revision: 1,
+            expected_configuration_digest: CanonicalDigest::of_bytes(b"fixture"),
+        };
+        let encoded = serde_json::to_value(&legacy).unwrap();
+        let mut network: DecisionServiceNetworkTestRequestV3 =
+            serde_json::from_value(encoded.clone()).unwrap();
+        assert!(!network.include_decision_failure);
+        assert_eq!(serde_json::to_value(&network).unwrap(), encoded);
+        assert_eq!(
+            CanonicalDigest::of(&network).unwrap(),
+            CanonicalDigest::of(&legacy).unwrap()
+        );
+        network.include_decision_failure = true;
+        assert_ne!(
+            CanonicalDigest::of(&network).unwrap(),
+            CanonicalDigest::of(&legacy).unwrap()
+        );
+        assert!(
+            serde_json::from_value::<DecisionServiceTestRequestV2>(
+                serde_json::to_value(network).unwrap()
+            )
+            .is_err()
+        );
     }
 
     #[test]

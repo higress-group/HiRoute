@@ -93,7 +93,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
       if (inFlight || blockedScope.current || controller.signal.aborted || document.visibilityState !== 'visible' || (!displayed && probed.current)) return;
       inFlight = true;
       try {
-        const page = await observationRead<TimelinePage>('routing_timeline', { session_id: session, after_watermark: watermark.current, limit: 50, include_presentation: true }, controller.signal);
+        const page = await observationRead<TimelinePage>('routing_timeline', { session_id: session, after_watermark: watermark.current, limit: 50, include_presentation: true, include_decision_failure: true }, controller.signal);
         if (controller.signal.aborted) return;
         let changed = false;
         const fresh = watermark.current !== null && probed.current ? page.turns.filter(turn => !stored.current.has(turn.turn_id)).map(turn => turn.turn_id) : [];

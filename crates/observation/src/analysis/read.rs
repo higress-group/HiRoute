@@ -220,7 +220,12 @@ impl LocalObservationStore {
                         .collect();
                     let (values, next) = views::paginate(self, &s, q, &values, offset)?;
                     page.transitions = values;
-                    routing::reasons(&tx, reader, &mut page.transitions)?;
+                    routing::reasons(
+                        &tx,
+                        reader,
+                        &mut page.transitions,
+                        q.include_decision_failure,
+                    )?;
                     if page.transitions.iter().any(|t| t.reason.is_none()) {
                         page.gaps.push("recorded_reason_unavailable".into());
                         page.status = AnalysisStatusV1::Partial;

@@ -55,6 +55,7 @@ pub(super) fn timeline(facts: &[Value]) -> RoutingTimelinePageV1 {
             &reader,
             &RoutingTimelineQueryV1 {
                 include_presentation: false,
+                include_decision_failure: false,
                 session_id: events[0].correlation.conversation_id.to_string(),
                 after_watermark: None,
                 limit: 50,

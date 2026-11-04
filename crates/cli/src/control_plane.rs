@@ -89,8 +89,11 @@ pub(crate) fn command_payload(
             hiroute_application_api::DecisionContextPreviewRequestV1,
         >(options)),
         "decision.services.test" => Some(classifier_request(options)),
-        "decision.connections.test" | "decision.network.test" => Some(request::<
+        "decision.connections.test" => Some(request::<
             hiroute_application_api::DecisionServiceTestRequestV2,
+        >(options)),
+        "decision.network.test" => Some(request::<
+            hiroute_application_api::DecisionServiceNetworkTestRequestV3,
         >(options)),
         "models.feed.status" | "models.feed.refresh" | "models.availability" => {
             Some(empty::<hiroute_application_api::ClientEmptyRequestV1>(

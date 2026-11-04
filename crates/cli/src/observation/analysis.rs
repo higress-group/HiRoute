@@ -65,6 +65,7 @@ fn parse(
             "--from-ms" => q.time.from_ms = Some(parse_i64(options, &mut index)?),
             "--to-ms" => q.time.to_ms = Some(parse_i64(options, &mut index)?),
             "--analysis-scope" => q.analysis_scope = Some(next(options, &mut index)?),
+            "--include-decision-failure" => q.include_decision_failure = true,
             "--session" if q.session_id.is_none() => {
                 q.session_id = Some(next(options, &mut index)?)
             }
@@ -129,6 +130,7 @@ fn parse(
         || q.view == AnalysisViewV1::SavingsSummary
             && (q.group_by.is_some() || seen.contains("--order-by"))
         || q.query.is_some() && q.view != AnalysisViewV1::Conversations
+        || q.include_decision_failure && q.view != AnalysisViewV1::Routing
     {
         return Err(ErrorCode::InvalidArguments);
     }

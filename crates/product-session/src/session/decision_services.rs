@@ -35,7 +35,13 @@ impl Session {
         &self,
         request: DecisionServiceTestRequestV2,
     ) -> Result<DecisionServiceTestResultV3, DesktopFailure> {
-        query(&self.client, TEST_DECISION_SERVICE_V3, &request).await
+        let input = DecisionServiceNetworkTestRequestV3 {
+            id: request.id,
+            revision: request.revision,
+            expected_configuration_digest: request.expected_configuration_digest,
+            include_decision_failure: true,
+        };
+        query(&self.client, TEST_DECISION_SERVICE_V3, &input).await
     }
 
     pub async fn test_decision_service_v2(

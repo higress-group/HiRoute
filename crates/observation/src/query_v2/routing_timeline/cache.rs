@@ -74,7 +74,15 @@ impl Snapshot {
         if changed.is_some() {
             read::check_row_bounds(tx, reader, session, target)?;
         }
-        let (requests, facts) = read::read(tx, reader, session, target, now, changed)?;
+        let (requests, facts) = read::read(
+            tx,
+            reader,
+            session,
+            target,
+            now,
+            changed,
+            query.include_decision_failure,
+        )?;
         self.read_requests += requests.len();
         if changed.is_some()
             && self

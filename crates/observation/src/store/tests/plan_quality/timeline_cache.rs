@@ -77,6 +77,7 @@ fn timeline_late_completion_resolves_only_its_redundant_intermediate_comparison(
     }
     let mut query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: prior.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -175,6 +176,7 @@ fn timeline_late_turn_completion_reemits_the_opening_and_absorbed_request_member
     }
     let mut query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -250,6 +252,7 @@ fn timeline_evicted_frozen_page_restarts_without_skipping_retained_turns() {
     }
     let mut query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 1,
@@ -264,6 +267,7 @@ fn timeline_evicted_frozen_page_restarts_without_skipping_retained_turns() {
                 &reader(),
                 &RoutingTimelineQueryV1 {
                     include_presentation: false,
+                    include_decision_failure: false,
                     session_id: session.into(),
                     after_watermark: None,
                     limit: 1,
@@ -321,6 +325,7 @@ fn timeline_cached_cursor_expires_without_a_retention_maintenance_write() {
     .unwrap();
     let mut query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: fixture.session.to_string(),
         after_watermark: None,
         limit: 50,
@@ -384,6 +389,7 @@ fn timeline_incremental_protection_revisits_a_nonadjacent_segment() {
     }
     let mut query = RoutingTimelineQueryV1 {
         include_presentation: false,
+        include_decision_failure: false,
         session_id: first.session.to_string(),
         after_watermark: None,
         limit: 50,

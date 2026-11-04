@@ -15,6 +15,8 @@ pub struct RoutingTimelineQueryV1 {
     pub limit: u16,
     #[serde(default, skip_serializing_if = "is_false")]
     pub include_presentation: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub include_decision_failure: bool,
 }
 
 fn is_false(value: &bool) -> bool {
