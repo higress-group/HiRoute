@@ -8,7 +8,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use hiroute_host_runtime::{StandaloneLayout, read_standalone_install_record};
-use hiroute_platform::windows::{background, job, security};
+use hiroute_platform::windows::{background, job, security, user_path};
 
 const RETRIES: usize = 3;
 const RETRY_INTERVAL: Duration = Duration::from_secs(60);
@@ -44,13 +44,13 @@ pub(super) fn run_if_installed_task() -> Result<bool, String> {
         .into_iter()
         .map(OsString::from)
         .collect();
-    let environment: Vec<_> = std::env::vars_os().collect();
     for attempt in 0..=RETRIES {
         // Installation maintenance must stop this action before replacing the
         // image. Never recover by launching changed bytes at a retained path.
         definition
             .verify_image()
             .map_err(|_| "Task recovery image verification failed")?;
+        let environment = task_environment(std::env::vars_os().collect());
         let launched = job::Child::spawn(job::Launch {
             program: &definition.daemon,
             args: &arguments,
@@ -106,6 +106,24 @@ pub(super) fn run_if_installed_task() -> Result<bool, String> {
     unreachable!()
 }
 
+fn task_environment(mut inherited: Vec<(OsString, OsString)>) -> Vec<(OsString, OsString)> {
+    match user_path::current_environment_path() {
+        Ok(path) => {
+            inherited.retain(|(key, _)| !key.eq_ignore_ascii_case("PATH"));
+            if let Some(path) = path {
+                inherited.push(("PATH".into(), path));
+            }
+        }
+        Err(error) => {
+            eprintln!(
+                "HiRoute Task could not refresh PATH (OS error {:?})",
+                error.raw_os_error()
+            );
+        }
+    }
+    inherited
+}
+
 fn same_image(expected: &Path) -> Result<(), String> {
     let actual = std::env::current_exe().map_err(|_| "Task current image unavailable")?;
     let actual = security::open_identity(&actual, false)
@@ -118,4 +136,28 @@ fn same_image(expected: &Path) -> Result<(), String> {
         return Err("Task current and installed images differ".into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_child_uses_registered_path_instead_of_inherited_path() {
+        let inherited = vec![
+            ("Path".into(), "C:\\HiRoute-test-stale-parent".into()),
+            ("HIROUTE_TEST_UNRELATED".into(), "keep".into()),
+        ];
+        let registered = user_path::current_environment_path()
+            .expect("query registered environment")
+            .expect("registered Windows PATH");
+        let child = task_environment(inherited);
+        let paths: Vec<_> = child
+            .iter()
+            .filter(|(key, _)| key.eq_ignore_ascii_case("PATH"))
+            .map(|(_, value)| value)
+            .collect();
+        assert_eq!(paths, [&registered]);
+        assert!(child.contains(&("HIROUTE_TEST_UNRELATED".into(), "keep".into())));
+    }
 }
