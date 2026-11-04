@@ -165,6 +165,8 @@ fn v2_settings_skill_only_enable_change_and_disable_keep_model_untouched() {
     assert!(content.contains("hiroute worker plans"));
     assert!(content.contains("literal value in `--submission-key`"));
     assert!(content.contains("An empty list or unclear match"));
+    assert!(content.contains("hiroute worker wait --run RUN_ID"));
+    assert!(content.contains("1 to 30 seconds, including result retrieval"));
     assert!(!content.contains("--agent"));
     assert!(content.contains("Worker runs use `approve-all` without per-tool approval"));
     assert!(content.contains("without permission options"));
@@ -228,6 +230,8 @@ fn v2_settings_skill_only_enable_change_and_disable_keep_model_untouched() {
     assert_ne!(changed_content, content);
     assert!(changed_content.contains("only when the user explicitly asks"));
     assert!(changed_content.contains("literal value in `--submission-key`"));
+    assert!(changed_content.contains("hiroute worker wait --run RUN_ID"));
+    assert!(changed_content.contains("1 to 30 seconds, including result retrieval"));
     assert_skill_upgrade(
         &runtime,
         &released_id,

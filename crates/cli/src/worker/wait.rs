@@ -1,8 +1,8 @@
 //! CLI completion waiting composes bounded Local Control observations.
 
 use hiroute_application_api::{
-    DelegationWaitV1, MachineEnvelopeV2, MachineStatus, RunStateV1, WorkerCommandDataV1,
-    WorkerResultRequestV1,
+    DelegationWaitV1, MachineEnvelopeV2, MachineStatus, RunStateV1,
+    WORKER_CONTENT_UNAVAILABLE_MESSAGE_KEY, WorkerCommandDataV1, WorkerResultRequestV1,
 };
 use hiroute_client_core::{Client, ClientFailure, FailureCode};
 use tokio::time::Instant;
@@ -33,8 +33,9 @@ pub(super) fn execute(
     }
     let response = call(async {
         let client = client.shared_client();
-        let waited = until_terminal(&client, request_id, parsed).await?;
-        finish(&client, request_id, waited).await
+        let deadline = parsed.timeout.map(|timeout| Instant::now() + timeout);
+        let waited = until_terminal(&client, request_id, parsed, deadline).await?;
+        finish(&client, request_id, waited, deadline).await
     });
     match response {
         Ok(mut envelope) => {
@@ -54,8 +55,8 @@ async fn until_terminal(
     client: &Client,
     request_id: &str,
     parsed: ParsedWait,
+    deadline: Option<Instant>,
 ) -> Result<MachineEnvelopeV2<DelegationWaitV1>, ClientFailure> {
-    let deadline = parsed.timeout.map(|timeout| Instant::now() + timeout);
     let mut request = parsed.request;
     let mut last: Option<MachineEnvelopeV2<DelegationWaitV1>> = None;
     loop {
@@ -114,7 +115,8 @@ async fn until_terminal(
 async fn finish(
     client: &Client,
     request_id: &str,
-    response: MachineEnvelopeV2<DelegationWaitV1>,
+    mut response: MachineEnvelopeV2<DelegationWaitV1>,
+    deadline: Option<Instant>,
 ) -> Result<MachineEnvelopeV2<WorkerCommandDataV1>, ClientFailure> {
     if matches!(
         response.status,
@@ -123,17 +125,33 @@ async fn finish(
         && data.run.state == RunStateV1::Succeeded
         && data.run.result_available
     {
-        let result = client
-            .worker_result(
-                request_id,
-                &WorkerResultRequestV1 {
-                    run_id: data.run.run_id.clone(),
-                    offset: None,
-                    max_bytes: None,
-                },
-            )
-            .await?;
-        return Ok(result.map_data(|result| project(result.run, result.text.as_deref(), false)));
+        let request = WorkerResultRequestV1 {
+            run_id: data.run.run_id.clone(),
+            offset: None,
+            max_bytes: None,
+        };
+        let fetch = client.worker_result(request_id, &request);
+        let result = if let Some(deadline) = deadline {
+            tokio::time::timeout_at(deadline, fetch).await.ok()
+        } else {
+            Some(fetch.await)
+        };
+        if let Some(result) = result {
+            let result = result?;
+            if !result
+                .error
+                .as_ref()
+                .is_some_and(|error| error.message_key == WORKER_CONTENT_UNAVAILABLE_MESSAGE_KEY)
+            {
+                return Ok(
+                    result.map_data(|result| project(result.run, result.text.as_deref(), false))
+                );
+            }
+            // Retention can hide the body while the run still refers to it.
+            response
+                .next_actions
+                .retain(|action| action.command_id != "worker.result");
+        }
     }
     Ok(response.map_data(|data| project(data.run, None, data.timed_out)))
 }

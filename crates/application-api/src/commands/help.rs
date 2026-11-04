@@ -96,7 +96,7 @@ pub(super) fn automation(command_id: &str) -> &'static str {
         return "The command durably admits a bounded Worker run; that Worker may make model requests only through its exact run-bound loopback Gateway route.";
     }
     if command_id == "worker.wait" {
-        return "By default, block until the exact run reaches succeeded, failed, cancelled or unknown. The CLI repeats bounded Local Control waits using the latest revision. --wait-timeout 1..30 bounds total waiting; without it there is no total limit. Use this command in a background process that notifies on exit. --after-revision retains one progress observation with a 30-second default; suggested foreground actions include it. Stopping the command or a wait timeout never cancels the run; daemon/transport failures exit without indefinite retries. Use worker status to query immediately.";
+        return "By default, block until the exact run reaches succeeded, failed, cancelled or unknown. The CLI repeats bounded Local Control waits using the latest revision. --wait-timeout SECONDS sets a total budget of 1 to 30 seconds, including result retrieval. Omit it for no total limit. If the result is unavailable or the budget expires after success is observed, return succeeded without result text. Use this command in a background process that notifies on exit. --after-revision retains one progress observation with a 30-second default. Suggested foreground actions include it. Stopping or timing out the wait leaves the run active. Daemon/transport failures exit without indefinite retries. Use worker status to query immediately.";
     }
     if command_id.starts_with("worker.") {
         "Use stable submission keys and task/run locators. A bounded wait timing out is pending, never cancellation; query status or wait again, and read result only when available."
@@ -126,7 +126,7 @@ pub(super) fn output(command_id: &str) -> &'static str {
 }
 pub(super) fn exit_status(command_id: &str) -> &'static str {
     if command_id == "worker.wait" {
-        return "0 succeeded/pending; 1 failed/cancelled/unknown in completion mode; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention. With --after-revision, a terminal observation retains its existing query exit status. A timeout reports pending and the run continues.";
+        return "0 succeeded/pending; 1 failed/cancelled/unknown in completion mode; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention. With --after-revision, a terminal observation retains its existing query exit status. A timeout before completion reports pending and the run continues.";
     }
     if command_id.starts_with("worker.") {
         "0 accepted/query/pending; final exec/continue failure is nonzero; 2 usage; 3 conflict/busy; 4 denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention; 1 execution failure. A result query may exit 0 while honestly reporting a failed run."

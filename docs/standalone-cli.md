@@ -1110,8 +1110,12 @@ failed, cancelled and unknown completion exits nonzero with the recorded cause.
 Run it in the main Agent's background terminal with notification on process exit to
 wake that Agent when the run ends. Daemon or transport failures exit with an error.
 
-Add `--wait-timeout SECONDS` (1..30) to bound the total wait, including intermediate
-progress; omission means no total waiting limit. `--after-revision REVISION` retains
+Add `--wait-timeout SECONDS` to set a total budget of 1 to 30 seconds across
+progress updates and result retrieval. Omit it for no total limit. If the budget
+runs out before completion, the last observation reports `timed_out=true`. If
+success is already known but result text is unavailable or the budget runs out
+while fetching it, the command returns `succeeded` without text.
+`--after-revision REVISION` retains
 the one-observation behavior: the next revision or terminal state returns, with a
 30-second default. Suggested foreground next actions use this form.
 

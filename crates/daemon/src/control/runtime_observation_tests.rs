@@ -35,6 +35,9 @@ use super::*;
 #[path = "runtime_worker_read_empty_tests.rs"]
 mod worker_read_empty_tests;
 
+#[path = "runtime_worker_result_tests.rs"]
+mod worker_result_tests;
+
 #[path = "runtime_timeline_retry_tests.rs"]
 mod timeline_retry_tests;
 

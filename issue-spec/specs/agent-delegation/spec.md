@@ -365,15 +365,19 @@ paths/secrets, and normal owned cleanup rather than a software-version allowlist
 `hiroute worker wait --run RUN_ID` MUST wait for that exact run to reach `succeeded`,
 `failed`, `cancelled` or `unknown` by default. Intermediate progress revisions and
 individual bounded observation timeouts MUST NOT end completion waiting. An already
-terminal run returns immediately. Success includes saved result text when available;
-unavailable result content does not delay a terminal response. Failed, cancelled and
-unknown completion uses the existing Worker execution failure classification and
-retains task/run locators and any recorded stage/reason.
+terminal run requires no further state observations. Success includes saved result
+text when available. Missing, deleted or expired result content MUST preserve the
+successful state and run identity. Failed, cancelled and unknown completion uses
+the existing Worker execution failure classification and retains task/run locators
+and any recorded stage/reason.
 
-An explicit `--wait-timeout SECONDS` in the existing 1..30 range bounds total waiting
-with one monotonic deadline that progress does not renew. Expiry returns the latest
-observed state with `timed_out=true`. Without this option there is no total waiting
-limit. Daemon and transport errors end the command instead of retrying indefinitely.
+An explicit `--wait-timeout SECONDS` accepts 1 to 30 seconds and bounds terminal
+observation and optional result retrieval with one monotonic deadline. Progress
+does not renew it. Expiry before terminal observation returns the latest observed
+state with `timed_out=true`. Expiry during result retrieval returns the confirmed
+successful state with `timed_out=false` and omits the result text. Without this option
+there is no total waiting limit. Daemon and transport errors end the command instead
+of retrying indefinitely.
 Stopping or timing out the observer never cancels, resubmits or continues the run.
 
 `--after-revision N` retains one bounded observation: return the next revision or

@@ -49,6 +49,7 @@ struct Tasks {
     calls: Mutex<Vec<WorkerWaitRequestV1>>,
     results: Mutex<Vec<String>>,
     result_error: Option<DelegationErrorV1>,
+    result_delay: Duration,
     cancels: AtomicUsize,
 }
 
@@ -59,6 +60,7 @@ impl Tasks {
             calls: Mutex::new(Vec::new()),
             results: Mutex::new(Vec::new()),
             result_error: None,
+            result_delay: Duration::ZERO,
             cancels: AtomicUsize::new(0),
         }
     }
@@ -110,6 +112,7 @@ impl DelegationTaskPort for Tasks {
         request: &WorkerResultRequestV1,
     ) -> Result<DelegationResultV1, DelegationErrorV1> {
         self.results.lock().unwrap().push(request.run_id.clone());
+        std::thread::sleep(self.result_delay);
         if let Some(error) = self.result_error {
             return Err(error);
         }
@@ -230,6 +233,53 @@ fn completion_does_not_wait_for_unavailable_result_content() {
         assert!(json["data"]["result"].is_null());
         assert!(tasks.results.lock().unwrap().is_empty());
         assert_eq!(tasks.cancels.load(Ordering::SeqCst), 0);
+    });
+}
+
+#[test]
+fn an_unreadable_result_reference_preserves_success() {
+    let mut tasks = Tasks::new([observation(RunStateV1::Succeeded, 9)]);
+    tasks.result_error = Some(DelegationErrorV1::ContentUnavailable);
+    with_control(tasks, |fixture, tasks| {
+        let output = fixture.command().output().unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let json = response(&output);
+        assert_eq!(json["data"]["run_state"], "succeeded");
+        assert_eq!(json["data"]["run_id"], "run/wait");
+        assert_eq!(json["data"]["task_id"], "task/wait");
+        assert_eq!(json["data"]["timed_out"], false);
+        assert!(json["data"]["result"].is_null());
+        assert!(
+            !json["next_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| { action["command_id"] == "worker.result" })
+        );
+        assert_eq!(*tasks.results.lock().unwrap(), ["run/wait"]);
+    });
+}
+
+#[test]
+fn result_retrieval_uses_the_remaining_wait_budget() {
+    let mut success = observation(RunStateV1::Succeeded, 2);
+    success.delay = Duration::from_millis(650);
+    let mut tasks = Tasks::new([observation(RunStateV1::Running, 1), success]);
+    // This fetch would succeed with a fresh second, but not with the original budget.
+    tasks.result_delay = Duration::from_millis(650);
+    with_control(tasks, |fixture, tasks| {
+        let output = fixture
+            .command()
+            .args(["--wait-timeout", "1"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let json = response(&output);
+        assert_eq!(json["data"]["run_state"], "succeeded");
+        assert_eq!(json["data"]["timed_out"], false);
+        assert!(json["data"]["result"].is_null());
+        assert_eq!(tasks.revisions(), [None, Some(1)]);
+        assert_eq!(*tasks.results.lock().unwrap(), ["run/wait"]);
     });
 }
 

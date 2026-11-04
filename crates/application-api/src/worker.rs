@@ -22,6 +22,7 @@ use crate::{
 pub const WORKER_EXEC_SCHEMA_V1: &str = "hiroute.worker-exec-request/v1";
 pub const WORKER_CONTINUE_SCHEMA_V1: &str = "hiroute.worker-continue-request/v1";
 pub const WORKER_COMMAND_DATA_SCHEMA_V1: &str = "hiroute.worker-command-data/v1";
+pub const WORKER_CONTENT_UNAVAILABLE_MESSAGE_KEY: &str = "worker.content.unavailable";
 pub const WORKER_EXECUTOR_AVAILABILITY_OPERATION_V1: &str = "WorkerExecutorAvailability";
 pub const WORKER_EXECUTOR_AVAILABILITY_SCHEMA_V1: &str =
     "hiroute.worker-executor-availability-list/v1";

@@ -239,17 +239,17 @@ Harness/protocol required; absent work returns choices. Omit both to retain work
 
 worker dependencies discover --harness codex_cli; worker dependencies select --request-stdin.
 Use found tuples: expected_selection_revision = selection_revisions[].revision, not a CLI/package version.
-Discovery installs nothing. Read executors/plans. exec: absolute cwd, text, stable key.
+Discovery installs nothing. exec: absolute cwd, text, stable key. Read executors/plans.
 exec/continue: approve-all, no permission options. Keep submission/run IDs.
-status is immediate; wait blocks to terminal. Use a background terminal with exit notifications.
---wait-timeout 1..30 bounds total time; --after-revision N observes once (default 30s).
-Wait timeout/interrupt never cancels.
-Replay identical request/key after uncertainty; cancel only on request.
+status is immediate. Run wait to completion in background with exit notification.
+--wait-timeout SECONDS: 1 to 30 seconds total, including result reads.
+--after-revision N observes once (default 30s). Timeout/interrupt leaves work running.
+Replay identical request/key if uncertain; cancel only on request.
 
 Policy: agents collaboration configure AGENT_ID --trigger explicit --preview; save without
 --preview, with --idempotency-key KEY. explicit: only on request; delegate-by-default: suitable tasks
 within scope. hiroute-collaboration is independent of models/management.
-Read agents collaboration status AGENT_ID; remove via owned facet Restore. Reload Skills in a fresh session.
+Read agents collaboration status AGENT_ID; remove via facet Restore. Reload Skills in a fresh session.
 No recursive or coordination/status/result-summary delegation.
 
 ## Listener and service changes
