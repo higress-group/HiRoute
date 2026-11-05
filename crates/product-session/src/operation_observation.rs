@@ -76,6 +76,7 @@ pub async fn lookup(
         "FindOperationByIdempotency",
         &OperationIdempotencyLookupV1 {
             include_model_budget_conflict: true,
+            include_failure_detail: true,
             principal_kind: hint.principal_kind,
             operation_kind: hint.operation_kind.clone(),
             idempotency_key: hint.idempotency_key.clone(),

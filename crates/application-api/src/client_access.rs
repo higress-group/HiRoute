@@ -84,6 +84,8 @@ pub struct OperationIdempotencyLookupV1 {
     /// Keep extensions last for released positional inputs; false preserves the response shape.
     #[serde(default, skip_serializing_if = "is_false")]
     pub include_model_budget_conflict: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub include_failure_detail: bool,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
@@ -97,6 +99,8 @@ pub struct ClientOperationViewV1 {
     pub cancellable: bool,
     pub accepted_digest: CanonicalDigest,
     pub safe_error_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_detail: Option<hiroute_domain::OperationFailureV1>,
 }
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Serialize)]
@@ -156,11 +160,13 @@ mod tests {
             assert_eq!(lookup.operation_kind, "change");
             assert_eq!(lookup.idempotency_key, "test");
             assert_eq!(lookup.accepted_digest.as_str(), digest);
+            assert!(!lookup.include_failure_detail);
             assert_eq!(
                 lookup.include_model_budget_conflict,
                 projection == Some(true)
             );
             let wire = serde_json::to_value(lookup).unwrap();
+            assert!(wire.get("include_failure_detail").is_none());
             assert_eq!(wire["accepted_digest"], digest);
             if projection == Some(true) {
                 assert_eq!(wire["include_model_budget_conflict"], true);
@@ -168,5 +174,39 @@ mod tests {
                 assert!(wire.get("include_model_budget_conflict").is_none());
             }
         }
+    }
+
+    #[test]
+    fn released_operation_view_omits_new_detail_and_accepts_old_positional_data() {
+        let digest = format!("sha256:{}", "0".repeat(64));
+        // V0.5.1 producer field order, including its optional model-budget slot.
+        let released = json!([
+            null,
+            "operation/test",
+            "rolled_back",
+            9,
+            false,
+            digest,
+            "ADAPTER_FAILURE"
+        ]);
+        let view: ClientOperationViewV1 = serde_json::from_value(released).unwrap();
+        assert!(view.failure_detail.is_none());
+        assert!(
+            serde_json::to_value(view)
+                .unwrap()
+                .get("failure_detail")
+                .is_none()
+        );
+        let request: OperationIdempotencyLookupV1 = serde_json::from_value(json!([
+            "interactive_user",
+            "change",
+            "test",
+            digest,
+            false,
+            true,
+        ]))
+        .unwrap();
+        assert!(request.include_failure_detail);
+        assert!(!request.include_model_budget_conflict);
     }
 }

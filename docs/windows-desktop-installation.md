@@ -305,3 +305,28 @@ each named unexecuted case `not_assessed`; it must not claim complete acceptance
 Both selections still require actual standard-user installation and console
 readiness. Missing decisions, different artifacts, undeclared omissions and failed
 cases are rejected. Remaining acceptance stays with the linked Issue.
+
+## Scripted silent uninstall
+
+The registered `QuietUninstallString` uses `uninstall.exe /S`. NSIS launches a
+self-copy worker and the original launcher can exit before removal finishes.
+A script must wait for the worker and verify the installed files and registration.
+Stopping the service and exiting Desktop are separate actions. An open Desktop,
+active work or an unavailable required Agent restoration refuses silent removal.
+Keep the Task registration intact and stop the service through its public CLI
+when a stopped-service case is required.
+
+For a synchronous result, copy the installed uninstaller outside its program
+directory and invoke the NSIS worker with `/S _?=<original program directory>`.
+The `_?=` argument must be last and unquoted, including paths containing spaces.
+Wait for that copied process and check its exit code. A successful default
+uninstall removes owned program/CLI/Task/Apps registration and preserves user
+data. Remove the temporary worker after it exits. The original launcher's early
+exit code alone cannot establish those effects.
+
+The latest worker result is retained at
+`%LOCALAPPDATA%\HiRoute\shell\uninstall-outcome.json`. Refusal reports contain a
+safe failure code and operation, including a running Desktop or another active
+installer. A successful result is written after NSIS checks removal of its owned
+payload and deletes the Apps registration. Preserve this support report and the
+existing installation if uninstall refuses or removal fails.

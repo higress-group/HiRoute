@@ -16,6 +16,17 @@ nor runtime downloads or automatic updates. Windows has a separate
 headless installation. macOS can use the same candidate-package mechanism, but this
 page and the Quickstart are validated for Linux.
 
+## Model connection timeout
+
+Model TCP/TLS connection establishment defaults to 10 seconds. Operators can set
+`HIROUTE_MODEL_CONNECT_TIMEOUT_MS` to an integer from 1 to 60000 in the daemon's
+launch environment and restart the service. The setting is captured once per
+process and applies to model routes, including proxy establishment. It does not
+change decision-service timeouts or model response/stream timeouts. The remaining
+logical request deadline always takes precedence; DNS runs in its separate request
+scope. Invalid settings refuse publication. Setting this variable only for a CLI
+invocation does not reconfigure an existing daemon.
+
 ## Installation
 
 From 0.5.0, the installed daemon also provides the [Web UI / console](web-console.md). It defaults

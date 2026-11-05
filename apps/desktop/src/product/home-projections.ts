@@ -39,6 +39,7 @@ export type DesktopSnapshot = {
 };
 
 export type DesktopOperation = {
+  failure_detail?: { schema: string; step: string; code: string; cause: string } | null;
   model_budget_conflict?: import('../plan-editor-errors').ModelBudgetConflict | null;
   operation_id: string;
   state: string;

@@ -308,6 +308,23 @@ where
                 continue;
             }
             if let Err(error) = self.run_step(&mut operation, kind) {
+                // A completed settings service segment carries its own durable proof.
+                // Otherwise retain the first failure before compensation overwrites statuses.
+                if error.model_budget_conflict().is_none()
+                    && settings_service_receipt(&operation).is_none()
+                {
+                    let port = match &error {
+                        TransactionError::Port(port) => Some(port),
+                        _ => None,
+                    };
+                    let failure =
+                        hiroute_domain::OperationFailureV1::new(kind, error.safe_code(), port);
+                    operation.step_mut(kind).terminal_result = Some(
+                        serde_json::to_string(&failure).expect("safe failure evidence serializes"),
+                    );
+                    operation.safe_error_code = Some(error.safe_code().to_owned());
+                    self.control.save_operation(&mut operation)?;
+                }
                 if let Some(conflict) = error.model_budget_conflict() {
                     operation.step_mut(kind).terminal_result = Some(
                         serde_json::to_string(conflict).expect("safe capacity facts serialize"),
@@ -593,7 +610,9 @@ where
                 }
             }
         }
-        if safe_error_code != "RECOVERY_ROLLBACK" || operation.model_budget_conflict().is_none() {
+        if safe_error_code != "RECOVERY_ROLLBACK"
+            || (operation.model_budget_conflict().is_none() && operation.failure_detail().is_none())
+        {
             operation.safe_error_code = Some(safe_error_code.to_owned());
         }
         if operation.state != OperationState::RollingBack {
@@ -642,6 +661,11 @@ where
                         .as_deref()
                         .and_then(hiroute_domain::AgentModelBudgetConflictV1::parse)
                         .is_none()
+                        && step
+                            .terminal_result
+                            .as_deref()
+                            .and_then(hiroute_domain::OperationFailureV1::parse)
+                            .is_none()
                     {
                         step.terminal_result = Some("compensated".to_owned());
                     }
@@ -650,7 +674,16 @@ where
                     uncertain = true;
                     let step = operation.step_mut(kind);
                     step.status = OperationStepStatus::Attention;
-                    step.terminal_result = Some("ownership_unconfirmed".to_owned());
+                    // Attention retains the uncertain ownership state. Keep the established
+                    // triggering failure as diagnostic evidence even if observation fails again.
+                    if step
+                        .terminal_result
+                        .as_deref()
+                        .and_then(hiroute_domain::OperationFailureV1::parse)
+                        .is_none()
+                    {
+                        step.terminal_result = Some("ownership_unconfirmed".to_owned());
+                    }
                 }
             }
             self.control.save_operation(&mut operation)?;

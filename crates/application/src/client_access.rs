@@ -57,6 +57,11 @@ pub(crate) fn dispatch(
                     .as_ref()
                     .is_none_or(|op| op.accepted_digest == lookup.accepted_digest);
                 let operation = operation.map(|op| ClientOperationViewV1 {
+                    failure_detail: if lookup.include_failure_detail {
+                        op.failure_detail
+                    } else {
+                        None
+                    },
                     model_budget_conflict: if lookup.include_model_budget_conflict {
                         op.model_budget_conflict
                     } else {

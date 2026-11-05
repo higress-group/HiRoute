@@ -29,6 +29,29 @@ No missing production adapter may return a fake success.
 - **THEN** it MUST resolve the original Operation without duplicate effects;
   a different intent under that key conflicts instead of replacing it.
 
+### Requirement: Rollback preserves actionable failure evidence
+
+An admitted step failure before service activation completes SHALL retain the failing step, stable error code and closed cause category through compensation, serialization, interrupted rollback and later status reads. Bounded static adapter labels MAY identify the failed boundary; arbitrary native errors, paths, credentials and request content SHALL NOT enter this evidence. A later unattempted step SHALL NOT be reported as the failed step. Recovery SHALL preserve the original failure when it can establish it, without inventing detail for older journals.
+
+New clients explicitly request failure detail in the idempotency lookup. Released lookups without that request SHALL keep their response shape. Desktop recovery feedback SHALL name the failed phase and give cause-specific guidance; raw adapter labels are diagnostic facts rather than user instructions. Failure evidence is read-only and grants no execution, replay or compensation authority. The same submission key continues to recover the original operation; distinct keys retain ordinary fresh admission and ownership checks.
+
+When Apply explicitly returns `rolled_back` or `needs_attention`, the product session SHALL obtain the same identity- and sequence-checked failure projection before returning the terminal view to Desktop. A failed read SHALL retain the original operation identity for observation rather than replaying Apply. Successful and in-progress Apply responses SHALL NOT acquire this extra read dependency. If compensation cannot confirm ownership, the step SHALL remain `attention` while retaining its established triggering failure; diagnostic evidence SHALL NOT release the writer or authorize retry.
+
+#### Scenario: Artifact preparation fails before activation
+
+- **WHEN** preparing an Agent artifact fails and the transaction compensates earlier effects
+- **THEN** operation queries retain the artifact step and established cause, activation remains unattempted, the prior connection stays effective, and opted-in status readers receive the same evidence after reopening or interrupted rollback.
+
+#### Scenario: An ordinary save returns a failed terminal operation
+
+- **WHEN** the accepted Apply call completes rollback before its response reaches Desktop
+- **THEN** the returned view already carries the established failure code and detail without requiring a cold pending-operation recovery; a failed detail read retains that operation for later observation.
+
+#### Scenario: Artifact observation also fails during rollback
+
+- **WHEN** an artifact observation failure triggers rollback and the same observation remains unavailable during compensation
+- **THEN** the operation stays `needs_attention` with its writer retained, and serialization, reopen and opted-in reads preserve the original failure step and cause.
+
 ### Requirement: Changes validate the facts they consume
 
 Planning/admission MUST capture and recheck exact resource revisions, source/Key

@@ -636,6 +636,7 @@ pub async fn get_compute_save_result(
                     // This is a read by identity. A different digest never authorizes an Apply.
                     accepted_digest: CanonicalDigest::of_bytes(b"subscription-api-sync-lookup/v1"),
                     include_model_budget_conflict: false,
+                    include_failure_detail: true,
                 },
             )
             .await?;

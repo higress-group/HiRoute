@@ -167,6 +167,14 @@ try {
         results.push(...batch.results.map(item => ({ ...item, viewport })));
         for (const item of batch.results) process.stdout.write(`${item.state}: ${item.id} · ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
+      if (selected.some(s => ['desktop.operation.rollback-failure-detail', 'desktop.operation.immediate-rollback-failure-detail'].includes(s.id))) {
+        for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) {
+          await client.send('Emulation.setDeviceMetricsOverride', { ...viewport, deviceScaleFactor: 1, mobile: false });
+          await new Promise(resolve => setTimeout(resolve, 80));
+          const screenshot = await client.send('Page.captureScreenshot', { format: 'png' });
+          await writeFile(path.join(outputRoot, `operation-failure-${viewport.width}x${viewport.height}.png`), Buffer.from(screenshot.data, 'base64'));
+        }
+      }
       assertScenarioResults(selected, results);
       checks.push(...results);
       if (process.env.HIROUTE_UI_FULL_AUDIT === '1') {
