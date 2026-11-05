@@ -368,8 +368,8 @@ fn retire(path: &Path, id: &str, retired: bool) -> Result<(), UpdateFailure> {
         }
         fs::rename(path, &target).map_err(UpdateFailure::io("retire-stage"))?;
     }
-    drop(lock);
     drop(held);
+    // Keep the external exclusive lease until all owned payload bytes retire.
     // The marker is last so an interrupted removal remains attributable.
     for name in FILES.iter().filter(|name| **name != "stage.json") {
         if names.iter().any(|entry| entry == name) {
