@@ -336,14 +336,16 @@ fn provider_serial_state() -> &'static ProviderSerialState {
 
 fn write_provider_reply(stream: &mut TestTlsStream, reply: ProviderReply) -> std::io::Result<()> {
     match reply {
-        ProviderReply::DelayedHandshake { status, body, .. } => write_provider_reply(
-            stream,
-            ProviderReply::Complete {
-                status,
-                body,
-                error_kind: None,
-            },
-        ),
+        ProviderReply::DelayedHandshake { status, body, .. } => {
+            write_provider_reply(
+                stream,
+                ProviderReply::Complete {
+                    status,
+                    body,
+                    error_kind: None,
+                },
+            )?;
+        }
         ProviderReply::Complete {
             status,
             error_kind,
