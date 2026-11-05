@@ -176,6 +176,14 @@ fn opencode_markdown_reference_added_during_staging_preserves_the_active_route()
         .adapter
         .restore_active_publication()
         .unwrap();
+    fixture
+        .runtime
+        .adapter
+        .publication_target()
+        .unwrap()
+        .unwrap()
+        .resume_requests()
+        .unwrap();
     let path = fixture
         .native_config
         .parent()
