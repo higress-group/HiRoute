@@ -143,6 +143,10 @@ jobs:
       - name: Diagnose temporary Windows shell components
         if: runner.os == 'Windows' && inputs.component_probe
         shell: pwsh
+        env:
+          # Match the existing compile check's payload-free component context.
+          # Full installer builds retain their production resource configuration.
+          TAURI_CONFIG: '{"bundle":{"resources":[]}}'
         run: |
           if ((git rev-parse HEAD) -ne $env:GITHUB_SHA) { throw 'Exact dispatch SHA required' }
           New-Item artifacts/windows-shell-components -ItemType Directory -Force | Out-Null
