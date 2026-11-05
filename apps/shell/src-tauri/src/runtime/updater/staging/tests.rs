@@ -106,6 +106,7 @@ fn locked_installer_keeps_native_error_in_the_persisted_outcome() {
     assert_eq!(failure.detail.step, "open-update-installer");
     assert_eq!(failure.detail.windows_error, Some(32));
     let outcome = temp.path().join("outcome");
+    directory(&outcome).unwrap();
     failure.record_at(&outcome, true).unwrap();
     let value: serde_json::Value = finisher::read(&outcome.join("update-outcome.json")).unwrap();
     assert_eq!(value["code"], "UPGRADE_STAGE_UNAVAILABLE");
