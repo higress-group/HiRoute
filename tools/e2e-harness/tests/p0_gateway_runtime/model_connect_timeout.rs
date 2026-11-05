@@ -32,8 +32,12 @@ fn slow_tls_uses_model_connect_budget_and_still_obeys_the_request_deadline() {
             if let Err(error) = client.read_to_end(&mut bytes) {
                 assert_eq!(error.kind(), std::io::ErrorKind::ConnectionReset);
             }
+            assert!(
+                started.elapsed() >= Duration::from_millis(100),
+                "request was rejected before its logical deadline"
+            );
             assert!(started.elapsed() < Duration::from_secs(2));
-            assert!(!bytes.starts_with(b"HTTP/1.1 200"));
+            assert!(bytes.is_empty() || bytes.starts_with(b"HTTP/1.1 504"));
             continue;
         }
         let response = fixture.request();
