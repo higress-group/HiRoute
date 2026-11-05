@@ -37,6 +37,11 @@ pub const MESSAGES_TOKEN: &str = "runtime-messages-token";
 
 #[derive(Clone)]
 pub enum ProviderReply {
+    DelayedHandshake {
+        duration: Duration,
+        status: u16,
+        body: &'static [u8],
+    },
     Complete {
         status: u16,
         error_kind: Option<&'static str>,
@@ -198,6 +203,9 @@ impl NativeProvider {
                         });
                         let worker_requests = Arc::clone(&thread_requests);
                         workers.push(std::thread::spawn(move || {
+                            if let ProviderReply::DelayedHandshake { duration, .. } = &reply {
+                                std::thread::sleep(*duration);
+                            }
                             if matches!(&reply, ProviderReply::EarlyComplete { .. }) {
                                 let _ = write_provider_reply(&mut stream, reply);
                                 let request = read_complete_http_request(
@@ -328,6 +336,14 @@ fn provider_serial_state() -> &'static ProviderSerialState {
 
 fn write_provider_reply(stream: &mut TestTlsStream, reply: ProviderReply) -> std::io::Result<()> {
     match reply {
+        ProviderReply::DelayedHandshake { status, body, .. } => write_provider_reply(
+            stream,
+            ProviderReply::Complete {
+                status,
+                body,
+                error_kind: None,
+            },
+        ),
         ProviderReply::Complete {
             status,
             error_kind,
@@ -510,6 +526,7 @@ impl Drop for RuntimeFixture {
 
 #[derive(Clone, Copy)]
 struct RuntimeLaunchOptions {
+    model_connect_timeout_ms: Option<u64>,
     replay_threshold: usize,
     replay_record_bytes: usize,
     overall_timeout_ms: u64,
@@ -561,6 +578,7 @@ enum ReplayRootMode {
 impl Default for RuntimeLaunchOptions {
     fn default() -> Self {
         Self {
+            model_connect_timeout_ms: None,
             replay_threshold: 64 * 1024,
             replay_record_bytes: 16 * 1024,
             overall_timeout_ms: 30_000,
@@ -1112,6 +1130,25 @@ impl RuntimeFixture {
         )
     }
 
+    pub fn launch_with_model_connect_timeout(
+        providers: &[&NativeProvider],
+        timeout_ms: Option<u64>,
+        overall_ms: u64,
+    ) -> Self {
+        Self::launch_configured(
+            providers,
+            1,
+            None,
+            None,
+            None,
+            RuntimeLaunchOptions {
+                model_connect_timeout_ms: timeout_ms,
+                overall_timeout_ms: overall_ms,
+                ..RuntimeLaunchOptions::default()
+            },
+        )
+    }
+
     pub fn launch_with_key_counts(
         providers: &[&NativeProvider],
         max_attempts: u32,
@@ -1587,6 +1624,10 @@ impl Hirouted {
         }
         if let Some(attempt_timeout_ms) = options.attempt_timeout_ms {
             command.env(E2E_ATTEMPT_TIMEOUT_MS_ENV, attempt_timeout_ms.to_string());
+        }
+        command.env_remove("HIROUTE_MODEL_CONNECT_TIMEOUT_MS");
+        if let Some(timeout) = options.model_connect_timeout_ms {
+            command.env("HIROUTE_MODEL_CONNECT_TIMEOUT_MS", timeout.to_string());
         }
         if let Some(bytes) = options.history_max_bytes {
             command.env("HIROUTE_AGENT_TURN_HISTORY_MAX_BYTES", bytes.to_string());

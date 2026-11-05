@@ -8,6 +8,16 @@ telemetry, execution facts, and captured content.
 
 ## Requirements
 
+### Requirement: Model connection establishment has an independent finite budget
+
+Model connection establishment SHALL use a finite process-owned transport budget independently of decision-service policy. Its default SHALL allow ten seconds. An operator MAY select 1–60000 milliseconds through `HIROUTE_MODEL_CONNECT_TIMEOUT_MS` in the daemon launch environment; the value is captured once before serving published model traffic and requires restart to change. Invalid, zero, overflowing or non-integer input SHALL refuse publication without logging its raw value. Each address connection, including proxy/TLS establishment, SHALL remain bounded by both that budget and the remaining attempt/logical-request deadline. DNS resolution retains its separate logical request scope. This setting SHALL NOT change sealed Plan/publication input bytes, classifier deadlines, request-write, first-byte or stream-idle policies.
+
+#### Scenario: A healthy TLS route requires more than two seconds
+
+- **WHEN** a model route completes TLS establishment after two seconds but within its configured connection and logical-request budgets
+- **THEN** the first request after publication can complete normally through the production transport; a shorter explicit connection budget or logical deadline still terminates the attempt before semantic request commitment.
+
+
 ### Requirement: The data plane consumes six explicit ports
 
 Gateway MUST be able to run without Application, business SQLite, or local Agent

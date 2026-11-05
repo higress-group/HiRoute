@@ -110,6 +110,13 @@ pub(crate) struct CompiledAggregate {
 pub(crate) fn compile(
     snapshot: &GatewayPublicationSnapshotV3,
 ) -> Result<CompiledAggregate, PublicationInstallError> {
+    compile_with_model_connect_timeout(snapshot, super::transport_policy::model_connect_timeout()?)
+}
+
+pub(super) fn compile_with_model_connect_timeout(
+    snapshot: &GatewayPublicationSnapshotV3,
+    model_connect_timeout: Duration,
+) -> Result<CompiledAggregate, PublicationInstallError> {
     snapshot.validate()?;
     let plan_revision = PlanRevision(snapshot.publication_revision);
     let attempt_timeouts = attempt_timeouts();
@@ -180,7 +187,7 @@ pub(crate) fn compile(
             sni: endpoint.sni,
             ca: CaPolicy::System,
             alpn: endpoint.alpn,
-            connect_timeout: Duration::from_secs(2),
+            connect_timeout: model_connect_timeout,
             transport_read_buffer_bytes: FRAME_LIMIT,
             h2_stream_window_bytes: FRAME_LIMIT as u32,
             h2_connection_window_bytes: (FRAME_LIMIT * 4) as u32,
