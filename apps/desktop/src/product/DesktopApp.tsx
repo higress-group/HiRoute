@@ -59,6 +59,7 @@ import {
   isTerminalOperation,
   OPERATION_RESULT_UNVERIFIED,
   operationFeedback,
+  operationFailureHelp,
   pendingFeedbackIdentity,
   representedByTrial,
   shouldObservePendingOperation,
@@ -97,6 +98,8 @@ function failureCode(error: unknown): string {
 }
 
 function failureHelp(code: string, language: 'zh' | 'en', operation?: DesktopOperation | null): string {
+  const detail = operation && operationFailureHelp(operation, language);
+  if (detail) return detail;
   if (code === 'QODER_MODEL_BUDGET_CONFLICT' || code === 'AGENT_MODEL_BUDGET_CONFLICT') return planErrorMessage(operation ?? code, language);
   const messages: Record<string, [string, string]> = {
     CONFIRMATION_EXPIRED: ['确认已过期，请重新预览。输入已保留。', 'Confirmation expired. Preview again; your input is retained.'],

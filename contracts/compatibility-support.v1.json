@@ -346,6 +346,7 @@
     "hiroute.opencode-native-restore/v2",
     "hiroute.operation-cancel-request/v1",
     "hiroute.operation-event/v1",
+    "hiroute.operation-failure/v1",
     "hiroute.operation-idempotency-lookup/v1",
     "hiroute.operation-idempotency-result/v1",
     "hiroute.operation-input/v1",
@@ -2707,6 +2708,21 @@
         "crates/domain/src/routing/assessment_feedback_tests.rs"
       ],
       "field": "scopes[*].assessment: preceding default instructions and criteria under unchanged C4 format"
+    },
+    {
+      "contract": "hiroute.operation-idempotency-lookup/v1",
+      "field": "include_failure_detail absent or false; retained Operation step results without failure evidence",
+      "mode": "legacy_adapter",
+      "owner": "operation-failure-diagnostics",
+      "reason": "Released V0.5.1 lookups and positional fields retain their ordering and response shape. New clients explicitly opt into safe failure detail. Retained journals without evidence stay unknown; current evidence uses the existing terminal_result string and does not change immutable input or authorize replay.",
+      "removal_condition": "Retire only when the released-client and retained-operation support policy no longer requires these shapes.",
+      "allowed_paths": [
+        "crates/application-api/src/client_access.rs",
+        "crates/application/src/client_access.rs",
+        "crates/domain/src/operation/failure.rs",
+        "crates/domain/src/operation/mod.rs",
+        "crates/local-storage/src/control/operation_status.rs"
+      ]
     }
   ]
 }

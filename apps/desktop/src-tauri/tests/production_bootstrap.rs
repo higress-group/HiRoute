@@ -200,6 +200,7 @@ async fn real_role_all_child_ack_and_read_only_lookup_use_shared_core() {
         idempotency_key: "never-submitted".into(),
         accepted_digest: digest,
         include_model_budget_conflict: false,
+        include_failure_detail: false,
     };
     let result: MachineEnvelopeV2<OperationIdempotencyResultV1> = resident
         .client

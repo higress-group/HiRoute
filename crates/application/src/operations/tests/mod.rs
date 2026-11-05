@@ -50,6 +50,8 @@ struct MemoryState {
     input: Vec<u8>,
     activation_log: Vec<String>,
     fail_activation: Option<String>,
+    fail_artifact_prepare: bool,
+    artifact_observation_failure: Option<PortErrorCode>,
     publication_displaced: bool,
     publication_revision: u64,
     host_login_item_observed: bool,
@@ -635,6 +637,14 @@ impl ExternalEffectPort for MemoryPorts {
         operation: &OperationV1,
         intent: &ExternalEffectIntentV1,
     ) -> PortResult<OwnedEffectV1> {
+        if intent.kind() == OwnedEffectKind::AgentArtifact
+            && self.state.borrow().fail_artifact_prepare
+        {
+            return Err(PortError::new(
+                PortErrorCode::PermissionDenied,
+                "agent.artifact.prepare",
+            ));
+        }
         let operation_id = &operation.operation_id;
         Ok(self.stage(
             operation_id,
@@ -652,6 +662,11 @@ impl ExternalEffectPort for MemoryPorts {
         operation: &OperationV1,
         intent: &ExternalEffectIntentV1,
     ) -> PortResult<EffectReconciliation> {
+        if intent.kind() == OwnedEffectKind::AgentArtifact
+            && let Some(code) = self.state.borrow().artifact_observation_failure
+        {
+            return Err(PortError::new(code, "agent.artifact.observe"));
+        }
         let operation_id = &operation.operation_id;
         if intent.kind() == OwnedEffectKind::LoginItem
             && self.state.borrow().host_login_item_observed

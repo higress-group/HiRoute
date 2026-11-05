@@ -26,6 +26,8 @@ mod model_save;
 pub use model_save::*;
 mod subscription;
 pub use subscription::*;
+#[cfg(test)]
+mod apply_failure_tests;
 mod decision_context;
 mod decision_services;
 mod worker_dependencies;
@@ -662,9 +664,21 @@ impl ProductSession {
             }
             Ok(envelope) => {
                 let hint = self.hint.as_mut().ok_or("RESPONSE_OPERATION_MISSING")?;
-                Some(accepted_operation_view(envelope, hint)?)
+                let accepted = accepted_operation_view(envelope, hint)?;
+                // Released Apply responses carry identity/state, not failure evidence. A
+                // failed terminal view stops Desktop observation, so enrich it first using
+                // the same identity/sequence-checked lookup as lost-response recovery.
+                Some(
+                    if matches!(accepted.state.as_str(), "rolled_back" | "needs_attention") {
+                        self.find_pending()
+                            .await?
+                            .ok_or("OPERATION_RESULT_UNVERIFIED")?
+                    } else {
+                        accepted
+                    },
+                )
             }
-            // Only a lost response needs an identity lookup. If that lookup cannot
+            // A lost response also needs an identity lookup. If that lookup cannot
             // find an Operation yet, retain the request identity for a later retry.
             Err(_) => self.find_pending().await?,
         };
@@ -823,6 +837,7 @@ fn accepted_operation_view(
     hint.operation_id = Some(reference.operation_id.clone());
     hint.after_sequence = reference.sequence;
     Ok(ClientOperationViewV1 {
+        failure_detail: None,
         model_budget_conflict: None,
         operation_id: reference.operation_id,
         state: reference.state,
