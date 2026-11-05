@@ -135,6 +135,38 @@ failed startup record. Old, incomplete or unreadable diagnostics leave the manag
 error intact. The typed current cause can explain a lock, missing key or upgrade
 refusal without borrowing an earlier batch's advice.
 
+## Update stage diagnosis and retirement
+
+Update outcomes preserve their existing category code and add a safe diagnostic
+with the failed operation, I/O kind, available Win32/HRESULT code, and installer
+exit code when applicable. The same fields are available in Updates and in
+`%LOCALAPPDATA%\HiRoute\shell\update-outcome.json`. The diagnostic excludes
+paths, account names, arbitrary native messages and downloaded contents.
+
+Each SHA-addressed stage has a private ownership record. A shared lease pins a
+ready package and native handoff; a download requires an exclusive writer lease.
+The small SHA-keyed lease file lives beside the payload directory because Windows
+cannot rename a directory containing an open file. That coordination file remains
+after payload retirement so concurrent callers always use the same lock identity.
+Rechecking and retrying the same package preserve that ownership. Downloads,
+helpers and cleanup coordinate with the existing update lock. Recovery and manual
+installation remain protected by the installation mutex and pending journal.
+
+Discard package releases only the selected, inactive owned stage and returns to
+the download action. Cancel during download removes the partial owned package.
+Cancel during drain preserves the verified package for retry and resumes the
+service. A background startup/download sweep retires obsolete inactive stages
+without hashing their payloads on the foreground path. Retirement first verifies
+private ownership, known regular single-link entries and an exclusive lease,
+then renames the directory before deleting its fixed file set. Interrupted
+retirement resumes from its retained ownership record. Changed, foreign, linked,
+active or recovery-dependent material is retained.
+
+Released stages without an ownership record are admitted only through a matching
+V1 job whose installer/helper digests and release metadata are verified. Unknown
+or incomplete legacy namespaces require support and remain preserved.
+
+
 ## Windows support and acceptance scope
 
 This is the first supported Windows release, with no supported released Windows

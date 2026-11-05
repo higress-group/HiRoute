@@ -17,7 +17,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod diagnostic;
 mod finisher;
+mod staging;
+use diagnostic::{UpdateDiagnostic, UpdateFailure};
 pub(super) use finisher::{recover_startup, run_if_requested};
 #[derive(Clone, Serialize)]
 pub(super) struct UpdateView {
@@ -27,15 +30,17 @@ pub(super) struct UpdateView {
     downloaded_bytes: u64,
     active_calls: u64,
     active_tasks: u64,
-    error: Option<&'static str>,
+    error: Option<String>,
     can_install: bool,
     package_ready: bool,
     recovery: Option<&'static str>,
+    diagnostic: Option<UpdateDiagnostic>,
 }
 pub(super) struct Updater {
     view: Mutex<UpdateView>,
     cancel: AtomicBool,
     parent_lock: Mutex<Option<File>>,
+    ready_stage: Mutex<Option<staging::Stage>>,
 }
 impl Updater {
     pub(super) fn new() -> Self {
@@ -52,9 +57,11 @@ impl Updater {
                     .is_ok_and(|root| root.join("shell-package.json").is_file()),
                 package_ready: false,
                 recovery: None,
+                diagnostic: None,
             }),
             cancel: AtomicBool::new(false),
             parent_lock: Mutex::new(None),
+            ready_stage: Mutex::new(None),
         }
     }
     pub(super) fn status(&self) -> Result<UpdateView, &'static str> {
@@ -79,6 +86,7 @@ impl Updater {
         self.cancel.store(false, Ordering::Release);
         view.phase = phase;
         view.error = None;
+        view.diagnostic = None;
         view.recovery = None;
         Ok(())
     }
@@ -105,14 +113,14 @@ impl Updater {
                     .content_length()
                     .is_some_and(|n| n > MAX_RELEASE_FEED_BYTES as u64)
                 {
-                    return Err("UPGRADE_CATALOG_INVALID");
+                    return Err("UPGRADE_CATALOG_INVALID".into());
                 }
                 let mut bytes = vec![];
                 while let Some(chunk) =
                     response.chunk().await.map_err(|_| "UPGRADE_CHECK_FAILED")?
                 {
                     if bytes.len() + chunk.len() > MAX_RELEASE_FEED_BYTES {
-                        return Err("UPGRADE_CATALOG_INVALID");
+                        return Err("UPGRADE_CATALOG_INVALID".into());
                     }
                     bytes.extend_from_slice(&chunk);
                 }
@@ -128,13 +136,14 @@ impl Updater {
                     v.package_ready = false;
                     v.downloaded_bytes = 0;
                 });
-                Ok::<_, &'static str>(())
+                Ok::<_, UpdateFailure>(())
             }
             .await;
             if let Err(code) = result {
                 state.updater.change(|v| {
                     v.phase = "check_failed";
-                    v.error = Some(code);
+                    v.error = Some(code.code.into());
+                    v.diagnostic = Some(code.detail.clone());
                 });
             }
         });
@@ -151,24 +160,33 @@ impl Updater {
             .ok_or("UPGRADE_NOT_AVAILABLE")?;
         release.revision_prefix()?;
         state.updater.begin("downloading")?;
+        state
+            .updater
+            .ready_stage
+            .lock()
+            .map_err(|_| "UPGRADE_STATE_UNAVAILABLE")?
+            .take();
         let initial = state.updater.status()?;
         tauri::async_runtime::spawn(async move {
             let result = async {
-                let directory = finisher::stage(&release)?;
+                staging::background_cleanup(Some(release.sha256.clone()));
+                let stage = staging::download(&release)?;
+                let directory = &stage.path;
                 let installer = directory.join("installer.exe");
                 if installer
                     .try_exists()
-                    .map_err(|_| "UPGRADE_STAGE_UNAVAILABLE")?
+                    .map_err(UpdateFailure::io("check-download-file"))?
                 {
-                    std::fs::remove_file(&installer).map_err(|_| "UPGRADE_STAGE_UNAVAILABLE")?;
+                    std::fs::remove_file(&installer)
+                        .map_err(UpdateFailure::io("remove-previous-download"))?;
                 }
                 let held = security::ensure_private_directory(&directory)
-                    .map_err(|_| "UPGRADE_STAGE_UNAVAILABLE")?;
+                    .map_err(UpdateFailure::io("open-download-directory"))?;
                 let mut file = security::create_owner_only_file_at(
                     &held,
                     std::ffi::OsStr::new("installer.exe"),
                 )
-                .map_err(|_| "UPGRADE_STAGE_UNAVAILABLE")?;
+                .map_err(UpdateFailure::io("create-update-download"))?;
                 let mut response = http()?
                     .get(release.download_url())
                     .send()
@@ -177,7 +195,7 @@ impl Updater {
                     .error_for_status()
                     .map_err(|_| "UPGRADE_DOWNLOAD_FAILED")?;
                 if response.content_length().is_some_and(|n| n != release.size) {
-                    return Err("UPGRADE_PACKAGE_SIZE_MISMATCH");
+                    return Err("UPGRADE_PACKAGE_SIZE_MISMATCH".into());
                 }
                 let mut sha = Sha256::new();
                 let mut count = 0;
@@ -189,39 +207,51 @@ impl Updater {
                     state.updater.cancelled()?;
                     count += chunk.len() as u64;
                     if count > release.size {
-                        return Err("UPGRADE_PACKAGE_SIZE_MISMATCH");
+                        return Err("UPGRADE_PACKAGE_SIZE_MISMATCH".into());
                     }
                     file.write_all(&chunk)
-                        .map_err(|_| "UPGRADE_STAGE_UNAVAILABLE")?;
+                        .map_err(UpdateFailure::io("write-update-download"))?;
                     sha.update(&chunk);
                     state.updater.change(|v| v.downloaded_bytes = count);
                 }
-                file.sync_all().map_err(|_| "UPGRADE_STAGE_UNAVAILABLE")?;
+                file.sync_all()
+                    .map_err(UpdateFailure::io("flush-update-download"))?;
                 drop(file);
                 state.updater.change(|v| v.phase = "verifying");
                 state.updater.cancelled()?;
                 if count != release.size {
-                    return Err("UPGRADE_PACKAGE_SIZE_MISMATCH");
+                    return Err("UPGRADE_PACKAGE_SIZE_MISMATCH".into());
                 }
                 if format!("{:x}", sha.finalize()) != release.sha256 {
-                    return Err("UPGRADE_DIGEST_MISMATCH");
+                    return Err("UPGRADE_DIGEST_MISMATCH".into());
                 }
+                let stage = stage.into_reader()?;
+                *state
+                    .updater
+                    .ready_stage
+                    .lock()
+                    .map_err(|_| "UPGRADE_STATE_UNAVAILABLE")? = Some(stage);
                 state.updater.change(|v| {
                     v.phase = "ready";
                     v.package_ready = true;
                 });
-                Ok::<_, &'static str>(())
+                Ok::<_, UpdateFailure>(())
             }
             .await;
             if let Err(code) = result {
+                if code.code != "UPGRADE_CANCELLED" {
+                    code.record(service::available_blocking());
+                }
+                let _ = staging::discard(&release);
                 state.updater.change(|v| {
                     v.package_ready = false;
-                    v.phase = if code == "UPGRADE_CANCELLED" {
+                    v.phase = if code.code == "UPGRADE_CANCELLED" {
                         "available"
                     } else {
                         "failed"
                     };
-                    v.error = (code != "UPGRADE_CANCELLED").then_some(code);
+                    v.error = (code.code != "UPGRADE_CANCELLED").then(|| code.code.into());
+                    v.diagnostic = (code.code != "UPGRADE_CANCELLED").then(|| code.detail.clone());
                 });
             }
         });
@@ -281,20 +311,27 @@ impl Updater {
                     finisher::commit(&release)?;
                 }
                 app.exit(0);
-                Ok::<_, &'static str>(())
+                Ok::<_, UpdateFailure>(())
             })();
             if let Err(code) = result {
+                if code.code == "UPGRADE_CANCELLED" {
+                    let _ = finisher::cancel(&release);
+                }
                 if let Ok(mut parent) = state.updater.parent_lock.lock() {
                     parent.take();
                 }
                 let resumed = resume_admission().is_ok() && service::available_blocking();
+                if code.code != "UPGRADE_CANCELLED" {
+                    code.record(resumed);
+                }
                 state.updater.change(|v| {
-                    v.phase = if code == "UPGRADE_CANCELLED" {
+                    v.phase = if code.code == "UPGRADE_CANCELLED" {
                         "ready"
                     } else {
                         "failed"
                     };
-                    v.error = (code != "UPGRADE_CANCELLED").then_some(code);
+                    v.error = (code.code != "UPGRADE_CANCELLED").then(|| code.code.into());
+                    v.diagnostic = (code.code != "UPGRADE_CANCELLED").then(|| code.detail.clone());
                     v.recovery = Some(if resumed {
                         "service_available"
                     } else {
@@ -306,7 +343,27 @@ impl Updater {
         Ok(initial)
     }
     pub(super) fn cancel(&self) -> Result<UpdateView, &'static str> {
-        let view = self.view.lock().map_err(|_| "UPGRADE_STATE_UNAVAILABLE")?;
+        let mut view = self.view.lock().map_err(|_| "UPGRADE_STATE_UNAVAILABLE")?;
+        if matches!(view.phase, "ready" | "failed") {
+            let release = view.available.as_ref().ok_or("UPGRADE_NOT_AVAILABLE")?;
+            let mut ready = self
+                .ready_stage
+                .lock()
+                .map_err(|_| "UPGRADE_STATE_UNAVAILABLE")?;
+            if let Err(failure) = staging::discard_ready(release, &mut ready) {
+                view.package_ready = ready.is_some();
+                view.phase = "failed";
+                view.error = Some(failure.code.into());
+                view.diagnostic = Some(failure.detail);
+                return Err(failure.code);
+            }
+            view.phase = "available";
+            view.package_ready = false;
+            view.downloaded_bytes = 0;
+            view.error = None;
+            view.diagnostic = None;
+            return Ok(view.clone());
+        }
         if !matches!(view.phase, "downloading" | "verifying" | "waiting") {
             return Err("UPGRADE_NOT_CANCELLABLE");
         }

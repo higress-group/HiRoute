@@ -11,6 +11,7 @@ type UpdateView = {
   active_calls: number;
   active_tasks: number;
   error: string | null;
+  diagnostic?: { step: string; io_kind: string | null; windows_error: number | null; hresult: number | null; process_exit: number | null } | null;
   can_install: boolean;
   package_ready: boolean;
   recovery: 'service_available' | 'stop_pending' | 'restart_required' | null;
@@ -61,6 +62,7 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
     : view.phase === 'failed' ? text('升级未完成，请查看错误及启动页中的恢复说明。', 'The upgrade did not complete. See the error and startup recovery instructions.')
     : text('从官网获取稳定版本', 'Stable releases from the official website');
   const code = view?.error || error;
+  const canDiscard = hostCapabilities().host === 'shell-console' && view?.available && ['ready', 'failed'].includes(view.phase);
   const canCancel = view && ['downloading', 'verifying', 'waiting'].includes(view.phase);
   const restartRequired = recovery === 'stop_pending' || recovery === 'restart_required';
   return <section className="settings-group"><h2>{text('版本升级', 'Updates')}</h2><div className="settings-list">
@@ -69,6 +71,7 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
         {!busy && <button className="btn" type="button" disabled={actionPending || cancelPending} onClick={() => void act('update_check')}>{text('检查更新', 'Check for updates')}</button>}
         {view && !busy && view.available && !view.package_ready && <button className="btn" type="button" disabled={actionPending || cancelPending || !view.can_install} onClick={() => void act('update_download')}>{text('下载更新', 'Download update')}</button>}
         {view?.package_ready && !busy && <button className="btn" type="button" disabled={actionPending || cancelPending || restartRequired} onClick={() => void act('update_install')}>{text('安装并重启', 'Install and restart')}</button>}
+        {canDiscard && <button className="btn" type="button" disabled={actionPending || cancelPending} onClick={() => void act('update_cancel')}>{text('丢弃安装包', 'Discard package')}</button>}
         {canCancel && <button className="btn" type="button" disabled={cancelPending} onClick={() => void act('update_cancel')}>{text('取消升级', 'Cancel update')}</button>}
       </div>
     </div>
@@ -82,6 +85,13 @@ export function UpdatesSettings({ active, language, onServiceChanged }: { active
     {['UPGRADE_KEY_UNAVAILABLE', 'UPGRADE_RECOVERY_PACKAGE_INVALID', 'UPGRADE_RECOVERY_PACKAGE_MISSING', 'UPGRADE_PREFLIGHT_INVALID', 'UPGRADE_PREFLIGHT_REFUSED'].includes(code ?? '') && <div className="settings-inline-error">{text('升级前提校验未通过。请保留当前程序和全部数据，核对原密钥、配套旧包及本机启动诊断；修复缺失或损坏的材料后再升级。无法取得必要材料时请寻求支持，不要反复重试或直接覆盖安装。', 'Upgrade prerequisites could not be verified. Keep the current program and all data. Check original keys, the matching complete previous package and local startup diagnostics. Correct missing or damaged material before upgrading. Obtain support if essential material is unavailable; repeated retries or manual overwrite cannot reconstruct it.')}</div>}
     {code === 'UPGRADE_INSUFFICIENT_SPACE' && <div className="settings-inline-error">{text('数据所在磁盘缺少恢复与启动空间。请保留封存历史和旧包，释放无关文件后再重试。', 'The storage volume lacks recovery/startup space. Keep sealed history and old packages, free unrelated files, then retry.')}</div>}
     {code && <div className="settings-inline-error" role="status">{view?.phase === 'check_failed' ? text(`检查未完成（${code}）。本次检查未替换程序。请保留当前安装和数据，恢复连接后再检查。`, `The check did not complete (${code}). This check did not replace the program. Keep the installation and data and check again after restoring connectivity.`) : text(`升级未完成（${code}）。请保留原数据和完整旧包，按启动页的具体指引处理。缺少材料、空间或权限的问题解决前，请勿覆盖安装或直接降级。`, `The update did not complete (${code}). Keep the original data and complete previous package and follow the specific startup instructions. Resolve missing material, space or access before replacing the program or downgrading.`)}</div>}
+    {view?.diagnostic && <div className="settings-inline-error" role="status">{[
+      view.diagnostic.step,
+      view.diagnostic.io_kind,
+      view.diagnostic.windows_error != null ? 'Win32 ' + view.diagnostic.windows_error : null,
+      view.diagnostic.hresult != null ? 'HRESULT 0x' + view.diagnostic.hresult.toString(16).toUpperCase().padStart(8, '0') : null,
+      view.diagnostic.process_exit != null ? 'Exit ' + view.diagnostic.process_exit : null,
+    ].filter(Boolean).join(' · ')}</div>}
     {view && !view.can_install && <div className="gateway-risk">{text('应用内安装需要使用完整的 HiRoute App。', 'In-app installation requires a complete HiRoute App.')}</div>}
   </div></section>;
 }

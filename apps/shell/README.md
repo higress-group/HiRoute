@@ -29,6 +29,7 @@ authentication, confirmations and operations stay in `hirouted` and
   supersedes stale failure reporting before journal retirement, and standalone
   journals keep their separate owner.
 - `updater`: fixed HTTPS V3 selection/download, distinct check-unavailable states,
+  native failure diagnostics, leased stage ownership/retirement, explicit package discard,
   verification, cancellable drain
   and a private native finisher that waits for shell exit before passive NSIS.
 

@@ -275,6 +275,7 @@ def bundle_desktop(result_path, log_path, output):
             or installer.stat().st_size != identity.get('installer_size')):
         raise ValueError('Installer differs from the measured build identity')
     tests = set()
+    shell_tests = set()
     for line in log_path.read_text().splitlines():
         try:
             row = json.loads(line)
@@ -283,6 +284,9 @@ def bundle_desktop(result_path, log_path, output):
         if (row.get('reason') == 'compiler-artifact' and row.get('target', {}).get('name') == 'windows_desktop'
                 and row.get('profile', {}).get('test') is True and row.get('executable')):
             tests.add(Path(row['executable']).resolve(strict=True))
+        if (row.get('reason') == 'compiler-artifact' and row.get('target', {}).get('name') == 'hiroute_shell'
+                and row.get('profile', {}).get('test') is True and row.get('executable')):
+            shell_tests.add(Path(row['executable']).resolve(strict=True))
     if len(tests) != 1:
         raise ValueError('Exactly one compiled Windows Desktop test artifact is required')
     binaries = REPO / 'target/x86_64-pc-windows-msvc/release'
@@ -306,6 +310,12 @@ def bundle_desktop(result_path, log_path, output):
             raise ValueError('Embedded product bytes differ from the measured package')
     files = {'installer.exe': installer, 'windows_desktop.exe': harness,
              **{name: payload / name for name in ('hiroute.exe', 'hirouted.exe')}}
+    if shell_tests:
+        if len(shell_tests) != 1:
+            raise ValueError('Exactly one compiled Windows shell regression executable is required')
+        shell_harness = shell_tests.pop()
+        shell_harness.relative_to(binaries.resolve(strict=True))
+        files['hiroute_shell.exe'] = shell_harness
     manifest = dict(source_revision=sha, target='x86_64-pc-windows-msvc', installer_format='nsis',
                     shell_sha256=shell_sha256, native_ci_assessment='not_assessed', files={})
     with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
