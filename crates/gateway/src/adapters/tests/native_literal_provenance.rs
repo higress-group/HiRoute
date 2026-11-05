@@ -508,6 +508,63 @@ fn native_literal_raw_json_accepts_only_one_registered_json_value() {
 }
 
 #[test]
+fn native_literal_canonical_search_history_preserves_typed_marker_strings() {
+    let marker = "literal __hiroute_content_ref_v2_999_0_1_1__";
+    for action in [
+        json!({"type":"search","query":marker,"queries":[marker],"sources":[{"type":"url","url":marker}]}),
+        json!({"type":"open_page","url":marker}),
+        json!({"type":"find","url":marker,"pattern":marker}),
+    ] {
+        let fixture = Fixture::new();
+        let search =
+            json!({"type":"web_search_call","id":marker,"status":"completed","action":action});
+        let mut request = decode_ingress_request(
+            IngressProtocol::Responses,
+            &json!({"model":"alias","input":[search,{"role":"user","content":"continue"}]}),
+        )
+        .unwrap();
+        request.native_body = None;
+        let wire = fixture.wire(&request, IngressProtocol::Responses);
+        assert_eq!(wire["input"][0], search);
+    }
+}
+
+#[test]
+fn native_literal_direct_messages_format_keeps_reserved_schema_defaults() {
+    for literal in [
+        json!({"__hiroute_literal_wire_value_v1":"left"}),
+        json!({"__hiroute_wire_string_parts_v1":["left","right"]}),
+    ] {
+        let schema =
+            json!({"type":"object","properties":{"tag":{"type":"object","default":literal}}});
+        let request = decode_ingress_request(
+            IngressProtocol::Messages,
+            &json!({"model":"alias","max_tokens":128,"messages":[{"role":"user","content":"hello"}],"output_config":{"format":{"type":"json_schema","schema":schema}}}),
+        )
+        .unwrap();
+        for target in [IngressProtocol::Responses, IngressProtocol::ChatCompletions] {
+            let projected = project_candidate_request(
+                &request,
+                &exact_state_profile(IngressProtocol::Messages, target),
+            )
+            .unwrap();
+            let actual = match target {
+                IngressProtocol::Responses => &projected.body["text"]["format"]["schema"],
+                IngressProtocol::ChatCompletions => {
+                    &projected.body["response_format"]["json_schema"]["schema"]
+                }
+                IngressProtocol::Messages => unreachable!(),
+            };
+            assert_eq!(actual, &schema);
+            assert_eq!(
+                projected.body,
+                serde_json::from_slice::<Value>(&projected.bytes).unwrap()
+            );
+        }
+    }
+}
+
+#[test]
 fn native_literal_large_reserved_subtree_does_not_materialize_all_backed_strings() {
     let fixture = Fixture::new();
     let text = "Z".repeat(512 * 1024);

@@ -188,12 +188,21 @@ fn serialize_responses(
         if let Some(search) = request.responses_search_history.get(&message_index) {
             let mut search = search.clone();
             search.id = native_tool_id(request, profile, &search.id)?;
+            let mut item = search.wire_value();
+            // Typed search identities and actions contain literal client data,
+            // never Replay references. Keep the item shape available to the
+            // common metadata producer below.
+            for field in ["id", "action"] {
+                if let Some(value) = item.get_mut(field) {
+                    *value = crate::content_ref::literal_wire_value(value);
+                }
+            }
             input.push(with_responses_item_fields(
                 request,
                 message_index,
                 false,
                 false,
-                search.wire_value(),
+                item,
             )?);
             continue;
         }

@@ -2,6 +2,7 @@
 //! Preserve the schema; the provider, not this adapter, validates its support.
 use serde_json::{Map, Value, json};
 
+use crate::content_ref::JsonValueExt;
 use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use crate::server::request_plan::IngressProtocol;
 
@@ -34,7 +35,10 @@ pub(super) fn project_messages_format(
     else {
         return;
     };
-    let mut format = format.clone();
+    let mut format: Map<String, Value> = format
+        .iter()
+        .map(|(key, value)| (key.clone(), value.wire_value()))
+        .collect();
     format.remove("type");
     format
         .entry("name")
