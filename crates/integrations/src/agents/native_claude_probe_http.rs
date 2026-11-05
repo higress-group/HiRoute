@@ -245,4 +245,68 @@ mod tests {
         assert_eq!(server.join().unwrap(), Ok(true));
         assert!(response.starts_with("HTTP/1.1 200"));
     }
+
+    fn nonblocking_fragmented_exchange(delay_body: bool) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let (accepted, ready) = std::sync::mpsc::sync_channel(1);
+        let (start, receive_start) = std::sync::mpsc::sync_channel(1);
+        let server = std::thread::spawn(move || {
+            let deadline = Instant::now() + FRAME_TIMEOUT;
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline);
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    Err(error) => panic!("accept probe connection: {error}"),
+                }
+            };
+            // Explicitly retain the mode inherited on Windows, including when
+            // this regression runs on a platform whose accept resets it.
+            stream.set_nonblocking(true).unwrap();
+            accepted.send(()).unwrap();
+            receive_start.recv_timeout(FRAME_TIMEOUT).unwrap();
+            serve(&mut stream, "local-challenge", "frozen-model", None)
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client.set_read_timeout(Some(FRAME_TIMEOUT)).unwrap();
+        ready.recv_timeout(FRAME_TIMEOUT).unwrap();
+        let body = br#"{"model":"frozen-model"}"#;
+        let header = format!(
+            "POST /v1/messages HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer local-challenge\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        );
+        if delay_body {
+            client.write_all(header.as_bytes()).unwrap();
+            client.write_all(&body[..1]).unwrap();
+        }
+        start.send(()).unwrap();
+        std::thread::sleep(Duration::from_millis(650));
+        let sent = if delay_body {
+            client.write_all(&body[1..])
+        } else {
+            client
+                .write_all(header.as_bytes())
+                .and_then(|()| client.write_all(body))
+        };
+        let mut response = Vec::new();
+        let received = client.read_to_end(&mut response);
+        assert_eq!(server.join().unwrap(), Ok(true));
+        sent.unwrap();
+        received.unwrap();
+        assert!(response.starts_with(b"HTTP/1.1 200"));
+    }
+
+    #[test]
+    fn nonblocking_connection_waits_for_delayed_headers() {
+        nonblocking_fragmented_exchange(false);
+    }
+
+    #[test]
+    fn nonblocking_connection_waits_for_delayed_body() {
+        nonblocking_fragmented_exchange(true);
+    }
 }
