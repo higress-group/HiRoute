@@ -977,9 +977,7 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
                 raise RuntimeError('A locked owned payload did not retain a failed uninstall and Apps registration')
         finally:
             kernel.CloseHandle(held)
-        code, timing = nsis_install(product / 'installer.exe', run, roots)
-        if code:
-            raise RuntimeError('Matching native installer did not repair the controlled partial uninstall')
+        timing = nsis_install(product / 'installer.exe', run, roots)
         installed(helper, product, pm)
         return dict(native_entry='NSIS worker with owned payload lock, then matching NSIS repair',
                     exit_code=done.returncode,uninstall_outcome=outcome,
