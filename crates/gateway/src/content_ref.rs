@@ -283,6 +283,11 @@ impl JsonValueExt for Value {
         if let Some(content) = self.content_ref() {
             return Value::String(content.wire_marker());
         }
+        // Model-IR JSON is data, not a final-producer envelope. This also
+        // protects direct projections whose schemas never enter Replay.
+        if is_wire_literal(self) || is_wire_string_parts(self) {
+            return literal_wire_value(self);
+        }
         match self {
             Value::Array(values) => {
                 Value::Array(values.iter().map(JsonValueExt::wire_value).collect())

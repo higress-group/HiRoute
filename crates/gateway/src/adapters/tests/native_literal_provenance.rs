@@ -416,6 +416,40 @@ fn native_literal_direct_projection_preserves_client_envelope_shapes() {
 }
 
 #[test]
+fn native_literal_direct_schema_defaults_keep_reserved_object_shapes() {
+    for literal in [
+        json!({"__hiroute_literal_wire_value_v1":"left"}),
+        json!({"__hiroute_wire_string_parts_v1":["left","right"]}),
+    ] {
+        let schema =
+            json!({"type":"object","properties":{"tag":{"type":"object","default":literal}}});
+        let mut request = decode_ingress_request(IngressProtocol::Responses, &json!({"model":"alias","input":"hello","tools":[{"type":"function","name":"f","parameters":schema}]})).unwrap();
+        request.native_body = None;
+        for target in [
+            IngressProtocol::Responses,
+            IngressProtocol::ChatCompletions,
+            IngressProtocol::Messages,
+        ] {
+            let profile = CandidateProtocolProfile::exact_portable_path(
+                IngressProtocol::Responses,
+                target,
+                "physical",
+                fixed_reasoning("fixed"),
+            );
+            let projected = project_candidate_request(&request, &profile).unwrap();
+            let actual = match target {
+                IngressProtocol::Responses => &projected.body["tools"][0]["parameters"],
+                IngressProtocol::ChatCompletions => {
+                    &projected.body["tools"][0]["function"]["parameters"]
+                }
+                IngressProtocol::Messages => &projected.body["tools"][0]["input_schema"],
+            };
+            assert_eq!(actual, &schema);
+        }
+    }
+}
+
+#[test]
 fn native_literal_raw_json_accepts_only_one_registered_json_value() {
     use super::super::request::{
         ReplacementEncoding, RequestedReplacement, prepare_replay_json_template,
