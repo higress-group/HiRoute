@@ -187,21 +187,47 @@ fn opencode_markdown_reference_added_during_staging_preserves_the_active_route()
         replacement: Some(reference.as_bytes().to_vec()),
     }));
     let racing = LocalControlDaemon::new(ApplicationService::new(ports));
-    let preview = racing
-        .dispatch_wire(request(
-            "PreviewAgentConnectionRestore",
-            json!({"spec":spec}),
-            None,
-        ))
-        .data
-        .unwrap();
-    assert_eq!(preview["applicable"], true);
-    let response = racing.dispatch_wire(request("ApplyAgentConnectionRestore", json!({"spec":spec,
-        "accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],
-        "expected_revisions":preview["expected_revisions"],"idempotency_key":"markdown-staging-race"}), None));
-    assert!(response.error.is_none(), "{response:?}");
-    assert_eq!(response.data.unwrap()["state"], "rolled_back");
-    let operation_id = response.operation.unwrap().operation_id;
+    let (view, hint) = tokio::runtime::Runtime::new().unwrap().block_on(async {
+        let client = hiroute_client_core::Client::in_process(
+            "failed-agent-save",
+            Arc::new(crate::control::InProcessControl {
+                daemon: racing,
+                budgets: Default::default(),
+            }),
+        );
+        let mut session = hiroute_product_session::ProductSession::new(
+            client,
+            Arc::new(crate::console::authority::ConsoleAuthority(
+                fixture.runtime.protected_authority(),
+            )),
+        );
+        let preparation = session
+            .preview_agent_settings(hiroute_product_session::session::AgentSettingsInput {
+                spec: serde_json::from_value(spec).unwrap(),
+                language: "zh".into(),
+                custom_token: None,
+            })
+            .await
+            .unwrap();
+        let hiroute_product_session::session::AgentPreparation::Ready(confirmation) = preparation
+        else {
+            panic!("restore should reach ordinary confirmation");
+        };
+        let result = session
+            .finish_agent_confirmation(*confirmation, true)
+            .await
+            .unwrap();
+        let view = result.mutation.unwrap().operation.unwrap();
+        assert_eq!(view.state, "rolled_back");
+        assert_eq!(view.safe_error_code.as_deref(), Some("ADAPTER_FAILURE"));
+        assert!(
+            view.failure_detail.is_some(),
+            "ordinary failed Apply must return actionable detail"
+        );
+        let hint = session.snapshot().await.unwrap().pending.unwrap();
+        (view, hint)
+    });
+    let operation_id = view.operation_id;
     let stored = fixture
         .service
         .dispatch_wire(request(
@@ -223,10 +249,11 @@ fn opencode_markdown_reference_added_during_staging_preserves_the_active_route()
         detail.cause,
         hiroute_domain::OperationFailureCauseV1::Conflict
     );
+    assert_eq!(view.failure_detail, Some(detail.clone()));
     for include in [false, true] {
         let view = fixture.service.dispatch_wire(request("FindOperationByIdempotency", json!({
             "principal_kind":"interactive_user", "operation_kind":"ApplyAgentConnectionRestore",
-            "idempotency_key":"markdown-staging-race", "accepted_digest":preview["accept_digest"],
+            "idempotency_key":hint.idempotency_key, "accepted_digest":hint.accepted_digest,
             "include_failure_detail":include,
         }), None)).data.unwrap();
         assert_eq!(view["operation"].get("failure_detail").is_some(), include);

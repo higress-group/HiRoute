@@ -26,6 +26,8 @@ mod model_save;
 pub use model_save::*;
 mod subscription;
 pub use subscription::*;
+#[cfg(test)]
+mod apply_failure_tests;
 mod decision_context;
 mod decision_services;
 mod worker_dependencies;
