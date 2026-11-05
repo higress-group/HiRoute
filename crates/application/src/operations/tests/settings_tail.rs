@@ -222,6 +222,52 @@ fn failed_publication_with_host_login_item_rolls_back_without_blocking_other_wri
 }
 
 #[test]
+fn artifact_prepare_failure_survives_compensation_serialization_and_startup_recovery() {
+    let ports = MemoryPorts::default();
+    let admission = TransactionRuntime::default();
+    let id = inject_settings_operation(&ports);
+    ports.state.borrow_mut().fail_artifact_prepare = true;
+    let failed = coordinator(&ports, &admission).run(&id).unwrap();
+    assert_eq!(failed.state, OperationState::RolledBack);
+    assert_eq!(failed.step(OperationStepKind::Activate).attempts, 0);
+    let detail = failed.failure_detail().unwrap();
+    assert_eq!(detail.step, OperationStepKind::ApplyAgentArtifacts);
+    assert_eq!(
+        detail.cause,
+        hiroute_domain::OperationFailureCauseV1::PermissionDenied
+    );
+    assert_eq!(
+        detail.adapter_context.as_deref(),
+        Some("agent.artifact.prepare")
+    );
+    assert!(
+        failed
+            .steps
+            .iter()
+            .all(|step| step.status == OperationStepStatus::Compensated)
+    );
+    let mut decoded: OperationV1 =
+        serde_json::from_slice(&serde_json::to_vec(&failed).unwrap()).unwrap();
+    assert_eq!(decoded.failure_detail(), Some(detail.clone()));
+    // Simulate interruption after all effects were compensated but before terminal commit.
+    decoded.state = OperationState::RollingBack;
+    ports
+        .state
+        .borrow_mut()
+        .operations
+        .insert(id.to_string(), decoded);
+    let restarted = TransactionRuntime::default();
+    let recovered = coordinator(&ports, &restarted).run(&id).unwrap();
+    assert_eq!(recovered.state, OperationState::RolledBack);
+    assert_eq!(recovered.failure_detail(), Some(detail));
+    assert_eq!(
+        recovered.safe_error_code.as_deref(),
+        Some("ADAPTER_FAILURE")
+    );
+    assert_eq!(ports.state.borrow().writer, None);
+}
+
+#[test]
 fn startup_rechecks_a_fully_compensated_host_login_item_rollback() {
     let ports = MemoryPorts::default();
     let admission = TransactionRuntime::default();

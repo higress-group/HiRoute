@@ -176,6 +176,7 @@ async fn accepted_apply_response_loss_recovers_without_another_apply() {
             "other-principal",
             &OperationIdempotencyLookupV1 {
                 include_model_budget_conflict: true,
+                include_failure_detail: false,
                 principal_kind: PrincipalKind::Desktop,
                 operation_kind: hint.operation_kind,
                 idempotency_key: hint.idempotency_key,

@@ -316,6 +316,7 @@ pub(super) fn discover(ctx: &mut Context<'_>) -> Result<()> {
                 format!("mvp17-lookup-{}", ctx.run_id).as_bytes(),
             ),
             include_model_budget_conflict: false,
+            include_failure_detail: false,
         };
         let lookup_payload = serde_json::to_value(&lookup)?;
         let lookup_input = serde_json::to_vec(&lookup)?;

@@ -5,6 +5,7 @@ import {
   currentPendingHint,
   isTerminalOperation,
   operationFeedback,
+  operationFailureHelp,
   pendingFeedbackIdentity,
   representedByTrial,
   shouldObservePendingOperation,
@@ -16,6 +17,18 @@ const operation = (operation_id, sequence, state = 'accepted') => ({
   state,
   cancellable: true,
   safe_error_code: null,
+});
+
+test('rollback explains its failed step and cause without displaying adapter text', () => {
+  const value = { ...operation('operation/failed', 8, 'rolled_back'), safe_error_code: 'ADAPTER_FAILURE', failure_detail: {
+    schema: 'hiroute.operation-failure/v1', step: 'apply_agent_artifacts', code: 'ADAPTER_FAILURE', cause: 'permission_denied', adapter_context: 'private-label',
+  } };
+  assert.match(operationFailureHelp(value, 'en'), /preparing Agent files.*Access was denied/);
+  assert.match(operationFailureHelp(value, 'zh'), /准备 Agent 文件.*访问被拒绝/);
+  assert.doesNotMatch(operationFailureHelp(value, 'en'), /private-label/);
+  assert.equal(operationFailureHelp({ ...value, state: 'succeeded' }, 'en'), null);
+  assert.equal(operationFailureHelp({ ...value, safe_error_code: 'OTHER' }, 'en'), null);
+  assert.equal(operationFailureHelp({ ...value, failure_detail: { ...value.failure_detail, cause: 'unknown' } }, 'en'), null);
 });
 
 test('a late observation cannot replace a newly accepted identity', () => {

@@ -201,6 +201,42 @@ fn opencode_markdown_reference_added_during_staging_preserves_the_active_route()
         "expected_revisions":preview["expected_revisions"],"idempotency_key":"markdown-staging-race"}), None));
     assert!(response.error.is_none(), "{response:?}");
     assert_eq!(response.data.unwrap()["state"], "rolled_back");
+    let operation_id = response.operation.unwrap().operation_id;
+    let stored = fixture
+        .service
+        .dispatch_wire(request(
+            "GetOperation",
+            json!({"operation_id":operation_id}),
+            None,
+        ))
+        .data
+        .unwrap();
+    let detail = stored["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|step| step["terminal_result"].as_str())
+        .find_map(hiroute_domain::OperationFailureV1::parse)
+        .expect("rollback retains its native adapter failure");
+    assert_eq!(detail.step, hiroute_domain::OperationStepKind::Activate);
+    assert_eq!(
+        detail.cause,
+        hiroute_domain::OperationFailureCauseV1::Conflict
+    );
+    for include in [false, true] {
+        let view = fixture.service.dispatch_wire(request("FindOperationByIdempotency", json!({
+            "principal_kind":"interactive_user", "operation_kind":"ApplyAgentConnectionRestore",
+            "idempotency_key":"markdown-staging-race", "accepted_digest":preview["accept_digest"],
+            "include_failure_detail":include,
+        }), None)).data.unwrap();
+        assert_eq!(view["operation"].get("failure_detail").is_some(), include);
+        if include {
+            assert_eq!(
+                view["operation"]["failure_detail"],
+                serde_json::to_value(&detail).unwrap()
+            );
+        }
+    }
     assert_eq!(fs::read(&fixture.native_config).unwrap(), before);
     assert_eq!(fs::read(path).unwrap(), reference.as_bytes());
     assert_eq!(model_status(&fixture)["state"], "configured");

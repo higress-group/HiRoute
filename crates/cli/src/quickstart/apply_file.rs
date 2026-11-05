@@ -19,6 +19,7 @@ pub(super) fn prepare(
         accepted_digest: serde_json::from_value(request["accept_digest"].clone())
             .map_err(|_| error(ErrorCode::Internal))?,
         include_model_budget_conflict: false,
+        include_failure_detail: true,
     };
     write_new(Path::new(path), &request).map_err(|_| {
         choices(

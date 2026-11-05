@@ -45,7 +45,14 @@ impl ControlStore {
         } else {
             None
         };
+        let results: Vec<Option<String>> =
+            serde_json::from_str(&terminal_results).map_err(|_| invalid())?;
+        let failure_detail = results
+            .iter()
+            .flatten()
+            .find_map(|result| hiroute_domain::OperationFailureV1::parse(result));
         Ok(Some(OperationStatus {
+            failure_detail,
             model_budget_conflict,
             operation_id,
             state,

@@ -22,6 +22,7 @@ fn action_results_and_failures_classify_without_business_text() {
     let succeeded = MutationOutcome {
         state: "submitted".into(),
         operation: Some(ClientOperationViewV1 {
+            failure_detail: None,
             model_budget_conflict: None,
             operation_id: "op_diagnostics".into(),
             state: "succeeded".into(),

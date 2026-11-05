@@ -823,6 +823,7 @@ fn accepted_operation_view(
     hint.operation_id = Some(reference.operation_id.clone());
     hint.after_sequence = reference.sequence;
     Ok(ClientOperationViewV1 {
+        failure_detail: None,
         model_budget_conflict: None,
         operation_id: reference.operation_id,
         state: reference.state,

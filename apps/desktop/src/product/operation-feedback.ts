@@ -13,6 +13,37 @@ export type OperationFeedback = {
 };
 
 export const OPERATION_RESULT_UNVERIFIED = 'OPERATION_RESULT_UNVERIFIED';
+
+/** Present only typed operation evidence; adapter labels and native text stay out of recovery copy. */
+export function operationFailureHelp(operation: DesktopOperation, language: Language): string | null {
+  const failure = operation.failure_detail;
+  if (!failure || failure.schema !== 'hiroute.operation-failure/v1'
+    || failure.code !== operation.safe_error_code
+    || !['rolled_back', 'needs_attention'].includes(operation.state)) return null;
+  const steps: Record<string, [string, string]> = {
+    prepare: ['准备变更', 'preparing the change'],
+    apply_secrets: ['准备访问凭据', 'preparing access credentials'],
+    materialize_sources: ['保存配置', 'saving configuration'],
+    compile_publication: ['准备路由', 'preparing routing'],
+    apply_agent_artifacts: ['准备 Agent 文件', 'preparing Agent files'],
+    activate: ['激活变更', 'activating the change'],
+  };
+  const causes: Record<string, [string, string]> = {
+    conflict: ['配置或文件已变化，请重新读取并预览后再保存。', 'Configuration or files changed. Refresh and preview before saving again.'],
+    permission_denied: ['访问被拒绝，请检查相关文件的访问权限后再保存。', 'Access was denied. Check access to the affected files before saving again.'],
+    unavailable: ['依赖服务或存储暂不可用，请恢复其可用性后重试。', 'A required service or store is unavailable. Restore it before retrying.'],
+    not_found: ['所需资源已不存在，请重新检测并预览。', 'A required resource is missing. Detect it again and preview.'],
+    invalid_data: ['配置数据无效，请检查配置并重新预览。', 'Configuration data is invalid. Check it and preview again.'],
+    corrupt: ['存储状态无法验证，请保留数据并查看诊断。', 'Stored state could not be verified. Preserve the data and inspect diagnostics.'],
+    crypto: ['凭据状态无法验证，请保留数据并查看诊断。', 'Credential state could not be verified. Preserve the data and inspect diagnostics.'],
+    rejected: ['变更未能通过检查，请重新预览并查看操作详情。', 'The change did not pass its checks. Preview again and inspect operation details.'],
+  };
+  const index = language === 'zh' ? 0 : 1;
+  if (!Object.hasOwn(steps, failure.step) || !Object.hasOwn(causes, failure.cause)) return null;
+  return language === 'zh'
+    ? `${steps[failure.step][index]}时失败。${causes[failure.cause][index]}`
+    : `Failed while ${steps[failure.step][index]}. ${causes[failure.cause][index]}`;
+}
 type PendingHint = { operation_id: string | null; idempotency_key: string };
 
 export function isTerminalOperation(state: string): boolean {
