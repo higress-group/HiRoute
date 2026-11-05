@@ -27,6 +27,29 @@ pub(super) fn controls(
     Ok(Value::Object(body))
 }
 
+pub(super) fn protect_projected_controls(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+    reasoning: &ReasoningProfileCapability,
+    body: &mut Value,
+) -> Result<(), ProtocolAdapterError> {
+    let mut configured = controls(request, profile, reasoning)?;
+    if request.native_body.is_some()
+        && request.ingress_protocol == profile.capability.upstream_protocol
+        && request.requested_reasoning.disposition
+            == RequestedReasoningDisposition::AppliedToFixedBinding
+    {
+        // This branch retains the original native reasoning, including its
+        // genuine Replay references. Only the model string was newly produced.
+        configured
+            .as_object_mut()
+            .expect("controls are an object")
+            .retain(|key, _| key == "model");
+    }
+    super::protect_control_literals(body, &configured);
+    Ok(())
+}
+
 pub(super) fn project(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,

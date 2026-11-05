@@ -157,10 +157,7 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
     };
     let (mut body, function_encoding_projection) =
         super::native::project(request, profile, body, omit_reasoning_prefix, false)?;
-    super::protect_control_literals(
-        &mut body,
-        &super::native::controls(request, profile, reasoning)?,
-    );
+    super::native::protect_projected_controls(request, profile, reasoning, &mut body)?;
     let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
     {

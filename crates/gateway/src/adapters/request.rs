@@ -91,7 +91,7 @@ pub fn project_candidate_request(
     };
     let (mut body, function_encoding_projection) =
         native::project(request, profile, body, None, true)?;
-    protect_control_literals(&mut body, &native::controls(request, profile, reasoning)?);
+    native::protect_projected_controls(request, profile, reasoning, &mut body)?;
     let bytes = serde_json::to_vec(&crate::content_ref::borrowed_wire_value(&body))
         .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
     let body = serde_json::from_slice(&bytes)

@@ -4,7 +4,9 @@ use serde_json::json;
 use super::*;
 use crate::content_ref::{JsonValueExt, externalize_model_request};
 use crate::replay::{ReplayConfig, ReplayManager};
-use crate::server::core_runtime::adapters::decode_ingress_request;
+use crate::server::core_runtime::adapters::{
+    decode_ingress_request, project_candidate_request_template, sequential_attempt_body,
+};
 use crate::server::core_runtime::profiles::{
     CriticalFact, NativeReasoningFieldAssignment, NativeReasoningRender, ReasoningAccounting,
     ReasoningControlKind, ReasoningProfileCapability,
@@ -265,10 +267,9 @@ fn fixed_reasoning_content_references_preserve_sealed_choice() {
     })
     .unwrap();
     let tree = BudgetTree::new(4 * 1024 * 1024, 4 * 1024 * 1024).unwrap();
-    let store = manager
-        .begin_request(tree.stream(4 * 1024 * 1024).unwrap())
-        .unwrap();
-    externalize_model_request(&mut request, &store, 8).unwrap();
+    let budget = tree.stream(4 * 1024 * 1024).unwrap();
+    let store = manager.begin_request(budget.clone()).unwrap();
+    externalize_model_request(&mut request, &store, 0).unwrap();
     assert!(
         request
             .requested_reasoning
@@ -286,6 +287,17 @@ fn fixed_reasoning_content_references_preserve_sealed_choice() {
             .unwrap(),
         selected.selected_reasoning().unwrap()
     );
+    let selected = profile.for_request_reasoning(&request).unwrap();
+    let template = project_candidate_request_template(&request, &selected).unwrap();
+    let mut reader = sequential_attempt_body(template, store.clone(), &budget, 257).unwrap();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = reader.next_chunk().unwrap() {
+        bytes.extend_from_slice(chunk.bytes());
+    }
+    let wire: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(wire["reasoning"]["effort"], "high");
+    assert_eq!(wire["input"], "hello".repeat(4096));
+    drop(reader);
     request.requested_reasoning.fixed_profile_digest = Some(CanonicalDigest::of_bytes(b"unsealed"));
     assert!(profile.for_request_reasoning(&request).is_err());
     drop(store);
