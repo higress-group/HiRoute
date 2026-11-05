@@ -44,7 +44,7 @@ pub(crate) fn query(keyword: &str, limit: u16) -> ObservationSearchQueryV2 {
         cursor: None,
     }
 }
-pub(super) fn index(store: &LocalObservationStore) {
+pub(crate) fn index(store: &LocalObservationStore) {
     let mut builder = TextIndexBuilder::new(store).unwrap();
     for _ in 0..20 {
         builder.cycle(store).unwrap();
