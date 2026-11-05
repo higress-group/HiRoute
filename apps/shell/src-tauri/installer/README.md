@@ -28,3 +28,9 @@ Task/login choices, including separate choices, rather than reconstructing paths
 The first supported Windows release has no supported published predecessor.
 Generic complete recovery remains; development historical compatibility promises
 and exhaustive development upgrade matrices are outside this change.
+
+
+Silent uninstall tooling must wait for the NSIS worker and check actual removal.
+The registered quiet command, supported synchronous invocation, data-preservation
+behavior and latest worker outcome are specified in the
+[Windows installation guide](../../../../docs/windows-desktop-installation.md#scripted-silent-uninstall).

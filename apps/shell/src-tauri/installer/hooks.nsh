@@ -42,7 +42,7 @@ FunctionEnd
   DetailPrint "${TEXT}"
 !macroend
 
-!macro HiRouteRequireDesktopExit
+!macro HiRouteRequireDesktopExit UNINSTALL
   hiroute_check_desktop:
     nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
     Pop $0
@@ -51,6 +51,12 @@ FunctionEnd
         Abort "Exit HiRoute and try again."
       ${EndIf}
       MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Exit HiRoute from its notification area icon, then select Retry. If the tray icon is disabled, close the HiRoute window." /SD IDCANCEL IDRETRY hiroute_check_desktop
+      !if "${UNINSTALL}" == "1"
+        nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-uninstall-blocked'
+        Pop $0
+        Pop $1
+        DetailPrint "$1"
+      !endif
       Abort
     ${EndIf}
 !macroend
@@ -176,7 +182,7 @@ Function HiRouteReadyOpen
 FunctionEnd
 
 !macro NSIS_HOOK_PREINSTALL
-  !insertmacro HiRouteRequireDesktopExit
+  !insertmacro HiRouteRequireDesktopExit 0
   !insertmacro HiRoutePhase "Preparing installation and checking existing data..."
   StrCmp $INSTDIR "$LOCALAPPDATA\Programs\HiRoute" +3
     MessageBox MB_ICONSTOP "HiRoute install directory is invalid. No product files were written." /SD IDOK
@@ -259,6 +265,7 @@ FunctionEnd
     ${EndIf}
     ${If} $0 != 0
       hiroute_uninstall_failed:
+      DetailPrint "$1"
       !insertmacro HiRouteDiagnostic "HiRoute was not removed. Resolve any Agent restore decisions or active work, then retry." "uninstall"
       Abort
     ${EndIf}
