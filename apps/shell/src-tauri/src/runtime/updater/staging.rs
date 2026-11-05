@@ -331,7 +331,9 @@ fn retire(path: &Path, id: &str, retired: bool) -> Result<(), UpdateFailure> {
             .try_exists()
             .map_err(UpdateFailure::io("check-retired-stage"))?
         {
-            return Ok(());
+            // A previous interrupted retirement must complete first. Report
+            // busy so a caller never labels the still-present live stage gone.
+            return Err("UPGRADE_BUSY".into());
         }
         fs::rename(path, &target).map_err(UpdateFailure::io("retire-stage"))?;
     }
