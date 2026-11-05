@@ -8,6 +8,17 @@ bind authority, prepare the canonical request and Replay, obtain a request-owned
 branch decision, plan and freeze candidates, then admit execution into
 `hiroute-gateway-core`. The core owns attempts, response commit, cancellation and
 resource cleanup; the Gateway does not run a second execution loop.
+Model TCP/TLS connection establishment has a separate process-owned budget: 10 seconds
+by default. Set `HIROUTE_MODEL_CONNECT_TIMEOUT_MS` in the daemon's launch environment
+to an integer from 1 through 60000 milliseconds, then restart the service. The first
+publication freezes this setting for that process; invalid values refuse publication.
+Changing a CLI shell's environment does not configure an already running service.
+The budget applies per address, including proxy connection establishment, and is
+clamped by the remaining attempt/logical-request deadline. DNS resolution precedes
+this phase under the logical request scope. Classifier timeouts and model request-write,
+first-byte and stream-idle limits retain their independent policies. Publication and
+persisted Plan bytes do not acquire an environment-dependent field.
+
 [Compiled candidate facts](src/publication/candidate.rs) retain typed profiles
 and their existing digests per execution. Requests still acquire current core
 configuration and compare its exact bytes/generation before consuming those

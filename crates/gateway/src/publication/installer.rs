@@ -543,6 +543,8 @@ pub enum PublicationInstallError {
     InvalidEndpoint(String),
     #[error("gateway publication contains an invalid frozen routing policy")]
     InvalidPlannerPolicy,
+    #[error("HIROUTE_MODEL_CONNECT_TIMEOUT_MS must be an integer from 1 to 60000 milliseconds")]
+    InvalidModelConnectTimeout,
     #[error(transparent)]
     NativeProtocol(hiroute_domain::NativeProtocolError),
     #[error("publication failpoint fired before durable LKG")]

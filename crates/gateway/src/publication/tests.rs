@@ -55,6 +55,24 @@ fn published_attempt_phases_default_to_ten_minutes() {
 }
 
 #[test]
+fn model_connect_budget_reaches_all_compiled_targets_without_changing_other_deadlines() {
+    for budget in [Duration::from_secs(10), Duration::from_secs(25)] {
+        let aggregate =
+            super::compiler::compile_with_model_connect_timeout(&snapshot(1, "renderer"), budget)
+                .unwrap();
+        let plans = aggregate
+            .envelope
+            .attempt_plan_index_handle
+            .plans()
+            .collect::<Vec<_>>();
+        assert_eq!(plans.len(), 2);
+        for (_, plan) in plans {
+            assert_eq!(plan.transport_target.connect_timeout, budget);
+        }
+    }
+}
+
+#[test]
 fn production_body_plan_admits_large_requests_without_a_proxy_byte_quota() {
     use hiroute_gateway_core::runtime::body::{BodyDirection, BodyPlanExecutor};
     let aggregate = super::compiler::compile(&snapshot(1, "renderer")).unwrap();

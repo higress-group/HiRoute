@@ -1,5 +1,7 @@
 #[path = "p0_gateway_runtime/local_work_benchmark.rs"]
 mod local_work_benchmark;
+#[path = "p0_gateway_runtime/model_connect_timeout.rs"]
+mod model_connect_timeout;
 #[path = "p0_gateway_runtime/parallel_tools.rs"]
 mod parallel_tools;
 #[path = "p0_gateway_runtime/request_timing.rs"]
