@@ -246,8 +246,16 @@ fn artifact_prepare_failure_survives_compensation_serialization_and_startup_reco
             .iter()
             .all(|step| step.status == OperationStepStatus::Compensated)
     );
-    let mut decoded: OperationV1 =
-        serde_json::from_slice(&serde_json::to_vec(&failed).unwrap()).unwrap();
+    let steps = serde_json::from_slice(&serde_json::to_vec(&failed.steps).unwrap()).unwrap();
+    let mut decoded = failed.clone();
+    decoded
+        .restore_durable_state(
+            failed.state,
+            failed.generation,
+            steps,
+            failed.safe_error_code.clone(),
+        )
+        .unwrap();
     assert_eq!(decoded.failure_detail(), Some(detail.clone()));
     // Simulate interruption after all effects were compensated but before terminal commit.
     decoded.state = OperationState::RollingBack;
