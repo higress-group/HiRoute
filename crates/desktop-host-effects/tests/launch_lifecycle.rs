@@ -1,7 +1,23 @@
 //! Real AppKit registration runs on a fresh process's main thread. No windows,
 //! login registration, daemon, credentials or user data are created by this test.
-#[cfg(target_os = "macos")]
+//! `--list` prints the two case names for the workspace DAG inventory and does
+//! not start AppKit or report an execution summary.
+const CASES: [&str; 2] = ["appkit_launch_foreground", "appkit_launch_login"];
+
 fn main() {
+    if std::env::args().any(|arg| arg == "--list") {
+        for case in CASES {
+            println!("{case}: test");
+        }
+        println!();
+        println!("{} tests, 0 benchmarks", CASES.len());
+        return;
+    }
+    run_cases();
+}
+
+#[cfg(target_os = "macos")]
+fn run_cases() {
     if let Some(case) =
         std::env::args().find_map(|arg| arg.strip_prefix("--case=").map(str::to_owned))
     {
@@ -25,7 +41,7 @@ fn main() {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn main() {
+fn run_cases() {
     println!("running 2 tests");
     println!("test appkit_launch_foreground ... ignored, requires macOS");
     println!("test appkit_launch_login ... ignored, requires macOS");

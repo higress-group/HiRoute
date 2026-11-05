@@ -814,5 +814,60 @@ class Preparation(unittest.TestCase):
             self.execute(report)
 
 
+class LaunchLifecycleInventory(unittest.TestCase):
+    """#236: custom harness --list must be a named inventory, not an execution summary."""
+
+    def run_list(self, script):
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / 'launch_lifecycle'
+            binary.write_text('#!' + sys.executable + '\n' + script)
+            binary.chmod(0o700)
+            marker = binary.with_suffix('.ran')
+            names = scheduler.dag_list(binary, directory, os.environ.copy())
+            self.assertFalse(marker.exists(), 'inventory must not run lifecycle checks')
+            return names
+
+    def test_linux_execution_summary_is_an_incomplete_listing(self):
+        script = '''import sys
+print("running 2 tests")
+print("test appkit_launch_foreground ... ignored, requires macOS")
+print("test appkit_launch_login ... ignored, requires macOS")
+print("test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out")
+open(sys.argv[0] + ".ran", "w").write("executed")
+'''
+        with self.assertRaisesRegex(ValueError, 'incomplete listing'):
+            self.run_list(script)
+
+    def test_named_inventory_returns_two_stable_cases(self):
+        script = '''import sys
+assert sys.argv[1:] == ["--list"]
+print("appkit_launch_foreground: test")
+print("appkit_launch_login: test")
+print()
+print("2 tests, 0 benchmarks")
+'''
+        self.assertEqual(
+            self.run_list(script),
+            ['appkit_launch_foreground', 'appkit_launch_login'])
+
+    def test_malformed_or_incomplete_inventories_still_fail(self):
+        cases = [
+            'appkit_launch_foreground: test\nappkit_launch_login: test\n',
+            'appkit_launch_foreground: test\nappkit_launch_login: test\n3 tests, 0 benchmarks\n',
+            'appkit_launch_foreground: test\nappkit_launch_foreground: test\n2 tests, 0 benchmarks\n',
+            'appkit_launch_foreground: test\nappkit_launch_login: test\n2 tests, 1 benchmarks\n',
+        ]
+        for text in cases:
+            script = 'import sys\nprint("""%s""", end="")\n' % text
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                self.run_list(script)
+
+    def test_launch_lifecycle_source_lists_before_running(self):
+        source = Path(__file__).resolve().parents[1] / 'crates/desktop-host-effects/tests/launch_lifecycle.rs'
+        text = source.read_text()
+        self.assertLess(text.index('arg == "--list"'), text.index('run_cases();'))
+        self.assertIn('["appkit_launch_foreground", "appkit_launch_login"]', text)
+
+
 if __name__ == '__main__':
     unittest.main()
