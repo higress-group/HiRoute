@@ -38,7 +38,9 @@ fn foreign_entry_prevents_retirement_and_same_package_can_retry() {
     payload(&stage);
     let path = stage.path.clone();
     drop(stage);
-    let next = open_in(&root, &release, true).unwrap();
+    let mut refreshed = release.clone();
+    refreshed.notes.en = "Updated release notes".into();
+    let next = open_in(&root, &refreshed, true).unwrap();
     assert!(next.path.join("installer.exe").exists());
     let parent = security::open_owner_only(&path, true).unwrap();
     let mut file = security::create_owner_only_file_at(&parent, OsStr::new("foreign.txt")).unwrap();
@@ -74,9 +76,13 @@ fn concurrent_writer_and_live_finisher_cannot_lose_stage_bytes() {
     drop(reader);
     let parent = finisher::lock(&path.join("parent.lock")).unwrap();
     parent.try_lock_exclusive().unwrap();
+    let waiting_child = finisher::lock(&path.join("parent.lock")).unwrap();
+    assert!(waiting_child.try_lock_exclusive().is_err());
     cleanup_in(&root, None).unwrap();
     assert!(path.join("installer.exe").exists());
     drop(parent);
+    waiting_child.try_lock_exclusive().unwrap();
+    drop(waiting_child);
     cleanup_in(&root, None).unwrap();
     assert!(!path.exists());
 }
@@ -225,7 +231,7 @@ fn installed_finisher_failure_preserves_native_diagnostic_and_service() {
     }
     drop(locked);
     drop(stage);
-    discard(&release).unwrap();
+    discard_fixture(&release);
     assert!(!root().unwrap().join(&release.sha256).exists());
 }
 
@@ -266,6 +272,16 @@ fn verified_released_job_can_retire_but_incomplete_legacy_stage_is_preserved() {
 #[test]
 #[ignore = "requires the candidate installed, Desktop quit, and the verified native NSIS bundle"]
 fn installed_finisher_runs_actual_nsis_and_retires_successful_stage() {
+    native_finisher_nsis(false);
+}
+
+#[test]
+#[ignore = "requires the measured candidate installed in the configured standard-user session"]
+fn installed_finisher_cancel_preserves_service_and_skips_installer() {
+    native_finisher_nsis(true);
+}
+
+fn native_finisher_nsis(cancelled: bool) {
     use std::os::windows::process::CommandExt;
     use std::{
         process::{Command, Stdio},
@@ -331,7 +347,16 @@ fn installed_finisher_runs_actual_nsis_and_retires_successful_stage() {
         }),
     )
     .unwrap();
-    finisher::commit(&release).unwrap();
+    let parent_gate = if cancelled {
+        let gate = finisher::lock(&stage.path.join("parent.lock")).unwrap();
+        gate.try_lock_exclusive().unwrap();
+        Some(gate)
+    } else {
+        finisher::commit(&release).unwrap();
+        None
+    };
+    let data = super::super::super::install_transaction::data().unwrap();
+    let previous_outcome = fs::read(data.join("update-outcome.json")).ok();
     let sentinel = layout.state_root.join("native-update-preservation.txt");
     assert!(!sentinel.exists());
     fs::write(&sentinel, b"native update preserves application data").unwrap();
@@ -341,6 +366,19 @@ fn installed_finisher_runs_actual_nsis_and_retires_successful_stage() {
         .creation_flags(0x08000000)
         .spawn()
         .unwrap();
+    if cancelled {
+        let ready_deadline = Instant::now() + Duration::from_secs(20);
+        while !stage.path.join("ready.json").exists() {
+            if Instant::now() >= ready_deadline {
+                child.kill().unwrap();
+                child.wait().unwrap();
+                panic!("The owned finisher did not acknowledge readiness");
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        finisher::cancel(&release).unwrap();
+        drop(parent_gate);
+    }
     let deadline = Instant::now() + Duration::from_secs(720);
     let exit = loop {
         if let Some(exit) = child.try_wait().unwrap() {
@@ -353,10 +391,19 @@ fn installed_finisher_runs_actual_nsis_and_retires_successful_stage() {
         }
         std::thread::sleep(Duration::from_millis(100));
     };
-    assert!(exit.success());
-    let data = super::super::super::install_transaction::data().unwrap();
-    let outcome: serde_json::Value = finisher::read(&data.join("update-outcome.json")).unwrap();
-    assert_eq!(outcome["status"], "succeeded");
+    if cancelled {
+        assert!(!exit.success());
+        assert!(!stage.path.join("failed.json").exists());
+        assert_eq!(
+            fs::read(data.join("update-outcome.json")).ok(),
+            previous_outcome
+        );
+        assert!(!super::super::super::install_transaction::has_pending().unwrap());
+    } else {
+        assert!(exit.success());
+        let outcome: serde_json::Value = finisher::read(&data.join("update-outcome.json")).unwrap();
+        assert_eq!(outcome["status"], "succeeded");
+    }
     assert!(service::available_blocking());
     let status = Command::new(layout.home.join(".local/bin/hiroute.exe"))
         .args(["system", "status", "--output", "json"])
@@ -371,11 +418,24 @@ fn installed_finisher_runs_actual_nsis_and_retires_successful_stage() {
     );
     fs::remove_file(sentinel).unwrap();
     let evidence = PathBuf::from(std::env::var_os("HIROUTE_VALIDATION_EVIDENCE_DIR").unwrap());
-    fs::write(evidence.join("finisher-success.json"), serde_json::to_vec_pretty(&serde_json::json!({
-        "revision":revision,"installer_sha256":release.sha256,"status":"succeeded","gateway":"ready","data_preserved":true,
+    fs::write(evidence.join(if cancelled {"finisher-cancelled.json"} else {"finisher-success.json"}), serde_json::to_vec_pretty(&serde_json::json!({
+        "revision":revision,"installer_sha256":release.sha256,"status":if cancelled {"cancelled"} else {"succeeded"},"gateway":"ready","data_preserved":true,
         "native_entry":"finisher -> NSIS /P /UPDATE"
     })).unwrap()).unwrap();
     drop(stage);
-    discard(&release).unwrap();
+    discard_fixture(&release);
     assert!(!root().unwrap().join(&release.sha256).exists());
+}
+
+fn discard_fixture(release: &WindowsDesktopRelease) {
+    let until = Instant::now() + Duration::from_secs(5);
+    loop {
+        match discard(release) {
+            Ok(()) => return,
+            Err(failure) if failure.code == "UPGRADE_BUSY" && Instant::now() < until => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(failure) => panic!("owned stage retirement failed: {failure:?}"),
+        }
+    }
 }

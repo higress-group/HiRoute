@@ -41,6 +41,14 @@ impl Stage {
         Ok(self)
     }
 }
+fn same_artifact(left: &WindowsDesktopRelease, right: &WindowsDesktopRelease) -> bool {
+    left.version == right.version
+        && left.filename == right.filename
+        && left.architecture == right.architecture
+        && left.distribution == right.distribution
+        && left.sha256 == right.sha256
+        && left.size == right.size
+}
 fn invalid() -> UpdateFailure {
     "UPGRADE_STAGE_INVALID".into()
 }
@@ -59,11 +67,19 @@ fn directory(path: &Path) -> Result<File, UpdateFailure> {
 fn lease(path: &Path) -> Result<File, UpdateFailure> {
     let parent =
         security::open_owner_only(path, true).map_err(UpdateFailure::io("open-stage-directory"))?;
-    let lock = match security::open_read_write(&path.join("stage.lock")) {
+    let lease_path = path.join("stage.lock");
+    let lock = match security::open_shared_read_write(&lease_path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            security::create_owner_only_file_at(&parent, std::ffi::OsStr::new("stage.lock"))
-                .map_err(UpdateFailure::io("create-stage-lease"))?
+            match security::create_owner_only_file_at(&parent, std::ffi::OsStr::new("stage.lock")) {
+                Ok(created) => drop(created),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(UpdateFailure::io("create-stage-lease")(error)),
+            }
+            // The creation factory deliberately denies sharing. A lease must be
+            // reopenable by readers, and share deletion for atomic retirement.
+            security::open_shared_read_write(&lease_path)
+                .map_err(UpdateFailure::io("open-stage-lease"))?
         }
         Err(error) => return Err(UpdateFailure::io("open-stage-lease")(error)),
     };
@@ -131,9 +147,7 @@ fn open_in(
     };
     if marked {
         let record: Record = finisher::read(&path.join("stage.json"))?;
-        if record.schema != SCHEMA
-            || serde_json::to_value(&record.release).ok() != serde_json::to_value(release).ok()
-        {
+        if record.schema != SCHEMA || !same_artifact(&record.release, release) {
             return Err(invalid());
         }
     } else {
@@ -141,8 +155,10 @@ fn open_in(
         // Only that verified namespace can acquire the new ownership record.
         if names.iter().any(|name| name != "stage.lock") {
             let job: serde_json::Value = finisher::read(&path.join("job.json"))?;
+            let previous: WindowsDesktopRelease =
+                serde_json::from_value(job["release"].clone()).map_err(|_| invalid())?;
             if job["schema"] != "hiroute.windows-shell-update-job/v1"
-                || job["release"] != serde_json::to_value(release).map_err(|_| invalid())?
+                || !same_artifact(&previous, release)
                 || super::super::install_transaction::hash(&path.join("installer.exe"))
                     .map_err(UpdateFailure::io("admit-previous-installer"))?
                     != release.sha256
@@ -187,6 +203,12 @@ fn open_in(
     })
 }
 pub(super) fn cleanup(keep: Option<&str>) -> Result<(), UpdateFailure> {
+    let data = super::super::install_transaction::data()
+        .map_err(UpdateFailure::io("resolve-stage-root"))?;
+    let global = finisher::lock(&data.join("update.lock"))?;
+    if global.try_lock_exclusive().is_err() {
+        return Ok(());
+    }
     let _installer = match hiroute_platform::windows::install::desktop_install_guard() {
         Ok(guard) => guard,
         Err(_) => return Ok(()),
@@ -194,12 +216,6 @@ pub(super) fn cleanup(keep: Option<&str>) -> Result<(), UpdateFailure> {
     if super::super::install_transaction::has_pending()
         .map_err(UpdateFailure::io("check-stage-recovery"))?
     {
-        return Ok(());
-    }
-    let data = super::super::install_transaction::data()
-        .map_err(UpdateFailure::io("resolve-stage-root"))?;
-    let global = finisher::lock(&data.join("update.lock"))?;
-    if global.try_lock_exclusive().is_err() {
         return Ok(());
     }
     let root = root()?;
@@ -213,6 +229,12 @@ pub(super) fn cleanup(keep: Option<&str>) -> Result<(), UpdateFailure> {
 }
 pub(super) fn discard(release: &WindowsDesktopRelease) -> Result<(), UpdateFailure> {
     release.revision_prefix()?;
+    let data = super::super::install_transaction::data()
+        .map_err(UpdateFailure::io("resolve-stage-root"))?;
+    let global = finisher::lock(&data.join("update.lock"))?;
+    global
+        .try_lock_exclusive()
+        .map_err(UpdateFailure::io_code("lock-update-stage", "UPGRADE_BUSY"))?;
     let _installer = hiroute_platform::windows::install::desktop_install_guard()
         .map_err(UpdateFailure::io_code("lock-update-stage", "UPGRADE_BUSY"))?;
     if super::super::install_transaction::has_pending()
@@ -220,12 +242,6 @@ pub(super) fn discard(release: &WindowsDesktopRelease) -> Result<(), UpdateFailu
     {
         return Err("SHELL_INSTALL_RECOVERY_REQUIRED".into());
     }
-    let data = super::super::install_transaction::data()
-        .map_err(UpdateFailure::io("resolve-stage-root"))?;
-    let global = finisher::lock(&data.join("update.lock"))?;
-    global
-        .try_lock_exclusive()
-        .map_err(UpdateFailure::io_code("lock-update-stage", "UPGRADE_BUSY"))?;
     let path = root()?.join(&release.sha256);
     if !path
         .try_exists()
@@ -302,6 +318,10 @@ fn retire(path: &Path, id: &str, retired: bool) -> Result<(), UpdateFailure> {
     } else {
         None
     };
+    // The global update lock excludes released helpers, and our exclusive
+    // stage lease excludes current readers. Do not retain a deny-delete parent
+    // file handle across the directory rename.
+    drop(parent);
     let target = path
         .parent()
         .ok_or_else(invalid)?
@@ -315,7 +335,6 @@ fn retire(path: &Path, id: &str, retired: bool) -> Result<(), UpdateFailure> {
         }
         fs::rename(path, &target).map_err(UpdateFailure::io("retire-stage"))?;
     }
-    drop(parent);
     drop(lock);
     drop(held);
     // The marker is last so an interrupted removal remains attributable.

@@ -256,6 +256,20 @@ pub fn open_read_write(path: &Path) -> io::Result<File> {
     )
 }
 
+/// Open an existing cooperative lease without denying its parent's retirement.
+/// The caller must validate ownership and coordinate namespace changes with the
+/// lease; the held handle retains file identity if the directory is renamed.
+pub fn open_shared_read_write(path: &Path) -> io::Result<File> {
+    super::path::open(
+        path,
+        false,
+        GENERIC_READ | GENERIC_WRITE,
+        super::path::SHARE_ALL,
+        false,
+        None,
+    )
+}
+
 /// Open an existing private object and check security on the held handle.
 pub fn open_owner_only(path: &Path, directory: bool) -> io::Result<File> {
     let file = open_identity(path, directory)?;

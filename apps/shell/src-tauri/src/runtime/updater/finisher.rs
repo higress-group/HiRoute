@@ -60,11 +60,23 @@ pub(super) fn lock(path: &Path) -> Result<File, UpdateFailure> {
                 .map_err(UpdateFailure::io("open-update-lock"))?;
             Ok(f)
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => security::create_owner_only_file_at(
-            &parent,
-            path.file_name().ok_or("UPGRADE_STAGE_INVALID")?,
-        )
-        .map_err(UpdateFailure::io("open-update-file")),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            match security::create_owner_only_file_at(
+                &parent,
+                path.file_name().ok_or("UPGRADE_STAGE_INVALID")?,
+            ) {
+                Ok(created) => drop(created),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(UpdateFailure::io("open-update-file")(error)),
+            }
+            // Creation uses exclusive sharing; cooperative process locks must
+            // reopen the file before retaining their lock handle.
+            let file =
+                security::open_read_write(path).map_err(UpdateFailure::io("open-update-lock"))?;
+            security::verify_owner_only_handle(&file, false)
+                .map_err(UpdateFailure::io("open-update-lock"))?;
+            Ok(file)
+        }
         Err(e) => Err(UpdateFailure::io("open-update-lock")(e)),
     }
 }

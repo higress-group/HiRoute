@@ -362,6 +362,7 @@ def admit_test_profile(request, home, localappdata):
             and request['case'] in {
                 'runtime::updater::staging::tests::installed_finisher_failure_preserves_native_diagnostic_and_service',
                 'runtime::updater::staging::tests::installed_finisher_runs_actual_nsis_and_retires_successful_stage',
+                'runtime::updater::staging::tests::installed_finisher_cancel_preserves_service_and_skips_installer',
             }):
         return 'installed_update_failure_diagnostic'
     # Never manufacture HOME or remove an existing installation to make a gate pass.
