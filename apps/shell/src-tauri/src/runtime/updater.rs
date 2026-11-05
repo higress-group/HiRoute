@@ -331,7 +331,7 @@ impl Updater {
                         "failed"
                     };
                     v.error = (code.code != "UPGRADE_CANCELLED").then(|| code.code.into());
-                    v.diagnostic = Some(code.detail.clone());
+                    v.diagnostic = (code.code != "UPGRADE_CANCELLED").then(|| code.detail.clone());
                     v.recovery = Some(if resumed {
                         "service_available"
                     } else {
