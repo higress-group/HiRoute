@@ -514,6 +514,7 @@
     "hiroute.windows-shell-install/v1",
     "hiroute.windows-shell-package/v1",
     "hiroute.windows-shell-transaction/v1",
+    "hiroute.windows-shell-uninstall-outcome/v1",
     "hiroute.windows-shell-update-commit/v1",
     "hiroute.windows-shell-update-job/v1",
     "hiroute.windows-shell-update-outcome/v1",

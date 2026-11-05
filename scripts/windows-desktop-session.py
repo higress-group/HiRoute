@@ -881,7 +881,7 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
     if activity.get('administrator_groups') is not False:
         raise ValueError('Native Desktop evidence requires a standard account, not a filtered administrator')
     action = request['desktop_action']
-    if action not in ('install', 'installer-resume', 'installer-quarantine', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'codex-two-turn', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'):
+    if action not in ('install', 'installer-resume', 'installer-quarantine', 'uninstall-refusal', 'uninstall-busy-refusal', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'codex-two-turn', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'):
         raise ValueError('Unknown native Desktop action')
     if action == 'recovery-lock-ui':
         return locked_startup_ui(request,run,product,pm,helper,activity,root)
@@ -963,6 +963,48 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
     if len(candidates) != 1:
         raise ValueError('Exactly one measured installed Desktop process is required')
     pid = candidates[0]['ProcessId']
+    if action in ('uninstall-refusal', 'uninstall-busy-refusal'):
+        # Observe the actual worker because NSIS's self-copy launcher exits
+        # before the worker. A running measured Desktop must refuse removal.
+        programs = roots['programs']
+        source = helper.plain(programs / 'uninstall.exe')
+        inventory = json.loads((programs / 'shell-package.json').read_text(encoding='utf-8'))
+        expected = inventory['files']['uninstall.exe']
+        if helper.digest(source) != expected:
+            raise ValueError('Uninstaller differs from the measured installation')
+        staged = run / 'nsis-uninstaller.exe'
+        import shutil
+        shutil.copyfile(source, staged)
+        if helper.digest(staged) != expected:
+            raise ValueError('Staged uninstaller differs from the measured installation')
+        before = helper.inspect_installation(Path.home(), Path(os.environ['LOCALAPPDATA']))
+        command = f'"{staged}" /S _?={programs}'
+        mutex = None
+        if action == 'uninstall-busy-refusal':
+            import ctypes
+            native = ctypes.WinDLL('kernel32', use_last_error=True)
+            native.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+            native.CreateMutexW.restype = ctypes.c_void_p
+            native.CloseHandle.argtypes = [ctypes.c_void_p]
+            reply = subprocess.run([str(shell), '--installer-mutex'], capture_output=True, check=True, timeout=15)
+            name = reply.stdout.decode('utf-8').strip()
+            if not name.startswith('Global\\HiRouteDesktopInstall-') or len(name) > 200:
+                raise ValueError('Unexpected native installer mutex')
+            mutex = native.CreateMutexW(None, False, name)
+            if not mutex or ctypes.get_last_error() == 183:
+                if mutex: native.CloseHandle(mutex)
+                raise ValueError('An independent installer already owns the account mutex')
+        try:
+            launcher = subprocess.run([str(source), '/S'], capture_output=True, timeout=30)
+            time.sleep(2)
+            done = subprocess.run(command, executable=str(staged), capture_output=True, timeout=90)
+        finally:
+            if mutex: native.CloseHandle(mutex)
+        after = helper.inspect_installation(Path.home(), Path(os.environ['LOCALAPPDATA']))
+        if before['marker'] != after.get('marker') or not shell.is_file():
+            raise RuntimeError('Uninstall unexpectedly changed an active Desktop installation')
+        return dict(native_entry='NSIS /S launcher and waitable worker', launcher_exit_code=launcher.returncode, exit_code=done.returncode,
+                    installation_preserved=True, shell_sha256=helper.digest(shell))
     element = None
     observed = None
     if action in ('invoke', 'text', 'click', 'scroll'):

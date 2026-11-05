@@ -756,6 +756,7 @@ Section Install
   WriteRegStr SHCTX "${UNINSTKEY}" "Publisher" "${MANUFACTURER}"
   WriteRegStr SHCTX "${UNINSTKEY}" "InstallLocation" "$\"$INSTDIR$\""
   WriteRegStr SHCTX "${UNINSTKEY}" "UninstallString" "$\"$INSTDIR\uninstall.exe$\""
+  WriteRegStr SHCTX "${UNINSTKEY}" "QuietUninstallString" "$\"$INSTDIR\uninstall.exe$\" /S"
   WriteRegDWORD SHCTX "${UNINSTKEY}" "NoModify" "1"
   WriteRegDWORD SHCTX "${UNINSTKEY}" "NoRepair" "1"
 
@@ -857,7 +858,10 @@ Function un.onInit
   StrCpy $HiRouteInstallMutex $2
   ${If} $2 = 0
   ${OrIf} $0 = 183
-    MessageBox MB_ICONSTOP "Another HiRoute installation or uninstall is active for this account." /SD IDOK
+    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-uninstall-busy'
+    Pop $0
+    Pop $1
+    !insertmacro HiRouteDiagnostic "Another HiRoute installation or uninstall is active for this account." "uninstall-admission"
     Abort
   ${EndIf}
   !insertmacro SetContext
@@ -880,7 +884,7 @@ Function un.onInit
 FunctionEnd
 
 Section Uninstall
-  !insertmacro HiRouteRequireDesktopExit
+  !insertmacro HiRouteRequireDesktopExit 1
 
   !ifmacrodef NSIS_HOOK_PREUNINSTALL
     !insertmacro NSIS_HOOK_PREUNINSTALL
@@ -899,6 +903,23 @@ Section Uninstall
   {{#each binaries}}
     Delete "$INSTDIR\\{{this}}"
   {{/each}}
+
+  ; A Delete instruction can fail on a locked payload without aborting NSIS.
+  IfFileExists "$INSTDIR\${MAINBINARYNAME}.exe" hiroute_uninstall_files_remain
+  {{#each resources}}
+    IfFileExists "$INSTDIR\\{{this.[1]}}" hiroute_uninstall_files_remain
+  {{/each}}
+  {{#each binaries}}
+    IfFileExists "$INSTDIR\\{{this}}" hiroute_uninstall_files_remain
+  {{/each}}
+  Goto hiroute_uninstall_files_removed
+  hiroute_uninstall_files_remain:
+    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-uninstall-files-in-use'
+    Pop $0
+    Pop $1
+    !insertmacro HiRouteDiagnostic "HiRoute files could not be removed. Close files in use and run the matching installer to repair before retrying." "remove-desktop-files"
+    Abort
+  hiroute_uninstall_files_removed:
 
   ; Delete app associations
   {{#each file_associations as |association| ~}}
@@ -920,6 +941,9 @@ Section Uninstall
   Delete "$INSTDIR\shell-install.json"
   Delete "$INSTDIR\shell-package.json"
   Delete "$INSTDIR\uninstall.exe"
+  IfFileExists "$INSTDIR\shell-package.json" hiroute_uninstall_files_remain
+  IfFileExists "$INSTDIR\shell-install.json" hiroute_uninstall_files_remain
+  IfFileExists "$INSTDIR\uninstall.exe" hiroute_uninstall_files_remain
 
   {{#each resources_ancestors}}
   RMDir /REBOOTOK "$INSTDIR\\{{this}}"
@@ -975,6 +999,11 @@ Section Uninstall
   ${If} $PassiveMode = 1
   ${OrIf} $UpdateMode = 1
     SetAutoClose true
+  ${EndIf}
+  ${If} $UpdateMode <> 1
+    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-uninstall-complete'
+    Pop $0
+    Pop $1
   ${EndIf}
 SectionEnd
 
