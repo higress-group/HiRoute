@@ -1023,7 +1023,6 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
         command = f'"{staged}" /S _?={programs}'
         mutex = None
         if action == 'uninstall-busy-refusal':
-            import ctypes
             native = ctypes.WinDLL('kernel32', use_last_error=True)
             native.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
             native.CreateMutexW.restype = ctypes.c_void_p
