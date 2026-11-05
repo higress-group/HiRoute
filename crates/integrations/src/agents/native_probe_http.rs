@@ -17,7 +17,7 @@ pub(super) fn serve_challenge(
     challenge: Option<&mut CollaborationChallenge>,
 ) -> Result<(), &'static str> {
     // The probe listener is nonblocking so the parent can keep its process deadline. Accepted
-    // sockets inherit that mode on Unix, while this bounded request parser deliberately performs
+    // sockets can inherit that mode on Windows, while this bounded request parser deliberately performs
     // synchronous reads with per-stream timeouts.
     stream.set_nonblocking(false).map_err(|_| "mode")?;
     stream

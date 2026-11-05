@@ -286,7 +286,9 @@ pub(super) fn bounded_diagnose_error(
     let error =
         hiroute_platform::windows::security::create_owner_only_file(&root.path().join("stderr"))?;
     let result = bounded_inner(command, inherit, timeout, limit, Some(&error));
-    if result.is_err() {
+    // An unknown cleanup result does not prove the writer has stopped. Cloning
+    // and seeking its capture handle could otherwise move a live writer's offset.
+    if result.as_ref().is_err_and(|error| !cleanup_unknown(error)) {
         observe(&read_held_capture(&error, limit).unwrap_or_default());
     }
     if result.as_ref().is_err_and(cleanup_unknown) {

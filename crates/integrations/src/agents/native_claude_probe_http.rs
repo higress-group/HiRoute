@@ -26,6 +26,9 @@ pub(super) fn serve(
     model: &str,
     challenge: Option<&mut CollaborationChallenge>,
 ) -> Result<bool, &'static str> {
+    // The listener polls without blocking. Windows can retain that mode on the
+    // accepted connection; this parser uses bounded synchronous frame reads.
+    stream.set_nonblocking(false).map_err(|_| "mode")?;
     stream
         .set_write_timeout(Some(Duration::from_millis(500)))
         .map_err(|_| "timeout")?;

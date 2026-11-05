@@ -29,6 +29,14 @@ pub(super) fn project(bytes: &[u8]) {
                 b"wrong authentication" => "authentication-header",
                 b"wrong model" => "model-selection",
                 b"stable executable" => "executable-changed",
+                b"mode" => "http-socket-mode",
+                b"header read" => "http-header-read",
+                b"short header" => "http-header-eof",
+                b"body read" => "http-body-read",
+                b"short body" => "http-body-eof",
+                b"request bound" => "http-request-bound",
+                b"native wait" => "native-wait",
+                b"native cleanup" => "native-cleanup",
                 _ => "other-native-check",
             };
             eprintln!("Windows native check daemon failure: scope={scope} stage={stage}");
