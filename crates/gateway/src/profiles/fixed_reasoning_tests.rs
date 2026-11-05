@@ -289,6 +289,9 @@ fn fixed_reasoning_content_references_preserve_sealed_choice() {
     );
     let selected = profile.for_request_reasoning(&request).unwrap();
     let template = project_candidate_request_template(&request, &selected).unwrap();
+    store
+        .prevalidate(&crate::content_ref::model_content_refs(&request))
+        .unwrap();
     let mut reader = sequential_attempt_body(template, store.clone(), &budget, 257).unwrap();
     let mut bytes = Vec::new();
     while let Some(chunk) = reader.next_chunk().unwrap() {
