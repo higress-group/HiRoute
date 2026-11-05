@@ -99,6 +99,14 @@ impl ReplayStream {
             .is_some_and(|index| self.ranges[index].canonical_json)
     }
 
+    pub(super) fn is_content_range(&self, reference: &ContentRef) -> bool {
+        !self.is_raw()
+            && self
+                .ranges
+                .binary_search_by(|range| range.reference.cmp(reference))
+                .is_ok()
+    }
+
     #[cfg(test)]
     pub(super) fn disk_path(&self) -> Option<PathBuf> {
         match &self.backing {
@@ -328,12 +336,19 @@ impl ReplayStreamBuilder {
         &mut self,
         value: &serde_json::Value,
     ) -> Result<ContentRef, ReplayError> {
+        self.append_json_range_with(|mut writer| write_canonical_json(&mut writer, value))
+    }
+
+    pub(super) fn append_json_range_with(
+        &mut self,
+        write: impl FnOnce(&mut dyn Write) -> std::io::Result<()>,
+    ) -> Result<ContentRef, ReplayError> {
         let gate = Arc::clone(&self.memory_gate);
         let _guard = lock(&gate);
         let mut range = ReplayRangeSink::new(self);
         let result = {
             let mut writer = json_buffer::JsonBuffer::new(&mut range);
-            write_canonical_json(&mut writer, value).and_then(|_| writer.flush())
+            write(&mut writer).and_then(|_| writer.flush())
         };
         if result.is_err() {
             return Err(range.error.take().unwrap_or(ReplayError::InvalidJson));

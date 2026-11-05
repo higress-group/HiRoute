@@ -1,6 +1,98 @@
 use super::*;
 
 #[test]
+fn real_listener_preserves_metadata_that_matches_an_image_reference() {
+    let provider = NativeProvider::start(vec![success()]);
+    let fixture = RuntimeFixture::launch_with_replay(&[&provider], 1, 1024, 1024);
+    let literal = "data:text/plain;base64,__hiroute_content_ref_v2_2_0_16000_16000__";
+    let body = format!(
+        r#"{{"model":"runtime-model","stream":false,"input":"{}","metadata":{{"note":"{literal}"}}}}"#,
+        "Z".repeat(16000)
+    );
+    let response = fixture.request_body_with_timeout(body.as_bytes(), Duration::from_secs(20));
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 1);
+    let forwarded: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
+    assert_eq!(forwarded["metadata"]["note"], literal);
+    assert!(forwarded["input"].to_string().contains(&"Z".repeat(16000)));
+    wait_replay_empty(&fixture.replay_root);
+}
+
+#[test]
+fn real_listener_literal_metadata_cannot_replace_frozen_provider_controls() {
+    let provider = NativeProvider::start(vec![success()]);
+    let fixture = RuntimeFixture::launch_with_replay(&[&provider], 1, 1024, 1024);
+    let first = format!("{{}}{}", " ".repeat(9000));
+    let second = format!(
+        r#","model":"unexpected-upstream-model","top_p":0.001,"metadata":{{}}{}"#,
+        " ".repeat(9000)
+    );
+    let payload = format!("{first}{second}");
+    let escaped = serde_json::to_string(&payload).unwrap().len() - 2;
+    let marker = format!(
+        "__hiroute_content_ref_v2_2_0_{}_{}__",
+        payload.len(),
+        escaped
+    );
+    let metadata = serde_json::json!({"__hiroute_json_content_ref_v2":marker});
+    let body = format!(
+        r#"{{"model":"runtime-model","stream":false,"input":[{{"role":"user","content":{}}},{{"role":"user","content":{}}}],"metadata":{}}}"#,
+        serde_json::to_string(&first).unwrap(),
+        serde_json::to_string(&second).unwrap(),
+        metadata
+    );
+    let response = fixture.request_body_with_timeout(body.as_bytes(), Duration::from_secs(20));
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 1);
+    let forwarded: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
+    assert_eq!(forwarded["metadata"], metadata);
+    assert_ne!(forwarded["model"], "unexpected-upstream-model");
+    assert!(forwarded.get("top_p").is_none());
+    wait_replay_empty(&fixture.replay_root);
+}
+
+#[test]
+fn real_listener_expands_large_native_image_data_uri_without_changing_detail() {
+    let provider = NativeProvider::start(vec![success()]);
+    let fixture = RuntimeFixture::launch_with_replay(&[&provider], 1, 1024 * 1024, 16 * 1024);
+    let image_url = format!("data:image/png;base64,{}", "QUJD".repeat(400_000));
+    let body = serde_json::to_vec(&serde_json::json!({
+        "model":"runtime-model","stream":false,
+        "input":[{"role":"user","content":[
+            {"type":"input_image","image_url":image_url,"detail":"high"}
+        ]}]
+    }))
+    .unwrap();
+    assert!(body.len() > 1024 * 1024);
+    let response = fixture.request_body_with_timeout(&body, Duration::from_secs(20));
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 1);
+    let forwarded: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
+    let image = &forwarded["input"][0]["content"][0];
+    assert_eq!(image["image_url"], image_url);
+    assert_eq!(image["detail"], "high");
+    wait_replay_empty(&fixture.replay_root);
+}
+
+#[test]
 fn real_listener_spools_model_last_large_bodies_for_all_ingress_protocols() {
     let simple = NativeProvider::start(Vec::new());
     let primary = NativeProvider::start((0..9).map(|_| success()).collect());

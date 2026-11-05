@@ -27,11 +27,35 @@ pub(super) fn controls(
     Ok(Value::Object(body))
 }
 
+pub(super) fn protect_projected_controls(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+    reasoning: &ReasoningProfileCapability,
+    body: &mut Value,
+) -> Result<(), ProtocolAdapterError> {
+    let mut configured = controls(request, profile, reasoning)?;
+    if request.native_body.is_some()
+        && request.ingress_protocol == profile.capability.upstream_protocol
+        && request.requested_reasoning.disposition
+            == RequestedReasoningDisposition::AppliedToFixedBinding
+    {
+        // This branch retains the original native reasoning, including its
+        // genuine Replay references. Only the model string was newly produced.
+        configured
+            .as_object_mut()
+            .expect("controls are an object")
+            .retain(|key, _| key == "model");
+    }
+    super::protect_control_literals(body, &configured);
+    Ok(())
+}
+
 pub(super) fn project(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
     canonical: Value,
     omit_prefix: Option<usize>,
+    unbacked: bool,
 ) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
     // Ingress classifies this carrier before Replay externalization. Use the
     // retained canonical range, not presence or shifted indexes in a native tree.
@@ -71,6 +95,7 @@ pub(super) fn project(
             request,
             profile.capability.upstream_protocol,
             &mut canonical,
+            unbacked,
         );
         normalize_codex_replay(&mut canonical, profile, request);
         return project_dialect(
@@ -89,6 +114,9 @@ pub(super) fn project(
         return project_dialect(canonical, profile, FunctionEncodingProjection::Preserve);
     };
     let mut body = original.clone();
+    if unbacked {
+        crate::content_ref::preserve_unbacked_wire_envelopes(&mut body);
+    }
     let object = body.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
     // Use one current Chat output-cap spelling, never contradictory limits.
     if request.ingress_protocol == IngressProtocol::ChatCompletions {

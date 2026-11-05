@@ -518,6 +518,50 @@ keep backing/metadata charged until the last consumer. Request-directory cleanup
 belongs to the final owning view; cancellation and failed queue admission release
 their ownership. This is not a second raw-body owner or a persistent body cache.
 
+### Requirement: Replay references preserve literal input and wire authority
+
+Client strings and JSON objects SHALL remain literal data even when they match an
+internal reference, reserved envelope, or a locator already present in the same
+request. Only occurrences with trusted ingress or wire-producer provenance may
+be interpreted as references. This provenance SHALL survive an owned native tree
+or an equivalent clone, without changing the identities read by protocol decoding
+and context selection. Overwritten input nodes SHALL lose their generated proof.
+
+Native and converted requests SHALL preserve tool names, namespaces, call/result
+bindings, metadata, cache keys and configured control values. Literal text SHALL
+NOT acquire authority to replace configured models or output limits. Mixed literal
+and referenced string fragments SHALL retain both meanings through the final wire
+serializer. A direct non-Replay projection and the sequential projection SHALL
+produce equivalent JSON values.
+
+Raw JSON replacement SHALL use an exact registered content range representing one
+complete JSON value; raw ingress or a whole-pool aggregate SHALL NOT grant this
+permission. Valid native argument bytes retained without canonicalization SHALL
+remain usable. Preserving a literal envelope with already backed descendants SHALL
+stream those proven descendants, without materializing another complete subtree.
+
+Compacting an image URI SHALL preserve its media prefix, exact payload and image
+detail while releasing the original large string allocation. Only the compact
+structure and its charged Replay backing may remain for later attempts.
+
+#### Scenario: Client metadata resembles a registered reference
+
+- **WHEN** metadata or a tool identity equals another field's locator, contains a locator-shaped data URI, or uses a reserved JSON envelope shape
+- **THEN** its original JSON value reaches the provider unchanged, while the genuine content occurrence expands normally.
+- **AND** neither a fragment nor an aggregate can inject a second model or output-control field.
+
+#### Scenario: Native identities and mixed descriptions remain literal
+
+- **WHEN** native or converted requests contain reference-shaped names, call IDs, cache keys, or namespace names alongside backed descriptions
+- **THEN** identities and bindings retain their original values and only the proven description ranges expand.
+- **AND** direct and sequential wire encoders preserve equivalent JSON values without exposing their temporary envelopes.
+
+#### Scenario: Nested literal envelopes and owned images remain bounded
+
+- **WHEN** a reserved literal shape contains several backed strings or an owned native request contains a large image URI
+- **THEN** the provider receives the exact original values and the live request retains no complete copy of the backed payload solely because its compact string kept the old capacity.
+- **AND** literal preservation streams nested backing and retains normal cancellation and final-owner cleanup.
+
 ### Requirement: Native response output and evidence extraction are independent
 
 Actual selected same-protocol Attempt MUST use native output, not reconstruct it

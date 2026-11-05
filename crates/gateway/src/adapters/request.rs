@@ -89,8 +89,12 @@ pub fn project_candidate_request(
             IngressProtocol::Messages => serialize_messages(request, profile, reasoning, None)?,
         }
     };
-    let (body, function_encoding_projection) = native::project(request, profile, body, None)?;
-    let bytes = serde_json::to_vec(&body)
+    let (mut body, function_encoding_projection) =
+        native::project(request, profile, body, None, true)?;
+    native::protect_projected_controls(request, profile, reasoning, &mut body)?;
+    let bytes = serde_json::to_vec(&crate::content_ref::borrowed_wire_value(&body))
+        .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
+    let body = serde_json::from_slice(&bytes)
         .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;
     let context = ContextProjector::project(
         &bytes,
@@ -132,31 +136,40 @@ fn serialize_responses(
         if let Some(include) = &options.include {
             body.insert(
                 "include".into(),
-                serde_json::to_value(include)
-                    .map_err(|_| ProtocolAdapterError::Serialization("Responses include".into()))?,
+                crate::content_ref::literal_wire_value(&serde_json::to_value(include).map_err(
+                    |_| ProtocolAdapterError::Serialization("Responses include".into()),
+                )?),
             );
         }
         if let Some(prompt_cache_key) = &options.prompt_cache_key {
             body.insert(
                 "prompt_cache_key".into(),
-                Value::String(prompt_cache_key.clone()),
+                crate::content_ref::literal_wire_value(prompt_cache_key),
             );
         }
         if let Some(client_metadata) = &options.client_metadata {
             body.insert(
                 "client_metadata".into(),
-                serde_json::to_value(client_metadata).map_err(|_| {
-                    ProtocolAdapterError::Serialization("Responses client metadata".into())
-                })?,
+                crate::content_ref::literal_wire_value(
+                    &serde_json::to_value(client_metadata).map_err(|_| {
+                        ProtocolAdapterError::Serialization("Responses client metadata".into())
+                    })?,
+                ),
             );
         }
         if options.reasoning_summary.is_some() || options.reasoning_context.is_some() {
             let mut native = Map::new();
             if let Some(summary) = &options.reasoning_summary {
-                native.insert("summary".into(), Value::String(summary.wire_value()));
+                native.insert(
+                    "summary".into(),
+                    crate::content_ref::literal_wire_value(summary),
+                );
             }
             if let Some(context) = &options.reasoning_context {
-                native.insert("context".into(), Value::String(context.clone()));
+                native.insert(
+                    "context".into(),
+                    crate::content_ref::literal_wire_value(context),
+                );
             }
             body.insert("reasoning".into(), Value::Object(native));
         }
@@ -175,12 +188,21 @@ fn serialize_responses(
         if let Some(search) = request.responses_search_history.get(&message_index) {
             let mut search = search.clone();
             search.id = native_tool_id(request, profile, &search.id)?;
+            let mut item = search.wire_value();
+            // Typed search identities and actions contain literal client data,
+            // never Replay references. Keep the item shape available to the
+            // common metadata producer below.
+            for field in ["id", "action"] {
+                if let Some(value) = item.get_mut(field) {
+                    *value = crate::content_ref::literal_wire_value(value);
+                }
+            }
             input.push(with_responses_item_fields(
                 request,
                 message_index,
                 false,
                 false,
-                search.wire_value(),
+                item,
             )?);
             continue;
         }
@@ -266,17 +288,17 @@ fn serialize_responses(
                     };
                     let mut item = json!({
                         "type": match tool_kind { ToolKindV1::Function => "function_call", ToolKindV1::Custom => "custom_tool_call" },
-                        "call_id": native_tool_id(request, profile, logical_id)?,
-                        "name": name,
+                        "call_id": crate::content_ref::literal_wire_value(&native_tool_id(request, profile, logical_id)?),
+                        "name": crate::content_ref::literal_wire_value(name),
                     });
                     item[match tool_kind {
                         ToolKindV1::Function => "arguments",
                         ToolKindV1::Custom => "input",
                     }] = Value::String(native_arguments);
                     if let Some(namespace) = namespace {
-                        item["namespace"] = Value::String(namespace.clone());
+                        item["namespace"] = crate::content_ref::literal_wire_value(namespace);
                     }
-                    if let Some(encoding) = encrypted_function_args { item["encrypted_function_args"] = json!(encoding); }
+                    if let Some(encoding) = encrypted_function_args { item["encrypted_function_args"] = crate::content_ref::literal_wire_value(encoding); }
                     input.push(with_responses_item_fields(
                         request,
                         message_index,
@@ -305,7 +327,7 @@ fn serialize_responses(
                         false,
                         json!({
                             "type": match tool_kind { ToolKindV1::Function => "function_call_output", ToolKindV1::Custom => "custom_tool_call_output" },
-                            "call_id": native_tool_id(request, profile, logical_id)?,
+                            "call_id": crate::content_ref::literal_wire_value(&native_tool_id(request, profile, logical_id)?),
                             "output": render_tool_output(output)?,
                         }),
                     )?);
@@ -419,8 +441,10 @@ fn flush_responses_message(
     if let Some(parts) = request.responses_annotations.get(&message_index) {
         for (original_index, part) in content.iter_mut() {
             if let Some(annotations) = parts.get(original_index) {
-                part["annotations"] = serde_json::to_value(annotations)
-                    .map_err(|_| ProtocolAdapterError::Serialization("annotations".into()))?;
+                part["annotations"] = crate::content_ref::literal_wire_value(
+                    &serde_json::to_value(annotations)
+                        .map_err(|_| ProtocolAdapterError::Serialization("annotations".into()))?,
+                );
             }
         }
     }
@@ -455,7 +479,7 @@ fn with_responses_item_fields(
     mut item: Value,
 ) -> Result<Value, ProtocolAdapterError> {
     if preserve_client_item_id && let Some(id) = request.responses_item_ids.get(&index) {
-        item["id"] = Value::String(id.clone());
+        item["id"] = crate::content_ref::literal_wire_value(id);
     }
     if let Some(status) = request.responses_item_statuses.get(&index) {
         let item_type = item.get("type").and_then(Value::as_str);
@@ -465,15 +489,16 @@ fn with_responses_item_fields(
         {
             return Err(ModelIrError::InvalidField("Responses input item status").into());
         }
-        item["status"] = Value::String(status.clone());
+        item["status"] = crate::content_ref::literal_wire_value(status);
     }
     if let Some(metadata) = request.responses_internal_chat_message_metadata.get(&index) {
-        item["internal_chat_message_metadata_passthrough"] = serde_json::to_value(metadata)
-            .map_err(|_| {
+        item["internal_chat_message_metadata_passthrough"] = crate::content_ref::literal_wire_value(
+            &serde_json::to_value(metadata).map_err(|_| {
                 ProtocolAdapterError::Serialization(
                     "Responses internal chat message metadata".into(),
                 )
-            })?;
+            })?,
+        );
     }
     if let Some(phase) = request.responses_message_phases.get(&index) {
         if !allow_phase {
@@ -561,9 +586,9 @@ fn serialize_chat(
                         compact_json(&parsed)?
                     };
                     tool_calls.push(json!({
-                        "id": native_tool_id(request, profile, logical_id)?,
+                        "id": crate::content_ref::literal_wire_value(&native_tool_id(request, profile, logical_id)?),
                         "type": "function",
-                        "function": {"name": emitted_name, "arguments": chat_arguments},
+                        "function": {"name": crate::content_ref::literal_wire_value(emitted_name), "arguments": chat_arguments},
                     }));
                 }
                 ContentPart::ToolResult {
@@ -591,7 +616,9 @@ fn serialize_chat(
                     object.insert("role".into(), Value::String("tool".into()));
                     object.insert(
                         "tool_call_id".into(),
-                        Value::String(native_tool_id(request, profile, logical_id)?),
+                        crate::content_ref::literal_wire_value(&native_tool_id(
+                            request, profile, logical_id,
+                        )?),
                     );
                     object.insert("content".into(), render_tool_output(output)?);
                     if let Some(name) = &message.name {
@@ -669,7 +696,10 @@ fn serialize_chat(
             body.insert("store".into(), Value::Bool(store));
         }
         if let Some(key) = &options.prompt_cache_key {
-            body.insert("prompt_cache_key".into(), Value::String(key.clone()));
+            body.insert(
+                "prompt_cache_key".into(),
+                crate::content_ref::literal_wire_value(key),
+            );
         }
     }
     body.insert(
@@ -733,7 +763,7 @@ fn serialize_messages(
                     }
                     ImageSource::Base64 { media_type, data } => json!({
                         "type": "image",
-                        "source": {"type": "base64", "media_type": media_type, "data": data.wire_value()},
+                        "source": {"type": "base64", "media_type": crate::content_ref::literal_wire_value(media_type), "data": data.wire_value()},
                     }),
                 }),
                 ContentPart::ToolCall {
@@ -759,8 +789,8 @@ fn serialize_messages(
                     }
                     content.push(json!({
                         "type": "tool_use",
-                        "id": native_tool_id(request, profile, logical_id)?,
-                        "name": name,
+                        "id": crate::content_ref::literal_wire_value(&native_tool_id(request, profile, logical_id)?),
+                        "name": crate::content_ref::literal_wire_value(name),
                         "input": arguments.wire_value(),
                     }));
                 }
@@ -777,7 +807,7 @@ fn serialize_messages(
                     }
                     let mut tool_result = json!({
                         "type": "tool_result",
-                        "tool_use_id": native_tool_id(request, profile, logical_id)?,
+                        "tool_use_id": crate::content_ref::literal_wire_value(&native_tool_id(request, profile, logical_id)?),
                         "content": render_tool_output(output)?,
                     });
                     if *status == ToolResultStatusV1::Failed {
@@ -1022,5 +1052,21 @@ fn role_label_messages(role: &MessageRole) -> Result<&'static str, ProtocolAdapt
                 "Messages cannot preserve a distinct Responses input system/developer role or its position".into(),
             ))
         }
+    }
+}
+
+// Protect only the occurrences owned by configured control producers, after
+// protocol normalization has finished inspecting their ordinary JSON values.
+fn protect_control_literals(body: &mut Value, controls: &Value) {
+    match controls {
+        Value::Object(fields) => {
+            for (key, control) in fields {
+                if let Some(value) = body.get_mut(key) {
+                    protect_control_literals(value, control);
+                }
+            }
+        }
+        Value::String(_) => *body = crate::content_ref::literal_wire_value(body),
+        _ => {}
     }
 }

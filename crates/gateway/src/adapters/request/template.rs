@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt, MARKER_PREFIX};
+use crate::content_ref::{
+    ContentRef, ContentValueExt, JsonValueExt, MARKER_PREFIX, data_uri_payload_ref,
+};
 use crate::server::core_runtime::model_ir::{
     ContentPart, ImageSource, ModelRequestIRV1, ToolKindV1, ToolOutput,
 };
@@ -153,8 +155,9 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
             }
         }
     };
-    let (body, function_encoding_projection) =
-        super::native::project(request, profile, body, omit_reasoning_prefix)?;
+    let (mut body, function_encoding_projection) =
+        super::native::project(request, profile, body, omit_reasoning_prefix, false)?;
+    super::native::protect_projected_controls(request, profile, reasoning, &mut body)?;
     let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
     {
@@ -519,7 +522,9 @@ fn collect_part_refs(
 }
 
 fn collect_string_ref(value: Option<&str>, refs: &mut Vec<RequestedReplacement>) {
-    if let Some(content) = value.and_then(ContentValueExt::content_ref) {
+    if let Some(content) =
+        value.and_then(|value| value.content_ref().or_else(|| data_uri_payload_ref(value)))
+    {
         refs.push(RequestedReplacement {
             content,
             encoding: ReplacementEncoding::JsonString,
@@ -538,6 +543,17 @@ fn collect_json_ref(
 }
 
 fn collect_nested_json_refs(value: &serde_json::Value, refs: &mut Vec<RequestedReplacement>) {
+    if crate::content_ref::is_wire_literal(value) {
+        return;
+    }
+    if crate::content_ref::is_wire_string_parts(value) {
+        if let Some(parts) = value[crate::content_ref::WIRE_STRING_PARTS_KEY].as_array() {
+            for part in parts {
+                collect_nested_json_refs(part, refs);
+            }
+        }
+        return;
+    }
     if value.content_ref().is_some() {
         collect_json_ref(value, ReplacementEncoding::RawJson, refs);
         return;

@@ -45,7 +45,9 @@ pub(super) fn insert_chat_tools(
         Value::Array(projection.render_tools(request)?),
     );
     let choice = match projection.named_choice(&request.tool_choice)? {
-        Some(name) => json!({"type": "function", "function": {"name": name}}),
+        Some(name) => {
+            json!({"type": "function", "function": {"name": crate::content_ref::literal_wire_value(name)}})
+        }
         None => render_tool_choice(IngressProtocol::ChatCompletions, &request.tool_choice),
     };
     body.insert("tool_choice".into(), choice);
@@ -102,13 +104,13 @@ fn render_tool_choice(protocol: IngressProtocol, choice: &ToolChoice) -> Value {
         (IngressProtocol::Messages, ToolChoice::RequiredAny) => json!({"type": "any"}),
         (_, ToolChoice::RequiredAny) => Value::String("required".into()),
         (IngressProtocol::Responses, ToolChoice::RequiredNamed { tool_kind, name }) => {
-            json!({"type": tool_kind_label(*tool_kind), "name": name})
+            json!({"type": tool_kind_label(*tool_kind), "name": crate::content_ref::literal_wire_value(name)})
         }
         (IngressProtocol::ChatCompletions, ToolChoice::RequiredNamed { name, .. }) => {
-            json!({"type": "function", "function": {"name": name}})
+            json!({"type": "function", "function": {"name": crate::content_ref::literal_wire_value(name)}})
         }
         (IngressProtocol::Messages, ToolChoice::RequiredNamed { name, .. }) => {
-            json!({"type": "tool", "name": name})
+            json!({"type": "tool", "name": crate::content_ref::literal_wire_value(name)})
         }
     }
 }
@@ -117,7 +119,9 @@ fn render_messages_tool_choice(choice: &ToolChoice, parallel: bool) -> Value {
     let mut value = match choice {
         ToolChoice::Auto => json!({"type": "auto"}),
         ToolChoice::RequiredAny => json!({"type": "any"}),
-        ToolChoice::RequiredNamed { name, .. } => json!({"type": "tool", "name": name}),
+        ToolChoice::RequiredNamed { name, .. } => {
+            json!({"type": "tool", "name": crate::content_ref::literal_wire_value(name)})
+        }
         ToolChoice::None => unreachable!("Tool choice none is rejected before rendering"),
     };
     value
@@ -133,7 +137,10 @@ fn render_responses_tool(tool: &CanonicalTool) -> Result<Value, ProtocolAdapterE
         "type".into(),
         Value::String(tool_kind_label(tool.kind).into()),
     );
-    object.insert("name".into(), Value::String(tool.name.clone()));
+    object.insert(
+        "name".into(),
+        crate::content_ref::literal_wire_value(&tool.name),
+    );
     if let Some(description) = &tool.description {
         object.insert("description".into(), Value::String(description.clone()));
     }
@@ -178,7 +185,10 @@ fn render_responses_namespace(
 ) -> Result<Value, ProtocolAdapterError> {
     let mut object = Map::new();
     object.insert("type".into(), Value::String("namespace".into()));
-    object.insert("name".into(), Value::String(namespace.name.clone()));
+    object.insert(
+        "name".into(),
+        crate::content_ref::literal_wire_value(&namespace.name),
+    );
     if let Some(description) = &namespace.description {
         object.insert("description".into(), Value::String(description.clone()));
     }
@@ -303,7 +313,10 @@ fn render_messages_tool(tool: &CanonicalTool) -> Result<Value, ProtocolAdapterEr
         ));
     }
     let mut object = Map::new();
-    object.insert("name".into(), Value::String(tool.name.clone()));
+    object.insert(
+        "name".into(),
+        crate::content_ref::literal_wire_value(&tool.name),
+    );
     object.insert(
         "input_schema".into(),
         tool.input_schema

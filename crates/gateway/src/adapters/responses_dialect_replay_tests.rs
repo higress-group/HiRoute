@@ -545,7 +545,7 @@ fn codex_v2_literal_schema_keys_survive_all_protocols_and_keep_real_replay_value
                 assert_eq!(schema[position][key]["type"], "string");
                 assert_eq!(
                     schema[position][key].get("encrypted").cloned(),
-                    (encoding == FunctionEncodingProjection::Preserve).then(|| json!(true))
+                    (encoding == FunctionEncodingProjection::Preserve).then_some(json!(true))
                 );
             }
         }

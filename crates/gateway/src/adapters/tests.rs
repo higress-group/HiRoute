@@ -1,6 +1,9 @@
 #[path = "tests/local_work.rs"]
 mod local_work;
 
+#[path = "tests/native_literal_provenance.rs"]
+mod native_literal_provenance;
+
 use serde_json::json;
 
 use super::*;
@@ -20,6 +23,9 @@ use crate::server::request_plan::IngressProtocol;
 
 #[path = "tests/native_responses.rs"]
 mod native_responses;
+
+#[path = "tests/native_image_replay.rs"]
+mod native_image_replay;
 
 #[path = "tests/codex_replay.rs"]
 mod codex_replay;

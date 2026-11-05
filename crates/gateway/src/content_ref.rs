@@ -11,10 +11,17 @@ use crate::server::core_runtime::model_ir::{
 pub(crate) const MARKER_PREFIX: &str = "__hiroute_content_ref_v2_";
 const MARKER_SUFFIX: &str = "__";
 const JSON_MARKER_KEY: &str = "__hiroute_json_content_ref_v2";
+pub(crate) const LITERAL_WIRE_KEY: &str = "__hiroute_literal_wire_value_v1";
+pub(crate) const WIRE_STRING_PARTS_KEY: &str = "__hiroute_wire_string_parts_v1";
 const CONTENT_FIELD_METADATA_BYTES: usize = 192;
 
+mod data_uri;
 mod ingress;
+mod literal_json;
+mod native_literals;
 mod schema;
+pub(crate) use data_uri::data_uri_payload_ref;
+pub(crate) use native_literals::NativeLiteralNodes;
 
 #[cfg(test)]
 pub(crate) use ingress::compact_ingress_document;
@@ -125,11 +132,128 @@ pub(crate) fn borrowed_wire_value(value: &Value) -> impl Serialize + '_ {
     WireValue(value)
 }
 
+pub(crate) struct BorrowedWireLiteral<'a, T: ?Sized>(pub(crate) &'a T);
+
+impl<T: Serialize + ?Sized> Serialize for BorrowedWireLiteral<'_, T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let encoded = serde_json::to_string(self.0)
+            .map_err(serde::ser::Error::custom)?
+            .replace(MARKER_PREFIX, "\\u005f_hiroute_content_ref_v2_");
+        let raw =
+            serde_json::value::RawValue::from_string(encoded).map_err(serde::ser::Error::custom)?;
+        raw.serialize(serializer)
+    }
+}
+
+/// Only final wire producers create this envelope. Ingress reserves its shape
+/// as literal JSON before native reference interpretation can run.
+pub(crate) fn literal_wire_value<T: Serialize + ?Sized>(value: &T) -> Value {
+    let value = serde_json::to_value(value).expect("wire literals are JSON values");
+    if literal_needs_escape(&value) {
+        let mut object = Map::new();
+        object.insert(LITERAL_WIRE_KEY.into(), value);
+        Value::Object(object)
+    } else {
+        value
+    }
+}
+
+pub(crate) fn is_wire_literal(value: &Value) -> bool {
+    value
+        .as_object()
+        .is_some_and(|object| object.len() == 1 && object.contains_key(LITERAL_WIRE_KEY))
+}
+
+/// Final-wire-only composition of literal pieces and Replay-backed string pieces.
+pub(crate) fn wire_string_parts(parts: Vec<Value>) -> Value {
+    let mut object = Map::new();
+    object.insert(WIRE_STRING_PARTS_KEY.into(), Value::Array(parts));
+    Value::Object(object)
+}
+
+pub(crate) fn is_wire_string_parts(value: &Value) -> bool {
+    value
+        .as_object()
+        .is_some_and(|object| object.len() == 1 && object.contains_key(WIRE_STRING_PARTS_KEY))
+}
+
+// Direct projection has no Replay phase. Matching client objects are data,
+// rather than final-producer envelopes. Leave reference shapes untouched so
+// this traversal never changes the collector's JSON/string encoding decision.
+pub(crate) fn preserve_unbacked_wire_envelopes(value: &mut Value) {
+    if is_wire_literal(value) || is_wire_string_parts(value) {
+        *value = literal_wire_value(value);
+        return;
+    }
+    match value {
+        Value::Array(values) => values.iter_mut().for_each(preserve_unbacked_wire_envelopes),
+        Value::Object(values) => values
+            .values_mut()
+            .for_each(preserve_unbacked_wire_envelopes),
+        _ => {}
+    }
+}
+
+fn literal_needs_escape(value: &Value) -> bool {
+    match value {
+        Value::String(value) => value.contains(MARKER_PREFIX),
+        Value::Array(values) => values.iter().any(literal_needs_escape),
+        Value::Object(values) => {
+            values.keys().any(|key| key.contains(MARKER_PREFIX))
+                || values.values().any(literal_needs_escape)
+                || (values.len() == 1
+                    && (values.contains_key(JSON_MARKER_KEY)
+                        || values.contains_key(LITERAL_WIRE_KEY)
+                        || values.contains_key(WIRE_STRING_PARTS_KEY)))
+        }
+        _ => false,
+    }
+}
+
 struct WireValue<'a>(&'a Value);
 
 impl Serialize for WireValue<'_> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::{SerializeMap, SerializeSeq};
+        if is_wire_literal(self.0) {
+            let value = &self.0[LITERAL_WIRE_KEY];
+            let encoded = serde_json::to_string(value)
+                .map_err(serde::ser::Error::custom)?
+                .replace(MARKER_PREFIX, "\\u005f_hiroute_content_ref_v2_");
+            let raw = serde_json::value::RawValue::from_string(encoded)
+                .map_err(serde::ser::Error::custom)?;
+            return raw.serialize(serializer);
+        }
+        if is_wire_string_parts(self.0) {
+            let parts = self.0[WIRE_STRING_PARTS_KEY]
+                .as_array()
+                .ok_or_else(|| serde::ser::Error::custom("wire string parts must be an array"))?;
+            let mut encoded = String::from("\"");
+            for part in parts {
+                // These are final-producer-owned occurrences. An explicitly
+                // literal envelope stays literal even if its text equals a ref.
+                let reference_piece = part.as_str().is_some_and(|text| {
+                    ContentRef::from_wire_marker(text).is_some()
+                        || data_uri_payload_ref(text).is_some()
+                });
+                let quoted =
+                    serde_json::to_string(&WireValue(part)).map_err(serde::ser::Error::custom)?;
+                let inner = quoted
+                    .strip_prefix('"')
+                    .and_then(|value| value.strip_suffix('"'))
+                    .ok_or_else(|| serde::ser::Error::custom("wire string part is not a string"))?;
+                if reference_piece {
+                    encoded.push_str(inner);
+                } else {
+                    // Prevent a reserved prefix forming across piece boundaries.
+                    encoded.push_str(&inner.replace('_', "\\u005f"));
+                }
+            }
+            encoded.push('"');
+            let raw = serde_json::value::RawValue::from_string(encoded)
+                .map_err(serde::ser::Error::custom)?;
+            return raw.serialize(serializer);
+        }
         if let Some(reference) = self.0.content_ref() {
             return serializer.serialize_str(&reference.wire_marker());
         }
@@ -175,6 +299,11 @@ impl JsonValueExt for Value {
     fn wire_value(&self) -> Value {
         if let Some(content) = self.content_ref() {
             return Value::String(content.wire_marker());
+        }
+        // Model-IR JSON is data, not a final-producer envelope. This also
+        // protects direct projections whose schemas never enter Replay.
+        if is_wire_literal(self) || is_wire_string_parts(self) {
+            return literal_wire_value(self);
         }
         match self {
             Value::Array(values) => {
@@ -252,8 +381,16 @@ pub fn externalize_model_request(
                             // and projection never depend on the inline budget.
                             if field == "type"
                                 && matches!(value.as_str(), Some("summary_text" | "reasoning_text"))
-                                || contains_replay_string_ref(value, replay)
                             {
+                                continue;
+                            }
+                            if contains_replay_string_ref(value, replay) {
+                                externalize_native_leaves(
+                                    value,
+                                    replay,
+                                    &mut pool,
+                                    &mut inline_remaining,
+                                )?;
                                 continue;
                             }
                             if field == "text"
@@ -270,6 +407,8 @@ pub fn externalize_model_request(
             }
             if !contains_replay_string_ref(value, replay) {
                 externalize_json(value, replay, &mut pool, &mut inline_remaining)?;
+            } else {
+                externalize_native_leaves(value, replay, &mut pool, &mut inline_remaining)?;
             }
         }
     }
@@ -310,6 +449,8 @@ pub fn externalize_model_request(
     for state in &mut request.provider_state {
         if !contains_replay_string_ref(&state.value, replay) {
             externalize_json(&mut state.value, replay, &mut pool, &mut inline_remaining)?;
+        } else {
+            externalize_native_leaves(&mut state.value, replay, &mut pool, &mut inline_remaining)?;
         }
     }
     if let Some(body) = &mut request.native_body {
@@ -417,7 +558,28 @@ fn externalize_native_leaves(
     // Each Value is charged once. Map keys/node overhead belong to the parent;
     // charging a full map slot for array elements double-counts the Value.
     replay.charge_metadata(std::mem::size_of::<Value>())?;
+    // These envelopes are only produced by the final wire serializers. At
+    // this earlier phase the same shape is literal client/IR JSON.
+    if is_wire_literal(value) || is_wire_string_parts(value) {
+        if pool.is_none() {
+            *pool = Some(replay.begin_content_pool()?);
+        }
+        let reference = pool
+            .as_mut()
+            .ok_or(ReplayError::Integrity)?
+            .append_canonical_json(value)?;
+        *value = reference.json_marker();
+        return Ok(());
+    }
     if value.content_ref().is_some() {
+        return Ok(());
+    }
+    if let Some(reference) = value.as_str().and_then(data_uri_payload_ref)
+        && replay.has_reference(&reference)
+    {
+        // Ingress already backed this image's payload. Backing the complete
+        // data URI again would hide its inner reference from the wire encoder.
+        replay.charge_metadata(value.as_str().expect("data URI is a string").len())?;
         return Ok(());
     }
     match value {
@@ -576,7 +738,7 @@ fn collect_part_content_refs(parts: &[ContentPart], refs: &mut Vec<ContentRef>) 
 }
 
 fn collect_string_content_ref(value: &str, refs: &mut Vec<ContentRef>) {
-    if let Some(content) = value.content_ref() {
+    if let Some(content) = value.content_ref().or_else(|| data_uri_payload_ref(value)) {
         refs.push(content);
     }
 }
@@ -611,6 +773,7 @@ fn collect_nested_content_refs(value: &Value, refs: &mut Vec<ContentRef>) {
 fn contains_replay_string_ref(value: &Value, replay: &ReplayStore) -> bool {
     match value {
         Value::String(value) => ContentRef::from_wire_marker(value)
+            .or_else(|| data_uri_payload_ref(value))
             .as_ref()
             .is_some_and(|reference| replay.has_reference(reference)),
         Value::Array(values) => values
@@ -693,11 +856,15 @@ fn externalize_parts(
                         for (key, value) in object {
                             if key != "type" && !contains_replay_string_ref(value, replay) {
                                 externalize_json(value, replay, pool, inline_remaining)?;
+                            } else if key != "type" {
+                                externalize_native_leaves(value, replay, pool, inline_remaining)?;
                             }
                         }
                     }
                 } else if !contains_replay_string_ref(&state.value, replay) {
                     externalize_json(&mut state.value, replay, pool, inline_remaining)?;
+                } else {
+                    externalize_native_leaves(&mut state.value, replay, pool, inline_remaining)?;
                 }
             }
         }

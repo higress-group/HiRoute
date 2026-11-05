@@ -22,6 +22,7 @@ pub(super) fn project_messages_format(
     request: &ModelRequestIRV1,
     target: IngressProtocol,
     body: &mut Value,
+    unbacked: bool,
 ) {
     if request.ingress_protocol != IngressProtocol::Messages || target == IngressProtocol::Messages
     {
@@ -35,6 +36,11 @@ pub(super) fn project_messages_format(
         return;
     };
     let mut format = format.clone();
+    if unbacked {
+        for value in format.values_mut() {
+            crate::content_ref::preserve_unbacked_wire_envelopes(value);
+        }
+    }
     format.remove("type");
     format
         .entry("name")
