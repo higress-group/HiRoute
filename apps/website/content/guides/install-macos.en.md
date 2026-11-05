@@ -65,6 +65,8 @@ When an update changes the storage format, it retains configuration, credentials
 
 Prefer **Updates** over manual replacement. If you must replace the App manually, fully quit HiRoute, confirm that its service and tasks have stopped, and keep the complete original App and data directory.
 
+After updating, check the service status on Home, reopen a saved route and send a small request from its connected Agent. This verifies active routing as well as saved configuration.
+
 If startup fails, the startup page shows the specific cause and recovery instructions, even while the service is down. Read the `RECOVERY.md` of the batch the page identifies before restoring. You can also run `hiroute service recovery --output json` in Terminal to see the verified recovery batch and source directory. Do not replace individual database files, delete data, or retry repeatedly to work around a failure.
 
 ## Uninstall

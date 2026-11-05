@@ -73,6 +73,8 @@ hiroute service doctor --output json
 hiroute service logs --output json
 ```
 
+After setup or an upgrade, verify a saved route with a small request through its connected Agent. See **Send a real request** in the [Quickstart](/en/docs/).
+
 `service`, `gateway`, and `protected-input` are Host management commands. Discover them through root and family help:
 
 ```sh

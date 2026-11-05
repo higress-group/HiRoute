@@ -34,6 +34,8 @@ Open **Settings → Updates**. The shell downloads a newer stable installer from
 
 A manually downloaded newer installer uses the same drain and transaction path. An older daemon that cannot drain requires an explicit interactive confirmation before it can be stopped; a passive update refuses it. If an update fails, the startup page or Updates shows the failure and recovery status. Keep the logs and retained backups. Starting the shell after an interrupted installer attempts journal recovery and resumes paused admission; changed or foreign files require repair and are preserved.
 
+Copy the available failure diagnostics before retrying. When asking for help, include the failed stage, error codes and any recovery material identified by the page.
+
 Complete-group recovery of data, matching programs and native state remains available, but compatibility with unpublished development builds is not guaranteed. Installation repair does not export Task/Apps registration or duplicate the complete Desktop unnecessarily.
 
 Before a storage-format change, configuration, credentials and routing continue, while old HiRoute observations are sealed with the matching old program. Current history/statistics start at cutover; old-period continuation/history references require complete-group matching-version recovery. Native Agent history is unchanged. Read this notice before unattended `/S` installation too; silent mode has no notice page.

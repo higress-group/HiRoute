@@ -134,6 +134,8 @@ HiRoute 在本地运行，将受支持的订阅、API 接入和本地模型集�
 HiRoute 提供 **macOS 桌面版、Windows x64 桌面版、Linux Web UI 与 CLI**。
 已发布的安装包见[下载页](https://hiroute.ai/download/)。
 
+0.5.3 修复大图片请求，包括 Codex Desktop 经 Qoder 兼容网关发起的调用，并改进 Windows 安装与升级诊断。
+
 1. **接入模型**：加入受支持的订阅或 API，选择经济模型与主力。
 2. **配置分工**：在**模型 → 决策模型**中连接判断服务，选择信任程度，发布并映射到 Agent。
    内置连接支持百炼、OpenAI、OpenRouter Jev、TypeSafe 与兼容接入点，无需自行部署 Jev。
