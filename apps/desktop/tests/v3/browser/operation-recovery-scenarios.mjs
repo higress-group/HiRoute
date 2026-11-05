@@ -9,6 +9,37 @@ export function operationRecoveryScenarios({ fresh, until, control, calls }) {
   const ready = () => document.querySelector('.sidebar-health .status-dot.good');
   const terminal = id => ({ operation_id: id, state: 'succeeded', sequence: 4, cancellable: false, safe_error_code: null });
   return [
+    scenario('desktop.operation.immediate-rollback-failure-detail', ['operation-feedback'], 'An ordinary Agent save displays enriched terminal failure without cold pending recovery', async () => {
+      await fresh(() => {
+        const c = control();
+        const agent = c.agents.agents.find(item => item.agent_id === 'agent_codex_default');
+        agent.configuration_state = 'not_configured';
+        agent.settings.current_selection = null;
+        agent.settings.state = 'not_configured';
+        c.agents.plans.plans = c.agents.plans.plans.filter(plan => plan.head.status === 'enabled').slice(0, 1);
+        // This is the product-session response shape asserted by the native save regression.
+        c.handlers.preview_agent_settings = () => ({ preview: { applicable: true, blockers: [] }, mutation: {
+          state: 'submitted', operation: {
+            operation_id: 'operation/immediate-failure', state: 'rolled_back', sequence: 9, cancellable: false,
+            safe_error_code: 'ADAPTER_FAILURE', failure_detail: {
+              schema: 'hiroute.operation-failure/v1', step: 'apply_agent_artifacts', code: 'ADAPTER_FAILURE', cause: 'permission_denied',
+            },
+          },
+        } });
+      });
+      const visible = selector => [...document.querySelectorAll(selector)].filter(node => node.getClientRects().length);
+      visible('button').find(node => node.textContent.trim() === 'Agent').click();
+      await until(() => visible('.native-list .list-row').some(node => node.textContent.includes('Codex')), 'Agent list');
+      visible('.native-list .list-row').find(node => node.textContent.includes('Codex')).click();
+      await until(() => document.querySelector('[data-agent-facet="model"]'), 'model facet');
+      document.querySelector('[data-agent-facet="model"]').click();
+      await until(() => document.querySelector('[role="dialog"] button[type="submit"]')?.disabled === false, 'ordinary save enabled');
+      document.querySelector('[role="dialog"] button[type="submit"]').click();
+      await until(() => feedback()?.querySelector('[data-error-code="ADAPTER_FAILURE"]'), 'immediate failure detail');
+      assert(feedback().innerText.includes('准备 Agent 文件') && feedback().innerText.includes('访问被拒绝'), 'Ordinary save lost its failure guidance');
+      assert(calls('preview_agent_settings').length === 1, 'Failure replayed the save');
+      assert(calls('observe_operation').length === 0, 'Enriched terminal response needs no frontend recovery poll');
+    }),
     scenario('desktop.operation.rollback-failure-detail', ['operation-feedback'], 'Rollback retains the actual failed phase and cause-specific recovery guidance', async () => {
       await fresh(() => {
         const c = control();

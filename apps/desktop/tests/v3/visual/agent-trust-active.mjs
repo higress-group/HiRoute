@@ -167,7 +167,7 @@ try {
         results.push(...batch.results.map(item => ({ ...item, viewport })));
         for (const item of batch.results) process.stdout.write(`${item.state}: ${item.id} · ${item.name}${item.error ? ` · ${item.error}` : ''}\n`);
       }
-      if (selected.some(s => s.id === 'desktop.operation.rollback-failure-detail')) {
+      if (selected.some(s => ['desktop.operation.rollback-failure-detail', 'desktop.operation.immediate-rollback-failure-detail'].includes(s.id))) {
         for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) {
           await client.send('Emulation.setDeviceMetricsOverride', { ...viewport, deviceScaleFactor: 1, mobile: false });
           await new Promise(resolve => setTimeout(resolve, 80));

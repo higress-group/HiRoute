@@ -317,6 +317,9 @@ fn artifact_observation_failure_retains_detail_when_rollback_cannot_confirm_owne
                 failed.safe_error_code.clone(),
             )
             .unwrap();
+        // A restart after the Attention step save but before the final terminal save
+        // must retry rollback without replacing the triggering code with RECOVERY_ROLLBACK.
+        restored.state = OperationState::RollingBack;
         ports
             .state
             .borrow_mut()
@@ -326,6 +329,10 @@ fn artifact_observation_failure_retains_detail_when_rollback_cannot_confirm_owne
         let recovered = coordinator(&ports, &restarted).run(&id).unwrap();
         assert_eq!(recovered.state, OperationState::NeedsAttention);
         assert_eq!(recovered.failure_detail(), Some(detail));
+        assert_eq!(
+            recovered.safe_error_code.as_deref(),
+            Some("ADAPTER_FAILURE")
+        );
         assert_eq!(ports.state.borrow().writer.as_deref(), Some(id.as_str()));
     }
 }

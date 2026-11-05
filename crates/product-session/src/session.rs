@@ -664,9 +664,21 @@ impl ProductSession {
             }
             Ok(envelope) => {
                 let hint = self.hint.as_mut().ok_or("RESPONSE_OPERATION_MISSING")?;
-                Some(accepted_operation_view(envelope, hint)?)
+                let accepted = accepted_operation_view(envelope, hint)?;
+                // Released Apply responses carry identity/state, not failure evidence. A
+                // failed terminal view stops Desktop observation, so enrich it first using
+                // the same identity/sequence-checked lookup as lost-response recovery.
+                Some(
+                    if matches!(accepted.state.as_str(), "rolled_back" | "needs_attention") {
+                        self.find_pending()
+                            .await?
+                            .ok_or("OPERATION_RESULT_UNVERIFIED")?
+                    } else {
+                        accepted
+                    },
+                )
             }
-            // Only a lost response needs an identity lookup. If that lookup cannot
+            // A lost response also needs an identity lookup. If that lookup cannot
             // find an Operation yet, retain the request identity for a later retry.
             Err(_) => self.find_pending().await?,
         };

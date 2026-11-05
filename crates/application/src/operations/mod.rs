@@ -674,7 +674,16 @@ where
                     uncertain = true;
                     let step = operation.step_mut(kind);
                     step.status = OperationStepStatus::Attention;
-                    step.terminal_result = Some("ownership_unconfirmed".to_owned());
+                    // Attention retains the uncertain ownership state. Keep the established
+                    // triggering failure as diagnostic evidence even if observation fails again.
+                    if step
+                        .terminal_result
+                        .as_deref()
+                        .and_then(hiroute_domain::OperationFailureV1::parse)
+                        .is_none()
+                    {
+                        step.terminal_result = Some("ownership_unconfirmed".to_owned());
+                    }
                 }
             }
             self.control.save_operation(&mut operation)?;
