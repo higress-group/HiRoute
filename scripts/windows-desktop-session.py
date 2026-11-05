@@ -1004,7 +1004,8 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
         if before['marker'] != after.get('marker') or not shell.is_file():
             raise RuntimeError('Uninstall unexpectedly changed an active Desktop installation')
         return dict(native_entry='NSIS /S launcher and waitable worker', launcher_exit_code=launcher.returncode, exit_code=done.returncode,
-                    installation_preserved=True, shell_sha256=helper.digest(shell))
+                    installation_preserved=True, shell_sha256=helper.digest(shell),
+                    uninstall_outcome=after.get('uninstall-outcome.json', {}).get('record'))
     element = None
     observed = None
     if action in ('invoke', 'text', 'click', 'scroll'):

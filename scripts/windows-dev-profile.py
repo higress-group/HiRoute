@@ -74,7 +74,8 @@ def inspect_installation(native_home, local_app_data):
             facts[name] = dict(path=str(path), sha256=digest(path), bytes=path.stat().st_size)
             if name.endswith('.json') and path.stat().st_size <= 64 * 1024:
                 facts[name]['record'] = json.loads(path.read_text(encoding='utf-8'))
-    for name in ('install-pending.json', 'package-cleanup.json', 'update-outcome.json'):
+    for name in ('install-pending.json', 'package-cleanup.json', 'update-outcome.json',
+                 'uninstall-outcome.json'):
         path = plain(local_app_data / 'HiRoute/shell' / name)
         if path.is_file():
             facts[name] = dict(sha256=digest(path), bytes=path.stat().st_size,
@@ -122,6 +123,25 @@ def inspect_installation(native_home, local_app_data):
         facts['shell_backup_entries'] = sorted(str(p.relative_to(backups)) for p in backups.rglob('*') if p.is_file())[:100]
         facts['shell_backup_mismatches'] = [name for name, wanted in expected.items()
                                            if (path := plain(backups / name)).is_file() and digest(path) != wanted]
+    if os.name == 'nt':
+        import winreg
+        registration = dict(present=False)
+        key = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\HiRoute'
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as handle:
+                registration['present'] = True
+                for name in ('DisplayVersion', 'InstallLocation', 'UninstallString',
+                             'QuietUninstallString'):
+                    try:
+                        value, kind = winreg.QueryValueEx(handle, name)
+                    except FileNotFoundError:
+                        continue
+                    if kind != winreg.REG_SZ or len(value) > 32768:
+                        raise ValueError('Unexpected Apps registration value')
+                    registration[name] = value
+        except FileNotFoundError:
+            pass
+        facts['uninstall_registration'] = registration
     return facts
 
 
