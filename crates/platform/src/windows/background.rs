@@ -284,11 +284,26 @@ pub(crate) fn digest(mut file: impl Read) -> io::Result<String> {
     Ok(format!("{:x}", hash.finalize()))
 }
 
+#[derive(Debug)]
+struct BackgroundHresult(u32);
+
+impl std::fmt::Display for BackgroundHresult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Windows background HRESULT {:08x}", self.0)
+    }
+}
+
+impl std::error::Error for BackgroundHresult {}
+
 pub(crate) fn com_error(error: windows::core::Error) -> io::Error {
-    io::Error::other(format!(
-        "Windows background HRESULT {:08x}",
-        error.code().0 as u32
-    ))
+    io::Error::other(BackgroundHresult(error.code().0 as u32))
+}
+
+pub fn hresult(error: &io::Error) -> Option<u32> {
+    error
+        .get_ref()?
+        .downcast_ref::<BackgroundHresult>()
+        .map(|code| code.0)
 }
 
 /// Quote one native command-line argument using CommandLineToArgvW/CRT rules.

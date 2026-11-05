@@ -121,6 +121,8 @@ jobs:
             $env:CMAKE_TOOLCHAIN_FILE = (Join-Path $env:GITHUB_WORKSPACE 'scripts/windows-release-toolchain.cmake').Replace('\', '/')
             cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-shell --features shell-runtime --lib -- --nocapture 2>&1 | Tee-Object artifacts/windows-desktop/shell-test.log
             if ($LASTEXITCODE -ne 0) { throw 'Native shell regressions failed' }
+            cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-shell --features shell-runtime --lib runtime::installer::embedded_cli_failure_keeps_native_detail -- --ignored --exact --nocapture 2>&1 | Tee-Object artifacts/windows-desktop/installer-diagnostic-test.log
+            if ($LASTEXITCODE -ne 0 -or -not (Select-String -Quiet -SimpleMatch 'Windows error: 32' artifacts/windows-desktop/installer-diagnostic-test.log)) { throw 'Native installer diagnostic regression failed' }
             cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-cli --lib service::restore_plan::tests -- --nocapture 2>&1 | Tee-Object artifacts/windows-desktop/agent-restore-plan-test.log
             if ($LASTEXITCODE -ne 0) { throw 'Native uninstall restore-plan regressions failed' }
             cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-daemon --test windows_desktop --no-run --message-format=json | Tee-Object artifacts/windows-desktop/compiler.jsonl
