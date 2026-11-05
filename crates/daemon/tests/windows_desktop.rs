@@ -7,7 +7,7 @@
 mod windows_account;
 
 use hiroute_host_runtime::{StandaloneInstallRecordV1, StandaloneLayout};
-use hiroute_platform::windows::{background, install, shell_login, task};
+use hiroute_platform::windows::{background, install, installed_apps, shell_login, task};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -73,8 +73,16 @@ fn hash(path: &Path) -> String {
 fn run(program: &Path, args: &[&str], evidence: &Path, phase: &str) -> Vec<u8> {
     let output = evidence.join(format!("{phase}.stdout"));
     let error = evidence.join(format!("{phase}.stderr"));
-    let mut child = Command::new(program)
-        .args(args)
+    use std::os::windows::process::CommandExt;
+    let mut command = Command::new(program);
+    for argument in args {
+        if argument.starts_with("_?=") {
+            command.raw_arg(argument);
+        } else {
+            command.arg(argument);
+        }
+    }
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(File::create(&output).unwrap())
         .stderr(File::create(error).unwrap())
@@ -245,8 +253,15 @@ fn actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data() {
 
     let sentinel = layout.state_root.join("nsis-preserved-data.txt");
     std::fs::write(&sentinel, b"native NSIS acceptance data").unwrap();
-    let uninstall = programs.join("uninstall.exe");
-    run(&uninstall, &["/S"], &evidence, "uninstall");
+    let uninstall = evidence.join("uninstall-worker.exe");
+    std::fs::copy(programs.join("uninstall.exe"), &uninstall).unwrap();
+    assert_eq!(hash(&uninstall), hash(&programs.join("uninstall.exe")));
+    run(
+        &uninstall,
+        &["/S", &format!("_?={}", programs.display())],
+        &evidence,
+        "uninstall",
+    );
     let deadline = Instant::now() + Duration::from_secs(30);
     while programs.join("hiroute-shell.exe").exists() && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(100));
@@ -255,6 +270,9 @@ fn actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data() {
     assert!(!layout.marker_path.exists());
     assert!(!record.service_definition.exists());
     assert!(!cli_path.exists());
+    assert!(!task::active(&definition).unwrap());
+    assert!(task::recovery_xml(&definition).is_err());
+    assert!(!installed_apps::uninstall_locations("HiRoute").contains(&programs));
     assert!(
         !record.install_root.exists(),
         "uninstall left its versioned package behind"

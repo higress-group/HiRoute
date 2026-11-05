@@ -315,6 +315,28 @@ pub fn run_if_requested() -> Option<i32> {
     if !verb.starts_with("--installer-") {
         return None;
     }
+    if matches!(
+        verb.as_str(),
+        "--installer-uninstall-blocked"
+            | "--installer-uninstall-busy"
+            | "--installer-uninstall-files-in-use"
+    ) && args.len() == 1
+    {
+        let failure = if verb == "--installer-uninstall-blocked" {
+            Failure::new("check-running-desktop", "INSTALL_DESKTOP_RUNNING")
+        } else if verb == "--installer-uninstall-busy" {
+            Failure::new("check-installer-mutex", "INSTALL_MAINTENANCE_BUSY")
+        } else {
+            Failure::new("remove-desktop-files", "UNINSTALL_FILES_REMAIN")
+        };
+        uninstall_outcome(Some(&failure));
+        write_diagnostic(&failure, None);
+        return Some(1);
+    }
+    if verb == "--installer-uninstall-complete" && args.len() == 1 {
+        uninstall_outcome(None);
+        return Some(0);
+    }
     if verb == "--installer-mutex" {
         if args.len() != 1 || hiroute_platform::windows::install::require_x64().is_err() {
             return Some(1);
@@ -438,6 +460,11 @@ pub fn run_if_requested() -> Option<i32> {
             )),
         }
     };
+    if verb == "--installer-uninstall"
+        && let Err(failure) = &result
+    {
+        uninstall_outcome(Some(failure));
+    }
     let exit = match result {
         Ok(value) => {
             let _ = writeln!(std::io::stdout().lock(), "{value}");
@@ -495,4 +522,26 @@ fn embedded_cli_failure_keeps_native_detail() {
     assert!(report.contains("Windows error: 32"));
     assert!(!report.contains("private-installer-fixture-"));
     println!("{report}");
+}
+
+fn uninstall_outcome(failure: Option<&Failure>) {
+    let Ok(data) = super::install_transaction::data() else {
+        return;
+    };
+    let value = match failure {
+        Some(failure) => json!({
+            "schema": "hiroute.windows-shell-uninstall-outcome/v1",
+            "status": "failed", "code": failure.code, "diagnostic": failure.report()
+        }),
+        None => json!({
+            "schema": "hiroute.windows-shell-uninstall-outcome/v1",
+            "status": "succeeded"
+        }),
+    };
+    if let Ok(bytes) = serde_json::to_vec(&value) {
+        let _ = hiroute_platform::durable::write_private_atomic(
+            &data.join("uninstall-outcome.json"),
+            &bytes,
+        );
+    }
 }

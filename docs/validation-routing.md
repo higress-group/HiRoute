@@ -421,6 +421,14 @@ length limit. Helper hash checks and atomic publication still apply.
 
 #### Compilation and release boundary
 
+For a bounded native updater-stage component diagnosis, manually dispatch
+`build-release-platform.yml` with `component_probe=true`. It builds only the
+payload-free shell and runs the temporary staging cases, exporting their exact
+test executable and safe native failures. Its separate component artifact is
+diagnostic evidence, not an installer or native installation acceptance. Use the
+normal candidate build and configured standard-user machine for installed
+finisher/NSIS scenarios.
+
 Ordinary development uses the configured Linux workbench for Windows MSVC
 cross-compilation and the configured Windows development machine for affected
 native execution. The expensive hosted Windows producer/replay matrix runs from

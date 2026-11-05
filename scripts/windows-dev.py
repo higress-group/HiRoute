@@ -275,6 +275,7 @@ def bundle_desktop(result_path, log_path, output):
             or installer.stat().st_size != identity.get('installer_size')):
         raise ValueError('Installer differs from the measured build identity')
     tests = set()
+    shell_tests = set()
     for line in log_path.read_text().splitlines():
         try:
             row = json.loads(line)
@@ -283,6 +284,9 @@ def bundle_desktop(result_path, log_path, output):
         if (row.get('reason') == 'compiler-artifact' and row.get('target', {}).get('name') == 'windows_desktop'
                 and row.get('profile', {}).get('test') is True and row.get('executable')):
             tests.add(Path(row['executable']).resolve(strict=True))
+        if (row.get('reason') == 'compiler-artifact' and row.get('target', {}).get('name') == 'hiroute_shell'
+                and row.get('profile', {}).get('test') is True and row.get('executable')):
+            shell_tests.add(Path(row['executable']).resolve(strict=True))
     if len(tests) != 1:
         raise ValueError('Exactly one compiled Windows Desktop test artifact is required')
     binaries = REPO / 'target/x86_64-pc-windows-msvc/release'
@@ -306,6 +310,12 @@ def bundle_desktop(result_path, log_path, output):
             raise ValueError('Embedded product bytes differ from the measured package')
     files = {'installer.exe': installer, 'windows_desktop.exe': harness,
              **{name: payload / name for name in ('hiroute.exe', 'hirouted.exe')}}
+    if shell_tests:
+        if len(shell_tests) != 1:
+            raise ValueError('Exactly one compiled Windows shell regression executable is required')
+        shell_harness = shell_tests.pop()
+        shell_harness.relative_to(binaries.resolve(strict=True))
+        files['hiroute_shell.exe'] = shell_harness
     manifest = dict(source_revision=sha, target='x86_64-pc-windows-msvc', installer_format='nsis',
                     shell_sha256=shell_sha256, native_ci_assessment='not_assessed', files={})
     with zipfile.ZipFile(output, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
@@ -338,7 +348,7 @@ def main():
     desktop = commands.add_parser('desktop-session', help='Measured installed Desktop and native UI acceptance')
     desktop.add_argument('--product', required=True)
     desktop.add_argument('--action', dest='desktop_action', required=True,
-                         choices=('install', 'installer-resume', 'installer-quarantine', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'codex-two-turn', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'))
+                         choices=('install', 'installer-resume', 'installer-quarantine', 'uninstall-refusal', 'uninstall-busy-refusal', 'uninstall-file-refusal', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'codex-two-turn', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'))
     desktop.add_argument('--from-product', help='Exact installed bundle admitted before a cross-build upgrade')
     desktop.add_argument('--recover-product', help='Exact interrupted bundle, with a recent inspection, before normal NSIS recovery')
     desktop.add_argument('--observation-run')
@@ -431,7 +441,7 @@ def main():
                     raise ValueError('Scrolling requires an explicit direction')
             values.update(run_id=uuid.uuid4().hex, harness=args.product, binary='hiroute.exe',
                           case='native_desktop_' + args.desktop_action.replace('-', '_'), operation='desktop', ignored=False,
-                          timeout={'install':810,'recovery-lock-ui':600,'recovery-file-use-ui':600,
+                          timeout={'install':810,'uninstall-file-refusal':1000,'recovery-lock-ui':600,'recovery-file-use-ui':600,
                                    'codex-two-turn':420}.get(args.desktop_action,240))
             values.pop('cli_args')
             if args.desktop_action == 'cli':

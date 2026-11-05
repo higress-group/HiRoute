@@ -222,6 +222,122 @@ fn failed_publication_with_host_login_item_rolls_back_without_blocking_other_wri
 }
 
 #[test]
+fn artifact_prepare_failure_survives_compensation_serialization_and_startup_recovery() {
+    let ports = MemoryPorts::default();
+    let admission = TransactionRuntime::default();
+    let id = inject_settings_operation(&ports);
+    ports.state.borrow_mut().fail_artifact_prepare = true;
+    let failed = coordinator(&ports, &admission).run(&id).unwrap();
+    assert_eq!(failed.state, OperationState::RolledBack);
+    assert_eq!(failed.step(OperationStepKind::Activate).attempts, 0);
+    let detail = failed.failure_detail().unwrap();
+    assert_eq!(detail.step, OperationStepKind::ApplyAgentArtifacts);
+    assert_eq!(
+        detail.cause,
+        hiroute_domain::OperationFailureCauseV1::PermissionDenied
+    );
+    assert_eq!(
+        detail.adapter_context.as_deref(),
+        Some("agent.artifact.prepare")
+    );
+    assert!(
+        failed
+            .steps
+            .iter()
+            .all(|step| step.status == OperationStepStatus::Compensated)
+    );
+    let steps = serde_json::from_slice(&serde_json::to_vec(&failed.steps).unwrap()).unwrap();
+    let mut decoded = failed.clone();
+    decoded
+        .restore_durable_state(
+            failed.state,
+            failed.generation,
+            steps,
+            failed.safe_error_code.clone(),
+        )
+        .unwrap();
+    assert_eq!(decoded.failure_detail(), Some(detail.clone()));
+    // Simulate interruption after all effects were compensated but before terminal commit.
+    decoded.state = OperationState::RollingBack;
+    ports
+        .state
+        .borrow_mut()
+        .operations
+        .insert(id.to_string(), decoded);
+    let restarted = TransactionRuntime::default();
+    let recovered = coordinator(&ports, &restarted).run(&id).unwrap();
+    assert_eq!(recovered.state, OperationState::RolledBack);
+    assert_eq!(recovered.failure_detail(), Some(detail));
+    assert_eq!(
+        recovered.safe_error_code.as_deref(),
+        Some("ADAPTER_FAILURE")
+    );
+    assert_eq!(ports.state.borrow().writer, None);
+}
+
+#[test]
+fn artifact_observation_failure_retains_detail_when_rollback_cannot_confirm_ownership() {
+    for cause in [PortErrorCode::PermissionDenied, PortErrorCode::Unavailable] {
+        let ports = MemoryPorts::default();
+        let admission = TransactionRuntime::default();
+        let id = inject_settings_operation(&ports);
+        ports.state.borrow_mut().artifact_observation_failure = Some(cause);
+        let failed = coordinator(&ports, &admission).run(&id).unwrap();
+        assert_eq!(failed.state, OperationState::NeedsAttention);
+        assert_eq!(failed.step(OperationStepKind::Activate).attempts, 0);
+        assert_eq!(
+            failed.step(OperationStepKind::ApplyAgentArtifacts).status,
+            OperationStepStatus::Attention
+        );
+        assert_eq!(failed.safe_error_code.as_deref(), Some("ADAPTER_FAILURE"));
+        let detail = failed
+            .failure_detail()
+            .expect("rollback must preserve the established failure");
+        assert_eq!(detail.step, OperationStepKind::ApplyAgentArtifacts);
+        assert_eq!(
+            detail.adapter_context.as_deref(),
+            Some("agent.artifact.observe")
+        );
+        assert_eq!(
+            detail.cause,
+            match cause {
+                PortErrorCode::PermissionDenied =>
+                    hiroute_domain::OperationFailureCauseV1::PermissionDenied,
+                _ => hiroute_domain::OperationFailureCauseV1::Unavailable,
+            }
+        );
+        assert_eq!(ports.state.borrow().writer.as_deref(), Some(id.as_str()));
+        // Persist/reopen via the validated journal boundary, retaining Attention as authority.
+        let mut restored = failed.clone();
+        restored
+            .restore_durable_state(
+                failed.state,
+                failed.generation,
+                serde_json::from_slice(&serde_json::to_vec(&failed.steps).unwrap()).unwrap(),
+                failed.safe_error_code.clone(),
+            )
+            .unwrap();
+        // A restart after the Attention step save but before the final terminal save
+        // must retry rollback without replacing the triggering code with RECOVERY_ROLLBACK.
+        restored.state = OperationState::RollingBack;
+        ports
+            .state
+            .borrow_mut()
+            .operations
+            .insert(id.to_string(), restored);
+        let restarted = TransactionRuntime::default();
+        let recovered = coordinator(&ports, &restarted).run(&id).unwrap();
+        assert_eq!(recovered.state, OperationState::NeedsAttention);
+        assert_eq!(recovered.failure_detail(), Some(detail));
+        assert_eq!(
+            recovered.safe_error_code.as_deref(),
+            Some("ADAPTER_FAILURE")
+        );
+        assert_eq!(ports.state.borrow().writer.as_deref(), Some(id.as_str()));
+    }
+}
+
+#[test]
 fn startup_rechecks_a_fully_compensated_host_login_item_rollback() {
     let ports = MemoryPorts::default();
     let admission = TransactionRuntime::default();

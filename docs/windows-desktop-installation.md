@@ -135,6 +135,38 @@ failed startup record. Old, incomplete or unreadable diagnostics leave the manag
 error intact. The typed current cause can explain a lock, missing key or upgrade
 refusal without borrowing an earlier batch's advice.
 
+## Update stage diagnosis and retirement
+
+Update outcomes preserve their existing category code and add a safe diagnostic
+with the failed operation, I/O kind, available Win32/HRESULT code, and installer
+exit code when applicable. The same fields are available in Updates and in
+`%LOCALAPPDATA%\HiRoute\shell\update-outcome.json`. The diagnostic excludes
+paths, account names, arbitrary native messages and downloaded contents.
+
+Each SHA-addressed stage has a private ownership record. A shared lease pins a
+ready package and native handoff; a download requires an exclusive writer lease.
+The small SHA-keyed lease file lives beside the payload directory because Windows
+cannot rename a directory containing an open file. That coordination file remains
+after payload retirement so concurrent callers always use the same lock identity.
+Rechecking and retrying the same package preserve that ownership. Downloads,
+helpers and cleanup coordinate with the existing update lock. Recovery and manual
+installation remain protected by the installation mutex and pending journal.
+
+Discard package releases only the selected, inactive owned stage and returns to
+the download action. Cancel during download removes the partial owned package.
+Cancel during drain preserves the verified package for retry and resumes the
+service. A background startup/download sweep retires obsolete inactive stages
+without hashing their payloads on the foreground path. Retirement first verifies
+private ownership, known regular single-link entries and an exclusive lease,
+then renames the directory before deleting its fixed file set. Interrupted
+retirement resumes from its retained ownership record. Changed, foreign, linked,
+active or recovery-dependent material is retained.
+
+Released stages without an ownership record are admitted only through a matching
+V1 job whose installer/helper digests and release metadata are verified. Unknown
+or incomplete legacy namespaces require support and remain preserved.
+
+
 ## Windows support and acceptance scope
 
 This is the first supported Windows release, with no supported released Windows
@@ -273,3 +305,28 @@ each named unexecuted case `not_assessed`; it must not claim complete acceptance
 Both selections still require actual standard-user installation and console
 readiness. Missing decisions, different artifacts, undeclared omissions and failed
 cases are rejected. Remaining acceptance stays with the linked Issue.
+
+## Scripted silent uninstall
+
+The registered `QuietUninstallString` uses `uninstall.exe /S`. NSIS launches a
+self-copy worker and the original launcher can exit before removal finishes.
+A script must wait for the worker and verify the installed files and registration.
+Stopping the service and exiting Desktop are separate actions. An open Desktop,
+active work or an unavailable required Agent restoration refuses silent removal.
+Keep the Task registration intact and stop the service through its public CLI
+when a stopped-service case is required.
+
+For a synchronous result, copy the installed uninstaller outside its program
+directory and invoke the NSIS worker with `/S _?=<original program directory>`.
+The `_?=` argument must be last and unquoted, including paths containing spaces.
+Wait for that copied process and check its exit code. A successful default
+uninstall removes owned program/CLI/Task/Apps registration and preserves user
+data. Remove the temporary worker after it exits. The original launcher's early
+exit code alone cannot establish those effects.
+
+The latest worker result is retained at
+`%LOCALAPPDATA%\HiRoute\shell\uninstall-outcome.json`. Refusal reports contain a
+safe failure code and operation, including a running Desktop or another active
+installer. A successful result is written after NSIS checks removal of its owned
+payload and deletes the Apps registration. Preserve this support report and the
+existing installation if uninstall refuses or removal fails.
