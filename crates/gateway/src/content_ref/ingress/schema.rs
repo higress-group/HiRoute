@@ -10,7 +10,10 @@ impl Compactor<'_> {
         // A literal object in the reserved marker shape is data, never a ref to
         // another range. It has no schema child/encoding fields to inspect.
         if value.as_object().is_some_and(|object| {
-            object.len() == 1 && object.contains_key(crate::content_ref::JSON_MARKER_KEY)
+            object.len() == 1
+                && (object.contains_key(crate::content_ref::JSON_MARKER_KEY)
+                    || object.contains_key(crate::content_ref::LITERAL_WIRE_KEY)
+                    || object.contains_key(crate::content_ref::WIRE_STRING_PARTS_KEY))
         }) {
             return self.externalize_json(value);
         }

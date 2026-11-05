@@ -155,8 +155,12 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
             }
         }
     };
-    let (body, function_encoding_projection) =
+    let (mut body, function_encoding_projection) =
         super::native::project(request, profile, body, omit_reasoning_prefix)?;
+    super::protect_control_literals(
+        &mut body,
+        &super::native::controls(request, profile, reasoning)?,
+    );
     let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
     {
@@ -542,6 +546,17 @@ fn collect_json_ref(
 }
 
 fn collect_nested_json_refs(value: &serde_json::Value, refs: &mut Vec<RequestedReplacement>) {
+    if crate::content_ref::is_wire_literal(value) {
+        return;
+    }
+    if crate::content_ref::is_wire_string_parts(value) {
+        if let Some(parts) = value[crate::content_ref::WIRE_STRING_PARTS_KEY].as_array() {
+            for part in parts {
+                collect_nested_json_refs(part, refs);
+            }
+        }
+        return;
+    }
     if value.content_ref().is_some() {
         collect_json_ref(value, ReplacementEncoding::RawJson, refs);
         return;

@@ -8,15 +8,16 @@ use serde_json::{Map, Value, json, value::RawValue};
 use super::protocol::normalize_probabilities;
 use super::system_one::{Bindings, parse_response as reduce_system_one};
 use super::{CallFailure, ClassifierResponse};
+use crate::content_ref::BorrowedWireLiteral;
 use crate::server::core_runtime::adapters::{
     PreparedReplayTemplate, RequestedReplacement, prepare_replay_json_template,
 };
 
 #[derive(Serialize)]
 struct OpenaiRequest<'a, S: Serialize> {
-    model: &'a str,
+    model: BorrowedWireLiteral<'a, str>,
     input: [OpenaiMessage<'a, S>; 1],
-    questions: Vec<Value>,
+    questions: BorrowedWireLiteral<'a, [Value]>,
 }
 
 #[derive(Serialize)]
@@ -44,7 +45,26 @@ pub(super) fn prepare_template(
     refs: Vec<RequestedReplacement>,
 ) -> Result<PreparedReplayTemplate, CallFailure> {
     if codec == DecisionWireProtocolV2::SystemOne {
-        return prepare_replay_json_template(body, refs).map_err(|_| CallFailure::RejectedInput);
+        struct LiteralControls<'a>(&'a Value);
+        impl Serialize for LiteralControls<'_> {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                use serde::ser::SerializeMap;
+                let object = self.0.as_object().ok_or_else(|| {
+                    serde::ser::Error::custom("classifier request must be an object")
+                })?;
+                let mut output = serializer.serialize_map(Some(object.len()))?;
+                for (key, value) in object {
+                    if matches!(key.as_str(), "model" | "questions") {
+                        output.serialize_entry(key, &BorrowedWireLiteral(value))?;
+                    } else {
+                        output.serialize_entry(key, value)?;
+                    }
+                }
+                output.end()
+            }
+        }
+        return prepare_replay_json_template(&LiteralControls(body), refs)
+            .map_err(|_| CallFailure::RejectedInput);
     }
     let object = body.as_object().ok_or(CallFailure::RejectedInput)?;
     let model = object
@@ -76,14 +96,14 @@ pub(super) fn prepare_native_state<S: Serialize>(
     if codec == DecisionWireProtocolV2::SystemOne {
         #[derive(Serialize)]
         struct Request<'a, S: Serialize> {
-            model: &'a str,
-            questions: &'a Map<String, Value>,
+            model: BorrowedWireLiteral<'a, str>,
+            questions: BorrowedWireLiteral<'a, Map<String, Value>>,
             state: &'a S,
         }
         return prepare_replay_json_template(
             &Request {
-                model,
-                questions,
+                model: BorrowedWireLiteral(model),
+                questions: BorrowedWireLiteral(questions),
                 state,
             },
             refs,
@@ -138,7 +158,7 @@ pub(super) fn prepare_native_state<S: Serialize>(
         encoded.push(result);
     }
     let request = OpenaiRequest {
-        model,
+        model: BorrowedWireLiteral(model),
         input: [OpenaiMessage {
             role: "user",
             content: [OpenaiInputPart {
@@ -146,7 +166,7 @@ pub(super) fn prepare_native_state<S: Serialize>(
                 data: OpenaiState { state },
             }],
         }],
-        questions: encoded,
+        questions: BorrowedWireLiteral(&encoded),
     };
     prepare_replay_json_template(&request, refs).map_err(|_| CallFailure::RejectedInput)
 }

@@ -197,7 +197,10 @@ impl ChatToolProjection {
         namespace: Option<&CanonicalToolNamespaceV1>,
     ) -> Value {
         let mut function = Map::new();
-        function.insert("name".into(), Value::String(identity.emitted_name.clone()));
+        function.insert(
+            "name".into(),
+            crate::content_ref::literal_wire_value(&identity.emitted_name),
+        );
         let description = match namespace.and_then(|namespace| {
             namespace
                 .description
@@ -205,19 +208,20 @@ impl ChatToolProjection {
                 .map(|description| (namespace.name.as_str(), description))
         }) {
             Some((name, description)) => {
-                // ContentRef markers remain embedded in this compact string;
-                // the sequential encoder expands each occurrence without reads here.
-                let mut description = format!("[{name}]\n{description}");
+                let mut parts = vec![
+                    crate::content_ref::literal_wire_value(&format!("[{name}]\n")),
+                    Value::String(description.to_owned()),
+                ];
                 if let Some(child) = &tool.description {
-                    description.push_str("\n\n");
-                    description.push_str(child);
+                    parts.push(Value::String("\n\n".into()));
+                    parts.push(Value::String(child.clone()));
                 }
-                Some(description)
+                Some(crate::content_ref::wire_string_parts(parts))
             }
-            None => tool.description.clone(),
+            None => tool.description.clone().map(Value::String),
         };
         if let Some(description) = description {
-            function.insert("description".into(), Value::String(description));
+            function.insert("description".into(), description);
         }
         match tool.kind {
             ToolKindV1::Function => {
@@ -481,7 +485,9 @@ mod tests {
             request.responses_tool_order = vec![ResponsesToolOrderEntryV1::Namespace { index: 0 }];
             let original = request.clone();
             let projection = ChatToolProjection::for_request(&request).unwrap();
-            let tools = projection.render_tools(&request).unwrap();
+            let tools = Value::Array(projection.render_tools(&request).unwrap());
+            let tools =
+                serde_json::to_value(crate::content_ref::borrowed_wire_value(&tools)).unwrap();
             for (index, name) in ["lookup", "shell"].iter().enumerate() {
                 assert_eq!(tools[index]["function"]["description"].as_str(), expected);
                 let emitted = format!("records__{name}");

@@ -63,6 +63,14 @@ fn sequential_replay_body_with_retained_bytes(
             "attempt replay was not prevalidated".into(),
         ));
     }
+    for replacement in template.replacements.iter() {
+        if matches!(
+            replacement.encoding,
+            ReplacementEncoding::RawJson | ReplacementEncoding::RawJsonInJsonString
+        ) {
+            validate_json_replacement(&replay, &replacement.content, budget)?;
+        }
+    }
     let content_buffer_bytes = write_quantum.min(8 * 1024);
     let metadata_bytes = retained_bytes
         .and_then(|bytes| bytes.checked_add(content_buffer_bytes))
@@ -88,6 +96,39 @@ fn sequential_replay_body_with_retained_bytes(
         verified_complete: false,
         released: false,
     }))
+}
+
+fn validate_json_replacement(
+    replay: &ReplayStore,
+    reference: &crate::content_ref::ContentRef,
+    budget: &StreamBudget,
+) -> Result<(), AttemptError> {
+    if !replay.is_content_range(reference) {
+        return Err(AttemptError::Transport(
+            "RawJson requires a registered content range".into(),
+        ));
+    }
+    if replay.is_canonical_json(reference) {
+        return Ok(());
+    }
+    // A valid native argument may retain its original bytes under pressure.
+    // Validate that one range as a complete JSON value without materializing it.
+    let source = replay
+        .reader(reference)
+        .map_err(|error| AttemptError::Transport(error.to_string().into()))?;
+    let charge = budget.reserve(MemoryRole::AttemptWire, 8 * 1024).ok();
+    let mut source =
+        std::io::BufReader::with_capacity(if charge.is_some() { 8 * 1024 } else { 0 }, source);
+    let mut decoder = serde_json::Deserializer::from_reader(&mut source);
+    <serde::de::IgnoredAny as serde::Deserialize>::deserialize(&mut decoder)
+        .and_then(|_| decoder.end())
+        .map_err(|_| AttemptError::Transport("RawJson range is not one JSON value".into()))?;
+    drop(decoder);
+    source
+        .get_mut()
+        .verify_terminal()
+        .map_err(|error| AttemptError::Transport(error.to_string().into()))?;
+    Ok(())
 }
 
 struct SequentialNativeBody {

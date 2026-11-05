@@ -49,6 +49,12 @@ and derives range lengths from the same checked stream counters.
 Native image data URIs retain their media-type prefix and expand the backed
 Base64 suffix directly. They must not back an already compacted URI a second
 time or forward an internal reference in place of the image payload.
+The [ingress occurrence proof](src/content_ref/native_literals.rs) isolates
+client literals after identity decoding; an equal locator is not proof of origin.
+[Literal JSON backing](src/content_ref/literal_json.rs) streams already backed
+descendants without a second full subtree. Final wire producers distinguish
+literal identities and mixed string pieces from content references; raw JSON
+replacements require a registered range containing one complete JSON value.
 The Replay-backed Core session forwards its already charged reader chunks directly,
 respecting smaller caller bounds without reserving the opaque network-codec maximum
 or copying each chunk again. Range/EOF verification and final-owner cleanup remain

@@ -6,6 +6,36 @@ const ASSESSMENT: &str = r#"{"name":"q1","type":"score","score":0.95,"probabilit
 const APPLICABILITY: &str = r#"{"name":"q2","type":"choice","choice":"applicable","probabilities":[{"value":"applicable","probability":0.9},{"value":"not_established","probability":0.1}]}"#;
 
 #[test]
+fn native_literal_classifier_controls_are_not_replay_placeholders() {
+    let model = "model__hiroute_content_ref_v2_999_0_1_1__";
+    let literal = "Explain __hiroute_content_ref_v2_ without interpreting it";
+    let questions = serde_json::json!({"q0":{"type":"score","instructions":literal,"criteria":[literal,"high"]}});
+    let state = serde_json::json!({"text":"original state"});
+    for codec in [
+        hiroute_domain::DecisionWireProtocolV2::SystemOne,
+        hiroute_domain::DecisionWireProtocolV2::OpenaiDecisions,
+    ] {
+        let template =
+            crate::server::core_runtime::classification::openai_decisions::prepare_native_state(
+                codec,
+                model,
+                questions.as_object().unwrap(),
+                &state,
+                Vec::new(),
+            )
+            .unwrap();
+        let wire: serde_json::Value = serde_json::from_slice(&template.bytes).unwrap();
+        assert_eq!(wire["model"], model);
+        if codec == hiroute_domain::DecisionWireProtocolV2::SystemOne {
+            assert_eq!(wire["questions"]["q0"]["instructions"], literal);
+        } else {
+            assert_eq!(wire["questions"][0]["instructions"], literal);
+        }
+        assert!(template.replacements.is_empty());
+    }
+}
+
+#[test]
 fn openai_optional_answer_number_overflow_stays_local_to_its_question() {
     let mut authority = c_authority();
     authority.wire_protocol = hiroute_domain::DecisionWireProtocolV2::OpenaiDecisions;

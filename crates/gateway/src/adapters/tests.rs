@@ -1,6 +1,9 @@
 #[path = "tests/local_work.rs"]
 mod local_work;
 
+#[path = "tests/native_literal_provenance.rs"]
+mod native_literal_provenance;
+
 use serde_json::json;
 
 use super::*;

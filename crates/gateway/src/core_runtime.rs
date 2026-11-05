@@ -617,6 +617,18 @@ impl ProductionGatewayRuntime {
             set_phase(LocalPhase::Parse);
             let parse_started = Instant::now();
             let identity_document = crate::context_hold::context_document(&document);
+            let native_literals = match ingress_workspace.native_literals(&document, &replay) {
+                Ok(literals) => literals,
+                Err(_) => {
+                    return write_typed_error_phase(
+                        session,
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "CONTENT_REF_UNAVAILABLE",
+                        "canonical_request",
+                    )
+                    .await;
+                }
+            };
             let mut canonical_request = match adapters::decode_owned_ingress_request_with_replay(
                 protocol, document, &replay,
             )
@@ -635,6 +647,18 @@ impl ProductionGatewayRuntime {
                 }
             };
             let parse_elapsed = parse_started.elapsed();
+            if native_literals
+                .externalize(&mut canonical_request, &replay)
+                .is_err()
+            {
+                return write_typed_error_phase(
+                    session,
+                    StatusCode::BAD_REQUEST,
+                    "REPLAY_INTEGRITY_FAILED",
+                    "canonical_request",
+                )
+                .await;
+            }
             if canonical_request.web_search.is_some() && !authorized.web_search_allowed() {
                 return write_typed_error_phase(
                     session,

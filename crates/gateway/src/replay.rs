@@ -327,6 +327,12 @@ impl ReplayStore {
             .is_some_and(|stream| stream.is_canonical_json(reference))
     }
 
+    pub(crate) fn is_content_range(&self, reference: &ContentRef) -> bool {
+        lock(&self.inner.streams)
+            .get(&reference.stream_ordinal())
+            .is_some_and(|stream| stream.is_content_range(reference))
+    }
+
     /// Validates every live backing through the exact file handle retained at
     /// seal time, then removes its pathname where the platform permits it.
     /// No stream may be added after this boundary; later calls only validate reference membership.
@@ -538,6 +544,25 @@ impl ReplayContentWriter {
             .as_mut()
             .ok_or(ReplayError::AfterTerminal)?
             .append_json_range(value)?;
+        self.ranges.push(ReplayRange {
+            reference: reference.clone(),
+            canonical_json: true,
+        });
+        Ok(reference)
+    }
+
+    /// The caller owns canonical JSON production; referenced bytes must already
+    /// be sealed in this request before entering the streaming writer.
+    pub(crate) fn append_canonical_json_with(
+        &mut self,
+        write: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()>,
+    ) -> Result<ContentRef, ReplayError> {
+        self.reserve_range()?;
+        let reference = self
+            .builder
+            .as_mut()
+            .ok_or(ReplayError::AfterTerminal)?
+            .append_json_range_with(write)?;
         self.ranges.push(ReplayRange {
             reference: reference.clone(),
             canonical_json: true,
