@@ -13,8 +13,10 @@ const MARKER_SUFFIX: &str = "__";
 const JSON_MARKER_KEY: &str = "__hiroute_json_content_ref_v2";
 const CONTENT_FIELD_METADATA_BYTES: usize = 192;
 
+mod data_uri;
 mod ingress;
 mod schema;
+pub(crate) use data_uri::data_uri_payload_ref;
 
 #[cfg(test)]
 pub(crate) use ingress::compact_ingress_document;
@@ -420,6 +422,14 @@ fn externalize_native_leaves(
     if value.content_ref().is_some() {
         return Ok(());
     }
+    if let Some(reference) = value.as_str().and_then(data_uri_payload_ref)
+        && replay.has_reference(&reference)
+    {
+        // Ingress already backed this image's payload. Backing the complete
+        // data URI again would hide its inner reference from the wire encoder.
+        replay.charge_metadata(value.as_str().expect("data URI is a string").len())?;
+        return Ok(());
+    }
     match value {
         Value::String(s) => externalize_value(s, replay, pool, remaining)?,
         Value::Array(values) => {
@@ -576,7 +586,7 @@ fn collect_part_content_refs(parts: &[ContentPart], refs: &mut Vec<ContentRef>) 
 }
 
 fn collect_string_content_ref(value: &str, refs: &mut Vec<ContentRef>) {
-    if let Some(content) = value.content_ref() {
+    if let Some(content) = value.content_ref().or_else(|| data_uri_payload_ref(value)) {
         refs.push(content);
     }
 }
@@ -611,6 +621,7 @@ fn collect_nested_content_refs(value: &Value, refs: &mut Vec<ContentRef>) {
 fn contains_replay_string_ref(value: &Value, replay: &ReplayStore) -> bool {
     match value {
         Value::String(value) => ContentRef::from_wire_marker(value)
+            .or_else(|| data_uri_payload_ref(value))
             .as_ref()
             .is_some_and(|reference| replay.has_reference(reference)),
         Value::Array(values) => values

@@ -21,6 +21,9 @@ use crate::server::request_plan::IngressProtocol;
 #[path = "tests/native_responses.rs"]
 mod native_responses;
 
+#[path = "tests/native_image_replay.rs"]
+mod native_image_replay;
+
 #[path = "tests/codex_replay.rs"]
 mod codex_replay;
 

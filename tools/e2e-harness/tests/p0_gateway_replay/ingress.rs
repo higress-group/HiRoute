@@ -1,6 +1,35 @@
 use super::*;
 
 #[test]
+fn real_listener_expands_large_native_image_data_uri_without_changing_detail() {
+    let provider = NativeProvider::start(vec![success()]);
+    let fixture = RuntimeFixture::launch_with_replay(&[&provider], 1, 1024 * 1024, 16 * 1024);
+    let image_url = format!("data:image/png;base64,{}", "QUJD".repeat(400_000));
+    let body = serde_json::to_vec(&serde_json::json!({
+        "model":"runtime-model","stream":false,
+        "input":[{"role":"user","content":[
+            {"type":"input_image","image_url":image_url,"detail":"high"}
+        ]}]
+    }))
+    .unwrap();
+    assert!(body.len() > 1024 * 1024);
+    let response = fixture.request_body_with_timeout(&body, Duration::from_secs(20));
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 1);
+    let forwarded: serde_json::Value = serde_json::from_slice(http_body(&requests[0])).unwrap();
+    let image = &forwarded["input"][0]["content"][0];
+    assert_eq!(image["image_url"], image_url);
+    assert_eq!(image["detail"], "high");
+    wait_replay_empty(&fixture.replay_root);
+}
+
+#[test]
 fn real_listener_spools_model_last_large_bodies_for_all_ingress_protocols() {
     let simple = NativeProvider::start(Vec::new());
     let primary = NativeProvider::start((0..9).map(|_| success()).collect());

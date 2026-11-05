@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::content_ref::{ContentRef, ContentValueExt, JsonValueExt, MARKER_PREFIX};
+use crate::content_ref::{
+    ContentRef, ContentValueExt, JsonValueExt, MARKER_PREFIX, data_uri_payload_ref,
+};
 use crate::server::core_runtime::model_ir::{
     ContentPart, ImageSource, ModelRequestIRV1, ToolKindV1, ToolOutput,
 };
@@ -519,7 +521,9 @@ fn collect_part_refs(
 }
 
 fn collect_string_ref(value: Option<&str>, refs: &mut Vec<RequestedReplacement>) {
-    if let Some(content) = value.and_then(ContentValueExt::content_ref) {
+    if let Some(content) =
+        value.and_then(|value| value.content_ref().or_else(|| data_uri_payload_ref(value)))
+    {
         refs.push(RequestedReplacement {
             content,
             encoding: ReplacementEncoding::JsonString,

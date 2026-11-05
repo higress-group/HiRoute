@@ -46,6 +46,9 @@ current authority/profile checks still run, and cleanup rebuilds the template.
 Template serialization borrows the existing JSON tree while expanding its wire
 markers. Replay serializes each canonical range under its existing memory gate
 and derives range lengths from the same checked stream counters.
+Native image data URIs retain their media-type prefix and expand the backed
+Base64 suffix directly. They must not back an already compacted URI a second
+time or forward an internal reference in place of the image payload.
 The Replay-backed Core session forwards its already charged reader chunks directly,
 respecting smaller caller bounds without reserving the opaque network-codec maximum
 or copying each chunk again. Range/EOF verification and final-owner cleanup remain
