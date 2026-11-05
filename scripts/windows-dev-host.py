@@ -459,9 +459,18 @@ def worker(request):
                     if time.monotonic() >= deadline:
                         raise TimeoutError('Candidate uninstall did not remove its owned installation')
                     time.sleep(0.2)
+                after = helper.inspect_installation(Path.home(), Path(os.environ['LOCALAPPDATA']))
+                remaining = profile_activity(config, request['run_id'])
+                owned_task = json.loads(inspected['installation']['definition']['text'])['name']
+                if (after['uninstall_registration']['present']
+                        or any(t['TaskName'] == owned_task for t in remaining.get('tasks', []))
+                        or any(Path(p.get('ExecutablePath') or '').parent == installed
+                               for p in remaining.get('processes', []))):
+                    raise RuntimeError('Uninstall left an owned Apps registration, Task or process')
                 result.update(passed=True, assessment='preparation_only', native_entry='NSIS /S',
                               exit_code=completed.returncode, versioned_package_removed=True,
                               state_preserved=before['state'].exists(),
+                              installation=after, profile_activity_after=remaining,
                               inspection_sha256=digest(parent / 'result.json'))
                 return 0
             archived = profile_helper(request).archive_orphaned_data(
