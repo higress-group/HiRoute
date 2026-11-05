@@ -881,7 +881,7 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
     if activity.get('administrator_groups') is not False:
         raise ValueError('Native Desktop evidence requires a standard account, not a filtered administrator')
     action = request['desktop_action']
-    if action not in ('install', 'installer-resume', 'installer-quarantine', 'uninstall-refusal', 'uninstall-busy-refusal', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'codex-two-turn', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'):
+    if action not in ('install', 'installer-resume', 'installer-quarantine', 'uninstall-refusal', 'uninstall-busy-refusal', 'uninstall-file-refusal', 'launch', 'snapshot', 'invoke', 'text', 'click', 'scroll', 'close', 'quit', 'tray-observe', 'desktop-state', 'cli', 'native-files', 'codex-call', 'codex-inference', 'codex-two-turn', 'network-probe', 'recovery-lock-ui', 'recovery-file-use-ui'):
         raise ValueError('Unknown native Desktop action')
     if action == 'recovery-lock-ui':
         return locked_startup_ui(request,run,product,pm,helper,activity,root)
@@ -943,6 +943,48 @@ def execute(request, run, product, pm, helper, activity, manifest, root):
         time.sleep(4)
         return dict(native_entry='installed Desktop', launched_pid=child.pid,
                     shell_sha256=helper.digest(shell))
+    if action == 'uninstall-file-refusal':
+        # Hold only a verified embedded resource, then repair with the exact
+        # measured installer. No user data or native configuration is locked.
+        import shutil
+        if any(Path(p.get('ExecutablePath') or '') == shell for p in activity.get('processes', [])):
+            raise ValueError('Quit Desktop before testing an embedded payload lock')
+        source = helper.plain(roots['programs'] / 'uninstall.exe')
+        resource = helper.plain(roots['programs'] / 'standalone/console/index.html')
+        inventory = facts['shell-package.json']['record']['files']
+        if (helper.digest(resource) != inventory['standalone/console/index.html']
+                or helper.digest(source) != inventory['uninstall.exe']):
+            raise ValueError('The controlled payload or uninstaller changed')
+        staged = run / 'nsis-uninstaller.exe'
+        shutil.copyfile(source, staged)
+        if helper.digest(staged) != inventory['uninstall.exe']:
+            raise ValueError('The copied uninstaller changed')
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.CreateFileW.argtypes = [ctypes.c_wchar_p,ctypes.c_ulong,ctypes.c_ulong,ctypes.c_void_p,ctypes.c_ulong,ctypes.c_ulong,ctypes.c_void_p]
+        kernel.CreateFileW.restype = ctypes.c_void_p
+        kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+        held = kernel.CreateFileW(str(resource),0x80000000,3,None,3,128,None)
+        if held == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            command = f'"{staged}" /S _?={roots["programs"]}'
+            done = subprocess.run(command,executable=str(staged),capture_output=True,timeout=150)
+            after = helper.inspect_installation(Path.home(), Path(os.environ['LOCALAPPDATA']))
+            outcome = after.get('uninstall-outcome.json',{}).get('record',{})
+            (run / 'uninstall-file-refusal.json').write_text(json.dumps(dict(exit_code=done.returncode,
+                outcome=outcome,apps_registration_preserved=after['uninstall_registration']['present']),indent=2),encoding='utf-8')
+            if done.returncode == 0 or outcome.get('status') != 'failed' or 'UNINSTALL_FILES_REMAIN' not in outcome.get('diagnostic','') or not after['uninstall_registration']['present']:
+                raise RuntimeError('A locked owned payload did not retain a failed uninstall and Apps registration')
+        finally:
+            kernel.CloseHandle(held)
+        code, timing = nsis_install(product / 'installer.exe', run, roots)
+        if code:
+            raise RuntimeError('Matching native installer did not repair the controlled partial uninstall')
+        installed(helper, product, pm)
+        return dict(native_entry='NSIS worker with owned payload lock, then matching NSIS repair',
+                    exit_code=done.returncode,uninstall_outcome=outcome,
+                    apps_registration_preserved=True,matching_installer_repair=True,
+                    repair_elapsed_seconds=timing['elapsed_seconds'])
     if action == 'cli':
         args = request['cli_args']
         if (not isinstance(args, list) or not args or len(args) > 40
