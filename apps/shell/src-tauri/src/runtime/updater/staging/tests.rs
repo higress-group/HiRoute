@@ -376,6 +376,12 @@ fn native_finisher_nsis(cancelled: bool) {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
+        let mut ready = Some(open(&release).unwrap());
+        let busy = discard_ready(&release, &mut ready).unwrap_err();
+        assert_eq!(busy.code, "UPGRADE_BUSY");
+        assert!(ready.is_some());
+        assert!(stage.path.join("installer.exe").exists());
+        drop(ready);
         finisher::cancel(&release).unwrap();
         drop(parent_gate);
     }

@@ -228,6 +228,12 @@ pub(super) fn cleanup(keep: Option<&str>) -> Result<(), UpdateFailure> {
     cleanup_in(&root, keep)
 }
 pub(super) fn discard(release: &WindowsDesktopRelease) -> Result<(), UpdateFailure> {
+    discard_ready(release, &mut None)
+}
+pub(super) fn discard_ready(
+    release: &WindowsDesktopRelease,
+    ready: &mut Option<Stage>,
+) -> Result<(), UpdateFailure> {
     release.revision_prefix()?;
     let data = super::super::install_transaction::data()
         .map_err(UpdateFailure::io("resolve-stage-root"))?;
@@ -242,6 +248,9 @@ pub(super) fn discard(release: &WindowsDesktopRelease) -> Result<(), UpdateFailu
     {
         return Err("SHELL_INSTALL_RECOVERY_REQUIRED".into());
     }
+    // Keep the caller's ready lease until retirement admission is held. A busy
+    // helper or startup sweep must not turn a failed discard into a stale UI.
+    ready.take();
     let path = root()?.join(&release.sha256);
     if !path
         .try_exists()
@@ -249,7 +258,13 @@ pub(super) fn discard(release: &WindowsDesktopRelease) -> Result<(), UpdateFailu
     {
         return Ok(());
     }
-    retire(&path, &release.sha256, false)
+    let result = retire(&path, &release.sha256, false);
+    if result.is_err() && path.try_exists().unwrap_or(false) {
+        // A partially retired directory stays retired; never recreate an empty
+        // live stage and label its missing installer ready.
+        *ready = open_in(&root()?, release, false).ok();
+    }
+    result
 }
 pub(super) fn background_cleanup(keep: Option<String>) {
     std::thread::spawn(move || {

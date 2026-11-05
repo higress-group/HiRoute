@@ -346,17 +346,15 @@ impl Updater {
         let mut view = self.view.lock().map_err(|_| "UPGRADE_STATE_UNAVAILABLE")?;
         if matches!(view.phase, "ready" | "failed") {
             let release = view.available.as_ref().ok_or("UPGRADE_NOT_AVAILABLE")?;
-            self.ready_stage
+            let mut ready = self
+                .ready_stage
                 .lock()
-                .map_err(|_| "UPGRADE_STATE_UNAVAILABLE")?
-                .take();
-            if let Err(failure) = staging::discard(release) {
-                if let Ok(stage) = staging::open(release) {
-                    *self
-                        .ready_stage
-                        .lock()
-                        .map_err(|_| "UPGRADE_STATE_UNAVAILABLE")? = Some(stage);
-                }
+                .map_err(|_| "UPGRADE_STATE_UNAVAILABLE")?;
+            if let Err(failure) = staging::discard_ready(release, &mut ready) {
+                view.package_ready = ready.is_some();
+                view.phase = "failed";
+                view.error = Some(failure.code.into());
+                view.diagnostic = Some(failure.detail);
                 return Err(failure.code);
             }
             view.phase = "available";
