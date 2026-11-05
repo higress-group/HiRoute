@@ -390,6 +390,32 @@ fn native_literal_direct_projection_consumes_internal_envelopes() {
 }
 
 #[test]
+fn native_literal_direct_projection_preserves_client_envelope_shapes() {
+    for metadata in [
+        json!({"__hiroute_literal_wire_value_v1":"left"}),
+        json!({"__hiroute_wire_string_parts_v1":["left","right"]}),
+    ] {
+        let request = decode_ingress_request(
+            IngressProtocol::Responses,
+            &json!({"model":"alias","input":"hello","metadata":metadata}),
+        )
+        .unwrap();
+        let profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        let projected = project_candidate_request(&request, &profile).unwrap();
+        assert_eq!(projected.body["metadata"], metadata);
+        assert_eq!(
+            projected.body,
+            serde_json::from_slice::<serde_json::Value>(&projected.bytes).unwrap()
+        );
+    }
+}
+
+#[test]
 fn native_literal_raw_json_accepts_only_one_registered_json_value() {
     use super::super::request::{
         ReplacementEncoding, RequestedReplacement, prepare_replay_json_template,
@@ -420,7 +446,10 @@ fn native_literal_raw_json_accepts_only_one_registered_json_value() {
                 refs.iter().map(ContentRef::json_escaped_len).sum(),
             )
         };
-        fixture.store.prevalidate(&[content.clone()]).unwrap();
+        fixture
+            .store
+            .prevalidate(std::slice::from_ref(&content))
+            .unwrap();
         let template = prepare_replay_json_template(
             &json!({"metadata":content.wire_marker()}),
             [RequestedReplacement {
@@ -539,7 +568,10 @@ fn native_literal_json_validation_optional_scratch_does_not_deny_a_valid_reader(
     let mut pool = fixture.store.begin_content_pool().unwrap();
     let content = pool.append(bytes.as_bytes()).unwrap();
     pool.seal().unwrap();
-    fixture.store.prevalidate(&[content.clone()]).unwrap();
+    fixture
+        .store
+        .prevalidate(std::slice::from_ref(&content))
+        .unwrap();
     let template = prepare_replay_json_template(
         &json!({"metadata":content.wire_marker()}),
         [RequestedReplacement {

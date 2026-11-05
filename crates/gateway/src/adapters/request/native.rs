@@ -32,6 +32,7 @@ pub(super) fn project(
     profile: &CandidateProtocolProfile,
     canonical: Value,
     omit_prefix: Option<usize>,
+    unbacked: bool,
 ) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
     // Ingress classifies this carrier before Replay externalization. Use the
     // retained canonical range, not presence or shifted indexes in a native tree.
@@ -89,6 +90,9 @@ pub(super) fn project(
         return project_dialect(canonical, profile, FunctionEncodingProjection::Preserve);
     };
     let mut body = original.clone();
+    if unbacked {
+        preserve_unbacked_envelopes(&mut body);
+    }
     let object = body.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
     // Use one current Chat output-cap spelling, never contradictory limits.
     if request.ingress_protocol == IngressProtocol::ChatCompletions {
@@ -194,6 +198,22 @@ pub(super) fn project(
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
     project_dialect(body, profile, FunctionEncodingProjection::Preserve)
+}
+
+// Direct projection has no Replay phase. Its native tree therefore cannot
+// contain producer-owned literal/parts envelopes; matching client objects are
+// ordinary JSON and must be protected before the shared final serializer.
+fn preserve_unbacked_envelopes(value: &mut Value) {
+    if crate::content_ref::is_wire_literal(value) || crate::content_ref::is_wire_string_parts(value)
+    {
+        *value = crate::content_ref::literal_wire_value(value);
+        return;
+    }
+    match value {
+        Value::Array(values) => values.iter_mut().for_each(preserve_unbacked_envelopes),
+        Value::Object(values) => values.values_mut().for_each(preserve_unbacked_envelopes),
+        _ => {}
+    }
 }
 
 fn project_dialect(

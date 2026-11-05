@@ -89,7 +89,8 @@ pub fn project_candidate_request(
             IngressProtocol::Messages => serialize_messages(request, profile, reasoning, None)?,
         }
     };
-    let (mut body, function_encoding_projection) = native::project(request, profile, body, None)?;
+    let (mut body, function_encoding_projection) =
+        native::project(request, profile, body, None, true)?;
     protect_control_literals(&mut body, &native::controls(request, profile, reasoning)?);
     let bytes = serde_json::to_vec(&crate::content_ref::borrowed_wire_value(&body))
         .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;

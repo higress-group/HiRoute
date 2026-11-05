@@ -156,7 +156,7 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         }
     };
     let (mut body, function_encoding_projection) =
-        super::native::project(request, profile, body, omit_reasoning_prefix)?;
+        super::native::project(request, profile, body, omit_reasoning_prefix, false)?;
     super::protect_control_literals(
         &mut body,
         &super::native::controls(request, profile, reasoning)?,
