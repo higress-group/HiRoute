@@ -9,6 +9,24 @@ export function operationRecoveryScenarios({ fresh, until, control, calls }) {
   const ready = () => document.querySelector('.sidebar-health .status-dot.good');
   const terminal = id => ({ operation_id: id, state: 'succeeded', sequence: 4, cancellable: false, safe_error_code: null });
   return [
+    scenario('desktop.operation.rollback-failure-detail', ['operation-feedback'], 'Rollback retains the actual failed phase and cause-specific recovery guidance', async () => {
+      await fresh(() => {
+        const c = control();
+        c.desktop.pending = { plan_id: 'plan/daily', operation_id: 'operation/failed-artifact', idempotency_key: 'key/failed-artifact' };
+        c.handlers.observe_operation = () => ({
+          operation_id: 'operation/failed-artifact', state: 'rolled_back', sequence: 9, cancellable: false,
+          safe_error_code: 'ADAPTER_FAILURE', failure_detail: {
+            schema: 'hiroute.operation-failure/v1', step: 'apply_agent_artifacts', code: 'ADAPTER_FAILURE',
+            cause: 'permission_denied', adapter_context: 'private-native-label',
+          },
+        });
+      });
+      await until(() => feedback()?.dataset.operationPhase === 'failed' && ready(), 'actionable rollback feedback');
+      const message = feedback().innerText;
+      assert(message.includes('准备 Agent 文件') && message.includes('访问被拒绝'), 'Failed phase/cause missing from real Desktop feedback');
+      assert(!message.includes('private-native-label'), 'Internal adapter context leaked into user guidance');
+      assert(!message.includes('稍后重试'), 'Permission failure suggests an ineffective blind retry');
+    }),
     ...[null, 'operation/earlier-draft'].map(pendingId => scenario(`desktop.operation.${pendingId ? 'stale' : 'unknown'}-hint-converges`, ['operation-feedback'], 'A resolved pending hint cannot restart observation while its Home readback is still in flight', async () => {
         let initial = true;
         await fresh(() => {
