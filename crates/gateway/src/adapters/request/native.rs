@@ -72,6 +72,7 @@ pub(super) fn project(
             request,
             profile.capability.upstream_protocol,
             &mut canonical,
+            unbacked,
         );
         normalize_codex_replay(&mut canonical, profile, request);
         return project_dialect(
@@ -91,7 +92,7 @@ pub(super) fn project(
     };
     let mut body = original.clone();
     if unbacked {
-        preserve_unbacked_envelopes(&mut body);
+        crate::content_ref::preserve_unbacked_wire_envelopes(&mut body);
     }
     let object = body.as_object_mut().ok_or(ModelIrError::ExpectedObject)?;
     // Use one current Chat output-cap spelling, never contradictory limits.
@@ -198,22 +199,6 @@ pub(super) fn project(
         clean_prefix(&mut body, request.ingress_protocol, end);
     }
     project_dialect(body, profile, FunctionEncodingProjection::Preserve)
-}
-
-// Direct projection has no Replay phase. Its native tree therefore cannot
-// contain producer-owned literal/parts envelopes; matching client objects are
-// ordinary JSON and must be protected before the shared final serializer.
-fn preserve_unbacked_envelopes(value: &mut Value) {
-    if crate::content_ref::is_wire_literal(value) || crate::content_ref::is_wire_string_parts(value)
-    {
-        *value = crate::content_ref::literal_wire_value(value);
-        return;
-    }
-    match value {
-        Value::Array(values) => values.iter_mut().for_each(preserve_unbacked_envelopes),
-        Value::Object(values) => values.values_mut().for_each(preserve_unbacked_envelopes),
-        _ => {}
-    }
 }
 
 fn project_dialect(

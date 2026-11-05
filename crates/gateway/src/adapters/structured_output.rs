@@ -2,7 +2,6 @@
 //! Preserve the schema; the provider, not this adapter, validates its support.
 use serde_json::{Map, Value, json};
 
-use crate::content_ref::JsonValueExt;
 use crate::server::core_runtime::model_ir::ModelRequestIRV1;
 use crate::server::request_plan::IngressProtocol;
 
@@ -23,6 +22,7 @@ pub(super) fn project_messages_format(
     request: &ModelRequestIRV1,
     target: IngressProtocol,
     body: &mut Value,
+    unbacked: bool,
 ) {
     if request.ingress_protocol != IngressProtocol::Messages || target == IngressProtocol::Messages
     {
@@ -35,10 +35,12 @@ pub(super) fn project_messages_format(
     else {
         return;
     };
-    let mut format: Map<String, Value> = format
-        .iter()
-        .map(|(key, value)| (key.clone(), value.wire_value()))
-        .collect();
+    let mut format = format.clone();
+    if unbacked {
+        for value in format.values_mut() {
+            crate::content_ref::preserve_unbacked_wire_envelopes(value);
+        }
+    }
     format.remove("type");
     format
         .entry("name")

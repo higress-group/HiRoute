@@ -177,6 +177,23 @@ pub(crate) fn is_wire_string_parts(value: &Value) -> bool {
         .is_some_and(|object| object.len() == 1 && object.contains_key(WIRE_STRING_PARTS_KEY))
 }
 
+// Direct projection has no Replay phase. Matching client objects are data,
+// rather than final-producer envelopes. Leave reference shapes untouched so
+// this traversal never changes the collector's JSON/string encoding decision.
+pub(crate) fn preserve_unbacked_wire_envelopes(value: &mut Value) {
+    if is_wire_literal(value) || is_wire_string_parts(value) {
+        *value = literal_wire_value(value);
+        return;
+    }
+    match value {
+        Value::Array(values) => values.iter_mut().for_each(preserve_unbacked_wire_envelopes),
+        Value::Object(values) => values
+            .values_mut()
+            .for_each(preserve_unbacked_wire_envelopes),
+        _ => {}
+    }
+}
+
 fn literal_needs_escape(value: &Value) -> bool {
     match value {
         Value::String(value) => value.contains(MARKER_PREFIX),

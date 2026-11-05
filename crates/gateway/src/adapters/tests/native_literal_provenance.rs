@@ -558,8 +558,32 @@ fn native_literal_direct_messages_format_keeps_reserved_schema_defaults() {
             assert_eq!(actual, &schema);
             assert_eq!(
                 projected.body,
-                serde_json::from_slice::<Value>(&projected.bytes).unwrap()
+                serde_json::from_slice::<serde_json::Value>(&projected.bytes).unwrap()
             );
+        }
+    }
+}
+
+#[test]
+fn native_literal_backed_messages_format_keeps_json_encoding_across_protocols() {
+    for literal in [
+        json!({"__hiroute_literal_wire_value_v1":"left"}),
+        json!({"__hiroute_wire_string_parts_v1":["left","right"]}),
+    ] {
+        let fixture = Fixture::new();
+        let schema = json!({"type":"object","description":"schema ".repeat(4000),"properties":{"tag":{"type":"object","default":literal}}});
+        let bytes = serde_json::to_vec(&json!({"model":"alias","max_tokens":128,"messages":[{"role":"user","content":"hello"}],"output_config":{"format":{"type":"json_schema","schema":schema}}})).unwrap();
+        let request = fixture.parse_protocol(IngressProtocol::Messages, &bytes, false);
+        for target in [IngressProtocol::Responses, IngressProtocol::ChatCompletions] {
+            let wire = fixture.wire(&request, target);
+            let actual = match target {
+                IngressProtocol::Responses => &wire["text"]["format"]["schema"],
+                IngressProtocol::ChatCompletions => {
+                    &wire["response_format"]["json_schema"]["schema"]
+                }
+                IngressProtocol::Messages => unreachable!(),
+            };
+            assert_eq!(actual, &schema);
         }
     }
 }
