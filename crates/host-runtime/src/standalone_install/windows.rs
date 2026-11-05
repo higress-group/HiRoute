@@ -392,54 +392,90 @@ fn retained_source(
     Ok(previous.0.install_root.clone())
 }
 
-pub fn install(request: InstallRequest) -> io::Result<Value> {
+#[derive(Debug)]
+pub struct InstallFailure {
+    pub step: &'static str,
+    pub error: io::Error,
+    pub rollback_error: Option<io::Error>,
+}
+
+impl InstallFailure {
+    pub fn at(step: &'static str) -> impl FnOnce(io::Error) -> Self {
+        move |error| Self {
+            step,
+            error,
+            rollback_error: None,
+        }
+    }
+}
+
+impl From<InstallFailure> for io::Error {
+    fn from(failure: InstallFailure) -> Self {
+        failure.error
+    }
+}
+
+pub fn install(request: InstallRequest) -> Result<Value, InstallFailure> {
+    let at = InstallFailure::at;
     if request.schema != "hiroute.windows-install-request/v1" {
-        return Err(invalid());
+        return Err(at("validate-request")(invalid()));
     }
-    let package = Package::read(&request.package_directory)?;
-    if package.target != hiroute_platform::windows::install::native_target()? {
-        return Err(io::Error::other("INSTALL_ARCHITECTURE_UNSUPPORTED"));
+    let package = Package::read(&request.package_directory).map_err(at("verify-package"))?;
+    if package.target
+        != hiroute_platform::windows::install::native_target().map_err(at("detect-architecture"))?
+    {
+        return Err(at("check-package-architecture")(io::Error::other(
+            "INSTALL_ARCHITECTURE_UNSUPPORTED",
+        )));
     }
-    let timeout = deadline(request.timeout_ms)?;
-    let layout = layout()?;
-    let _lock = lock(&layout)?;
+    let timeout = deadline(request.timeout_ms).map_err(at("validate-timeout"))?;
+    let layout = layout().map_err(at("resolve-profile"))?;
+    let _lock = lock(&layout).map_err(at("lock-installation"))?;
     let mut host = NativeHost {
         layout: &layout,
         timeout,
         allow_legacy_stop: request.allow_legacy_stop,
         allow_unavailable_stop: false,
     };
-    if let Some(journal) = Journal::read(&layout)? {
+    if let Some(journal) = Journal::read(&layout).map_err(at("read-install-journal"))? {
         if journal.operation == journal::Operation::Install
             && journal.phase == journal::Phase::Prepared
-            && crate::storage_upgrade_started(&layout.storage_root())?
+            && crate::storage_upgrade_started(&layout.storage_root())
+                .map_err(at("check-storage-upgrade"))?
         {
             repair::resume(journal, &package, &layout, &mut host, request.autostart)?;
             return repair::finish(&layout, &package, &request);
         }
-        journal.recover(&layout, &mut host)?;
+        journal
+            .recover(&layout, &mut host)
+            .map_err(at("recover-install-journal"))?;
     }
-    let old = current(&layout)?;
+    let old = current(&layout).map_err(at("read-existing-installation"))?;
     if let Some(previous) = &old {
-        previous.2.verify_directory(&previous.0.install_root)?;
+        previous
+            .2
+            .verify_directory(&previous.0.install_root)
+            .map_err(at("verify-existing-package"))?;
     }
     let root = layout
         .home
         .join(".local/lib/hiroute")
         .join(package.directory_name());
-    publish_package(&request.package_directory, &root, &package)?;
+    publish_package(&request.package_directory, &root, &package).map_err(at("publish-package"))?;
     let recovery_root = if let Some(previous) = &old
         && root != previous.0.install_root
     {
         let target = root.join("hirouted.exe");
-        let source = retained_source(&layout, previous, &target)?;
+        let source =
+            retained_source(&layout, previous, &target).map_err(at("verify-recovery-source"))?;
         let report = crate::checked_upgrade_preflight(&target, &layout.storage_root(), &source)
-            .map_err(io::Error::other)?;
+            .map_err(|error| at("check-upgrade")(io::Error::other(error)))?;
         (report.history_cutover_required || report.required_bytes != 0).then_some(source)
     } else {
         None
     };
-    let native = Definition::new(Manager::Task, root.join("hirouted.exe"))?;
+    let native =
+        Definition::new(Manager::Task, root.join("hirouted.exe")).map_err(at("define-task"))?;
     let marker = StandaloneInstallRecordV1 {
         schema_version: crate::STANDALONE_INSTALL_SCHEMA_V1.into(),
         version: package.version.clone(),
@@ -454,7 +490,7 @@ pub fn install(request: InstallRequest) -> io::Result<Value> {
             native
                 .daemon
                 .parent()
-                .ok_or_else(invalid)?
+                .ok_or_else(|| at("define-task")(invalid()))?
                 .join("libexec/cliproxyapi.exe"),
         ),
         cpa_sha256: Some(package.cpa_digest().into()),
@@ -464,7 +500,8 @@ pub fn install(request: InstallRequest) -> io::Result<Value> {
         &layout,
         old.as_ref().map(|o| &o.2),
         false,
-    )?;
+    )
+    .map_err(at("plan-installed-files"))?;
     let mut journal = Journal {
         schema: JOURNAL_SCHEMA.into(),
         operation: Operation::Install,
@@ -472,56 +509,68 @@ pub fn install(request: InstallRequest) -> io::Result<Value> {
         old_marker: old.as_ref().map(|o| o.0.clone()),
         old_definition: old.as_ref().map(|o| o.1.clone()),
         new_marker: marker,
-        new_definition: serde_json::to_value(&native).map_err(|_| invalid())?,
+        new_definition: serde_json::to_value(&native)
+            .map_err(|_| at("encode-task-definition")(invalid()))?,
         files: planned,
     };
     let was_active = journal
         .old_definition
         .as_ref()
         .map(definition)
-        .transpose()?
+        .transpose()
+        .map_err(at("read-previous-task-definition"))?
         .as_ref()
         .map(task::active)
-        .transpose()?
+        .transpose()
+        .map_err(at("query-previous-task"))?
         .unwrap_or(false);
     // Drain precedes preparation: an old daemon refusal cannot leave its admission blocked.
     if let Some(old) = &journal.old_definition {
-        host.quiesce(&[old])?;
+        host.quiesce(&[old]).map_err(at("stop-previous-task"))?;
     }
     if let Err(error) = journal.persist(&layout) {
         if was_active && let Some(old) = &journal.old_definition {
-            let _ = task::start(&definition(old)?);
+            let _ = task::start(&definition(old).map_err(at("read-previous-task-definition"))?);
         }
-        return Err(error);
+        return Err(at("write-install-journal")(error));
     }
-    let result = (|| {
-        journal.apply_files()?;
-        write_json(&layout.marker_path, &journal.new_marker)?;
-        host.register(&journal.new_definition, journal.old_definition.as_ref())?;
+    let result = (|| -> Result<(), InstallFailure> {
+        journal.apply_files().map_err(at("apply-installed-files"))?;
+        write_json(&layout.marker_path, &journal.new_marker).map_err(at("write-install-marker"))?;
+        host.register(&journal.new_definition, journal.old_definition.as_ref())
+            .map_err(at("register-task"))?;
         write_json(
             &journal.new_marker.service_definition,
             &journal.new_definition,
-        )?;
-        task::set_autostart(&native, request.autostart)?;
+        )
+        .map_err(at("write-task-definition"))?;
+        task::set_autostart(&native, request.autostart).map_err(at("set-task-autostart"))?;
         if let Some(source) = &recovery_root {
             crate::RetainedRecoveryPackage::capture(
                 &layout.storage_root(),
                 source,
                 &journal.new_marker.install_root.join("hirouted.exe"),
-            )?
-            .store()?;
+            )
+            .map_err(at("capture-recovery-package"))?
+            .store()
+            .map_err(at("write-recovery-package"))?;
         }
-        journal.commit(&layout)?;
-        journal.finish(&layout)
+        journal
+            .commit(&layout)
+            .map_err(at("commit-install-journal"))?;
+        journal
+            .finish(&layout)
+            .map_err(at("finish-install-journal"))
     })();
-    if let Err(error) = result {
-        if journal.recover(&layout, &mut host).is_ok()
+    if let Err(mut failure) = result {
+        failure.rollback_error = journal.recover(&layout, &mut host).err();
+        if failure.rollback_error.is_none()
             && was_active
             && let Some(old) = &old
         {
-            let _ = task::start(&definition(&old.1)?);
+            let _ = task::start(&definition(&old.1).map_err(at("read-previous-task-definition"))?);
         }
-        return Err(error);
+        return Err(failure);
     }
     repair::finish(&layout, &package, &request)
 }

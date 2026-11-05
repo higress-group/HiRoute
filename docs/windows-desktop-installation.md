@@ -57,8 +57,11 @@ The installer accepts `/S` for unattended installation with the default login-st
 and tray choices and no prompts. Failures return a nonzero process exit code.
 In the interactive installer or uninstaller, press Ctrl+C while a failure dialog
 is open to copy its diagnostic. It identifies the package version, failed step,
-and available error codes. A service startup failure can also include the Task
-and Control status. The diagnostic omits account names, file paths, and raw logs.
+and available error codes. For a standalone installation failure, it includes
+the operation, I/O error kind and any available Win32 code or Task Scheduler
+HRESULT. If standalone rollback also fails, its error details are shown
+separately. A service startup failure can include the Task and Control status.
+The diagnostic omits account names, file paths, and raw logs.
 
 The interactive installer shows Install, Upgrade or Repair on its first screen.
 The optional controls show the fixed installation path and the login, notification

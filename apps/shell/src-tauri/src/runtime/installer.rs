@@ -155,10 +155,7 @@ fn request(
     )
     .map_err(|code| Failure::new(step, code))?;
     if !success {
-        return Err(Failure::new(
-            step,
-            value["error"]["code"].as_str().unwrap_or("INSTALL_FAILED"),
-        ));
+        return Err(Failure::from_command(step, &value));
     }
     Ok(value)
 }
@@ -458,4 +455,44 @@ pub fn run_if_requested() -> Option<i32> {
         }
     };
     Some(exit)
+}
+
+#[cfg(test)]
+#[test]
+#[ignore = "requires the built Windows installer payload"]
+fn embedded_cli_failure_keeps_native_detail() {
+    use std::{fs::OpenOptions, os::windows::fs::OpenOptionsExt, path::Path};
+
+    let cli = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/standalone/hiroute.exe");
+    assert!(
+        cli.is_file(),
+        "the Windows candidate's embedded CLI is required"
+    );
+    let package = tempfile::Builder::new()
+        .prefix("private-installer-fixture-")
+        .tempdir()
+        .unwrap();
+    let _locked = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .share_mode(0)
+        .open(package.path().join("package-manifest.json"))
+        .unwrap();
+    let failure = request(
+        "install-standalone",
+        &cli,
+        "__windows-install",
+        json!({
+            "schema": "hiroute.windows-install-request/v1",
+            "package_directory": package.path()
+        }),
+    )
+    .unwrap_err();
+    let report = failure.report();
+    assert!(report.contains("Step: install-standalone\r\nCode: INSTALL_FAILED"));
+    assert!(report.contains("Operation: verify-package"));
+    assert!(report.contains("I/O kind: "));
+    assert!(report.contains("Windows error: 32"));
+    assert!(!report.contains("private-installer-fixture-"));
+    println!("{report}");
 }
