@@ -145,6 +145,9 @@ paths, account names, arbitrary native messages and downloaded contents.
 
 Each SHA-addressed stage has a private ownership record. A shared lease pins a
 ready package and native handoff; a download requires an exclusive writer lease.
+The small SHA-keyed lease file lives beside the payload directory because Windows
+cannot rename a directory containing an open file. That coordination file remains
+after payload retirement so concurrent callers always use the same lock identity.
 Rechecking and retrying the same package preserve that ownership. Downloads,
 helpers and cleanup coordinate with the existing update lock. Recovery and manual
 installation remain protected by the installation mutex and pending journal.

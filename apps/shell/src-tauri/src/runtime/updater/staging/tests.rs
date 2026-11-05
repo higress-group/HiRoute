@@ -260,10 +260,15 @@ fn verified_released_job_can_retire_but_incomplete_legacy_stage_is_preserved() {
     // The fixture's small payloads exercise admission, rather than installer execution.
     finisher::write(
         &path.join("job.json"),
-        &serde_json::json!({
-            "schema":"hiroute.windows-shell-update-job/v1", "release":release,
-            "helper_sha256":format!("{:x}", Sha256::digest(b"helper")), "generation":"1-2"
-        }),
+        &serde_json::from_str::<serde_json::Value>(r#"{
+            "schema":"hiroute.windows-shell-update-job/v1",
+            "release":{
+                "version":"0.5.1","notes":{"zh":"","en":""},"architecture":"x86_64",
+                "distribution":"unsigned","filename":"HiRoute-0.5.1-4634fd2e0fd4-windows-x86_64-setup.exe",
+                "sha256":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08","size":4
+            },
+            "helper_sha256":"e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a","generation":"1-2"
+        }"#).unwrap(),
     )
     .unwrap();
     cleanup_in(&root, None).unwrap();

@@ -65,21 +65,32 @@ fn directory(path: &Path) -> Result<File, UpdateFailure> {
     Ok(held)
 }
 fn lease(path: &Path) -> Result<File, UpdateFailure> {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(invalid)?;
+    let id = name.strip_prefix(".retired-").unwrap_or(name);
+    if !finisher::identifier(id) {
+        return Err(invalid());
+    }
+    let root = path.parent().ok_or_else(invalid)?;
     let parent =
-        security::open_owner_only(path, true).map_err(UpdateFailure::io("open-stage-directory"))?;
-    let lease_path = path.join("stage.lock");
-    let lock = match security::open_shared_read_write(&lease_path) {
+        security::open_owner_only(root, true).map_err(UpdateFailure::io("open-stage-directory"))?;
+    // Windows cannot rename a directory containing an open file. Keep this
+    // stable coordination identity outside both its live and retired payload.
+    let lease_name = format!("{id}.lease");
+    let lease_path = root.join(&lease_name);
+    let lock = match security::open_read_write(&lease_path) {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            match security::create_owner_only_file_at(&parent, std::ffi::OsStr::new("stage.lock")) {
+            match security::create_owner_only_file_at(&parent, std::ffi::OsStr::new(&lease_name)) {
                 Ok(created) => drop(created),
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(UpdateFailure::io("create-stage-lease")(error)),
             }
-            // The creation factory deliberately denies sharing. A lease must be
-            // reopenable by readers, and share deletion for atomic retirement.
-            security::open_shared_read_write(&lease_path)
-                .map_err(UpdateFailure::io("open-stage-lease"))?
+            // The creation factory deliberately denies sharing. Retained
+            // cooperative leases must be reopenable by readers and writers.
+            security::open_read_write(&lease_path).map_err(UpdateFailure::io("open-stage-lease"))?
         }
         Err(error) => return Err(UpdateFailure::io("open-stage-lease")(error)),
     };
