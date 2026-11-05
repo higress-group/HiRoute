@@ -52,6 +52,12 @@ export async function runShellHostScenarios(client,baseUrl,output) {
       results.push({id:`shell.settings.${phase}.${language}.${theme}.${width}`,state:'green',screenshot:name,geometry:box});
     }
   }
+  await open('en','light',755,600,'failed');
+  assert(await evaluate(client,'document.body.innerText.includes("open-update-installer") && document.body.innerText.includes("Win32 32")'),'Native update failure lost its operation or Windows code');
+  await evaluate(client,'[...document.querySelectorAll("button")].find(b=>b.textContent==="Discard package").click()');
+  await waitFor(client,'document.body.innerText.includes("Download update") && !document.body.innerText.includes("Discard package") && !document.body.innerText.includes("Win32 32")');
+  assert(await evaluate(client,'window.consoleComponent.hostRequests.filter(r=>r.command==="update_cancel").length===1'),'Discard submitted duplicate host requests');
+  results.push({id:'shell.discard-failed-stage-and-retry',state:'green'});
   await open('en','light',1200,813,'waiting');
   await evaluate(client,'[...document.querySelectorAll("button")].find(b=>b.textContent==="Cancel update").click()');
   await waitFor(client,'window.consoleComponent.hostRequests.some(r=>r.command==="update_cancel")');

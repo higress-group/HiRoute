@@ -349,6 +349,21 @@ def admit_test_profile(request, home, localappdata):
     }
     if (request['binary'], request['ignored'], request['case']) in discovery_cases:
         return 'read_only_dsh_discovery' if request['ignored'] else 'temporary_artifact_component'
+    if (request['binary'] == 'hiroute_shell.exe' and not request.get('ignored')
+            and request['case'] in {
+                'runtime::updater::staging::tests::active_stage_survives_cleanup_and_retires_after_lease_release',
+                'runtime::updater::staging::tests::foreign_entry_prevents_retirement_and_same_package_can_retry',
+                'runtime::updater::staging::tests::concurrent_writer_and_live_finisher_cannot_lose_stage_bytes',
+                'runtime::updater::staging::tests::locked_installer_keeps_native_error_in_the_persisted_outcome',
+                'runtime::updater::staging::tests::verified_released_job_can_retire_but_incomplete_legacy_stage_is_preserved',
+            }):
+        return 'temporary_update_stage_component'
+    if (request['binary'] == 'hiroute_shell.exe' and request.get('ignored')
+            and request['case'] in {
+                'runtime::updater::staging::tests::installed_finisher_failure_preserves_native_diagnostic_and_service',
+                'runtime::updater::staging::tests::installed_finisher_runs_actual_nsis_and_retires_successful_stage',
+            }):
+        return 'installed_update_failure_diagnostic'
     # Never manufacture HOME or remove an existing installation to make a gate pass.
     for path in (localappdata / 'HiRoute/cli', home / '.local/share/hiroute/standalone.json',
                  home / '.local/bin/hiroute.exe'):

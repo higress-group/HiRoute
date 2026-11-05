@@ -515,10 +515,12 @@
     "hiroute.windows-shell-package/v1",
     "hiroute.windows-shell-transaction/v1",
     "hiroute.windows-shell-update-commit/v1",
+    "hiroute.windows-shell-update-failure/v1",
     "hiroute.windows-shell-update-job/v1",
     "hiroute.windows-shell-update-outcome/v1",
     "hiroute.windows-uninstall-request/v1",
     "hiroute.windows-uninstall-result/v1",
+    "hiroute.windows-update-stage/v1",
     "hiroute.work-plan-list-request/v1",
     "hiroute.work-plan-list/v1",
     "hiroute.worker-cancel-request/v1",
@@ -2707,6 +2709,18 @@
         "crates/domain/src/routing/assessment_feedback_tests.rs"
       ],
       "field": "scopes[*].assessment: preceding default instructions and criteria under unchanged C4 format"
+    },
+    {
+      "contract": "hiroute.windows-shell-update-job/v1",
+      "field": "released private stage without stage.json",
+      "mode": "recovery_read_only",
+      "owner": "windows-shell/updater",
+      "reason": "Admit released V1 stages only after matching the complete release metadata and installer/helper digests. Unknown, incomplete or active stages remain retained.",
+      "removal_condition": "Remove only after supported releases and retained in-progress updates all create the stage ownership record.",
+      "allowed_paths": [
+        "apps/shell/src-tauri/src/runtime/updater/staging.rs",
+        "apps/shell/src-tauri/src/runtime/updater/staging/tests.rs"
+      ]
     }
   ]
 }
