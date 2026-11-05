@@ -170,6 +170,12 @@ fn opencode_markdown_reference_added_during_staging_preserves_the_active_route()
     }
     let fixture = QoderFixture::with_kind(true, AgentKindV1::OpenCode);
     configure_models(&fixture);
+    // Complete the real serving-readiness handoff before entering the product session.
+    fixture
+        .runtime
+        .adapter
+        .restore_active_publication()
+        .unwrap();
     let path = fixture
         .native_config
         .parent()
@@ -187,6 +193,12 @@ fn opencode_markdown_reference_added_during_staging_preserves_the_active_route()
         replacement: Some(reference.as_bytes().to_vec()),
     }));
     let racing = LocalControlDaemon::new(ApplicationService::new(ports));
+    let readiness = racing.dispatch_wire(request("GetClientServiceStatus", json!({}), None));
+    assert_eq!(
+        readiness.data.as_ref().unwrap()["mutation_available"],
+        true,
+        "{readiness:?}"
+    );
     let (view, hint) = tokio::runtime::Runtime::new().unwrap().block_on(async {
         let client = hiroute_client_core::Client::in_process(
             "failed-agent-save",
