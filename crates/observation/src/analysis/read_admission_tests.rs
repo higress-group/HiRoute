@@ -17,9 +17,9 @@ fn range() -> AnalysisTimeRangeV1 {
 fn indexed(root: &std::path::Path) -> LocalObservationStore {
     let store = LocalObservationStore::open(root, DigestAuthority::new([2; 32])).unwrap();
     search_tests::source(&store, b"original needle question");
-    let mut builder = crate::text_index::TextIndexBuilder::new(&store).unwrap();
-    builder.cycle(&store).unwrap();
-    drop(builder);
+    // One bounded worker cycle may leave fixture input pending. Complete its
+    // indexing before starting the query deadlines exercised below.
+    search_tests::index(&store);
     store
 }
 
