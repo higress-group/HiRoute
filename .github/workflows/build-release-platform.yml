@@ -17,6 +17,10 @@ on:
         description: Build the NSIS installer for native acceptance
         type: boolean
         default: true
+      component_probe:
+        description: Run only temporary Windows shell component diagnostics; no installer
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       target:
@@ -26,6 +30,9 @@ on:
         required: true
         type: string
       windows_desktop:
+        default: false
+        type: boolean
+      component_probe:
         default: false
         type: boolean
 
@@ -40,6 +47,7 @@ jobs:
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
       CARGO_INCREMENTAL: '0'
       RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,7 +109,7 @@ jobs:
             python3 scripts/build-release.py --target "$RELEASE_TARGET" \
             --cpa-source-repo "$RUNNER_TEMP/cpa"
       - name: Build and verify the exact Windows candidate
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && !inputs.component_probe
         shell: pwsh
         env:
           RELEASE_TARGET: ${{ inputs.target }}
@@ -132,8 +140,40 @@ jobs:
             python scripts/windows-dev.py bundle-desktop --result artifacts/windows-desktop/build-result.json --log artifacts/windows-desktop/compiler.jsonl --output artifacts/windows-desktop/development-bundle.zip
             if ($LASTEXITCODE -ne 0) { throw 'Native installer development bundle verification failed' }
           }
+      - name: Diagnose temporary Windows shell components
+        if: runner.os == 'Windows' && inputs.component_probe
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD) -ne $env:GITHUB_SHA) { throw 'Exact dispatch SHA required' }
+          New-Item artifacts/windows-shell-components -ItemType Directory -Force | Out-Null
+          $env:HIROUTE_BUILD_SOURCE_SHA = $env:GITHUB_SHA
+          $env:CARGO_ENCODED_RUSTFLAGS = '-C' + [char]31 + 'target-feature=+crt-static'
+          $env:CMAKE_TOOLCHAIN_FILE = (Join-Path $env:GITHUB_WORKSPACE 'scripts/windows-release-toolchain.cmake').Replace('\', '/')
+          npm.cmd ci --prefix apps/shell
+          if ($LASTEXITCODE -ne 0) { throw 'Shell build prerequisites failed' }
+          npm.cmd run build --prefix apps/shell
+          if ($LASTEXITCODE -ne 0) { throw 'Shell frontend build failed' }
+          cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-shell --features shell-runtime --lib runtime::updater::staging::tests -- --nocapture --test-threads=1 2>&1 | Tee-Object artifacts/windows-shell-components/tests.log
+          $testExit = $LASTEXITCODE
+          cargo test --locked --release --target x86_64-pc-windows-msvc -p hiroute-shell --features shell-runtime --lib --no-run --message-format=json | Tee-Object artifacts/windows-shell-components/compiler.jsonl
+          if ($LASTEXITCODE -ne 0) { throw 'Component executable export failed' }
+          $executables = @(Get-Content artifacts/windows-shell-components/compiler.jsonl | ForEach-Object {
+            $record = $_ | ConvertFrom-Json
+            if ($record.reason -eq 'compiler-artifact' -and $record.target.name -eq 'hiroute_shell' -and $record.profile.test -and $record.executable) { $record.executable }
+          })
+          if ($executables.Count -ne 1) { throw 'Exactly one native component executable required' }
+          Copy-Item $executables[0] artifacts/windows-shell-components/hiroute_shell.exe
+          @{component_probe=$true;source_revision=$env:GITHUB_SHA;target='x86_64-pc-windows-msvc';test_exit=$testExit;sha256=(Get-FileHash artifacts/windows-shell-components/hiroute_shell.exe -Algorithm SHA256).Hash.ToLowerInvariant()} | ConvertTo-Json | Set-Content artifacts/windows-shell-components/result.json -Encoding utf8
+          if ($testExit -ne 0 -or -not (Select-String -Quiet -Pattern 'test result: ok\. [1-9][0-9]* passed; 0 failed' artifacts/windows-shell-components/tests.log)) { throw 'Native component diagnostics failed' }
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && inputs.component_probe
+        with:
+          name: windows-shell-components-${{ github.sha }}-${{ github.run_attempt }}
+          path: artifacts/windows-shell-components
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always() && !inputs.component_probe
         with:
           name: release-${{ inputs.target }}${{ inputs.windows_desktop && '-desktop' || '' }}-${{ github.sha }}-${{ github.run_attempt }}
           path: |

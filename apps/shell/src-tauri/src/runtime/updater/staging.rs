@@ -305,7 +305,12 @@ fn cleanup_in(root: &Path, keep: Option<&str>) -> Result<(), UpdateFailure> {
                 continue;
             }
         }
-        let _ = retire(&entry.path(), id, retired);
+        let result = retire(&entry.path(), id, retired);
+        #[cfg(test)]
+        if let Err(failure) = &result {
+            eprintln!("stage retirement skipped: {failure:?}");
+        }
+        let _ = result;
     }
     Ok(())
 }
