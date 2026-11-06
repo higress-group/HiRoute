@@ -195,8 +195,22 @@ def gateway_request(product, protocol, alias, streaming, token):
         client.close()
 
 
+def reader_busy(exit_code, envelope):
+    # Observation reads may report temporary contention while the Gateway's writes
+    # land. Retry only that explicit typed failure; every other failure is final.
+    error = envelope.get('error') or {}
+    failure = error.get('observation_read') or {}
+    return (exit_code == 6 and error.get('code') == 'OBSERVATION_UNAVAILABLE'
+            and error.get('retryable') is True
+            and error.get('details_schema') == 'hiroute.observation.read-failure/v1'
+            and failure.get('reason') == 'reader_busy'
+            and failure.get('action') == 'retry_read'
+            and type(failure.get('retry_after_ms')) is int
+            and failure['retry_after_ms'] > 0)
+
+
 def assert_home_value(product):
-    query = {'schema': 'hiroute.observation.query/v2',
+    query = {'schema': 'hiroute.observation.query/v2', 'read_failure_details': True,
              'intent': {'view': 'home_value', 'query': {
                  'period': 'seven_days', 'session_id': None, 'currency': None}}}
     revisions = product.control('GetClientServiceStatus', {})['data']['revisions']
@@ -205,7 +219,13 @@ def assert_home_value(product):
         'expected_revisions': revisions}, 'usage-home-value')
     deadline = time.monotonic() + 30
     while True:
-        values = product.cli('value show', query, capability)[1]['data']
+        exit_code, envelope = product.cli('value show', query, capability, success=False)
+        if reader_busy(exit_code, envelope):
+            assert time.monotonic() < deadline, envelope
+            time.sleep(envelope['error']['observation_read']['retry_after_ms'] / 1000)
+            continue
+        assert exit_code == 0, ('value show', envelope)
+        values = envelope['data']
         usage = {item['metric']: item for item in values['usage']}
         hit = values['input_cache_hit']
         if (values['pending_requests'] == 0
