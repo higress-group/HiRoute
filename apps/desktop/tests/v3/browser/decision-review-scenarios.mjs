@@ -19,7 +19,7 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
           store.test = () => ({ outcome: 'failed', failure_code: kind === 'budget_exhausted' ? 'DECISION_NO_USABLE_CREDENTIALS' : 'DECISION_TRANSPORT_UNAVAILABLE' });
           const original = c().handlers.test_decision_service_v3;
           c().handlers.test_decision_service_v3 = payload => {
-            assert(payload.input.include_decision_failure === true, 'The UI did not request the precise local failure');
+            assert(JSON.stringify(Object.keys(payload.input).sort()) === JSON.stringify(['expected_configuration_digest', 'id', 'revision']), 'The connection test contains a field rejected by the strict native and console input contract');
             const result = original(payload);
             return result.check.outcome === 'failed' ? { ...result, decision_failure: { kind, http_status: null } } : result;
           };
