@@ -542,18 +542,22 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
     ));
     let mut wrong = quote.clone();
     wrong.pricing.quote.as_mut().unwrap().currency = "CNY".into();
-    assert!(matches!(
-        other.reserve_key_spend(&key, 1, Some(&wrong)),
-        Err(KeyBudgetGateErrorV1::Exhausted)
-    ));
     let mut unknown = quote.clone();
     let q = unknown.pricing.quote.as_mut().unwrap();
     q.rates.cache_write = TokenRateV1::unknown(PriceUnknownReasonV1::CacheRateNotCollected);
     q.quote_digest = q.computed_digest().unwrap();
-    assert!(matches!(
-        other.reserve_key_spend(&key, 1, Some(&unknown)),
-        Err(KeyBudgetGateErrorV1::Exhausted)
-    ));
+    for unpriced in [&wrong, &unknown] {
+        let accepted = other
+            .reserve_key_spend(&key, 1, Some(unpriced))
+            .unwrap()
+            .unwrap();
+        assert_eq!(accepted.amount_micros, 0);
+        other
+            .settle_key_spend(&accepted.reservation_id, &KeySpendSettlementV1::Unknown)
+            .unwrap();
+    }
+    assert_eq!(view(&stores, &key).reserved_micros, first.amount_micros);
+    assert_eq!(view(&stores, &key).lifetime_spent_micros, 0);
     other
         .settle_key_spend(&first.reservation_id, &KeySpendSettlementV1::Unsent)
         .unwrap();
@@ -693,6 +697,29 @@ fn key_budget_costs_keep_cache_reasoning_unknowns_and_overflow_explicit() {
         q.upper_bound_micros(),
         None,
         "comparison/reference prices cannot authorize real spending"
+    );
+    let mut q = estimate("source/cost");
+    q.output_bound = 0;
+    let quote = q.pricing.quote.as_mut().unwrap();
+    quote.rates.output = TokenRateV1::known(0);
+    quote.quote_digest = quote.computed_digest().unwrap();
+    let lower = quote.rates.clone();
+    let mut higher = lower.clone();
+    higher.output = TokenRateV1::known(1_000_000);
+    q.input_price_tiers = vec![
+        KeySpendInputPriceTierV1 {
+            through_input_tokens: Some(50),
+            rates: lower,
+        },
+        KeySpendInputPriceTierV1 {
+            through_input_tokens: None,
+            rates: higher,
+        },
+    ];
+    assert_eq!(
+        q.upper_bound_micros(),
+        None,
+        "a paid output tier needs an output bound"
     );
 }
 

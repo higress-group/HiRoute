@@ -35,12 +35,15 @@ impl ReplayFixture {
     }
 
     fn with_record_bytes(threshold: usize, record_bytes: usize) -> Self {
+        // A wall-clock tick can be shared by parallel fixtures on macOS.
+        static NEXT_ROOT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let root = std::fs::canonicalize(std::env::temp_dir())
             .unwrap()
             .join(format!(
-                "hiroute-content-json-{}-{}",
+                "hiroute-content-json-{}-{}-{}",
                 std::process::id(),
-                super::super::unix_nanos()
+                super::super::unix_nanos(),
+                NEXT_ROOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ));
         let manager = ReplayManager::open(ReplayConfig {
             root: root.clone(),

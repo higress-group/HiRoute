@@ -104,6 +104,9 @@ impl KeySpendEstimateV1 {
         // A cache tier is never silently priced as zero. All input capacity is
         // reserved at the most expensive complete rate, including cache writes.
         let bound = |tokens: u64, rates: [u64; 4]| {
+            if self.output_bound == 0 && rates[1] != 0 {
+                return None;
+            }
             micros(&[
                 (tokens, rates[0].max(rates[2]).max(rates[3])),
                 (self.output_bound, rates[1]),

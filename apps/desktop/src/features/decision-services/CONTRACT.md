@@ -59,15 +59,14 @@ frozen System One C v1/v2 logic, scoring or thresholds.
 The network-aware `test_decision_service_v3` uses the same exact saved request and
 one production diagnostic. Its strict V3 result wraps the unchanged V2 `check`,
 optional admitted Native `network` evidence and a typed safe `failure`. The old
-V2 call retains its response shape. Network policy/revision/environment identity
-is separate from local spending admission. Current hosts explicitly request
+V2 call retains its response shape. Current hosts explicitly request
 `include_decision_failure` to distinguish local `budget_exhausted` and
 `budget_unavailable` causes without changing the released V2 check codes or
 adding fields to calls that did not request detail. Shared decision tests and
 routed calls reserve/settle the same Key allowance. Unknown prices allow calls
 and retain unpriced pending evidence; they never mean a zero-cost settlement.
-Network policy/revision/environment identity
-is separate from credential identity; independent/custom tests have no inherited
+Network policy/revision/environment identity is separate from credential identity
+and local spending admission; independent/custom tests have no inherited
 Native evidence. `preview_native_network_route` with a saved decision selector
 reads the current safe route without DNS, Keys or provider calls. Only the displayed
 service needs that read; growing unrelated services must not add provider work.

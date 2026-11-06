@@ -42,6 +42,8 @@ mod delegation_v10;
 #[cfg(test)]
 mod integration_v17_tests;
 pub(crate) mod key_budgets_v37;
+#[cfg(test)]
+mod key_spending_v39_tests;
 mod legacy_subscription_api_v35;
 mod plan_authoring_v10;
 mod source_defaults_v31;
