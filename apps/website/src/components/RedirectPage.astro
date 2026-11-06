@@ -1,0 +1,19 @@
+---
+// A URL whose page moved. Google treats the immediate meta refresh as a permanent
+// redirect to the canonical destination. language.js runs before the refresh so visitors
+// keep the query and fragment, and the root also opens /zh/ for a saved Chinese choice.
+const { target, chinese } = Astro.props;
+const destination = new URL(target, Astro.site);
+---
+<!doctype html>
+<html lang={target.startsWith('/zh/') ? 'zh-CN' : 'en'} data-redirect={target} data-redirect-zh={chinese}>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>HiRoute</title>
+    <link rel="canonical" href={destination}>
+    <script is:inline src="/scripts/language.js"></script>
+    <meta http-equiv="refresh" content={`0; url=${target}`}>
+  </head>
+  <body><a href={target}>{destination.href}</a></body>
+</html>

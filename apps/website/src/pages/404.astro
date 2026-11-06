@@ -1,6 +1,6 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
 ---
-<SiteLayout language="zh" title="页面未找到 · HiRoute" description="请求的 HiRoute 页面不存在。" path="/404.html" alternatePath="/en/">
-  <section class="page-hero wrap not-found"><div class="eyebrow section-label">404</div><h1>页面未找到</h1><p>请求的页面或发布文件不存在。发布文件不会回退到官网首页。</p><div class="actions"><a class="button" href="/">返回首页</a><a class="button outline" href="/download/">查看下载</a></div></section>
+<SiteLayout language="en" title="Page not found · HiRoute" description="The requested HiRoute page does not exist." path="/404.html" alternatePath="/zh/" indexable={false}>
+  <section class="page-hero wrap not-found"><div class="eyebrow section-label">404</div><h1>Page not found</h1><p>The requested page or release file does not exist. Release files never fall back to the website home page.</p><div class="actions"><a class="button" href="/en/">Back to home</a><a class="button outline" href="/en/download/">View downloads</a></div></section>
 </SiteLayout>

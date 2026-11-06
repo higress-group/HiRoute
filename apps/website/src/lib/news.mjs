@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
+import { localePath } from './locale.mjs';
 
 export const newsRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../news');
 export const posts = JSON.parse(await fs.readFile(path.join(newsRoot, 'index.json'), 'utf8'));
@@ -17,7 +18,7 @@ for (const post of posts) {
 // Undated backfills follow dated news and do not replace the latest homepage article.
 // Same-day news keeps its index order, so the index decides which one the homepage features.
 posts.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
-export const newsRoute = (slug, language) => `${language === 'en' ? '/en' : ''}/news/${slug ? slug + '/' : ''}`;
+export const newsRoute = (slug, language) => localePath(language, `/news/${slug ? slug + '/' : ''}`);
 
 export function articleLink(href) {
   if (href.startsWith('assets/')) return '/news-assets/' + href.slice(7);

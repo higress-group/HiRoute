@@ -13,7 +13,7 @@ test('every indexed article renders both languages with real assets and public e
     for (const match of html.matchAll(/src="\/news-assets\/([^"]+)"/g)) await fs.access(path.join(newsRoot, 'assets', match[1]));
     for (const match of html.matchAll(/src="\/decision-assets\/([^"]+)"/g)) await fs.access(path.join(newsRoot, '../decision-extensions/assets', match[1]));
     if (language === 'en') assert.doesNotMatch(html, /[\u3400-\u9fff]/u);
-    assert.equal(newsRoute(post.slug, language), `${language === 'en' ? '/en' : ''}/news/${post.slug}/`);
+    assert.equal(newsRoute(post.slug, language), `/${language}/news/${post.slug}/`);
   }
 });
 

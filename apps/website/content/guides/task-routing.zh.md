@@ -42,7 +42,7 @@
 
 ## 从终端启动任务
 
-安装 [HiRoute CLI](/docs/cli/) 后，可以先发现执行器和计划：
+安装 [HiRoute CLI](/zh/docs/cli/) 后，可以先发现执行器和计划：
 
 ```sh
 hiroute worker executors
@@ -72,7 +72,7 @@ hiroute worker status --submission parser-fix-001 --operation start
 
 不要换一个提交标识直接重试，以免启动重复任务。
 
-任务进行中时，用 `hiroute worker status --run <RUN_ID>` 查看状态。任务结束后用 `hiroute worker result --run <RUN_ID>` 读取结果，需要补充要求时用 `hiroute worker continue` 在同一任务上继续。完整命令见 [HiRoute CLI](/docs/cli/)。
+任务进行中时，用 `hiroute worker status --run <RUN_ID>` 查看状态。任务结束后用 `hiroute worker result --run <RUN_ID>` 读取结果，需要补充要求时用 `hiroute worker continue` 在同一任务上继续。完整命令见 [HiRoute CLI](/zh/docs/cli/)。
 
 ## 权限和取消边界
 

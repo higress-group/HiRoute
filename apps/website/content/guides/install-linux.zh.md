@@ -2,7 +2,7 @@
 
 Linux 版提供 **Web UI 与 CLI**，适合服务器、远程工作站和自动化环境。你可以在浏览器中接入模型、配置路由与 Agent、查看会话和管理委派任务；服务主机无需安装桌面环境，CLI 也支持完整管理流程。
 
-[下载页](/download/)列出已发布的安装包。完整安装包包括本机服务、Gateway、CLI、Web UI 控制台文件，以及供 Agent 使用的管理 Skill。
+[下载页](/zh/download/)列出已发布的安装包。完整安装包包括本机服务、Gateway、CLI、Web UI 控制台文件，以及供 Agent 使用的管理 Skill。
 
 Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或更高版本。无需 `sudo`；安装需要 `curl` 与 Python 3。
 
@@ -73,7 +73,7 @@ hiroute service doctor --output json
 hiroute service logs --output json
 ```
 
-完成配置或升级后，通过接入的 Agent 发起一个小请求，验证已保存的路由。参见[快速开始](/docs/)中的“发起一次真实请求”。
+完成配置或升级后，通过接入的 Agent 发起一个小请求，验证已保存的路由。参见[快速开始](/zh/docs/)中的“发起一次真实请求”。
 
 服务启停等本机管理命令通过 `--help` 查看。例如，下面两条命令分别列出顶层命令和 `service` 的子命令：
 
@@ -105,11 +105,11 @@ hiroute sessions status --output json
 
 它们分别展示可发现的来源、已有路由、可接入 Agent 和观测状态。需要修改配置时，使用查询结果中的实际 ID，再查看对应 `options`、`schema show` 和具体子命令的 `--help` 来准备请求。
 
-保存配置通常分两步：先用 `preview` 查看将发生的变更，再用 `apply` 提交同一份变更，并带上预览返回的摘要和版本号。连接提供 `test` 时，可先检查连接。决策连接的预览与保存都使用 `decision services apply`，具体格式见 [CLI 指南](/docs/cli/)。密码或 API Key 通过 `protected-input` 传入，不放进普通 JSON、命令参数或日志。
+保存配置通常分两步：先用 `preview` 查看将发生的变更，再用 `apply` 提交同一份变更，并带上预览返回的摘要和版本号。连接提供 `test` 时，可先检查连接。决策连接的预览与保存都使用 `decision services apply`，具体格式见 [CLI 指南](/zh/docs/cli/)。密码或 API Key 通过 `protected-input` 传入，不放进普通 JSON、命令参数或日志。
 
 ## 4. 配置模型、路由与 Agent
 
-打开 Web UI 后，按[快速开始](/docs/)从“连接一个模型”继续。即使浏览器在另一台电脑上，页面中的路径、Agent 安装和原生文件也都属于服务所在主机。应用更新、登录自启等桌面宿主功能不会显示在浏览器中。
+打开 Web UI 后，按[快速开始](/zh/docs/)从“连接一个模型”继续。即使浏览器在另一台电脑上，页面中的路径、Agent 安装和原生文件也都属于服务所在主机。应用更新、登录自启等桌面宿主功能不会显示在浏览器中。
 
 使用终端或自动化时，可以按下面顺序通过 CLI 建立第一条路由：
 
@@ -171,4 +171,4 @@ curl -fsSL https://hiroute.ai/install/standalone.py | python3 - uninstall
 
 卸载会按安装记录删除对应的程序版本目录、命令入口、服务配置和管理 Skill，保留运行数据。如果命令入口、服务配置或 Skill 已被其他程序替换，安装器会停止删除，避免误删。版本目录会整体移除，请将自己的文件保存在其他位置。
 
-下一步阅读 [HiRoute CLI](/docs/cli/) 了解输出、幂等恢复和命令边界，或阅读 [智能模型路由](/docs/model-routing/) 与 [智能任务路由](/docs/task-routing/) 了解产品机制。
+下一步阅读 [HiRoute CLI](/zh/docs/cli/) 了解输出、幂等恢复和命令边界，或阅读 [智能模型路由](/zh/docs/model-routing/) 与 [智能任务路由](/zh/docs/task-routing/) 了解产品机制。

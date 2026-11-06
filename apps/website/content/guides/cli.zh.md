@@ -7,8 +7,8 @@ HiRoute CLI 让你在终端连接模型、配置路由、接入 Agent、查看�
 ## 安装与检查
 
 - macOS 桌面应用：打开“设置” → “CLI” → “终端入口”，选择“安装”。
-- Windows 桌面应用：当前用户安装包自带 CLI，可选择将入口加入 PATH。按 [Windows 安装指南](/docs/install-windows/)安装后打开新终端。
-- Linux：按 [Linux Web UI 与 CLI 安装](/docs/install-linux/)使用官网一行命令安装，再手动启动服务。
+- Windows 桌面应用：当前用户安装包自带 CLI，可选择将入口加入 PATH。按 [Windows 安装指南](/zh/docs/install-windows/)安装后打开新终端。
+- Linux：按 [Linux Web UI 与 CLI 安装](/zh/docs/install-linux/)使用官网一行命令安装，再手动启动服务。
 
 如果 PATH 不包含入口目录，把下面一行加入 shell 配置后重新打开终端：
 
@@ -201,7 +201,7 @@ hiroute decision services test --request-stdin --output json < decision-test-req
 
 保存 r2 不会改变已固定 r1 的路由；需要选择新版本并通过 `routing preview/apply` 发布。测试请求的 schema 为 `hiroute.classifier-decision-test/v1`，`classifier` 为 `{kind: "decision_service", service: <完整已保存版本>}`。它只发送固定示例，检查指定的连接版本，不读取真实会话，也不产生实际任务的评分。检查 `data.outcome` 与 `data.failure_code`，不能仅凭命令退出成功判断测试通过。
 
-自定义扩展遵守 [自定义扩展 API](/docs/decision-api/)；内置供应商配置和接口映射见 [决策模型接入指南](/docs/decision-extensions/)。可选的 [Jev 自托管参考扩展](/docs/jev-decider/) 提供自行部署的示例。完整桌面配置步骤见 [使用智能模型路由](/docs/model-routing/)。
+自定义扩展遵守 [自定义扩展 API](/zh/docs/decision-api/)；内置供应商配置和接口映射见 [决策模型接入指南](/zh/docs/decision-extensions/)。可选的 [Jev 自托管参考扩展](/zh/docs/jev-decider/) 提供自行部署的示例。完整桌面配置步骤见 [使用智能模型路由](/zh/docs/model-routing/)。
 
 ## 查询会话与运行表现
 

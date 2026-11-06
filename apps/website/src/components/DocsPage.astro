@@ -1,24 +1,20 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
 import DocsNav from './DocsNav.astro';
-import { renderDecisionDoc } from '../lib/decision-docs.mjs';
+import { decisionPages, renderDecisionDoc } from '../lib/decision-docs.mjs';
+import { localePath } from '../lib/locale.mjs';
+import { breadcrumbs } from '../lib/seo.mjs';
 const { language = 'zh', page } = Astro.props;
 const english = language === 'en';
-const pages = {
-  mechanism: ['决策模型与路由机制', 'Decision models and routing mechanism', 'decision-extensions'],
-  api: ['自定义扩展 API', 'Custom extension API', 'decision-api'],
-  jev: ['Jev 参考扩展', 'Jev reference extension', 'jev-decider'],
-};
-const [zhTitle, enTitle, slug] = pages[page];
-const title = english ? enTitle : zhTitle;
-const prefix = english ? '/en' : '';
-const path = `${prefix}/docs/${slug}/`;
-const alternatePath = `${english ? '' : '/en'}/docs/${slug}/`;
+const { slug, title: titles, description } = decisionPages[page];
+const title = titles[language].includes('HiRoute') ? titles[language] : `${titles[language]} · HiRoute`;
+const path = localePath(language, `/docs/${slug}/`);
+const alternatePath = localePath(english ? 'zh' : 'en', `/docs/${slug}/`);
 const html = await renderDecisionDoc(page, language);
+const trail = breadcrumbs([['HiRoute', localePath(language)], [english ? 'Docs' : '文档', localePath(language, '/docs/')], [decisionPages[page][language], path]]);
 ---
-<SiteLayout language={language} title={`${title} · HiRoute`}
-  description={english ? 'HiRoute decision models, routing judgments and custom extension API.' : 'HiRoute 决策模型、路由判断与自定义扩展 API。'}
-  path={path} alternatePath={alternatePath}>
+<SiteLayout language={language} title={title} description={description[language]}
+  path={path} alternatePath={alternatePath} structuredData={[trail]}>
   <div class="docs-shell wrap">
     <DocsNav language={language} active={page} />
     <article class="docs-content" set:html={html} />

@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-Desktop 提供模型管理、路由配置、Agent 接入、任务结果及会话记录入口，通过共享 Client Core 调用真实本机服务。公开使用入口见[官网文档](https://hiroute.ai/docs/)。
+Desktop 提供模型管理、路由配置、Agent 接入、任务结果及会话记录入口，通过共享 Client Core 调用真实本机服务。公开使用入口见[官网文档](https://hiroute.ai/zh/docs/)。
 
 本目录负责共享产品 UI 与 macOS 原生宿主。Windows x64 桌面版通过
 [Windows 壳](../shell/README.md)打开 daemon 提供的控制台；Linux 无需桌面环境，直接在浏览器中使用同一产品界面。
@@ -25,7 +25,7 @@ target/debug/hiroute-desktop
 macOS 平台构建和实际窗口交互需要在 macOS 本机验证；通用开发检查见仓库根目录
 `CONTRIBUTING.md`。所有 Cargo 输出使用该 checkout 默认 `target/`。
 
-这是开发二进制入口。公开安装包和平台说明见[下载页](https://hiroute.ai/download/)。
+这是开发二进制入口。公开安装包和平台说明见[下载页](https://hiroute.ai/zh/download/)。
 原生应用从同目录启动 `hirouted`，从内置正式签名资源初始化 ReleaseFacts。WebView
 仅加载本地构建产物；不提供任意命令、路径、HTTP 或授权的 IPC。
 

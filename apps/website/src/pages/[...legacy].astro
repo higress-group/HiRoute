@@ -1,0 +1,8 @@
+---
+import RedirectPage from '../components/RedirectPage.astro';
+import { LEGACY_CHINESE_PATHS, localePath } from '../lib/locale.mjs';
+export function getStaticPaths() {
+  return LEGACY_CHINESE_PATHS.map(path => ({ params: { legacy: path.slice(1, -1) } }));
+}
+---
+<RedirectPage target={localePath('zh', `/${Astro.params.legacy}/`)} />

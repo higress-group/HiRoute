@@ -1,22 +1,26 @@
 ---
 import '../styles/site.css';
+import { localePath } from '../lib/locale.mjs';
+import { GITHUB_URL as githubUrl, jsonLd } from '../lib/seo.mjs';
 const {
-  language = 'zh', title, description, path = '/', alternatePath = '/en/',
-  fullWidth = false,
+  language = 'zh', title, description, path = '/zh/', alternatePath = '/en/',
+  fullWidth = false, indexable = true, ogType = 'website', publishedTime, modifiedTime,
+  structuredData = [],
 } = Astro.props;
 const english = language === 'en';
-const githubUrl = 'https://github.com/higress-group/HiRoute';
 const canonical = new URL(path, Astro.site);
-const alternate = new URL(alternatePath, Astro.site);
 const zhPath = english ? alternatePath : path;
 const enPath = english ? path : alternatePath;
-const nav = english ? [
-  ['Product', '/en/#product'], ['Docs', '/en/docs/'],
-  ['Articles', '/en/news/'], ['Download', '/en/download/'],
+// One zh/en pair per page. English serves readers whose language matches neither;
+// Chinese stays a language-only tag so every Chinese locale reaches the Chinese page.
+const zhUrl = new URL(zhPath, Astro.site);
+const enUrl = new URL(enPath, Astro.site);
+const home = localePath(language);
+const nav = (english ? [
+  ['Product', '#product'], ['Docs', 'docs/'], ['Articles', 'news/'], ['Download', 'download/'],
 ] : [
-  ['产品', '/#product'], ['文档', '/docs/'],
-  ['文章', '/news/'], ['下载', '/download/'],
-];
+  ['产品', '#product'], ['文档', 'docs/'], ['文章', 'news/'], ['下载', 'download/'],
+]).map(([label, target]) => [label, home + target]);
 ---
 <!doctype html>
 <html lang={english ? 'en' : 'zh-CN'}>
@@ -26,19 +30,25 @@ const nav = english ? [
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{title}</title>
     <meta name="description" content={description}>
-    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="robots" content={indexable ? 'index, follow, max-image-preview:large' : 'noindex, follow'}>
     <meta name="theme-color" content="#F7F8FA">
-    <link rel="canonical" href={canonical}>
-    <link rel="alternate" hreflang="zh-CN" href={english ? alternate : canonical}>
-    <link rel="alternate" hreflang="en" href={english ? canonical : alternate}>
-    <link rel="alternate" hreflang="x-default" href={new URL('/', Astro.site)}>
+    {indexable && <>
+      <link rel="canonical" href={canonical}>
+      <link rel="alternate" hreflang="zh" href={zhUrl}>
+      <link rel="alternate" hreflang="en" href={enUrl}>
+      <link rel="alternate" hreflang="x-default" href={enUrl}>
+    </>}
     <link rel="icon" type="image/png" sizes="1024x1024" href="/brand/app-icon.png">
     <link rel="apple-touch-icon" href="/brand/app-icon.png">
-    <meta property="og:type" content="website">
+    <meta property="og:type" content={ogType}>
     <meta property="og:title" content={title}>
     <meta property="og:description" content={description}>
     <meta property="og:url" content={canonical}>
     <meta property="og:site_name" content="HiRoute">
+    <meta property="og:locale" content={english ? 'en_US' : 'zh_CN'}>
+    <meta property="og:locale:alternate" content={english ? 'zh_CN' : 'en_US'}>
+    {publishedTime && <meta property="article:published_time" content={publishedTime}>}
+    {modifiedTime && <meta property="article:modified_time" content={modifiedTime}>}
     <meta property="og:image" content={new URL(`/brand/social-card-${english ? 'en' : 'zh'}.png`, Astro.site)}>
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1280">
@@ -47,10 +57,11 @@ const nav = english ? [
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content={new URL(`/brand/social-card-${english ? 'en' : 'zh'}.png`, Astro.site)}>
     <meta name="twitter:description" content={description}>
+    {structuredData.map(data => <script is:inline type="application/ld+json" set:html={jsonLd(data)} />)}
   </head>
   <body>
     <header class="header wrap site-header">
-      <a class="wordmark" href={english ? '/en/' : '/'} aria-label="HiRoute home">
+      <a class="wordmark" href={home} aria-label="HiRoute home">
         <img class="brand-symbol" src="/brand/mark-switch.svg" alt="">
         <img class="brand-lettering" src="/brand/wordmark.svg" alt="HiRoute">
       </a>
@@ -65,15 +76,15 @@ const nav = english ? [
     </header>
     <main class:list={{ 'site-main': !fullWidth }}><slot /></main>
     <footer class="footer wrap">
-      <a class="wordmark" href={english ? '/en/' : '/'}>
+      <a class="wordmark" href={home}>
         <img class="brand-symbol" src="/brand/mark-switch.svg" alt="">
         <img class="brand-lettering" src="/brand/wordmark.svg" alt="HiRoute">
       </a>
       <p>{english ? 'Intelligent routing for long-horizon agents.' : '面向长程 Agent 的智能路由引擎。'}</p>
       <div class="footer-links">
-        <a href={english ? '/en/news/' : '/news/'}>{english ? 'Articles' : '文章'}</a>
-        <a href={english ? '/en/docs/' : '/docs/'}>{english ? 'Docs' : '文档'}</a>
-        <a href={english ? '/en/changelog/' : '/changelog/'}>{english ? 'Changelog' : '更新日志'}</a>
+        <a href={`${home}news/`}>{english ? 'Articles' : '文章'}</a>
+        <a href={`${home}docs/`}>{english ? 'Docs' : '文档'}</a>
+        <a href={`${home}changelog/`}>{english ? 'Changelog' : '更新日志'}</a>
         <a href={githubUrl} target="_blank" rel="noreferrer">GitHub ↗</a>
       </div>
     </footer>
