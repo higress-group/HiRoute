@@ -46,6 +46,8 @@ Codex is the example here. Open **Agent**, choose the discovered Codex, select *
 
 When HiRoute is used by default, Codex filters `/resume` by model provider, so earlier sessions may disappear while their files remain. **Find earlier sessions** on the page explains how to get back to them.
 
+For a separate Codex Desktop window on macOS or Windows Desktop, choose the **Codex Desktop** entry on the Agent page. Enable its model routing and save, then select **Open separate window**. Its configuration stays separate from your ordinary Codex profile.
+
 Other Agents connect like this:
 
 - **Claude Code:** start `claude` normally and use its native Opus, Sonnet or Haiku preset for mapped routes.

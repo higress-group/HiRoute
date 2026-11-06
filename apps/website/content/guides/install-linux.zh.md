@@ -73,6 +73,8 @@ hiroute service doctor --output json
 hiroute service logs --output json
 ```
 
+完成配置或升级后，通过接入的 Agent 发起一个小请求，验证已保存的路由。参见[快速开始](/docs/)中的“发起一次真实请求”。
+
 服务启停等本机管理命令通过 `--help` 查看。例如，下面两条命令分别列出顶层命令和 `service` 的子命令：
 
 ```sh

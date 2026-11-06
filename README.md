@@ -154,6 +154,8 @@ to evaluate decision prompts against your own tasks.
 HiRoute provides **macOS Desktop, Windows x64 Desktop, Linux Web UI, and CLI**.
 The [download page](https://hiroute.ai/en/download/) lists published packages.
 
+Version 0.5.3 repairs large image requests, including Codex Desktop calls through Qoder-compatible gateways, and improves Windows setup and update diagnostics.
+
 1. **Connect your models.** Add a supported subscription or API connection and choose an
    economical model plus a primary model.
 2. **Set the division of work.** Connect a decision model in **Models → Decision models**,

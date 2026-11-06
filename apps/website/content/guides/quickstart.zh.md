@@ -46,6 +46,8 @@
 
 设为默认后，Codex 会按模型服务商筛选 `/resume`，原有会话可能不再显示，但会话文件仍然保留；页面的“查找原有会话”说明了找回方法。
 
+在 macOS 或 Windows 桌面版中，需要独立的 Codex Desktop 窗口时，选择 Agent 页单独的 **Codex Desktop** 条目。启用并保存它的模型路由后，选择“启动独立窗口”；其配置与日常使用的 Codex profile 分开保存。
+
 其他 Agent 的接入方式：
 
 - **Claude Code**：直接启动 `claude`，用 Opus、Sonnet、Haiku 原生预设选择映射的路由。

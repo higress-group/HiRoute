@@ -2,6 +2,77 @@
   "schema": "hiroute.website.releases/v3",
   "releases": [
     {
+      "version": "0.5.3",
+      "channel": "stable",
+      "published_at": "2026-11-06",
+      "notes": {
+        "zh": "修复 Codex 图片请求经 Qoder 转发时的 Base64 错误，保留请求中的 JSON 字面值，并改进 Windows 安装与更新诊断。Windows 原生验证范围见发行说明。",
+        "en": "Fix Codex image replay through Qoder, preserve literal request values, and improve Windows installation and update diagnostics. See the release notes for the Windows native validation scope."
+      },
+      "artifacts": [
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "arm64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.5.3-a1cbc5d96c0e-macos-arm64-trial.dmg",
+          "sha256": "6d996aa064a699d7e0e9acd5046a75e9489c31e9301db25fba821aa40ef5d137",
+          "size": 102450668
+        },
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "x86_64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.5.3-a1cbc5d96c0e-macos-x86_64-trial.dmg",
+          "sha256": "b7bd23ba82b37eafb03ad99c9a4c16ba07a985d83c0ca646ddcaf5e5fca9d226",
+          "size": 111409324
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "x86_64",
+          "target": "x86_64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.5.3-a1cbc5d96c0e-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "d988e43c37566a016b6c615932f29b2c2d704f23ded3b7999bedd63d81ca7c58",
+          "size": 86831835,
+          "manifest_filename": "hiroute-0.5.3-a1cbc5d96c0e-x86_64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "bfe5ae97a9ae89db2fadb269bed7cdc01f39c7048cda24ea73186f06345ffa94",
+          "manifest_size": 3929
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "aarch64",
+          "target": "aarch64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.5.3-a1cbc5d96c0e-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "6027317f6cda01c085afda71b66653e3ac16b57b5743989950c7415cdd9c2415",
+          "size": 82198075,
+          "manifest_filename": "hiroute-0.5.3-a1cbc5d96c0e-aarch64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "9fb8c21b39e32ecc91162f1ca257e693ddc067c62c801876b173cc43d8fc897f",
+          "manifest_size": 3931
+        },
+        {
+          "kind": "desktop",
+          "platform": "Windows",
+          "architecture": "x86_64",
+          "format": "nsis",
+          "distribution": "unsigned",
+          "filename": "HiRoute-0.5.3-a1cbc5d96c0e-windows-x86_64-setup.exe",
+          "sha256": "d95e1569e80d3998e17c880633c681269a5a66e9930b38891dc0507b4bf456b7",
+          "size": 72389094
+        }
+      ]
+    },
+    {
       "version": "0.5.1",
       "channel": "stable",
       "published_at": "2026-11-05T00:00:00Z",
