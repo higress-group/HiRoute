@@ -61,7 +61,9 @@ fn core_upgrade_reuses_current_history_and_snapshots_only_authority() {
     // Released-package upgrade acceptance is separate from this entry regression.
     let db = Connection::open(root.join("live/control.db")).unwrap();
     db.execute_batch(
-        "DROP TABLE compute_key_budget_effects;
+        "ALTER TABLE decision_source_effects DROP COLUMN key_budget_owner_operation_id;
+         ALTER TABLE decision_source_effects DROP COLUMN key_budget_witness_digest;
+         DROP TABLE compute_key_budget_effects;
          DROP TABLE compute_key_spend_charges;
          DROP TABLE compute_key_spend_reservations;
          DROP TABLE compute_key_budget_bindings;
