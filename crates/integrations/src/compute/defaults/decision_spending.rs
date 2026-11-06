@@ -68,10 +68,11 @@ impl DecisionSpendingIndex {
                     })
                     .map(|price| (binding.binding_key.clone(), price.clone()))
                     .collect();
-                result.prices.insert(
-                    (endpoint.to_string(), binding.upstream_model_id.clone()),
-                    matched,
-                );
+                result
+                    .prices
+                    .entry((endpoint.to_string(), binding.upstream_model_id.clone()))
+                    .or_default()
+                    .extend(matched);
             }
         }
         result
@@ -271,21 +272,22 @@ impl super::TrustedReleaseCatalog {
             .estimates(binding, input_bound, at_ms)
     }
     pub(crate) fn rebuild_decision_spending_index(&mut self) {
-        let (metadata, prices, revision, digest) = if let Some(snapshot) = &self.official_snapshot {
-            (
-                &snapshot.data.metadata_catalog,
-                &snapshot.data.pricing_facts,
-                snapshot.data_revision,
-                snapshot.data_digest.clone(),
-            )
-        } else {
-            (
-                &self.current_release_model_data.metadata_catalog,
-                &self.current_release_model_data.pricing_facts,
-                self.model_data_sequence,
-                self.model_data_digest.clone(),
-            )
-        };
+        let (metadata, prices, revision, digest): (_, &[DocumentedModelPriceV1], _, _) =
+            if let Some(snapshot) = &self.official_snapshot {
+                (
+                    &snapshot.data.metadata_catalog,
+                    &snapshot.data.pricing_facts,
+                    snapshot.data_revision,
+                    snapshot.data_digest.clone(),
+                )
+            } else {
+                (
+                    &self.current_release_model_data.metadata_catalog,
+                    &[],
+                    self.model_data_sequence,
+                    self.model_data_digest.clone(),
+                )
+            };
         self.decision_spending_index =
             DecisionSpendingIndex::build(metadata, prices, revision, digest);
     }

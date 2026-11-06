@@ -2,11 +2,13 @@
 import hashlib
 import http.client
 import json
+import sqlite3
 import sys
+import threading
 import time
 from credential_pool_product import save_source
 from model_connections_product import MODEL, NATIVE_TOKEN, NativeUpstream, control, declared, publish_plan_and_agent, save_native_source
-from publication_product import Product, encoded
+from publication_product import Product, V1, encoded
 from plan_content_process import read_content
 
 
@@ -64,6 +66,71 @@ def saved_probe(product, upstream, saved, inference):
                 'context_tokens': declared(32768), 'max_output_tokens': declared(4096),
                 'native_reasoning': declared({'kind': 'fixed', 'profile': 'provider-default'})}}]}
     return product.public_cli('compute connection test', {'kind': 'native', 'request': {'draft': draft}}, success=False)
+
+
+def decision_budget(product, source_id, first, second):
+    from http.server import ThreadingHTTPServer
+    from decision_connections_v2_product import Endpoint
+    Endpoint.requests = []
+    Endpoint.failure = None
+    Endpoint.reject_input = False
+    endpoint = ThreadingHTTPServer(('127.0.0.1', 0), Endpoint)
+    thread = threading.Thread(target=endpoint.serve_forever, daemon=True)
+    thread.start()
+    try:
+        command = ('decision connections apply --id decision/local-budget --name Budgeted '
+            '--provider openai --source ' + source_id + ' --endpoint '
+            f'http://127.0.0.1:{endpoint.server_port}/v1/decisions')
+        preview = product.public_cli(command)[1]['data']
+        applied = product.public_cli('decision connections apply', {'schema_version': V1,
+            'spec': preview['normalized_spec'], 'accept_digest': preview['change_digest'],
+            'expected_revisions': preview['expected_revisions'], 'idempotency_key': 'budget-decision-save'})[1]
+        assert applied['data']['state'] == 'succeeded', applied
+
+        def test(detail=True):
+            view = next(row for row in control(product, 'ListDecisionServicesV3', {})['data']['services']
+                        if row['service']['id'] == 'decision/local-budget')
+            request = {'id': view['service']['id'], 'revision': view['service']['revision'],
+                'expected_configuration_digest': view['configuration_digest']}
+            if detail:
+                request['include_decision_failure'] = True
+            return product.public_cli('decision network test', request)[1]['data']
+
+        before = query(product, source_id)
+        accepted = test()
+        assert accepted['check']['outcome'] == 'passed', accepted
+        assert Endpoint.requests[-1][0] == 'Bearer ' + NATIVE_TOKEN, Endpoint.requests
+        after = query(product, source_id)
+        assert [(b['lifetime_spent_micros'], b['reserved_micros']) for b in after['budgets']] == [
+            (b['lifetime_spent_micros'], b['reserved_micros']) for b in before['budgets']]
+        with sqlite3.connect(product.storage / 'live/control.db') as db:
+            pending = db.execute("SELECT COUNT(*) FROM compute_key_spend_reservations WHERE state='pending' AND amount_micros=0 AND key_id=?", (first,)).fetchone()[0]
+            assert pending > 0, 'unpriced decision did not retain pending evidence'
+        # Both local budgets are known exhausted. Do not make another provider
+        # call, and expose the actual local cause only to opted-in callers.
+        for key in (first, second):
+            current = query(product, source_id)
+            budget = next(b for b in current['budgets'] if b['definition']['budget_id'] == current['bindings'][key])
+            assert budget['lifetime_spent_micros'] > 0, budget
+            allowance(product, source_id, key, budget['lifetime_spent_micros'], 'exhaust-' + key.rsplit('-', 1)[-1], budget['definition'], currency=budget['definition']['policy']['currency'])
+        count = len(Endpoint.requests)
+        refused = test()
+        assert refused['check']['outcome'] == 'failed', refused
+        assert refused['decision_failure'] == {'kind': 'budget_exhausted', 'http_status': None}, refused
+        assert len(Endpoint.requests) == count, 'exhausted decision called the provider'
+        legacy = test(False)
+        assert 'decision_failure' not in legacy, legacy
+        current = query(product, source_id)
+        first_budget = next(b for b in current['budgets'] if b['definition']['budget_id'] == current['bindings'][first])
+        allowance(product, source_id, first, 1_000_000, 'decision-restore', first_budget['definition'])
+        assert test()['check']['outcome'] == 'passed'
+        product.stop(); product.start()
+        assert test()['check']['outcome'] == 'passed'
+        print(json.dumps({'scenario': 'decision-key-budget-real-cli', 'state': 'green',
+            'same_key_and_budget': True, 'unknown_price_allowed': True, 'unpriced_pending': True,
+            'budget_failure_detail': True, 'legacy_result_unchanged': True, 'restart_preserved': True}), flush=True)
+    finally:
+        endpoint.shutdown(); endpoint.server_close(); thread.join(timeout=5)
 
 
 def run(repository):
@@ -152,6 +219,8 @@ def run(repository):
         cny = query(product, source_id)
         cny = next(item for item in cny['budgets'] if item['definition']['budget_id'] == cny['bindings'][second])
         assert cny['lifetime_spent_micros'] == 7 and cny['available_micros'] == 999_993, cny
+
+        decision_budget(product, source_id, first, second)
 
         print(json.dumps({'scenario': 'key-budget-real-gateway', 'state': 'green', 'unknown_price_allowed': True, 'saved_probe_allowed': True, 'key_fallback': True, 'usage_settled': True, 'restart_preserved': True, 'cap_edits_retain_spending': True, 'frozen_plan_unchanged': True}), flush=True)
     finally:

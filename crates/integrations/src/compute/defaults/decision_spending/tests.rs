@@ -16,6 +16,14 @@ fn catalog() -> super::super::TrustedReleaseCatalog {
         )),
     )
     .unwrap()
+    .with_embedded_official_data(
+        serde_json::from_slice(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/release-facts/current/bundle/official-model-data.json"
+        )))
+        .unwrap(),
+    )
+    .unwrap()
 }
 
 fn binding() -> DecisionCredentialBindingV1 {
@@ -117,7 +125,10 @@ fn unrelated_endpoints_models_codecs_and_unsupported_conditions_never_borrow_inf
     }
     let mut changed = catalog.clone();
     let price = changed
-        .current_release_model_data
+        .official_snapshot
+        .as_mut()
+        .unwrap()
+        .data
         .pricing_facts
         .iter_mut()
         .find(|p| p.product_key == "openai-platform-global" && p.upstream_model_id == "gpt-6-luna")
@@ -138,7 +149,12 @@ fn captured_prices_survive_catalog_refresh_and_resolution_does_not_enumerate_oth
     let mut catalog = catalog();
     let binding = binding();
     let captured = catalog.decision_spend_estimates(&binding, 1000, 1000);
-    let prices = &mut catalog.current_release_model_data.pricing_facts;
+    let prices = &mut catalog
+        .official_snapshot
+        .as_mut()
+        .unwrap()
+        .data
+        .pricing_facts;
     let mut unrelated = prices[0].clone();
     unrelated.product_key = "unrelated".into();
     prices.extend(std::iter::repeat_n(unrelated, 10_000));

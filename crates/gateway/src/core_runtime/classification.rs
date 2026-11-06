@@ -47,6 +47,9 @@ mod protocol;
 mod resource_tests;
 #[path = "classification/spending.rs"]
 mod spending;
+#[cfg(test)]
+#[path = "classification/spending_tests.rs"]
+mod spending_tests;
 #[path = "classification/system_one.rs"]
 mod system_one;
 pub(super) use group_policy::{apply as apply_group_policy, execution_position};
