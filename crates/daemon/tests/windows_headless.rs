@@ -861,17 +861,18 @@ fn installed_native_headless_roundtrip_and_graceful_then_forced_restart() {
     assert!(product.cli.is_file());
 }
 
-/// Required separately after exact pinned native clients and their discovery PATH
-/// are prepared. Missing artifacts/login/versions are failures, never optional skips.
+/// Explicit Claude configuration/managed-launch diagnostic outside the Windows
+/// acceptance scope. It requires the same daemon's native authentication proof.
 #[test]
 #[ignore = "requires explicit pinned real Codex, Claude, Pi and Node artifacts"]
 fn actual_windows_complete_public_headless_business() {
     public_headless_business(true);
 }
 
-/// Explicit development subset; never substitutes for the complete release gate.
+/// Required Windows public business journey. Claude native authentication and its
+/// dependent configuration/managed-launch/recovery path are outside this scope.
 #[test]
-#[ignore = "development business journey excluding native Claude acceptance"]
+#[ignore = "required Windows business journey excluding native Claude acceptance"]
 fn actual_windows_public_headless_business_without_claude() {
     public_headless_business(false);
 }

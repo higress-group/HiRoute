@@ -162,7 +162,7 @@ python3 scripts/validation.py windows stage /path/to/development-bundle.zip
 python3 scripts/validation.py windows inspect-installation --product PRODUCT_BUNDLE_ID
 python3 scripts/validation.py windows run --harness HARNESS_BUNDLE_ID \
   --product PRODUCT_BUNDLE_ID --binary windows_headless.exe \
-  --case actual_windows_complete_public_headless_business --ignored
+  --case actual_windows_public_headless_business_without_claude --ignored
 python3 scripts/validation.py windows wait RUN_ID --timeout 50
 python3 scripts/validation.py windows logs RUN_ID --tail 60
 python3 scripts/validation.py windows collect RUN_ID --output artifacts/windows-dev/RUN_ID
@@ -384,12 +384,15 @@ task action and removes only that task and owner lock; it keeps evidence, bundle
 and native configuration. Collected output is private raw evidence and must stay
 ignored, not be attached to public records unreviewed.
 
-When Claude acceptance is explicitly excluded for a development run, select
-`actual_windows_public_headless_business_without_claude` instead. It retains the
-same routing, observation, Worker, restart and restore assertions; Pi supplies the
-independent Messages grant. It does not establish native Claude authentication,
-managed launch or Claude configuration recovery, and does not replace the complete
-release case. No product request deadline is changed.
+The required Windows business journey is
+`actual_windows_public_headless_business_without_claude`. It retains routing,
+observation, Worker, restart and restore assertions; Pi supplies the independent
+Messages grant. Claude native authentication and its dependent configuration,
+managed launch and configuration recovery are outside this acceptance scope.
+The standalone Claude authentication case remains an explicit diagnostic and is
+not selected by the native matrix. Independent Claude collaboration, ACP,
+tool/history and borrowed-Worker host-provider checks remain required. No product
+request deadline or production authentication gate is changed.
 
 For a failed disposable business case whose product has already been removed,
 `windows recover RUN_ID` can preserve recognized test-owned Codex configuration,

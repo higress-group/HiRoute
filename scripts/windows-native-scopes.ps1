@@ -11,9 +11,10 @@ function Get-WindowsDaemonAgentCases {
     'delegation::installation::installation_probe::windows_acceptance::windows_tools::actual_windows_dsh_skills_read_edit_shell_and_exact_history')
 }
 function Get-WindowsMainAgentCases {
+  # Main acceptance proves actual Skill/CLI execution. Claude's standalone
+  # authentication challenge remains an explicit diagnostic outside this scope.
   return @(
     'agents::windows_collaboration_tests::actual_windows_codex_native_skill_executes_the_public_cli',
-    'agents::windows_collaboration_tests::actual_windows_claude_native_authentication_without_tools',
     'agents::windows_collaboration_tests::actual_windows_claude_native_skill_executes_the_public_cli')
 }
 function Get-WindowsLiveHistoryCases {

@@ -174,7 +174,7 @@ mod tests {
             let home = Path::new(r"C:\a b' % ! &\codex");
             let commands = codex_profile_commands(home).unwrap();
             let script = format!(
-                "function codex {{ [Console]::WriteLine($env:CODEX_HOME); foreach ($argument in $args) {{ [Console]::WriteLine($argument) }} }}; $env:CODEX_HOME = 'previous'; {}; if ($env:CODEX_HOME -ne 'previous') {{ throw 'context was not restored' }}",
+                "[Console]::Error.WriteLine('hiroute-codex-profile:entered'); function codex {{ [Console]::WriteLine($env:CODEX_HOME); foreach ($argument in $args) {{ [Console]::WriteLine($argument) }} }}; $env:CODEX_HOME = 'previous'; {}; [Console]::Error.WriteLine('hiroute-codex-profile:completed'); if ($env:CODEX_HOME -ne 'previous') {{ throw 'context was not restored' }}; [Console]::Error.WriteLine('hiroute-codex-profile:restored')",
                 commands["PowerShell"]
             );
             let powershell = hiroute_platform::windows::launcher::system_executable(Path::new(
@@ -183,11 +183,34 @@ mod tests {
             .unwrap();
             let mut command = std::process::Command::new(powershell);
             command.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-            let output = super::super::windows_runtime::bounded(
+            let output = super::super::windows_runtime::bounded_diagnose_error(
                 &command,
                 true,
                 std::time::Duration::from_secs(30),
                 4096,
+                |bytes| {
+                    let expected = [
+                        "hiroute-codex-profile:entered",
+                        "hiroute-codex-profile:completed",
+                        "hiroute-codex-profile:restored",
+                    ];
+                    let mut observed = 0;
+                    for line in bytes.split(|byte| *byte == b'\n') {
+                        let line = line.strip_suffix(b"\r").unwrap_or(line);
+                        if observed < expected.len()
+                            && line == expected[observed].as_bytes()
+                        {
+                            observed += 1;
+                        }
+                    }
+                    eprintln!(
+                        "Windows Codex profile PowerShell failure: stderr_bytes={} observed_entered={} observed_completed={} observed_restored={}",
+                        bytes.len(),
+                        observed >= 1,
+                        observed >= 2,
+                        observed == 3
+                    );
+                },
             )
             .unwrap();
             assert_eq!(
