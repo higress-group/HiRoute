@@ -125,7 +125,7 @@ fn actual_windows_codex_native_skill_executes_the_public_cli() {
 }
 
 #[test]
-#[ignore = "fixed actual Claude; isolated loopback authentication makes no provider call"]
+#[ignore = "explicit Claude authentication diagnostic; excluded from Windows acceptance"]
 fn actual_windows_claude_native_authentication_without_tools() {
     ClaudeNativeIngressProbe::run(&selected("HIROUTE_WORKER_CLAUDE_BINARY")).unwrap();
 }

@@ -644,7 +644,7 @@ if ($Scope -eq 'components') {
   Invoke-RequiredTests 'agent-worker-failure-oracle' @('-p','hiroute-daemon','--test','windows_headless',$workerFailureOracle) @(
     ($workerFailureOracle + 'terminal_facts_publish_typed_states_and_correlations_without_result_or_locator_text'),
     ($workerFailureOracle + 'unknown_terminal_shapes_and_excessive_counts_remain_closed_and_unattributed'))
-  $publicBusiness = 'actual_windows_complete_public_headless_business'
+  $publicBusiness = 'actual_windows_public_headless_business_without_claude'
   $cancelPublication = 'windows_worker_business::cancel::tests::cancellation_waits_for_the_complete_native_receipt_after_file_creation'
   Invoke-RequiredTests 'agent-worker-cancel-publication' @('-p','hiroute-daemon','--test','windows_headless',$cancelPublication) @($cancelPublication) @('--exact')
   $residualBinding = 'windows_worker_business::cancel::tests::residual_binding_waits_for_complete_json_and_rejects_unreadable_native_identity'

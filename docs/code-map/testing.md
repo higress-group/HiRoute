@@ -464,6 +464,11 @@ provider login, Windows 11, or another processor architecture.
 
 [Native scope dispositions](../../scripts/windows-native-scopes.ps1) own the
 complete background recipe names and the hosted runtime/deferred partition.
+The required public business journey selects the no-Claude branch in
+[the installed scenario](../../crates/daemon/tests/windows_headless.rs): Claude
+native authentication and its dependent configuration/managed-launch/recovery
+path are unassessed there. Standalone authentication is an explicit diagnostic;
+the independent Claude collaboration and Worker recipes remain required.
 Hosted producer and replay retain every compiler artifact and exact nonempty
 inventory while deferring the three logged-owner Task bodies. The feedback adapter
 checks zero execution, null exit and actual capture/list facts against the original
