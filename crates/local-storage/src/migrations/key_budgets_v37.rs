@@ -53,6 +53,16 @@ pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::Lo
 
 #[cfg(test)]
 pub(crate) fn remove_test_shape(db: &rusqlite::Connection) {
+    if db
+        .prepare("SELECT key_budget_owner_operation_id FROM decision_source_effects LIMIT 0")
+        .is_ok()
+    {
+        db.execute_batch(
+            "ALTER TABLE decision_source_effects DROP COLUMN key_budget_owner_operation_id;
+             ALTER TABLE decision_source_effects DROP COLUMN key_budget_witness_digest;",
+        )
+        .unwrap();
+    }
     db.execute_batch(
         "DROP TABLE compute_key_budget_effects;
          DROP TABLE compute_key_spend_charges;

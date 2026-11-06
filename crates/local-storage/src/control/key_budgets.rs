@@ -1,5 +1,5 @@
 //! Indexed spending authority. Request admission never scans observation/history tables.
-mod current;
+pub(super) mod current;
 mod policy_undo;
 use super::*;
 use hiroute_domain::{

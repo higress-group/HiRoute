@@ -1660,7 +1660,7 @@
       "field": "context_window_tokens",
       "mode": "recovery_read_only",
       "owner": "agent-connections",
-      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation’s behavior until settings are saved again.",
+      "reason": "A descriptor reconstructed from a pre-window immutable settings operation has no managed context policy. It retains that operation\u2019s behavior until settings are saved again.",
       "removal_condition": "Retire with the pre-window settings operation recovery reader.",
       "allowed_paths": [
         "crates/domain/src/agents/managed_launch.rs",
@@ -2744,12 +2744,13 @@
       "field": "Core V38 single-rate spending estimates from a1cbc5d96c0e8a207ecf276dda89c2c7cc78b4e1 omit input_price_tiers",
       "mode": "recovery_read_only",
       "owner": "compute-management/key-spending",
-      "reason": "The current reader defaults omitted tiers to the original single-rate meaning and leaves frozen quote identities and pending reservations unchanged. The additive three-store V39 transition admits decision input tiers and explicitly unpriced pending records; older binaries refuse V39 before reading the new ledger.",
+      "reason": "The current reader defaults omitted tiers to the original single-rate meaning and leaves frozen quote identities and pending reservations unchanged. The additive three-store V39 transition admits decision input tiers and explicitly unpriced pending records and backfills a keyed budget-authority reference for decision-owned sources; older binaries refuse V39 before reading the new ledger.",
       "removal_condition": "Retire only after the supported release and backup policy retires all original single-rate reservations, or an identity-preserving conversion replaces this reader.",
       "allowed_paths": [
         "crates/domain/src/compute/management/key_spend.rs",
         "crates/local-storage/src/control/key_budgets.rs",
         "crates/local-storage/src/migrations/key_budgets_v37.rs",
+        "crates/local-storage/src/migrations/key_spending_v39.rs",
         "crates/local-storage/src/migrations/mod.rs",
         "crates/local-storage/src/control/compute/management/tests/key_budgets.rs"
       ]

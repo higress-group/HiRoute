@@ -215,8 +215,10 @@ the earlier package identities remain historical evidence.
 
 Core V39 extends the existing Key spending ledger to frozen decision input-price
 tiers and explicitly unpriced pending requests. The three-store transition from
-V38 changes the format marker without rewriting sources, Keys, frozen quotes or
-accounting history. Omitted input tiers retain the original single-rate meaning.
+V38 adds a keyed budget-authority reference to decision source effects without
+rewriting sources, Keys, frozen quotes or accounting history. Upgrade resolves
+current decision-owner chains once; current saves maintain that reference, so
+request admission never walks decision history. Omitted input tiers retain the original single-rate meaning.
 The current reader validates known reservations against their frozen bound and
 admits explicitly unknown-price records only with a zero monetary hold and a
 pending/unsettled meaning; it never creates a zero-cost charge from unknown usage

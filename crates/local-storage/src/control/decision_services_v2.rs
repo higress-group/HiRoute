@@ -205,6 +205,12 @@ pub(super) fn activate(
         }
     }
     for mutation in &operation.sources {
+        super::key_budgets::current::bind_decision(
+            transaction,
+            workspace,
+            operation_id,
+            &mutation.before.source_id,
+        )?;
         write_source(transaction, workspace, &mutation.after, operation_id)?;
     }
     Ok(())

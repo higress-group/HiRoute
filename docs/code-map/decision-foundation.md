@@ -111,6 +111,10 @@ releases proven unsent attempts and retains uncertain/unpriced calls as pending.
 Unknown prices permit requests; local budget failures remain distinct diagnostic
 causes. Frozen V38 ledger estimates retain their original single-rate meaning;
 Core V39 admits input tiers and unpriced pending records without rewriting history.
+The keyed authority reference in decision source effects preserves the existing
+Key budget through membership saves, deletions and compensation. Its one-time
+backfill lives in `migrations/key_spending_v39.rs`; request reads use
+`control/key_budgets/current.rs` without traversing past decision operations.
 
 Bailian, OpenRouter Jev, TypeSafe and compatible connections share the typed
 `model/state/questions` adapter. OpenAI Decisions uses its own

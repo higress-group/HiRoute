@@ -145,6 +145,12 @@ pub(in crate::control) fn reconcile(
         .checked_add(1)
         .ok_or_else(|| conflict("decision.v2.compensation_workspace_revision"))?;
     for (_, source) in &repaired {
+        super::super::key_budgets::current::bind_decision(
+            &transaction,
+            &operation.workspace_id,
+            operation.operation_id.as_str(),
+            &source.source_id,
+        )?;
         write_source(
             &transaction,
             &operation.workspace_id,

@@ -42,6 +42,7 @@ mod delegation_v10;
 #[cfg(test)]
 mod integration_v17_tests;
 pub(crate) mod key_budgets_v37;
+mod key_spending_v39;
 #[cfg(test)]
 mod key_spending_v39_tests;
 mod legacy_subscription_api_v35;
@@ -349,8 +350,11 @@ fn migrate(
         if kind == DatabaseKind::Control && version == 37 {
             key_budgets_v37::initialize(&transaction)?;
         }
-        if kind == DatabaseKind::Control && matches!(version, 38 | 39) {
+        if kind == DatabaseKind::Control && version == 38 {
             decision_sources_v34::refresh_locator(&transaction)?;
+        }
+        if kind == DatabaseKind::Control && version == 39 {
+            key_spending_v39::initialize(&transaction)?;
         }
         if kind == DatabaseKind::Secrets && version == 15 {
             convergence_v15::ensure_collaboration_preparation_column(&transaction)?;
@@ -1014,7 +1018,7 @@ fn migration_sql(kind: DatabaseKind, version: u32) -> Result<&'static str, Local
         (DatabaseKind::Control, 36) => Ok(subscription_api_v36::CONTROL),
         (DatabaseKind::Control, 37) => Ok(key_budgets_v37::CONTROL),
         (DatabaseKind::Control, 38) => Ok(decision_references_v38::CONTROL),
-        (DatabaseKind::Control, 39) => Ok(NOOP_V9),
+        (DatabaseKind::Control, 39) => Ok(key_spending_v39::CONTROL),
         (DatabaseKind::Runtime | DatabaseKind::Secrets, 35..=39) => Ok(NOOP_V9),
         _ => Err(LocalStorageError::InvalidData),
     }
