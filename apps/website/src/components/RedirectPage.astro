@@ -11,6 +11,7 @@ const destination = new URL(target, Astro.site);
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>HiRoute</title>
+    <slot name="head" />
     <link rel="canonical" href={destination}>
     <script is:inline src="/scripts/language.js"></script>
     <meta http-equiv="refresh" content={`0; url=${target}`}>

@@ -58,6 +58,8 @@ commit touching each page's own sources (`pageSources`), so it needs full Git
 history; a shallow clone omits `lastmod`. `npm run build` rejects missing or
 repeated titles and descriptions, inconsistent language alternates, invalid
 JSON-LD, pages missing from the sitemap, malformed redirect pages and links to them.
+The root page also carries the Baidu Search Resource Platform verification tag;
+keep it while the site stays verified there.
 
 ## Articles and case studies
 

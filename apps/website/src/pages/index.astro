@@ -1,4 +1,7 @@
 ---
 import RedirectPage from '../components/RedirectPage.astro';
+// Baidu Search Resource Platform re-checks its site verification on the homepage; keep it.
 ---
-<RedirectPage target="/en/" chinese="/zh/" />
+<RedirectPage target="/en/" chinese="/zh/">
+  <meta slot="head" name="baidu-site-verification" content="codeva-4Bp3IgU4gn">
+</RedirectPage>
