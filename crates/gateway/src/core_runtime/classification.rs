@@ -113,6 +113,8 @@ impl ClassifierDiagnosticError {
             Self::Http(failure) => match failure.kind {
                 FailureKind::AuthenticationRejected => "CLASSIFIER_AUTH_REJECTED",
                 FailureKind::RateLimited => "CLASSIFIER_RATE_LIMITED",
+                FailureKind::BudgetExhausted => "DECISION_BUDGET_EXHAUSTED",
+                FailureKind::BudgetUnavailable => "DECISION_BUDGET_UNAVAILABLE",
                 FailureKind::EndpointRejected => "CLASSIFIER_ENDPOINT_REJECTED",
                 FailureKind::InputRejected | FailureKind::ContextLimit => {
                     "CLASSIFIER_INPUT_REJECTED"

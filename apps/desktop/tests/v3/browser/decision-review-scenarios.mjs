@@ -30,6 +30,8 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
         await until(() => document.querySelector('.decision-test-result.failed'), 'local budget failure');
         const message = document.querySelector('.decision-test-result p').textContent;
         assert(message.includes(t('本地 API 额度', 'Local API allowance')), 'Budget failure was presented as a credential or network failure');
+        document.querySelector('.decision-test-result summary').click(); await pause(40);
+        assert(document.querySelector('.decision-diagnostics code').textContent === (kind === 'budget_exhausted' ? 'DECISION_BUDGET_EXHAUSTED' : 'DECISION_BUDGET_UNAVAILABLE'), 'Diagnostics still mislabel a local budget failure');
         assert(calls('test_decision_service_v3').length === 1 && calls('save_decision_service_v3').length === 0 && JSON.stringify(store.sources) === before, 'A local failure mutated credentials or retried implicitly');
         store.test = () => ({ outcome: 'passed', failure_code: null });
         await click(t('重新测试', 'Test again'));

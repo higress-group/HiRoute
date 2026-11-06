@@ -59,7 +59,7 @@ impl DecisionSpendingIndex {
                 if endpoint.as_str() != "https://api.openai.com/v1/decisions" {
                     continue;
                 }
-                let matched = prices
+                let matched: Vec<_> = prices
                     .iter()
                     .filter(|price| {
                         price.product_key == binding.product_key

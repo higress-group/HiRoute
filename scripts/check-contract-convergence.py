@@ -12,9 +12,9 @@ from pathlib import Path
 REGISTRY_PATH = Path("contracts/compatibility-support.v1.json")
 # Storage owns the production declaration and startup support policy. A schema change
 # must deliberately update this gate after reviewing migrations/startup_format.rs and
-# docs/upgrade-storage-design.md; fixtures cannot satisfy it. This is not a migration test.
+# docs/release-contracts.md; fixtures cannot satisfy it. This is not a migration test.
 DATABASE_SCHEMA_SOURCE = "crates/local-storage/src/migrations/mod.rs"
-EXPECTED_DATABASE_SCHEMA_VERSION = 38
+EXPECTED_DATABASE_SCHEMA_VERSION = 39
 VERSION_SUFFIX = re.compile(r"/v[0-9]+")
 INTERNAL_CONTRACT = re.compile(r"hiroute(?:\.[a-z0-9][a-z0-9-]*)+/v[0-9]+")
 VALID_MODES = {

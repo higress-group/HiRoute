@@ -106,11 +106,14 @@ fn usage(body: &[u8], protocol: hiroute_domain::DecisionWireProtocolV2) -> Optio
     let (read, write) = usage.input_tokens_details.map_or((None, None), |details| {
         (details.cached_tokens, details.cache_write_tokens)
     });
-    if read.zip(write).is_some_and(|(read, write)| {
-        read.checked_add(write)
+    if read.is_some() || write.is_some() {
+        if read
+            .unwrap_or(0)
+            .checked_add(write.unwrap_or(0))
             .is_none_or(|cached| cached > usage.input_tokens)
-    }) {
-        return None;
+        {
+            return None;
+        }
     }
     Some(KeySpendUsageV1 {
         input_tokens: Some(usage.input_tokens),

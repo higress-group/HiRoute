@@ -132,7 +132,7 @@ fn runtime(
             "authentication":{"kind":"shared_source","source_id":"source/one","source_lineage_digest":lineage}}
     })).unwrap();
     let source: ComputeManagementSourceV2 = serde_json::from_value(serde_json::json!({
-        "schema":"hiroute.compute-management-source/v2","source_id":"source/one","revision":1,"lineage_digest":lineage,"display_name":"Source",
+        "schema":"hiroute.compute-management-source/v4","source_id":"source/one","revision":1,"lineage_digest":lineage,"display_name":"Source",
         "provenance":{"kind":"user_configured","configuration_revision":1,"evidence_digest":lineage},
         "target":{"scheme":"http","authority":"127.0.0.1","port":1,"request_path":"/v1/responses","upstream_protocol":"responses","protocol_profile_id":"adapter.openai-responses.v1","protocol_profile_revision":1},
         "authentication":{"kind":"bearer"},"state":"ready","models":[],"last_candidate_ref":"candidate/one","last_candidate_revision":1

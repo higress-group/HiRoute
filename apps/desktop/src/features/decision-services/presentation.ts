@@ -91,6 +91,12 @@ export function decisionFailureDetail(detail: DecisionFailureDetail, language: '
   return detail.http_status == null ? label : `HTTP ${detail.http_status} · ${label}`;
 }
 
+export function decisionDiagnosticCode(detail: DecisionFailureDetail | undefined, legacyCode: string | undefined): string | undefined {
+  if (detail?.kind === 'budget_exhausted') return 'DECISION_BUDGET_EXHAUSTED';
+  if (detail?.kind === 'budget_unavailable') return 'DECISION_BUDGET_UNAVAILABLE';
+  return legacyCode;
+}
+
 export function decisionReferences(id: string, plans: Plan[], drafts: Draft[]) {
   return [
     ...plans.flatMap(plan => {
