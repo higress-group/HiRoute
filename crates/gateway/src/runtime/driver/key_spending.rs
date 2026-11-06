@@ -27,6 +27,7 @@ pub(super) fn reserve(
             .and_then(|pricing| {
                 Some(hiroute_domain::KeySpendEstimateV1 {
                     pricing,
+                    input_price_tiers: vec![],
                     input_bound: *profile.capability.context.max_input_tokens.exact()?,
                     output_bound: ir
                         .requested_max_output_tokens

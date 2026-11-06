@@ -86,11 +86,12 @@ def run(repository):
         configured = allowance(product, source_id, first, 1_000_000, 'initial')
         with upstream.lock:
             before_probe = len(upstream.requests)
-        exit_code, refused = saved_probe(product, upstream, saved, True)
-        assert exit_code != 0 and refused['error']['code'] == 'ACTION_REQUIRED', refused
-        assert len(upstream.requests) == before_probe, 'limited saved-Key probe reached upstream'
+        exit_code, accepted = saved_probe(product, upstream, saved, True)
+        assert exit_code == 0, accepted
+        assert any(row['method'] == 'POST' for row in upstream.requests[before_probe:]), 'unpriced saved-Key probe did not reach upstream'
+        before_directory = len(upstream.requests)
         assert saved_probe(product, upstream, saved, False)[0] == 0
-        assert all(row['method'] == 'GET' for row in upstream.requests[before_probe:])
+        assert all(row['method'] == 'GET' for row in upstream.requests[before_directory:])
         publish_plan_and_agent(product, saved['binding_id'])
         frozen = read_content(product)
 
@@ -111,9 +112,9 @@ def run(repository):
             assert [row['authorization'] for row in attempts] == ['Bearer ' + expected_key], attempts
             assert read_content(product) == frozen, 'allowance change republished the frozen plan'
 
-        # A native manual source without a source price cannot use its limited
-        # Key as free traffic. The admitted next Key is still available.
-        request(fallback)
+        # Unknown prices allow the first admitted Key, with unpriced pending
+        # evidence instead of a fabricated zero-cost charge.
+        request(NATIVE_TOKEN)
         assert query(product, source_id)['budgets'][0]['lifetime_spent_micros'] == 0
         price(product, saved['binding_id'])
         request(NATIVE_TOKEN)
@@ -137,7 +138,7 @@ def run(repository):
         allowance(product, source_id, first, 1_000_000, 'restore', reopened['definition'])
         request(NATIVE_TOKEN)
         assert query(product, source_id)['budgets'][0]['lifetime_spent_micros'] == 14
-        request(fallback, hosted=True)
+        request(NATIVE_TOKEN, hosted=True)
         stable = query(product, source_id)['budgets'][0]
         assert stable['lifetime_spent_micros'] == 14 and stable['reserved_micros'] == 0, stable
         # Explicit CNY prices use CNY allowance; the receipt's USD observation
@@ -152,7 +153,7 @@ def run(repository):
         cny = next(item for item in cny['budgets'] if item['definition']['budget_id'] == cny['bindings'][second])
         assert cny['lifetime_spent_micros'] == 7 and cny['available_micros'] == 999_993, cny
 
-        print(json.dumps({'scenario': 'key-budget-real-gateway', 'state': 'green', 'unknown_price_skipped': True, 'key_fallback': True, 'usage_settled': True, 'restart_preserved': True, 'cap_edits_retain_spending': True, 'frozen_plan_unchanged': True}), flush=True)
+        print(json.dumps({'scenario': 'key-budget-real-gateway', 'state': 'green', 'unknown_price_allowed': True, 'saved_probe_allowed': True, 'key_fallback': True, 'usage_settled': True, 'restart_preserved': True, 'cap_edits_retain_spending': True, 'frozen_plan_unchanged': True}), flush=True)
     finally:
         product.close(); upstream.close()
 

@@ -112,7 +112,12 @@ pub(crate) fn validate(connection: &rusqlite::Connection) -> Result<(), crate::L
         let (amount, json) = row?;
         let estimate: hiroute_domain::KeySpendEstimateV1 =
             serde_json::from_str(&json).map_err(|_| crate::LocalStorageError::InvalidData)?;
-        if estimate.upper_bound_micros() != Some(amount) {
+        let explicitly_unpriced = amount == 0
+            && estimate.pricing.validate().is_ok()
+            && estimate.pricing.quote.is_none()
+            && estimate.pricing.unknown_reason.is_some()
+            && estimate.input_price_tiers.is_empty();
+        if estimate.upper_bound_micros() != Some(amount) && !explicitly_unpriced {
             return Err(crate::LocalStorageError::InvalidData);
         }
     }

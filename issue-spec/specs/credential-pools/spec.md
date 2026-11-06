@@ -127,21 +127,30 @@ MUST retain its original calendar anchor. Selecting a different recurring rule
 MUST schedule from the current period in that timezone, without requiring a year
 or backfilling past grants.
 
-Before an upstream request, the authority MUST atomically reserve a conservatively
+Before an upstream request with a complete price, the authority MUST atomically reserve a conservatively
 priced amount against the exact admitted Key and shared budget. Concurrent callers
 and repeated model fallbacks cannot each admit the same remaining funds. Known
 usage settles once against the captured price; a proven unsent attempt releases
 its reservation. Interrupted or unknown usage remains reserved across restart and
-is visible as pending; unknown prices/currencies/usage never become zero cost.
+is visible as pending. Unknown prices or unsupported billing currencies SHALL
+allow the request by default, retain an explicitly unpriced pending record, and
+never be recorded as a zero-cost settlement. Known exhausted allowance still
+prevents a new chargeable request.
 Budget counters, reservations and idempotent settlement MUST be durable and use
 indexed bounded reads, independent of unrelated history size. Currency conversion
 is not implicit. All amounts are exact integer currency micros.
 
-Saved-Key inference probes and source-reusing decision requests without a complete
-price/usage contract MUST refuse limited Keys before resolving the Secret or
-forwarding. Directory/authentication-only checks remain available.
+Source-reusing decision requests, including explicit connection tests, SHALL
+reserve and settle against the same Key budget as ordinary inference. Capture
+the exact decision endpoint/codec/model price once per call; ordinary inference
+prices MUST NOT silently price another interface. A complete provider usage
+record settles independently of decision-answer validity. Proven unsent attempts
+release their reservation; cancellation, incomplete usage and uncertain delivery
+retain pending state. Unknown decision prices follow the default-allow rule.
+Saved-Key inference probes without a complete price/usage contract also follow
+that rule. Directory/authentication-only checks remain available.
 
-An exhausted or unpriceable Key MUST be skipped through the existing admitted
+An exhausted Key MUST be skipped through the existing admitted
 Key order and candidate fallback contracts, without altering user-disabled state,
 reordering candidates or cancelling already committed responses. A due renewal
 restores budget eligibility. Management MUST show configured allowance, actual
@@ -149,6 +158,11 @@ local expenditure, pending reservation, available funds and next renewal. The UI
 MUST identify these as HiRoute local estimates for traffic it controls, rather
 than a fetched provider credit balance. Provider credit eligibility remains in
 the existing subscription guidance.
+
+Explicit decision diagnostics SHALL distinguish local allowance exhaustion and
+local budget-authority failure from missing/disabled credentials and upstream
+authentication or network errors. Released test calls retain their original
+result shape; current callers may request the detailed local cause.
 
 #### Scenario: A fixed allowance is shared by several models
 

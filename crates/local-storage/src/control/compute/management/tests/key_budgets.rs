@@ -118,6 +118,7 @@ pub(super) fn estimate(source: &str) -> KeySpendEstimateV1 {
     };
     quote.quote_digest = quote.computed_digest().unwrap();
     KeySpendEstimateV1 {
+        input_price_tiers: vec![],
         pricing: ExecutionPricingEvidenceV1 {
             schema_version: EXECUTION_PRICING_SCHEMA_V1.into(),
             request_generation: None,
@@ -149,6 +150,177 @@ pub(super) fn view(stores: &LocalStorageSet, key: &str) -> KeyBudgetViewV1 {
         .key_budget_views(&[id], 1_000)
         .unwrap()
         .remove(0)
+}
+
+#[test]
+fn unpriced_spends_are_allowed_persist_as_pending_and_never_create_zero_cost_charges() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let key = configure(&stores, new_budget(1000), "unpriced-budget");
+    let unknown = stores
+        .control()
+        .reserve_key_spend(&key, 1, None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(unknown.amount_micros, 0);
+    stores
+        .control()
+        .mark_key_spend_sent(&unknown.reservation_id)
+        .unwrap();
+    let usage = KeySpendSettlementV1::Usage {
+        usage: KeySpendUsageV1 {
+            input_tokens: Some(100),
+            output_tokens: Some(10),
+            ..Default::default()
+        },
+    };
+    stores
+        .control()
+        .settle_key_spend(&unknown.reservation_id, &usage)
+        .unwrap();
+    stores
+        .control()
+        .settle_key_spend(&unknown.reservation_id, &usage)
+        .unwrap();
+    assert_eq!(
+        (
+            view(&stores, &key).available_micros,
+            view(&stores, &key).lifetime_spent_micros
+        ),
+        (1000, 0)
+    );
+    drop(stores);
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let db = stores.control().connection.borrow();
+    let state: String = db
+        .query_row(
+            "SELECT state FROM compute_key_spend_reservations WHERE reservation_id=?1",
+            [&unknown.reservation_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let charges: u64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM compute_key_spend_charges WHERE reservation_id=?1",
+            [&unknown.reservation_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!((state.as_str(), charges), ("pending", 0));
+    drop(db);
+    let mut wrong_currency = estimate(&saved(&stores).source_id);
+    let quote = wrong_currency.pricing.quote.as_mut().unwrap();
+    quote.currency = "CNY".into();
+    quote.exact_target.currency = "CNY".into();
+    quote.quote_digest = quote.computed_digest().unwrap();
+    let accepted = stores
+        .control()
+        .reserve_key_spend(&key, 1, Some(&wrong_currency))
+        .unwrap()
+        .unwrap();
+    assert_eq!(accepted.amount_micros, 0);
+    stores
+        .control()
+        .settle_key_spend(&accepted.reservation_id, &KeySpendSettlementV1::Unsent)
+        .unwrap();
+    assert_eq!(view(&stores, &key).available_micros, 1000);
+}
+
+#[test]
+fn decision_tiers_settle_exact_usage_and_pending_reservations_survive_reopen() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let key = configure(&stores, new_budget(1000), "decision-tier-budget");
+    let mut quote = estimate(&saved(&stores).source_id);
+    // Original V38 estimate bytes omit this newly optional field.
+    let original = serde_json::to_string(&quote).unwrap();
+    assert!(!original.contains("input_price_tiers"));
+    assert_eq!(
+        serde_json::from_str::<KeySpendEstimateV1>(&original).unwrap(),
+        quote
+    );
+    quote.output_bound = 0;
+    let frozen = quote.pricing.quote.as_mut().unwrap();
+    frozen.rates.output = TokenRateV1::known(0);
+    frozen.quote_digest = frozen.computed_digest().unwrap();
+    let lower = frozen.rates.clone();
+    let mut higher = lower.clone();
+    higher.input_uncached = TokenRateV1::known(2_000_000);
+    higher.cache_write = TokenRateV1::known(2_500_000);
+    quote.input_price_tiers = vec![
+        KeySpendInputPriceTierV1 {
+            through_input_tokens: Some(50),
+            rates: lower,
+        },
+        KeySpendInputPriceTierV1 {
+            through_input_tokens: None,
+            rates: higher,
+        },
+    ];
+    let reserved = stores
+        .control()
+        .reserve_key_spend(&key, 1, Some(&quote))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (reserved.amount_micros, view(&stores, &key).available_micros),
+        (250, 750)
+    );
+    stores
+        .control()
+        .mark_key_spend_sent(&reserved.reservation_id)
+        .unwrap();
+    stores
+        .control()
+        .settle_key_spend(
+            &reserved.reservation_id,
+            &KeySpendSettlementV1::Usage {
+                usage: KeySpendUsageV1 {
+                    input_tokens: Some(20),
+                    output_tokens: Some(999),
+                    cache_read_tokens: Some(5),
+                    cache_write_tokens: Some(3),
+                    reasoning_tokens: None,
+                },
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        (
+            view(&stores, &key).available_micros,
+            view(&stores, &key).lifetime_spent_micros
+        ),
+        (983, 17)
+    );
+    let pending = stores
+        .control()
+        .reserve_key_spend(&key, 1, Some(&quote))
+        .unwrap()
+        .unwrap();
+    stores
+        .control()
+        .mark_key_spend_sent(&pending.reservation_id)
+        .unwrap();
+    stores
+        .control()
+        .settle_key_spend(&pending.reservation_id, &KeySpendSettlementV1::Unknown)
+        .unwrap();
+    drop(stores);
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    assert_eq!(
+        (
+            view(&stores, &key).reserved_micros,
+            view(&stores, &key).lifetime_spent_micros
+        ),
+        (250, 17)
+    );
+    stores
+        .control()
+        .settle_key_spend(&pending.reservation_id, &KeySpendSettlementV1::Unsent)
+        .unwrap();
+    assert_eq!(view(&stores, &key).available_micros, 983);
 }
 #[test]
 fn key_budget_atomic_save_accounting_reopen_rotation_and_legacy_edits_preserve_spending() {
@@ -276,10 +448,20 @@ fn key_budget_atomic_save_accounting_reopen_rotation_and_legacy_edits_preserve_s
         ),
         (1_625, 325, 50)
     );
-    assert!(matches!(
-        stores.control().reserve_key_spend(&key, 1, None),
-        Err(KeyBudgetGateErrorV1::PriceUnavailable)
-    ));
+    let unpriced = stores
+        .control()
+        .reserve_key_spend(&key, 1, None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(unpriced.amount_micros, 0);
+    stores
+        .control()
+        .mark_key_spend_sent(&unpriced.reservation_id)
+        .unwrap();
+    stores
+        .control()
+        .settle_key_spend(&unpriced.reservation_id, &KeySpendSettlementV1::Unknown)
+        .unwrap();
     assert!(
         stores
             .control()
@@ -362,7 +544,7 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
     wrong.pricing.quote.as_mut().unwrap().currency = "CNY".into();
     assert!(matches!(
         other.reserve_key_spend(&key, 1, Some(&wrong)),
-        Err(KeyBudgetGateErrorV1::CurrencyMismatch)
+        Err(KeyBudgetGateErrorV1::Exhausted)
     ));
     let mut unknown = quote.clone();
     let q = unknown.pricing.quote.as_mut().unwrap();
@@ -370,7 +552,7 @@ fn key_budget_shared_keys_cannot_overbook_and_unknown_prices_never_become_free()
     q.quote_digest = q.computed_digest().unwrap();
     assert!(matches!(
         other.reserve_key_spend(&key, 1, Some(&unknown)),
-        Err(KeyBudgetGateErrorV1::PriceUnavailable)
+        Err(KeyBudgetGateErrorV1::Exhausted)
     ));
     other
         .settle_key_spend(&first.reservation_id, &KeySpendSettlementV1::Unsent)

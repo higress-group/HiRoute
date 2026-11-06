@@ -181,7 +181,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     setTesting(key);
     let next: TestRecord;
     try {
-      const value = await invoke<DecisionServiceNetworkTestResult>('test_decision_service_v3', { input: { id: view.service.id, revision: view.service.revision, expected_configuration_digest: view.configuration_digest } });
+      const value = await invoke<DecisionServiceNetworkTestResult>('test_decision_service_v3', { input: { id: view.service.id, revision: view.service.revision, expected_configuration_digest: view.configuration_digest, include_decision_failure: true } });
       next = networkTestRecord(value, Date.now());
     } catch (cause) { next = { outcome: 'failed', code: planErrorCode(cause), at: Date.now() }; }
     // Credentials may rotate during the call; the pass counts only against state read back afterwards.

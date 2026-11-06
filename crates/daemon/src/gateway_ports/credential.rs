@@ -47,6 +47,14 @@ where
     N: NativeCredentialAuthorityV1 + 'static,
     C: CpaDownstreamCredentialPort + Send + Sync + 'static,
 {
+    fn decision_spend_estimates(
+        &self,
+        binding: &hiroute_domain::DecisionCredentialBindingV1,
+        input_bound: u64,
+    ) -> std::collections::BTreeMap<String, hiroute_domain::KeySpendEstimateV1> {
+        self.native.decision_spend_estimates(binding, input_bound)
+    }
+
     fn acquire(
         &self,
         _credential_ref: &str,

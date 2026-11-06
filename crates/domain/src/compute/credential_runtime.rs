@@ -244,6 +244,15 @@ impl NativeCredentialLeaseV1 {
 /// Replaceable Product authority. Local storage, a Vault client, or a remote authority can
 /// implement this same port; Gateway adapters never depend on SQLite types.
 pub trait NativeCredentialAuthorityV1: Send + Sync {
+    /// Pure, indexed lookup from one captured catalog generation; no credential access.
+    fn decision_spend_estimates(
+        &self,
+        _binding: &crate::DecisionCredentialBindingV1,
+        _input_bound: u64,
+    ) -> std::collections::BTreeMap<String, crate::KeySpendEstimateV1> {
+        Default::default()
+    }
+
     fn key_spend_authority(&self) -> Option<std::sync::Arc<dyn crate::KeySpendAuthorityV1>> {
         None
     }

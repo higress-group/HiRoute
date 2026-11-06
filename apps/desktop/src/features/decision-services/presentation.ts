@@ -75,6 +75,8 @@ export function decisionFailureDetail(detail: DecisionFailureDetail, language: '
     unavailable: ['决策服务暂不可用', 'Decision service unavailable'],
     source_disabled: ['决策服务的 API 接入已停用', 'Decision API connection is disabled'],
     no_usable_credentials: ['没有可用的决策凭据', 'No usable decision credentials'],
+    budget_exhausted: ['本地 API 额度不足。请调整额度或使用其他 Key 后重试。', 'Local API allowance is insufficient. Adjust the allowance or use another key, then retry.'],
+    budget_unavailable: ['暂时无法读取或记录本地 API 额度，请稍后重试。', 'Local API allowance could not be read or recorded. Try again later.'],
     authentication_rejected: ['服务拒绝了凭据', 'Service rejected the credentials'],
     proxy_authentication_rejected: ['代理认证失败', 'Proxy authentication failed'],
     rate_limited: ['决策服务限流', 'Decision service rate limited'],

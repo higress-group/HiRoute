@@ -9,6 +9,7 @@ pub use native_reasoning::{ApiReasoningDefault, missing_api_reasoning_default};
 mod scoped;
 pub use scoped::*;
 pub(crate) mod decision_context;
+pub(crate) mod decision_spending;
 pub use decision_context::DecisionContextResolutionError;
 use std::collections::BTreeMap;
 
