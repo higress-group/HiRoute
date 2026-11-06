@@ -563,7 +563,7 @@ impl MigrationSetCoordinator {
         };
         if !matches!(
             set.target_schema_version(),
-            24 | 25 | 26 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | LATEST_SCHEMA_VERSION
+            24 | 25 | 26 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 | LATEST_SCHEMA_VERSION
         ) || required_source.is_some_and(|version| {
             [
                 set.control.manifest(),
