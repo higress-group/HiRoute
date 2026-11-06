@@ -24,6 +24,10 @@ const required = [
 for (const relative of required) {
   if (!fs.existsSync(path.join(dist, relative))) throw new Error(`missing website output: ${relative}`);
 }
+// Baidu re-checks its site verification on the homepage, so losing it unverifies the site.
+if (!fs.readFileSync(path.join(dist, 'index.html'), 'utf8').includes('<meta name="baidu-site-verification" content="codeva-4Bp3IgU4gn">')) {
+  throw new Error('missing Baidu site verification on the homepage');
+}
 for (const [page, language] of [['zh/index.html', 'zh-CN'], ['en/index.html', 'en']]) {
   const html = fs.readFileSync(path.join(dist, page), 'utf8');
   const performance = html.match(/<section\b[^>]*id="performance"[^>]*>[\s\S]*?<\/section>/)?.[0];
