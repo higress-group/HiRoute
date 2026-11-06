@@ -140,4 +140,4 @@ HiRoute 项目代码以 [Apache 2.0 协议](https://github.com/higress-group/HiR
 
 两项实战的任务、评测结果与复现方法已在 [HiRoute 项目仓库](../experiments/README.md)开源。
 
-想在自己的 Agent 上试试？**[去官网下载 HiRoute](https://hiroute.ai/download/)**。macOS 安装包**不到 100 MB**；安装后接入已有模型服务、选好路由计划，就能继续用熟悉的 Agent 开始工作。
+想在自己的 Agent 上试试？**[去官网下载 HiRoute](https://hiroute.ai/zh/download/)**。macOS 安装包**不到 100 MB**；安装后接入已有模型服务、选好路由计划，就能继续用熟悉的 Agent 开始工作。

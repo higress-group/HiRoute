@@ -30,9 +30,34 @@ product components with constructed documentation data; see
 They are illustrations, not provider acceptance or model benchmarks. Historical news and experiment
 reports retain their original version and evidence; current setup instructions belong in the guides.
 
-Chinese lives at `/`; English lives at `/en/`. Language is an explicit link, not
-an IP-based redirect. All pages are static directory indexes; `/releases/*` is
+English lives at `/en/` and Chinese at `/zh/`; `src/lib/locale.mjs` builds both
+prefixes. The root and the Chinese URLs published without a prefix before English
+became the default (`LEGACY_CHINESE_PATHS`) are redirect pages: an immediate meta
+refresh to the destination with a matching canonical, which Google treats as a
+permanent redirect. `public/scripts/language.js` runs first to keep the query and
+fragment, and at the root opens `/zh/` for a saved or explicit (`?lang=zh`) Chinese
+choice. Keep a former URL in that list while its Chinese page exists; new pages have
+no unprefixed URL. Browser language never redirects: when it differs from the page,
+a dismissible bar suggests the counterpart page, and dismissing it keeps the current
+language. Search engines and shared links therefore receive the page they request.
+All pages are static directory indexes; `/releases/*` is
 never part of the website build and must remain a real object/404 boundary.
+
+## Search metadata
+
+Every public page has its own title and description: guides in
+`src/lib/user-guides.mjs`, decision documents in `src/lib/decision-docs.mjs`,
+articles in `news/index.json`, and other pages in their component. Keep them
+specific to the page, factual for the shipped product and free of release-version
+wording. Each page is its own canonical URL and declares the same `zh`/`en` pair,
+with English as `x-default`; redirect pages have no metadata of their own and stay
+out of the sitemap. `src/lib/seo.mjs` builds the JSON-LD: site, organization
+and software on the homepage, `BlogPosting` for articles and breadcrumbs for docs
+and articles. The sitemap repeats the language pair and sets `lastmod` to the newest
+commit touching each page's own sources (`pageSources`), so it needs full Git
+history; a shallow clone omits `lastmod`. `npm run build` rejects missing or
+repeated titles and descriptions, inconsistent language alternates, invalid
+JSON-LD, pages missing from the sitemap, malformed redirect pages and links to them.
 
 ## Articles and case studies
 
@@ -201,4 +226,5 @@ therefore fail deployment without replacing the currently served site.
 
 DNS, HTTPS, custom-domain routing, bucket read policy, and the rule that missing
 `/releases/*` and `/model-feed/*` objects return a real 404 without redirects remain
-infrastructure configuration outside this repository. Verify those once `hiroute.ai` is connected to the bucket.
+infrastructure configuration outside this repository. A gateway may answer the
+redirect pages with server-side 301 responses; they must use the same destinations. Verify those once `hiroute.ai` is connected to the bucket.

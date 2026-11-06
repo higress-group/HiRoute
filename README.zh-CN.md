@@ -1,7 +1,7 @@
 <p align="right"><a href="README.md">English</a></p>
 
 <p align="center">
-  <a href="https://hiroute.ai/#tour"><img src="apps/website/public/media/hiroute-promo-zh-readme.jpg" alt="观看 3 分钟 HiRoute 产品介绍：真实会话中，新模型处理常规轮次，低分后主力接手" width="760"></a>
+  <a href="https://hiroute.ai/zh/#tour"><img src="apps/website/public/media/hiroute-promo-zh-readme.jpg" alt="观看 3 分钟 HiRoute 产品介绍：真实会话中，新模型处理常规轮次，低分后主力接手" width="760"></a>
 </p>
 
 <p align="center">
@@ -11,18 +11,18 @@
 </p>
 
 <p align="center">
-  <a href="https://hiroute.ai/download/">下载</a> ·
+  <a href="https://hiroute.ai/zh/download/">下载</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#真实场景的成本节省">成本效果</a> ·
   <a href="#选模效果用实验检验">实验结果</a> ·
-  <a href="https://hiroute.ai/docs/">使用文档</a> ·
+  <a href="https://hiroute.ai/zh/docs/">使用文档</a> ·
   <a href="CONTRIBUTING.md">参与贡献</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/higress-group/HiRoute/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/higress-group/HiRoute?display_name=tag&amp;sort=semver&amp;style=flat-square"></a>
   <a href="LICENSE"><img alt="Apache-2.0 许可证" src="https://img.shields.io/badge/license-Apache--2.0-5A6FE8?style=flat-square"></a>
-  <a href="https://hiroute.ai/download/"><img alt="支持 macOS、Windows 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-171A21?style=flat-square"></a>
+  <a href="https://hiroute.ai/zh/download/"><img alt="支持 macOS、Windows 和 Linux" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-171A21?style=flat-square"></a>
 </p>
 
 ## 真实场景的成本节省
@@ -38,7 +38,7 @@
 
 HiRoute 只在明确的边界切换模型：用户发送新消息，或上下文压缩、重建时。同一轮内的工具调用始终使用同一个模型。
 切换后只有第一次请求丢失缓存，之后的调用会重新命中，缓存损失不会吃掉省下的成本。
-[切换模型会损失缓存，智能路由还省钱吗？](https://hiroute.ai/news/routing-cache-cost/)
+[切换模型会损失缓存，智能路由还省钱吗？](https://hiroute.ai/zh/news/routing-cache-cost/)
 
 ## 熟悉的 Agent，更多模型选择
 
@@ -127,12 +127,12 @@ HiRoute 在本地运行，将受支持的订阅、API 接入和本地模型集�
 
 ## 快速开始
 
-[**下载 HiRoute**](https://hiroute.ai/download/) ·
-[安装指南](https://hiroute.ai/docs/) ·
+[**下载 HiRoute**](https://hiroute.ai/zh/download/) ·
+[安装指南](https://hiroute.ai/zh/docs/) ·
 [最新版本](https://github.com/higress-group/HiRoute/releases/latest)
 
 HiRoute 提供 **macOS 桌面版、Windows x64 桌面版、Linux Web UI 与 CLI**。
-已发布的安装包见[下载页](https://hiroute.ai/download/)。
+已发布的安装包见[下载页](https://hiroute.ai/zh/download/)。
 
 0.5.3 修复大图片请求，包括 Codex Desktop 经 Qoder 兼容网关发起的调用，并改进 Windows 安装与升级诊断。
 
@@ -149,7 +149,7 @@ HiRoute 提供 **macOS 桌面版、Windows x64 桌面版、Linux Web UI 与 CLI*
 
 **Windows：** 使用 x64 桌面安装包。按当前用户安装，自带后台服务、
 WebView2 引导安装器和 CLI，不要求 Python 或管理员权限。校验摘要、首次启动和恢复步骤见
-[Windows 安装指南](https://hiroute.ai/docs/install-windows/)。
+[Windows 安装指南](https://hiroute.ai/zh/docs/install-windows/)。
 
 **Linux：** 支持 x86_64 与 ARM64，无需 `sudo`，安装到当前用户目录：
 
@@ -170,15 +170,15 @@ hiroute console open
 在浏览器打开输出的一次性登录链接。远程主机可按
 [远程访问或 SSH 隧道说明](docs/web-console.md#access-from-another-device)连接。
 CLI 继续支持终端和自动化工作流。安装器校验已发布的 manifest 与文件摘要；服务由用户显式启动。详见
-[Linux Web UI 与 CLI 指南](https://hiroute.ai/docs/install-linux/)与 [CLI 参考](docs/standalone-cli.zh-CN.md)。
+[Linux Web UI 与 CLI 指南](https://hiroute.ai/zh/docs/install-linux/)与 [CLI 参考](docs/standalone-cli.zh-CN.md)。
 
 </details>
 
 ## 继续探索
 
 - **更多路由模式**：除按难度分流外，还支持固定模型、自定义分支与免费优先。
-  [智能模型路由](https://hiroute.ai/docs/model-routing/)
-- **Agent 协作**：通过 Worker 计划委派独立任务。[智能任务路由](https://hiroute.ai/docs/task-routing/)
+  [智能模型路由](https://hiroute.ai/zh/docs/model-routing/)
+- **Agent 协作**：通过 Worker 计划委派独立任务。[智能任务路由](https://hiroute.ai/zh/docs/task-routing/)
 - **自己的决策服务**：配置判断标准，或实现可选的[决策扩展 API](decision-extensions/api/README.zh-CN.md)。
 - **详细行为**：候选故障接力、评分适用条件、恢复与客户端限制，统一查看
   [模型路由指南](apps/website/content/guides/model-routing.zh.md)。

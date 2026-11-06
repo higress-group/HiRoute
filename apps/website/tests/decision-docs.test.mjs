@@ -7,14 +7,14 @@ test('canonical decision documents render into bilingual website routes', async 
   const zh = await renderDecisionDoc('mechanism', 'zh');
   const rendered = await Promise.all(['mechanism', 'api', 'jev'].flatMap(page =>
     ['zh', 'en'].map(language => renderDecisionDoc(page, language))));
-  assert.match(zh, /href="\/docs\/jev-decider\/"/);
+  assert.match(zh, /href="\/zh\/docs\/jev-decider\/"/);
   for (const html of rendered.slice(0, 4)) {
     assert.match(html, /href="\/api\/decision\.openapi\.json"/);
     assert.match(html, /href="\/api\/decision-examples\.json"/);
   }
   for (const html of rendered.slice(2, 4)) assert.match(html, /preceding_stage/);
   assert.doesNotMatch(rendered.join(''), /href="(?!https:\/\/)[^" ]+\.md(?:#[^"]*)?"/);
-  assert.match(rendered[4], /href="\/docs\/decision-api\/"/);
+  assert.match(rendered[4], /href="\/zh\/docs\/decision-api\/"/);
   assert.match(rendered[5], /href="\/en\/docs\/decision-api\/"/);
 });
 

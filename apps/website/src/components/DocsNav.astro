@@ -1,7 +1,8 @@
 ---
+import { localePath } from '../lib/locale.mjs';
 const { language = 'zh', active } = Astro.props;
 const en = language === 'en';
-const prefix = en ? '/en' : '';
+const prefix = localePath(language, '');
 ---
 <aside class="docs-nav" aria-label={en ? 'HiRoute documentation' : 'HiRoute 文档'}>
   <span>{en ? 'GET STARTED' : '开始使用'}</span>

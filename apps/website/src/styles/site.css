@@ -25,6 +25,13 @@ section{scroll-margin-top:28px}
 .language-switch a{font-size:11px;padding:5px 7px;border-radius:3px;color:var(--muted)}
 .language-switch a[aria-current=page]{background:#e6eafb;color:#344ab8;font-weight:600}
 html:lang(en) .nav{gap:19px}
+.language-suggestion{background:var(--accent-soft);border-bottom:1px solid var(--line);font-size:13px}
+.language-suggestion .wrap{display:flex;align-items:center;gap:14px;min-height:42px;padding:6px 0}
+.language-suggestion span{min-width:0}
+.language-suggestion a{flex:none;color:#344ab8;font-weight:600}
+.language-suggestion a:hover{color:#475dd8}
+.language-suggestion button{flex:none;margin-left:auto;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:6px;background:none;color:var(--muted);font-size:18px;line-height:1}
+.language-suggestion button:hover{background:rgba(52,74,184,.08);color:var(--ink)}
 html:lang(en) .hero h1{letter-spacing:-1.7px}
 html:lang(en) .section-title>div{flex:1;min-width:0}
 html:lang(en) .section-title>p{flex:0 1 335px}

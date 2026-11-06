@@ -3,7 +3,7 @@
 [English](standalone-cli.md)
 
 Linux 从 0.5.0 起提供浏览器 Web UI，同时保留完整 CLI。两种入口的步骤见
-[Linux 安装指南](https://hiroute.ai/docs/install-linux/)。
+[Linux 安装指南](https://hiroute.ai/zh/docs/install-linux/)。
 Standalone 是不安装 Desktop 时的单用户运行方式。正式 `hiroute` CLI、`hirouted`
 role-all daemon、Local Control、Gateway、业务存储和观测共同组成控制与运行闭环。本机控制入口使用
 操作系统对 socket 的访问权限，不需要额外的“CLI 管理 token”，也不提供第二套 Agent 管理 API。
@@ -19,7 +19,7 @@ Standalone 与 HiRoute Desktop 不应同时管理同一用户的安装，不提�
 `hiroute console init`，再启动/重启服务。`hiroute console open` 只为实际已监听的
 本地或远程端点生成一次性登录 URL，不会启动监听。远程 HTTP 会持续提示明文传输风险。
 
-从 [hiroute.ai](https://hiroute.ai/download/) 安装适用于 `x86_64` 或 ARM64（`aarch64`）的
+从 [hiroute.ai](https://hiroute.ai/zh/download/) 安装适用于 `x86_64` 或 ARM64（`aarch64`）的
 最新稳定 Linux 版本：
 
 ```sh
@@ -29,7 +29,7 @@ hiroute system status --output json
 ```
 
 安装器会校验安装包并安装到当前用户目录，不会自动启动服务。主机要求和服务管理见
-[Linux 安装指南](https://hiroute.ai/docs/install-linux/)。
+[Linux 安装指南](https://hiroute.ai/zh/docs/install-linux/)。
 
 ### 通过 CLI 接入决策模型
 

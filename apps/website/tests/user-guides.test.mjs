@@ -15,7 +15,7 @@ test('every public user guide renders in Chinese and English', async () => {
       assert.match(html, /<h2[^>]*>/, `${slug}.${language} needs actionable sections`);
     }
   }
-  assert.equal(guideRoute('quickstart', 'zh'), '/docs/');
+  assert.equal(guideRoute('quickstart', 'zh'), '/zh/docs/');
   assert.equal(guideRoute('cli', 'en'), '/en/docs/cli/');
 });
 

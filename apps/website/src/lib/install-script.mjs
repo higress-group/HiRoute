@@ -19,7 +19,7 @@ umask 077
 
 case "$(uname -s)" in
   Linux) ;;
-  *) echo "HiRoute headless installation currently supports Linux. For macOS, use HiRoute Desktop: https://hiroute.ai/download/" >&2; exit 1 ;;
+  *) echo "HiRoute headless installation currently supports Linux. For macOS, use HiRoute Desktop: https://hiroute.ai/en/download/" >&2; exit 1 ;;
 esac
 
 case "$(uname -m)" in

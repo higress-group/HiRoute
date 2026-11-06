@@ -18,7 +18,7 @@
 
 ![相同验收标准下的整单成本降低 91%：HiRoute（Qwen 调研 + Astra 决策）$0.150–0.162，全部使用 GPT-6 Astra $1.953–1.987](assets/cost-savings-zh.svg)
 
-所以 HiRoute 的分工是：场景决定有哪些候选模型、按什么标准验收；每一步用哪个模型，到这一步再判断。切换只发生在用户发送新消息、上下文压缩或重建时，同一轮里的工具调用始终用同一个模型，切换后只有第一次请求会错过缓存。详见[实战案例](https://hiroute.ai/news/astra-qwen-smart-routing/)和[切换模型与缓存的成本分析](https://hiroute.ai/news/routing-cache-cost/)。
+所以 HiRoute 的分工是：场景决定有哪些候选模型、按什么标准验收；每一步用哪个模型，到这一步再判断。切换只发生在用户发送新消息、上下文压缩或重建时，同一轮里的工具调用始终用同一个模型，切换后只有第一次请求会错过缓存。详见[实战案例](https://hiroute.ai/zh/news/astra-qwen-smart-routing/)和[切换模型与缓存的成本分析](https://hiroute.ai/zh/news/routing-cache-cost/)。
 
 下面是一段真实会话的录屏。左边是 DeepSeek Harness，右边是 HiRoute；路由计划把 DeepSeek V4.1 Flash 作为要试的新模型，GPT-6 Astra 作为主力。用户只在 Agent 里正常提需求，从头到尾没有手动换过模型。
 
@@ -119,7 +119,7 @@ hiroute worker status --run <RUN_ID>
 hiroute worker result --run <RUN_ID>
 ```
 
-Router 只负责理解意图、分派任务和汇总结果；每个执行 Agent 用多贵的模型，再由它所在的计划一轮一轮判断。用 Hermes 搭建的完整过程，见[《用 Hermes 和 HiRoute 搭一个 DeepSeek 式的 Super Agent》](https://hiroute.ai/news/hermes-super-agent/)。
+Router 只负责理解意图、分派任务和汇总结果；每个执行 Agent 用多贵的模型，再由它所在的计划一轮一轮判断。用 Hermes 搭建的完整过程，见[《用 Hermes 和 HiRoute 搭一个 DeepSeek 式的 Super Agent》](https://hiroute.ai/zh/news/hermes-super-agent/)。
 
 ## 五、macOS、Windows、Linux 都有图形界面
 
@@ -146,8 +146,8 @@ hiroute console open
 
 1. **接入模型**：加入受支持的订阅或 API，选好经济模型和主力。
 2. **配置分工**：在「模型 → 决策模型」中连接决策服务，选择信任度，发布并映射到 Agent。
-3. **照常工作**：继续在原来的 Agent 中使用，到 HiRoute 查看模型切换和模型表现报告。需要委派任务时，参考[智能任务路由](https://hiroute.ai/docs/task-routing/)为计划选择执行 Agent。
+3. **照常工作**：继续在原来的 Agent 中使用，到 HiRoute 查看模型切换和模型表现报告。需要委派任务时，参考[智能任务路由](https://hiroute.ai/zh/docs/task-routing/)为计划选择执行 Agent。
 
 HiRoute 并不完美，决策模型也会判断错。欢迎在自己的场景里试一试，也欢迎告诉我们它在哪里判断错了。
 
-[下载 HiRoute](https://hiroute.ai/download/) · [使用文档](https://hiroute.ai/docs/) · [GitHub](https://github.com/higress-group/HiRoute)
+[下载 HiRoute](https://hiroute.ai/zh/download/) · [使用文档](https://hiroute.ai/zh/docs/) · [GitHub](https://github.com/higress-group/HiRoute)

@@ -98,7 +98,7 @@ Agent 的选择同样可以围绕工作展开。你保留惯用的主 Agent，�
 
 [![两次达标调研任务的 API 等价成本对比](assets/research-cost-zh.svg)](assets/research-cost-zh.svg)
 
-*图 5　成本图比较两次达标运行的平均成本；正文百分比是各次降幅。统计包含受试尝试与路由评估，按冻结价格折算 API 等价成本，不代表订阅账单节省比例。完整过程与实验记录入口见[HiRoute 官网实战详解](https://hiroute.ai/news/astra-qwen-smart-routing/)。*
+*图 5　成本图比较两次达标运行的平均成本；正文百分比是各次降幅。统计包含受试尝试与路由评估，按冻结价格折算 API 等价成本，不代表订阅账单节省比例。完整过程与实验记录入口见[HiRoute 官网实战详解](https://hiroute.ai/zh/news/astra-qwen-smart-routing/)。*
 
 ### 省心：模型自动接力，一次指令完成长任务
 
@@ -120,7 +120,7 @@ Agent 的选择同样可以围绕工作展开。你保留惯用的主 Agent，�
 
 [![历史 HTTPX 实验的原生会话阶段记录](assets/desktop-session-competence-zh.png)](assets/desktop-session-competence-zh.png)
 
-*图 7　历史实验的原生会话记录。首轮 Astra 只生成摘要；最终实现阶段尚未评分，不同阶段分数不构成模型排名。该任务保留当时配置，且没有全 Astra 成本对照，不作降本结论。[接力过程与验收记录](https://hiroute.ai/news/astra-qwen-smart-routing/)已公开。*
+*图 7　历史实验的原生会话记录。首轮 Astra 只生成摘要；最终实现阶段尚未评分，不同阶段分数不构成模型排名。该任务保留当时配置，且没有全 Astra 成本对照，不作降本结论。[接力过程与验收记录](https://hiroute.ai/zh/news/astra-qwen-smart-routing/)已公开。*
 
 ## 四、快速上手：三步接入熟悉的工作流
 
@@ -182,7 +182,7 @@ ContextHold（上下文保持）识别同轮历史续接，在授权、计划和
 
 上一阶段的有效低分可以触发主力保护，缺少证据时明确保留未评分状态。评分绑定实际执行的任务与模型，可以回到具体过程核对；新一轮仍会重新决策，一次升级不会永久锁住后续选择。
 
-需要自己的判断算法时，开发者还可以通过开放的 **HTTP 决策扩展协议**接入服务。扩展负责对接自己的决策服务并实现判断与评分，HiRoute 保留阈值策略与执行控制。项目提供 [OpenAPI 文档和可部署的 Jev 参考实现](https://hiroute.ai/docs/decision-api/)，方便把领域经验接入同一条路由流程。
+需要自己的判断算法时，开发者还可以通过开放的 **HTTP 决策扩展协议**接入服务。扩展负责对接自己的决策服务并实现判断与评分，HiRoute 保留阈值策略与执行控制。项目提供 [OpenAPI 文档和可部署的 Jev 参考实现](https://hiroute.ai/zh/docs/decision-api/)，方便把领域经验接入同一条路由流程。
 
 ## 六、未来演进：连接企业治理，拓展开放生态
 
@@ -198,4 +198,4 @@ HiRoute 已适配 **Codex、Claude Code、Qoder、Pi、DeepSeek Harness 五类 A
 
 HiRoute 以 **Apache 2.0 协议**开源。欢迎从自己的第一份路由计划开始，把已有 Agent、模型和订阅用得更好，也欢迎带着真实工作流参与共建。
 
-[**访问 GitHub**](https://github.com/higress-group/HiRoute) · [**下载 HiRoute**](https://hiroute.ai/download/) · [**阅读使用文档**](https://hiroute.ai/docs/)
+[**访问 GitHub**](https://github.com/higress-group/HiRoute) · [**下载 HiRoute**](https://hiroute.ai/zh/download/) · [**阅读使用文档**](https://hiroute.ai/zh/docs/)

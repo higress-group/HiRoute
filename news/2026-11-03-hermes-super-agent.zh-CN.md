@@ -96,7 +96,7 @@ Hermes 把这件事拆开，交给不同的计划：
 
 ## 怎么搭起来
 
-完整步骤见[智能任务路由](https://hiroute.ai/docs/task-routing/)，这里只列关键的三步：
+完整步骤见[智能任务路由](https://hiroute.ai/zh/docs/task-routing/)，这里只列关键的三步：
 
 1. **建计划**：在 HiRoute 的「智能路由」里，为每类工作建一份计划，打开“允许委派任务给执行 Agent”，选好执行 Agent，写清使用场景，然后发布。执行 Agent 要通过本机的依赖检查，才能真正启动任务。
 2. **让 Hermes 能委派**：在「Agent」里选择 Hermes，打开「任务路由」，选择委派时机：仅在你明确要求时委派，或者默认由 Agent 判断。保存后，按提示完成任务委派技能检查。Hermes 自己的模型请求也可以一起接入 HiRoute，两件事互不影响。
@@ -122,4 +122,4 @@ DeepSeek 把 Super Agent 拆成 Router 和 Worker，这个方向我很认同。�
 
 HiRoute 和 Hermes 都是开源的。欢迎试一试，也欢迎告诉我们哪里不好用。
 
-[GitHub](https://github.com/higress-group/HiRoute) · [智能任务路由](https://hiroute.ai/docs/task-routing/) · [HiRoute 新版本发布](https://hiroute.ai/news/new-model-trials-and-task-routing/)
+[GitHub](https://github.com/higress-group/HiRoute) · [智能任务路由](https://hiroute.ai/zh/docs/task-routing/) · [HiRoute 新版本发布](https://hiroute.ai/zh/news/new-model-trials-and-task-routing/)

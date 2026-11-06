@@ -4,7 +4,7 @@ HiRoute 桌面应用当前支持 macOS 15.0 或更高版本。短期提供的是
 
 ## 下载正确的安装包
 
-在 [下载页](/download/) 按 Mac 的架构选择 DMG：
+在 [下载页](/zh/download/) 按 Mac 的架构选择 DMG：
 
 - Apple 芯片（M1、M2、M3、M4 等）选择 `arm64`。
 - Intel Mac 选择 `x86_64`。
@@ -55,7 +55,7 @@ export PATH="$HOME/.local/bin:$PATH"
 hiroute --help
 ```
 
-这个终端入口连接 HiRoute 的本机服务；桌面应用应已安装并让本机服务保持可用。更多命令见 [HiRoute CLI](/docs/cli/)。
+这个终端入口连接 HiRoute 的本机服务；桌面应用应已安装并让本机服务保持可用。更多命令见 [HiRoute CLI](/zh/docs/cli/)。
 
 ## 更新与恢复
 

@@ -1,15 +1,27 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
 import { posts, newsRoute, renderNews } from '../lib/news.mjs';
+import { localePath } from '../lib/locale.mjs';
+import { articleImage, articleStructuredData, breadcrumbs, lastCommitTime } from '../lib/seo.mjs';
 const { language = 'zh', slug } = Astro.props;
 const en = language === 'en';
 const post = slug ? posts.find(p => p.slug === slug) : null;
 const title = post ? post.title[language] : (en ? 'Articles · HiRoute' : '文章 · HiRoute');
 const description = post ? post.description[language] : (en ? 'HiRoute case studies, engineering stories, and project updates.' : 'HiRoute 的实战案例、工程实践与项目动态。');
 const body = post ? await renderNews(slug, language) : '';
+const path = newsRoute(slug, language);
+// A later commit to the article file is its modification time; publication keeps its recorded date.
+const committed = post && lastCommitTime([`news/${post.files[language]}`]);
+const modified = committed && (!post.date || committed.slice(0, 10) >= post.date) ? committed : undefined;
+const structuredData = post ? [
+  articleStructuredData({ title, description, language, route: path, published: post.date, modified, image: articleImage(body, language) }),
+  breadcrumbs([['HiRoute', localePath(language)], [en ? 'Articles' : '文章', newsRoute('', language)], [title, path]]),
+] : [];
 ---
 <SiteLayout language={language} title={title} description={description}
-  path={newsRoute(slug, language)} alternatePath={newsRoute(slug, en ? 'zh' : 'en')}>
+  path={path} alternatePath={newsRoute(slug, en ? 'zh' : 'en')}
+  ogType={post ? 'article' : 'website'} publishedTime={post?.date} modifiedTime={modified}
+  structuredData={structuredData}>
   <div class="wrap news-shell">
     {post ? <>
       <a class="text-link" href={newsRoute('', language)}>← {en ? 'All articles' : '全部文章'}</a>
