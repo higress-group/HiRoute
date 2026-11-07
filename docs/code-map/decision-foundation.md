@@ -102,6 +102,20 @@ retain the executed version and content identity.
 
 ## Provider and routing policy
 
+Source-reusing decision tests and routed calls share the Key's local spending
+authority. [Decision prices](../../crates/integrations/src/compute/defaults/decision_spending.rs)
+are indexed at catalog admission, scoped to the actual endpoint/codec/model and
+captured once per call. [Exchange spending](../../crates/gateway/src/core_runtime/classification/spending.rs)
+reserves known bounds, settles provider usage even when an answer is malformed,
+releases proven unsent attempts and retains uncertain/unpriced calls as pending.
+Unknown prices permit requests; local budget failures remain distinct diagnostic
+causes. Frozen V38 ledger estimates retain their original single-rate meaning;
+Core V39 admits input tiers and unpriced pending records without rewriting history.
+The keyed authority reference in decision source effects preserves the existing
+Key budget through membership saves, deletions and compensation. Its one-time
+backfill lives in `migrations/key_spending_v39.rs`; request reads use
+`control/key_budgets/current.rs` without traversing past decision operations.
+
 Bailian, OpenRouter Jev, TypeSafe and compatible connections share the typed
 `model/state/questions` adapter. OpenAI Decisions uses its own
 [wire codec](../../crates/gateway/src/core_runtime/classification/openai_decisions.rs)

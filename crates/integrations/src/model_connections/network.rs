@@ -89,6 +89,24 @@ impl<P: ComputeCandidatePort, T: ModelDirectoryTransportV1> NativeModelConnectio
         cancellation: &ModelConnectionProbeCancellationV1,
         context: NativeModelConnectionNetworkContextV1,
     ) -> Result<ModelConnectionCheckViewV2, NativeModelConnectionErrorV1> {
+        self.check_with_network_before_inference(
+            draft,
+            credential,
+            cancellation,
+            context,
+            || Ok(()),
+        )
+    }
+
+    /// Admit a validated inference probe on a resolved route just before dispatch.
+    pub fn check_with_network_before_inference(
+        &self,
+        draft: NativeModelConnectionDraftV1,
+        credential: NativeModelConnectionCredentialV1<'_>,
+        cancellation: &ModelConnectionProbeCancellationV1,
+        context: NativeModelConnectionNetworkContextV1,
+        before_inference: impl FnOnce() -> Result<(), PortError>,
+    ) -> Result<ModelConnectionCheckViewV2, NativeModelConnectionErrorV1> {
         let policy = context
             .edit
             .policy
@@ -124,8 +142,19 @@ impl<P: ComputeCandidatePort, T: ModelDirectoryTransportV1> NativeModelConnectio
             policy: &policy,
             failure: Mutex::new(route.failure.clone()),
         };
-        let check =
-            self.check_using(draft, credential, cancellation, &transport, Some(&identity))?;
+        let check = self.check_using(
+            draft,
+            credential,
+            cancellation,
+            &transport,
+            Some(&identity),
+            || {
+                if route.failure.is_none() {
+                    before_inference()?;
+                }
+                Ok(())
+            },
+        )?;
         let mut failure = transport
             .failure
             .into_inner()

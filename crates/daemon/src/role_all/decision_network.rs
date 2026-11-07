@@ -54,6 +54,7 @@ pub(super) fn test(
                     Failure::DecisionInputRejected
                 }
                 Kind::InvalidOutput => Failure::DecisionMalformedOutput,
+                Kind::BudgetExhausted => Failure::DecisionNoUsableCredentials,
                 _ => Failure::DecisionTransportUnavailable,
             })
         }

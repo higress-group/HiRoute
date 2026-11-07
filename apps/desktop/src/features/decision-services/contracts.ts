@@ -87,6 +87,7 @@ export type DecisionServiceNetworkTestResult = {
 
 export type DecisionFailureDetail = {
   kind: 'timeout' | 'unavailable' | 'source_disabled' | 'no_usable_credentials'
+    | 'budget_exhausted' | 'budget_unavailable'
     | 'authentication_rejected' | 'proxy_authentication_rejected' | 'rate_limited'
     | 'endpoint_rejected' | 'input_rejected' | 'context_limit' | 'upstream_error' | 'invalid_output';
   http_status: number | null;

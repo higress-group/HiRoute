@@ -53,6 +53,7 @@ impl LocalControlAdapter {
         }
 
         let checked = (|| {
+            let mut spending = None;
             let expected_source_revision = request.draft.expected_source_revision;
             let mut draft = trusted_draft(
                 request.draft,
@@ -89,17 +90,16 @@ impl LocalControlAdapter {
                         .control()
                         .validate_current_key_budgets(source_id)
                         .map_err(|_| ComputeManagementControlError::Unavailable)?;
-                    // Inference probes have no complete quote/settlement contract.
-                    // Directory and authentication checks remain available, but
-                    // must never turn a limited saved Key into unmetered traffic.
-                    if draft.inference_model_id.is_some()
-                        && stores
+                    if draft.inference_model_id.is_some() {
+                        spending = stores
                             .control()
-                            .key_spend_currency(&key.key_id)
-                            .map_err(|_| ComputeManagementControlError::Unavailable)?
-                            .is_some()
-                    {
-                        return Err(ComputeManagementControlError::ActionRequired);
+                            .reserve_key_spend(&key.key_id, key.credential.generation(), None)
+                            .map_err(probe_budget_error)?
+                            .map(|reservation| UnpricedProbeSpend {
+                                adapter: self,
+                                id: reservation.reservation_id,
+                                sent: false,
+                            });
                     }
                     let subject = VerifiedSecretSubjectV1::from_authenticated_transport(
                         "hirouted",
@@ -197,7 +197,17 @@ impl LocalControlAdapter {
                 network_edit.clone(),
             )?;
             self.model_connections
-                .check_with_network(draft, credential, &cancellation, context)
+                .check_with_network_before_inference(
+                    draft,
+                    credential,
+                    &cancellation,
+                    context,
+                    || {
+                        spending
+                            .as_mut()
+                            .map_or(Ok(()), UnpricedProbeSpend::mark_sent)
+                    },
+                )
                 .map_err(map_check_error)
         })();
         self.model_connection_cancellations
@@ -316,5 +326,46 @@ impl LocalControlAdapter {
             .map_err(|_| ComputeManagementControlError::Unavailable)?
             .remove(&check_id);
         checked
+    }
+}
+
+fn probe_budget_error(
+    error: hiroute_domain::KeyBudgetGateErrorV1,
+) -> ComputeManagementControlError {
+    match error {
+        hiroute_domain::KeyBudgetGateErrorV1::Exhausted => {
+            ComputeManagementControlError::ActionRequired
+        }
+        _ => ComputeManagementControlError::Unavailable,
+    }
+}
+
+/// The saved-Key probe has no complete price/usage contract. It is allowed, with
+/// a durable unpriced record rather than a fabricated free settlement.
+struct UnpricedProbeSpend<'a> {
+    adapter: &'a LocalControlAdapter,
+    id: String,
+    sent: bool,
+}
+impl UnpricedProbeSpend<'_> {
+    fn mark_sent(&mut self) -> Result<(), PortError> {
+        self.adapter
+            .stores_lock()?
+            .control()
+            .mark_key_spend_sent(&self.id)?;
+        self.sent = true;
+        Ok(())
+    }
+}
+impl Drop for UnpricedProbeSpend<'_> {
+    fn drop(&mut self) {
+        if let Ok(stores) = self.adapter.stores_lock() {
+            let settlement = if self.sent {
+                hiroute_domain::KeySpendSettlementV1::Unknown
+            } else {
+                hiroute_domain::KeySpendSettlementV1::Unsent
+            };
+            let _ = stores.control().settle_key_spend(&self.id, &settlement);
+        }
     }
 }

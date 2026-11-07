@@ -8,6 +8,37 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
     assert(button, 'The OpenAI preset is missing'); button.click(); await pause(40);
   };
   return [
+    scenario('desktop.decisions.local-budget-failures', ['decision-services', 'model-connections'], 'Local budget failures explain the actual cause, retain source credentials and permit an explicit retry', async () => {
+      for (const language of ['zh', 'en']) for (const kind of ['budget_exhausted', 'budget_unavailable']) {
+        const t = (zh, en) => language === 'zh' ? zh : en;
+        const sourceId = 'source/review/budget';
+        const record = { schema: 'hiroute.decision-service/v2', id: 'decision/review/budget', revision: 1, name: 'Budgeted decisions', connection: { kind: 'native', provider: 'openai', wire_protocol: 'openai_decisions', model: 'gpt-6-luna', endpoint: 'https://api.openai.test/v1/decisions', timeout_ms: 10000, authentication: { kind: 'shared_source', source_id: sourceId, source_lineage_digest: c().decisionSource(sourceId).lineage_digest } } };
+        let store;
+        await fresh(() => {
+          store = decisionStore([record], [c().decisionSource(sourceId)]);
+          store.test = () => ({ outcome: 'failed', failure_code: kind === 'budget_exhausted' ? 'DECISION_NO_USABLE_CREDENTIALS' : 'DECISION_TRANSPORT_UNAVAILABLE' });
+          const original = c().handlers.test_decision_service_v3;
+          c().handlers.test_decision_service_v3 = payload => {
+            assert(JSON.stringify(Object.keys(payload.input).sort()) === JSON.stringify(['expected_configuration_digest', 'id', 'revision']), 'The connection test contains a field rejected by the strict native and console input contract');
+            const result = original(payload);
+            return result.check.outcome === 'failed' ? { ...result, decision_failure: { kind, http_status: null } } : result;
+          };
+        });
+        const before = JSON.stringify(store.sources);
+        localStorage.setItem('hiroute.language', language); c().remount();
+        await click(t('模型', 'Models')); await click(t('决策模型', 'Decision models')); await click(t('测试连接', 'Test connection'));
+        await until(() => document.querySelector('.decision-test-result.failed'), 'local budget failure');
+        const message = document.querySelector('.decision-test-result p').textContent;
+        assert(message.includes(t('本地 API 额度', 'Local API allowance')), 'Budget failure was presented as a credential or network failure');
+        document.querySelector('.decision-test-result summary').click(); await pause(40);
+        assert(document.querySelector('.decision-diagnostics code').textContent === (kind === 'budget_exhausted' ? 'DECISION_BUDGET_EXHAUSTED' : 'DECISION_BUDGET_UNAVAILABLE'), 'Diagnostics still mislabel a local budget failure');
+        assert(calls('test_decision_service_v3').length === 1 && calls('save_decision_service_v3').length === 0 && JSON.stringify(store.sources) === before, 'A local failure mutated credentials or retried implicitly');
+        store.test = () => ({ outcome: 'passed', failure_code: null });
+        await click(t('重新测试', 'Test again'));
+        await until(() => document.querySelector('.decision-test-result.passed'), 'explicit budget retry');
+        assert(calls('test_decision_service_v3').length === 2, 'The explicit retry did not execute exactly once');
+      }
+    }),
     scenario('desktop.decisions.details-and-removal', ['decision-services', 'model-connections'], 'Details explain the current test without opaque hashes; removal is visible, confirmed, cancellable and preserves shared credentials', async () => {
       for (const language of ['zh', 'en']) {
         const t = (zh, en) => language === 'zh' ? zh : en;

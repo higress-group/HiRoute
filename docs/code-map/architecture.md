@@ -415,7 +415,14 @@ wraps source saves without changing released source bytes. The
 reserves before forwarding and settles captured protocol usage independently of
 observation delivery. Gateway credential leases carry that authority, including
 source-reusing decision leases, so existing published routes obey current limits.
-Saved-Key inference probes without a complete quote fail closed at the
+Known decision prices reserve conservative input/cache bounds and settle actual
+provider usage through the same ledger. Their exact endpoint/codec/model index is
+[compiled from admitted metadata](../../crates/integrations/src/compute/defaults/decision_spending.rs);
+[the exchange](../../crates/gateway/src/core_runtime/classification/spending.rs)
+owns sent/unsent and usage evidence independently of decision-answer validity.
+Unknown prices allow requests and retain explicitly unpriced pending records;
+known allowance exhaustion still follows Key order. Saved-Key probes without a
+complete quote use the same unpriced policy at the
 [native check boundary](../../crates/daemon/src/control/runtime/model_connections/network_checks.rs).
 The [shared form](../../apps/desktop/src/features/key-budgets/KeyBudgetEditor.tsx)
 serves Key management and subscription/API setup; its

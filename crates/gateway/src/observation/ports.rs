@@ -28,6 +28,14 @@ impl ObservedCredentialResolver {
 
 #[async_trait]
 impl CredentialResolver for ObservedCredentialResolver {
+    fn decision_spend_estimates(
+        &self,
+        binding: &hiroute_domain::DecisionCredentialBindingV1,
+        input_bound: u64,
+    ) -> std::collections::BTreeMap<String, hiroute_domain::KeySpendEstimateV1> {
+        self.inner.decision_spend_estimates(binding, input_bound)
+    }
+
     fn acquire(&self, credential_ref: &str) -> Result<CredentialLease, PortError> {
         self.inner.acquire(credential_ref)
     }

@@ -37,6 +37,7 @@ pub struct TrustedReleaseCatalog {
     pub(crate) official_snapshot: Option<Box<hiroute_domain::OfficialModelSnapshotV1>>,
     pub(crate) decision_context_index:
         std::sync::OnceLock<defaults::decision_context::DecisionContextIndex>,
+    pub(crate) decision_spending_index: defaults::decision_spending::DecisionSpendingIndex,
 }
 
 impl TrustedReleaseCatalog {

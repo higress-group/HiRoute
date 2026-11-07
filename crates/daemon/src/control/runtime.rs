@@ -1140,6 +1140,22 @@ pub(crate) struct ControlNativeCredentialAuthority {
 }
 
 impl NativeCredentialAuthorityV1 for ControlNativeCredentialAuthority {
+    fn decision_spend_estimates(
+        &self,
+        binding: &hiroute_domain::DecisionCredentialBindingV1,
+        input_bound: u64,
+    ) -> std::collections::BTreeMap<String, hiroute_domain::KeySpendEstimateV1> {
+        self.adapter
+            .current_catalog()
+            .map_or_else(Default::default, |catalog| {
+                catalog.decision_spend_estimates(
+                    binding,
+                    input_bound,
+                    self.adapter.now_ms().unwrap_or(0),
+                )
+            })
+    }
+
     fn key_spend_authority(&self) -> Option<Arc<dyn hiroute_domain::KeySpendAuthorityV1>> {
         Some(Arc::new(key_spending::ControlKeySpendAuthority {
             adapter: Arc::clone(&self.adapter),

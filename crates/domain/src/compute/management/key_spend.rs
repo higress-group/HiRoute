@@ -10,6 +10,17 @@ pub struct KeySpendEstimateV1 {
     pub pricing: ExecutionPricingEvidenceV1,
     pub input_bound: u64,
     pub output_bound: u64,
+    /// Frozen whole-request input tiers, in increasing inclusive upper-bound order.
+    /// An empty list preserves the original single-rate contract.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_price_tiers: Vec<KeySpendInputPriceTierV1>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeySpendInputPriceTierV1 {
+    pub through_input_tokens: Option<u64>,
+    pub rates: crate::TokenRatesV1,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -61,35 +72,77 @@ impl KeySpendEstimateV1 {
         {
             return None;
         }
-        fn known(rate: &TokenRateV1) -> Option<u64> {
-            match rate {
-                TokenRateV1::Known {
-                    micros_per_million_tokens,
-                } => Some(*micros_per_million_tokens),
-                _ => None,
-            }
+        known_rates(&quote.rates)
+    }
+    fn valid_tiers(&self) -> Option<()> {
+        if self.input_price_tiers.len() > 8 {
+            return None;
         }
-        Some([
-            known(&quote.rates.input_uncached)?,
-            known(&quote.rates.output)?,
-            known(&quote.rates.cache_read)?,
-            known(&quote.rates.cache_write)?,
-        ])
+        let mut previous = None;
+        for (index, tier) in self.input_price_tiers.iter().enumerate() {
+            known_rates(&tier.rates)?;
+            if tier.through_input_tokens.is_none() {
+                if index + 1 != self.input_price_tiers.len() {
+                    return None;
+                }
+            } else if previous.is_some_and(|end| tier.through_input_tokens <= Some(end)) {
+                return None;
+            }
+            previous = tier.through_input_tokens;
+        }
+        self.input_price_tiers
+            .last()
+            .is_none_or(|tier| tier.through_input_tokens.is_none())
+            .then_some(())
     }
     pub fn upper_bound_micros(&self) -> Option<u64> {
         let rates = self.rates()?;
-        if self.input_bound == 0 || self.output_bound == 0 {
+        self.valid_tiers()?;
+        if self.input_bound == 0 || self.output_bound == 0 && rates[1] != 0 {
             return None;
         }
         // A cache tier is never silently priced as zero. All input capacity is
         // reserved at the most expensive complete rate, including cache writes.
-        let input = rates[0].max(rates[2]).max(rates[3]);
-        micros(&[(self.input_bound, input), (self.output_bound, rates[1])])
+        let bound = |tokens: u64, rates: [u64; 4]| {
+            if self.output_bound == 0 && rates[1] != 0 {
+                return None;
+            }
+            micros(&[
+                (tokens, rates[0].max(rates[2]).max(rates[3])),
+                (self.output_bound, rates[1]),
+            ])
+        };
+        if self.input_price_tiers.is_empty() {
+            return bound(self.input_bound, rates);
+        }
+        let mut maximum = 0;
+        let mut start = 0;
+        for tier in &self.input_price_tiers {
+            if start > self.input_bound {
+                break;
+            }
+            let end = tier.through_input_tokens.unwrap_or(u64::MAX);
+            maximum = maximum.max(bound(self.input_bound.min(end), known_rates(&tier.rates)?)?);
+            start = end.saturating_add(1);
+        }
+        Some(maximum)
     }
     pub fn usage_micros(&self, usage: &KeySpendUsageV1) -> Option<u64> {
-        let rates = self.rates()?;
         let input = usage.input_tokens?;
-        let mut output = usage.output_tokens?;
+        let mut rates = self.rates()?;
+        self.valid_tiers()?;
+        if let Some(tier) = self
+            .input_price_tiers
+            .iter()
+            .find(|tier| tier.through_input_tokens.is_none_or(|end| input <= end))
+        {
+            rates = known_rates(&tier.rates)?;
+        }
+        let mut output = if rates[1] == 0 {
+            usage.output_tokens.unwrap_or(0)
+        } else {
+            usage.output_tokens?
+        };
         match self.pricing.usage_semantics.output {
             OutputUsageMeaningV1::IncludesReasoning => {}
             OutputUsageMeaningV1::ReasoningSeparatelyAtOutputRate => {
@@ -120,6 +173,23 @@ impl KeySpendEstimateV1 {
         }
         micros(&parts)
     }
+}
+
+fn known_rates(rates: &crate::TokenRatesV1) -> Option<[u64; 4]> {
+    fn known(rate: &TokenRateV1) -> Option<u64> {
+        match rate {
+            TokenRateV1::Known {
+                micros_per_million_tokens,
+            } => Some(*micros_per_million_tokens),
+            TokenRateV1::Unknown { .. } => None,
+        }
+    }
+    Some([
+        known(&rates.input_uncached)?,
+        known(&rates.output)?,
+        known(&rates.cache_read)?,
+        known(&rates.cache_write)?,
+    ])
 }
 
 fn micros(parts: &[(u64, u64)]) -> Option<u64> {

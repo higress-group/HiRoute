@@ -208,6 +208,7 @@ impl TrustedReleaseCatalog {
         }
         self.official_snapshot = Some(Box::new(snapshot));
         self.decision_context_index = std::sync::OnceLock::new();
+        self.rebuild_decision_spending_index();
         Ok(self)
     }
 
@@ -293,6 +294,7 @@ impl TrustedReleaseCatalog {
         }
         effective.official_snapshot = Some(Box::new(admission.payload.snapshot()));
         effective.decision_context_index = std::sync::OnceLock::new();
+        effective.rebuild_decision_spending_index();
         effective.feed_facts = Some(Box::new(facts));
         Ok(effective)
     }

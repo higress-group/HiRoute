@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decisionFailureHelp, initialAuthMode, protectedInput, sameEndpointOrigin, testKey, decisionReferences } from '../src/features/decision-services/presentation.ts';
+import { decisionFailureHelp, decisionFailureDetail, initialAuthMode, protectedInput, sameEndpointOrigin, testKey, decisionReferences } from '../src/features/decision-services/presentation.ts';
 import { protocolExamples, protocolCurl } from '../src/features/decision-services/protocol-examples.ts';
 import { defaultJudgment, judgmentIssue } from '../src/features/decision-services/types.ts';
 import { readFileSync } from 'node:fs';
@@ -56,6 +56,9 @@ test('protocol examples separate the new task decision from its prior assessment
 });
 
 test('decision diagnostics distinguish confirmed causes without exposing arbitrary service text', () => {
+  assert.match(decisionFailureDetail({ kind: 'budget_exhausted', http_status: null }, 'zh'), /本地 API 额度不足/);
+  assert.match(decisionFailureDetail({ kind: 'budget_unavailable', http_status: null }, 'en'), /allowance could not be read or recorded/);
+  assert.doesNotMatch(decisionFailureDetail({ kind: 'budget_exhausted', http_status: null }, 'en'), /credentials|network/i);
   assert.match(decisionFailureHelp('CLASSIFIER_AUTH_REJECTED', 'en'), /Authentication was rejected/);
   assert.match(decisionFailureHelp('CLASSIFIER_ENDPOINT_REJECTED', 'en'), /workspace endpoint/);
   assert.match(decisionFailureHelp('CLASSIFIER_RATE_LIMITED', 'en'), /rate limit/);

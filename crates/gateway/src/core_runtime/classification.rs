@@ -45,6 +45,11 @@ mod protocol;
 #[cfg(test)]
 #[path = "classification/resource_tests.rs"]
 mod resource_tests;
+#[path = "classification/spending.rs"]
+mod spending;
+#[cfg(test)]
+#[path = "classification/spending_tests.rs"]
+mod spending_tests;
 #[path = "classification/system_one.rs"]
 mod system_one;
 pub(super) use group_policy::{apply as apply_group_policy, execution_position};
@@ -108,6 +113,8 @@ impl ClassifierDiagnosticError {
             Self::Http(failure) => match failure.kind {
                 FailureKind::AuthenticationRejected => "CLASSIFIER_AUTH_REJECTED",
                 FailureKind::RateLimited => "CLASSIFIER_RATE_LIMITED",
+                FailureKind::BudgetExhausted => "DECISION_BUDGET_EXHAUSTED",
+                FailureKind::BudgetUnavailable => "DECISION_BUDGET_UNAVAILABLE",
                 FailureKind::EndpointRejected => "CLASSIFIER_ENDPOINT_REJECTED",
                 FailureKind::InputRejected | FailureKind::ContextLimit => {
                     "CLASSIFIER_INPUT_REJECTED"
@@ -755,6 +762,7 @@ impl ProductionGatewayRuntime {
                     admitted_state,
                     None,
                     None,
+                    None,
                 )
                 .await;
         };
@@ -801,6 +809,10 @@ impl ProductionGatewayRuntime {
         let binding_key = RuntimeStateKey::binding(binding.consumer_binding_id.clone());
         let mut excluded = Vec::new();
         let mut last_failure = CallFailure::NoUsableCredentials;
+        let spend_estimates = self
+            .ports
+            .credentials
+            .decision_spend_estimates(binding, spending::input_bound(&prepared));
         for key in &admission.keys {
             ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
             let binding_permit =
@@ -916,33 +928,25 @@ impl ProductionGatewayRuntime {
                     Ok(Some(_)) => unreachable!(),
                 }
             };
-            let mut spending = match lease.reserve_spending(None) {
+            let spending = match spending::reserve(&lease, &spend_estimates) {
                 Ok(value) => value,
-                Err(hiroute_domain::KeyBudgetGateErrorV1::Authority(_)) => {
+                Err(failure)
+                    if failure.diagnostic().detail().kind == FailureKind::BudgetUnavailable =>
+                {
                     return active_failure_or_abort(
-                        CallFailure::Unavailable,
+                        failure,
                         call_deadline,
                         overall_deadline,
                         fixed_timeout_wins,
                         &cancellation,
                     );
                 }
-                Err(_) => {
+                Err(failure) => {
+                    last_failure = failure;
                     excluded.push(key.key_id.clone());
                     continue;
                 }
             };
-            if let Some(spending) = spending.as_mut()
-                && spending.mark_sent().is_err()
-            {
-                return active_failure_or_abort(
-                    CallFailure::Unavailable,
-                    call_deadline,
-                    overall_deadline,
-                    fixed_timeout_wins,
-                    &cancellation,
-                );
-            }
             let result = self
                 .call_classifier_attempt(
                     classifier,
@@ -958,6 +962,7 @@ impl ProductionGatewayRuntime {
                     None,
                     native_network,
                     network_diagnostic.as_deref_mut(),
+                    spending,
                 )
                 .await;
             let class = match &result {
@@ -1041,6 +1046,7 @@ impl ProductionGatewayRuntime {
         admitted_state: Option<&mut Option<hiroute_domain::CanonicalDigest>>,
         native_network: Option<&Arc<hiroute_domain::NativeNetworkSnapshotV1>>,
         mut network_diagnostic: Option<&mut Option<ClassifierNetworkDiagnostic>>,
+        mut spending: Option<crate::ports::KeySpendGuard>,
     ) -> Result<Result<ClassifierResponse, CallFailure>, ClassificationError> {
         let template = &prepared.template;
         if let Some(Some(diagnostic)) = network_diagnostic.as_deref_mut() {
@@ -1265,6 +1271,11 @@ impl ProductionGatewayRuntime {
         hiroute_gateway_core::runtime::timing::set_phase(
             hiroute_gateway_core::runtime::timing::LocalPhase::Decision,
         );
+        if let Some(spending) = spending.as_mut()
+            && spending.mark_sent().is_err()
+        {
+            return Ok(Err(spending::failure(FailureKind::BudgetUnavailable)));
+        }
         let exchange_result = collect_response(&mut exchange, call_deadline, &mut diagnostic).await;
         diagnostic.protocol(exchange.transport_facts().upstream_protocol);
         let (status, body) = match exchange_result {
@@ -1295,6 +1306,7 @@ impl ProductionGatewayRuntime {
                 let _ = exchange
                     .finish_or_abort_bounded(classifier_cleanup_timeout(call_deadline))
                     .await;
+                spending::unsent(spending.as_ref(), &exchange);
                 drop(response_reservation);
                 return map_call_error(
                     error,
@@ -1319,6 +1331,7 @@ impl ProductionGatewayRuntime {
                 );
             }
         };
+        spending::response(spending.as_ref(), &body, classifier.wire_protocol);
         exchange
             .submit_disposition_candidate(Disposition::Accept)
             .map_err(|_| ClassificationError::Integrity)?;

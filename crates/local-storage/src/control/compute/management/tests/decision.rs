@@ -112,6 +112,12 @@ fn decision_membership_issues_exact_leases_and_shares_only_the_destination() {
     let root = tempdir().unwrap();
     populate_saved_source(root.path(), &WorkspaceId::default());
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let key = super::key_budgets::configure(
+        &stores,
+        super::key_budgets::new_budget(1000),
+        "decision-budget",
+    );
+    let budget = super::key_budgets::view(&stores, &key);
     let before = saved(&stores);
     let first = service(&before, "decision/first", "decision-model-a");
     assert_eq!(
@@ -125,6 +131,7 @@ fn decision_membership_issues_exact_leases_and_shares_only_the_destination() {
         OperationState::Succeeded
     );
     let current = saved(&stores);
+    assert_eq!(super::key_budgets::view(&stores, &key), budget);
     assert_eq!(
         current.credentials[0].credential.generation(),
         before.credentials[0].credential.generation() + 1
@@ -198,10 +205,55 @@ fn decision_membership_issues_exact_leases_and_shares_only_the_destination() {
         OperationState::Succeeded
     );
     let retained = saved(&stores);
+    assert_eq!(super::key_budgets::view(&stores, &key), budget);
     assert_eq!(retained.credentials, next.credentials);
     assert_eq!(retained.decision_targets[0].consumers.len(), 1);
     assert!(stores.lease_decision_credential_exact(&request).is_err());
     assert!(stores.admit_decision_credentials(&second_binding).is_ok());
+    drop(stores);
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    assert_eq!(super::key_budgets::view(&stores, &key), budget);
+    assert!(stores.admit_decision_credentials(&second_binding).is_ok());
+}
+
+#[test]
+fn decision_budget_authority_damage_cannot_make_a_limited_key_unlimited() {
+    let root = tempdir().unwrap();
+    populate_saved_source(root.path(), &WorkspaceId::default());
+    let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    super::key_budgets::configure(
+        &stores,
+        super::key_budgets::new_budget(1000),
+        "decision-authority-budget",
+    );
+    let source = saved(&stores);
+    let decision = service(&source, "decision/authority", "decision-model");
+    let binding = DecisionCredentialBindingV1::for_service(&decision)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        run(&stores, add(&source, decision), "decision-authority", false).state,
+        OperationState::Succeeded
+    );
+    assert!(stores.admit_decision_credentials(&binding).is_ok());
+    stores.control().with_connection(|db| {
+        db.execute("UPDATE decision_source_effects SET key_budget_owner_operation_id='missing-budget-owner'", []).unwrap();
+    });
+    assert!(stores.admit_decision_credentials(&binding).is_err());
+    stores.control().with_connection(|db| {
+        db.execute("UPDATE decision_source_effects SET key_budget_owner_operation_id=before_owner_operation_id", []).unwrap();
+    });
+    assert!(stores.admit_decision_credentials(&binding).is_ok());
+    stores.control().with_connection(|db| {
+        db.execute(
+            "UPDATE decision_source_effects SET key_budget_owner_operation_id=NULL",
+            [],
+        )
+        .unwrap();
+    });
+    assert!(stores.admit_decision_credentials(&binding).is_err());
+    drop(stores);
+    assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
 }
 
 #[test]
@@ -212,6 +264,11 @@ fn failed_decision_activation_restores_forward_secret_generations_and_old_routes
     let restored;
     {
         let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        super::key_budgets::configure(
+            &stores,
+            super::key_budgets::new_budget(1000),
+            "decision-rollback-budget",
+        );
         before = saved(&stores);
         let decision = service(&before, "decision/rollback", "decision-model");
         let result = run(&stores, add(&before, decision), "decision-rollback", true);
@@ -244,6 +301,10 @@ fn failed_decision_activation_restores_forward_secret_generations_and_old_routes
     }
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
     assert_eq!(saved(&stores), restored);
+    stores
+        .control()
+        .validate_current_key_budgets(&restored.source_id)
+        .unwrap();
     assert!(
         stores
             .lease_native_credential_exact(&super::runtime_leases::frozen_request(&restored, 0, 0))
@@ -261,6 +322,11 @@ fn decision_activation_before_terminal_failure_completes_once_after_restart() {
     let activated;
     {
         let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        super::key_budgets::configure(
+            &stores,
+            super::key_budgets::new_budget(1000),
+            "decision-interrupted-budget",
+        );
         let before = saved(&stores);
         decision = service(&before, "decision/interrupted", "decision-model");
         let input = add(&before, decision.clone());

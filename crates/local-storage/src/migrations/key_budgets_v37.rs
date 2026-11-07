@@ -53,6 +53,16 @@ pub(super) fn initialize(tx: &rusqlite::Transaction<'_>) -> Result<(), crate::Lo
 
 #[cfg(test)]
 pub(crate) fn remove_test_shape(db: &rusqlite::Connection) {
+    if db
+        .prepare("SELECT key_budget_owner_operation_id FROM decision_source_effects LIMIT 0")
+        .is_ok()
+    {
+        db.execute_batch(
+            "ALTER TABLE decision_source_effects DROP COLUMN key_budget_owner_operation_id;
+             ALTER TABLE decision_source_effects DROP COLUMN key_budget_witness_digest;",
+        )
+        .unwrap();
+    }
     db.execute_batch(
         "DROP TABLE compute_key_budget_effects;
          DROP TABLE compute_key_spend_charges;
@@ -112,7 +122,12 @@ pub(crate) fn validate(connection: &rusqlite::Connection) -> Result<(), crate::L
         let (amount, json) = row?;
         let estimate: hiroute_domain::KeySpendEstimateV1 =
             serde_json::from_str(&json).map_err(|_| crate::LocalStorageError::InvalidData)?;
-        if estimate.upper_bound_micros() != Some(amount) {
+        let explicitly_unpriced = amount == 0
+            && estimate.pricing.validate().is_ok()
+            && estimate.pricing.quote.is_none()
+            && estimate.pricing.unknown_reason.is_some()
+            && estimate.input_price_tiers.is_empty();
+        if estimate.upper_bound_micros() != Some(amount) && !explicitly_unpriced {
             return Err(crate::LocalStorageError::InvalidData);
         }
     }

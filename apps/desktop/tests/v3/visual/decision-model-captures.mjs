@@ -106,6 +106,16 @@ const driver = `(() => {
     await click(label('决策模型', 'Decision models'));
   };
   return {
+    async 'budget-exhausted'() {
+      store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
+      c.handlers.test_decision_service_v3 = ({ input }) => {
+        const result = c.decisionNetworkTest({ schema: 'hiroute.decision-service-test-result/v2', outcome: 'failed', failure_code: 'DECISION_NO_USABLE_CREDENTIALS', duration_millis: 28, tested_configuration_digest: input.expected_configuration_digest, tested_credential_state_revision: c.decisionView(shared, [c.decisionSource(sourceId)]).credential_state_revision });
+        return input.include_decision_failure ? { ...result, decision_failure: { kind: 'budget_exhausted', http_status: null } } : result;
+      };
+      await open(); await click(label('测试连接', 'Test connection'));
+      await until(() => document.querySelector('.decision-test-result.failed'), 'budget failure');
+      return '.decision-models-page .detail-pane';
+    },
     async detail() {
       store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
       await open(); await click(label('测试连接', 'Test connection'));
@@ -208,7 +218,10 @@ const driver = `(() => {
 
 export async function decisionModelCaptures(client, baseUrl, output) {
   const results = [];
-  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 840, height: 975 }, { width: 755, height: 600 }]) for (const state of ['detail', 'removal-entry', 'removal', 'removal-blocked', 'shared-edit', 'shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-question', 'context-invalid', 'context-conflict', 'context-typesafe', 'context-error', 'context-loading']) {
+  const states = ['budget-exhausted', 'detail', 'removal-entry', 'removal', 'removal-blocked', 'shared-edit', 'shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-question', 'context-invalid', 'context-conflict', 'context-typesafe', 'context-error', 'context-loading'];
+  const selected = process.env.HIROUTE_DECISION_CAPTURE_STATES?.split(',').filter(Boolean) ?? states;
+  if (selected.length === 0 || selected.some(state => !states.includes(state))) throw new Error('Unknown or empty decision capture state selection');
+  for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 840, height: 975 }, { width: 755, height: 600 }]) for (const state of selected) {
     if (viewport.width === 840 && state !== 'shared-edit') continue;
     await navigate(client, new URL('product-shell.html', baseUrl).href, viewport);
     await waitFor(client, 'Boolean(window.productShell)');

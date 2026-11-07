@@ -86,7 +86,7 @@ impl TrustedReleaseCatalog {
         let resolved_options = registry
             .validated_options()
             .map_err(ReleaseVerificationError::Contract)?;
-        Ok(Self {
+        let mut catalog = Self {
             registry,
             resolved_options,
             model_data,
@@ -101,7 +101,10 @@ impl TrustedReleaseCatalog {
             feed_facts: None,
             official_snapshot: None,
             decision_context_index: std::sync::OnceLock::new(),
-        })
+            decision_spending_index: Default::default(),
+        };
+        catalog.rebuild_decision_spending_index();
+        Ok(catalog)
     }
 }
 

@@ -447,6 +447,14 @@ impl RuntimePublicationFeed for GatewayPublicationInstaller {
 pub trait CredentialResolver: Send + Sync {
     fn acquire(&self, credential_ref: &str) -> Result<CredentialLease, PortError>;
 
+    fn decision_spend_estimates(
+        &self,
+        _binding: &hiroute_domain::DecisionCredentialBindingV1,
+        _input_bound: u64,
+    ) -> std::collections::BTreeMap<String, hiroute_domain::KeySpendEstimateV1> {
+        Default::default()
+    }
+
     fn admit_decision_credentials(
         &self,
         _binding: &hiroute_domain::DecisionCredentialBindingV1,

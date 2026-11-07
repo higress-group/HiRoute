@@ -1,6 +1,9 @@
 use super::*;
 use hiroute_application::compute_management::TrustedComputeCandidateRegistry;
-use hiroute_application_api::{ModelConnectionAuthenticationStatusV1, NativeNetworkRouteKindV1};
+use hiroute_application_api::{
+    ModelConnectionAuthenticationStatusV1, ModelConnectionInferenceStatusV1,
+    NativeNetworkRouteKindV1,
+};
 use hiroute_domain::{NativeNetworkRegistryV1, NativeProxyEnvironmentV1};
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -64,6 +67,31 @@ fn context(
             policy,
         },
     }
+}
+
+#[test]
+fn cancelled_inference_probe_does_not_enter_dispatch() {
+    let service = NativeModelConnectionServiceV1::new(
+        TrustedComputeCandidateRegistry::new(),
+        ReqwestModelDirectoryTransportV1,
+    );
+    let mut draft = draft("network-model");
+    draft.inference_model_id = Some("network-model".into());
+    let cancellation = ModelConnectionProbeCancellationV1::default();
+    cancellation.cancel();
+    let checked = service
+        .check_with_network_before_inference(
+            draft,
+            NativeModelConnectionCredentialV1::NotRequired,
+            &cancellation,
+            context(NativeNetworkPolicyV1::Inherit, [], "check-epoch"),
+            || panic!("cancelled probe entered inference dispatch"),
+        )
+        .unwrap();
+    assert_eq!(
+        checked.check.inference,
+        ModelConnectionInferenceStatusV1::NotRun
+    );
 }
 
 #[test]

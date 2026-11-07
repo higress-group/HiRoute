@@ -2,11 +2,13 @@
 import hashlib
 import http.client
 import json
+import sqlite3
 import sys
+import threading
 import time
 from credential_pool_product import save_source
 from model_connections_product import MODEL, NATIVE_TOKEN, NativeUpstream, control, declared, publish_plan_and_agent, save_native_source
-from publication_product import Product, encoded
+from publication_product import Product, V1, encoded
 from plan_content_process import read_content
 
 
@@ -47,10 +49,10 @@ def price(product, binding, currency='USD'):
     product.apply('prices override apply', 'ApplyPriceOverrideChange', preview, {'spec': preview['spec']}, 'key-budget-price-' + currency)
 
 
-def saved_probe(product, upstream, saved, inference):
+def saved_probe(product, upstream, saved, inference_model=None):
     source = next(row for row in control(product, 'ListCompute', {})['data']['sources']
                   if row['source_id'] == saved['source_id'])
-    draft = {'inference_model_id': MODEL if inference else None, 'candidate_ref': None,
+    draft = {'inference_model_id': inference_model, 'candidate_ref': None,
         'lineage_ref': 'lineage/native/product', 'display_name': source['display_name'],
         'existing_source_id': saved['source_id'], 'expected_source_revision': source['revision'],
         'edit_revision': 1, 'check_id': 'budget-probe-' + str(time.monotonic_ns()),
@@ -64,6 +66,71 @@ def saved_probe(product, upstream, saved, inference):
                 'context_tokens': declared(32768), 'max_output_tokens': declared(4096),
                 'native_reasoning': declared({'kind': 'fixed', 'profile': 'provider-default'})}}]}
     return product.public_cli('compute connection test', {'kind': 'native', 'request': {'draft': draft}}, success=False)
+
+
+def decision_budget(product, source_id, first, second):
+    from http.server import ThreadingHTTPServer
+    from decision_connections_v2_product import Endpoint
+    Endpoint.requests = []
+    Endpoint.failure = None
+    Endpoint.reject_input = False
+    endpoint = ThreadingHTTPServer(('127.0.0.1', 0), Endpoint)
+    thread = threading.Thread(target=endpoint.serve_forever, daemon=True)
+    thread.start()
+    try:
+        command = ('decision connections apply --id decision/local-budget --name Budgeted '
+            '--provider openai --source ' + source_id + ' --endpoint '
+            f'http://127.0.0.1:{endpoint.server_port}/v1/decisions')
+        preview = product.public_cli(command)[1]['data']
+        applied = product.public_cli('decision connections apply', {'schema_version': V1,
+            'spec': preview['normalized_spec'], 'accept_digest': preview['change_digest'],
+            'expected_revisions': preview['expected_revisions'], 'idempotency_key': 'budget-decision-save'})[1]
+        assert applied['data']['state'] == 'succeeded', applied
+
+        def test(detail=True):
+            view = next(row for row in control(product, 'ListDecisionServicesV3', {})['data']['services']
+                        if row['service']['id'] == 'decision/local-budget')
+            request = {'id': view['service']['id'], 'revision': view['service']['revision'],
+                'expected_configuration_digest': view['configuration_digest']}
+            if detail:
+                request['include_decision_failure'] = True
+            return product.public_cli('decision network test', request)[1]['data']
+
+        before = query(product, source_id)
+        accepted = test()
+        assert accepted['check']['outcome'] == 'passed', accepted
+        assert Endpoint.requests[-1][0] == 'Bearer ' + NATIVE_TOKEN, Endpoint.requests
+        after = query(product, source_id)
+        assert [(b['lifetime_spent_micros'], b['reserved_micros']) for b in after['budgets']] == [
+            (b['lifetime_spent_micros'], b['reserved_micros']) for b in before['budgets']]
+        with sqlite3.connect(product.storage / 'live/control.db') as db:
+            pending = db.execute("SELECT COUNT(*) FROM compute_key_spend_reservations WHERE state='pending' AND amount_micros=0 AND key_id=?", (first,)).fetchone()[0]
+            assert pending > 0, 'unpriced decision did not retain pending evidence'
+        # Both local budgets are known exhausted. Do not make another provider
+        # call, and expose the actual local cause only to opted-in callers.
+        for key in (first, second):
+            current = query(product, source_id)
+            budget = next(b for b in current['budgets'] if b['definition']['budget_id'] == current['bindings'][key])
+            assert budget['lifetime_spent_micros'] > 0, budget
+            allowance(product, source_id, key, budget['lifetime_spent_micros'], 'exhaust-' + key.rsplit('-', 1)[-1], budget['definition'], currency=budget['definition']['policy']['currency'])
+        count = len(Endpoint.requests)
+        refused = test()
+        assert refused['check']['outcome'] == 'failed', refused
+        assert refused['decision_failure'] == {'kind': 'budget_exhausted', 'http_status': None}, refused
+        assert len(Endpoint.requests) == count, 'exhausted decision called the provider'
+        legacy = test(False)
+        assert 'decision_failure' not in legacy, legacy
+        current = query(product, source_id)
+        first_budget = next(b for b in current['budgets'] if b['definition']['budget_id'] == current['bindings'][first])
+        allowance(product, source_id, first, 1_000_000, 'decision-restore', first_budget['definition'])
+        assert test()['check']['outcome'] == 'passed'
+        product.stop(); product.start()
+        assert test()['check']['outcome'] == 'passed'
+        print(json.dumps({'scenario': 'decision-key-budget-real-cli', 'state': 'green',
+            'same_key_and_budget': True, 'unknown_price_allowed': True, 'unpriced_pending': True,
+            'budget_failure_detail': True, 'legacy_result_unchanged': True, 'restart_preserved': True}), flush=True)
+    finally:
+        endpoint.shutdown(); endpoint.server_close(); thread.join(timeout=5)
 
 
 def run(repository):
@@ -81,16 +148,26 @@ def run(repository):
         product.register_protected_frame({'schema': 'hiroute.protected-input/v1', 'registration_id': hashlib.sha256(b'budget-fallback').hexdigest(), **candidate, 'secret': fallback})
         save_source(product, saved, [{'action': 'add', 'input_candidate': candidate}], 'budget-add-fallback')
         # The same public saved-Key probe is reachable before a limit is set.
-        assert saved_probe(product, upstream, saved, True)[0] == 0
+        assert saved_probe(product, upstream, saved, MODEL)[0] == 0
         assert any(row['method'] == 'POST' for row in upstream.requests), upstream.requests
         configured = allowance(product, source_id, first, 1_000_000, 'initial')
         with upstream.lock:
             before_probe = len(upstream.requests)
-        exit_code, refused = saved_probe(product, upstream, saved, True)
-        assert exit_code != 0 and refused['error']['code'] == 'ACTION_REQUIRED', refused
-        assert len(upstream.requests) == before_probe, 'limited saved-Key probe reached upstream'
-        assert saved_probe(product, upstream, saved, False)[0] == 0
-        assert all(row['method'] == 'GET' for row in upstream.requests[before_probe:])
+        exit_code, accepted = saved_probe(product, upstream, saved, MODEL)
+        assert exit_code == 0, accepted
+        assert any(row['method'] == 'POST' for row in upstream.requests[before_probe:]), 'unpriced saved-Key probe did not reach upstream'
+        before_rejected = len(upstream.requests)
+        exit_code, rejected = saved_probe(product, upstream, saved, 'model-not-in-draft')
+        assert exit_code != 0, rejected
+        assert len(upstream.requests) == before_rejected, 'rejected probe reached upstream'
+        with sqlite3.connect(product.storage / 'live/control.db') as db:
+            records = db.execute(
+                'SELECT state,amount_micros FROM compute_key_spend_reservations WHERE key_id=? ORDER BY rowid',
+                (first,)).fetchall()
+            assert records == [('pending', 0), ('released', 0)], records
+        before_directory = len(upstream.requests)
+        assert saved_probe(product, upstream, saved)[0] == 0
+        assert all(row['method'] == 'GET' for row in upstream.requests[before_directory:])
         publish_plan_and_agent(product, saved['binding_id'])
         frozen = read_content(product)
 
@@ -111,9 +188,9 @@ def run(repository):
             assert [row['authorization'] for row in attempts] == ['Bearer ' + expected_key], attempts
             assert read_content(product) == frozen, 'allowance change republished the frozen plan'
 
-        # A native manual source without a source price cannot use its limited
-        # Key as free traffic. The admitted next Key is still available.
-        request(fallback)
+        # Unknown prices allow the first admitted Key, with unpriced pending
+        # evidence instead of a fabricated zero-cost charge.
+        request(NATIVE_TOKEN)
         assert query(product, source_id)['budgets'][0]['lifetime_spent_micros'] == 0
         price(product, saved['binding_id'])
         request(NATIVE_TOKEN)
@@ -137,7 +214,7 @@ def run(repository):
         allowance(product, source_id, first, 1_000_000, 'restore', reopened['definition'])
         request(NATIVE_TOKEN)
         assert query(product, source_id)['budgets'][0]['lifetime_spent_micros'] == 14
-        request(fallback, hosted=True)
+        request(NATIVE_TOKEN, hosted=True)
         stable = query(product, source_id)['budgets'][0]
         assert stable['lifetime_spent_micros'] == 14 and stable['reserved_micros'] == 0, stable
         # Explicit CNY prices use CNY allowance; the receipt's USD observation
@@ -152,7 +229,9 @@ def run(repository):
         cny = next(item for item in cny['budgets'] if item['definition']['budget_id'] == cny['bindings'][second])
         assert cny['lifetime_spent_micros'] == 7 and cny['available_micros'] == 999_993, cny
 
-        print(json.dumps({'scenario': 'key-budget-real-gateway', 'state': 'green', 'unknown_price_skipped': True, 'key_fallback': True, 'usage_settled': True, 'restart_preserved': True, 'cap_edits_retain_spending': True, 'frozen_plan_unchanged': True}), flush=True)
+        decision_budget(product, source_id, first, second)
+
+        print(json.dumps({'scenario': 'key-budget-real-gateway', 'state': 'green', 'unknown_price_allowed': True, 'saved_probe_allowed': True, 'key_fallback': True, 'usage_settled': True, 'restart_preserved': True, 'cap_edits_retain_spending': True, 'frozen_plan_unchanged': True}), flush=True)
     finally:
         product.close(); upstream.close()
 

@@ -43,7 +43,7 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .unwrap();
-    if kind == DatabaseKind::Control && matches!(version, 34..=38) {
+    if kind == DatabaseKind::Control && matches!(version, 34..=39) {
         crate::control::agent_locator::validate_coverage(&transaction).unwrap();
     }
     transaction
@@ -68,6 +68,9 @@ fn commit_step(path: &Path, kind: DatabaseKind, version: u32) {
     }
     if kind == DatabaseKind::Control && version == 38 {
         decision_sources_v34::refresh_locator(&transaction).unwrap();
+    }
+    if kind == DatabaseKind::Control && version == 39 {
+        key_spending_v39::initialize(&transaction).unwrap();
     }
     transaction
         .pragma_update(None, "user_version", version)
@@ -240,7 +243,7 @@ fn missing_original_backup_for_old_mixed_versions_refuses_without_adopting_data(
 
 #[test]
 fn prior_target_batch_finishes_and_archives_before_a_new_current_batch() {
-    for target in [24, 25, 32, 33, 34, 35, 37] {
+    for target in [24, 25, 32, 33, 34, 35, 37, 38] {
         for persist_phase in [false, true] {
             let directory = crate::test_tempdir().unwrap();
             let root = directory.path().join("storage");

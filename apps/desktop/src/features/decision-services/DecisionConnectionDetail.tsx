@@ -4,7 +4,7 @@ import { networkFailureText, networkRepairable, type NativeNetworkRoute } from '
 import { Disclosure, UiIcon } from '../../ui';
 import type { Draft, Plan } from '../../plan-editor';
 import type { DecisionServiceView } from './contracts';
-import { decisionFailureDetail, decisionFailureHelp, decisionReferences, providerLabel } from './presentation';
+import { decisionDiagnosticCode, decisionFailureDetail, decisionFailureHelp, decisionReferences, providerLabel } from './presentation';
 import { recordProtocol, recordProvider, recordSharedSource, repairActions, sourceName, sourceStateLabel, type RepairAction, type TestPresentation, type TestRecord } from './form-state';
 import { DecisionIcon } from './DecisionIcon';
 
@@ -37,6 +37,7 @@ export function DecisionConnectionDetail({ view, language, mutable, busy, state,
     }
   };
   const failedActions = state === 'failed' ? result?.network_failure && networkRepairable(result.network_failure) ? ['retry' as const] : repairActions(result?.code, !!sharedId) : [];
+  const diagnosticCode = decisionDiagnosticCode(result?.decision_failure, result?.code);
   const heading = state === 'testing' ? t('正在测试…', 'Testing…')
     : state === 'passed' ? t('连接测试通过', 'Connection test passed')
       : state === 'stale' ? t('上次测试通过 — 凭据、网络或配置已变化，尚未重新测试', 'Previous test passed — credentials, network or configuration changed; not retested')
@@ -49,7 +50,7 @@ export function DecisionConnectionDetail({ view, language, mutable, busy, state,
       {result && state === 'passed' && <p>{t(`配置版本 ${service.revision} · ${result.duration ?? '—'} ms · ${new Date(result.at).toLocaleTimeString()}`, `Configuration ${service.revision} · ${result.duration ?? '—'} ms · ${new Date(result.at).toLocaleTimeString()}`)}</p>}
       {result && state === 'failed' && <p>{result.decision_failure ? decisionFailureDetail(result.decision_failure, language) : result.network_failure ? networkFailureText(result.network_failure, language === 'zh') : decisionFailureHelp(result.code ?? '', language)}</p>}
       {sharedId && state === 'failed' && networkRepairable(result?.network_failure) && <button className="btn" type="button" disabled={busy} onClick={() => setNetworkReveal(value => value + 1)}>{t('检查网络设置', 'Review network settings')}</button>}
-      {state === 'failed' && result?.code && <Disclosure label={t('诊断详情', 'Diagnostic details')} language={language}><dl className="decision-facts decision-diagnostics"><div><dt>{t('错误代码', 'Error code')}</dt><dd><code>{result.code}</code></dd></div></dl></Disclosure>}
+      {state === 'failed' && diagnosticCode && <Disclosure label={t('诊断详情', 'Diagnostic details')} language={language}><dl className="decision-facts decision-diagnostics"><div><dt>{t('错误代码', 'Error code')}</dt><dd><code>{diagnosticCode}</code></dd></div></dl></Disclosure>}
     </div></div>
       <div className="decision-test-actions"><button className="btn" disabled={!mutable || busy || networkDirty} onClick={onTest}><UiIcon name="refresh" />{state === 'untested' ? t('测试连接', 'Test connection') : t('重新测试', 'Test again')}</button>{failedActions.filter(item => item !== 'retry').map(action)}{state === 'unverified' && action('refresh')}{onUse && <button className="btn btn-primary" disabled={busy || networkDirty} onClick={onUse}>{t('用于当前路由', 'Use in current route')}</button>}</div>
       <p className="field-help">{t('测试发送固定示例，可能消耗配额；不读取真实会话。结果仅对应此配置版本，不能证明最大窗口容量、所有 Key 可用或实际路由质量。', 'Testing sends a fixed example and may use quota; no real conversation is read. Results apply to this version only and do not establish maximum context capacity, that every key works, or routing quality.')}</p></section>

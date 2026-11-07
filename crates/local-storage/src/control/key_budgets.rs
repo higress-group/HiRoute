@@ -1,5 +1,5 @@
 //! Indexed spending authority. Request admission never scans observation/history tables.
-mod current;
+pub(super) mod current;
 mod policy_undo;
 use super::*;
 use hiroute_domain::{
@@ -284,28 +284,57 @@ impl ControlStore {
         let mut wallet = load(&tx, &workspace, &id)?.ok_or_else(failure)?;
         let at = now_ms();
         renew(&mut wallet, at)?;
-        let estimate = estimate.ok_or(KeyBudgetGateErrorV1::PriceUnavailable)?;
-        let quote = estimate
-            .pricing
-            .quote
-            .as_ref()
-            .ok_or(KeyBudgetGateErrorV1::PriceUnavailable)?;
-        if quote.actual_source_ref != source || quote.exact_target.source_id != source {
-            return Err(KeyBudgetGateErrorV1::PriceUnavailable);
-        }
-        if quote.currency != wallet.definition.policy.currency {
-            return Err(KeyBudgetGateErrorV1::CurrencyMismatch);
-        }
-        let cost = estimate
-            .upper_bound_micros()
-            .ok_or(KeyBudgetGateErrorV1::PriceUnavailable)?;
         let available = wallet
             .balance
             .saturating_sub(amount(wallet.reserved)?)
             .max(0) as u64;
-        if cost > available {
+        if estimate
+            .and_then(|e| e.pricing.quote.as_ref())
+            .is_some_and(|quote| {
+                quote.actual_source_ref != source || quote.exact_target.source_id != source
+            })
+        {
+            return Err(invalid("compute.key_budget.price_source").into());
+        }
+        let priced = estimate.filter(|e| {
+            e.pricing
+                .quote
+                .as_ref()
+                .is_some_and(|q| q.currency == wallet.definition.policy.currency)
+                && e.upper_bound_micros().is_some()
+        });
+        let unknown;
+        let estimate = if let Some(estimate) = priced {
+            estimate
+        } else {
+            // Unknown price is permission to proceed, never a zero-cost charge.
+            // Keep a durable zero-amount pending record in the same ledger.
+            unknown = KeySpendEstimateV1 {
+                pricing: hiroute_domain::ExecutionPricingEvidenceV1 {
+                    usage_semantics: Default::default(),
+                    schema_version: hiroute_domain::EXECUTION_PRICING_SCHEMA_V1.into(),
+                    request_generation: None,
+                    captured_at_ms: at,
+                    attempt_execution_at_ms: at,
+                    quote: None,
+                    reference_quote: None,
+                    unknown_reason: Some(hiroute_domain::PriceUnknownReasonV1::PriceNotCollected),
+                },
+                input_bound: 1,
+                output_bound: 1,
+                input_price_tiers: vec![],
+            };
+            &unknown
+        };
+        let cost = estimate.upper_bound_micros();
+        let exhausted = match cost {
+            Some(cost) => cost > available,
+            None => wallet.balance <= 0,
+        };
+        if exhausted {
             return Err(KeyBudgetGateErrorV1::Exhausted);
         }
+        let cost = cost.unwrap_or(0);
         let mut bytes = [0u8; 16];
         getrandom::fill(&mut bytes).map_err(|_| failure())?;
         let reservation_id = format!(

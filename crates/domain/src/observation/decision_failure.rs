@@ -8,6 +8,8 @@ pub enum DecisionFailureKindV1 {
     Unavailable,
     SourceDisabled,
     NoUsableCredentials,
+    BudgetExhausted,
+    BudgetUnavailable,
     AuthenticationRejected,
     ProxyAuthenticationRejected,
     RateLimited,

@@ -1538,7 +1538,7 @@
       ],
       "legacy_support": [],
       "owner": "decision-foundation/native-network",
-      "reason": "The explicit V2 test operation retains its strict result. The network-aware V3 operation wraps the same V2 check and independently records admitted Native network evidence; both call one production diagnostic.",
+      "reason": "The explicit V2 test operation retains its strict result. The network-aware V3 operation wraps the same V2 check and independently records admitted Native network evidence; both call one production diagnostic. Current callers explicitly opt into safe decision_failure detail for local budget causes; calls without that opt-in retain the released V2 check shape and codes.",
       "removal_condition": "Retire an explicit operation only with the supported-client compatibility decision; do not add network fields to the strict V2 result."
     },
     {
@@ -2737,6 +2737,22 @@
         "crates/domain/src/operation/failure.rs",
         "crates/domain/src/operation/mod.rs",
         "crates/local-storage/src/control/operation_status.rs"
+      ]
+    },
+    {
+      "contract": "hiroute.key-budget/v1",
+      "field": "Core V38 single-rate spending estimates from a1cbc5d96c0e8a207ecf276dda89c2c7cc78b4e1 omit input_price_tiers",
+      "mode": "recovery_read_only",
+      "owner": "compute-management/key-spending",
+      "reason": "The current reader defaults omitted tiers to the original single-rate meaning and leaves frozen quote identities and pending reservations unchanged. The additive three-store V39 transition admits decision input tiers and explicitly unpriced pending records and backfills a keyed budget-authority reference for decision-owned sources; older binaries refuse V39 before reading the new ledger.",
+      "removal_condition": "Retire only after the supported release and backup policy retires all original single-rate reservations, or an identity-preserving conversion replaces this reader.",
+      "allowed_paths": [
+        "crates/domain/src/compute/management/key_spend.rs",
+        "crates/local-storage/src/control/key_budgets.rs",
+        "crates/local-storage/src/migrations/key_budgets_v37.rs",
+        "crates/local-storage/src/migrations/key_spending_v39.rs",
+        "crates/local-storage/src/migrations/mod.rs",
+        "crates/local-storage/src/control/compute/management/tests/key_budgets.rs"
       ]
     }
   ]
