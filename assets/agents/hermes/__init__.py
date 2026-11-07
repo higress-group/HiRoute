@@ -285,26 +285,36 @@ def _adapter(config):
         entry = config["plugins"]["entries"]["hiroute"]
         provider_id = entry["provider_id"]
         provider = config["providers"][provider_id]
-        route = ("custom", entry["model"], entry["base_url"], entry["api_mode"])
+        model = entry["model"]
+        base_url = entry["base_url"]
+        api_mode = entry["api_mode"]
         bearer = provider["extra_headers"]["X-HiRoute-Token"]
         if not (
             isinstance(provider_id, str)
             and provider_id.startswith("hiroute-main-")
             and config["model"]["provider"] == provider_id
-            and config["model"]["default"] == route[1]
-            and provider["default_model"] == route[1]
-            and provider["api"] == route[2]
-            and provider["transport"] == route[3]
-            and route[3] in ("chat_completions", "codex_responses", "anthropic_messages")
+            and config["model"]["default"] == model
+            and provider["default_model"] == model
+            and provider["api"] == base_url
+            and provider["transport"] == api_mode
+            and api_mode in ("chat_completions", "codex_responses", "anthropic_messages")
             and _token(bearer)
         ):
             return None
     except (KeyError, TypeError):
         return None
 
+    # A restored Hermes session can retain the named provider on its model override.
+    provider_labels = ("custom", provider_id, f"custom:{provider_id}")
+    route = (model, base_url, api_mode)
+
     def llm_request(request, **context):
-        selected = tuple(context.get(k) for k in ("provider", "model", "base_url", "api_mode"))
-        if selected != route or not isinstance(request, dict):
+        selected = tuple(context.get(k) for k in ("model", "base_url", "api_mode"))
+        if (
+            context.get("provider") not in provider_labels
+            or selected != route
+            or not isinstance(request, dict)
+        ):
             return None
         existing = request.get("extra_headers")
         if existing is not None and not isinstance(existing, Mapping):
