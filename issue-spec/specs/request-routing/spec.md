@@ -227,7 +227,7 @@ A model-generated empty string name in Responses historical function/custom call
 may continue natively with its failed tool result. Missing/non-string names, empty
 call IDs, or empty declarations/required choices still fail. The empty-history-name
 exception makes the request native-only and disables conversion, ContextHold, and
-reasoning cleanup; it cannot guess a tool name or delete failed history.
+reasoning prefix cleanup. Projection cannot guess a tool name or delete failed tool history.
 
 Namespace/custom tools map to Chat only with unique reversible identities and
 expressible schemas/format/choice. Name collisions, illegal target names, nested
@@ -318,8 +318,19 @@ Decision results cannot enlarge candidates/Keys or change cost/auth/relay bounda
 Fixed and free-first routes make zero decision calls. Current low-score protection
 and failure rules belong to [decision policy](../decision-services/spec.md).
 
-Lossless same-protocol opaque provider state is forwarded even across a source/model
-family; the provider may reject it. Cross-protocol projection follows only declared
+For native Responses routes with multiple candidates and a reliable session identity,
+each candidate MUST project a recognized reasoning item when its exact ID and encrypted
+state match a fully delivered response from a different endpoint or credential
+destination in the same authorized session. Omit the whole item if its encrypted
+state is opaque. Otherwise omit only its ID and preserve the plaintext reasoning
+shape. Text, tool calls and results, their identities and order, and the original
+captured history remain intact. Reasoning that matches the candidate's own
+destination, unknown reasoning shapes, and reasoning without retained source evidence
+keep their existing native replay semantics. Optional source evidence is bounded and
+process-local. It cannot select a candidate or authorize access.
+
+Other same-protocol opaque state retains its native replay semantics.
+Cross-protocol projection follows only declared
 conversion rules, including the known reasoning omissions and actual-projection
 warnings in the [execution-plane contract](../p0-gateway-execution-plane/spec.md#requirement-historical-tools-and-reasoning-do-not-require-delivery-registries).
 That reasoning rule does not permit dropping unknown state, stored handles, tool
@@ -330,7 +341,8 @@ MUST be rejected rather than borrowing a reasoning-state owner's proof;
 On classified routes, a same-session contextual assessment target does not prove
 provider-state ownership or authorize a cleaned retry. An unverified history rewrite
 retains its original canonical state for every candidate/fallback projection; only
-the same declared conversion rules apply, without additional history cleanup.
+the declared conversions and exact source-evidenced omissions apply, without
+additional history cleanup.
 Ordinary reasoning omission does not create a cleanup retry or watermark. This does not
 change the existing free-first ContextHold cleanup contract.
 

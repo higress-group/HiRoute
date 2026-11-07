@@ -34,6 +34,7 @@ pub struct PreparedNativeTemplate {
     pub(crate) chat_tool_projection: Option<ChatToolProjection>,
     pub(crate) function_encoding_projection: super::super::FunctionEncodingProjection,
     pub(crate) request_projection_loss: super::RequestProjectionLoss,
+    pub(crate) foreign_reasoning_removed: usize,
 }
 
 /// Structural JSON plus replay-backed substitutions shared by provider and
@@ -111,18 +112,33 @@ pub fn project_candidate_request_template(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
 ) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
-    project_candidate_request_template_with_cleanup(request, profile, None)
+    project_candidate_request_template_with_history(request, profile, None, &[])
 }
 
+#[cfg(test)]
 pub(crate) fn project_candidate_request_template_with_cleanup(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
     omit_reasoning_prefix: Option<usize>,
 ) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
+    project_candidate_request_template_with_history(request, profile, omit_reasoning_prefix, &[])
+}
+
+pub(crate) fn project_candidate_request_template_with_history(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+    omit_reasoning_prefix: Option<usize>,
+    foreign_reasoning: &[usize],
+) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
     let requirements = request.requirements();
     let reasoning = profile.validate(&requirements)?;
     let native = request.native_body.is_some()
         && request.ingress_protocol == profile.capability.upstream_protocol;
+    let foreign_reasoning = if native && request.ingress_protocol == IngressProtocol::Responses {
+        foreign_reasoning
+    } else {
+        &[]
+    };
     let request_projection_loss = if native {
         super::RequestProjectionLoss::default()
     } else {
@@ -155,8 +171,14 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
             }
         }
     };
-    let (mut body, function_encoding_projection) =
-        super::native::project(request, profile, body, omit_reasoning_prefix, false)?;
+    let (mut body, function_encoding_projection) = super::native::project(
+        request,
+        profile,
+        body,
+        omit_reasoning_prefix,
+        foreign_reasoning,
+        false,
+    )?;
     super::native::protect_projected_controls(request, profile, reasoning, &mut body)?;
     let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
@@ -215,6 +237,10 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         chat_tool_projection,
         function_encoding_projection,
         request_projection_loss,
+        foreign_reasoning_removed: foreign_reasoning
+            .iter()
+            .filter(|&&index| index >= omit_reasoning_prefix.unwrap_or(0))
+            .count(),
     })
 }
 

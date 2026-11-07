@@ -55,6 +55,7 @@ pub(super) fn project(
     profile: &CandidateProtocolProfile,
     canonical: Value,
     omit_prefix: Option<usize>,
+    foreign_reasoning: &[usize],
     unbacked: bool,
 ) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
     // Ingress classifies this carrier before Replay externalization. Use the
@@ -66,6 +67,9 @@ pub(super) fn project(
             .enumerate()
             .skip(omit_prefix.unwrap_or(0))
             .any(|(index, message)| {
+                if foreign_reasoning.binary_search(&index).is_ok() {
+                    return false;
+                }
                 request.responses_reasoning_history.get(&index).is_some_and(|history| {
                     history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque
                 }) || message.content.iter().any(|part| {
@@ -213,13 +217,18 @@ pub(super) fn project(
     // Status sidecars use the original canonical indexes. Normalize before
     // prefix cleanup removes reasoning items and shifts later native positions.
     normalize_codex_replay(&mut body, profile, request);
-    if let Some(end) = omit_prefix {
-        if request.native_only {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "unknown history cannot be cleaned".into(),
-            ));
-        }
-        clean_prefix(&mut body, request.ingress_protocol, end);
+    if omit_prefix.is_some() && request.native_only {
+        return Err(ProtocolAdapterError::ClientUnrepresentable(
+            "unknown history cannot be cleaned".into(),
+        ));
+    }
+    if omit_prefix.is_some() || !foreign_reasoning.is_empty() {
+        project_reasoning_history(
+            &mut body,
+            request,
+            omit_prefix.unwrap_or(0),
+            foreign_reasoning,
+        );
     }
     project_dialect(body, profile, FunctionEncodingProjection::Preserve)
 }
@@ -380,7 +389,13 @@ fn remove_assignment(object: &mut Map<String, Value>, path: &[String]) {
     }
 }
 
-fn clean_prefix(body: &mut Value, protocol: IngressProtocol, end: usize) {
+fn project_reasoning_history(
+    body: &mut Value,
+    request: &ModelRequestIRV1,
+    end: usize,
+    foreign_reasoning: &[usize],
+) {
+    let protocol = request.ingress_protocol;
     let key = if protocol == IngressProtocol::Responses {
         "input"
     } else {
@@ -402,13 +417,29 @@ fn clean_prefix(body: &mut Value, protocol: IngressProtocol, end: usize) {
         if protocol == IngressProtocol::Responses && item["type"] == "additional_tools" {
             return true;
         }
-        let clean = index < end;
+        let position = index;
         index += 1;
-        if !clean {
+        let clean = position < end;
+        if protocol == IngressProtocol::Responses && item["type"] == "reasoning" {
+            if clean {
+                return false;
+            }
+            if foreign_reasoning.binary_search(&position).is_ok()
+                && let Some(history) = request.responses_reasoning_history.get(&position)
+            {
+                if history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque {
+                    return false;
+                }
+                // A plaintext summary can replay without the old source's
+                // stored reasoning reference.
+                item.as_object_mut()
+                    .expect("typed reasoning item")
+                    .remove("id");
+            }
             return true;
         }
-        if protocol == IngressProtocol::Responses && item["type"] == "reasoning" {
-            return false;
+        if !clean {
+            return true;
         }
         if let Some(object) = item.as_object_mut() {
             object.remove("reasoning_content");

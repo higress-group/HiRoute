@@ -200,6 +200,14 @@ For reasoning history, [native request projection](src/adapters/request/native.r
 uses the retained canonical encrypted state classified by ingress. Missing, null and
 empty-string carriers keep their original shape; nonempty or Replay-backed opaque state
 excludes the standard target, including legacy provider state without a sidecar.
+For correlated native Responses routes, the [source evidence owner](src/responses_reasoning.rs)
+remembers bounded ID and ciphertext fingerprints from accepted deliveries. Candidate
+preflight and final wire materialization omit opaque items proven to come from another
+configured destination and remove only the ID from foreign plaintext reasoning. The
+store retains no response bytes and a missing or ambiguous match preserves normal
+replay. This projection creates no retry or
+ContextHold watermark. The [two-way listener scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/responses_reasoning_switch.rs)
+checks foreign omission, same-source tool continuation and unrelated sessions.
 Authorized prefix cleanup uses original canonical positions and excludes tool declarations.
 The [reasoning regressions](src/adapters/responses_dialect_reasoning_tests.rs) and
 [Replay checks](src/adapters/responses_dialect_reasoning_replay_tests.rs) cover these

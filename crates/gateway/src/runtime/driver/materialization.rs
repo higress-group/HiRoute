@@ -24,6 +24,7 @@ use crate::attempt_outcome::{AttemptFailure, RawAttemptFailure, classify_failure
 use crate::ports::{
     CredentialLeaseRequest, ExecutionScope, RuntimeStateEntry, RuntimeStateKey, RuntimeStateStore,
 };
+use crate::responses_reasoning::ReasoningSource;
 use crate::runtime::native_endpoint_state_key;
 use crate::server::composition::{
     PortError, ProductionPorts, RuntimeStateStore as ProductionStore,
@@ -262,6 +263,7 @@ pub(super) async fn materialize_attempt(
         .as_ref()
         .ok_or_else(|| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?;
     let cleanup_prefix = logical.reasoning_cleanup.prefix_for(context.binding_id());
+    let reasoning_source = || ReasoningSource::for_execution(execution);
     let mut prepared = match logical.templates.take(
         candidate
             .candidate_id
@@ -273,8 +275,17 @@ pub(super) async fn materialize_attempt(
     ) {
         Some(prepared) => prepared,
         None => {
-            adapters::project_candidate_request_template_with_cleanup(ir, profile, cleanup_prefix)
-                .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
+            let foreign = logical
+                .templates
+                .reasoning
+                .foreign_positions(reasoning_source);
+            adapters::project_candidate_request_template_with_history(
+                ir,
+                profile,
+                cleanup_prefix,
+                &foreign,
+            )
+            .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
         }
     };
     let streaming = ir.stream;
@@ -607,6 +618,10 @@ pub(super) async fn materialize_attempt(
         ProductionAttemptState {
             spending,
             request_reasoning_projection,
+            foreign_reasoning_removed: prepared.foreign_reasoning_removed,
+            reasoning_origin: native_output
+                .then(|| logical.templates.reasoning.origin(reasoning_source))
+                .flatten(),
             request_projection_loss: prepared.request_projection_loss,
             managed_cpa: execution.connector_runtime
                 == hiroute_domain::ConnectorRuntimeKind::CpaBridge
