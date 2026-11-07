@@ -1,5 +1,7 @@
 //! Typed Task Scheduler COM boundary. Recovery may export an owned native Task's XML.
 use std::io;
+
+use serde::Deserialize;
 use windows::Win32::Foundation::{VARIANT_BOOL, VARIANT_FALSE, VARIANT_TRUE};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
@@ -328,16 +330,19 @@ unsafe fn verify_task(registered: &IRegisteredTask, expected: &Definition) -> io
     unsafe {
         let task = registered.Definition().map_err(com_error)?;
         let principal = task.Principal().map_err(com_error)?;
-        let mut sid = BSTR::new();
         let mut logon_type = TASK_LOGON_NONE;
         let mut level = TASK_RUNLEVEL_HIGHEST;
-        principal.UserId(&mut sid).map_err(com_error)?;
         principal.LogonType(&mut logon_type).map_err(com_error)?;
         principal.RunLevel(&mut level).map_err(com_error)?;
         let actions = task.Actions().map_err(com_error)?;
         let mut count = 0;
         actions.Count(&mut count).map_err(com_error)?;
-        let owner_matches = same_owner(&sid.to_string(), &expected.owner_sid)?;
+        // The account getters may present a SID as an isolated account name.
+        // Keep both owner IDs tied to the same definition as the action and settings.
+        let mut xml = BSTR::new();
+        task.XmlText(&mut xml).map_err(com_error)?;
+        let owners = task_owners(&xml.to_string())?;
+        let owner_matches = same_owner(&owners.principals.principal.user_id, &expected.owner_sid)?;
         let enabled = registered.Enabled().map_err(com_error)?;
         if !owner_matches
             || logon_type != TASK_LOGON_INTERACTIVE_TOKEN
@@ -385,14 +390,12 @@ unsafe fn verify_task(registered: &IRegisteredTask, expected: &Definition) -> io
                 format!("background task trigger count differs: {count}"),
             ));
         }
-        let logon: ILogonTrigger = triggers
+        let _: ILogonTrigger = triggers
             .get_Item(1)
             .map_err(com_error)?
             .cast()
             .map_err(com_error)?;
-        let mut trigger_sid = BSTR::new();
-        logon.UserId(&mut trigger_sid).map_err(com_error)?;
-        if !same_owner(&trigger_sid.to_string(), &expected.owner_sid)? {
+        if !same_owner(&owners.triggers.logon_trigger.user_id, &expected.owner_sid)? {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "background task logon trigger owner differs",
@@ -421,8 +424,39 @@ unsafe fn verify_task(registered: &IRegisteredTask, expected: &Definition) -> io
     }
 }
 
-// Scheduler may expose a resolved account name after registration. Authorize
-// that value only by resolving its SID, never by display name or casing alone.
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct TaskOwners {
+    principals: TaskPrincipals,
+    triggers: TaskTriggers,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct TaskPrincipals {
+    principal: TaskUser,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct TaskTriggers {
+    logon_trigger: TaskUser,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct TaskUser {
+    user_id: String,
+}
+
+fn task_owners(xml: &str) -> io::Result<TaskOwners> {
+    if xml.len() > 256 * 1024 {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    quick_xml::de::from_str(xml).map_err(|_| io::ErrorKind::InvalidData.into())
+}
+
+// A name in the persisted definition must still resolve to the exact SID.
 fn same_owner(actual: &str, expected: &str) -> io::Result<bool> {
     if actual == expected {
         return Ok(true);
@@ -499,6 +533,21 @@ fn foreign() -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_owner_ids_come_from_principal_and_logon_trigger() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-16"?>
+            <Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+                <RegistrationInfo><Author>same-as-computer</Author></RegistrationInfo>
+                <Triggers><LogonTrigger><UserId>S-1-5-21-1-2-3-1234</UserId></LogonTrigger></Triggers>
+                <Principals><Principal id="Author"><UserId>S-1-5-21-1-2-3-5678</UserId></Principal></Principals>
+            </Task>"#;
+        let owners = task_owners(xml).unwrap();
+        assert_eq!(owners.principals.principal.user_id, "S-1-5-21-1-2-3-5678");
+        assert_eq!(owners.triggers.logon_trigger.user_id, "S-1-5-21-1-2-3-1234");
+        assert!(task_owners(&xml.replace("<UserId>S-1-5-21-1-2-3-1234</UserId>", "")).is_err());
+    }
+
     #[test]
     fn registration_preserves_demand_start_and_logon_policy_across_reopen() {
         let temporary = tempfile::tempdir().unwrap();

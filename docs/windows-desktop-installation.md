@@ -22,6 +22,10 @@ is adopted when its layout and journal match; incompatible material requires
 repair/reinstallation. A prepared journal blocks business startup until recovery reconciles
 files, the marker and actual Task registration. No new business mutations are
 replayed during installation recovery.
+The [Task Scheduler verification](../crates/platform/src/windows/task.rs) reads
+the principal and logon trigger identities from the registered definition XML.
+When the definition stores a SID, verification compares it directly with the
+current user's SID, avoiding ambiguity in account names displayed by Windows.
 
 The separate shell inventory records only its installed files and digests. Its
 private preparation journal retains matching previous bytes until installation,

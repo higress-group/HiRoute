@@ -318,6 +318,7 @@ if ($Scope -eq 'components') {
     'windows::service::token::tests::restricted_business_child_runs_with_owner_medium_token',
     'windows::shell_login::tests::fixed_login_command_is_quoted_even_for_paths_without_spaces',
     'windows::shell_registration::tests::inherited_export_is_published_privately_and_changed_material_is_not_overwritten',
+    'windows::task::tests::task_owner_ids_come_from_principal_and_logon_trigger',
     'windows::task::tests::registration_preserves_demand_start_and_logon_policy_across_reopen') @('--nocapture')
   Invoke-RequiredTests 'jobs' @('-p','hiroute-platform','--test','job_windows') @(
     'job_stops_surviving_tool_after_leader_exit_and_preserves_neighbor',

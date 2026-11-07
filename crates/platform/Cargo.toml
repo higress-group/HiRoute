@@ -17,6 +17,7 @@ zeroize.workspace = true
 nix.workspace = true
 
 [target.'cfg(windows)'.dependencies]
+quick-xml = { version = "=0.41.0", features = ["serialize"] }
 url = "=2.5.8"
 windows-sys = { version = "0.61.2", features = [
     "Wdk_Foundation",
