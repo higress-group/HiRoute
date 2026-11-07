@@ -192,7 +192,7 @@ pub struct ProductionAttemptState {
     spending: Option<crate::ports::KeySpendGuard>,
     managed_cpa: bool,
     request_reasoning_projection: Option<RequestReasoningProjection>,
-    foreign_reasoning_removed: usize,
+    reasoning_history_removed: usize,
     reasoning_origin: Option<crate::responses_reasoning::ReasoningOrigin>,
     request_projection_loss: adapters::RequestProjectionLoss,
     #[cfg(all(unix, debug_assertions))]
@@ -241,7 +241,7 @@ impl ProductionAttemptState {
     ) {
         request.reasoning_cleanup(
             hiroute_diagnostics::event::ReasoningCleanupReason::RequestProtocolProjection,
-            self.foreign_reasoning_removed,
+            self.reasoning_history_removed,
             None,
         );
         if let Some(projection) = &self.request_reasoning_projection {

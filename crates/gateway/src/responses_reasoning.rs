@@ -1,5 +1,5 @@
-//! Optional source evidence for a native Responses replay. A cache miss keeps the
-//! original payload. The evidence never authorizes a request or a candidate.
+//! Optional source evidence and stateless summary replay for native Responses.
+//! These facts never authorize a request or a candidate.
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::sync::Arc;
@@ -26,7 +26,10 @@ type Fingerprint = [u8; 32];
 type ItemKey = (ContextHoldKey, Fingerprint);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct ReasoningSource(Fingerprint);
+pub(crate) struct ReasoningSource {
+    identity: Fingerprint,
+    openai_responses: bool,
+}
 
 impl ReasoningSource {
     pub(crate) fn for_execution(execution: &SealedCandidateExecutionV1) -> Self {
@@ -52,11 +55,20 @@ impl ReasoningSource {
                         target.credential_destination_ref.as_str(),
                     )
                 });
-        Self(
-            hash_identity(endpoint, destination.as_bytes())
+        Self {
+            identity: hash_identity(endpoint, destination.as_bytes())
                 .finalize()
                 .into(),
-        )
+            openai_responses: endpoint.parse::<http::Uri>().is_ok_and(|uri| {
+                uri.scheme_str() == Some("https")
+                    && uri
+                        .host()
+                        .is_some_and(|host| host.eq_ignore_ascii_case("api.openai.com"))
+                    && uri.port_u16().unwrap_or(443) == 443
+                    && uri.path_and_query().map(http::uri::PathAndQuery::as_str)
+                        == Some("/v1/responses")
+            }),
+        }
     }
 }
 
@@ -113,7 +125,45 @@ impl ReasoningOrigin {
 pub struct ResponsesReasoningReplay {
     scope: Option<(Arc<ReasoningStore>, ContextHoldKey)>,
     sources: Vec<(usize, ReasoningSource)>,
+    stateless_mixed_source: bool,
     _memory: Option<Reservation>,
+}
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct ReasoningReplayProjection<'a> {
+    sources: &'a [(usize, ReasoningSource)],
+    target: Option<ReasoningSource>,
+    untracked_summary_ids: bool,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ReasoningReplayAction {
+    Preserve,
+    Foreign,
+    PortableSummary,
+}
+
+impl ReasoningReplayProjection<'_> {
+    pub(crate) fn is_empty(self) -> bool {
+        self.sources.is_empty() && !self.untracked_summary_ids
+    }
+
+    pub(crate) fn untracked_summary_ids(self) -> bool {
+        self.untracked_summary_ids
+    }
+
+    pub(crate) fn action(self, index: usize) -> ReasoningReplayAction {
+        match self
+            .sources
+            .binary_search_by_key(&index, |(index, _)| *index)
+        {
+            Ok(position) if Some(self.sources[position].1) != self.target => {
+                ReasoningReplayAction::Foreign
+            }
+            Err(_) if self.untracked_summary_ids => ReasoningReplayAction::PortableSummary,
+            _ => ReasoningReplayAction::Preserve,
+        }
+    }
 }
 
 impl ResponsesReasoningReplay {
@@ -139,20 +189,32 @@ impl ResponsesReasoningReplay {
         }) else {
             return Self::default();
         };
+        let capacity = request.responses_reasoning_history.len().min(REQUEST_ITEMS);
         let mut result = Self {
             scope: Some((Arc::clone(store), scope.clone())),
+            stateless_mixed_source: capacity != 0
+                && request
+                    .responses_options
+                    .as_ref()
+                    .is_some_and(|options| options.store == Some(false))
+                && matches!(
+                    authorized.planner_policy().identity,
+                    crate::server::core_runtime::profiles::PlannerRouteIdentityV2::Plan { .. }
+                )
+                && authorized
+                    .candidates()
+                    .windows(2)
+                    .any(|pair| pair[0].endpoint != pair[1].endpoint),
             ..Self::default()
         };
-        let capacity = request.responses_reasoning_history.len().min(REQUEST_ITEMS);
         if capacity == 0 || !store.0.lock().scopes.contains_key(&scope) {
             return result;
         }
         let Some(layout) = request.native_history_layout() else {
             return result;
         };
-        let bytes_per_item = size_of::<(usize, Fingerprint)>()
-            + size_of::<(usize, ReasoningSource)>()
-            + size_of::<usize>();
+        let bytes_per_item =
+            size_of::<(usize, Fingerprint)>() + size_of::<(usize, ReasoningSource)>();
         let Ok(memory) = replay
             .budget()
             .reserve(MemoryRole::ModelIrBacking, capacity * bytes_per_item)
@@ -206,19 +268,23 @@ impl ResponsesReasoningReplay {
         result
     }
 
-    pub(crate) fn has_matched_items(&self) -> bool {
-        !self.sources.is_empty()
+    pub(crate) fn can_project(&self) -> bool {
+        !self.sources.is_empty() || self.stateless_mixed_source
     }
 
-    pub(crate) fn foreign_positions(&self, target: impl FnOnce() -> ReasoningSource) -> Vec<usize> {
-        if self.sources.is_empty() {
-            return Vec::new();
+    pub(crate) fn project(
+        &self,
+        target: impl FnOnce() -> ReasoningSource,
+    ) -> ReasoningReplayProjection<'_> {
+        if !self.can_project() {
+            return ReasoningReplayProjection::default();
         }
         let target = target();
-        self.sources
-            .iter()
-            .filter_map(|(index, source)| (*source != target).then_some(*index))
-            .collect()
+        ReasoningReplayProjection {
+            sources: &self.sources,
+            target: Some(target),
+            untracked_summary_ids: self.stateless_mixed_source && target.openai_responses,
+        }
     }
 
     pub(crate) fn origin(
@@ -333,4 +399,88 @@ fn fingerprint(
         hash.update(text.as_bytes());
     }
     Some(hash.finalize().into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server::core_runtime::adapters::{
+        decode_ingress_request, project_candidate_request_template_with_history,
+    };
+    use crate::server::core_runtime::profiles::{
+        Fidelity, NativeProviderStateEmission, fixed_reasoning,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn stateless_openai_replay_keeps_old_summaries_without_resolving_old_ids() {
+        let body = json!({
+            "model": "route", "store": false, "stream": true,
+            "input": [
+                {"role":"user","content":"Earlier task"},
+                {"type":"reasoning","id":"rs_old_absent","summary":[
+                    {"type":"summary_text","text":"An earlier portable summary"}]},
+                {"type":"reasoning","id":"rs_old_null","encrypted_content":null,"summary":[
+                    {"type":"summary_text","text":"Another earlier summary"}]},
+                {"type":"reasoning","id":"rs_same_source","summary":[
+                    {"type":"summary_text","text":"Same-source history"}]},
+                {"type":"reasoning","id":"rs_unknown_ciphertext","summary":[],"encrypted_content":"opaque"},
+                {"type":"reasoning","id":"rs_reference_only","summary":[]},
+                {"type":"reasoning","id":"rs_native_extension","summary":[
+                    {"type":"summary_text","text":"Unknown history"}],"provider_extension":true},
+                {"type":"reasoning","id":"rs_incomplete","status":"incomplete","summary":[
+                    {"type":"summary_text","text":"Incomplete history"}]},
+                {"type":"function_call","id":"fc_original","call_id":"call_a","name":"lookup","arguments":"{}"},
+                {"type":"function_call_output","call_id":"call_a","output":"result"},
+                {"role":"user","content":"Current task"}
+            ]
+        });
+        let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+        let original = request.clone();
+        let mut profile = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "fixture",
+            fixed_reasoning("fixture"),
+        );
+        profile.capability.native_provider_state = NativeProviderStateEmission::Native;
+        profile.capability.request.provider_state = Fidelity::Exact;
+        profile.capability.response.provider_state = Fidelity::Exact;
+        let openai = "https://api.openai.com/v1/responses";
+        let openai_source = ReasoningSource::for_profile(&profile, openai, "openai-key");
+
+        for (endpoint, mixed_sources, expected_removed) in [
+            (openai, true, 2),
+            (openai, false, 0),
+            ("http://127.0.0.1:28001/v1/responses", true, 0),
+            ("https://api.openai.com.example/v1/responses", true, 0),
+        ] {
+            // An upgraded process has no delivery evidence for the older IDs.
+            let replay = ResponsesReasoningReplay {
+                sources: if endpoint == openai {
+                    vec![(3, openai_source)]
+                } else {
+                    Vec::new()
+                },
+                stateless_mixed_source: mixed_sources,
+                ..Default::default()
+            };
+            let reasoning =
+                replay.project(|| ReasoningSource::for_profile(&profile, endpoint, "openai-key"));
+            let template = project_candidate_request_template_with_history(
+                &request, &profile, None, reasoning,
+            )
+            .unwrap();
+            let rendered: Value = serde_json::from_slice(&template.bytes).unwrap();
+            let mut expected = body["input"].clone();
+            if expected_removed != 0 {
+                for index in [1, 2] {
+                    expected[index].as_object_mut().unwrap().remove("id");
+                }
+            }
+            assert_eq!(rendered["input"], expected, "{endpoint}");
+            assert_eq!(template.reasoning_history_removed, expected_removed);
+            assert_eq!(request, original);
+        }
+    }
 }

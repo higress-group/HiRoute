@@ -275,15 +275,12 @@ pub(super) async fn materialize_attempt(
     ) {
         Some(prepared) => prepared,
         None => {
-            let foreign = logical
-                .templates
-                .reasoning
-                .foreign_positions(reasoning_source);
+            let reasoning_replay = logical.templates.reasoning.project(reasoning_source);
             adapters::project_candidate_request_template_with_history(
                 ir,
                 profile,
                 cleanup_prefix,
-                &foreign,
+                reasoning_replay,
             )
             .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
         }
@@ -618,7 +615,7 @@ pub(super) async fn materialize_attempt(
         ProductionAttemptState {
             spending,
             request_reasoning_projection,
-            foreign_reasoning_removed: prepared.foreign_reasoning_removed,
+            reasoning_history_removed: prepared.reasoning_history_removed,
             reasoning_origin: native_output
                 .then(|| logical.templates.reasoning.origin(reasoning_source))
                 .flatten(),

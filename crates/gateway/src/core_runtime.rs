@@ -1218,8 +1218,7 @@ impl ProductionGatewayRuntime {
                         TransportError::Io("current candidate binding unavailable".into())
                     })?;
                 let profile = execution.bytes().clone();
-                if frozen_candidates.is_empty() && prepared_templates.reasoning.has_matched_items()
-                {
+                if frozen_candidates.is_empty() && prepared_templates.reasoning.can_project() {
                     first_reasoning_source =
                         Some(crate::responses_reasoning::ReasoningSource::for_execution(
                             execution.execution(),
@@ -1337,21 +1336,22 @@ impl ProductionGatewayRuntime {
                         .iter()
                         .find(|candidate| candidate.candidate_id == first_id)?
                         .protocol_profile;
-                    let foreign = first_reasoning_source.map_or_else(Vec::new, |source| {
-                        prepared_templates.reasoning.foreign_positions(|| source)
-                    });
+                    let reasoning_replay = first_reasoning_source
+                        .map_or_else(Default::default, |source| {
+                            prepared_templates.reasoning.project(|| source)
+                        });
                     let normal = adapters::project_candidate_request_template_with_history(
                         &canonical_request,
                         profile,
                         None,
-                        &foreign,
+                        reasoning_replay,
                     )
                     .ok()?;
                     let cleaned = adapters::project_candidate_request_template_with_history(
                         &canonical_request,
                         profile,
                         Some(canonical_request.messages.len()),
-                        &foreign,
+                        reasoning_replay,
                     )
                     .ok()?;
                     (normal.bytes != cleaned.bytes)

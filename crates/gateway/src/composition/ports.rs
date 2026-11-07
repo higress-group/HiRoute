@@ -10,7 +10,7 @@ use crate::ports::{
     CasOutcome, CredentialLeaseRequest, ExecutionScope, HeaderSecretLeaseRequest,
     ProbeLeaseOutcome, RuntimeStateEntry, RuntimeStateKey,
 };
-use crate::responses_reasoning::ReasoningSource;
+use crate::responses_reasoning::{ReasoningReplayProjection, ReasoningSource};
 use crate::server::core_runtime::adapters;
 use crate::server::core_runtime::model_ir::{ModelIrError, ModelRequestIRV1};
 use crate::server::core_runtime::profiles::{
@@ -262,17 +262,19 @@ fn build_planner_input(
                 None,
             )
         };
-        let foreign_reasoning = templates.as_ref().map_or_else(Vec::new, |templates| {
-            templates.reasoning.foreign_positions(|| {
-                ReasoningSource::for_profile(
-                    &profile,
-                    candidate.operational_target.uri(),
-                    &candidate.credential_destination_ref,
-                )
-            })
-        });
+        let reasoning_replay = templates
+            .as_ref()
+            .map_or_else(Default::default, |templates| {
+                templates.reasoning.project(|| {
+                    ReasoningSource::for_profile(
+                        &profile,
+                        candidate.operational_target.uri(),
+                        &candidate.credential_destination_ref,
+                    )
+                })
+            });
         let projection =
-            project_candidate_facts_with_history(&request, &profile, &foreign_reasoning)?;
+            project_candidate_facts_with_history(&request, &profile, reasoning_replay)?;
         if let Some((reason, message_index)) = projection.rejection
             && let Some(observation) = crate::server::core_runtime::observation::active_request()
         {
@@ -357,13 +359,13 @@ fn project_candidate_facts(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
 ) -> Result<CandidateProjectionFacts, PortError> {
-    project_candidate_facts_with_history(request, profile, &[])
+    project_candidate_facts_with_history(request, profile, ReasoningReplayProjection::default())
 }
 
 fn project_candidate_facts_with_history(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
-    foreign_reasoning: &[usize],
+    reasoning_replay: ReasoningReplayProjection<'_>,
 ) -> Result<CandidateProjectionFacts, PortError> {
     let tool_interface_unrepresentable = request.ingress_protocol == IngressProtocol::Responses
         && match profile.capability.upstream_protocol {
@@ -401,7 +403,7 @@ fn project_candidate_facts_with_history(
         request,
         profile,
         None,
-        foreign_reasoning,
+        reasoning_replay,
     ) {
         Ok(projected) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: u64::try_from(projected.wire_len)

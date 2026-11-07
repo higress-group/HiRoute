@@ -325,9 +325,17 @@ destination in the same authorized session. Omit the whole item if its encrypted
 state is opaque. Otherwise omit only its ID and preserve the plaintext reasoning
 shape. Text, tool calls and results, their identities and order, and the original
 captured history remain intact. Reasoning that matches the candidate's own
-destination, unknown reasoning shapes, and reasoning without retained source evidence
-keep their existing native replay semantics. Optional source evidence is bounded and
-process-local. It cannot select a candidate or authorize access.
+destination and unknown reasoning shapes keep their existing native replay semantics.
+Optional source evidence is bounded and process-local. It cannot select a candidate
+or authorize access.
+
+For a correlated Plan with different candidate endpoints and explicit Responses
+`store:false`, the exact OpenAI platform Responses endpoint also receives portable
+plaintext summaries without unresolved `rs_` references. When no source evidence
+matches a recognized item with a nonempty summary and no encrypted or other native
+reasoning content, omit only its ID for that candidate. This projection applies to
+older and restored history and retains the original item in canonical history.
+Other untracked reasoning keeps native replay semantics.
 
 Other same-protocol opaque state retains its native replay semantics.
 Cross-protocol projection follows only declared
@@ -340,8 +348,8 @@ MUST be rejected rather than borrowing a reasoning-state owner's proof;
 `previous_response_id` does not become a substitute for complete visible history.
 On classified routes, a same-session contextual assessment target does not prove
 provider-state ownership or authorize a cleaned retry. An unverified history rewrite
-retains its original canonical state for every candidate/fallback projection; only
-the declared conversions and exact source-evidenced omissions apply, without
+retains its original canonical state for every candidate/fallback projection. Only
+the declared conversions and native Responses projections above apply, without
 additional history cleanup.
 Ordinary reasoning omission does not create a cleanup retry or watermark. This does not
 change the existing free-first ContextHold cleanup contract.

@@ -1,4 +1,6 @@
 //! Preserve native payloads; only routing and configured controls belong to us.
+use crate::responses_reasoning::{ReasoningReplayAction, ReasoningReplayProjection};
+
 use super::super::FunctionEncodingProjection;
 use super::*;
 
@@ -55,9 +57,9 @@ pub(super) fn project(
     profile: &CandidateProtocolProfile,
     canonical: Value,
     omit_prefix: Option<usize>,
-    foreign_reasoning: &[usize],
+    reasoning_replay: ReasoningReplayProjection<'_>,
     unbacked: bool,
-) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
+) -> Result<(Value, FunctionEncodingProjection, usize), ProtocolAdapterError> {
     // Ingress classifies this carrier before Replay externalization. Use the
     // retained canonical range, not presence or shifted indexes in a native tree.
     if super::super::responses_dialect::standard_json(profile)
@@ -67,7 +69,7 @@ pub(super) fn project(
             .enumerate()
             .skip(omit_prefix.unwrap_or(0))
             .any(|(index, message)| {
-                if foreign_reasoning.binary_search(&index).is_ok() {
+                if reasoning_replay.action(index) == ReasoningReplayAction::Foreign {
                     return false;
                 }
                 request.responses_reasoning_history.get(&index).is_some_and(|history| {
@@ -110,12 +112,13 @@ pub(super) fn project(
             } else {
                 FunctionEncodingProjection::Preserve
             },
+            0,
         );
     }
     let Some(original) = &request.native_body else {
         let mut canonical = canonical;
         normalize_codex_replay(&mut canonical, profile, request);
-        return project_dialect(canonical, profile, FunctionEncodingProjection::Preserve);
+        return project_dialect(canonical, profile, FunctionEncodingProjection::Preserve, 0);
     };
     let mut body = original.clone();
     if unbacked {
@@ -222,26 +225,29 @@ pub(super) fn project(
             "unknown history cannot be cleaned".into(),
         ));
     }
-    if omit_prefix.is_some() || !foreign_reasoning.is_empty() {
+    let removed = if omit_prefix.is_some() || !reasoning_replay.is_empty() {
         project_reasoning_history(
             &mut body,
             request,
             omit_prefix.unwrap_or(0),
-            foreign_reasoning,
-        );
-    }
-    project_dialect(body, profile, FunctionEncodingProjection::Preserve)
+            reasoning_replay,
+        )
+    } else {
+        0
+    };
+    project_dialect(body, profile, FunctionEncodingProjection::Preserve, removed)
 }
 
 fn project_dialect(
     mut body: Value,
     profile: &CandidateProtocolProfile,
     mut projection: FunctionEncodingProjection,
-) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
+    reasoning_removed: usize,
+) -> Result<(Value, FunctionEncodingProjection, usize), ProtocolAdapterError> {
     if super::super::responses_dialect::standard_json(profile) {
         projection = super::super::responses_dialect::project_request(&mut body)?;
     }
-    Ok((body, projection))
+    Ok((body, projection, reasoning_removed))
 }
 
 /// Codex subscription input rejects the output-only reasoning status, including
@@ -393,8 +399,8 @@ fn project_reasoning_history(
     body: &mut Value,
     request: &ModelRequestIRV1,
     end: usize,
-    foreign_reasoning: &[usize],
-) {
+    reasoning_replay: ReasoningReplayProjection<'_>,
+) -> usize {
     let protocol = request.ingress_protocol;
     let key = if protocol == IngressProtocol::Responses {
         "input"
@@ -402,8 +408,13 @@ fn project_reasoning_history(
         "messages"
     };
     let Some(items) = body.get_mut(key).and_then(Value::as_array_mut) else {
-        return;
+        return 0;
     };
+    let portable_layout = reasoning_replay
+        .untracked_summary_ids()
+        .then(|| request.native_history_layout())
+        .flatten();
+    let mut removed = 0;
     let mut index = 0usize;
     items.retain_mut(|item| {
         // Chat's leading instructions are outside canonical message indexes;
@@ -424,17 +435,33 @@ fn project_reasoning_history(
             if clean {
                 return false;
             }
-            if foreign_reasoning.binary_search(&position).is_ok()
-                && let Some(history) = request.responses_reasoning_history.get(&position)
-            {
-                if history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque {
-                    return false;
+            let Some(history) = request.responses_reasoning_history.get(&position) else {
+                return true;
+            };
+            let remove_id = match reasoning_replay.action(position) {
+                ReasoningReplayAction::Foreign => {
+                    if history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque {
+                        removed += 1;
+                        return false;
+                    }
+                    true
                 }
-                // A plaintext summary can replay without the old source's
-                // stored reasoning reference.
-                item.as_object_mut()
+                ReasoningReplayAction::PortableSummary => {
+                    portable_layout
+                        .and_then(|layout| layout.get(position))
+                        .is_some_and(|item| item.modeled)
+                        && portable_summary_reference(request, position, history)
+                }
+                ReasoningReplayAction::Preserve => false,
+            };
+            if remove_id
+                && item
+                    .as_object_mut()
                     .expect("typed reasoning item")
-                    .remove("id");
+                    .remove("id")
+                    .is_some()
+            {
+                removed += 1;
             }
             return true;
         }
@@ -461,4 +488,32 @@ fn project_reasoning_history(
         }
         true
     });
+    removed
+}
+
+fn portable_summary_reference(
+    request: &ModelRequestIRV1,
+    position: usize,
+    history: &ResponsesReasoningHistoryV1,
+) -> bool {
+    matches!(
+        history.encrypted_content,
+        ResponsesReasoningEncryptedContentV1::Absent | ResponsesReasoningEncryptedContentV1::Null
+    ) && request
+        .responses_item_ids
+        .get(&position)
+        .and_then(|id| id.strip_prefix("rs_"))
+        .is_some_and(|suffix| !suffix.is_empty())
+        && request
+            .responses_item_statuses
+            .get(&position)
+            .is_none_or(|status| status == "completed")
+        && history
+            .native_fields
+            .get("summary")
+            .and_then(Value::as_array)
+            .is_some_and(|summary| !summary.is_empty())
+        && history.native_fields.get("content").is_none_or(|content| {
+            content.is_null() || content.as_array().is_some_and(Vec::is_empty)
+        })
 }
