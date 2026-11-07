@@ -106,6 +106,14 @@ fn finish_output_item(
     match required_str(item, "type")? {
         "message" => finish_message_item(core, native_index, item, status, final_snapshot, output),
         "reasoning" => {
+            if final_snapshot
+                && core.replayed_reasoning.binary_search(&native_index).is_ok()
+                && core.responses_encrypted_final.contains_key(&native_index)
+            {
+                // Native projection reconciled this terminal frame with the
+                // item.done snapshot already captured for client replay.
+                return Ok(());
+            }
             finish_reasoning_item(core, native_index, item, status, final_snapshot, output)
         }
         "function_call" | "custom_tool_call" => {

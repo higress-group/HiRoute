@@ -49,6 +49,7 @@ pub(crate) struct NativeProjectedUnit {
     pub(crate) semantic: bool,
     pub(crate) terminal: Option<NativeTerminalOutcome>,
     pub(crate) failure: Option<ModelError>,
+    pub(crate) replayed_reasoning: Vec<u32>,
 }
 
 pub(crate) struct NativeResponseProjector {
@@ -194,6 +195,7 @@ impl NativeResponseProjector {
                 response_items: BTreeMap::new(),
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
+                reasoning_summary_changes: 0,
                 completion_diagnostic: diagnostic::CompletionDiagnostic::default(),
                 responses_done_seen: false,
                 usage: ModelUsage::default(),
@@ -245,6 +247,7 @@ impl NativeResponseProjector {
                         .ok_or(ModelIrError::MissingTerminalEvent)?,
                 ),
                 failure: metadata.failure,
+                replayed_reasoning: Vec::new(),
             }]);
         }
 
@@ -269,6 +272,14 @@ impl NativeResponseProjector {
 
     pub(crate) fn usage(&self) -> &ModelUsage {
         &self.state.usage
+    }
+
+    pub(crate) fn take_reasoning_summary_changes(&mut self) -> u64 {
+        if self.ended && self.state.terminal == Some(NativeTerminalOutcome::Complete) {
+            std::mem::take(&mut self.state.reasoning_summary_changes)
+        } else {
+            0
+        }
     }
 
     pub(crate) fn awaiting_responses_eof(&self) -> bool {
@@ -312,6 +323,7 @@ struct ResponseItemEvidence {
     identity: Option<[u8; 32]>,
     done: Option<[u8; 32]>,
     added_text: Vec<evidence::AddedTextPrefix>,
+    reasoning_done: Option<evidence::ReasoningDoneEvidence>,
 }
 
 pub(super) struct ProjectionState {
@@ -331,6 +343,7 @@ pub(super) struct ProjectionState {
     response_items: BTreeMap<u32, ResponseItemEvidence>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
+    reasoning_summary_changes: u64,
     completion_diagnostic: diagnostic::CompletionDiagnostic,
     responses_done_seen: bool,
     usage: ModelUsage,
@@ -352,6 +365,7 @@ pub(super) struct ProjectionMetadata {
     pub(super) terminal: Option<NativeTerminalOutcome>,
     pub(super) failure: Option<ModelError>,
     pub(super) source_bytes: usize,
+    pub(super) replayed_reasoning: Vec<u32>,
 }
 
 impl ProjectionState {
@@ -429,10 +443,8 @@ impl ProjectionState {
             return Ok((
                 None,
                 ProjectionMetadata {
-                    semantic: false,
                     terminal: Some(terminal),
-                    failure: None,
-                    source_bytes: 0,
+                    ..ProjectionMetadata::opaque()
                 },
             ));
         }
@@ -461,6 +473,7 @@ impl ProjectionState {
             self.terminal = Some(NativeTerminalOutcome::Unknown);
             metadata.terminal = None;
             metadata.failure = None;
+            metadata.replayed_reasoning.clear();
         }
         if self.omit_thinking {
             omit_messages_thinking_text(&mut value);
@@ -500,6 +513,7 @@ impl ProjectionState {
         }
         let mut terminal = None;
         let mut failure = None;
+        let mut replayed_reasoning = Vec::new();
         let semantic = match native_type.as_str() {
             "response.created" | "response.in_progress" => {
                 let response = object_field_mut(object, "response")?;
@@ -540,8 +554,9 @@ impl ProjectionState {
                 self.project_response_identity(response)?;
                 self.project_responses_output(response)?;
                 let semantic = responses_output_is_semantic(response);
-                self.reconcile_response_items(response);
-                self.reconcile_response_deltas(response);
+                let replayed_done =
+                    self.reconcile_response_items(response, native_type == "response.completed");
+                self.reconcile_response_deltas(response, &replayed_done);
                 self.observe_usage(IngressProtocol::Responses, response.get("usage"));
                 let expected = match native_type.as_str() {
                     "response.completed" => ("completed", NativeTerminalOutcome::Complete),
@@ -562,6 +577,9 @@ impl ProjectionState {
                 };
                 self.set_terminal(outcome)?;
                 terminal = Some(outcome);
+                if outcome == NativeTerminalOutcome::Complete {
+                    replayed_reasoning = replayed_done;
+                }
                 if expected.1 == NativeTerminalOutcome::Failed {
                     failure = Some(loose_error(response.get("error").unwrap_or(&Value::Null)));
                 }
@@ -583,7 +601,8 @@ impl ProjectionState {
             semantic,
             terminal,
             failure,
-            source_bytes: 0,
+            replayed_reasoning,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -707,7 +726,7 @@ impl ProjectionState {
             semantic,
             terminal,
             failure,
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -719,10 +738,9 @@ impl ProjectionState {
             let outcome = NativeTerminalOutcome::Failed;
             self.set_terminal(outcome)?;
             return Ok(ProjectionMetadata {
-                semantic: false,
                 terminal: Some(outcome),
                 failure: Some(loose_error(&Value::Object(object.clone()))),
-                source_bytes: 0,
+                ..ProjectionMetadata::opaque()
             });
         }
         self.project_identity(object)?;
@@ -763,9 +781,7 @@ impl ProjectionState {
         }
         Ok(ProjectionMetadata {
             semantic,
-            terminal: None,
-            failure: None,
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -793,7 +809,7 @@ impl ProjectionState {
             terminal: Some(terminal),
             failure: (terminal == NativeTerminalOutcome::Failed)
                 .then(|| loose_error(object.get("error").unwrap_or(&Value::Null))),
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -832,8 +848,7 @@ impl ProjectionState {
                         .any(|block| block.as_object().is_some_and(message_block_is_semantic))
                 }),
             terminal: Some(terminal),
-            failure: None,
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -884,8 +899,7 @@ impl ProjectionState {
                     })
                 }),
             terminal: Some(terminal),
-            failure: None,
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 

@@ -30,6 +30,7 @@ impl ProjectionMetadata {
             terminal: None,
             failure: None,
             source_bytes: 0,
+            replayed_reasoning: Vec::new(),
         }
     }
 }

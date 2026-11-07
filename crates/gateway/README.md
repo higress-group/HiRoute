@@ -753,8 +753,12 @@ proof is incomplete. The protocol projector retains only the first closed reason
 frame ordinal and event shape; the driver attributes it to the actual attempt.
 This diagnostic carries no content or native identities and cannot change the
 provider result, optional capture or downstream output. Native snapshot equality
-uses complete canonical JSON values, independent of object key order; pure SSE
-comments retain the model's terminal state across transport fragmentation.
+uses canonical JSON values independent of object key order. When a successful
+Responses terminal repeats verified reasoning with a different nonempty cipher or
+summary, the earlier `response.output_item.done` supplies the replay evidence.
+`native_reasoning_summary_drift` records how many summaries differed. IDs, other
+fields and tool arguments still have to agree. Native wire retains both snapshots.
+Pure SSE comments retain the model's terminal state across transport fragmentation.
 The shared SSE framer also preserves a comment-only EOF tail without a final
 separator; unfinished data/control fields still fail strict EOF, and a comment
 does not supply missing model-terminal evidence.
