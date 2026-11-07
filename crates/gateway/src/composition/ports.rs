@@ -10,6 +10,7 @@ use crate::ports::{
     CasOutcome, CredentialLeaseRequest, ExecutionScope, HeaderSecretLeaseRequest,
     ProbeLeaseOutcome, RuntimeStateEntry, RuntimeStateKey,
 };
+use crate::responses_reasoning::{ReasoningReplayProjection, ReasoningSource};
 use crate::server::core_runtime::adapters;
 use crate::server::core_runtime::model_ir::{ModelIrError, ModelRequestIRV1};
 use crate::server::core_runtime::profiles::{
@@ -41,10 +42,13 @@ pub trait PlannerInputAuthority: Send + Sync {
         request: ModelRequestIRV1,
         authorized: &AuthorizedRequestPlan,
         budget: &hiroute_gateway_core::runtime::body::StreamBudget,
+        reasoning: super::ResponsesReasoningReplay,
     ) -> Result<super::PreparedPlannerInput, PortError> {
+        let mut templates = super::RequestTemplates::new(budget.clone());
+        templates.reasoning = reasoning;
         Ok(super::PreparedPlannerInput {
             input: self.build_input(request, authorized)?,
-            templates: super::RequestTemplates::new(budget.clone()),
+            templates,
         })
     }
 }
@@ -145,8 +149,10 @@ impl PlannerInputAuthority for PublicationPlannerInputAuthority {
         request: ModelRequestIRV1,
         authorized: &AuthorizedRequestPlan,
         budget: &hiroute_gateway_core::runtime::body::StreamBudget,
+        reasoning: super::ResponsesReasoningReplay,
     ) -> Result<super::PreparedPlannerInput, PortError> {
         let mut templates = super::RequestTemplates::new(budget.clone());
+        templates.reasoning = reasoning;
         let input = build_planner_input(request, authorized, Some(&mut templates))?;
         Ok(super::PreparedPlannerInput { input, templates })
     }
@@ -256,7 +262,19 @@ fn build_planner_input(
                 None,
             )
         };
-        let projection = project_candidate_facts(&request, &profile)?;
+        let reasoning_replay = templates
+            .as_ref()
+            .map_or_else(Default::default, |templates| {
+                templates.reasoning.project(|| {
+                    ReasoningSource::for_profile(
+                        &profile,
+                        candidate.operational_target.uri(),
+                        &candidate.credential_destination_ref,
+                    )
+                })
+            });
+        let projection =
+            project_candidate_facts_with_history(&request, &profile, reasoning_replay)?;
         if let Some((reason, message_index)) = projection.rejection
             && let Some(observation) = crate::server::core_runtime::observation::active_request()
         {
@@ -336,9 +354,18 @@ struct CandidateProjectionFacts {
     )>,
 }
 
+#[cfg(test)]
 fn project_candidate_facts(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
+) -> Result<CandidateProjectionFacts, PortError> {
+    project_candidate_facts_with_history(request, profile, ReasoningReplayProjection::default())
+}
+
+fn project_candidate_facts_with_history(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+    reasoning_replay: ReasoningReplayProjection<'_>,
 ) -> Result<CandidateProjectionFacts, PortError> {
     let tool_interface_unrepresentable = request.ingress_protocol == IngressProtocol::Responses
         && match profile.capability.upstream_protocol {
@@ -372,7 +399,12 @@ fn project_candidate_facts(
         });
     }
 
-    match project_candidate_facts_template(request, profile) {
+    match adapters::project_candidate_request_template_with_history(
+        request,
+        profile,
+        None,
+        reasoning_replay,
+    ) {
         Ok(projected) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: u64::try_from(projected.wire_len)
                 .map_err(|_| PortError::Rejected)?,
@@ -428,6 +460,7 @@ fn project_candidate_facts(
     }
 }
 
+#[cfg(test)]
 fn project_candidate_facts_template(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,

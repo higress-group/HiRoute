@@ -1,0 +1,167 @@
+//! Verify the actual Responses request body at each source in a routed session.
+use super::native_encrypted_continuation::{configure_native_provider_state, message, streamed};
+use super::*;
+use serde_json::{Value, json};
+
+#[test]
+fn responses_reasoning_switch_preserves_portable_history_and_target_source_state() {
+    let ciphertext = "synthetic-opaque-state-".repeat(4096);
+    let encrypted = json!({
+        "type": "reasoning", "id": "rs_openai", "summary": [],
+        "encrypted_content": ciphertext, "status": "completed"
+    });
+    let reference = json!({
+        "type": "reasoning", "id": "rs_qoder",
+        "summary": [{"type": "summary_text", "text": "Synthetic summary."}],
+        "encrypted_content": null, "status": "completed"
+    });
+    let tool = json!({
+        "type": "function_call", "id": "fc_lookup", "call_id": "lookup-call",
+        "name": "lookup", "arguments": "{}", "status": "completed"
+    });
+    let gpt = NativeProvider::start(vec![
+        streamed("gpt-tool", vec![encrypted.clone(), tool]),
+        streamed(
+            "gpt-answer",
+            vec![message("msg_a", "final_answer", "Found it.")],
+        ),
+        streamed(
+            "gpt-return",
+            vec![message("msg_c", "final_answer", "Done.")],
+        ),
+    ]);
+    let kimi = NativeProvider::start(vec![
+        streamed(
+            "kimi-answer",
+            vec![reference.clone(), message("msg_b", "final_answer", "Hi.")],
+        ),
+        streamed(
+            "kimi-cold",
+            vec![message("msg_d", "final_answer", "Hi again.")],
+        ),
+    ]);
+    let classifier = NativeProvider::start(
+        [
+            CLASSIFIER_COMPLEX,
+            CLASSIFIER_COMPLEX,
+            CLASSIFIER_SIMPLE,
+            CLASSIFIER_COMPLEX,
+            CLASSIFIER_SIMPLE,
+        ]
+        .into_iter()
+        .map(|body| ProviderReply::Complete {
+            status: 200,
+            error_kind: None,
+            body,
+        })
+        .collect(),
+    );
+    let fixture =
+        RuntimeFixture::launch_rest_classified_with_native_control(&[&kimi, &gpt, &classifier], 1);
+    let mut publication = fixture.publication();
+    configure_native_provider_state(&mut publication);
+    publication.publication_revision += 1;
+    fixture.publish(&mut publication);
+
+    let session = "same-responses-reasoning-session";
+    let mut input = vec![json!({"role": "user", "content": "Find the record."})];
+    input.extend(send(&fixture, session, "turn-a", &input));
+    assert_eq!(input[1], encrypted);
+    input
+        .push(json!({"type": "function_call_output", "call_id": "lookup-call", "output": "found"}));
+    // Select GPT again after the tool result so this assertion exercises native
+    // replay to the same source independently of classifier inheritance.
+    input.push(json!({"role": "user", "content": "Verify the record before reporting back."}));
+    input.extend(send(&fixture, session, "turn-a2", &input));
+    assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (2, 0, 2));
+    assert_eq!(upstream_input(&gpt, 1)[1], encrypted);
+
+    input.push(json!({"role": "user", "content": "Say hello."}));
+    let kimi_output = send(&fixture, session, "turn-b", &input);
+    assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (2, 1, 3));
+    assert_eq!(kimi_output[0], reference);
+    assert_eq!(
+        upstream_input(&kimi, 0),
+        excluding(&input, "rs_openai"),
+        "GPT ciphertext must stay at its source, with text and tool history preserved"
+    );
+
+    input.extend(kimi_output);
+    input.push(json!({"role": "user", "content": "Solve the next complex task."}));
+    send(&fixture, session, "turn-c", &input);
+    assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (3, 1, 4));
+    let mut expected = input.clone();
+    expected
+        .iter_mut()
+        .find(|item| item["id"] == "rs_qoder")
+        .unwrap()
+        .as_object_mut()
+        .unwrap()
+        .remove("id");
+    assert_eq!(
+        upstream_input(&gpt, 2),
+        json!(expected),
+        "Kimi reference must be removed while preserving its summary and earlier GPT state"
+    );
+
+    send(&fixture, "unrelated-session", "turn-c", &input);
+    assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (3, 2, 5));
+    assert_eq!(upstream_input(&kimi, 1), json!(input));
+}
+
+fn send(fixture: &RuntimeFixture, session: &str, turn: &str, input: &[Value]) -> Vec<Value> {
+    let headers = super::native_history::headers("codex", session, "main", turn, "before");
+    let response = request(
+        fixture.address,
+        "POST",
+        "/v1/responses",
+        &headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect::<Vec<_>>(),
+        &serde_json::to_vec(&json!({
+            "model": MODEL, "stream": true, "store": false, "input": input,
+            "include": ["reasoning.encrypted_content"],
+            "tools": [{"type": "function", "name": "lookup", "parameters": {"type": "object"}}]
+        }))
+        .unwrap(),
+    );
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    String::from_utf8(response.body)
+        .unwrap()
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|event| event["type"] == "response.completed")
+        .expect("complete Responses SSE")["response"]["output"]
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+fn upstream_input(provider: &NativeProvider, request_index: usize) -> Value {
+    let requests = provider.requests();
+    let request = &requests[request_index];
+    let body_start = request
+        .windows(4)
+        .position(|bytes| bytes == b"\r\n\r\n")
+        .unwrap()
+        + 4;
+    let body: Value = serde_json::from_slice(&request[body_start..]).unwrap();
+    body["input"].clone()
+}
+
+fn excluding(input: &[Value], id: &str) -> Value {
+    Value::Array(
+        input
+            .iter()
+            .filter(|item| item["id"] != id)
+            .cloned()
+            .collect(),
+    )
+}

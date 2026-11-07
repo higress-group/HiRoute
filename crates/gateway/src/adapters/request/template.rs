@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::content_ref::{
     ContentRef, ContentValueExt, JsonValueExt, MARKER_PREFIX, data_uri_payload_ref,
 };
+use crate::responses_reasoning::ReasoningReplayProjection;
 use crate::server::core_runtime::model_ir::{
     ContentPart, ImageSource, ModelRequestIRV1, ToolKindV1, ToolOutput,
 };
@@ -34,6 +35,7 @@ pub struct PreparedNativeTemplate {
     pub(crate) chat_tool_projection: Option<ChatToolProjection>,
     pub(crate) function_encoding_projection: super::super::FunctionEncodingProjection,
     pub(crate) request_projection_loss: super::RequestProjectionLoss,
+    pub(crate) reasoning_history_removed: usize,
 }
 
 /// Structural JSON plus replay-backed substitutions shared by provider and
@@ -111,18 +113,43 @@ pub fn project_candidate_request_template(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
 ) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
-    project_candidate_request_template_with_cleanup(request, profile, None)
+    project_candidate_request_template_with_history(
+        request,
+        profile,
+        None,
+        ReasoningReplayProjection::default(),
+    )
 }
 
+#[cfg(test)]
 pub(crate) fn project_candidate_request_template_with_cleanup(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
     omit_reasoning_prefix: Option<usize>,
 ) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
+    project_candidate_request_template_with_history(
+        request,
+        profile,
+        omit_reasoning_prefix,
+        ReasoningReplayProjection::default(),
+    )
+}
+
+pub(crate) fn project_candidate_request_template_with_history(
+    request: &ModelRequestIRV1,
+    profile: &CandidateProtocolProfile,
+    omit_reasoning_prefix: Option<usize>,
+    reasoning_replay: ReasoningReplayProjection<'_>,
+) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
     let requirements = request.requirements();
     let reasoning = profile.validate(&requirements)?;
     let native = request.native_body.is_some()
         && request.ingress_protocol == profile.capability.upstream_protocol;
+    let reasoning_replay = if native && request.ingress_protocol == IngressProtocol::Responses {
+        reasoning_replay
+    } else {
+        ReasoningReplayProjection::default()
+    };
     let request_projection_loss = if native {
         super::RequestProjectionLoss::default()
     } else {
@@ -155,8 +182,15 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
             }
         }
     };
-    let (mut body, function_encoding_projection) =
-        super::native::project(request, profile, body, omit_reasoning_prefix, false)?;
+    let (mut body, function_encoding_projection, reasoning_history_removed) =
+        super::native::project(
+            request,
+            profile,
+            body,
+            omit_reasoning_prefix,
+            reasoning_replay,
+            false,
+        )?;
     super::native::protect_projected_controls(request, profile, reasoning, &mut body)?;
     let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
         && request.native_body.is_some()
@@ -215,6 +249,7 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         chat_tool_projection,
         function_encoding_projection,
         request_projection_loss,
+        reasoning_history_removed,
     })
 }
 

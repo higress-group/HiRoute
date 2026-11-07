@@ -87,6 +87,7 @@ pub struct ProductionGatewayRuntime {
     classifier_connector: PingoraConnectorAdapter,
     observation: Arc<GatewayObservation>,
     context_holds: Arc<ContextHoldStore>,
+    responses_reasoning: Arc<crate::responses_reasoning::ReasoningStore>,
     agent_turn_history: Arc<AgentTurnHistoryStore>,
     replay: Option<ReplayManager>,
     executable_sha256: Option<Arc<str>>,
@@ -158,6 +159,7 @@ impl ProductionGatewayRuntime {
             classifier_connector: connector,
             observation,
             context_holds: Arc::new(ContextHoldStore::default()),
+            responses_reasoning: Default::default(),
             agent_turn_history: Arc::new(AgentTurnHistoryStore::default()),
             replay: ReplayManager::from_environment().ok(),
             executable_sha256: None,
@@ -950,10 +952,18 @@ impl ProductionGatewayRuntime {
             request_observation.capture_request_async(&canonical_request, &replay);
             drop(routing_view);
             set_phase(LocalPhase::Prepare);
+            let reasoning = crate::responses_reasoning::ResponsesReasoningReplay::prepare(
+                &self.responses_reasoning,
+                &self.context_holds,
+                &authorized,
+                &identity,
+                &canonical_request,
+                &replay,
+            );
             let prepared_planner_input =
                 match with_active_request(request_observation.clone(), async {
                     self.planner_inputs
-                        .build_prepared_input(*canonical_request, &authorized, &budget)
+                        .build_prepared_input(*canonical_request, &authorized, &budget, reasoning)
                         .map(Box::new)
                 })
                 .await
@@ -1111,6 +1121,7 @@ impl ProductionGatewayRuntime {
                     .map_err(|_| TransportError::Io("planner output identity is invalid".into()))?;
             let mut frozen_candidates =
                 Vec::with_capacity(planner_output.ledger.ordered_candidates.len());
+            let mut first_reasoning_source = None;
             let mut hold_candidates =
                 Vec::with_capacity(planner_output.ledger.ordered_candidates.len());
             let mut agent_turn_candidates = std::collections::BTreeMap::new();
@@ -1207,6 +1218,12 @@ impl ProductionGatewayRuntime {
                         TransportError::Io("current candidate binding unavailable".into())
                     })?;
                 let profile = execution.bytes().clone();
+                if frozen_candidates.is_empty() && prepared_templates.reasoning.can_project() {
+                    first_reasoning_source =
+                        Some(crate::responses_reasoning::ReasoningSource::for_execution(
+                            execution.execution(),
+                        ));
+                }
                 prepared_templates.insert_execution(binding.local_id(), execution);
                 frozen_candidates.push(DecisionCandidateAuthority {
                     binding,
@@ -1319,13 +1336,22 @@ impl ProductionGatewayRuntime {
                         .iter()
                         .find(|candidate| candidate.candidate_id == first_id)?
                         .protocol_profile;
-                    let normal =
-                        adapters::project_candidate_request_template(&canonical_request, profile)
-                            .ok()?;
-                    let cleaned = adapters::project_candidate_request_template_with_cleanup(
+                    let reasoning_replay = first_reasoning_source
+                        .map_or_else(Default::default, |source| {
+                            prepared_templates.reasoning.project(|| source)
+                        });
+                    let normal = adapters::project_candidate_request_template_with_history(
+                        &canonical_request,
+                        profile,
+                        None,
+                        reasoning_replay,
+                    )
+                    .ok()?;
+                    let cleaned = adapters::project_candidate_request_template_with_history(
                         &canonical_request,
                         profile,
                         Some(canonical_request.messages.len()),
+                        reasoning_replay,
                     )
                     .ok()?;
                     (normal.bytes != cleaned.bytes)

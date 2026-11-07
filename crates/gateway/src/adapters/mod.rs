@@ -24,13 +24,15 @@ pub use ingress::decode_ingress_request;
 #[cfg(test)]
 pub(crate) use ingress::decode_ingress_request_with_replay;
 pub(crate) use ingress::decode_owned_ingress_request_with_replay;
+#[cfg(test)]
+use request::project_candidate_request_template_with_cleanup;
 pub use request::{
     PreparedNativeRequest, PreparedNativeTemplate, project_candidate_request,
     project_candidate_request_template, sequential_attempt_body,
 };
 pub(crate) use request::{
     PreparedReplayTemplate, ReplacementEncoding, RequestedReplacement,
-    prepare_replay_json_template, project_candidate_request_template_with_cleanup,
+    prepare_replay_json_template, project_candidate_request_template_with_history,
     sequential_replay_body,
 };
 pub use response::{
