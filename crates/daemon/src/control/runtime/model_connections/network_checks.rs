@@ -196,11 +196,18 @@ impl LocalControlAdapter {
                 draft.existing_source_id.as_deref(),
                 network_edit.clone(),
             )?;
-            if let Some(spending) = spending.as_mut() {
-                spending.mark_sent()?;
-            }
             self.model_connections
-                .check_with_network(draft, credential, &cancellation, context)
+                .check_with_network_before_inference(
+                    draft,
+                    credential,
+                    &cancellation,
+                    context,
+                    || {
+                        spending
+                            .as_mut()
+                            .map_or(Ok(()), UnpricedProbeSpend::mark_sent)
+                    },
+                )
                 .map_err(map_check_error)
         })();
         self.model_connection_cancellations
@@ -310,21 +317,6 @@ impl LocalControlAdapter {
             };
             let context =
                 self.native_network_check_context(Some(&request.source_id), network_edit.clone())?;
-            let mut spending = if prepared.draft.inference_model_id.is_some() {
-                prepared
-                    .credential
-                    .as_ref()
-                    .map(|key| {
-                        UnpricedProbeSpend::reserve(self, &key.credential_id, key.generation)
-                    })
-                    .transpose()?
-                    .flatten()
-            } else {
-                None
-            };
-            if let Some(spending) = spending.as_mut() {
-                spending.mark_sent()?;
-            }
             self.model_connections
                 .check_with_network(prepared.draft, credential, &cancellation, context)
                 .map_err(map_check_error)
@@ -355,33 +347,12 @@ struct UnpricedProbeSpend<'a> {
     id: String,
     sent: bool,
 }
-impl<'a> UnpricedProbeSpend<'a> {
-    fn reserve(
-        adapter: &'a LocalControlAdapter,
-        key: &str,
-        generation: u64,
-    ) -> Result<Option<Self>, ComputeManagementControlError> {
-        adapter
-            .stores_lock()
-            .map_err(|_| ComputeManagementControlError::Unavailable)?
-            .control()
-            .reserve_key_spend(key, generation, None)
-            .map_err(probe_budget_error)
-            .map(|reservation| {
-                reservation.map(|r| Self {
-                    adapter,
-                    id: r.reservation_id,
-                    sent: false,
-                })
-            })
-    }
-    fn mark_sent(&mut self) -> Result<(), ComputeManagementControlError> {
+impl UnpricedProbeSpend<'_> {
+    fn mark_sent(&mut self) -> Result<(), PortError> {
         self.adapter
-            .stores_lock()
-            .map_err(|_| ComputeManagementControlError::Unavailable)?
+            .stores_lock()?
             .control()
-            .mark_key_spend_sent(&self.id)
-            .map_err(|_| ComputeManagementControlError::Unavailable)?;
+            .mark_key_spend_sent(&self.id)?;
         self.sent = true;
         Ok(())
     }

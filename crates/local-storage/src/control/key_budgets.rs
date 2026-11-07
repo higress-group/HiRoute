@@ -327,7 +327,11 @@ impl ControlStore {
             &unknown
         };
         let cost = estimate.upper_bound_micros();
-        if cost.is_some_and(|cost| cost > available) || cost.is_none() && available == 0 {
+        let exhausted = match cost {
+            Some(cost) => cost > available,
+            None => wallet.balance <= 0,
+        };
+        if exhausted {
             return Err(KeyBudgetGateErrorV1::Exhausted);
         }
         let cost = cost.unwrap_or(0);

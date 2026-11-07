@@ -475,7 +475,14 @@ where
         credential: NativeModelConnectionCredentialV1<'_>,
         cancellation: &ModelConnectionProbeCancellationV1,
     ) -> Result<ModelConnectionCheckViewV1, NativeModelConnectionErrorV1> {
-        self.check_using(draft, credential, cancellation, &self.transport, None)
+        self.check_using(
+            draft,
+            credential,
+            cancellation,
+            &self.transport,
+            None,
+            || Ok(()),
+        )
     }
 
     fn check_using<R: ModelDirectoryTransportV1>(
@@ -485,6 +492,7 @@ where
         cancellation: &ModelConnectionProbeCancellationV1,
         transport: &R,
         network_identity: Option<&CanonicalDigest>,
+        before_inference: impl FnOnce() -> Result<(), PortError>,
     ) -> Result<ModelConnectionCheckViewV1, NativeModelConnectionErrorV1> {
         if !self.limits.valid() {
             return Err(NativeModelConnectionErrorV1::InvalidDraft);
@@ -560,6 +568,7 @@ where
                 }
                 _ => None,
             };
+            before_inference()?;
             observation = inference::observe(
                 transport,
                 &target,

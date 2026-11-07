@@ -134,8 +134,9 @@ usage settles once against the captured price; a proven unsent attempt releases
 its reservation. Interrupted or unknown usage remains reserved across restart and
 is visible as pending. Unknown prices or unsupported billing currencies SHALL
 allow the request by default, retain an explicitly unpriced pending record, and
-never be recorded as a zero-cost settlement. Known exhausted allowance still
-prevents a new chargeable request.
+never be recorded as a zero-cost settlement. A positive balance fully held by
+other reservations SHALL still admit unpriced requests. Known exhausted balance
+still prevents a new chargeable request.
 Budget counters, reservations and idempotent settlement MUST be durable and use
 indexed bounded reads, independent of unrelated history size. Currency conversion
 is not implicit. All amounts are exact integer currency micros.

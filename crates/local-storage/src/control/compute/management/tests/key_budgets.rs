@@ -157,7 +157,17 @@ fn unpriced_spends_are_allowed_persist_as_pending_and_never_create_zero_cost_cha
     let root = tempdir().unwrap();
     populate_saved_source(root.path(), &WorkspaceId::default());
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
-    let key = configure(&stores, new_budget(1000), "unpriced-budget");
+    let quote = estimate(&saved(&stores).source_id);
+    let allowance = quote.upper_bound_micros().unwrap();
+    let key = configure(&stores, new_budget(allowance), "unpriced-budget");
+    let held = stores
+        .control()
+        .reserve_key_spend(&key, 1, Some(&quote))
+        .unwrap()
+        .unwrap();
+    let before = view(&stores, &key);
+    assert_eq!(before.reserved_micros, allowance);
+    assert_eq!(before.available_micros, 0);
     let unknown = stores
         .control()
         .reserve_key_spend(&key, 1, None)
@@ -185,11 +195,15 @@ fn unpriced_spends_are_allowed_persist_as_pending_and_never_create_zero_cost_cha
         .unwrap();
     assert_eq!(
         (
-            view(&stores, &key).available_micros,
+            view(&stores, &key).reserved_micros,
             view(&stores, &key).lifetime_spent_micros
         ),
-        (1000, 0)
+        (allowance, 0)
     );
+    stores
+        .control()
+        .settle_key_spend(&held.reservation_id, &KeySpendSettlementV1::Unsent)
+        .unwrap();
     drop(stores);
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
     let db = stores.control().connection.borrow();
@@ -224,7 +238,7 @@ fn unpriced_spends_are_allowed_persist_as_pending_and_never_create_zero_cost_cha
         .control()
         .settle_key_spend(&accepted.reservation_id, &KeySpendSettlementV1::Unsent)
         .unwrap();
-    assert_eq!(view(&stores, &key).available_micros, 1000);
+    assert_eq!(view(&stores, &key).available_micros, allowance);
 }
 
 #[test]

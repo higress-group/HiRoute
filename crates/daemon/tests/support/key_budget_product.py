@@ -49,10 +49,10 @@ def price(product, binding, currency='USD'):
     product.apply('prices override apply', 'ApplyPriceOverrideChange', preview, {'spec': preview['spec']}, 'key-budget-price-' + currency)
 
 
-def saved_probe(product, upstream, saved, inference):
+def saved_probe(product, upstream, saved, inference_model=None):
     source = next(row for row in control(product, 'ListCompute', {})['data']['sources']
                   if row['source_id'] == saved['source_id'])
-    draft = {'inference_model_id': MODEL if inference else None, 'candidate_ref': None,
+    draft = {'inference_model_id': inference_model, 'candidate_ref': None,
         'lineage_ref': 'lineage/native/product', 'display_name': source['display_name'],
         'existing_source_id': saved['source_id'], 'expected_source_revision': source['revision'],
         'edit_revision': 1, 'check_id': 'budget-probe-' + str(time.monotonic_ns()),
@@ -148,16 +148,25 @@ def run(repository):
         product.register_protected_frame({'schema': 'hiroute.protected-input/v1', 'registration_id': hashlib.sha256(b'budget-fallback').hexdigest(), **candidate, 'secret': fallback})
         save_source(product, saved, [{'action': 'add', 'input_candidate': candidate}], 'budget-add-fallback')
         # The same public saved-Key probe is reachable before a limit is set.
-        assert saved_probe(product, upstream, saved, True)[0] == 0
+        assert saved_probe(product, upstream, saved, MODEL)[0] == 0
         assert any(row['method'] == 'POST' for row in upstream.requests), upstream.requests
         configured = allowance(product, source_id, first, 1_000_000, 'initial')
         with upstream.lock:
             before_probe = len(upstream.requests)
-        exit_code, accepted = saved_probe(product, upstream, saved, True)
+        exit_code, accepted = saved_probe(product, upstream, saved, MODEL)
         assert exit_code == 0, accepted
         assert any(row['method'] == 'POST' for row in upstream.requests[before_probe:]), 'unpriced saved-Key probe did not reach upstream'
+        before_rejected = len(upstream.requests)
+        exit_code, rejected = saved_probe(product, upstream, saved, 'model-not-in-draft')
+        assert exit_code != 0, rejected
+        assert len(upstream.requests) == before_rejected, 'rejected probe reached upstream'
+        with sqlite3.connect(product.storage / 'live/control.db') as db:
+            records = db.execute(
+                'SELECT state,amount_micros FROM compute_key_spend_reservations WHERE key_id=? ORDER BY rowid',
+                (first,)).fetchall()
+            assert records == [('pending', 0), ('released', 0)], records
         before_directory = len(upstream.requests)
-        assert saved_probe(product, upstream, saved, False)[0] == 0
+        assert saved_probe(product, upstream, saved)[0] == 0
         assert all(row['method'] == 'GET' for row in upstream.requests[before_directory:])
         publish_plan_and_agent(product, saved['binding_id'])
         frozen = read_content(product)
