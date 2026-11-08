@@ -304,9 +304,11 @@ pub(super) fn project(
         // Admission can preserve exact identity even when bounded membership
         // storage clipped. This improves display only; frozen score membership
         // below still has to cover every displayed request.
+        let sealed_members: std::collections::BTreeSet<_> =
+            members.iter().map(|r| r.view.request_id.as_str()).collect();
         for (id, _) in admitted {
             if let Some(request) = requests.get(*id)
-                && !members.iter().any(|r| r.view.request_id == *id)
+                && !sealed_members.contains(id)
             {
                 if history_membership.as_ref().is_none_or(|m| !m.clipped) {
                     return Err(ObservationV2Error::Unavailable);
@@ -516,12 +518,14 @@ pub(super) fn project(
                                 })
                         },
                         |membership| {
+                            let ids: std::collections::BTreeSet<_> =
+                                membership.request_ids.iter().map(String::as_str).collect();
                             !membership.clipped
                                 && base
                                     .view
                                     .requests
                                     .iter()
-                                    .all(|r| membership.request_ids.contains(&r.request_id))
+                                    .all(|r| ids.contains(r.request_id.as_str()))
                         },
                     )
             })

@@ -125,6 +125,13 @@ fn codex_129th_request_can_continue_while_response_capture_is_paused() {
     let timeline = super::observed_history::timeline(&facts);
     assert_eq!(timeline.turns.len(), 1);
     assert_eq!(timeline.turns[0].requests.len(), 129);
+    let finished = facts
+        .iter()
+        .find(|row| row["fact"]["kind"] == "agent_turn_finished")
+        .expect("final response seals the long turn");
+    let membership = &finished["fact"]["history_membership"];
+    assert_eq!(membership["clipped"], false);
+    assert_eq!(membership["request_ids"].as_array().unwrap().len(), 129);
 
     let mut admissions = facts
         .iter()

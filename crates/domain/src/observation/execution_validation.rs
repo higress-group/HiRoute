@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::{AgentPlanDisplayName, AgentPlanId, CanonicalDigest, WorkspaceId};
 
+use super::execution::PRE_EXPANDED_HISTORY_MEMBERSHIP_DIGEST;
 use super::*;
 
 impl ExecutionFactEnvelopeV1 {
@@ -18,12 +19,16 @@ impl ExecutionFactEnvelopeV1 {
     fn validate_contract(&self, allow_persisted_v1: bool) -> Result<(), ExecutionFactError> {
         let current_wire = self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str() == EXECUTION_FACT_PORT_DIGEST_V2;
+        let persisted_pre_expanded_membership = allow_persisted_v1
+            && self.schema_version == EXECUTION_FACT_SCHEMA_V2
+            && self.schema_digest.as_str() == PRE_EXPANDED_HISTORY_MEMBERSHIP_DIGEST;
+        let decision_failure_wire = current_wire || persisted_pre_expanded_membership;
         let persisted_pre_decision_failure = allow_persisted_v1
             && self.schema_version == EXECUTION_FACT_SCHEMA_V2
             && self.schema_digest.as_str()
                 == "sha256:ba2cb7b8fd9f9724d6d167bf1f3c35b32ade94cfa361831f449bb7271885745c";
-        let context_wire = current_wire || persisted_pre_decision_failure;
-        if !current_wire
+        let context_wire = decision_failure_wire || persisted_pre_decision_failure;
+        if !decision_failure_wire
             && matches!(&self.fact, ExecutionFactV1::RouteDecision(route) if route.decision_failure.is_some())
         {
             return Err(ExecutionFactError::InvalidFact);
@@ -212,6 +217,19 @@ impl ExecutionFactEnvelopeV1 {
         }
         self.trust.validate()?;
         self.fact.validate()?;
+        if !current_wire {
+            let membership = match &self.fact {
+                ExecutionFactV1::AgentTurnFinished {
+                    history_membership, ..
+                } => history_membership.as_ref(),
+                fact => fact
+                    .assessment_record()
+                    .and_then(|record| record.history_membership),
+            };
+            if membership.is_some_and(|membership| membership.request_ids.len() > 128) {
+                return Err(ExecutionFactError::InvalidFact);
+            }
+        }
         if (current
             || persisted_history
             || persisted_extension

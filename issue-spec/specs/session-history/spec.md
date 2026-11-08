@@ -1026,12 +1026,13 @@ Source SPEC comments:
 
 Current AgentTurnFinished and BranchAssessmentRecorded facts SHALL carry optional
 versioned `history_membership`: version 1, opaque execution branch ID, immutable
-revision, up to 128 exact Gateway request IDs, an explicit clipped flag, relation
+revision, exact Gateway request IDs bounded to 5,000,000 encoded bytes, an explicit clipped flag, relation
 kind and separate source/association/capture uncertainty. Relation kinds are root,
 exact_prefix, ambiguous_prefix and contextual. Producer/native request IDs cannot
 replace Gateway IDs. Current writes use the single current envelope descriptor;
 a registered previous descriptor remains read-only and cannot authenticate the new
-field. Old authenticated bytes/digests remain unchanged.
+field. Older descriptors that carry membership retain their original 128-request
+bound and their authenticated bytes and digests.
 
 For facts with membership, analysis, timeline, quality and cost consumers SHALL use
 those members, never an inclusive ordinal or first/last-time interval across

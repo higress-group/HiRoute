@@ -2670,6 +2670,22 @@
       ]
     },
     {
+      "contract": "hiroute.observation.product-execution-envelope/v2",
+      "field": "128-request membership under digest sha256:8435698d0ba7e3dedfffbb37618fbbb251a23425618c53f1a98eb9cd88c01eab",
+      "mode": "recovery_read_only",
+      "owner": "observation-storage",
+      "reason": "Authenticate v0.5.3 facts with their original membership bound and immutable digests. Only the current descriptor authenticates larger request memberships.",
+      "removal_condition": "Retire only with supported retained observation and backup retirement.",
+      "allowed_paths": [
+        "crates/domain/src/observation/execution.rs",
+        "crates/domain/src/observation/execution_validation.rs",
+        "crates/domain/src/observation/execution_tests.rs",
+        "crates/domain/src/observation/merged_contract_tests.rs",
+        "crates/domain/src/observation/pricing.rs",
+        "crates/domain/src/observation/fixtures/pre-expanded-history-membership-contract.json"
+      ]
+    },
+    {
       "contract": "hiroute.sqlite-backup-set/v2",
       "field": "target_schema_version=30 with original schema29 control/runtime/secrets sources",
       "mode": "recovery_read_only",

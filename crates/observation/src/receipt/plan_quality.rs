@@ -1,4 +1,7 @@
-use hiroute_domain::{AgentTurnAttributionV1, ExecutionFactEnvelopeV1, ExecutionFactV1};
+use hiroute_domain::{
+    AgentTurnAttributionV1, ExecutionFactEnvelopeV1, ExecutionFactV1, MAX_HISTORY_MEMBERSHIP_BYTES,
+    history_request_id_bytes,
+};
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use super::FactProjectionError;
@@ -419,12 +422,22 @@ fn apply_membership(
             current.association_unverified |= old.association_unverified;
             current.capture_partial |= old.capture_partial;
             current.clipped |= old.clipped;
+            let mut ids: std::collections::BTreeSet<_> =
+                current.request_ids.iter().cloned().collect();
+            let mut bytes = 2 + current
+                .request_ids
+                .iter()
+                .map(|id| history_request_id_bytes(id))
+                .sum::<usize>();
             for id in old.request_ids {
-                if current.request_ids.contains(&id) {
+                if ids.contains(&id) {
                     continue;
                 }
-                if current.request_ids.len() < 128 {
+                let charge = history_request_id_bytes(&id);
+                if bytes + charge <= MAX_HISTORY_MEMBERSHIP_BYTES {
+                    ids.insert(id.clone());
                     current.request_ids.push(id);
+                    bytes += charge;
                 } else {
                     current.clipped = true;
                 }

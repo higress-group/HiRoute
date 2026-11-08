@@ -95,6 +95,33 @@ fn assert_new_capability_rejected(contract: &str, fact: Value) {
 }
 
 #[test]
+fn expanded_membership_is_bounded_and_requires_the_current_descriptor() {
+    use crate::observation::execution::PRE_EXPANDED_HISTORY_MEMBERSHIP_DIGEST as OLD;
+    let ids = |count| {
+        (0..count)
+            .map(|n| format!("request-{n}"))
+            .collect::<Vec<_>>()
+    };
+    let mut finished = retained_finished();
+    let mut assessment = assessment_fact();
+    assessment["history_membership"] = finished["history_membership"].clone();
+    for fact in [&mut finished, &mut assessment] {
+        fact["history_membership"]["request_ids"] = json!(ids(128));
+        assert_recovery_only(under_contract(OLD, fact.clone()));
+        fact["history_membership"]["request_ids"] = json!(ids(300));
+        assert_new_capability_rejected(OLD, fact.clone());
+        let oversized = (0..=MAX_HISTORY_MEMBERSHIP_BYTES / 163)
+            .map(|index| format!("{index:0160}"))
+            .collect::<Vec<_>>();
+        fact["history_membership"]["request_ids"] = json!(oversized);
+        assert_eq!(
+            under_contract(EXECUTION_FACT_PORT_DIGEST_V2, fact.clone()).validate(),
+            Err(ExecutionFactError::InvalidFact)
+        );
+    }
+}
+
+#[test]
 fn history_parent_contract_recovers_membership_admission_and_auxiliary_without_rewriting() {
     assert_recovery_only(under_contract(HISTORY, retained_finished()));
     assert_recovery_only(under_contract(HISTORY, admission_fact()));

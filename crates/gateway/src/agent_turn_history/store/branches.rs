@@ -5,7 +5,6 @@ use crate::context_hold::HistoryContinuity;
 use crate::server::request_plan::IngressProtocol;
 
 pub(super) const MAX_HEADS: usize = 32;
-const MAX_TERMINAL_RECORDS: usize = 128;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum HistoryRelation {
@@ -587,6 +586,7 @@ impl AgentTurnHistoryStore {
             return Ok(());
         }
         entry.closed = selection.seed;
+        entry.closed_bytes = entry.closed.iter().map(|turn| turn.bytes).sum();
         entry.referenced_segment = selection.segment.clone();
         entry.history_partial = selection.partial
             || (selection.relation != HistoryRelation::ExactPrefix && entry.history_partial);
@@ -595,17 +595,13 @@ impl AgentTurnHistoryStore {
             .back()
             .map_or(2, |t| t.completed.ordinal.saturating_add(2));
         entry.active.ordinal = entry.next_turn_ordinal.saturating_sub(1);
-        while entry.closed.len() >= MAX_TERMINAL_RECORDS {
-            entry.closed.pop_front();
-            entry.history_partial = true;
-        }
         // These references are assessment context only. A fork always starts a
         // separate segment and cannot inherit the selected branch's decision.
         let old = entry.accounted_bytes;
         entry.accounted_bytes = entry_bytes(&selection.key, entry);
         let new = entry.accounted_bytes;
         inner.replace_accounting(old, new);
-        inner.limit_terminal_records(&selection.scope);
+        inner.limit_scoring_history(&selection.key);
         inner.evict_to_budget(self.max_memory_bytes, Some(&selection.key));
         while inner.accounted_bytes > self.max_memory_bytes {
             if !trim_oldest_closed_turn(inner, &selection.key)? {
