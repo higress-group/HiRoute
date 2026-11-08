@@ -438,8 +438,8 @@ impl ProviderRuntimePort for ProductionProvider {
         published_facts: Option<&ProviderClassificationFacts>,
         completion: &ProviderAttemptCompletion,
     ) -> Result<ProviderClassificationFacts, Arc<str>> {
-        // This callback runs after the accepted attempt's final write, unlike
-        // projection and precommit, which may still be cancelled or relayed.
+        // The accepted encoder normally prepares the batch before EOS. A
+        // completed attempt may also supply its terminal body directly.
         if completion.disposition == Disposition::Accept
             && completion.stream == AttemptStreamOutcome::CompletedEos
             && completion.downstream == AttemptDownstreamOutcome::Completed
@@ -447,7 +447,8 @@ impl ProviderRuntimePort for ProductionProvider {
                 .as_deref_mut()
                 .and_then(|ready| ready.projector.as_mut()?.take_tool_batch())
         {
-            adapters::note_delivered_tool_batch(batch);
+            adapters::prepare_tool_handoff(batch);
+            adapters::confirm_tool_handoff();
         }
         Ok(response::finalize_attempt_facts(
             state,
@@ -476,7 +477,15 @@ impl ProviderRuntimePort for ProductionProvider {
         _pinned_configs: &PinnedConfigContext<'_>,
         _event_configs: &ConfigEventSnapshot,
     ) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
-        response::encode_accepted_event(readiness, event)
+        let frame = response::encode_accepted_event(readiness, event)?;
+        if let Some(batch) = readiness
+            .projector
+            .as_mut()
+            .and_then(|p| p.take_tool_batch())
+        {
+            adapters::prepare_tool_handoff(batch);
+        }
+        Ok(frame)
     }
 
     fn take_accepted_prefix(

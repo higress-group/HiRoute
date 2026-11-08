@@ -43,18 +43,22 @@ pub(super) struct BranchAdmission {
     completed: Option<Box<CompletedAgentTurn>>,
 }
 
-fn unique_tool_predecessor<'a>(
+fn unique_tool_candidate<'a>(
     inner: &'a StoreInner,
     scope: &'a AgentTurnHistoryKey,
     analyzed: &super::super::projection::AnalyzedRequest,
     inputs: &TurnDecisionInputs,
-) -> Option<&'a AgentTurnHistoryKey> {
+) -> Option<(&'a AgentTurnHistoryKey, &'a SessionEntry)> {
     if analyzed.tool_suffixes.is_empty() {
         return None;
     }
     let mut matches = inner.scope_entries(scope).filter(|(_, entry)| {
         let position = entry.checkpoint.message_count;
-        let Some(batch) = &entry.tool_batch else {
+        let batch = entry
+            .tool_batch
+            .as_deref()
+            .or_else(|| entry.pending_tool_handoff.as_ref()?.prepared_batch());
+        let Some(batch) = batch else {
             return false;
         };
         // A comparable but conflicting full response is stronger evidence
@@ -84,14 +88,58 @@ fn unique_tool_predecessor<'a>(
     });
     let (key, entry) = matches.next()?;
     (matches.next().is_none()
-        && entry.pending_request.is_none()
         && !entry.active.finalized
         && entry.active.decision.is_some()
         && (entry.active.source_unverified || !analyzed.user_origin_unverified))
-        .then_some(key)
+        .then_some((key, entry))
 }
 
 impl AgentTurnHistoryStore {
+    pub(crate) fn register_tool_handoff(
+        &self,
+        ticket: &AgentTurnTicket,
+    ) -> Option<Arc<ToolDeliveryHandoff>> {
+        let mut inner = self.inner.lock();
+        if inner
+            .accounted_bytes
+            .saturating_add(ToolDeliveryHandoff::INDEX_BYTES)
+            > self.max_memory_bytes
+        {
+            return None;
+        }
+        let entry = matching_entry_mut(&mut inner, ticket).ok()?;
+        let handoff = Arc::new(ToolDeliveryHandoff::default());
+        entry.pending_tool_handoff = Some(Arc::clone(&handoff));
+        let old = entry.accounted_bytes;
+        entry.accounted_bytes = entry_bytes(&ticket.key, entry);
+        let new = entry.accounted_bytes;
+        inner.replace_accounting(old, new);
+        inner.note_peak();
+        Some(handoff)
+    }
+
+    pub(crate) fn pending_tool_predecessor(
+        &self,
+        scope: &AgentTurnHistoryKey,
+        plan: &PlanSnapshot,
+        analyzed: &super::super::projection::AnalyzedRequest,
+        inputs: &TurnDecisionInputs,
+    ) -> Option<Arc<ToolDeliveryHandoff>> {
+        let inner = self.inner.lock();
+        let (_, entry) = unique_tool_candidate(&inner, scope, analyzed, inputs)?;
+        if &entry.active.plan != plan
+            || inner.scope_entries(scope).any(|(_, entry)| {
+                analyzed.anchors.as_ref().is_some_and(|anchors| {
+                    entry.checkpoint.digest == Some(anchors.complete)
+                        && entry.checkpoint.message_count == analyzed.message_count
+                })
+            })
+        {
+            return None;
+        }
+        entry.pending_tool_handoff.clone()
+    }
+
     pub(crate) fn prepare_scoped_request(
         &self,
         scope: &AgentTurnHistoryKey,
@@ -104,7 +152,13 @@ impl AgentTurnHistoryStore {
                 .scope_entries(scope)
                 .map(|(_, e)| e)
                 .take(MAX_HEADS)
-                .map(|e| (e.checkpoint.message_count, e.tool_batch.is_some()))
+                .map(|e| {
+                    let has_batch = e.tool_batch.is_some()
+                        || e.pending_tool_handoff
+                            .as_ref()
+                            .is_some_and(|handoff| handoff.prepared_batch().is_some());
+                    (e.checkpoint.message_count, has_batch)
+                })
                 .collect::<Vec<_>>()
         };
         let mut positions = heads
@@ -263,8 +317,9 @@ impl AgentTurnHistoryStore {
         // when its pending tool batch has been consumed. Do not reassign a
         // repeated submission to a sibling's older checkpoint.
         let tool_key = (!exact && !retry && !candidates.iter().any(|c| retry_matches(&c.0)))
-            .then(|| unique_tool_predecessor(inner, scope, analyzed, &inputs))
-            .flatten();
+            .then(|| unique_tool_candidate(inner, scope, analyzed, &inputs))
+            .flatten()
+            .and_then(|(key, entry)| entry.pending_request.is_none().then_some(key));
         let tool_continuation = tool_key.is_some();
         let selected = tool_key
             .and_then(|key| candidates.iter().find(|candidate| &candidate.0 == key))

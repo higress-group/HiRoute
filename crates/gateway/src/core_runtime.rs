@@ -812,22 +812,26 @@ impl ProductionGatewayRuntime {
                     )
                 });
                 set_phase(LocalPhase::History);
-                let tracking = match self.begin_authorized_decision_history(
-                    &request_observation,
-                    PlanSnapshot {
-                        plan_id: plan_id.clone(),
-                        plan_revision: *revision,
-                    },
-                    capture_scope,
-                    prepared_hold,
-                    decision_history::HistoryInput {
-                        request: &canonical_request,
-                        replay: &replay,
-                        current_input: routing_view.current_input(),
-                        current_input_position: routing_view.current_input_position(),
-                        current_input_unavailable: routing_view.current_input_unavailable(),
-                    },
-                ) {
+                let tracking = match self
+                    .begin_authorized_decision_history_after_handoff(
+                        &request_observation,
+                        PlanSnapshot {
+                            plan_id: plan_id.clone(),
+                            plan_revision: *revision,
+                        },
+                        capture_scope,
+                        prepared_hold,
+                        decision_history::HistoryInput {
+                            request: &canonical_request,
+                            replay: &replay,
+                            current_input: routing_view.current_input(),
+                            current_input_position: routing_view.current_input_position(),
+                            current_input_unavailable: routing_view.current_input_unavailable(),
+                        },
+                        authorized.deadline(),
+                    )
+                    .await
+                {
                     Ok(tracking) => tracking,
                     Err(_) => {
                         return write_typed_error_phase(
@@ -1374,9 +1378,19 @@ impl ProductionGatewayRuntime {
             }
             let frozen_candidates: Arc<[DecisionCandidateAuthority]> = frozen_candidates.into();
             let route_binding = frozen_candidates[0].binding;
+            if protocol == IngressProtocol::Responses
+                && let Some(guard) = agent_turn_guard.as_mut()
+            {
+                guard.tool_handoff = self
+                    .agent_turn_history
+                    .register_tool_handoff(guard.ticket());
+            }
             let active_continuation =
-                adapters::ActiveResponseDelivery::new(protocol, budget.clone())
-                    .track_tool_batch(agent_turn_guard.is_some());
+                adapters::ActiveResponseDelivery::new(protocol, budget.clone()).with_tool_handoff(
+                    agent_turn_guard
+                        .as_ref()
+                        .and_then(|guard| guard.tool_handoff.clone()),
+                );
             request_observation.bind_tool_id_projection(active_continuation.tool_id_projection());
             let response_delivery = active_continuation.clone();
             let admission = BoundRequestAdmission {
@@ -1471,9 +1485,18 @@ impl ProductionGatewayRuntime {
             };
             set_phase(LocalPhase::History);
             if let Some(mut guard) = agent_turn_guard.take() {
+                let tool_batch = guard
+                    .tool_handoff
+                    .as_ref()
+                    .and_then(|handoff| handoff.delivered_batch());
+                let waiting = guard
+                    .tool_handoff
+                    .as_ref()
+                    .filter(|_| tool_batch.is_some())
+                    .map(|handoff| &handoff.requested);
                 wait(
                     WaitKind::LocalWork,
-                    request_observation.finish_agent_turn_output(),
+                    request_observation.finish_agent_turn_output(waiting),
                 )
                 .await;
                 let executions = request_observation
@@ -1507,7 +1530,6 @@ impl ProductionGatewayRuntime {
                     (true, false) => AgentTurnStatus::Interrupted,
                     (false, _) => AgentTurnStatus::Failed,
                 };
-                let tool_batch = response_delivery.take_tool_batch();
                 let terminal = matches!(
                     status,
                     AgentTurnStatus::Interrupted | AgentTurnStatus::Failed
@@ -1526,7 +1548,7 @@ impl ProductionGatewayRuntime {
                         // or failed request alive indefinitely.
                         RequestCompletion {
                             terminal,
-                            tool_batch: tool_batch.map(|(batch, _charge)| batch),
+                            tool_batch,
                         },
                         Instant::now(),
                     )
@@ -1725,6 +1747,7 @@ struct AgentTurnRequestGuard {
     store: Arc<AgentTurnHistoryStore>,
     ticket: Option<AgentTurnTicket>,
     decision_deferred: bool,
+    tool_handoff: Option<Arc<crate::agent_turn_history::ToolDeliveryHandoff>>,
 }
 
 impl AgentTurnRequestGuard {
@@ -1733,6 +1756,7 @@ impl AgentTurnRequestGuard {
             store,
             ticket: Some(ticket),
             decision_deferred: false,
+            tool_handoff: None,
         }
     }
 
@@ -1742,6 +1766,9 @@ impl AgentTurnRequestGuard {
 
     fn disarm(&mut self) {
         self.ticket = None;
+        if let Some(handoff) = self.tool_handoff.take() {
+            handoff.closed.cancel();
+        }
     }
 }
 
@@ -1752,6 +1779,9 @@ impl Drop for AgentTurnRequestGuard {
     fn drop(&mut self) {
         if let Some(ticket) = self.ticket.take() {
             self.store.abort(&ticket);
+        }
+        if let Some(handoff) = self.tool_handoff.take() {
+            handoff.closed.cancel();
         }
     }
 }
@@ -1838,11 +1868,21 @@ impl GatewaySession for ReplayBodySession<'_> {
         end_stream: bool,
     ) -> Result<(), TransportError> {
         let captured = body.clone();
+        #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
+        if end_stream
+            && super::test_control::observation_marker("response-final-write.fail")
+                .is_some_and(|path| std::fs::remove_file(path).is_ok())
+        {
+            return Err(TransportError::Io("injected terminal write failure".into()));
+        }
         wait(
             WaitKind::DownstreamWrite,
             self.inner.write_response_body(body, end_stream),
         )
         .await?;
+        if end_stream {
+            adapters::confirm_tool_handoff();
+        }
         self.continuation_scanner
             .accept_bytes(&captured, Instant::now());
         self.response_capture.accepted_frame(&captured, end_stream);

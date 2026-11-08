@@ -1,6 +1,6 @@
 //! Stateless tool IDs and request-local delivery bookkeeping.
 use super::ProtocolAdapterError;
-use crate::agent_turn_history::DeliveredToolBatch;
+use crate::agent_turn_history::{ChargedToolBatch, ToolDeliveryHandoff};
 use crate::server::core_runtime::model_ir::{ExactProviderPathV1, ModelIrError};
 use crate::server::request_plan::IngressProtocol;
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
@@ -96,15 +96,13 @@ struct PendingTool {
     charge: Arc<Reservation>,
 }
 
-pub(crate) type DeliveredBatch = (DeliveredToolBatch, Reservation);
-
 #[derive(Clone)]
 pub(crate) struct ActiveResponseDelivery {
     projection: ToolIdProjection,
     budget: StreamBudget,
     pending_tools: Arc<Mutex<Vec<PendingTool>>>,
     accepted_count: Arc<AtomicUsize>,
-    batch: Option<Arc<Mutex<Option<DeliveredBatch>>>>,
+    handoff: Option<Arc<ToolDeliveryHandoff>>,
 }
 impl ActiveResponseDelivery {
     pub(crate) fn new(downstream: IngressProtocol, budget: StreamBudget) -> Self {
@@ -113,7 +111,7 @@ impl ActiveResponseDelivery {
             budget,
             pending_tools: Default::default(),
             accepted_count: Default::default(),
-            batch: None,
+            handoff: None,
         }
     }
     pub(crate) fn scanner(&self) -> AcceptedResponseDeliveryScanner {
@@ -126,18 +124,9 @@ impl ActiveResponseDelivery {
     pub(crate) fn accepted_count(&self) -> usize {
         self.accepted_count.load(Ordering::Acquire)
     }
-    pub(crate) fn track_tool_batch(mut self, enabled: bool) -> Self {
-        if enabled && self.projection.downstream == IngressProtocol::Responses {
-            self.batch = Some(Arc::new(Mutex::new(None)));
-        }
+    pub(crate) fn with_tool_handoff(mut self, handoff: Option<Arc<ToolDeliveryHandoff>>) -> Self {
+        self.handoff = handoff;
         self
-    }
-    pub(crate) fn take_tool_batch(&self) -> Option<DeliveredBatch> {
-        self.batch
-            .as_ref()?
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
     }
     pub(crate) fn tool_id_projection(&self) -> ToolIdProjection {
         self.projection.clone()
@@ -153,14 +142,22 @@ pub(crate) async fn with_active_response_delivery<F: Future>(
 
 pub(super) fn tracks_tool_batch() -> bool {
     ACTIVE_RESPONSE_DELIVERY
-        .try_with(|active| active.batch.is_some())
+        .try_with(|active| active.handoff.is_some())
         .unwrap_or(false)
 }
 
-pub(crate) fn note_delivered_tool_batch(batch: DeliveredBatch) {
+pub(crate) fn prepare_tool_handoff(batch: ChargedToolBatch) {
     let _ = ACTIVE_RESPONSE_DELIVERY.try_with(|active| {
-        if let Some(delivered) = &active.batch {
-            *delivered.lock().unwrap_or_else(|e| e.into_inner()) = Some(batch);
+        if let Some(handoff) = &active.handoff {
+            handoff.prepare(batch);
+        }
+    });
+}
+
+pub(crate) fn confirm_tool_handoff() {
+    let _ = ACTIVE_RESPONSE_DELIVERY.try_with(|active| {
+        if let Some(handoff) = &active.handoff {
+            handoff.confirm();
         }
     });
 }

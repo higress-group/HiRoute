@@ -1,5 +1,10 @@
 //! Evidence for a single completed native Responses function batch.
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
+
+use hiroute_gateway_core::runtime::body::Reservation;
 use serde_json::Value;
+use tokio_util::sync::CancellationToken;
 
 use crate::context_hold::fingerprint::FingerprintBudget;
 use crate::replay::ReplayStore;
@@ -21,6 +26,43 @@ struct Invocation {
 }
 
 pub(crate) struct DeliveredToolBatch(Box<[Invocation]>);
+
+pub(crate) type ChargedToolBatch = (Arc<DeliveredToolBatch>, Reservation);
+
+/// The accepted encoder prepares the batch before EOS is visible. Only the
+/// successful downstream write makes it eligible for the predecessor index.
+#[derive(Default)]
+pub(crate) struct ToolDeliveryHandoff {
+    batch: OnceLock<ChargedToolBatch>,
+    delivered: AtomicBool,
+    pub(crate) requested: CancellationToken,
+    pub(crate) closed: CancellationToken,
+}
+
+impl ToolDeliveryHandoff {
+    pub(super) const INDEX_BYTES: usize = std::mem::size_of::<Self>() + 512;
+
+    pub(crate) fn prepare(&self, batch: ChargedToolBatch) {
+        let _ = self.batch.set(batch);
+    }
+
+    pub(super) fn prepared_batch(&self) -> Option<&DeliveredToolBatch> {
+        self.batch.get().map(|(batch, _)| batch.as_ref())
+    }
+
+    pub(crate) fn confirm(&self) {
+        if self.batch.get().is_some() {
+            self.delivered.store(true, Ordering::Release);
+        }
+    }
+
+    pub(crate) fn delivered_batch(&self) -> Option<Arc<DeliveredToolBatch>> {
+        if !self.delivered.load(Ordering::Acquire) {
+            return None;
+        }
+        self.batch.get().map(|(batch, _)| Arc::clone(batch))
+    }
+}
 
 impl DeliveredToolBatch {
     /// The native projector has already reconciled the terminal snapshot with

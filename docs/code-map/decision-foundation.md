@@ -170,6 +170,11 @@ keeps unrelated session growth out of the routine scan. Incoming projection and
 fingerprinting stay outside that lock; no model execution owns it.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+The [native Responses tool handoff](../../crates/gateway/src/agent_turn_history/tool_continuation.rs)
+uses the accepted downstream write to release routing before optional capture.
+Terminal request details can be clipped while the active checkpoint retains the
+decision and input occurrence. The [long-tool listener case](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_acp_history.rs)
+covers a callback crossing the record limit with capture still in progress.
 When that boundary cannot be compared, a [delivered Responses function batch](../../crates/gateway/src/agent_turn_history/tool_continuation.rs)
 can prove one tool continuation from a matching request prefix. The
 [accepted attempt completion](../../crates/gateway/src/runtime/driver.rs)

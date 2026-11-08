@@ -419,6 +419,7 @@ impl StoreInner {
         entry.referenced_segment = None;
         entry.response_boundary = None;
         entry.tool_batch = None;
+        entry.pending_tool_handoff = None;
         if !active_is_empty(&entry.active) {
             entry.active.capture_partial = true;
         }
@@ -522,7 +523,8 @@ pub(super) fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> us
         + entry.active.steps.capacity() * size_of::<Vec<VisibleContentPart>>()
         + entry.active.output.retained_bytes()
         + entry.active.boundary.bytes()
-        + entry.tool_batch.as_ref().map_or(0, DeliveredToolBatch::retained_bytes)
+        + entry.tool_batch.as_deref().map_or(0, DeliveredToolBatch::retained_bytes)
+        + entry.pending_tool_handoff.as_ref().map_or(0, |_| ToolDeliveryHandoff::INDEX_BYTES)
         + entry
             .active
             .steps

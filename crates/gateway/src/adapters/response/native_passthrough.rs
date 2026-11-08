@@ -14,16 +14,14 @@ use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget}
 use hiroute_gateway_core::runtime::sse::{EofPolicy, SseFramer, SseLimits};
 use serde_json::{Map, Value};
 
-use crate::agent_turn_history::DeliveredToolBatch;
+use crate::agent_turn_history::{ChargedToolBatch, DeliveredToolBatch};
 use crate::server::core_runtime::model_ir::{
     ExactProviderPathV1, ModelError, ModelIrError, ModelUsage, ToolKindV1,
 };
 use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 use crate::server::request_plan::IngressProtocol;
 
-use super::super::continuation::{
-    DeliveredBatch, ToolIdProjection, project_delivered_tool_id, tracks_tool_batch,
-};
+use super::super::continuation::{ToolIdProjection, project_delivered_tool_id, tracks_tool_batch};
 use super::super::{ChatToolIdentity, ChatToolProjection, ProtocolAdapterError};
 use super::wire::optional_str;
 
@@ -294,7 +292,7 @@ impl NativeResponseProjector {
         &self.state.usage
     }
 
-    pub(crate) fn take_tool_batch(&mut self) -> Option<DeliveredBatch> {
+    pub(crate) fn take_tool_batch(&mut self) -> Option<ChargedToolBatch> {
         if self.ended && self.state.terminal == Some(NativeTerminalOutcome::Complete) {
             self.state.tool_batch.take()
         } else {
@@ -369,7 +367,7 @@ pub(super) struct ProjectionState {
     tools: BTreeMap<u32, NativeToolIdentity>,
     retained: Vec<Reservation>,
     response_items: BTreeMap<u32, ResponseItemEvidence>,
-    tool_batch: Option<DeliveredBatch>,
+    tool_batch: Option<ChargedToolBatch>,
     reasoning_capture: Option<crate::responses_reasoning::ReasoningCapture>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
@@ -651,7 +649,7 @@ impl ProjectionState {
         })
     }
 
-    fn completed_tool_batch(&self, response: &Map<String, Value>) -> Option<DeliveredBatch> {
+    fn completed_tool_batch(&self, response: &Map<String, Value>) -> Option<ChargedToolBatch> {
         let batch = DeliveredToolBatch::from_completed_output(
             response.get("output")?.as_array()?,
             |index| {
@@ -664,7 +662,7 @@ impl ProjectionState {
             .budget
             .reserve(MemoryRole::SemanticState, batch.retained_bytes())
             .ok()?;
-        Some((batch, charge))
+        Some((Arc::new(batch), charge))
     }
 
     fn project_messages_sse(

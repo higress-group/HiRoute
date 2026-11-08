@@ -1024,8 +1024,11 @@ of a unique predecessor. Replayed calls must match the delivered call ID, tool
 name, namespace and canonical arguments. Each call must have a reconciled
 `response.output_item.done` and the Gateway must have successfully delivered the
 complete response. Hosted search is not a client callback. The proof is bounded
-and request-local until completion, then held with the predecessor checkpoint
-and consumed on continuation admission. It inherits the stage and frozen
+and prepared before the terminal write, then confirmed only after successful
+downstream delivery. A uniquely matching continuation can wait for that handoff
+within its request budget. Optional capture does not delay that handoff. The
+confirmed batch is held with the predecessor checkpoint and consumed on
+continuation admission. It inherits the stage and frozen
 decision without granting provider affinity or repairing capture completeness.
 
 Original forwarding, capture and strict request fingerprints remain unchanged.

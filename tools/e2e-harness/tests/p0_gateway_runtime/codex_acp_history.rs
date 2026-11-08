@@ -65,6 +65,215 @@ fn codex_hosted_search_and_parallel_tool_results_preserve_the_executing_stage() 
     );
 }
 
+#[cfg(all(unix, debug_assertions))]
+#[test]
+fn codex_129th_request_can_continue_while_response_capture_is_paused() {
+    use super::native_encrypted_continuation::{message, streamed};
+
+    let mut replies = (0..127)
+        .map(|index| streamed("tool", vec![shell_call(&format!("call-{index}"))]))
+        .collect::<Vec<_>>();
+    replies.push(streamed("parallel", search_and_calls()));
+    replies.push(streamed(
+        "final",
+        vec![message("answer", "final_answer", "Complete.")],
+    ));
+    let regular = NativeProvider::start(replies);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&regular, &primary, &classifier],
+        1,
+    );
+    let pause = fixture
+        .observation_root
+        .as_ref()
+        .unwrap()
+        .join("response-capture.pause");
+    let mut input = vec![json!({"role":"user","content":"Inspect the long fixture."})];
+    for index in 0..128 {
+        if index == 127 {
+            std::fs::write(&pause, b"").unwrap();
+        }
+        let (body, complete) = codex_stream(&fixture, "long-turn", &input, index == 127);
+        assert!(complete, "tool response {index} did not finish");
+        let output = completed_stream(&body)["output"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let results = tool_results(&output);
+        assert_eq!(results.len(), if index == 127 { 2 } else { 1 });
+        input.extend(output);
+        input.extend(results);
+    }
+    let (body, complete) = codex_stream(&fixture, "long-turn", &input, true);
+    std::fs::remove_file(pause).unwrap();
+    assert!(complete);
+    assert_eq!(
+        completed_stream(&body)["output"][0]["content"][0]["text"],
+        "Complete."
+    );
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (129, 0, 1)
+    );
+
+    let facts = wait_execution_facts(&fixture, 129);
+    let timeline = super::observed_history::timeline(&facts);
+    assert_eq!(timeline.turns.len(), 1);
+    assert_eq!(timeline.turns[0].requests.len(), 129);
+
+    let mut admissions = facts
+        .iter()
+        .filter(|row| row["fact"]["kind"] == "agent_turn_admitted")
+        .collect::<Vec<_>>();
+    admissions.sort_by_key(|row| row["fact"]["revision"].as_u64().unwrap());
+    assert_eq!(admissions.len(), 129);
+    let first = admissions[0]["correlation"]["request_id"].as_str().unwrap();
+    let predecessor = admissions[127]["correlation"]["request_id"]
+        .as_str()
+        .unwrap();
+    let last = admissions[128]["correlation"]["request_id"]
+        .as_str()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let records = loop {
+        let records = wait_content_for_request(&fixture, last);
+        if records.iter().any(|row| {
+            row["correlation"]["request_id"] == predecessor
+                && row["direction"] == "response_delivered"
+                && row["phase"] == "finish"
+        }) {
+            break records;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "predecessor recording did not finish after handoff"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    let anchor = |id| {
+        records
+            .iter()
+            .find(|row| {
+                row["correlation"]["request_id"] == id
+                    && row["direction"] == "request_input"
+                    && row["phase"] == "begin"
+            })
+            .unwrap()["capture"]["input_anchor_id"]
+            .as_str()
+            .unwrap()
+    };
+    assert_eq!(anchor(first), anchor(last));
+    assert!(
+        records
+            .iter()
+            .any(|row| row["correlation"]["request_id"] == first
+                && row["direction"] == "request_input"
+                && row["phase"] == "append"
+                && row["message_instance_id"] == anchor(last))
+    );
+}
+
+#[cfg(all(unix, debug_assertions))]
+#[test]
+fn codex_failed_terminal_write_does_not_publish_a_prepared_tool_batch() {
+    use super::native_encrypted_continuation::{message, streamed};
+
+    let call = shell_call("failed-write");
+    let regular = NativeProvider::start(vec![
+        streamed("tool", vec![call.clone()]),
+        streamed(
+            "final",
+            vec![message("answer", "final_answer", "New branch.")],
+        ),
+    ]);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 2]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&regular, &primary, &classifier],
+        1,
+    );
+    let fail = fixture
+        .observation_root
+        .as_ref()
+        .unwrap()
+        .join("response-final-write.fail");
+    std::fs::write(&fail, b"").unwrap();
+    let mut input = vec![json!({"role":"user","content":"Inspect the fixture."})];
+    let (_, complete) = codex_stream(&fixture, "failed-write-turn", &input, false);
+    assert!(!fail.exists(), "the terminal write fault was not reached");
+    assert!(
+        !complete,
+        "the failed write must leave an incomplete entity"
+    );
+    let results = tool_results(std::slice::from_ref(&call));
+    input.push(call);
+    input.extend(results);
+    let (body, complete) = codex_stream(&fixture, "failed-write-turn", &input, false);
+    assert!(complete);
+    assert_eq!(
+        completed_stream(&body)["output"][0]["content"][0]["text"],
+        "New branch."
+    );
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (2, 0, 2)
+    );
+}
+
+#[cfg(all(unix, debug_assertions))]
+fn codex_stream(
+    fixture: &RuntimeFixture,
+    turn: &str,
+    input: &[Value],
+    return_at_eos: bool,
+) -> (Vec<u8>, bool) {
+    use std::io::Read;
+    let headers =
+        super::native_history::headers("codex", "tool-handoff-session", "main", turn, "before");
+    let headers = headers
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    let payload = serde_json::to_vec(
+        &json!({"model":MODEL,"stream":true,"store":false,"input":input,
+        "tools":[{"type":"function","name":"exec_command","parameters":{"type":"object"}}]}),
+    )
+    .unwrap();
+    if !return_at_eos {
+        let response = request(fixture.address, "POST", "/v1/responses", &headers, &payload);
+        assert_eq!(response.status, 200);
+        return (response.body, response.http_entity_complete);
+    }
+    // Read the HTTP entity terminator without waiting for connection teardown,
+    // which happens after the Gateway's asynchronous capture drain.
+    let mut stream = open_request(fixture.address, "POST", "/v1/responses", &headers, &payload);
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut wire = Vec::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let count = stream.read(&mut buffer).unwrap();
+        assert_ne!(count, 0, "downstream closed before the final chunk");
+        wire.extend_from_slice(&buffer[..count]);
+        if let Some(head) = wire.windows(4).position(|window| window == b"\r\n\r\n") {
+            assert!(wire.starts_with(b"HTTP/1.1 200"));
+            assert!(
+                wire_header(&wire, "transfer-encoding")
+                    .unwrap()
+                    .eq_ignore_ascii_case("chunked")
+            );
+            if let Ok((body, true)) =
+                hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[head + 4..])
+            {
+                return (body, true);
+            }
+        }
+    }
+}
+
 #[test]
 fn codex_hosted_search_does_not_inherit_on_conflicting_or_incomplete_tool_input() {
     use super::native_encrypted_continuation::{message, streamed};
@@ -281,20 +490,24 @@ fn send(fixture: &RuntimeFixture, turn: &str, input: &[Value], streaming: bool) 
         String::from_utf8_lossy(&response.body)
     );
     let response: Value = if streaming {
-        std::str::from_utf8(&response.body)
-            .unwrap()
-            .lines()
-            .filter_map(|line| line.strip_prefix("data: "))
-            .filter(|data| *data != "[DONE]")
-            .map(|data| serde_json::from_str::<Value>(data).expect("invalid native SSE JSON"))
-            .find(|event| event["type"] == "response.completed")
-            .expect("missing completed response")["response"]
-            .clone()
+        completed_stream(&response.body)
     } else {
         serde_json::from_slice(&response.body).unwrap()
     };
     assert_eq!(response["status"], "completed");
     response["output"].as_array().unwrap().clone()
+}
+
+fn completed_stream(body: &[u8]) -> Value {
+    std::str::from_utf8(body)
+        .unwrap()
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter(|data| *data != "[DONE]")
+        .map(|data| serde_json::from_str::<Value>(data).expect("invalid native SSE JSON"))
+        .find(|event| event["type"] == "response.completed")
+        .expect("missing completed response")["response"]
+        .clone()
 }
 
 #[test]

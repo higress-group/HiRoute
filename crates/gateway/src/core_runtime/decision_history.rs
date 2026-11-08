@@ -9,7 +9,7 @@ use crate::agent_turn_history::{
 };
 use crate::context_hold::{HoldTicket, PreparedHold};
 use crate::replay::ReplayStore;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub(super) struct DecisionHistory {
     pub(super) guard: Option<AgentTurnRequestGuard>,
@@ -70,6 +70,7 @@ impl ProductionGatewayRuntime {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn begin_authorized_decision_history(
         &self,
         observation: &RequestObservation,
@@ -77,6 +78,35 @@ impl ProductionGatewayRuntime {
         capture: Option<CaptureScope>,
         prepared_hold: Option<PreparedHold<'_>>,
         input: HistoryInput<'_>,
+    ) -> Result<DecisionHistory, AgentTurnHistoryError> {
+        use std::future::Future;
+        use std::task::{Context, Poll, Waker};
+
+        let mut future = std::pin::pin!(self.begin_authorized_decision_history_after_handoff(
+            observation,
+            plan,
+            capture,
+            prepared_hold,
+            input,
+            Instant::now(),
+        ));
+        let Poll::Ready(result) = future
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+        else {
+            panic!("synchronous fixture cannot have a pending tool delivery");
+        };
+        result
+    }
+
+    pub(super) async fn begin_authorized_decision_history_after_handoff(
+        &self,
+        observation: &RequestObservation,
+        plan: PlanSnapshot,
+        capture: Option<CaptureScope>,
+        prepared_hold: Option<PreparedHold<'_>>,
+        input: HistoryInput<'_>,
+        deadline: Instant,
     ) -> Result<DecisionHistory, AgentTurnHistoryError> {
         let HistoryInput {
             request,
@@ -100,45 +130,52 @@ impl ProductionGatewayRuntime {
         let native_turn = capture.native_turn;
         let user_origin_unverified = capture.origin_unverified;
         let uncaptured_native_prefix = capture.missing_prefix;
-        let begin = self
-            .agent_turn_history
-            .prepare_scoped_request(&key, request, replay)
-            .and_then(|mut analyzed| {
-                analyzed.set_branch_cursor(capture.branch_cursor.0, capture.branch_cursor.1);
-                if current_input_unavailable {
-                    let Some(CurrentInputPosition::Event(index)) = current_input_position else {
-                        return Err(AgentTurnHistoryError::NoUserTurn);
-                    };
-                    analyzed.select_unavailable_event(index, request)?;
-                } else if capture.unavailable_input {
-                    analyzed.mark_current_input_unavailable();
-                } else if let Some(parts) = current_input {
-                    analyzed.select_current_input(
-                        parts,
-                        current_input_position,
-                        request,
-                        replay,
-                    )?;
-                }
-                if user_origin_unverified {
-                    analyzed.mark_user_origin_unverified();
-                }
-                if uncaptured_native_prefix {
-                    analyzed.mark_prior_history_missing();
-                }
-                self.agent_turn_history.begin_with_admission(
-                    key,
-                    plan,
-                    analyzed,
-                    TurnDecisionInputs {
-                        history_continuity,
-                        native_turn,
-                        reselect_on_user_message: true,
-                    },
-                    Instant::now(),
-                    || Some(()),
-                )
-            });
+        let begin = async {
+            let mut analyzed = self
+                .agent_turn_history
+                .prepare_scoped_request(&key, request, replay)?;
+            analyzed.set_branch_cursor(capture.branch_cursor.0, capture.branch_cursor.1);
+            if current_input_unavailable {
+                let Some(CurrentInputPosition::Event(index)) = current_input_position else {
+                    return Err(AgentTurnHistoryError::NoUserTurn);
+                };
+                analyzed.select_unavailable_event(index, request)?;
+            } else if capture.unavailable_input {
+                analyzed.mark_current_input_unavailable();
+            } else if let Some(parts) = current_input {
+                analyzed.select_current_input(parts, current_input_position, request, replay)?;
+            }
+            if user_origin_unverified {
+                analyzed.mark_user_origin_unverified();
+            }
+            if uncaptured_native_prefix {
+                analyzed.mark_prior_history_missing();
+            }
+            let inputs = TurnDecisionInputs {
+                history_continuity,
+                native_turn,
+                reselect_on_user_message: true,
+            };
+            if let Some(handoff) = self
+                .agent_turn_history
+                .pending_tool_predecessor(&key, &plan, &analyzed, &inputs)
+            {
+                // Only a uniquely matched callback can ask the predecessor to
+                // release its routing ticket. No lock is held while waiting.
+                handoff.requested.cancel();
+                let deadline = deadline.min(Instant::now() + Duration::from_secs(1));
+                let _ = tokio::time::timeout_at(deadline.into(), handoff.closed.cancelled()).await;
+            }
+            self.agent_turn_history.begin_with_admission(
+                key,
+                plan,
+                analyzed,
+                inputs,
+                Instant::now(),
+                || Some(()),
+            )
+        }
+        .await;
         let (begin, ()) = match begin {
             Ok(Some(admitted)) => admitted,
             Ok(None) => return Ok(DecisionHistory::detached()),

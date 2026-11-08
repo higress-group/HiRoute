@@ -14,8 +14,8 @@ use super::projection::project_user;
 use super::{
     AcceptedExecution, AgentTurnBegin, AgentTurnHistoryError, AgentTurnHistoryKey,
     AgentTurnHistorySnapshot, AgentTurnStatus, AgentTurnTicket, AssessmentTarget,
-    CompletedAgentTurn, DeliveredToolBatch, ExecutionAttribution, PlanSnapshot, TurnDecisionInputs,
-    VisibleAgentTurn, VisibleContentPart,
+    CompletedAgentTurn, DeliveredToolBatch, ExecutionAttribution, PlanSnapshot,
+    ToolDeliveryHandoff, TurnDecisionInputs, VisibleAgentTurn, VisibleContentPart,
 };
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::ModelRequestIRV1;
@@ -75,7 +75,8 @@ struct SessionEntry {
     capture_gap_epoch: u64,
     checkpoint: TranscriptCheckpoint,
     response_boundary: Option<super::boundary::BoundaryEvidence>,
-    tool_batch: Option<DeliveredToolBatch>,
+    tool_batch: Option<Arc<DeliveredToolBatch>>,
+    pending_tool_handoff: Option<Arc<ToolDeliveryHandoff>>,
     branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
@@ -135,7 +136,7 @@ struct CaptureAdmission {
 
 pub(crate) struct RequestCompletion {
     pub(crate) terminal: bool,
-    pub(crate) tool_batch: Option<DeliveredToolBatch>,
+    pub(crate) tool_batch: Option<Arc<DeliveredToolBatch>>,
 }
 
 #[cfg(test)]
@@ -501,6 +502,7 @@ impl AgentTurnHistoryStore {
                 checkpoint,
                 response_boundary: None,
                 tool_batch: None,
+                pending_tool_handoff: None,
                 branch_cursor: analyzed.branch_cursor,
                 active,
                 closed: VecDeque::new(),
@@ -1107,6 +1109,7 @@ impl AgentTurnHistoryStore {
                 return Err(AgentTurnHistoryError::Integrity);
             }
             entry.pending_request = None;
+            entry.pending_tool_handoff = None;
             entry.last_access = now;
             if entry.active.first_request_id.is_none() {
                 entry.active.first_request_id = Some(request_id.clone());
