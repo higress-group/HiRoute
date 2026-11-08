@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 #[cfg(any(test, not(target_os = "linux")))]
 pub(crate) use hiroute_host_runtime::GatewayListenerConfigV1;
+#[cfg(any(test, not(target_os = "linux")))]
 pub(crate) use hiroute_host_runtime::GatewayListenerDesiredV1;
 #[cfg(test)]
 pub(crate) use hiroute_host_runtime::GatewayPortModeV1;
@@ -15,7 +16,7 @@ pub(crate) fn path(root: &Path) -> PathBuf {
     GatewayListenerStore::new(root).path()
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(any(test, not(target_os = "linux")))]
 pub(crate) fn status(root: &Path) -> Result<GatewayListenerConfigV1, String> {
     GatewayListenerStore::new(root)
         .load_or_default()
