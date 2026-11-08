@@ -9,33 +9,7 @@ Stay in your usual Agent and hand work to a better-fitting **model × harness**.
 
 The capabilities work independently. Your main Agent can keep its existing model and sign-in, delegating only when needed. The steps below show Desktop; the Linux Web UI works the same way.
 
-
-<details class="agent-prompt" id="agent-cli">
-<summary>Ask an Agent: configure and use task delegation (CLI)</summary>
-
-Copy this into an Agent that can run commands on the target host, replace the bracketed values, then send it.
-
-```text
-Use the HiRoute CLI to configure cross-Agent delegation.
-Main Agent: [Codex / Hermes / another; specify directory or profile]
-Execution: [DSH development: DeepSeek Harness with a chosen DeepSeek model / Codex coding: Codex CLI with a chosen model / another]
-Route name or ID: [name or ID]; Purpose: [task scope and deliverables]
-Trigger: [only when explicitly requested / let the Agent decide by default]
-Task: [optional; blank means configure only]; Working directory: [absolute task path]
-
-1. Read quickstart, compute list, worker executors and worker plans. Connect missing execution models. List missing executor dependencies; a saved route is not proof of readiness. Hermes needs its effective configuration directory.
-2. Choose the models in routing preview and set --delegation enable, --purpose, and both --worker-harness and --worker-protocol. Codex CLI uses codex_cli / responses. DSH uses deepseek_harness; choose its protocol from current route capabilities. Preview and publish.
-3. Prepare agents connect preview --context CONTEXT_ID --collaboration explicit (or the explicitly selected delegate_by_default). Omit --plan; preserve the main Agent's model and management Skill. Complete any required agents check ... --scope collaboration, apply and query status.
-4. If Task is blank, finish with the available route and a delegation prompt. If supplied, this request authorizes that task in the specified environment. Explain that Worker uses approve-all and the working directory is not a sandbox, then start worker exec --plan PLAN_ID --cwd ABS_PATH --submission-key UNIQUE_KEY -- TASK. Save task ID and run ID.
-5. Follow worker status/wait, retrieve worker result, and inspect actual changes and tests. For uncertain acceptance, query worker status --submission ORIGINAL_KEY --operation start; do not start a duplicate with a new key. To continue, use the same task ID, its latest run ID and a new continuation submission key.
-6. Summarize configuration, run state, deliverables and test evidence. Failure does not authorize automatically switching Agents; cancellation does not undo external effects already produced.
-
-Execution rules: inspect current configuration, command --help and the required schemas; use returned IDs, revisions and protocols. Preview first, check that the effects match this goal, then Apply. Ask only for missing required choices or changes beyond the goal. Keep private Apply files and submission identifiers; look up an uncertain operation before retrying the same submission. Credentials use protected input in my own terminal, never chat, arguments or ordinary files. Report saved configuration, native settings still to load, and real execution evidence or remaining verification separately.
-```
-
-See [HiRoute CLI](/en/docs/cli/) for command formats, credential setup and recovery.
-
-</details>
+**Use task routing through the built-in delegation Skill.** Enable it under “Agent → Task routing” as shown below, then give your main Agent the task goal. The Skill handles route discovery, delegation and result retrieval. An Agent with the [management Skill](/en/docs/#management-skill) can also configure routes; the UI and CLI share configuration and task records.
 
 ## Before you start
 
@@ -62,7 +36,7 @@ A missing installation does not block saving the plan, but the chosen execution 
   <figcaption>Choose the execution Agent in the route. This example uses Codex CLI; select DeepSeek Harness here for a DSH route.</figcaption>
 </figure>
 
-## 2. Enable task routing for your main Agent
+<h2 id="delegation-skill">2. Enable the built-in delegation Skill for your main Agent</h2>
 
 Open Agent, choose the main agent you use every day, and select Enable under Task routing. Codex, Claude Code, Qoder, Pi, DeepSeek Harness, Hermes and OpenCode can all act as main agents; for Hermes, first select the configuration directory it actually uses.
 
@@ -93,7 +67,7 @@ You can also use a general request:
 
 With Let the Agent decide by default, the main agent may also select a plan for suitable independent work. Accepted work appears under **Task history** on the Agent page.
 
-Any other agent that can run commands can delegate directly with the `worker` commands below.
+The built-in delegation Skill uses the `worker` commands below. In everyday use, describe the task to your main Agent.
 
 ## 4. Follow progress and retrieve the result
 
@@ -106,11 +80,28 @@ Open “Agent → Task history” and select the task. Check its route, executio
 
 Add instructions by continuing the same task. If it fails, inspect the cause before continuing or starting again. If a connection drops, query the original submission as shown below to avoid duplicate work.
 
+<details class="cli-reference" id="agent-cli">
+<summary>Use an Agent: CLI map for this page</summary>
+
+Enable the built-in delegation Skill as described above, then give your main Agent the task goal. This table maps the Skill’s work to CLI capabilities for reference and troubleshooting. Task records are shared with the UI.
+
+| Operation on this page | CLI hints (prefix each command with `hiroute`) |
+| --- | --- |
+| Choose an executor and allow delegation | `worker executors` · `worker plans` · `routing preview` + `--delegation enable` / `--worker-harness` / `--worker-protocol` → `routing apply` |
+| Enable the built-in delegation Skill | `agents connect preview --context CONTEXT_ID --collaboration explicit` → `agents connect apply` |
+| Let the built-in Skill start and follow tasks | `worker exec` · `worker status` · `worker wait` · `worker result` |
+| Read task history, continue or cancel | `worker list` · `worker read` · `worker continue` · `worker cancel` |
+
+These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
+
+Omit `--plan` when enabling only the delegation Skill to keep the main Agent’s model connection. Select the executor and protocol together; follow the installed Skill for delegation policy and execution details.
+
+</details>
+
 ## CLI execution and recovery
 
 <details>
 <summary>Show commands, submission identifiers and connection recovery</summary>
-
 
 After installing the [HiRoute CLI](/en/docs/cli/), discover executors and plans:
 

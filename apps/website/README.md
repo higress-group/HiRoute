@@ -36,13 +36,14 @@ see [guide screenshot sources](docs/guide-assets.md) for production component
 provenance, reproduction and caption conventions. Regenerate them with
 `node apps/website/scripts/capture-guide-assets.mjs` from the repository root.
 
-Each user guide keeps its own CLI prompt in a native `details.agent-prompt`
-block, with the first block anchored at `#agent-cli`. Write a complete task in
-one `text` code fence: goal/inputs, current CLI discovery, execution steps and
-completion evidence. `public/scripts/agent-prompts.js` adds localized copy
-feedback; without JavaScript the text remains selectable. Keep prompt commands
-aligned with the released CLI manifest and schema, and keep credentials out of
-the template inputs. Detailed command/recovery rules remain in the CLI guide.
+Each user guide maps its UI operations to CLI commands in a native
+`details.cli-reference` block anchored at `#agent-cli`. Keep these as concise
+command pointers; the installed CLI help and schema supply exact parameters.
+Guide users to enable the product's built-in management or delegation Skill,
+which owns the execution workflow. Quickstart's `#management-skill` and the
+Agent-routing guide's `#delegation-skill` show the activation steps. Explain that
+UI and CLI operations share the same service, configuration and execution data.
+Update both languages together; detailed command/recovery rules stay in the CLI guide.
 
 English lives at `/en/` and Chinese at `/zh/`; `src/lib/locale.mjs` builds both
 prefixes. The root and the Chinese URLs published without a prefix before English

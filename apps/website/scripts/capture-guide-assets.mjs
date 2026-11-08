@@ -54,7 +54,7 @@ try {
   })()`);
   for (const language of ['zh', 'en']) {
     const t = (zh, en) => language === 'zh' ? zh : en;
-    for (const state of ['models-add', 'trial-entry', 'trial-setup', 'agent-editor', 'routing-worker', 'agent-task', 'tasks']) {
+    for (const state of ['models-add', 'trial-entry', 'trial-setup', 'agent-editor', 'agent-management', 'routing-worker', 'agent-task', 'tasks'].filter(state => !process.env.GUIDE_CAPTURE_STATE || state === process.env.GUIDE_CAPTURE_STATE)) {
       if (state.startsWith('trial-')) {
         await navigate(client, `${base}new-model-trial.html?native=1&view=${state === 'trial-entry' ? 'home' : 'quickstart'}&lang=${language}&theme=dark`, { width: 1200, height: 900 });
         await waitFor(client, 'Boolean(document.querySelector(".new-models"))');
@@ -67,6 +67,15 @@ try {
         await navigate(client, `${base}product-shell.html`, { width: 1200, height: 900 });
         await waitFor(client, 'Boolean(window.productShell)');
         await evaluate(client, `import('/interaction-audit-fixtures.mjs').then(m => m.seedInteractionAudit(window.productShell, ${JSON.stringify({ language, theme: 'dark', state })}))`);
+        if (state === 'agent-management') await evaluate(client, `(() => {
+          for (const agent of window.productShell.agents.agents) if (agent.settings) {
+            agent.settings.management_skill = { schema: 'hiroute.agent-management-skill-status/v1',
+              state: 'not_configured', restore_point_ref: null, operation_id: null, operation_state: null };
+          }
+          window.productShell.handlers.cli_entry_status = () => ({ state: 'missing',
+            command_resolves_to_app_cli: false, path_contains_entry_directory: false });
+          window.productShell.remount();
+        })()`);
         if (language === 'en') await evaluate(client, `(() => {
           const names = { '日常编码': 'Daily coding', '免费资料整理': 'Free research', '发布文案': 'Release copy', '代码实现': 'Code implementation' };
           for (const plan of window.productShell.desktop.catalog.plans) {
@@ -76,10 +85,14 @@ try {
           window.productShell.remount();
         })()`);
         await waitFor(client, `Boolean(document.querySelector('.sidebar-health .good') && document.querySelector('.hr-ui')?.lang === ${JSON.stringify(language === 'zh' ? 'zh-CN' : 'en')})`);
-        await evaluate(client, `import('/interaction-audit-fixtures.mjs').then(m => m.openInteractionAudit(${JSON.stringify(state === 'agent-task' ? 'agent' : state)}, ${JSON.stringify(language)}))`);
+        await evaluate(client, `import('/interaction-audit-fixtures.mjs').then(m => m.openInteractionAudit(${JSON.stringify(['agent-task', 'agent-management'].includes(state) ? 'agent' : state)}, ${JSON.stringify(language)}))`);
         if (state === 'agent-task') {
           await evaluate(client, 'document.querySelector("[data-agent-facet=collaboration]").click()');
           await waitFor(client, 'Boolean(document.querySelector("[role=dialog]"))');
+        }
+        if (state === 'agent-management') {
+          await evaluate(client, 'document.querySelector("[data-agent-facet=management_skill]").click()');
+          await waitFor(client, 'Boolean(document.querySelector("[role=dialog] [data-agent-skill-details] button") && document.querySelector("[role=dialog] button[type=submit]:not(:disabled)"))');
         }
         if (state === 'routing-worker') {
           await evaluate(client, `(() => { const disclosure = document.querySelector('.plan-more-settings'); if (!disclosure.open) disclosure.querySelector('summary').click(); })()`);

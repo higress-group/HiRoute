@@ -6,22 +6,19 @@ Linux 版提供 **Web UI 与 CLI**，适合服务器、远程工作站和自动�
 
 Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或更高版本。无需 `sudo`；安装需要 `curl` 与 Python 3。
 
+<details class="cli-reference" id="agent-cli">
+<summary>让 Agent 操作：本页 CLI 对照</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>交给 Agent：安装并检查 Linux CLI</summary>
+按本页完成安装后，推荐[在产品里开启 HiRoute 管理技能](/zh/docs/#management-skill)，让 Agent 通过 CLI 配置模型和路由，更快上手。界面与 CLI 共用底层配置和记录。
 
-复制给能在目标主机运行命令的 Agent。
+| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
+| --- | --- |
+| 启动与检查服务 | `service start` · `service status` · `system status` |
+| 配置并打开浏览器管理 | `console init` · `console open` |
+| 发现配置目标与下一步 | `quickstart` · `schema list` |
+| 开启管理技能、配置模型和路由 | `agents connect preview --management enable` → `agents connect apply` · `compute` · `routing` |
 
-```text
-请在目标 Linux 主机安装 HiRoute 并完成首次检查，暂不接入模型或启动委派任务。
-先读取当前安装说明：https://hiroute.ai/zh/docs/install-linux/
-1. 核对 x86_64/ARM64 架构、当前用户与已有安装。复用已有服务，避免启动第二个实例。
-2. 未安装时使用文档中的官方安装入口，按当前用户安装，无需 sudo；记录实际安装版本。已经安装时先检查，不擅自卸载数据。
-3. 使用 hiroute service status 查询状态；需要启动时显式运行 hiroute service start，再检查 status。启动失败先读取诊断信息，不循环重装。
-4. 运行 hiroute --help、hiroute schema list --output json 和 hiroute quickstart，确认 CLI 可以连接同一服务。
-5. 如我需要浏览器界面，按本页 Web UI 步骤开启并给出登录方式；不要把登录凭证发到公共位置。
-6. 报告安装位置、版本、服务状态和下一步可选择的模型路由或 Agent 路由配置。需要我完成的交互单独说明。
-```
+这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
 
 </details>
 
@@ -128,7 +125,7 @@ hiroute sessions status --output json
 
 ## 4. 配置模型、路由与 Agent
 
-打开 Web UI 后，按[快速开始](/zh/docs/)从“连接一个模型”继续。即使浏览器在另一台电脑上，页面中的路径、Agent 安装和原生文件也都属于服务所在主机。应用更新、登录自启等桌面宿主功能不会显示在浏览器中。
+打开 Web UI 后，推荐按[快速开始](/zh/docs/#management-skill)在“Agent → HiRoute 管理”中开启内置管理技能，让 Agent 帮你配置模型和路由。即使浏览器在另一台电脑上，页面中的路径、Agent 安装和原生文件也都属于服务所在主机。应用更新、登录自启等桌面宿主功能不会显示在浏览器中。
 
 使用终端或自动化时，可以按下面顺序通过 CLI 建立第一条路由：
 
@@ -142,19 +139,9 @@ Web UI、CLI 与桌面应用使用同一份服务端配置和执行记录，都�
 
 ## 5. 任务委派
 
-已经发布执行计划后，可以从终端或主 Agent 发现计划并提交任务：
+在 Web UI 的“Agent → 选择主 Agent → 任务路由 → 启用”中开启产品内置委派技能，选择委派时机并完成技能检查。然后直接向主 Agent 说明任务目标和工作目录，由技能发现可用路由、执行任务并取回结果。
 
-```sh
-hiroute worker executors
-hiroute worker plans
-hiroute worker exec \
-  --plan <PLAN_ID> \
-  --cwd /absolute/path/to/project \
-  --submission-key first-task-001 \
-  -- "分析这个任务，完成实现并运行相关检查"
-```
-
-网络或进程中断后，不要换一个 key 盲目重试。保留原 `submission-key`，使用 `worker status --submission ... --operation start` 查询是否已接收。
+界面中的“任务记录”与 CLI 的 `worker list`、`worker status`、`worker result` 读取相同记录。完整图示与命令对照见 [Agent 智能路由](/zh/docs/task-routing/)。
 
 ## 模型信息更新
 

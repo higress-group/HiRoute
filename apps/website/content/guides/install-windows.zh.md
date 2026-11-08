@@ -2,19 +2,19 @@
 
 HiRoute Windows 桌面版提供按当前用户安装的 NSIS 安装包，只支持原生 Windows x64。安装包自带命令行、后台服务、控制台文件和 WebView2 引导安装器，不要求 Python 或管理员权限。可从[下载页](/zh/download/)选择 Windows 桌面安装包。
 
+<details class="cli-reference" id="agent-cli">
+<summary>让 Agent 操作：本页 CLI 对照</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>交给 Agent：检查 Windows 安装与 CLI</summary>
+按本页完成安装后，推荐[在产品里开启 HiRoute 管理技能](/zh/docs/#management-skill)，让 Agent 通过 CLI 配置模型和路由，更快上手。界面与 CLI 共用底层配置和记录。
 
-复制给能在目标主机运行命令的 Agent。
+| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
+| --- | --- |
+| 检查 CLI 和服务是否可用 | `--help` · `system status` |
+| 查看当前接入和下一步 | `quickstart` |
+| 开启产品内置管理技能 | `agents connect preview --management enable` → `agents connect apply` |
+| 卸载前恢复 Agent 接入 | `agents restore preview` → `agents restore apply` |
 
-```text
-请按当前文档检查 HiRoute 的 Windows 安装和 CLI：https://hiroute.ai/zh/docs/install-windows/
-1. 检查原生 Windows x64、当前用户的安装和正确安装包；需要安装时核对下载摘要。系统要求的安装交互由我完成。
-2. 检查安装包自带的 CLI 和 PATH，在新终端中运行 hiroute --help；入口未发现时按文档处理，不额外安装 Python 或改用 Linux/WSL 的安装命令。
-3. 启动已安装的 HiRoute 桌面应用，再用 hiroute quickstart 检查其服务和配置目标；复用桌面服务，不启动第二个实例。
-4. 只检查安装与连通性，不调整模型、Agent 配置，也不调用模型。报告安装版本、CLI 入口、服务状态和仍需我处理的交互。
-```
+这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
 
 </details>
 

@@ -2,19 +2,19 @@
 
 HiRoute 桌面应用当前支持 macOS 15.0 或更高版本。短期提供的是自签名安装包，没有 Apple Developer ID 签名和公证；因此 macOS 会要求你明确确认首次启动。
 
+<details class="cli-reference" id="agent-cli">
+<summary>让 Agent 操作：本页 CLI 对照</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>交给 Agent：检查 macOS 安装与 CLI</summary>
+按本页完成安装后，推荐[在产品里开启 HiRoute 管理技能](/zh/docs/#management-skill)，让 Agent 通过 CLI 配置模型和路由，更快上手。界面与 CLI 共用底层配置和记录。
 
-复制给能在目标主机运行命令的 Agent。
+| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
+| --- | --- |
+| 检查 CLI 和服务是否可用 | `--help` · `system status` |
+| 查看当前接入和下一步 | `quickstart` |
+| 开启产品内置管理技能 | `agents connect preview --management enable` → `agents connect apply` |
+| 卸载前恢复 Agent 接入 | `agents restore preview` → `agents restore apply` |
 
-```text
-请按当前文档检查 HiRoute 的 macOS 安装与终端入口：https://hiroute.ai/zh/docs/install-macos/
-1. 检查 macOS 版本、Apple 芯片/Intel 架构与已安装应用；需要下载时核对正确安装包与 SHA256。
-2. 首次打开所需的系统交互由我完成。应用启动后，检查是否已在“设置 → CLI → 终端入口”安装命令；缺失时告诉我准确入口，完成后继续。
-3. 在新终端环境运行 hiroute --help 和 hiroute quickstart，确认 CLI 能连接桌面应用使用的服务；不要另起一个独立服务实例。
-4. 只做安装与连通检查，不改变模型、Agent 配置，不调用模型。报告已完成项和仍需要我的具体操作。
-```
+这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
 
 </details>
 
@@ -51,7 +51,7 @@ Apple 的 [安全打开 Mac App 说明](https://support.apple.com/zh-cn/102445) 
 
 如果系统提示文件已损坏，先重新核对下载域名和 SHA256，并重新下载；不要把完整性错误当作普通的首次启动拦截绕过。
 
-## 安装终端入口（可选）
+## 安装终端入口（推荐）
 
 启动桌面应用后，打开“设置” → “CLI” → “终端入口”，选择“安装”。该操作会把与当前应用配套的入口安装到：
 

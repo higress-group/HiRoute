@@ -6,31 +6,20 @@
 
 模型路由选择“用哪个模型”；想换一种执行工具，例如从 Codex 委派给 DSH，请看 [Agent 智能路由](/zh/docs/task-routing/)。
 
+<details class="cli-reference" id="agent-cli">
+<summary>让 Agent 操作：本页 CLI 对照</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>交给 Agent：创建或调整模型路由（CLI）</summary>
+推荐先[开启 HiRoute 管理技能](/zh/docs/#management-skill)，把本页的操作目标告诉 Agent。界面与 CLI 共用同一服务和底层数据，Agent 完成的改动也能在界面里查看。
 
-复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
+| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
+| --- | --- |
+| 选择模型、路由类型与候选顺序 | `compute list` · `routing options` → `routing preview` |
+| 接入决策模型 | `decision connections options` / `list` / `apply` / `test` |
+| 调整信任度、自定义分支和其他设置 | `routing show` · `routing options` → `routing preview` |
+| 发布路由并接入 Agent | `routing apply` · `agents connect preview` → `agents connect apply` |
+| 查看实际选模、质量与费用 | `sessions timeline` · `observation plan-quality samples` · `observation plan-trust` · `value show` |
 
-```text
-请用 HiRoute CLI 完成以下模型路由配置。
-目标：[新建名称 / 已有计划 ID]；用途：[任务场景]
-类型：[固定模型 / 按难度分流 / 自定义分支 / 免费优先]
-模型及顺序：[常规或固定候选；主力候选；如有分支，逐个写明条件和候选]
-决策方式：[已保存连接 / 启发式规则 / 自定义扩展]
-其他改动：[信任度、窗口、等待时间等；留空保持现有值]
-目标 Agent：[选填；留空只发布路由]；验证任务：[选填；空则不调用模型]
-
-1. 读取 routing list/show/options 和当前 schema show --command-id routing.preview --include-schema。调整已有计划前，将完整 routing show 成功响应保存为私有恢复基线。
-2. 固定模型可用 --mode fixed_model --model；按难度分流用 --mode smart_saving --economy --primary，明确选择 --decision local_rules 或 --decision-service ID@REVISION。调整已有计划使用 --plan，未要求的设置保持原样。
-3. 自定义分支、免费优先、信任度和其他细项使用当前 schema 的完整结构化请求，从 routing options 的编辑器生成；不要猜测简化参数。核对全部分支、模型顺序、决策连接版本和评分标准。
-4. 用 routing preview 生成新的 --apply-file，核对后 routing apply --request-file。重新 routing show 确认发布结果。只有填写目标 Agent 时才单独配置其模型映射，并说明重新加载要求。
-5. 仅运行填写的验证任务；用 sessions 与 observation plan-quality samples 分别核对本轮选择、实际执行和后续评分。未知价格不当成零成本，配置保存不当成已实际使用。
-
-执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
-```
-
-命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
+这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
 
 </details>
 
@@ -110,7 +99,6 @@
 
 随后在“Agent”页面选择目标 Agent，在“模型路由”中启用，选择这条路由，并按页面提示重新加载 Agent。各 Agent 的接入方式见下方说明。保存后，提交一个小任务验证模型入口。
 
-
 <figure>
   <a href="/guide-assets/agent-editor-zh.webp"><img src="/guide-assets/agent-editor-zh.webp" alt="Codex 模型路由设置中勾选已发布的智能路由" width="1200" height="900" loading="lazy" /></a>
   <figcaption>在 Agent 的“模型路由”中选择可用路由。图中为已启用连接的调整界面。</figcaption>
@@ -187,7 +175,6 @@
 按难度分流和自定义分支会在每条新用户消息到来时重新判断。同一轮内，Agent 调用工具后继续工作时，通常沿用本轮已经选定的模型组；具体条件见下文“理解本轮选择与失败处理”。
 
 重新判断后仍选中同一模型组时，只要对话记录仍能衔接、原模型仍满足请求要求，HiRoute 就会优先沿用上一轮的模型，包括此前自动切换到的备用模型。这有助于延续模型上下文并复用提示词缓存。选中不同组，或原模型不能继续使用时，会按正常规则选择和自动切换。这个行为自动生效，无需设置追问开关。
-
 
 使用决策模型时，每条新消息到来，决策模型都会沿任务时间线独立回答三个问题：上一步做得怎么样（胜任分）、这一步有多难（简单概率）、上一步的问题会带进下一步吗（之前的问题相关概率）。阈值、选组和执行由 HiRoute 按你的路由设置负责。
 

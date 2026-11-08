@@ -18,12 +18,15 @@ The website change does not alter those components.
 | `trial-entry` | Home → New models | `new-model-trial.tsx`, Home view |
 | `trial-setup` | Connect and try → Choose models | `trial-quickstart-fixture.tsx` |
 | `agent-editor` | Agent → Codex → Model routing | `interaction-audit-fixtures.mjs` |
+| `agent-management` | Agent → Codex → HiRoute management → Enable | `interaction-audit-fixtures.mjs` |
 | `routing-worker` | Smart routing → More settings → Task delegation | `interaction-audit-fixtures.mjs` |
 | `agent-task` | Agent → Codex → Task routing | `interaction-audit-fixtures.mjs` |
 | `tasks` | Agent → Task history → a running task | `interaction-audit-fixtures.mjs` |
 
 Fixtures are under `apps/desktop/tests/v3/browser/`. English captures translate
-the sample route names at the host boundary. All controls, layouts and navigation
+the sample route names at the host boundary. The management capture uses a known
+not-configured Skill state and a missing CLI entry to show both setup actions.
+All controls, layouts and navigation
 are production components; no UI labels or screenshot pixels are edited. These
 captures illustrate configuration and status, not a live provider run, benchmark,
 price offer or savings claim. They use no personal credentials or task content.
@@ -39,6 +42,8 @@ The script starts its own Vite server and headless Chrome on loopback, uses a
 disposable browser profile, and stops its processes on exit. Set `CHROME_BIN` if
 Chrome is not at the platform default. It captures 1200 × 900 dark-mode WebP
 images in both languages. Inspect every changed image before publishing.
+Set `GUIDE_CAPTURE_STATE=agent-management` (or another asset name above) to
+refresh only that interaction in both languages.
 
 The guides also reuse the dark `readme-trial`, `readme-report` and `readme-session`
 assets. See [their provenance](../../../decision-extensions/assets/README.md):

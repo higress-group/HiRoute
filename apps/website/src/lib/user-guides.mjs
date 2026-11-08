@@ -14,8 +14,8 @@ export const guidePages = {
     zh: '快速开始', en: 'Quickstart',
     title: { zh: '快速开始：模型路由与 Agent 路由', en: 'Quickstart: model routing and Agent routing' },
     description: {
-      zh: '选择两条上手路径：用模型路由降低日常任务成本、试用新模型；用 Agent 路由把任务交给合适的模型与执行工具。附夜晚模式操作截图。',
-      en: 'Follow two illustrated paths: use model routing to reduce everyday task costs and try new models, or Agent routing to delegate work to the right model and execution tool.',
+      zh: '开启内置管理技能，让 Agent 通过 CLI 快速上手；按图配置模型路由与 Agent 路由。界面和 CLI 共用配置与执行记录，每页附操作对照。',
+      en: 'Enable the management Skill for a faster start with an Agent and CLI. Follow illustrated model and Agent routing guides, with shared UI/CLI data and command maps.',
     },
   },
   'install-macos': {
@@ -78,8 +78,8 @@ export const guidePages = {
     zh: 'HiRoute CLI', en: 'HiRoute CLI',
     title: { zh: 'HiRoute CLI：在终端管理模型、路由、Agent 与任务', en: 'HiRoute CLI: manage models, routes, Agents and tasks' },
     description: {
-      zh: '在终端连接模型、配置路由、接入 Agent、查看会话和委派任务；与桌面应用、Linux Web UI 共用配置和执行记录，也适合自动化环境。',
-      en: 'Connect models, configure routes and Agents, inspect sessions and delegate tasks from the terminal. The CLI shares configuration and records with Desktop and the Linux Web UI.',
+      zh: '推荐开启内置管理与委派技能，让 Agent 操作 CLI。界面中的管理与任务操作都有 CLI 对应入口，底层配置和记录互通。',
+      en: 'Enable the built-in management and delegation Skills to let an Agent use the CLI. UI management and task operations have CLI equivalents and share configuration and records.',
     },
   },
 };

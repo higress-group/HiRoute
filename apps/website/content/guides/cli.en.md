@@ -1,28 +1,35 @@
 # HiRoute CLI
 
-HiRoute CLI is the official terminal entry to the HiRoute local service. It works alongside macOS / Windows Desktop and the Linux Web UI, or as the complete management interface for terminal and automation workflows. Model sources, smart routes, Agent connections, session observation and Worker tasks reuse the same production paths.
+**Every management and task operation in the HiRoute UI is also available through the CLI.** Both connect to the same HiRoute service and share configuration, tasks and execution records. Start in the UI and continue in the CLI, or inspect an Agent’s CLI changes in the UI. **For the fastest start, enable the built-in management Skill and let an Agent operate the CLI.**
 
+<h2 id="built-in-skills">Enable the built-in Skills in the product first</h2>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>Ask an Agent: work through the CLI</summary>
+| What you want the Agent to do | Where to enable it |
+| --- | --- |
+| Configure models, routes and Agents; inspect execution records | “Agent → Select your usual Agent → HiRoute management → Enable” |
+| Hand work to another model × harness | “Agent → Select your main Agent → Task routing → Enable”; choose when to delegate and complete the Skill check |
 
-Copy this to an Agent that can run commands on the target host.
+Once enabled, tell the Agent your goal. The Skills shipped with HiRoute provide the management and delegation workflows. Management, task routing and model routing can be enabled independently. See the illustrated steps for [management](/en/docs/#management-skill) and [task routing](/en/docs/task-routing/#delegation-skill).
 
-```text
-Use the locally installed HiRoute CLI to complete: [configuration, query or execution goal].
-Scope: [read-only / allowed configuration changes / explicitly authorized task and directory]
+Each guide offers command pointers: [Quickstart](/en/docs/#agent-cli), [Connect models](/en/docs/models/#agent-cli), [Try a new model](/en/docs/model-trial/#agent-cli), [Model routing](/en/docs/model-routing/#agent-cli) and [Agent routing](/en/docs/task-routing/#agent-cli).
 
-1. Start with hiroute --help, hiroute quickstart and hiroute schema list --output json. Read each needed command's --help and schema show --command-id COMMAND_ID --include-schema. A command missing from this installation is not available functionality.
-2. Treat model sources, routes and Agent model/management/collaboration facets separately. Reuse resources; do not guess IDs, revisions, directories or protocols from display names.
-3. Preview configuration changes, check their scope, then submit the exact Apply file. Decision connections use decision connections apply --apply-file to prepare the preview and submission, then the same command with --request-file to submit. Do not invent decision connections preview.
-4. Read complete stdout JSON and preserve stderr and the actual exit code separately. Check business and Operation state; acceptance is not completion. Credentials use protected input in my own terminal.
-5. Before editing an existing route, save and validate a complete routing show response as a private recovery baseline. Look up uncertain operations with their original identifiers; do not create a new idempotency key to resubmit them.
-6. Call models or execute tasks only within the scope above. Report completed effects, resource IDs, remaining native loading, actual request/task evidence and anything unverified.
-```
+<details class="cli-reference" id="agent-cli">
+<summary>Use an Agent: CLI map for this page</summary>
+
+Use this page-to-command map as a reference. An Agent with the management Skill can choose the commands for your goal.
+
+| Operation on this page | CLI hints (prefix each command with `hiroute`) |
+| --- | --- |
+| Home status and setup guidance | `system status` · `quickstart` |
+| Models and connection settings | `compute` · `prices` · `decision connections` |
+| Smart routes | `routing options` / `list` / `show` / `preview` / `apply` |
+| Agent model routes and built-in Skills | `agents connect preview` / `apply` / `status` · `agents restore` |
+| Delegated tasks and history | `worker plans` / `exec` / `list` / `status` / `result` / `continue` / `cancel` |
+| Sessions, model performance and usage | `sessions` · `observation plan-quality` · `observation plan-trust` · `value show` |
+
+These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
 
 </details>
-
-For a ready-made task, use the prompt embedded in [Quickstart](/en/docs/#agent-cli), [Connect models](/en/docs/models/#agent-cli), [Try a new model](/en/docs/model-trial/#agent-cli), [Model routing](/en/docs/model-routing/#agent-cli) or [Agent routing](/en/docs/task-routing/#agent-cli). Each prompt includes its goal, CLI path and completion checks.
 
 ## Install and inspect the CLI
 
@@ -338,7 +345,6 @@ For native settings provide the matching concrete `agents restore preview --cont
 --apply-file ...` and `agents restore apply --request-file ...` commands, with actual native-root or
 selection flags and the owned restore reference. Arrange independent access before a restore/reconnect
 can revoke the caller's grant. Native loading/selection remains a separate reported action.
-
 
 ## Analyze historical conversations and estimated API savings
 

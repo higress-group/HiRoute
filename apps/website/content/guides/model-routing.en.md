@@ -6,31 +6,20 @@ First [connect your models](/en/docs/models/). To try a new model directly, use 
 
 Model routing chooses which model to use. To switch execution tools, such as delegating from Codex to DSH, see [Agent routing](/en/docs/task-routing/).
 
+<details class="cli-reference" id="agent-cli">
+<summary>Use an Agent: CLI map for this page</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>Ask an Agent: create or adjust model routing (CLI)</summary>
+For a faster start, [enable the HiRoute management Skill](/en/docs/#management-skill) and tell your Agent what you want to do on this page. The UI and CLI share the same service and underlying data, so changes made by the Agent are visible in the UI.
 
-Copy this into an Agent that can run commands on the target host, replace the bracketed values, then send it.
+| Operation on this page | CLI hints (prefix each command with `hiroute`) |
+| --- | --- |
+| Choose models, routing type and candidate order | `compute list` · `routing options` → `routing preview` |
+| Connect a decision model | `decision connections options` / `list` / `apply` / `test` |
+| Adjust trust, custom branches and other settings | `routing show` · `routing options` → `routing preview` |
+| Publish and connect an Agent | `routing apply` · `agents connect preview` → `agents connect apply` |
+| Inspect model selection, quality and cost | `sessions timeline` · `observation plan-quality samples` · `observation plan-trust` · `value show` |
 
-```text
-Use the HiRoute CLI to configure this model route.
-Target: [new name / existing plan ID]; Purpose: [task scenario]
-Type: [Fixed model / Difficulty routing / Custom branches / Free first]
-Models and order: [Regular or fixed candidates; Primary candidates; each branch's condition and candidates if applicable]
-Decision method: [saved connection / heuristic rules / custom extension]
-Other changes: [trust, context window, wait time, etc.; blank preserves existing values]
-Target Agent: [optional; blank publishes only]; Verification task: [optional; blank means no model call]
-
-1. Read routing list/show/options and schema show --command-id routing.preview --include-schema. Before editing an existing plan, save a successful complete routing show response as a private recovery baseline.
-2. Fixed model can use --mode fixed_model --model. Difficulty routing uses --mode smart_saving --economy --primary with an explicit --decision local_rules or --decision-service ID@REVISION. Use --plan for an existing plan and preserve unrequested settings.
-3. Use complete structured requests from the current schema and routing options editor for Custom branches, Free first, trust and other detailed settings. Do not invent convenience flags. Check all branches, model order, decision revisions and scoring criteria.
-4. Generate a fresh --apply-file with routing preview, review it and run routing apply --request-file. Read routing show again to confirm publication. Configure Agent mapping only when a target is supplied, and explain reloading requirements.
-5. Run only the supplied verification task. Use sessions and observation plan-quality samples to distinguish selection, actual execution and later scores. Unknown prices are not zero cost; saved configuration is not actual use.
-
-Execution rules: inspect current configuration, command --help and the required schemas; use returned IDs, revisions and protocols. Preview first, check that the effects match this goal, then Apply. Ask only for missing required choices or changes beyond the goal. Keep private Apply files and submission identifiers; look up an uncertain operation before retrying the same submission. Credentials use protected input in my own terminal, never chat, arguments or ordinary files. Report saved configuration, native settings still to load, and real execution evidence or remaining verification separately.
-```
-
-See [HiRoute CLI](/en/docs/cli/) for command formats, credential setup and recovery.
+These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
 
 </details>
 
@@ -110,7 +99,6 @@ Select Enable or Publish changes to freeze the connection revision, task conditi
 
 Then open Agent, choose the target agent, enable Model routing, select this route, and reload the agent as the page describes. See the Agent-specific instructions below. After saving, submit a small real task to verify the model path.
 
-
 <figure>
   <a href="/guide-assets/agent-editor-en.webp"><img src="/guide-assets/agent-editor-en.webp" alt="Selecting a published smart route in Codex Model routing" width="1200" height="900" loading="lazy" /></a>
   <figcaption>Choose available routes under the Agent’s Model routing. This screenshot shows editing an enabled connection.</figcaption>
@@ -187,7 +175,6 @@ Each decision selects one task branch. Overlapping conditions follow the current
 Smart model routing selects and executes models according to the published configuration. Fixed model and Free first follow candidate order. Difficulty routing and Custom branches judge the task to select a model group and judge again for every new user message. For these two routing types, tool continuations reuse the frozen decision when HiRoute can identify the same turn, history is continuous, and the choice remains reusable.
 
 When a new judgment selects the same group, HiRoute prefers the model from the previous turn if the conversation still matches and the model can serve the request. This includes a backup selected after another model failed, and helps reuse model context and prompt caches. If the group changes or the previous model cannot be reused, normal selection and automatic relay apply. This happens automatically, with no follow-up switching setting.
-
 
 With a decision model, each new message gets three independent answers along the task's timeline: how the last step went (competence score), how hard this step is (simple probability), and whether the last step's problem carries into the next (earlier problem relevance). HiRoute applies your route settings to choose and run the group.
 

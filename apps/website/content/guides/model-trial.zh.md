@@ -2,48 +2,23 @@
 
 新模型发布后，不必一次让它接管全部工作。HiRoute 的试用让新模型先承担简单的轮次，熟悉的主力模型兜底；新模型某一步没做好、问题又关系到接下来的工作时，主力接手。之后根据你自己任务里的记录，逐步调整新模型承担的工作量。
 
+<details class="cli-reference" id="agent-cli">
+<summary>让 Agent 操作：本页 CLI 对照</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>交给 Agent：用 CLI 配置新模型试用</summary>
+推荐先[开启 HiRoute 管理技能](/zh/docs/#management-skill)，把本页的操作目标告诉 Agent。界面与 CLI 共用同一服务和底层数据，Agent 完成的改动也能在界面里查看。
 
-复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
+| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
+| --- | --- |
+| 选试用模型和主力模型 | `compute list` · `compute connection options` / `preview` / `apply` |
+| 选择或添加决策连接 | `decision connections options` / `list` / `apply` |
+| 设置试用路由、信任度并发布 | `routing options` → `routing preview` → `routing apply` |
+| 映射到常用 Agent | `agents connect preview` → `agents connect apply` |
+| 查看路由时间线和模型表现 | `sessions timeline` · `observation plan-quality samples` · `observation plan-trust` |
+| 回放信任度、查看调整建议 | `observation plan-trust replay` / `suggestions` |
 
-```text
-请用 HiRoute CLI 配置“新模型先接简单任务、主力兜底”的试用路由。
-试用模型：[名称和来源]；主力模型：[名称和来源]
-决策连接：[已保存的名称；没有则协助接入兼容的决策模型]
-目标 Agent：[名称和准确目录或 profile]
-新路由名称：[名称]；验证任务：[选填；空则不调用模型]
+这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
 
-1. 用 quickstart、compute list 和 decision connections options 解析当前目标和可复用资源；缺少连接时先按 CLI 流程补齐。普通 Chat 模型不能直接冒充决策模型，也不要改成启发式规则来替代这次带评分的试用。
-2. 读取 hiroute schema show --command-id routing.options --include-schema 和 routing.preview 的 schema。用 routing options 的 authoring 返回完整编辑器，构造 smart_saving 路由：试用模型放常规组，主力放主力组，选择明确保存的决策连接版本。
-3. 通过当前结构化请求设置 smart.judgment.degree.simple_threshold_millis 为 900（“试用”档），保留适用的低分保护和其他默认项。不要发明 --trust 参数，也不要直接发布简化参数默认的“熟悉”档。核对并填写适合我任务的胜任评分标准。
-4. 用 routing preview --request-file PREVIEW_FILE --apply-file APPLY_FILE 预览完整配置，再 routing apply --request-file APPLY_FILE 发布。预览文件与 Apply 文件分开；发布后核对实际保存的阈值和模型组。
-5. 用 agents connect preview/apply 只映射所选目标的模型路由，保留任务路由、管理 Skill 和原生权限。给出加载方式；仅执行上面填写的验证任务，并核对真实记录。
-6. 输出计划 ID、发布版本、目标 context、加载指引和验证状态；暂不根据少量样本自动上调信任度。
-
-执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
-```
-
-命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
-
-</details>
-
-<details class="agent-prompt">
-<summary>交给 Agent：读取表现和回放信任度（CLI）</summary>
-
-复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
-
-```text
-请只读评估 HiRoute 试用路由 [计划名称或 ID]，暂不发布任何改动，也不调用模型。
-1. 用 routing list/show 解析计划和当前发布版本，读取 observation plan-trust --help，以及 schema show --command-id observation.plan-trust.replay --include-schema。
-2. 查询 hiroute observation plan-trust --plan-id PLAN_ID --revision active --output json，并读取 observation plan-quality samples 的评分覆盖和样本。
-3. 用 hiroute observation plan-trust replay --plan-id PLAN_ID --revision active --thresholds-millis 900,800,650,500 --output json 比较几个档位的历史分配；再读 observation plan-trust suggestions。
-4. 报告样本量、评分覆盖、胜任表现、低分保护、费用估算及未知项。回放只是历史估算，不能推断未来成功率；无建议或证据不足时如实说明。
-5. 给出保持、上调、下调或分工的理由。如我后续要求应用，再读取最新配置、保留完整恢复基线并重新 Preview/Apply。
-```
-
-命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
+试用入口对应一组模型、路由和 Agent 操作。默认“试用”档在路由编辑器中对应 `smart.judgment.degree.simple_threshold_millis = 900`；CLI 使用同一配置，历史回放也读取同一批执行记录。应用信任度调整仍走 `routing preview` → `routing apply`。
 
 </details>
 

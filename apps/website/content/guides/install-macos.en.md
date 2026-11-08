@@ -2,19 +2,19 @@
 
 HiRoute Desktop currently supports macOS 15.0 or later. Near-term releases are self-signed: they do not carry an Apple Developer ID signature or notarization, so macOS asks you to explicitly approve the first launch.
 
+<details class="cli-reference" id="agent-cli">
+<summary>Use an Agent: CLI map for this page</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>Ask an Agent: check macOS installation and the CLI</summary>
+After installation, [enable the HiRoute management Skill in the product](/en/docs/#management-skill). Letting an Agent configure models and routes through the CLI is the recommended way to get started faster. The UI and CLI share configuration and records.
 
-Copy this to an Agent that can run commands on the target host.
+| Operation on this page | CLI hints (prefix each command with `hiroute`) |
+| --- | --- |
+| Check the CLI and service | `--help` · `system status` |
+| Inspect connections and next steps | `quickstart` |
+| Enable the built-in management Skill | `agents connect preview --management enable` → `agents connect apply` |
+| Restore Agent connections before uninstalling | `agents restore preview` → `agents restore apply` |
 
-```text
-Check HiRoute's macOS installation and Terminal entry using the current guide: https://hiroute.ai/en/docs/install-macos/
-1. Check macOS version, Apple silicon/Intel architecture and existing installation. If a download is needed, verify the matching package and SHA256.
-2. I will complete any first-open system interaction. Once the app starts, check whether Settings → CLI → Terminal entry is installed. If missing, tell me the exact entry and continue after it is installed.
-3. In a fresh terminal environment, run hiroute --help and hiroute quickstart. Confirm the CLI reaches the Desktop service; do not start a separate service instance.
-4. Check installation and connectivity only. Do not change model or Agent configuration or call a model. Report completed checks and specific remaining actions for me.
-```
+These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
 
 </details>
 
@@ -51,7 +51,7 @@ Apple maintains the current steps in [Safely open apps on your Mac](https://supp
 
 If macOS says the file is damaged, verify the download domain and SHA256 and download it again. Do not treat an integrity failure as an ordinary first-launch warning.
 
-## Install the Terminal entry (optional)
+## Install the Terminal entry (recommended)
 
 After opening Desktop, go to Settings → CLI → Terminal entry and select Install. It installs the entry paired with the current app at:
 

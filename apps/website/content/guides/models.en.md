@@ -4,28 +4,21 @@ HiRoute manages subscriptions, APIs and local models in one place on your machin
 
 This guide covers general models: how to connect them, how to combine a subscription and an API that offer the same model into one route, and how to limit spending on an API key. Desktop and the Linux Web UI work the same way; for the matching `compute` commands, see [HiRoute CLI](/en/docs/cli/).
 
+<details class="cli-reference" id="agent-cli">
+<summary>Use an Agent: CLI map for this page</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>Ask an Agent: connect model sources (CLI)</summary>
+For a faster start, [enable the HiRoute management Skill](/en/docs/#management-skill) and tell your Agent what you want to do on this page. The UI and CLI share the same service and underlying data, so changes made by the Agent are visible in the UI.
 
-Copy this into an Agent that can run commands on the target host, replace the bracketed values, then send it.
+| Operation on this page | CLI hints (prefix each command with `hiroute`) |
+| --- | --- |
+| Inspect or reuse connected models | `compute list` · `compute show` · `compute connection options` |
+| Scan local settings, connect a subscription or API | `compute scan` · `compute connection prepare` / `authorize` / `login` / `test` |
+| Select models and save a connection | `compute connection preview` → `compute connection apply` |
+| Combine the same model from several sources | `routing options` → `routing preview` → `routing apply` |
+| Set key budgets and model prices | `compute budgets get` / `preview` · `prices effective` · `prices override preview` / `apply` |
+| Set a connection proxy | `compute network show` / `preview` / `apply` |
 
-```text
-Use the HiRoute CLI to connect these models for model routing or delegated execution.
-Source: [reuse a subscription / saved connection / new API provider and endpoint / local model endpoint]
-Models: [specific names, or “all currently selectable models”]
-Save the connection and models only. Do not run paid inference or change Agent model settings.
-
-1. Run hiroute compute list and hiroute compute connection options. Reuse the saved source I selected when possible.
-2. To reuse local configuration, pass {"schema":"hiroute.compute-scan-request/v2"} to compute scan --request-stdin; specify native_target for Hermes. Read schema show --command-id compute.connection.prepare --include-schema and prepare a candidate using returned references and revisions.
-3. For a new API, local model or independent subscription, follow current connection options and the applicable authorize/login/test help. Give me human-terminal protected-input steps if a key is needed; run only checks within this request's scope.
-4. Resolve model references from the current candidate. Use compute connection preview --candidate REF --candidate-revision REV with selected --model-ref values, or explicitly --all-selectable. Add --apply-file NEW_FILE, then apply --request-file SAME_FILE.
-5. Read compute list/show and routing options again. Report source IDs, model binding IDs, connection state and available next routing steps. Distinguish saved connectivity from verified inference.
-
-Execution rules: inspect current configuration, command --help and the required schemas; use returned IDs, revisions and protocols. Preview first, check that the effects match this goal, then Apply. Ask only for missing required choices or changes beyond the goal. Keep private Apply files and submission identifiers; look up an uncertain operation before retrying the same submission. Credentials use protected input in my own terminal, never chat, arguments or ordinary files. Report saved configuration, native settings still to load, and real execution evidence or remaining verification separately.
-```
-
-See [HiRoute CLI](/en/docs/cli/) for command formats, credential setup and recovery.
+These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
 
 </details>
 

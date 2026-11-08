@@ -9,33 +9,7 @@
 
 两条能力可以独立启用。主 Agent 可以保留原来的模型与登录，只在需要时委派任务。下面以桌面应用说明，Linux Web UI 操作相同。
 
-
-<details class="agent-prompt" id="agent-cli">
-<summary>交给 Agent：配置并使用任务委派（CLI）</summary>
-
-复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
-
-```text
-请用 HiRoute CLI 完成跨 Agent 委派。
-主 Agent：[Codex / Hermes / 其他；明确目录或 profile]
-执行方：[DSH 开发：DeepSeek Harness + 指定 DeepSeek 模型 / Codex 编码：Codex CLI + 指定模型 / 其他]
-路由名称或 ID：[名称或 ID]；用途：[任务范围与交付物]
-委派时机：[仅在明确要求时 / 默认由 Agent 判断]
-执行任务：[选填，留空只配置]；工作目录：[任务所在绝对路径]
-
-1. 用 quickstart、compute list、worker executors、worker plans 读取现状。缺少执行模型时先接入；执行器缺依赖时列出缺项，不能把“路由已保存”报告成“可以执行”。Hermes 必须选实际配置目录。
-2. 在 routing preview 中选择模型，设置 --delegation enable、--purpose，并同时传 --worker-harness 和 --worker-protocol。Codex CLI 对应 codex_cli / responses；DSH 对应 deepseek_harness，协议按当前路由能力选择。预览并发布。
-3. 为主 Agent 准备 agents connect preview --context CONTEXT_ID --collaboration explicit（或用户明确选择的 delegate_by_default），不传 --plan，保留它的模型和管理 Skill。完成必要的 agents check ... --scope collaboration，再应用并查询状态。
-4. 若执行任务为空，交付可用路由和调用提示词后结束。若填写了任务，这次指令授权在该环境执行该任务；说明 Worker 使用 approve-all、工作目录不是沙箱，再用 worker exec --plan PLAN_ID --cwd ABS_PATH --submission-key UNIQUE_KEY -- TASK 启动，保存 task ID 和 run ID。
-5. 用 worker status/wait 跟进，并用 worker result 读取结果，核对实际改动与测试。提交结果不确定时，先用 worker status --submission ORIGINAL_KEY --operation start 查询；不要用新键重复启动。需要继续时沿用 task ID，使用最新 run ID 和新的继续操作提交键。
-6. 汇总配置、运行状态、交付物与测试证据。执行失败不等于换一个 Agent 自动重试；取消也不会撤销已经完成的外部操作。
-
-执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
-```
-
-命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
-
-</details>
+**推荐通过产品内置委派技能使用任务路由。** 按下方步骤在“Agent → 任务路由”中启用，之后只需向主 Agent 说明任务目标，技能负责发现路由、委派和取回结果。配置路由也可以交给已[开启管理技能](/zh/docs/#management-skill)的 Agent；界面与 CLI 共用同一份配置和任务记录。
 
 ## 开始前
 
@@ -62,7 +36,7 @@
   <figcaption>在路由中选执行方。示例界面使用 Codex CLI；DSH 路由在同一区域选择 DeepSeek Harness。</figcaption>
 </figure>
 
-## 2. 开启主 Agent 的任务路由
+<h2 id="delegation-skill">2. 开启主 Agent 的内置委派技能</h2>
 
 打开“Agent”，选择你日常使用的主 Agent，在“任务路由”中选择“启用”。Codex、Claude Code、Qoder、Pi、DeepSeek Harness、Hermes 和 OpenCode 都可以作为主 Agent；Hermes 需要先选择它实际使用的配置目录。
 
@@ -93,7 +67,7 @@
 
 若配置为默认由 Agent 判断，主 Agent 也可以对适合独立执行的工作主动选择计划。任务记录显示在“Agent”页面的“任务记录”中。
 
-其他能运行命令的 Agent 也可以直接调用下文的 `worker` 命令委派任务。
+产品内置委派技能使用下文的 `worker` 命令完成这些操作；日常使用时直接向主 Agent 描述任务即可。
 
 ## 4. 查看进度并取回结果
 
@@ -106,11 +80,28 @@
 
 需要追加要求时，可以在同一任务上继续。失败时先查看原因再决定继续或重新发起；连接中断时按下方 CLI 说明查询原提交，避免重复启动。
 
+<details class="cli-reference" id="agent-cli">
+<summary>让 Agent 操作：本页 CLI 对照</summary>
+
+先按上文开启产品内置委派技能，再告诉主 Agent 任务目标。下表说明技能使用的 CLI 能力，便于理解和排查。任务记录与界面互通。
+
+| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
+| --- | --- |
+| 选择执行 Agent、开放可委派路由 | `worker executors` · `worker plans` · `routing preview` + `--delegation enable` / `--worker-harness` / `--worker-protocol` → `routing apply` |
+| 启用内置委派技能 | `agents connect preview --context CONTEXT_ID --collaboration explicit` → `agents connect apply` |
+| 由内置技能发起并跟进任务 | `worker exec` · `worker status` · `worker wait` · `worker result` |
+| 查看任务记录、继续或取消 | `worker list` · `worker read` · `worker continue` · `worker cancel` |
+
+这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
+
+只启用委派技能时不传 `--plan`，主 Agent 的模型接入保持原样。执行器和协议一起选择；委派策略与执行细节以已安装的技能为准。
+
+</details>
+
 ## 用 CLI 执行与恢复
 
 <details>
 <summary>展开命令示例、提交标识与断线恢复</summary>
-
 
 安装 [HiRoute CLI](/zh/docs/cli/) 后，可以先发现执行器和计划：
 

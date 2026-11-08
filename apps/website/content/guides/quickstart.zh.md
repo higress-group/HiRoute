@@ -2,65 +2,14 @@
 
 HiRoute 帮你做两个选择：**这一阶段用哪个模型，这项任务交给哪个 Agent。** 你可以先用其中一条，也可以把它们组合起来。
 
+**HiRoute 界面里的各项管理与任务操作，都可以通过 CLI 完成。** 两者连接同一个 HiRoute 服务，共用底层配置、任务和执行记录：在界面里配置后，CLI 可以接着操作；让 Agent 通过 CLI 完成的改动，也能在界面里查看。**推荐先开启内置管理技能，让 Agent 操作 CLI，更快上手 HiRoute。**
+
 | 你想解决的问题 | 从哪里开始 | 完成后能做什么 |
 | --- | --- | --- |
 | 日常编码成本高，想试更经济的新模型 | **模型智能路由**：接入模型 → 创建路由 → 连接常用 Agent | 简单工作用常规模型，难点交给主力；查看实际用量和表现 |
 | 想在熟悉的 Agent 中使用另一套模型和执行工具 | **Agent 智能路由**：配置执行 Agent → 开启任务路由 → 发起委派 | 从 Codex 调用 DeepSeek Harness，或从 Hermes 把编码任务交给 Codex |
 
 截图使用夜晚模式与示例数据。点击图片可查看大图。
-
-
-<details class="agent-prompt" id="agent-cli">
-<summary>交给 Agent：完成模型路由接入（CLI）</summary>
-
-复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
-
-```text
-请用 HiRoute CLI 为我完成模型路由接入。
-目标 Agent：[名称；若有多个配置，指定目录或 profile]
-模型来源：[已有订阅 / 已保存 API 接入 / 待添加的供应商和地址]
-常规模型：[名称]；主力模型：[名称]
-路由名称：[日常开发]；用途：[我的典型任务]
-决策方式：[已保存决策连接 / 本地启发式规则]
-验证任务：[选填；留空只配置，不调用模型]
-
-1. 运行 hiroute quickstart、hiroute compute list、hiroute routing list，复用已有资源，解析准确的目标 context 和模型 binding。Hermes 使用明确的 --hermes-root。
-2. 缺少来源时，按 compute connection 的 options、prepare 或受保护授权流程接入；先 preview --apply-file，再 apply --request-file。
-3. 读取 routing options。用 routing preview 创建 smart_saving 路由，分别传 --economy、--primary，以及 --decision local_rules 或 --decision-service ID@REVISION，生成新的 Apply 文件后发布。
-4. 用 agents connect preview --context CONTEXT_ID --plan PLAN_ID 准备模型接入。Codex 优先独立的按需 CLI profile；明确原生模型保留和默认策略。其他 Agent 按当前帮助选择协议或预设，只改模型路由。
-5. 应用后查询 agents connect status --effective。按返回指引加载配置；只有填写了验证任务才执行，并用会话记录核对实际路由、模型和结果。不能把配置保存成功说成已生效。
-
-执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
-```
-
-命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
-
-</details>
-
-<details class="agent-prompt">
-<summary>交给 Agent：完成跨 Agent 委派配置（CLI）</summary>
-
-复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
-
-```text
-请用 HiRoute CLI 配置跨 Agent 委派。
-主 Agent：[Codex / Hermes / 其他；明确配置目录或 profile]
-执行 Agent：[DeepSeek Harness / Codex CLI / 其他]
-执行模型：[名称和来源]；任务路由名称：[名称]
-用途：[适合委派的任务与交付物]
-我现在只配置，暂不启动任务；主 Agent 保持原来的模型接入。
-
-1. 运行 hiroute quickstart、hiroute worker executors、hiroute worker plans，核对主 Agent 的 context、执行器可用性和已有路由；缺模型时先按 compute connection 流程接入。
-2. 新建或调整 routing preview，选好执行模型，设置 --delegation enable，并同时填写 --worker-harness 与 --worker-protocol；填写用途。Codex CLI 的 harness 为 codex_cli，DeepSeek Harness 为 deepseek_harness，协议按当前要求选择。
-3. 预览并发布后，使用 agents connect preview --context CONTEXT_ID --collaboration explicit --apply-file NEW_FILE，仅开启主 Agent 的明确请求委派。此步不传 --plan，不修改主 Agent 模型或管理 Skill；按提示完成本机技能检查再应用。
-4. 确认 worker plans 能发现已发布路由，执行器就绪，任务路由已配置。给我一条引用准确路由名称的委派提示词，并列出尚缺的环境条件。
-
-执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
-```
-
-命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
-
-</details>
 
 ## 先安装并启动 HiRoute
 
@@ -69,6 +18,37 @@ HiRoute 帮你做两个选择：**这一阶段用哪个模型，这项任务交�
 - **Linux**：支持 x86_64 与 ARM64，无需 `sudo`。开启 Web UI 后，在浏览器中使用相同界面；也可只用 CLI。参见 [Linux 安装](/zh/docs/install-linux/)。
 
 [下载页](/zh/download/)列出已发布的安装包。打开后先确认服务就绪；浏览器管理的是服务所在主机的模型、Agent 和文件。使用路由或运行任务时，请保持 HiRoute 服务运行。
+
+<h2 id="management-skill">推荐：开启管理技能，让 Agent 帮你上手</h2>
+
+1. 打开“Agent”，选择你常用的 Agent，在“HiRoute 管理”中选择“启用”，打开配置。
+2. 如果页面提示命令行入口尚未准备，先选择“准备命令行入口”，确保 Agent 能运行 `hiroute`。再选择“启用 HiRoute 管理”，按提示重新加载技能或开启新会话。
+3. 直接告诉 Agent 你想完成什么，例如接入一个模型、创建适合日常编码的路由，或查看最近的模型表现。产品内置管理技能会引导它读取现状、通过 CLI 配置并核对结果；你可以随时回到界面查看。
+
+管理技能可以独立启用，调用它的 Agent 仍可使用原来的模型。下面两条路径既可在界面中操作，也可以把对应文档交给已启用管理技能的 Agent。
+
+<figure>
+  <a href="/guide-assets/agent-management-zh.webp"><img src="/guide-assets/agent-management-zh.webp" alt="夜晚模式的 HiRoute 管理技能启用对话框，提供命令行入口准备与启用按钮" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>“Agent → HiRoute 管理 → 启用”准备产品内置技能；模型路由与任务路由分别设置。</figcaption>
+</figure>
+
+<details class="cli-reference" id="agent-cli">
+<summary>让 Agent 操作：本页 CLI 对照</summary>
+
+以下是给 Agent 定位命令的线索。管理和委派流程由产品内置技能提供。
+
+| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
+| --- | --- |
+| 查看当前配置与下一步 | `quickstart` |
+| 接入模型 | `compute list` → `compute connection options` → `compute connection preview` → `compute connection apply` |
+| 创建、调整和发布模型路由 | `routing options` → `routing preview` → `routing apply` |
+| 连接 Agent 的模型路由 | `agents connect preview --context CONTEXT_ID --plan PLAN_ID` → `agents connect apply` |
+| 开启内置管理 / 委派技能 | `agents connect preview` + `--management enable` / `--collaboration explicit` → `agents connect apply` |
+| 核对实际运行 | `agents connect status --effective` · `sessions list` · `sessions show` · `worker status` · `worker result` |
+
+这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
+
+</details>
 
 ## 路径一：让常用 Agent 用上模型路由
 
@@ -106,8 +86,4 @@ HiRoute 帮你做两个选择：**这一阶段用哪个模型，这项任务交�
 
 继续阅读：[Agent 智能路由：配置、示例与结果](/zh/docs/task-routing/)。
 
-## 用 CLI 或让 Agent 帮你配置
-
-运行 `hiroute quickstart` 查看服务状态、准确的配置目标和已有来源/路由；选定后加 `--context CONTEXT_ID --plan PLAN_ID`。这个入口只读状态，并告诉你还缺什么。指定 Hermes 配置时可加 `--hermes-root /ABSOLUTE/EFFECTIVE/ROOT`。
-
-[HiRoute CLI](/zh/docs/cli/) 提供配置预览、应用、任务执行与恢复步骤。同一管理 Skill 可以从受支持的 Agent 中管理另一个目标，调用方自己的模型可保持原生接入。需要录入凭证时，在自己的终端使用不回显提示，不要把密钥发到聊天。
+更多操作可让 Agent 参照每页的“本页 CLI 对照”，具体命令与恢复方式见 [HiRoute CLI](/zh/docs/cli/)。

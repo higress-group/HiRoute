@@ -6,22 +6,19 @@ Check the [download page](/en/download/) for published packages. A complete pack
 
 Linux packages support `x86_64` and ARM64 (`aarch64`), with glibc 2.31 or later. Installation needs no `sudo`; it requires `curl` and Python 3.
 
+<details class="cli-reference" id="agent-cli">
+<summary>Use an Agent: CLI map for this page</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>Ask an Agent: install and check the Linux CLI</summary>
+After installation, [enable the HiRoute management Skill in the product](/en/docs/#management-skill). Letting an Agent configure models and routes through the CLI is the recommended way to get started faster. The UI and CLI share configuration and records.
 
-Copy this to an Agent that can run commands on the target host.
+| Operation on this page | CLI hints (prefix each command with `hiroute`) |
+| --- | --- |
+| Start and inspect the service | `service start` · `service status` · `system status` |
+| Configure and open browser management | `console init` · `console open` |
+| Discover targets and next steps | `quickstart` · `schema list` |
+| Enable management, then configure models and routes | `agents connect preview --management enable` → `agents connect apply` · `compute` · `routing` |
 
-```text
-Install HiRoute on the target Linux host and check its first start. Do not connect models or start delegated tasks yet.
-Read the current instructions: https://hiroute.ai/en/docs/install-linux/
-1. Check x86_64/ARM64 architecture, the current user and existing installations. Reuse the existing service instead of starting a second instance.
-2. If missing, use the documented official installer for the current user without sudo and record the installed version. Inspect an existing installation first; do not remove its data.
-3. Query hiroute service status. If a start is needed, explicitly run hiroute service start and check status again. Diagnose a failure rather than repeatedly reinstalling.
-4. Run hiroute --help, hiroute schema list --output json and hiroute quickstart to confirm the CLI reaches that same service.
-5. If I want the browser interface, enable it following this page's Web UI instructions and explain login. Do not expose login credentials publicly.
-6. Report install location, version, service state and the available next model-routing or Agent-routing steps. Identify any interaction I need to complete.
-```
+These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
 
 </details>
 
@@ -128,7 +125,7 @@ Writes follow one safety pattern: read schema and options, perform a bounded tes
 
 ## 4. Configure models, routes and Agents
 
-With the Web UI open, follow the visual [Quickstart](/en/docs/) from **Connect a model**. All paths, Agent installations and native files belong to the service host, including when your browser runs on another computer. Desktop-only controls such as application updates and login-start settings are absent.
+With the Web UI open, follow [Quickstart](/en/docs/#management-skill) to enable the built-in management Skill under “Agent → HiRoute management,” then let your Agent configure models and routes. All paths, Agent installations and native files belong to the service host, including when your browser runs on another computer. Desktop-only controls such as application updates and login-start settings are absent.
 
 For terminal or automation use, build the first route through the CLI in this order:
 
@@ -142,19 +139,9 @@ Web UI, CLI and Desktop reuse the same service-owned configuration, storage, pub
 
 ## 5. Delegate a task
 
-Once an execution plan has been published, discover it and submit work from a terminal or main Agent:
+In the Web UI, open “Agent → Select your main Agent → Task routing → Enable.” Choose when to delegate and complete the built-in delegation Skill check. Then give the main Agent your task goal and working directory; the Skill discovers available routes, executes the task and retrieves the result.
 
-```sh
-hiroute worker executors
-hiroute worker plans
-hiroute worker exec \
-  --plan <PLAN_ID> \
-  --cwd /absolute/path/to/project \
-  --submission-key first-task-001 \
-  -- "Analyze this task, implement it, and run the relevant checks"
-```
-
-If a network or process interruption leaves acceptance uncertain, do not retry with a new key. Keep the original `submission-key` and query `worker status --submission ... --operation start`.
+Task history in the UI and `worker list`, `worker status` and `worker result` in the CLI read the same records. See [Agent routing](/en/docs/task-routing/) for illustrated steps and a command map.
 
 ## Model information updates
 

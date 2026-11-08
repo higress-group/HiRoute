@@ -2,19 +2,19 @@
 
 HiRoute Desktop for Windows uses a current-user NSIS installer for native Windows x64. It includes the command line, background service, console files and a WebView2 bootstrapper. Python and administrator privileges are not required. Choose a Windows Desktop installer from the [download page](/en/download/).
 
+<details class="cli-reference" id="agent-cli">
+<summary>Use an Agent: CLI map for this page</summary>
 
-<details class="agent-prompt" id="agent-cli">
-<summary>Ask an Agent: check Windows installation and the CLI</summary>
+After installation, [enable the HiRoute management Skill in the product](/en/docs/#management-skill). Letting an Agent configure models and routes through the CLI is the recommended way to get started faster. The UI and CLI share configuration and records.
 
-Copy this to an Agent that can run commands on the target host.
+| Operation on this page | CLI hints (prefix each command with `hiroute`) |
+| --- | --- |
+| Check the CLI and service | `--help` · `system status` |
+| Inspect connections and next steps | `quickstart` |
+| Enable the built-in management Skill | `agents connect preview --management enable` → `agents connect apply` |
+| Restore Agent connections before uninstalling | `agents restore preview` → `agents restore apply` |
 
-```text
-Check HiRoute's Windows installation and CLI using the current guide: https://hiroute.ai/en/docs/install-windows/
-1. Check native Windows x64, the current user's installation and the correct package; verify its download checksum if installation is needed. I will complete any system installer interaction.
-2. Check the bundled CLI and PATH, then run hiroute --help in a new terminal. If missing, follow the guide; do not install Python or substitute Linux/WSL installation commands.
-3. Start the installed HiRoute Desktop app and use hiroute quickstart to inspect its service and configuration targets. Reuse the Desktop service rather than starting a second instance.
-4. Check installation and connectivity only; do not alter model or Agent configuration or call a model. Report installed version, CLI entry, service state and any interaction still needed from me.
-```
+These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
 
 </details>
 
