@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Select conservative affected checks; print a plan or execute it in hosted CI."""
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -34,7 +35,7 @@ DIAGNOSTIC_CONTRACTS = (
     "crates/diagnostics/src/event/", "crates/diagnostics/src/record.rs",
     "crates/diagnostics/src/identity.rs", "crates/diagnostics/src/error.rs",
 )
-SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py"}
+SELECTION_TOOLING = {"scripts/test-plan.py", "scripts/test-test-plan.py", "scripts/release-ci-scope.py"}
 NATIVE_SCOPE_TOOLING = {"scripts/native-agent-scope.py", "scripts/test-native-agent-scope.py",
                         "scripts/native-agent-supervisor.py", "scripts/test-native-agent-supervisor.py"}
 PILOT_CONSUMER_INPUTS = SELECTION_TOOLING | {
@@ -99,6 +100,7 @@ RELEASE_BUILD_TOOLING = {"scripts/linux-release-abi.py", "scripts/linux-release-
                          ".github/workflows/windows-headless.yml", "scripts/build-release.py",
                          "scripts/build-cpa.py", "scripts/package-desktop.py",
                          "scripts/package-standalone.py", "scripts/install-standalone.py",
+                         "scripts/package-windows-shell.py", "scripts/release-qualification.py",
                          "scripts/windows-ci-package.py",
                          "scripts/collect-third-party-licenses.py",
                          *("scripts/" + name for name in RELEASE_BUILD_TESTS)}
@@ -452,7 +454,12 @@ def worker_product_checks(paths):
             for target, entry in WORKER_PRODUCT_CHECKS.items() if target in selected]
 
 
-def select(paths, full=False):
+def select(paths, full=False, bookkeeping=None):
+    changed = paths
+    if bookkeeping == "record":
+        paths = [path for path in paths if path.startswith("contracts/releases/")]
+    elif bookkeeping == "catalog":
+        paths = [path for path in paths if path != "scripts/windows-desktop-cases.json"]
     groups = set()
     frontend = full
     native_checks = desktop_compile_checks(paths)
@@ -468,6 +475,11 @@ def select(paths, full=False):
     release_build_tooling = False
     windows_validation_tooling = False
     targets = set()
+    if bookkeeping == "record":
+        targets.update({("hiroute-cli", "contracts"), ("hiroute-client-core", "transport")})
+        reasons.append("verified release record and product version projection")
+    elif bookkeeping == "catalog":
+        reasons.append("verified release catalog append and any exact Windows decision")
     agent_commands = []
     for path in sorted(set(paths)):
         if path in PRODUCT_VERSION_TOOLING:
@@ -620,6 +632,8 @@ def select(paths, full=False):
                              "--release", "--lib", "runtime::tests::unconfigured_runtime_uses_build_default_without_persisting",
                              "--", "--exact"])
     commands.extend(agent_commands)
+    if bookkeeping == "catalog":
+        commands.append(["python3", "scripts/test-build-release.py"])
     if selection_tooling:
         commands.append(["python3", "scripts/test-test-plan.py"])
     if full or "scripts/test-ci-setup.py" in paths:
@@ -673,7 +687,8 @@ def select(paths, full=False):
     if full or paths:
         commands.append(["python3", "scripts/test-contract-convergence.py"])
         commands.append(["python3", "scripts/check-contract-convergence.py"])
-    return {"mode": "full" if full else "affected", "paths": sorted(set(paths)),
+    return {"mode": "full" if full else "affected", "paths": sorted(set(changed)),
+            "bookkeeping": bookkeeping, "windows_compile": bookkeeping is None,
             "groups": sorted(groups), "reasons": reasons, "rust": rust,
             "frontend": frontend, "native_required": native, "commands": commands,
             "native_checks": native_checks,
@@ -799,6 +814,20 @@ def changed_paths(base, since=False):
     return sorted({p.decode() for p in (tracked + untracked).split(b"\0") if p})
 
 
+def plan_for_base(base=None, full=False):
+    paths = changed_paths(base) if base else []
+    bookkeeping = None
+    if base and not full:
+        spec = importlib.util.spec_from_file_location("release_ci_scope", Path(__file__).with_name("release-ci-scope.py"))
+        scope = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(scope)
+        bookkeeping = scope.classify(Path.cwd(), base, paths)
+    plan = select(paths, full, bookkeeping)
+    plan["candidate"] = revision("HEAD")
+    plan["base"] = revision(base) if base else None
+    return plan
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", help="Comparison ref/commit; includes staged, unstaged and untracked changes")
@@ -818,9 +847,7 @@ def main():
     if args.integration and (args.run_ci or args.github_output):
         parser.error("--integration is a local planning view; hosted CI uses the final plan")
     try:
-        plan = select(changed_paths(args.base) if args.base else [], args.full)
-        plan["candidate"] = revision("HEAD")
-        plan["base"] = revision(args.base) if args.base else None
+        plan = plan_for_base(args.base, args.full)
         if args.since:
             plan["iteration"] = select(changed_paths(args.since, since=True))
             plan["iteration"].update(since=revision(args.since), diagnostic_only=True)
@@ -833,7 +860,7 @@ def main():
     print(json.dumps(plan, indent=2), flush=True)
     if args.github_output:
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-            for key in ("rust", "frontend", "native_required"):
+            for key in ("rust", "frontend", "native_required", "windows_compile"):
                 output.write(key + "=" + str(plan[key]).lower() + "\n")
     if args.run_ci:
         if os.environ.get("GITHUB_ACTIONS") != "true":

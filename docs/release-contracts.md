@@ -143,7 +143,11 @@ Prepare the macOS ARM64/Intel, Linux x86_64/ARM64 and Windows x64 Desktop assets
 artifact rows; this workflow consumes the reviewed catalog and published bytes.
 
 [Release workflow](../.github/workflows/release.yml) verifies the published assets and
-package identities, then publishes the installers/site. Only after those jobs succeed does
+package identities, then publishes the installers/site. For a new Windows release,
+it matches the catalog assets to successful candidate qualification. A recorded
+release can replay publication using the exact source, channel and asset identities
+in its immutable snapshot. This preserves replay after Actions artifact expiry.
+Only after those jobs succeed does
 `record-contracts` call [the PR publisher](../.github/scripts/release-contract-pr.sh).
 It reads the verified manifest revision and exact released source, cross-checks published asset
 sizes/digests, and proposes `contracts/releases/` plus the product version fields and

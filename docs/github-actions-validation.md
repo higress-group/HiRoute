@@ -11,19 +11,20 @@ native Windows acceptance uses `scripts/windows-headless-ci.ps1`.
 | `p0-gateway-gates.yml` | Manual, reusable | Linux listener build, neutral loopback, H1/H2 lifecycle, replay/privacy tests, contract checks, benchmark harness smoke |
 | `gateway-core-dedicated.yml` | Manual or reusable | Hosted Linux production stability and socket churn |
 | `p0-gateway-final-gates.yml` | Manual | Aggregate the three current hosted workflows |
-| `build-release.yml` | Manual, exact dispatch SHA | Builds macOS/Linux candidates independently; only Windows archives require the reusable Windows validation gate; uploads candidate assets and integrity evidence for the existing release publisher |
+| `build-release.yml` | Manual, exact dispatch SHA | Builds packages alongside the reusable Windows validation gate. Qualification joins successful jobs and binds the public asset identities to the dispatch SHA |
 | `build-release-platform.yml` | Reusable, or explicit manual x64 Windows build | Shared per-target candidate build and evidence upload; the manual defaults build only an NSIS acceptance input with an `awaiting_runtime` identity |
-| `windows-compile.yml` | Path-filtered PR or manual | One cached x64 MSVC check of CLI, daemon, platform, local-storage, integrations and the console shell, including test targets and transitive production libraries. Bounded installation, storage/recovery, grant admission and shell component tests run on the same host. The shell compile excludes release payload resources; packaging validates the real payload separately. Component tests do not establish installed product or standard-user acceptance. |
+| `windows-compile.yml` | Path-filtered PR or manual | A Linux scope job recognizes verified release bookkeeping. Other selected PRs and manual runs use one cached x64 MSVC check of CLI, daemon, platform, local-storage, integrations and the console shell, including test targets and transitive production libraries. Bounded installation, storage/recovery, grant admission and shell component tests run on the same host. The shell compile excludes release payload resources; packaging validates the real payload separately. Component tests do not establish installed product or standard-user acceptance. |
 | `windows-headless.yml` | Release-candidate call, explicit manual diagnosis | Native MSVC primitives, shared business libraries, foreground control/Gateway and fixed upstream clients; complete background artifacts with explicit deferred Task acceptance; x64 artifact replay on Windows 11 ARM64 |
 
 PR and main pushes do not automatically run the Windows matrix. During normal
 development, use [managed cross-compilation and affected execution on the Windows
 development machine](validation-routing.md#windows-iteration-and-release-validation).
-The release-candidate workflow calls the local reusable Windows workflow at the
-same commit, and only Windows package builds require its success. Unix builds have
-no dependency on that gate and can complete if Windows fails or is cancelled. Both native producer
-and Windows 11 replay bind `github.sha` and record the `final` phase. This gate
-runs before Windows candidate assets are created, not after a GitHub Release is published.
+The release-candidate workflow starts the reusable Windows validation and the
+package jobs at the same commit. Both native producer and Windows 11 replay bind
+`github.sha` and record the `final` phase. All selected jobs must succeed before
+qualification records the exact public assets. Package artifacts are available for
+acceptance and diagnosis while the gate runs. The publisher requires qualification
+for new Windows releases and still verifies native evidence on the final NSIS bytes.
 Manual Windows dispatch defaults to `all`, using the same final matrix. Select a
 single `scope` for CI-specific diagnosis: it builds and replays only that scope,
 records the `focused` phase and cannot establish complete Windows acceptance.

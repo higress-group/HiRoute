@@ -513,6 +513,80 @@ class NativeAcceptanceDecisionTests(unittest.TestCase):
             verify(identity, policy)
 
 
+class ReleaseQualificationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.qualifier = builder.module("release-qualification")
+        self.revision = "a" * 40
+        self.version = "9.0.0"
+        self.release = {"version": self.version, "channel": "stable", "artifacts": []}
+        self.results = self.root / "results"
+        self.results.mkdir()
+        for target, (kind, platform, arch, package_format) in self.qualifier.TARGETS.items():
+            filename = f"HiRoute-{self.version}-{self.revision[:12]}-{target}.{package_format}"
+            row = {"kind": kind, "platform": platform, "architecture": arch, "format": package_format,
+                   "filename": filename, "sha256": "b" * 64, "size": 64}
+            if kind == "standalone":
+                row.update(manifest_filename=filename + ".json", manifest_sha256="c" * 64, manifest_size=16)
+            self.release["artifacts"].append(row)
+            result = {"revision": self.revision, "target": target, "package_integrity": "green",
+                      "status": "awaiting_runtime" if platform == "Windows" else "completed",
+                      "website_artifact": row}
+            directory = self.results / f"release-result-{target}-{self.revision}-1"
+            directory.mkdir()
+            (directory / "result.json").write_text(json.dumps(result))
+
+    def qualify(self):
+        return self.qualifier.qualify(self.results, self.revision, self.version, 42, 2)
+
+    def test_qualification_uses_successful_earlier_producers_after_partial_retry(self):
+        target = "x86_64-pc-windows-msvc"
+        previous = self.results / f"release-result-{target}-{self.revision}-1"
+        new = previous.with_name(previous.name[:-1] + "2")
+        new.mkdir()
+        (new / "result.json").write_bytes((previous / "result.json").read_bytes())
+        receipt = self.qualify()
+        self.assertEqual(receipt["producers"][target]["attempt"], 2)
+        self.assertEqual(sum(p["attempt"] == 1 for p in receipt["producers"].values()), 4)
+        self.assertEqual(len(receipt["assets"]), 7)
+        result_path = new / "result.json"
+        result = json.loads(result_path.read_text())
+        result["revision"] = "d" * 40
+        result_path.write_text(json.dumps(result))
+        with self.assertRaisesRegex(ValueError, "does not bind a verified candidate"):
+            self.qualify()
+
+    def test_missing_package_prevents_qualification(self):
+        removed = next(self.results.iterdir())
+        (removed / "result.json").unlink()
+        removed.rmdir()
+        with self.assertRaisesRegex(ValueError, "requires every public package producer"):
+            self.qualify()
+
+    def test_publication_requires_a_successful_run_with_the_same_catalog_bytes(self):
+        receipt = self.qualify()
+        run = {"databaseId": 42, "attempt": 2, "headSha": self.revision, "conclusion": "success"}
+        def download(command, **_):
+            (Path(command[command.index("--dir") + 1]) / "qualification.json").write_text(json.dumps(receipt))
+            return subprocess.CompletedProcess(command, 0)
+        def verify():
+            return self.qualifier.verify(self.root, "example/HiRoute", {"releases": [self.release]},
+                                         "v" + self.version, self.revision)
+        with patch.object(self.qualifier.subprocess, "check_output", side_effect=lambda *a, **k: json.dumps([run])), \
+                patch.object(self.qualifier.subprocess, "run", side_effect=download):
+            self.assertEqual(verify()["run_id"], 42)
+            run["conclusion"] = "failure"
+            with self.assertRaisesRegex(ValueError, "no successful candidate qualification"):
+                verify()
+            run["conclusion"] = "success"
+            self.release["artifacts"][-1]["sha256"] = "e" * 64
+            with self.assertRaisesRegex(ValueError, "no successful candidate qualification"):
+                verify()
+
+
+
 class HostedReleasePolicyTests(unittest.TestCase):
     def test_expensive_windows_assessment_is_release_or_manual_only(self):
         workflow = (REPO / '.github/workflows/windows-headless.yml').read_text()
@@ -554,28 +628,36 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertIn("if: inputs.scope != 'background'", replay)
         self.assertNotRegex(replay, r'(?m)^    continue-on-error:')
 
-    def test_only_windows_assets_require_windows_validation(self):
+    def test_packages_start_independently_and_qualification_requires_all_jobs(self):
         workflow = (REPO / '.github/workflows/build-release.yml').read_text()
         jobs = dict(re.findall(r'^  ([\w-]+):\n(.*?)(?=^  [\w-]+:\n|\Z)',
                                workflow.split('\njobs:\n', 1)[1], re.M | re.S))
         gate = jobs['windows-validation']
         windows = jobs['build-windows']
+        desktop = jobs['build-windows-desktop']
         unix = jobs['build-unix']
         self.assertIn('uses: ./.github/workflows/windows-headless.yml', gate)
         self.assertIn('include_internal_arm64: false', gate)
         self.assertNotRegex(gate, r'(?m)^    (if|continue-on-error):')
-        self.assertRegex(windows, r'\A    needs: windows-validation\n')
-        self.assertNotRegex(windows, r'(?m)^    (if|continue-on-error):')
-        self.assertNotRegex(unix, r'(?m)^    (needs|if|continue-on-error):')
-        self.assertEqual(re.findall(r'target: ([a-z0-9_-]+)', windows),
-                         ['x86_64-pc-windows-msvc'])
+        for job in (windows, desktop, unix):
+            self.assertNotRegex(job, r'(?m)^    (needs|if|continue-on-error):')
+            self.assertIn('uses: ./.github/workflows/build-release-platform.yml', job)
+        self.assertEqual(re.findall(r'target: ([a-z0-9_-]+)', windows), ['x86_64-pc-windows-msvc'])
         self.assertEqual(re.findall(r'target: ([a-z0-9_-]+)', unix),
                          ['aarch64-apple-darwin', 'x86_64-apple-darwin',
                           'x86_64-unknown-linux-gnu', 'aarch64-unknown-linux-gnu'])
-        for job in (unix, windows):
-            self.assertIn('uses: ./.github/workflows/build-release-platform.yml', job)
-            self.assertIn('target: ${{ matrix.target }}', job)
-            self.assertIn('runner: ${{ matrix.runner }}', job)
+        self.assertIn('windows_desktop: true', desktop)
+        qualify = jobs['qualify']
+        self.assertIn('needs: [windows-validation, build-unix, build-windows, build-windows-desktop]', qualify)
+        guard = qualify.split('        run: |\n', 1)[1].split('      - ', 1)[0]
+        statuses = dict(os.environ, **dict.fromkeys(
+            ('WINDOWS_VALIDATION', 'UNIX_PACKAGES', 'WINDOWS_HEADLESS', 'WINDOWS_DESKTOP'), 'success'))
+        self.assertEqual(subprocess.run(['bash', '-ec', guard], env=statuses).returncode, 0)
+        for name in ('WINDOWS_VALIDATION', 'UNIX_PACKAGES', 'WINDOWS_HEADLESS', 'WINDOWS_DESKTOP'):
+            for verdict in ('', 'skipped', 'failure', 'cancelled'):
+                with self.subTest(job=name, verdict=verdict):
+                    result = subprocess.run(['bash', '-ec', guard], env={**statuses, name: verdict})
+                    self.assertNotEqual(result.returncode, 0)
         build = (REPO / '.github/workflows/build-release-platform.yml').read_text()
         self.assertIn('ref: ${{ github.sha }}', build)
         self.assertIn('--expected-sha "$GITHUB_SHA"', build)
@@ -591,7 +673,9 @@ class HostedReleasePolicyTests(unittest.TestCase):
                      '.cargo/**', 'assets/**', 'vendor/**', 'tools/**', 'scripts/**',
                      '.github/workflows/windows-compile.yml'):
             self.assertIn("- '" + path + "'", triggers)
-        self.assertEqual(workflow.count('runs-on:'), 1)
+        self.assertEqual(workflow.count('runs-on: windows-2025'), 1)
+        self.assertIn('needs: scope', workflow)
+        self.assertIn('steps.plan.outputs.windows_compile', workflow)
         self.assertNotIn('matrix:', workflow)
         self.assertNotIn('continue-on-error:', workflow)
         self.assertIn('cancel-in-progress: true', workflow)

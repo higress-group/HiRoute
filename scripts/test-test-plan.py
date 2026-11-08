@@ -1036,6 +1036,85 @@ class RevisionPlans(unittest.TestCase):
     def invoke(self, *args):
         return subprocess.run([sys.executable, str(self.script), *args], cwd=self.root, capture_output=True, text=True)
 
+    def release_plan(self, base):
+        result = self.invoke('--base', base)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_catalog_decision_only_narrows_matching_installer_bookkeeping(self):
+        root = self.script.parent.parent
+        policy_path = 'scripts/windows-desktop-cases.json'
+        catalog_path = 'apps/website/data/releases.json'
+        policy = json.loads((root / policy_path).read_text())
+        decision = policy['release_decisions'].pop()
+        catalog = json.loads((root / catalog_path).read_text())
+        release = next(row for row in catalog['releases'] if row['version'] == decision['version'])
+        catalog['releases'].remove(release)
+        self.write(policy_path, json.dumps(policy))
+        self.write(catalog_path, json.dumps(catalog))
+        base = self.commit('published catalog and native case definitions')
+        policy['release_decisions'].append(decision)
+        catalog['releases'].insert(0, release)
+        self.write(policy_path, json.dumps(policy))
+        self.write(catalog_path, json.dumps(catalog))
+        selected = self.release_plan(base)
+        self.assertEqual(selected['bookkeeping'], 'catalog')
+        self.assertFalse(selected['windows_compile'])
+        self.assertFalse(selected['frontend'])
+        self.assertIn(['cargo', 'test', '--locked', '-p', 'hiroute-host-runtime', '--all-features', '--lib'],
+                      selected['commands'])
+        self.assertIn(['python3', 'scripts/test-build-release.py'], selected['commands'])
+        for change in ('different installer', 'mandatory case deferred', 'native case definition'):
+            with self.subTest(change=change):
+                altered = deepcopy(policy)
+                if change == 'different installer':
+                    altered['release_decisions'][-1]['installer_sha256'] = '0' * 64
+                elif change == 'mandatory case deferred':
+                    altered['release_decisions'][-1]['deferred_cases']['server'].append('install.console-ready')
+                else:
+                    altered['platforms']['server'].append('new.native.requirement')
+                self.write(policy_path, json.dumps(altered))
+                selected = self.release_plan(base)
+                self.assertIsNone(selected['bookkeeping'])
+                self.assertTrue(selected['windows_compile'])
+                self.assertEqual(selected['mode'], 'full')
+
+    def test_release_record_proves_version_fields_and_keeps_wire_consumers(self):
+        def load(name):
+            spec = importlib.util.spec_from_file_location(name, self.script.with_name(name + '.py'))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+
+        versions = load('test-product-version')
+        ledger = load('release-contracts')
+        versions.fixture(self.root, '0.5.3')
+        snapshots = self.script.parent.parent / 'contracts/releases'
+        directory = self.root / 'contracts/releases'
+        (directory / 'index.v1.json').unlink()
+        ledger.record_snapshot(directory, json.loads((snapshots / 'v0.5.1.json').read_text()))
+        base = self.commit('release version before recording publication')
+        ledger.record_snapshot(directory, json.loads((snapshots / 'v0.5.3.json').read_text()))
+        versions.product.advance(self.root)
+        self.commit('published record and generated next development version')
+        selected = self.release_plan(base)
+        self.assertEqual(selected['bookkeeping'], 'record')
+        self.assertFalse(selected['frontend'])
+        self.assertFalse(selected['windows_compile'])
+        self.assertFalse(selected['native_required'])
+        for package, target in [('hiroute-cli', 'contracts'), ('hiroute-client-core', 'transport')]:
+            self.assertIn(['cargo', 'test', '--locked', '-p', package, '--all-features', '--test', target],
+                          selected['commands'])
+        self.assertIn(['python3', 'scripts/release-contracts.py', 'check'], selected['commands'])
+        lock = self.root / 'Cargo.lock'
+        lock.write_text(lock.read_text().replace('name = "example"\nversion = "1.2.3"',
+                                                'name = "example"\nversion = "1.2.4"'))
+        self.commit('real dependency change mixed into the record')
+        selected = self.release_plan(base)
+        self.assertIsNone(selected['bookkeeping'])
+        self.assertTrue(selected['windows_compile'])
+        self.assertEqual(selected['mode'], 'full')
+
     def test_final_obligations_survive_iteration_scope(self):
         self.write('tools/e2e-harness/tests/p0_gateway_runtime/reasoning.rs', 'wire order')
         self.commit('focused repair')

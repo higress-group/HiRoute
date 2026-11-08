@@ -89,6 +89,22 @@ Every non-empty change plan also runs the contract-convergence unit tests and
 evidence, so docs-only and frontend-only changes retain their existing `rust: false`
 classification.
 
+## Verified release bookkeeping
+
+PR planning can prove two bounded changes from the actual merge base. A catalog
+append preserves prior release rows and short links. Any Windows policy append
+preserves the native case definitions and binds the new decision to the catalog's
+installer source and digest. The plan runs the upgrade reader and package-policy
+regressions alongside the website workflow. The publisher validates the actual
+installer and its native evidence.
+
+A release record preserves historical snapshots and passes the existing normalized
+version-scope proof. Its plan runs the release inventory checks and the CLI and
+Client Core handshake consumers. Verified bookkeeping uses one affected backend
+shard and avoids the full Desktop and Windows compile jobs. Changes outside the
+proved shapes use the usual conservative selection. Manual Windows compile and
+full main validation retain their normal coverage.
+
 ## Explicit native Agent product gates
 
 `product_checks` records required opt-in journeys separately from ordinary `commands`.
