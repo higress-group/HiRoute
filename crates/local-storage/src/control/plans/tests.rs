@@ -2,7 +2,7 @@ use super::*;
 use crate::test_tempdir as tempdir;
 use hiroute_domain::*;
 
-mod decision_removal;
+pub(in crate::control) mod decision_removal;
 
 fn draft() -> PlanDraftV1 {
     serde_json::from_value(serde_json::json!({

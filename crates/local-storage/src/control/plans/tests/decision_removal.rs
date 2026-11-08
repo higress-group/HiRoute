@@ -16,6 +16,12 @@ fn service() -> DecisionServiceV1 {
 }
 
 fn fixture() -> (GatewayPublicationV1, PlanVersionV1) {
+    fixture_for(DecisionServiceRecord::V1(service()))
+}
+
+pub(in crate::control) fn fixture_for(
+    record: DecisionServiceRecord,
+) -> (GatewayPublicationV1, PlanVersionV1) {
     let publication: GatewayPublicationV1 = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../e2e/product/fixtures/routing/current-publication.v3.json"
@@ -31,8 +37,16 @@ fn fixture() -> (GatewayPublicationV1, PlanVersionV1) {
         .unwrap()
         .body)
         .clone();
-    let mode = ComplexityClassifierModeV1::DecisionService {
-        service: Box::new(service()),
+    let mode = match record {
+        DecisionServiceRecord::V1(service) => ComplexityClassifierModeV1::DecisionService {
+            service: Box::new(service),
+        },
+        DecisionServiceRecord::V2(service) => ComplexityClassifierModeV1::DecisionServiceV2 {
+            service: Box::new(service),
+        },
+        DecisionServiceRecord::V3(service) => ComplexityClassifierModeV1::DecisionServiceV3 {
+            service: Box::new(service),
+        },
     };
     let RequestOwnedRouteV1::Classified {
         classifier,
@@ -281,7 +295,7 @@ fn decision_removal_v1_activation_rejects_a_post_stage_draft_and_compensates() {
     let desired = serde_json::json!({"decision_service_change": {"id":SERVICE_ID,"expected_revision":1,"service":null,"input_slot":null}});
     let effect = store
         .apply_control(
-            &OperationId::parse("operation/decision-removal-race").unwrap(),
+            &OperationId::parse("op_0123456789abcdef0123456789abcdef").unwrap(),
             &workspace,
             store.current_revisions(&workspace).unwrap().target,
             &desired,

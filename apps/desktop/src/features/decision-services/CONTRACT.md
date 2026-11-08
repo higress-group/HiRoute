@@ -43,10 +43,19 @@ After acknowledgement, read back before testing the exact ID, revision and
 configuration digest. Conflict and uncertain outcomes require refresh while
 retaining non-secret edits; do not blindly resubmit.
 
-Deletion must reject references from any retained V1/V2/V3 Plan version or draft
-before revoking shared consumers or deleting saved connection revisions. The
-server's keyed reference projection owns that guard; the visible current-route
-list is not its complete reference authority.
+Deletion shares general-model active-reference protection: non-deleted current
+heads (including disabled routes), every draft, prepared versions, unresolved
+holds/recovery and installed active/prepared/LKG publications block. Expired holds
+block until reconciled. The server classifies keyed version/draft candidates and
+independently checks installed publications even without a local version or index
+entry. Failed or unknown reference reads never mean an empty set.
+Unprotected historical versions, including deleted-route tombstones, do not block.
+Removal deletes only saved service revisions and their consumer leases. Historical
+Plan bytes, digests, reference indexes, tombstones and observations remain intact
+for viewing/audit; restoration/execution is not guaranteed after removal.
+All V1/V2/V3 writers check at stage and activation under the admission fence;
+terminal finish retains revision/ownership and receipt checks without rescanning
+history. Existing payloads, source/Secret effects and recovery remain unchanged.
 
 The test response uses `DecisionFailureCode` for a failed synthetic provider
 call. Request/host failures can also use the existing native, transport and
@@ -86,10 +95,17 @@ custom extensions. Opening or cancelling its confirmation
 does not mutate a configuration. Confirmed removal retains the existing exact
 revision/source-closure transaction and backend reference guards; a shared API
 connection and its keys are not removed with the decision configuration.
-The confirmation keeps the captured service revision: refreshed state cannot
-silently replace its target. Current visible references block confirmation and
-offer their route/draft entries. A backend reference rejection stays in the dialog
-and disables resubmission until it is closed and reopened.
+The confirmation keeps its captured service and related-source revisions:
+refreshed state cannot silently replace its target. `preview_decision_removal`
+reads `decision.removal.preview` with ID and expected revision. Loading, changed,
+unavailable or mismatched responses disable removal. Active blockers use existing
+`DECISION_IN_USE` in the preview DTO and expose safe Plan/draft/revision identity
+and protection reason; navigation is offered only for available current entries.
+Installed-publication blockers may offer the existing authorized Update references
+checkpoint. Opening/cancelling never performs that mutation. Ordinary history has
+no reclaim action. Apply still uses `save_decision_service_v3`; a stale/revision
+conflict triggers a fresh read-only preview, while an uncertain operation is not
+resubmitted. No global machine error or special recovery command is added.
 
 Current hosts use `decision_services_v3`, `preview_decision_context` and
 `save_decision_service_v3`. The preview takes the exact endpoint, model, codec

@@ -9,6 +9,11 @@ fn real_process_decision_services_and_branch_publication() {
     run_script("decision_services_product.py");
 }
 
+#[test]
+fn real_process_decision_removal_preserves_history_and_deleted_routes() {
+    run_script("decision_removal_product.py");
+}
+
 /// A real daemon, protected source pool and synthetic OpenAI Decisions loopback.
 #[test]
 fn real_process_versioned_decision_connections_use_exact_source_keys() {

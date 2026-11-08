@@ -20,7 +20,8 @@ export function DecisionRemovalDialog({ target, current, language, mutable, busy
   const [generation, setGeneration] = useState(0);
   const submitting = useRef(false);
   const native = target.service.connection.kind !== 'custom';
-  const changed = current?.service.revision !== target.service.revision;
+  const sourceRevisions = (view: DecisionServiceView) => JSON.stringify(view.related_sources.map(source => [source.source_id, source.revision]).sort());
+  const changed = !current || current.service.revision !== target.service.revision || current.configuration_digest !== target.configuration_digest || sourceRevisions(current) !== sourceRevisions(target);
   const locked = busy || refreshing;
   const references = preview?.blockers ?? [];
   const reason: Record<DecisionRemovalProtection, string> = {
@@ -76,7 +77,7 @@ export function DecisionRemovalDialog({ target, current, language, mutable, busy
         : t('将移除这个自定义扩展配置，历史使用记录保留。', 'Remove this custom extension configuration; usage history is retained.')}</p>
     <p className="field-help">{t('当前路由、草稿、执行保留和已安装发布会阻止移除；普通历史版本保留，但不再保证可恢复执行。', 'Current routes, drafts, execution holds and installed publications prevent removal. Other history is retained for viewing, without a guarantee of restored execution.')}</p>
     {loading && <p role="status">{t('正在检查路由和任务引用…', 'Checking route and task references…')}</p>}
-    {!!references.length && <div className="callout warn" role="alert"><div><strong>{t('仍被引用，请先调整引用再移除。', 'Still referenced. Update references before removing it.')}</strong><ul>{references.map((reference, index) => {
+    {!!references.length && <div className="callout warn" role="alert"><div><strong>{t('仍被引用，请先调整引用再移除。', 'Still referenced. Update references before removing it.')}</strong><ul className="decision-removal-blockers">{references.map((reference, index) => {
       const draft = drafts.find(item => item.draft_id === reference.draft_id);
       const plan = !reference.draft_id ? plans.find(item => item.agent_plan_id === reference.plan_id) : undefined;
       const label = draft?.editor.display_name || plan?.desired.display_name || reference.draft_id || reference.plan_id;

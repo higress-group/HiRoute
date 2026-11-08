@@ -59,6 +59,22 @@ mockIPC((command, payload) => {
   const args = (payload ?? {}) as Record<string, unknown>;
   control.commands.push({ command, payload: args });
   if (control.handlers[command]) return control.handlers[command](args);
+  if (command === 'preview_decision_removal') {
+    const input = args.input as { id: string; expected_revision: number };
+    const blockers = [
+      ...control.desktop.catalog.plans.flatMap(plan => {
+        const classifier = plan.desired.strategy.routing?.classifier ?? plan.desired.strategy.classifier;
+        return classifier && classifier.kind !== 'local_rules' && classifier.service.id === input.id
+          ? [{ plan_id: plan.agent_plan_id, draft_id: null, revision: plan.agent_plan_revision, protection: 'current_head' }] : [];
+      }),
+      ...control.desktop.catalog.drafts.flatMap(draft => {
+        const classifier = draft.editor.branch_routing?.classifier ?? draft.editor.smart.classifier;
+        return classifier && classifier.kind !== 'local_rules' && classifier.service.id === input.id
+          ? [{ plan_id: draft.plan_id ?? null, draft_id: draft.draft_id, revision: draft.revision, protection: 'draft' }] : [];
+      }),
+    ];
+    return { id: input.id, revision: input.expected_revision, failure: blockers.length ? 'DECISION_IN_USE' : null, blockers };
+  }
   if (command === 'preview_native_network_route') return fixtureDecisionNetworkRoute();
   if (command === 'native_source_network') {
     const source = control.management.sources.find(item => item.source_id === (args.input as { source_id: string }).source_id);

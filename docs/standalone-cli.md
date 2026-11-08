@@ -1386,6 +1386,40 @@ request and may use quota; it does not evaluate real conversations or prove all 
 Refresh after a source or service revision conflict and preserve non-secret edits; do not silently
 replay a stale change. Discover full current request schemas with `schema show`.
 
+### Remove a decision connection without deleting history
+
+Read the current saved revision with `decision connections list`, then inspect
+the same active-reference policy used by general-model removal:
+
+```sh
+printf '%s\n' '{"id":"routing-decision","expected_revision":3}' | \
+  hiroute decision removal preview --request-stdin --output json
+hiroute decision connections apply --id routing-decision --delete --output json
+```
+
+The first command is read-only. A blocked result carries `DECISION_IN_USE` in
+`data.failure` and safe Plan/draft/revision identities and protection reasons in
+`data.blockers`. Current and disabled routes, drafts, prepared versions,
+unresolved execution/recovery holds, and installed active/prepared/LKG
+publications block removal. Publications are checked independently of local
+Plan-version indexes. Failed reference reads are errors, not empty results.
+
+The second command prepares the existing V3 Apply request; review and apply that
+exact request through `decision connections apply --request-file FILE`, retaining
+its digest, revisions and idempotency key. A later active reference or revision
+change retains the existing `REVISION_CONFLICT` machine-error behavior; refresh
+the read-only preview instead of overriding it. For an uncertain accepted result,
+query the original Operation rather than starting another deletion.
+
+Unprotected historical Plan versions and deleted-route tombstones do not block.
+Removal preserves all Plan history, digests, reference indexes and observations
+for viewing/audit, but does not promise those old versions can be restored or
+executed after their decision configuration is removed. Shared API connections,
+ordinary models and Keys remain. There is no history-reclaim action or special
+removal-recovery command. Desktop's explicit Update references action can rotate
+stale installed publications through the existing authorized checkpoint; preview
+never does so automatically.
+
 ### Existing V1 decision service commands
 
 The released `decision services list/apply/test` commands retain their strict V1 contract. Use

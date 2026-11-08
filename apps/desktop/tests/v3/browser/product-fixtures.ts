@@ -579,6 +579,7 @@ function productFixtureReply(command: string, payload: Record<string, any> | und
   const fresh = scenario === 'fresh';
   if (command === 'decision_services_v3') return { schema: 'hiroute.decision-services/v3', services: [] };
   if (command === 'preview_decision_context') return fixtureDecisionContext(payload!.input);
+  if (command === 'preview_decision_removal') return { id: payload!.input.id, revision: payload!.input.expected_revision, failure: null, blockers: [] };
   if (command === 'preview_native_network_route' && payload?.input?.target?.kind === 'decision') return fixtureDecisionRoute('https://decision.example.test');
   if (command === 'decision_connection_sources') return { sources: [] };
   if (command === 'compute_management_snapshot') return fresh ? { ...readyManagement, sources: [] } : readyManagement;

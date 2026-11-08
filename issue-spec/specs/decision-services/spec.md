@@ -9,45 +9,57 @@ execution. Built-in connections supply judgments for HiRoute group policy; custo
 
 ### Requirement: Connections are independently managed immutable revisions
 
-Desktop's Models area MUST separate general models from decision models, including
-clearly typed custom extensions, in the common list/detail flow. Built-in connection
-configuration owns provider, model, full endpoint, auth, and timeout; category/degree/
-competence instructions belong to the plan. OpenRouter, TypeSafe, Bailian Token Plan,
-Bailian business-space, and compatible endpoints use the same System One codec.
-Provider names alone do not define another protocol. Token Plan cannot be split
-into individual/team eligibility paths. Known values are editable suggestions;
-required business-space/custom endpoint/model fields remain visible.
+Desktop's Models area MUST separate general models from decision models, including clearly typed custom extensions, in the common list/detail flow. Built-in connection configuration owns provider, model, full endpoint, auth, and timeout; category/degree/competence instructions belong to the plan. OpenRouter, TypeSafe, Bailian Token Plan, Bailian business-space, and compatible endpoints use the same System One codec. Provider names alone do not define another protocol. Token Plan cannot be split into individual/team eligibility paths. Known values are editable suggestions; required business-space/custom endpoint/model fields remain visible.
 
-Current native connections use `hiroute.decision-service/v3`, reusing the explicit
-`system_one` or `openai_decisions` wire protocol and carrying the immutable context
-intent and resolved budget snapshot. The latter adapts OpenAI
-Decisions; it does not select a different logical routing protocol. Supported
-untagged V1 and tagged V2 revisions retain their exact content, digests and original context policy. Preparing an old
-connection for editing does not write or republish it. Custom extensions retain
-their own protocol and optional independent header; they cannot reuse a model
-source's credentials.
+Current native connections use `hiroute.decision-service/v3`, reusing the explicit `system_one` or `openai_decisions` wire protocol and carrying the immutable context intent and resolved budget snapshot. OpenAI Decisions does not select a different logical routing protocol. Supported untagged V1 and tagged V2 revisions retain their exact content, digests and original context policy. Preparing an old connection for editing does not write or republish it. Custom extensions retain their own protocol and optional independent header; they cannot reuse a model source's credentials.
 
-Auth supports none, Bearer, or a declared header as appropriate. Plaintext uses
-protected input/Secret transactions, never plan content, logs, argv, lists, or browser
-storage. Existing auth shows configured state without guessing its type from the
-header name. Changing provider or endpoint origin clears pending auth/old references.
-Edits preserve input and do not reset a saved connection by changing its type.
+Auth supports none, Bearer, or a declared header as appropriate. Plaintext uses protected input/Secret transactions, never plan content, logs, argv, lists, or browser storage. Existing auth shows configured state without guessing its type from the header name. Changing provider or endpoint origin clears pending auth/old references. Edits preserve input and do not reset a saved connection by changing its type.
 
-Save uses service revision CAS and creates an immutable version; auth replacement
-creates a new protected reference rather than modifying the old one. Plans may
-explicitly select an available saved historical revision even after a newer save.
-Publish verifies exact saved ID/revision/content and rejects unsaved or different
-same-version copies. Connection/draft changes cannot reinterpret published plans.
-Referenced versions/drafts prevent deletion. Inline legacy `rest` authoring is not
-a current public alternative.
+Save uses service revision CAS and creates an immutable version; auth replacement creates a new protected reference rather than modifying the old one. Plans may explicitly select an available saved historical revision even after a newer save. Publish verifies exact saved ID/revision/content and rejects unsaved or different same-version copies. Connection/draft changes cannot reinterpret published plans. Inline legacy `rest` authoring is not a current public alternative.
+
+Decision-service removal MUST use the same active Plan-reference protection policy as general model removal. A version is protected when it is a non-deleted current head, prepared version, unresolved hold or recovery obligation, or member of an active, prepared or LKG publication. Expired holds remain protected until reconciled, and every draft blocks. Removal preview MUST use the same authoritative active-reference set as the writer and expose safe route/draft/revision identities and protection reasons without mutating state. Unknown or failed reference reads cannot appear as an empty set.
+
+An unheld published historical version protected by none of those states MUST NOT block removal, including a version referenced only by a deleted tombstone. Removal deletes saved decision-service revisions and their consumers through the existing recoverable Operation but MUST NOT delete or rewrite historical Plan versions, deleted tombstones or observation history. Historical content remains available for viewing and audit; future restoration or execution after configuration removal is not promised unless independently protected. Shared API connections, ordinary models and Keys remain available, and unaffected current routes retain their exact configuration.
+
+Reference checks occur at preview, stage and activation under the existing writer/admission barrier. Terminal finish retains exact service/source ownership and receipt checks without adding historical deletion or a special recovery protocol. Existing V1/V2/V3 callers use the corrected guard without a new request field, and their schemas and legacy machine-error mapping remain unchanged. A blocked preview uses the decision-facing DECISION_IN_USE classification in its result DTO; a new active reference after preview produces the appropriate stale/revision conflict through the existing Operation. Uncertain completion follows the original operation identity rather than a new deletion.
 
 #### Scenario: Existing publication retains its service
 
 - **WHEN** a newer immutable service revision is saved
 - **THEN** the existing publication retains its exact selected revision, context budget and authentication until an explicit new selection and publication
 
+#### Scenario: Historical-only usage does not block removal
+
+- **WHEN** a decision model has no active route, draft, prepared, hold, recovery or installed-publication consumer but an unheld historical Plan revision references it
+- **THEN** preview reports no active blocker and the existing removal Operation deletes the saved configuration while retaining that historical row and its digest
+
+#### Scenario: Deleted route history and tombstone survive removal
+
+- **WHEN** a deleted route's last version references the decision model and no other active protection remains
+- **THEN** the model may be removed without deleting the version or tombstone, and subsequent startup, full audit and alias non-reuse remain intact
+
+#### Scenario: Active references block preview and writer
+
+- **WHEN** a reference belongs to a current or disabled route, draft, prepared version, unresolved hold, recovery obligation, or active/prepared/LKG publication
+- **THEN** preview reports DECISION_IN_USE with safe blocker identity and stage/activation rejects removal without deleting configuration or history
+
+#### Scenario: A concurrent active reference prevents deletion
+
+- **WHEN** a new active reference or service/source revision appears after preview
+- **THEN** the existing writer rejects or rolls back through the original Operation and requires a fresh preview without changing historical rows or later configuration
+
+#### Scenario: Legacy callers retain schemas and history
+
+- **WHEN** an existing V1/V2/V3 caller submits service null with only unheld historical references
+- **THEN** the corrected guard permits configuration removal without a new field, historical deletion or changed legacy machine-error mapping
+
+#### Scenario: Uncertain completion uses existing recovery
+
+- **WHEN** the host cannot confirm the removal outcome
+- **THEN** it reads back the original operation through the existing recovery path and does not issue a new deletion or any historical cleanup
+
 Source SPEC comments:
-- https://github.com/higress-group/HiRoute/issues/319#issuecomment-6558828337
+- https://github.com/higress-group/HiRoute/issues/399#issuecomment-6675518536
 
 ### Requirement: Testing is explicit, version-specific, and uses production transport
 
