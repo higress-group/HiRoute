@@ -846,12 +846,15 @@ def recover_linux_install(paths):
     return True
 
 
-def publish_linux_install(paths, components, previous, candidate):
+def publish_linux_install(paths, components, previous, candidate, *, fresh=False):
     path = linux_install_journal(paths)
     entries = []
     try:
         for stage, destination in components:
             parent = destination.parent
+            before = path_identity(destination)
+            if fresh and before is not None:
+                raise ValueError("fresh Desktop setup found a pre-existing component")
             if stage is not None:
                 sync_staged_component(stage)
             backup = Path(tempfile.mkdtemp(prefix=".hiroute-update-backup.", dir=parent))
@@ -1138,9 +1141,10 @@ def install(args):
         if desktop_conflict(paths):
             raise ValueError("HiRoute Desktop conflicts with standalone installation")
         linux = platform.system() == "Linux"
-        if getattr(args, "fresh", False) and not linux:
+        fresh = getattr(args, "fresh", False)
+        if fresh and not linux:
             raise ValueError("fresh Desktop setup requires Linux")
-        if linux and getattr(args, "fresh", False):
+        if fresh:
             fresh_paths = (
                 paths["marker"],
                 paths["home"] / ".config/systemd/user/ai.hiroute.cli.service",
@@ -1150,6 +1154,7 @@ def install(args):
                 paths["bin"] / "hirouted",
                 paths["lib"] / manifest["version"],
                 paths["data"] / manifest["version"],
+                *skill_destinations(paths["home"]),
             )
             if any(path.exists() or path.is_symlink() for path in fresh_paths):
                 raise ValueError("fresh Desktop setup requires an unused standalone owner")
@@ -1253,7 +1258,7 @@ def install(args):
                     (staged_file(paths["marker"], marker_content, 0o600), paths["marker"])
                 )
                 if linux:
-                    publish_linux_install(paths, staged_components, current, marker)
+                    publish_linux_install(paths, staged_components, current, marker, fresh=fresh)
                 else:
                     replace_components(staged_components)
         finally:

@@ -480,6 +480,18 @@ entry()
         self.assertFalse((self.home / ".local/share/hiroute/standalone.json").exists())
 
     @patch.object(installer.platform, "system", return_value="Linux")
+    def test_first_run_refuses_an_existing_management_skill(self, _system):
+        manifest, archive = self.build()
+        skill = self.home / ".agents/skills/hiroute-management"
+        skill.mkdir(parents=True)
+        user_file = skill / "SKILL.md"
+        user_file.write_text("user-owned instructions")
+        refused = self.invoke("install", "--fresh", "--manifest", manifest, "--archive", archive)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertEqual(user_file.read_text(), "user-owned instructions")
+        self.assertFalse((self.home / ".local/share/hiroute/standalone.json").exists())
+
+    @patch.object(installer.platform, "system", return_value="Linux")
     def test_recovery_restores_interrupted_publication_and_finishes_commit(self, _system):
         first_manifest, first_archive = self.build("0.5.1")
         first = self.invoke("install", "--manifest", first_manifest, "--archive", first_archive)
