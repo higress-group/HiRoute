@@ -1,5 +1,59 @@
 use super::*;
 
+#[cfg(unix)]
+#[test]
+fn real_listener_recreates_deleted_replay_root_for_short_and_spilled_requests() {
+    use std::os::unix::fs::PermissionsExt;
+
+    const THRESHOLD: usize = 1024 * 1024;
+    let provider = NativeProvider::start(vec![success(), success()]);
+    let fixture = RuntimeFixture::launch_with_replay(&[&provider], 1, THRESHOLD, 16 * 1024);
+    let short = "short request after cleanup".to_owned();
+    fs::remove_dir(&fixture.replay_root).unwrap();
+    assert_eq!(
+        fixture
+            .request_body(&request_document(short.clone()))
+            .status,
+        200
+    );
+    wait_replay_empty(&fixture.replay_root);
+    assert_eq!(
+        fs::metadata(&fixture.replay_root)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+
+    let long = "large after cleanup 路由\n".repeat(96_000);
+    let body = request_document(long.clone());
+    let prefix = body.len() / 2;
+    assert!(prefix > THRESHOLD);
+    fs::remove_dir(&fixture.replay_root).unwrap();
+    let mut client = begin_partial_request(fixture.address, &body, prefix);
+    let spill = wait_for_live_replay_file(&fixture.replay_root, prefix as u64);
+    assert!(
+        fs::read(spill).unwrap() == body[..prefix],
+        "spill lost ingress bytes"
+    );
+    client.write_all(&body[prefix..]).unwrap();
+    client
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let mut response = Vec::new();
+    client.read_to_end(&mut response).unwrap();
+    assert_eq!(response_status(&response), 200);
+    wait_replay_empty(&fixture.replay_root);
+
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 2);
+    for (request, expected) in requests.iter().zip([short, long]) {
+        let forwarded: serde_json::Value = serde_json::from_slice(http_body(request)).unwrap();
+        assert!(forwarded["input"] == expected, "forwarded input changed");
+    }
+}
+
 #[test]
 fn real_listener_preserves_metadata_that_matches_an_image_reference() {
     let provider = NativeProvider::start(vec![success()]);

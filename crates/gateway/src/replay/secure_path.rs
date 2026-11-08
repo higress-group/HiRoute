@@ -44,17 +44,48 @@ pub(super) fn prepare_root(
             if unsafe_link(&metadata) || !metadata.is_dir() {
                 return Err(ReplayError::UnsafePath);
             }
-            fs::canonicalize(path)?
+            match (path.parent(), path.file_name()) {
+                (Some(parent), Some(name)) => fs::canonicalize(parent)?.join(name),
+                _ => fs::canonicalize(path)?,
+            }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => create_private_root(path)?,
         Err(error) => return Err(error.into()),
     };
     let handle = platform::open_directory(&canonical)?;
+    finish_open_root(canonical, handle, orphan_ttl)
+}
+
+pub(super) fn reopen_root(
+    previous: &Arc<SecureRoot>,
+    orphan_ttl: Duration,
+) -> Result<Arc<SecureRoot>, ReplayError> {
+    // The stored path was already resolved at startup. Reopen it without
+    // canonicalizing again, so a substituted link cannot redirect recovery.
+    let path = &previous.path;
+    let handle = match platform::open_directory(path) {
+        Ok(handle) => handle,
+        Err(ReplayError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = path.parent().ok_or(ReplayError::UnsafePath)?;
+            let name = path.file_name().ok_or(ReplayError::UnsafePath)?;
+            platform::create_directory(&platform::open_directory(parent)?, name)?
+        }
+        Err(error) => return Err(error),
+    };
+    if platform::identity(&handle)? == platform::identity(&previous.handle)? {
+        // A missing child does not make live directories under this root orphans.
+        return Ok(Arc::clone(previous));
+    }
+    finish_open_root(path.clone(), handle, orphan_ttl)
+}
+
+fn finish_open_root(
+    path: PathBuf,
+    handle: File,
+    orphan_ttl: Duration,
+) -> Result<Arc<SecureRoot>, ReplayError> {
     platform::validate_directory(&handle)?;
-    let root = Arc::new(SecureRoot {
-        path: canonical,
-        handle,
-    });
+    let root = Arc::new(SecureRoot { path, handle });
     platform::cleanup_orphans(&root, orphan_ttl, REQUEST_PREFIX)?;
     Ok(root)
 }
@@ -66,7 +97,7 @@ pub(super) fn create_request_directory(
         let suffix = hex(&random_bytes::<16>()?);
         let name = format!("{REQUEST_PREFIX}{suffix}");
         let path = root.path.join(&name);
-        match platform::create_directory(&root.handle, &path, &name) {
+        match platform::create_directory(&root.handle, name.as_ref()) {
             Ok(handle) => {
                 platform::validate_directory(&handle)?;
                 let identity = platform::identity(&handle)?;
@@ -157,6 +188,10 @@ impl SecureRoot {
 }
 
 impl SecureDirectory {
+    pub(super) fn root(&self) -> &Arc<SecureRoot> {
+        &self.root
+    }
+
     #[cfg(test)]
     pub(super) fn path(&self) -> &Path {
         &self.path
@@ -219,7 +254,7 @@ fn create_private_root(path: &Path) -> Result<PathBuf, ReplayError> {
         }
         set_owner_directory_permissions(&current)?;
     }
-    Ok(fs::canonicalize(current)?)
+    Ok(current)
 }
 
 #[cfg(unix)]

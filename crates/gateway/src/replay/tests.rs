@@ -14,6 +14,10 @@ mod locator_literals;
 #[path = "tests/json_provenance.rs"]
 mod json_provenance;
 
+#[cfg(unix)]
+#[path = "tests/root_recovery.rs"]
+mod root_recovery;
+
 static TEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct TestRoot(PathBuf);

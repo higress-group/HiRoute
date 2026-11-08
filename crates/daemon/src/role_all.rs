@@ -121,6 +121,16 @@ impl RoleAllConfig {
         self.released_commands_only = true;
         self
     }
+
+    fn replay_root(&self) -> Option<PathBuf> {
+        let storage = self.storage_root.file_name()?;
+        if storage == "storage" {
+            return Some(self.storage_root.with_file_name("replay"));
+        }
+        let mut name = storage.to_os_string();
+        name.push(".replay");
+        Some(self.storage_root.with_file_name(name))
+    }
 }
 
 pub struct RoleAllHandle {
@@ -583,10 +593,11 @@ fn start_role_all_with_runtime(
     };
     let upgrade = Arc::new(hiroute_host_runtime::UpgradeDrain::default());
     let gateway_runtime = Arc::new(
-        ProductionGatewayRuntime::compose_with_planner_and_observation(
+        ProductionGatewayRuntime::compose_with_replay_root(
             ports,
             Arc::new(PublicationPlannerInputAuthority),
             observation,
+            config.replay_root(),
         )
         .with_run_request_authority(runtime.delegation_run_authority())
         .with_upgrade_drain(upgrade.clone()),

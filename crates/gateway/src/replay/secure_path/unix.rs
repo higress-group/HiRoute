@@ -1,4 +1,4 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, OsStr};
 use std::fs::File;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path};
@@ -37,11 +37,7 @@ pub(super) fn open_directory(path: &Path) -> Result<File, ReplayError> {
     Ok(current)
 }
 
-pub(super) fn create_directory(
-    parent: &File,
-    _path: &Path,
-    name: &str,
-) -> Result<File, ReplayError> {
+pub(super) fn create_directory(parent: &File, name: &OsStr) -> Result<File, ReplayError> {
     os(rustix::fs::mkdirat(parent, name, Mode::RWXU))?;
     match os(rustix::fs::openat(
         parent,

@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::path::Path;
@@ -23,13 +24,8 @@ pub(super) fn open_directory(path: &Path) -> Result<File, ReplayError> {
     Ok(file)
 }
 
-pub(super) fn create_directory(
-    parent: &File,
-    _path: &Path,
-    name: &str,
-) -> Result<File, ReplayError> {
-    let file =
-        hiroute_platform::windows::security::create_owner_only_directory_at(parent, name.as_ref())?;
+pub(super) fn create_directory(parent: &File, name: &OsStr) -> Result<File, ReplayError> {
+    let file = hiroute_platform::windows::security::create_owner_only_directory_at(parent, name)?;
     validate_directory(&file)?;
     Ok(file)
 }

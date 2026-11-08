@@ -54,13 +54,21 @@ pub struct ReplayConfig {
 
 impl ReplayConfig {
     pub fn production_default() -> Self {
+        Self::for_root(Self::temporary_root())
+    }
+
+    fn temporary_root() -> PathBuf {
         // System temp directories may be aliases (for example /tmp on Linux or /var
         // on macOS). Resolve that base, while leaving the replay leaf itself subject
         // to SecureRoot's owner, permission, and no-symlink checks.
         let temporary = std::env::temp_dir();
         let temporary = std::fs::canonicalize(&temporary).unwrap_or(temporary);
+        temporary.join("hiroute-replay")
+    }
+
+    fn for_root(root: PathBuf) -> Self {
         Self {
-            root: temporary.join("hiroute-replay"),
+            root,
             memory_threshold_bytes: DEFAULT_MEMORY_THRESHOLD,
             record_bytes: DEFAULT_RECORD_BYTES,
             orphan_ttl: DEFAULT_ORPHAN_TTL,
@@ -68,10 +76,15 @@ impl ReplayConfig {
     }
 
     pub fn from_environment() -> Result<Self, ReplayError> {
-        let mut config = Self::production_default();
-        if let Some(root) = std::env::var_os("HIROUTE_REPLAY_ROOT") {
-            config.root = PathBuf::from(root);
-        }
+        Self::from_environment_with_root(None)
+    }
+
+    fn from_environment_with_root(default_root: Option<PathBuf>) -> Result<Self, ReplayError> {
+        let root = std::env::var_os("HIROUTE_REPLAY_ROOT")
+            .map(PathBuf::from)
+            .or(default_root)
+            .unwrap_or_else(Self::temporary_root);
+        let mut config = Self::for_root(root);
         if let Some(value) = parse_environment("HIROUTE_REPLAY_MEMORY_THRESHOLD")? {
             config.memory_threshold_bytes = value;
         }
@@ -104,7 +117,7 @@ pub struct ReplayManager {
 }
 
 struct ManagerInner {
-    root: Arc<secure_path::SecureRoot>,
+    root: Mutex<Arc<secure_path::SecureRoot>>,
     config: ReplayConfig,
 }
 
@@ -164,11 +177,15 @@ pub struct ReplaySnapshot {
 }
 
 impl ReplayManager {
-    pub fn open(config: ReplayConfig) -> Result<Self, ReplayError> {
+    pub fn open(mut config: ReplayConfig) -> Result<Self, ReplayError> {
         config.validate()?;
         let root = secure_path::prepare_root(&config.root, config.orphan_ttl)?;
+        config.root = root.path().to_path_buf();
         Ok(Self {
-            inner: Arc::new(ManagerInner { root, config }),
+            inner: Arc::new(ManagerInner {
+                root: Mutex::new(root),
+                config,
+            }),
         })
     }
 
@@ -176,12 +193,16 @@ impl ReplayManager {
         Self::open(ReplayConfig::from_environment()?)
     }
 
+    pub(crate) fn from_environment_with_root(root: Option<PathBuf>) -> Result<Self, ReplayError> {
+        Self::open(ReplayConfig::from_environment_with_root(root)?)
+    }
+
     pub fn begin_request(&self, budget: StreamBudget) -> Result<ReplayStore, ReplayError> {
         let base_metadata = budget.reserve(
             MemoryRole::ModelIrBacking,
             std::mem::size_of::<StoreInner>() + 512,
         )?;
-        let directory = secure_path::create_request_directory(&self.inner.root)?;
+        let directory = self.create_request_directory()?;
         let cleanup = Arc::new(RequestDirectoryCleanup(Arc::clone(&directory)));
         Ok(ReplayStore {
             inner: Arc::new(StoreInner {
@@ -203,7 +224,27 @@ impl ReplayManager {
     }
 
     pub fn root(&self) -> &Path {
-        self.inner.root.path()
+        &self.inner.config.root
+    }
+
+    fn create_request_directory(&self) -> Result<Arc<secure_path::SecureDirectory>, ReplayError> {
+        let root = Arc::clone(&lock(&self.inner.root));
+        let result = secure_path::create_request_directory(&root);
+        if !matches!(&result, Err(ReplayError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound)
+        {
+            return result;
+        }
+
+        // Serialize root recovery only. Requests already holding a directory keep
+        // their original handles, and other requests can reuse the recovered root.
+        let recovered = {
+            let mut current = lock(&self.inner.root);
+            if Arc::ptr_eq(&root, &current) {
+                *current = secure_path::reopen_root(&root, self.inner.config.orphan_ttl)?;
+            }
+            Arc::clone(&current)
+        };
+        secure_path::create_request_directory(&recovered)
     }
 }
 

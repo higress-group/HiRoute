@@ -163,6 +163,9 @@ reject ambiguous siblings, changed input/setup, capture gaps and accepted output
 verify Replay expansion, integrity and bounded storage without leaking locators.
 They also pause deferred encoding through foreground teardown, check root/byte
 parity with the independent synchronous oracle, and inject bounded queue failure.
+The [Replay ingress cases](../../tools/e2e-harness/tests/p0_gateway_replay/ingress.rs)
+exercise live-root deletion, short requests, exact spilled bytes and cleanup
+through the same listener process.
 The [late-content SQLite case](../../crates/observation/src/store/tests/late_content.rs)
 checks content arriving after RequestFinished, exact reopen and duplicate ACKs.
 The [request measurement cases](../../crates/gateway/src/context_hold/store_request_measurement_tests.rs)
