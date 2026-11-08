@@ -925,8 +925,23 @@ mod tests {
         assert_eq!(execution.exit_code, 0);
         assert_eq!(execution.stdout.lines().count(), 1);
         let value: Value = serde_json::from_str(&execution.stdout).unwrap();
-        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 90);
+        assert_eq!(value["data"]["commands"].as_array().unwrap().len(), 91);
         assert!(!execution.stdout.contains(HIDDEN_AGENT_GRANT_HELPER_VERB_V1));
+    }
+
+    #[test]
+    fn decision_removal_preview_is_discoverable_as_a_read_only_command() {
+        let help = execute(["decision", "removal", "preview", "--help"]);
+        assert_eq!(help.exit_code, 0, "{}", help.stdout);
+        assert!(help.stdout.contains("expected_revision"));
+        let descriptor = execute(["schema", "show", "--command-id", "decision.removal.preview"]);
+        assert_eq!(descriptor.exit_code, 0, "{}", descriptor.stdout);
+        let descriptor: Value = serde_json::from_str(&descriptor.stdout).unwrap();
+        assert_eq!(descriptor["data"]["kind"], "query");
+        assert_eq!(
+            descriptor["data"]["operation_id"],
+            "PreviewDecisionRemovalV1"
+        );
     }
 
     #[test]
