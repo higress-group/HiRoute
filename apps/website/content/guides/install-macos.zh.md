@@ -2,21 +2,33 @@
 
 HiRoute 桌面应用当前支持 macOS 15.0 或更高版本。短期提供的是自签名安装包，没有 Apple Developer ID 签名和公证；因此 macOS 会要求你明确确认首次启动。
 
-<details class="cli-reference" id="agent-cli">
-<summary>让 Agent 操作：本页 CLI 对照</summary>
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
 
-按本页完成安装后，推荐[在产品里开启 HiRoute 管理技能](/zh/docs/#management-skill)，让 Agent 通过 CLI 配置模型和路由，更快上手。界面与 CLI 共用底层配置和记录。
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
 
-| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
-| --- | --- |
-| 检查 CLI 和服务是否可用 | `--help` · `system status` |
-| 查看当前接入和下一步 | `quickstart` |
-| 开启产品内置管理技能 | `agents connect preview --management enable` → `agents connect apply` |
-| 卸载前恢复 Agent 接入 | `agents restore preview` → `agents restore apply` |
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
 
-这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“macOS 安装与首次启动”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/install-macos/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+先按文档完成本次安装或检查目标。安装后，引导我在“Agent → HiRoute 管理 → 启用”中开启产品内置管理技能，后续配置交给该技能：https://hiroute.ai/zh/docs/#management-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 检查 CLI 和服务是否可用：--help · system status
+- 查看当前接入和下一步：quickstart
+- 开启产品内置管理技能：agents connect preview --management enable → agents connect apply
+- 卸载前恢复 Agent 接入：agents restore preview → agents restore apply
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
 
 </details>
+</aside>
 
 ## 下载正确的安装包
 

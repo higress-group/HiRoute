@@ -11,6 +11,37 @@ HiRoute helps you choose **which model handles a stage and which Agent handles a
 
 Screenshots use dark mode and example data. Select an image to open it at full size.
 
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
+
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
+
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
+
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Quickstart.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Use the built-in HiRoute management Skill. If it is not enabled, guide me through “Agent → HiRoute management → Enable”: https://hiroute.ai/en/docs/#management-skill
+For task delegation, use the built-in delegation Skill. If needed, guide me through “Agent → Task routing → Enable” and follow the installed Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Inspect configuration and next steps: quickstart
+- Connect models: compute list → compute connection options → compute connection preview → compute connection apply
+- Create, edit and publish model routes: routing options → routing preview → routing apply
+- Connect an Agent to model routes: agents connect preview --context CONTEXT_ID --plan PLAN_ID → agents connect apply
+- Enable built-in management / delegation Skills: agents connect preview + --management enable / --collaboration explicit → agents connect apply
+- Check actual execution: agents connect status --effective · sessions list · sessions show · worker status · worker result
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
+
+</details>
+</aside>
+
 ## Install and start HiRoute
 
 - **macOS**: requires macOS 15.0 or later. Public packages are self-signed. Verify the SHA256, then follow [Install and open on macOS](/en/docs/install-macos/).
@@ -31,24 +62,6 @@ Management works independently, so the calling Agent can keep its existing model
   <a href="/guide-assets/agent-management-en.webp"><img src="/guide-assets/agent-management-en.webp" alt="Dark-mode HiRoute management dialog with CLI entry preparation and an enable button" width="1200" height="900" loading="lazy" /></a>
   <figcaption>“Agent → HiRoute management → Enable” prepares the built-in Skill. Model routing and task routing are separate settings.</figcaption>
 </figure>
-
-<details class="cli-reference" id="agent-cli">
-<summary>Use an Agent: CLI map for this page</summary>
-
-Use these hints to find the relevant commands. The built-in Skills provide the management and delegation workflows.
-
-| Operation on this page | CLI hints (prefix each command with `hiroute`) |
-| --- | --- |
-| Inspect configuration and next steps | `quickstart` |
-| Connect models | `compute list` → `compute connection options` → `compute connection preview` → `compute connection apply` |
-| Create, edit and publish model routes | `routing options` → `routing preview` → `routing apply` |
-| Connect an Agent to model routes | `agents connect preview --context CONTEXT_ID --plan PLAN_ID` → `agents connect apply` |
-| Enable built-in management / delegation Skills | `agents connect preview` + `--management enable` / `--collaboration explicit` → `agents connect apply` |
-| Check actual execution | `agents connect status --effective` · `sessions list` · `sessions show` · `worker status` · `worker result` |
-
-These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
-
-</details>
 
 ## Path one: use model routing in your usual Agent
 
@@ -86,4 +99,4 @@ Delegated tasks run with `approve-all`: the execution Agent can write files, run
 
 Continue with [Agent routing: setup, examples and results](/en/docs/task-routing/).
 
-For other operations, point your Agent to each guide’s CLI map. See [HiRoute CLI](/en/docs/cli/) for command details and recovery.
+For other operations, copy the Agent instructions from the relevant guide into your conversation. See [HiRoute CLI](/en/docs/cli/) for command details and recovery.

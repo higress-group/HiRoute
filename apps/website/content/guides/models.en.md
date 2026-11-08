@@ -4,23 +4,35 @@ HiRoute manages subscriptions, APIs and local models in one place on your machin
 
 This guide covers general models: how to connect them, how to combine a subscription and an API that offer the same model into one route, and how to limit spending on an API key. Desktop and the Linux Web UI work the same way; for the matching `compute` commands, see [HiRoute CLI](/en/docs/cli/).
 
-<details class="cli-reference" id="agent-cli">
-<summary>Use an Agent: CLI map for this page</summary>
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
 
-For a faster start, [enable the HiRoute management Skill](/en/docs/#management-skill) and tell your Agent what you want to do on this page. The UI and CLI share the same service and underlying data, so changes made by the Agent are visible in the UI.
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
 
-| Operation on this page | CLI hints (prefix each command with `hiroute`) |
-| --- | --- |
-| Inspect or reuse connected models | `compute list` · `compute show` · `compute connection options` |
-| Scan local settings, connect a subscription or API | `compute scan` · `compute connection prepare` / `authorize` / `login` / `test` |
-| Select models and save a connection | `compute connection preview` → `compute connection apply` |
-| Combine the same model from several sources | `routing options` → `routing preview` → `routing apply` |
-| Set key budgets and model prices | `compute budgets get` / `preview` · `prices effective` · `prices override preview` / `apply` |
-| Set a connection proxy | `compute network show` / `preview` / `apply` |
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
 
-These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Connect models.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/models/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Use the built-in HiRoute management Skill. If it is not enabled, guide me through “Agent → HiRoute management → Enable”: https://hiroute.ai/en/docs/#management-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Inspect or reuse connected models: compute list · compute show · compute connection options
+- Scan local settings, connect a subscription or API: compute scan · compute connection prepare / authorize / login / test
+- Select models and save a connection: compute connection preview → compute connection apply
+- Combine the same model from several sources: routing options → routing preview → routing apply
+- Set key budgets and model prices: compute budgets get / preview · prices effective · prices override preview / apply
+- Set a connection proxy: compute network show / preview / apply
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
 
 </details>
+</aside>
 
 ## Add models
 

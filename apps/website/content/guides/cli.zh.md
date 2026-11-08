@@ -4,6 +4,37 @@
 
 本文中的命令名、参数和 JSON 字段均保留原文。例如 `worker` 管理委派任务，`schema` 查看命令接受和返回的数据格式。
 
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
+
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
+
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
+
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“HiRoute CLI”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/cli/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+请使用产品内置的 HiRoute 管理技能；尚未启用时，按图示引导我在“Agent → HiRoute 管理 → 启用”中开启：https://hiroute.ai/zh/docs/#management-skill
+涉及任务委派时，请使用产品内置委派技能；尚未启用时，引导我在“Agent → 任务路由 → 启用”中开启，按已安装技能处理委派：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 首页状态、接入指引：system status · quickstart
+- 模型和接入设置：compute · prices · decision connections
+- 智能路由：routing options / list / show / preview / apply
+- Agent 的模型路由和内置技能：agents connect preview / apply / status · agents restore
+- 委派任务与任务记录：worker plans / exec / list / status / result / continue / cancel
+- 会话、模型表现与用量：sessions · observation plan-quality · observation plan-trust · value show
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
+
+</details>
+</aside>
+
 <h2 id="built-in-skills">先在产品里开启内置技能</h2>
 
 | 你想让 Agent 做什么 | 在产品中开启 |
@@ -13,25 +44,7 @@
 
 开启后，直接向 Agent 说明目标；管理和委派的流程由随产品提供的技能负责。管理技能、任务路由和模型路由可以分别开启。图示见[开启管理技能](/zh/docs/#management-skill)与[开启任务路由](/zh/docs/task-routing/#delegation-skill)。
 
-各文档的 CLI 对照只提供操作线索：[快速开始](/zh/docs/#agent-cli)、[接入模型](/zh/docs/models/#agent-cli)、[试用新模型](/zh/docs/model-trial/#agent-cli)、[模型路由](/zh/docs/model-routing/#agent-cli)、[Agent 路由](/zh/docs/task-routing/#agent-cli)。
-
-<details class="cli-reference" id="agent-cli">
-<summary>让 Agent 操作：本页 CLI 对照</summary>
-
-下面按产品页面列出命令入口。让已启用管理技能的 Agent 根据目标选择命令即可。
-
-| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
-| --- | --- |
-| 首页状态、接入指引 | `system status` · `quickstart` |
-| 模型和接入设置 | `compute` · `prices` · `decision connections` |
-| 智能路由 | `routing options` / `list` / `show` / `preview` / `apply` |
-| Agent 的模型路由和内置技能 | `agents connect preview` / `apply` / `status` · `agents restore` |
-| 委派任务与任务记录 | `worker plans` / `exec` / `list` / `status` / `result` / `continue` / `cancel` |
-| 会话、模型表现与用量 | `sessions` · `observation plan-quality` · `observation plan-trust` · `value show` |
-
-这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
-
-</details>
+各文档都提供可复制给 Agent 的指引，包含文档链接和对应 CLI 操作：[快速开始](/zh/docs/#agent-cli)、[接入模型](/zh/docs/models/#agent-cli)、[试用新模型](/zh/docs/model-trial/#agent-cli)、[模型路由](/zh/docs/model-routing/#agent-cli)、[Agent 路由](/zh/docs/task-routing/#agent-cli)。
 
 ## 安装与检查
 

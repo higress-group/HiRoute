@@ -2,25 +2,37 @@
 
 新模型发布后，不必一次让它接管全部工作。HiRoute 的试用让新模型先承担简单的轮次，熟悉的主力模型兜底；新模型某一步没做好、问题又关系到接下来的工作时，主力接手。之后根据你自己任务里的记录，逐步调整新模型承担的工作量。
 
-<details class="cli-reference" id="agent-cli">
-<summary>让 Agent 操作：本页 CLI 对照</summary>
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
 
-推荐先[开启 HiRoute 管理技能](/zh/docs/#management-skill)，把本页的操作目标告诉 Agent。界面与 CLI 共用同一服务和底层数据，Agent 完成的改动也能在界面里查看。
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
 
-| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
-| --- | --- |
-| 选试用模型和主力模型 | `compute list` · `compute connection options` / `preview` / `apply` |
-| 选择或添加决策连接 | `decision connections options` / `list` / `apply` |
-| 设置试用路由、信任度并发布 | `routing options` → `routing preview` → `routing apply` |
-| 映射到常用 Agent | `agents connect preview` → `agents connect apply` |
-| 查看路由时间线和模型表现 | `sessions timeline` · `observation plan-quality samples` · `observation plan-trust` |
-| 回放信任度、查看调整建议 | `observation plan-trust replay` / `suggestions` |
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
 
-这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“试用新模型”相关操作。目标不明确时，只询问必要信息。
 
-试用入口对应一组模型、路由和 Agent 操作。默认“试用”档在路由编辑器中对应 `smart.judgment.degree.simple_threshold_millis = 900`；CLI 使用同一配置，历史回放也读取同一批执行记录。应用信任度调整仍走 `routing preview` → `routing apply`。
+本页文档：https://hiroute.ai/zh/docs/model-trial/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+请使用产品内置的 HiRoute 管理技能；尚未启用时，按图示引导我在“Agent → HiRoute 管理 → 启用”中开启：https://hiroute.ai/zh/docs/#management-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 选试用模型和主力模型：compute list · compute connection options / preview / apply
+- 选择或添加决策连接：decision connections options / list / apply
+- 设置试用路由、信任度并发布：routing options → routing preview → routing apply
+- 映射到常用 Agent：agents connect preview → agents connect apply
+- 查看路由时间线和模型表现：sessions timeline · observation plan-quality samples · observation plan-trust
+- 回放信任度、查看调整建议：observation plan-trust replay / suggestions
+
+试用流程由模型接入、路由配置和 Agent 映射组成；默认“试用”档对应编辑器 smart.judgment.degree.simple_threshold_millis = 900。历史回放读取同一批记录；应用信任度调整使用 routing preview / apply。
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
 
 </details>
+</aside>
 
 ## 从首页开始
 

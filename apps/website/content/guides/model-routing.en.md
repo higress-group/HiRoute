@@ -6,22 +6,34 @@ First [connect your models](/en/docs/models/). To try a new model directly, use 
 
 Model routing chooses which model to use. To switch execution tools, such as delegating from Codex to DSH, see [Agent routing](/en/docs/task-routing/).
 
-<details class="cli-reference" id="agent-cli">
-<summary>Use an Agent: CLI map for this page</summary>
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
 
-For a faster start, [enable the HiRoute management Skill](/en/docs/#management-skill) and tell your Agent what you want to do on this page. The UI and CLI share the same service and underlying data, so changes made by the Agent are visible in the UI.
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
 
-| Operation on this page | CLI hints (prefix each command with `hiroute`) |
-| --- | --- |
-| Choose models, routing type and candidate order | `compute list` · `routing options` → `routing preview` |
-| Connect a decision model | `decision connections options` / `list` / `apply` / `test` |
-| Adjust trust, custom branches and other settings | `routing show` · `routing options` → `routing preview` |
-| Publish and connect an Agent | `routing apply` · `agents connect preview` → `agents connect apply` |
-| Inspect model selection, quality and cost | `sessions timeline` · `observation plan-quality samples` · `observation plan-trust` · `value show` |
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
 
-These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Use smart model routing.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/model-routing/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Use the built-in HiRoute management Skill. If it is not enabled, guide me through “Agent → HiRoute management → Enable”: https://hiroute.ai/en/docs/#management-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Choose models, routing type and candidate order: compute list · routing options → routing preview
+- Connect a decision model: decision connections options / list / apply / test
+- Adjust trust, custom branches and other settings: routing show · routing options → routing preview
+- Publish and connect an Agent: routing apply · agents connect preview → agents connect apply
+- Inspect model selection, quality and cost: sessions timeline · observation plan-quality samples · observation plan-trust · value show
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
 
 </details>
+</aside>
 
 ## 1. Choose a routing type
 

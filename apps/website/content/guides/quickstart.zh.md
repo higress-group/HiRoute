@@ -11,6 +11,37 @@ HiRoute 帮你做两个选择：**这一阶段用哪个模型，这项任务交�
 
 截图使用夜晚模式与示例数据。点击图片可查看大图。
 
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
+
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
+
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
+
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“快速开始”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+请使用产品内置的 HiRoute 管理技能；尚未启用时，按图示引导我在“Agent → HiRoute 管理 → 启用”中开启：https://hiroute.ai/zh/docs/#management-skill
+涉及任务委派时，请使用产品内置委派技能；尚未启用时，引导我在“Agent → 任务路由 → 启用”中开启，按已安装技能处理委派：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 查看当前配置与下一步：quickstart
+- 接入模型：compute list → compute connection options → compute connection preview → compute connection apply
+- 创建、调整和发布模型路由：routing options → routing preview → routing apply
+- 连接 Agent 的模型路由：agents connect preview --context CONTEXT_ID --plan PLAN_ID → agents connect apply
+- 开启内置管理 / 委派技能：agents connect preview + --management enable / --collaboration explicit → agents connect apply
+- 核对实际运行：agents connect status --effective · sessions list · sessions show · worker status · worker result
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
+
+</details>
+</aside>
+
 ## 先安装并启动 HiRoute
 
 - **macOS**：要求 macOS 15.0 或更高版本。公开安装包为自签名构建，核对 SHA256 后，按 [macOS 安装与首次启动](/zh/docs/install-macos/) 打开应用。
@@ -31,24 +62,6 @@ HiRoute 帮你做两个选择：**这一阶段用哪个模型，这项任务交�
   <a href="/guide-assets/agent-management-zh.webp"><img src="/guide-assets/agent-management-zh.webp" alt="夜晚模式的 HiRoute 管理技能启用对话框，提供命令行入口准备与启用按钮" width="1200" height="900" loading="lazy" /></a>
   <figcaption>“Agent → HiRoute 管理 → 启用”准备产品内置技能；模型路由与任务路由分别设置。</figcaption>
 </figure>
-
-<details class="cli-reference" id="agent-cli">
-<summary>让 Agent 操作：本页 CLI 对照</summary>
-
-以下是给 Agent 定位命令的线索。管理和委派流程由产品内置技能提供。
-
-| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
-| --- | --- |
-| 查看当前配置与下一步 | `quickstart` |
-| 接入模型 | `compute list` → `compute connection options` → `compute connection preview` → `compute connection apply` |
-| 创建、调整和发布模型路由 | `routing options` → `routing preview` → `routing apply` |
-| 连接 Agent 的模型路由 | `agents connect preview --context CONTEXT_ID --plan PLAN_ID` → `agents connect apply` |
-| 开启内置管理 / 委派技能 | `agents connect preview` + `--management enable` / `--collaboration explicit` → `agents connect apply` |
-| 核对实际运行 | `agents connect status --effective` · `sessions list` · `sessions show` · `worker status` · `worker result` |
-
-这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
-
-</details>
 
 ## 路径一：让常用 Agent 用上模型路由
 
@@ -86,4 +99,4 @@ HiRoute 帮你做两个选择：**这一阶段用哪个模型，这项任务交�
 
 继续阅读：[Agent 智能路由：配置、示例与结果](/zh/docs/task-routing/)。
 
-更多操作可让 Agent 参照每页的“本页 CLI 对照”，具体命令与恢复方式见 [HiRoute CLI](/zh/docs/cli/)。
+更多操作可把每页的“给 Agent 的指引”复制给 Agent，具体命令与恢复方式见 [HiRoute CLI](/zh/docs/cli/)。

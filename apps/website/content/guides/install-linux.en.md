@@ -6,21 +6,33 @@ Check the [download page](/en/download/) for published packages. A complete pack
 
 Linux packages support `x86_64` and ARM64 (`aarch64`), with glibc 2.31 or later. Installation needs no `sudo`; it requires `curl` and Python 3.
 
-<details class="cli-reference" id="agent-cli">
-<summary>Use an Agent: CLI map for this page</summary>
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
 
-After installation, [enable the HiRoute management Skill in the product](/en/docs/#management-skill). Letting an Agent configure models and routes through the CLI is the recommended way to get started faster. The UI and CLI share configuration and records.
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
 
-| Operation on this page | CLI hints (prefix each command with `hiroute`) |
-| --- | --- |
-| Start and inspect the service | `service start` · `service status` · `system status` |
-| Configure and open browser management | `console init` · `console open` |
-| Discover targets and next steps | `quickstart` · `schema list` |
-| Enable management, then configure models and routes | `agents connect preview --management enable` → `agents connect apply` · `compute` · `routing` |
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
 
-These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Install HiRoute on Linux.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/install-linux/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Follow the guide for the requested installation or checks. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Start and inspect the service: service start · service status · system status
+- Configure and open browser management: console init · console open
+- Discover targets and next steps: quickstart · schema list
+- Enable management, then configure models and routes: agents connect preview --management enable → agents connect apply · compute · routing
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
 
 </details>
+</aside>
 
 ## 1. Install
 

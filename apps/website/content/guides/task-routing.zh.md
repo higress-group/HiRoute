@@ -11,6 +11,37 @@
 
 **推荐通过产品内置委派技能使用任务路由。** 按下方步骤在“Agent → 任务路由”中启用，之后只需向主 Agent 说明任务目标，技能负责发现路由、委派和取回结果。配置路由也可以交给已[开启管理技能](/zh/docs/#management-skill)的 Agent；界面与 CLI 共用同一份配置和任务记录。
 
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
+
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
+
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
+
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“Agent 智能路由”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/task-routing/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+请使用产品内置的 HiRoute 管理技能；尚未启用时，按图示引导我在“Agent → HiRoute 管理 → 启用”中开启：https://hiroute.ai/zh/docs/#management-skill
+涉及任务委派时，请使用产品内置委派技能；尚未启用时，引导我在“Agent → 任务路由 → 启用”中开启，按已安装技能处理委派：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 选择执行 Agent、开放可委派路由：worker executors · worker plans · routing preview + --delegation enable / --worker-harness / --worker-protocol → routing apply
+- 启用内置委派技能：agents connect preview --context CONTEXT_ID --collaboration explicit → agents connect apply
+- 由内置技能发起并跟进任务：worker exec · worker status · worker wait · worker result
+- 查看任务记录、继续或取消：worker list · worker read · worker continue · worker cancel
+
+只开启委派技能时不传 --plan，保留主 Agent 的模型接入。执行器与协议一起选择；任务执行、跟进和恢复遵循产品内置委派技能。
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
+
+</details>
+</aside>
+
 ## 开始前
 
 在 HiRoute 服务所在主机安装目标执行 Agent，并按 [接入模型](/zh/docs/models/) 准备执行模型。先选一条固定模型路由即可，之后也能组合 [按难度分流](/zh/docs/model-routing/)。
@@ -79,24 +110,6 @@
 </figure>
 
 需要追加要求时，可以在同一任务上继续。失败时先查看原因再决定继续或重新发起；连接中断时按下方 CLI 说明查询原提交，避免重复启动。
-
-<details class="cli-reference" id="agent-cli">
-<summary>让 Agent 操作：本页 CLI 对照</summary>
-
-先按上文开启产品内置委派技能，再告诉主 Agent 任务目标。下表说明技能使用的 CLI 能力，便于理解和排查。任务记录与界面互通。
-
-| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
-| --- | --- |
-| 选择执行 Agent、开放可委派路由 | `worker executors` · `worker plans` · `routing preview` + `--delegation enable` / `--worker-harness` / `--worker-protocol` → `routing apply` |
-| 启用内置委派技能 | `agents connect preview --context CONTEXT_ID --collaboration explicit` → `agents connect apply` |
-| 由内置技能发起并跟进任务 | `worker exec` · `worker status` · `worker wait` · `worker result` |
-| 查看任务记录、继续或取消 | `worker list` · `worker read` · `worker continue` · `worker cancel` |
-
-这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
-
-只启用委派技能时不传 `--plan`，主 Agent 的模型接入保持原样。执行器和协议一起选择；委派策略与执行细节以已安装的技能为准。
-
-</details>
 
 ## 用 CLI 执行与恢复
 

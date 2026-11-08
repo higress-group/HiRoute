@@ -11,6 +11,37 @@ The capabilities work independently. Your main Agent can keep its existing model
 
 **Use task routing through the built-in delegation Skill.** Enable it under “Agent → Task routing” as shown below, then give your main Agent the task goal. The Skill handles route discovery, delegation and result retrieval. An Agent with the [management Skill](/en/docs/#management-skill) can also configure routes; the UI and CLI share configuration and task records.
 
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
+
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
+
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
+
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Smart Agent routing.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/task-routing/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Use the built-in HiRoute management Skill. If it is not enabled, guide me through “Agent → HiRoute management → Enable”: https://hiroute.ai/en/docs/#management-skill
+For task delegation, use the built-in delegation Skill. If needed, guide me through “Agent → Task routing → Enable” and follow the installed Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Choose an executor and allow delegation: worker executors · worker plans · routing preview + --delegation enable / --worker-harness / --worker-protocol → routing apply
+- Enable the built-in delegation Skill: agents connect preview --context CONTEXT_ID --collaboration explicit → agents connect apply
+- Let the built-in Skill start and follow tasks: worker exec · worker status · worker wait · worker result
+- Read task history, continue or cancel: worker list · worker read · worker continue · worker cancel
+
+Omit --plan when enabling only delegation to preserve the main Agent’s model connection. Select executor and protocol together. Follow the built-in delegation Skill to execute, follow up and recover tasks.
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
+
+</details>
+</aside>
+
 ## Before you start
 
 Install the execution Agent on the HiRoute service host and [connect its models](/en/docs/models/). A Fixed model route is enough to start; you can later combine it with [Difficulty routing](/en/docs/model-routing/).
@@ -79,24 +110,6 @@ Open “Agent → Task history” and select the task. Check its route, executio
 </figure>
 
 Add instructions by continuing the same task. If it fails, inspect the cause before continuing or starting again. If a connection drops, query the original submission as shown below to avoid duplicate work.
-
-<details class="cli-reference" id="agent-cli">
-<summary>Use an Agent: CLI map for this page</summary>
-
-Enable the built-in delegation Skill as described above, then give your main Agent the task goal. This table maps the Skill’s work to CLI capabilities for reference and troubleshooting. Task records are shared with the UI.
-
-| Operation on this page | CLI hints (prefix each command with `hiroute`) |
-| --- | --- |
-| Choose an executor and allow delegation | `worker executors` · `worker plans` · `routing preview` + `--delegation enable` / `--worker-harness` / `--worker-protocol` → `routing apply` |
-| Enable the built-in delegation Skill | `agents connect preview --context CONTEXT_ID --collaboration explicit` → `agents connect apply` |
-| Let the built-in Skill start and follow tasks | `worker exec` · `worker status` · `worker wait` · `worker result` |
-| Read task history, continue or cancel | `worker list` · `worker read` · `worker continue` · `worker cancel` |
-
-These are command pointers. The Agent can read the installed version’s `--help` and `hiroute schema show --command-id COMMAND_ID --include-schema` for exact parameters.
-
-Omit `--plan` when enabling only the delegation Skill to keep the main Agent’s model connection. Select the executor and protocol together; follow the installed Skill for delegation policy and execution details.
-
-</details>
 
 ## CLI execution and recovery
 

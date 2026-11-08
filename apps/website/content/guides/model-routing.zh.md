@@ -6,22 +6,34 @@
 
 模型路由选择“用哪个模型”；想换一种执行工具，例如从 Codex 委派给 DSH，请看 [Agent 智能路由](/zh/docs/task-routing/)。
 
-<details class="cli-reference" id="agent-cli">
-<summary>让 Agent 操作：本页 CLI 对照</summary>
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
 
-推荐先[开启 HiRoute 管理技能](/zh/docs/#management-skill)，把本页的操作目标告诉 Agent。界面与 CLI 共用同一服务和底层数据，Agent 完成的改动也能在界面里查看。
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
 
-| 本页操作 | CLI 线索（均以 `hiroute` 开头） |
-| --- | --- |
-| 选择模型、路由类型与候选顺序 | `compute list` · `routing options` → `routing preview` |
-| 接入决策模型 | `decision connections options` / `list` / `apply` / `test` |
-| 调整信任度、自定义分支和其他设置 | `routing show` · `routing options` → `routing preview` |
-| 发布路由并接入 Agent | `routing apply` · `agents connect preview` → `agents connect apply` |
-| 查看实际选模、质量与费用 | `sessions timeline` · `observation plan-quality samples` · `observation plan-trust` · `value show` |
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
 
-这些是操作对应关系，具体参数由 Agent 读取当前安装版本的 `--help` 和 `hiroute schema show --command-id COMMAND_ID --include-schema` 获取。
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“使用智能模型路由”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/model-routing/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+请使用产品内置的 HiRoute 管理技能；尚未启用时，按图示引导我在“Agent → HiRoute 管理 → 启用”中开启：https://hiroute.ai/zh/docs/#management-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 选择模型、路由类型与候选顺序：compute list · routing options → routing preview
+- 接入决策模型：decision connections options / list / apply / test
+- 调整信任度、自定义分支和其他设置：routing show · routing options → routing preview
+- 发布路由并接入 Agent：routing apply · agents connect preview → agents connect apply
+- 查看实际选模、质量与费用：sessions timeline · observation plan-quality samples · observation plan-trust · value show
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
 
 </details>
+</aside>
 
 ## 1. 选择路由类型
 

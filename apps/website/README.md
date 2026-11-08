@@ -36,14 +36,19 @@ see [guide screenshot sources](docs/guide-assets.md) for production component
 provenance, reproduction and caption conventions. Regenerate them with
 `node apps/website/scripts/capture-guide-assets.mjs` from the repository root.
 
-Each user guide maps its UI operations to CLI commands in a native
-`details.cli-reference` block anchored at `#agent-cli`. Keep these as concise
-command pointers; the installed CLI help and schema supply exact parameters.
-Guide users to enable the product's built-in management or delegation Skill,
-which owns the execution workflow. Quickstart's `#management-skill` and the
-Agent-routing guide's `#delegation-skill` show the activation steps. Explain that
-UI and CLI operations share the same service, configuration and execution data.
-Update both languages together; detailed command/recovery rules stay in the CLI guide.
+Each user guide includes an `aside.agent-guide` near its introduction, anchored at `#agent-cli`, with
+Agent-facing instructions in one `text` code fence inside a native
+`details.agent-guide-preview`. Include the canonical page URL, CLI reference,
+built-in Skill setup links and concise UI-to-command pointers. Ask the Agent to
+use the user's goal and installed help/schema rather than copying a fixed script.
+The product's management and delegation Skills own the execution workflow;
+Quickstart's `#management-skill` and the Agent-routing guide's `#delegation-skill`
+show how to enable them. UI and CLI share the same service and underlying data.
+`public/scripts/guide-agent-copy.js` adds a visible Copy for Agent button that
+copies the complete message even with its preview closed. A failed clipboard
+write opens and selects the text for manual copying; without JavaScript the
+native preview remains readable. Keep both languages aligned. Detailed command
+and recovery rules stay in the CLI guide and installed Skills.
 
 English lives at `/en/` and Chinese at `/zh/`; `src/lib/locale.mjs` builds both
 prefixes. The root and the Chinese URLs published without a prefix before English
