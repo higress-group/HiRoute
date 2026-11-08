@@ -86,13 +86,17 @@ def package(args):
             checksums.append("'" + standalone["digest"](stage / name) + "'")
         recipe = (ARCH / "PKGBUILD").read_text().replace(
             "pkgver=0.0.0", "pkgver=" + version.replace("-", "."),
-        ).replace("sha256sums=()", f"sha256sums=({' '.join(checksums)})")
+        ).replace("_runtime_version=0.0.0", "_runtime_version=" + version).replace("sha256sums=()", f"sha256sums=({' '.join(checksums)})")
         (stage / "PKGBUILD").write_text(recipe)
         env = {**os.environ, "PKGDEST": str(stage), "SOURCE_DATE_EPOCH": epoch}
         subprocess.run(["makepkg", "--noconfirm", "--nosign"], cwd=stage, env=env, check=True)
         paths = list(stage.glob("hiroute-desktop-*.pkg.tar.*"))
         if len(paths) != 1:
             raise ValueError("expected one Arch Desktop package")
+        members = set(output("bsdtar", "-tf", paths[0]).splitlines())
+        payload = f"usr/share/hiroute-desktop/standalone/HiRoute-{version}-linux-{architecture}.tar.gz"
+        if payload not in members:
+            raise ValueError("Arch package omitted the standalone installer's accepted archive name")
         artifact = args.output / paths[0].name
         if artifact.exists() or artifact.is_symlink():
             raise ValueError("output already contains this package")

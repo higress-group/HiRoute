@@ -494,6 +494,11 @@ pub(super) async fn install(recover: bool) -> Result<(), &'static str> {
     {
         return Err("PACKAGE_PAYLOAD_UNAVAILABLE");
     }
+    let archive = format!(
+        "HiRoute-{}-linux-{}.tar.gz",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::ARCH
+    );
     let mut command = command("/usr/bin/python3");
     command.arg("-I").arg(installer);
     if recover {
@@ -509,7 +514,7 @@ pub(super) async fn install(recover: bool) -> Result<(), &'static str> {
             ])
             .arg(root.join("manifest.json"))
             .arg("--archive")
-            .arg(root.join("runtime.tar.gz"));
+            .arg(root.join(archive));
     }
     bounded_output(command, Duration::from_secs(120))
         .await

@@ -7,6 +7,6 @@ Exec=/usr/bin/hiroute-desktop
 TryExec=/usr/bin/hiroute-desktop
 Icon=ai.hiroute.desktop
 Terminal=false
-Categories=Development;Utility;
+Categories=Development;
 StartupNotify=true
 StartupWMClass=ai.hiroute.desktop

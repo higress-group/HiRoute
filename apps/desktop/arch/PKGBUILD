@@ -1,5 +1,6 @@
 pkgname=hiroute-desktop
 pkgver=0.0.0
+_runtime_version=0.0.0
 pkgrel=1
 pkgdesc='HiRoute native desktop for the current user'
 arch=('aarch64' 'x86_64')
@@ -17,7 +18,8 @@ package() {
   install -Dm644 "$srcdir/icon.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/ai.hiroute.desktop.svg"
   install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/hiroute-desktop/LICENSE"
   local name
-  for name in manifest.json runtime.tar.gz install-standalone.py; do
+  for name in manifest.json install-standalone.py; do
     install -Dm644 "$srcdir/$name" "$pkgdir/usr/share/hiroute-desktop/standalone/$name"
   done
+  install -Dm644 "$srcdir/runtime.tar.gz" "$pkgdir/usr/share/hiroute-desktop/standalone/HiRoute-${_runtime_version}-linux-${CARCH}.tar.gz"
 }

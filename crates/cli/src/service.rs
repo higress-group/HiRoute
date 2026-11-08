@@ -508,7 +508,8 @@ fn wait_stopped(layout: &StandaloneLayout, timeout: Duration) -> Result<(), Serv
 }
 
 fn control_ready(timeout: Duration) -> bool {
-    let operation = if cfg!(windows) {
+    let bounded_readiness = cfg!(any(windows, target_os = "linux"));
+    let operation = if bounded_readiness {
         hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1
     } else {
         "GetSystemStatus"
@@ -527,7 +528,7 @@ fn control_ready(timeout: Duration) -> bool {
             response.status == MachineStatus::Succeeded
                 && response.error.is_none()
                 && response.data.is_some_and(|data| {
-                    if cfg!(windows) {
+                    if bounded_readiness {
                         data == true
                     } else {
                         data["daemon"] == "role_all" && data["gateway"] == "ready"
