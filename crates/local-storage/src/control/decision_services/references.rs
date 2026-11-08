@@ -40,7 +40,7 @@ pub(super) fn read(
     }
     let active = ActivePlanReferences::read(connection, workspace)?;
     let mut blockers = Vec::new();
-    for (version, reasons) in active.versions(Some(id))? {
+    active.versions(Some(id), |version, reasons| {
         for protection in reasons {
             blockers.push(PlanReferenceBlockerV1 {
                 plan_id: Some(version.reference.plan_id.as_str().to_owned()),
@@ -49,15 +49,17 @@ pub(super) fn read(
                 protection,
             });
         }
-    }
-    for draft in active.drafts(Some(id))? {
+        Ok(())
+    })?;
+    active.drafts(Some(id), |draft| {
         blockers.push(PlanReferenceBlockerV1 {
             plan_id: draft.plan_id.map(|plan| plan.as_str().to_owned()),
             draft_id: Some(draft.draft_id),
             revision: draft.revision,
             protection: PlanReferenceProtectionV1::Draft,
         });
-    }
+        Ok(())
+    })?;
     for (protection, publication) in &active.publications {
         for plan in &publication.plans {
             let value = serde_json::to_value(plan).map_err(|_| invalid())?;

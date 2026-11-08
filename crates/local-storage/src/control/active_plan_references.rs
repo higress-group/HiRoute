@@ -4,8 +4,14 @@ use hiroute_domain::{
 };
 use rusqlite::{Connection, OptionalExtension};
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static PUBLICATION_DECODES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 const CURRENT: &str = "EXISTS(SELECT 1 FROM plan_heads h WHERE h.workspace_id=v.workspace_id AND h.plan_id=v.plan_id AND json_extract(h.head_json,'$.status') != 'deleted' AND json_extract(h.head_json,'$.reference.content_revision')=v.content_revision)";
 const HELD: &str = "EXISTS(SELECT 1 FROM plan_version_holds h WHERE h.workspace_id=v.workspace_id AND h.plan_id=v.plan_id AND h.content_revision=v.content_revision)";
+const INVALID_HEAD: &str = "EXISTS(SELECT 1 FROM plan_heads h WHERE h.workspace_id=v.workspace_id AND h.plan_id=v.plan_id AND (json_extract(h.head_json,'$.status') IS NULL OR json_extract(h.head_json,'$.status') NOT IN ('enabled','disabled','deleted') OR json_type(h.head_json,'$.reference.content_revision') IS NOT 'integer' OR json_extract(h.head_json,'$.reference.plan_id') IS NOT h.plan_id OR json_extract(h.head_json,'$.reference.workspace_id') IS NOT h.workspace_id))";
 
 fn unavailable(_: rusqlite::Error) -> PortError {
     PortError::new(
@@ -61,6 +67,8 @@ impl<'a> ActivePlanReferences<'a> {
         let mut publications = Vec::new();
         for row in rows {
             let (state, bytes) = row.map_err(unavailable)?;
+            #[cfg(test)]
+            PUBLICATION_DECODES.set(PUBLICATION_DECODES.get() + 1);
             let publication =
                 GatewayPublicationV1::decode_persisted(&bytes).map_err(|_| corrupt())?;
             if publication.workspace_id != *workspace {
@@ -84,14 +92,15 @@ impl<'a> ActivePlanReferences<'a> {
     pub fn versions(
         &self,
         service: Option<&str>,
-    ) -> PortResult<Vec<(PlanVersionV1, Vec<PlanReferenceProtectionV1>)>> {
+        mut visit: impl FnMut(PlanVersionV1, Vec<PlanReferenceProtectionV1>) -> PortResult<()>,
+    ) -> PortResult<()> {
         let source = if service.is_some() {
             "decision_plan_references r LEFT JOIN plan_versions v ON v.workspace_id=r.workspace_id AND v.plan_id=r.owner_id AND v.content_revision=r.owner_revision WHERE r.workspace_id=?1 AND r.service_id=?2 AND r.owner_kind='version'"
         } else {
             "plan_versions v WHERE v.workspace_id=?1"
         };
         let query = format!(
-            "SELECT version_json,state,current_head,held FROM (SELECT v.version_json,v.state,{CURRENT} AS current_head,{HELD} AS held FROM {source}) WHERE state='prepared' OR current_head OR held OR state IS NULL OR state NOT IN ('prepared','published')"
+            "SELECT version_json,state,current_head,held,invalid_head FROM (SELECT v.version_json,v.state,{CURRENT} AS current_head,{HELD} AS held,{INVALID_HEAD} AS invalid_head FROM {source}) WHERE state='prepared' OR current_head OR held OR invalid_head OR state IS NULL OR state NOT IN ('prepared','published')"
         );
         let mut statement = self.connection.prepare(&query).map_err(unavailable)?;
         let mut rows = if let Some(service) = service {
@@ -103,8 +112,10 @@ impl<'a> ActivePlanReferences<'a> {
                 .query([self.workspace.as_str()])
                 .map_err(unavailable)?
         };
-        let mut versions = Vec::new();
         while let Some(row) = rows.next().map_err(unavailable)? {
+            if row.get::<_, bool>(4).map_err(unavailable)? {
+                return Err(corrupt());
+            }
             let json: String = row.get(0).map_err(unavailable)?;
             let state: String = row.get(1).map_err(unavailable)?;
             let current: bool = row.get(2).map_err(unavailable)?;
@@ -126,12 +137,16 @@ impl<'a> ActivePlanReferences<'a> {
             if held {
                 reasons.push(PlanReferenceProtectionV1::UnresolvedHold);
             }
-            versions.push((version, reasons));
+            visit(version, reasons)?;
         }
-        Ok(versions)
+        Ok(())
     }
 
-    pub fn drafts(&self, service: Option<&str>) -> PortResult<Vec<PlanDraftV1>> {
+    pub fn drafts(
+        &self,
+        service: Option<&str>,
+        mut visit: impl FnMut(PlanDraftV1) -> PortResult<()>,
+    ) -> PortResult<()> {
         let query = if service.is_some() {
             "SELECT d.draft_json FROM decision_plan_references r LEFT JOIN plan_drafts d ON d.workspace_id=r.workspace_id AND d.draft_id=r.owner_id WHERE r.workspace_id=?1 AND r.service_id=?2 AND r.owner_kind='draft' AND r.owner_revision=0"
         } else {
@@ -147,7 +162,6 @@ impl<'a> ActivePlanReferences<'a> {
                 .query([self.workspace.as_str()])
                 .map_err(unavailable)?
         };
-        let mut drafts = Vec::new();
         while let Some(row) = rows.next().map_err(unavailable)? {
             let json: String = row.get(0).map_err(unavailable)?;
             let draft: PlanDraftV1 = serde_json::from_str(&json).map_err(|_| corrupt())?;
@@ -155,8 +169,8 @@ impl<'a> ActivePlanReferences<'a> {
             if draft.workspace_id != *self.workspace {
                 return Err(corrupt());
             }
-            drafts.push(draft);
+            visit(draft)?;
         }
-        Ok(drafts)
+        Ok(())
     }
 }

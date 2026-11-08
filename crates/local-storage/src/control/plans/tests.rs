@@ -4,7 +4,7 @@ use hiroute_domain::*;
 
 pub(in crate::control) mod decision_removal;
 
-fn draft() -> PlanDraftV1 {
+pub(in crate::control) fn draft() -> PlanDraftV1 {
     serde_json::from_value(serde_json::json!({
         "schema": PLAN_DRAFT_SCHEMA_V1, "workspace_id": WorkspaceId::DEFAULT,
         "draft_id":"draft/a", "revision":1,

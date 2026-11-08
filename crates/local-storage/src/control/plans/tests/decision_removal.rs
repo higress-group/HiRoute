@@ -220,6 +220,13 @@ fn decision_removal_and_general_removal_share_active_version_protection() {
             .unwrap(),
         vec![version]
     );
+    store
+        .connection
+        .borrow()
+        .execute("UPDATE plan_heads SET head_json='{}'", [])
+        .unwrap();
+    assert!(blockers(store).is_err());
+    assert!(general().is_err());
 }
 
 #[test]
@@ -249,7 +256,12 @@ fn decision_removal_checks_publications_with_empty_index_and_no_local_owner() {
             .borrow()
             .execute("UPDATE gateway_publications SET state=?1", [state])
             .unwrap();
+        crate::control::active_plan_references::PUBLICATION_DECODES.set(0);
         let result = blockers(store).unwrap();
+        assert_eq!(
+            crate::control::active_plan_references::PUBLICATION_DECODES.get(),
+            1
+        );
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].protection, protection);
         assert_eq!(result[0].plan_id.as_deref(), Some("plan/smart"));

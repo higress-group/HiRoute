@@ -62,7 +62,7 @@ export function DecisionRemovalDialog({ target, current, language, mutable, busy
     catch (cause) {
       const code = planErrorCode(cause);
       setPreview(null); setRetryable(false);
-      if (['DECISION_IN_USE', 'REVISION_CONFLICT', 'DECISION_REVISION_CONFLICT'].includes(code)) {
+      if (['DECISION_IN_USE', 'REVISION_CONFLICT', 'CHANGE_PREVIEW_STALE', 'DECISION_REVISION_CONFLICT', 'DECISION_SOURCE_REVISION_CONFLICT'].includes(code)) {
         setGeneration(value => value + 1);
       } else {
         setError(t('移除结果尚未确认。请等待现有操作完成后关闭并重新打开查看，不要重复提交。', 'Removal is not confirmed. Let the existing operation finish, then close and reopen to check; do not submit again.'));

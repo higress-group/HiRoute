@@ -99,8 +99,9 @@ def run(repository):
             assert not data('decision connections list')['services']
             source_after = source()
             assert source_before['models'] == source_after['models']
-            assert source_before['keys'] == source_after['keys']
-            assert not any(consumer['service_id'] == service_id for target in source_after['decision_targets']
+            key_identity = lambda key: (key['key_id'], key['fingerprint'], key['ordinal'], key['enabled'])
+            assert list(map(key_identity, source_before['credentials'])) == list(map(key_identity, source_after['credentials']))
+            assert not any(consumer['service_id'] == service_id for target in source_after.get('decision_targets', [])
                            for consumer in target['consumers'])
             product.stop()
             product.start()

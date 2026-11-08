@@ -267,6 +267,9 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       const remaining = await refresh(); if (remaining) setSelectedId(remaining[0]?.service.id ?? null); onChanged?.();
       setNotice(t('已移除。', 'Removed.'));
       setRemoving(null);
+    } catch (cause) {
+      if (['DECISION_IN_USE', 'REVISION_CONFLICT', 'CHANGE_PREVIEW_STALE', 'DECISION_REVISION_CONFLICT', 'DECISION_SOURCE_REVISION_CONFLICT'].includes(planErrorCode(cause))) await refresh();
+      throw cause;
     } finally { setBusy(false); }
   }
   const sourceLabel = (view: DecisionServiceView) => view.source ? sourceName(view.source, language) : '';
@@ -297,6 +300,6 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       </section>
     </div>
     <ClassifierProtocolDialog open={protocol} language={language} onClose={() => setProtocol(false)} />
-    {removing && <DecisionRemovalDialog target={removing} current={views.find(view => view.service.id === removing.service.id)} language={language} mutable={mutable && !networkDirty} busy={busy} plans={plans} drafts={drafts} onConfirm={remove} onClose={() => { if (!busy) setRemoving(null); }} onOpenRoute={onOpenRoute} />}
+    {removing && <DecisionRemovalDialog target={removing} current={views.find(view => view.service.id === removing.service.id)} language={language} mutable={mutable && !networkDirty && factsCurrent} busy={busy} plans={plans} drafts={drafts} onConfirm={remove} onClose={() => { if (!busy) setRemoving(null); }} onOpenRoute={onOpenRoute} />}
   </ProductPage>;
 }

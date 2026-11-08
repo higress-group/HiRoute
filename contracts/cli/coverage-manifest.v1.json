@@ -1079,6 +1079,20 @@
       }
     },
     {
+      "command_id": "decision.removal.preview",
+      "lifecycle": "released",
+      "negative": {
+        "polarity": "negative",
+        "scenario_id": "p0.decision.removal.preview.negative",
+        "state": "executable"
+      },
+      "positive": {
+        "polarity": "positive",
+        "scenario_id": "p0.decision.removal.preview.positive",
+        "state": "executable"
+      }
+    },
+    {
       "command_id": "decision.context.preview",
       "lifecycle": "released",
       "negative": {
@@ -1723,7 +1737,7 @@
       }
     }
   ],
-  "descriptor_digest": "sha256:a8f827f6239825a97defbb26217c2f6e20766202757d3f9b677a8ccd2f18b622",
+  "descriptor_digest": "sha256:fd2332d721ddf86b3ec67e12be727bed674e2ad99909e64f9677660c7d5b98e8",
   "schema_version": {
     "major": 1,
     "minor": 0

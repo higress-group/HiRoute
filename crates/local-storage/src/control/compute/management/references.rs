@@ -43,20 +43,22 @@ pub(super) fn read(
     let mut references = BTreeSet::new();
     // Current heads include disabled plans. Old versions only block while held or preparing;
     // immutable historical records alone must not make a connection impossible to clean up.
-    for (version, _) in active.versions(None)? {
+    active.versions(None, |version, _| {
         let value = serde_json::to_value(&version)
             .map_err(|_| corrupt("compute.management.references.json"))?;
         if references_binding(&value, &bindings) {
             references.insert(version.reference.plan_id.as_str().to_owned());
         }
-    }
-    for draft in active.drafts(None)? {
+        Ok(())
+    })?;
+    active.drafts(None, |draft| {
         let value = serde_json::to_value(&draft)
             .map_err(|_| corrupt("compute.management.references.json"))?;
         if references_binding(&value, &bindings) {
             references.insert(draft.draft_id);
         }
-    }
+        Ok(())
+    })?;
     // Active publications also cover supported unversioned plans, and the installation window
     // before a newly prepared version receives its product head.
     for (_, publication) in &active.publications {
