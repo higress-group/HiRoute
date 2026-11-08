@@ -28,7 +28,7 @@ pub(crate) fn apply_standalone_defaults(arguments: &mut Arguments) -> Result<(),
     }
     let layout = hiroute_host_runtime::StandaloneLayout::from_environment()
         .map_err(|error| error.to_string())?;
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     if hiroute_host_runtime::standalone_maintenance_pending(&layout)
         .map_err(|_| "standalone maintenance state is unavailable")?
     {

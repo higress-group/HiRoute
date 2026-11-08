@@ -66,9 +66,9 @@ pub(crate) fn execute(arguments: &[String], globals: &Globals) -> Option<CliExec
             arguments.get(1).map(String::as_str),
             Some("start" | "restart")
         )
-        && service::recovery().is_ok_and(|report| report["recovery"].is_object())
+        && service::recovery().is_ok_and(|report| report["instructions"].is_string())
     {
-        execution.stderr.push_str("Storage startup needs attention. Run `hiroute service recovery --output text` for the cause, safe next action and diagnostic location. Keep all data and packages.\n");
+        execution.stderr.push_str("Startup recovery needs attention. Run `hiroute service recovery --output text` for the cause, safe next action and diagnostic location. Keep all data and packages.\n");
     }
     Some(execution)
 }

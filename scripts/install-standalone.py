@@ -27,6 +27,8 @@ sys.dont_write_bytecode = True
 
 PACKAGE_SCHEMA = "hiroute.standalone-package/v1"
 MARKER_SCHEMA = "hiroute.standalone-install/v1"
+LINUX_INSTALL_JOURNAL_SCHEMA = "hiroute.linux-install-journal/v1"
+MAX_INSTALL_JOURNAL = 64 * 1024
 MANAGED_TEXT = "Managed by HiRoute standalone installer"
 SERVICE_LABEL = "ai.hiroute.cli"
 MAX_MANIFEST = 1024 * 1024
@@ -257,6 +259,7 @@ def validate_manifest_shape(manifest):
         or manifest.get("target") != host_target()
         or not isinstance(manifest.get("version"), str)
         or len(manifest["version"]) > 64
+        or manifest["version"] in {".", ".."}
         or not PORTABLE.fullmatch(manifest["version"])
         or not isinstance(manifest.get("revision"), str)
         or len(manifest["revision"]) > 128
@@ -453,6 +456,8 @@ def prepare_service_directory(home):
                 raise ValueError(f"standalone service parent is unsafe: {current}")
         else:
             current.mkdir(mode=0o700)
+            if platform.system() == "Linux":
+                sync_directory(current.parent)
 
 
 def prepare_state_directory(paths):
@@ -501,6 +506,7 @@ def validate_marker(paths, marker):
         or marker.get("target") != host_target()
         or not isinstance(version, str)
         or len(version) > 64
+        or version in {".", ".."}
         or not PORTABLE.fullmatch(version)
         or not isinstance(installed_skills, list)
         or any(not isinstance(value, str) for value in installed_skills)
@@ -579,14 +585,15 @@ def remove_path(path):
 @contextmanager
 def installation_lock(paths):
     identity = hashlib.sha256(str(paths["home"]).encode()).hexdigest()[:16]
-    lock_path = Path(tempfile.gettempdir()) / (
+    lock_directory = "/tmp" if platform.system() == "Linux" else tempfile.gettempdir()
+    lock_path = Path(lock_directory) / (
         f"hiroute-standalone-{os.geteuid()}-{identity}.lock"
     )
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(lock_path, flags, 0o600)
     try:
         metadata = os.fstat(descriptor)
-        if not stat.S_ISREG(metadata.st_mode):
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid():
             raise ValueError("standalone install lock is unsafe")
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -635,6 +642,253 @@ def replace_components(components):
         if cleanup_backups:
             for _destination, _backup, backup_root in reversed(applied):
                 shutil.rmtree(backup_root, ignore_errors=True)
+
+
+def linux_install_journal(paths):
+    return paths["data"] / "service/linux-install-journal.json"
+
+
+def path_identity(path):
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    return [metadata.st_dev, metadata.st_ino, metadata.st_mode,
+            metadata.st_uid, metadata.st_size, metadata.st_mtime_ns]
+
+
+def directory_identity(path):
+    identity = path_identity(path)
+    if identity is None:
+        return None
+    if not stat.S_ISDIR(identity[2]):
+        raise ValueError("installation directory identity changed")
+    return identity[:2]
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def sync_staged_component(path):
+    mode = path.lstat().st_mode
+    if stat.S_ISDIR(mode):
+        for child in path.iterdir():
+            sync_staged_component(child)
+        sync_directory(path)
+    elif stat.S_ISREG(mode):
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    elif not stat.S_ISLNK(mode):
+        raise ValueError("staged installation contains a special file")
+
+
+def write_linux_install_journal(path, record):
+    content = (json.dumps(record, sort_keys=True) + "\n").encode()
+    if len(content) > MAX_INSTALL_JOURNAL:
+        raise ValueError("installation journal is too large")
+    temporary = staged_file(path, content, 0o600)
+    try:
+        os.replace(temporary, path)
+        sync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def read_linux_install_journal(path):
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    with os.fdopen(descriptor, "rb") as source:
+        metadata = os.fstat(source.fileno())
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_mode & 0o077
+            or metadata.st_nlink != 1
+        ):
+            raise ValueError("installation journal ownership is unsafe")
+        content = source.read(MAX_INSTALL_JOURNAL + 1)
+    if len(content) > MAX_INSTALL_JOURNAL:
+        raise ValueError("installation journal is too large")
+    record = load_json_bytes(content)
+    if not isinstance(record, dict):
+        raise ValueError("installation journal is invalid")
+    return record
+
+
+def linux_install_entries(paths, record):
+    if (
+        not isinstance(record, dict)
+        or set(record) != {"schema", "phase", "previous", "candidate", "entries"}
+        or record["schema"] != LINUX_INSTALL_JOURNAL_SCHEMA
+        or record["phase"] not in ("prepared", "committed")
+        or not isinstance(record["entries"], list)
+        or not 1 <= len(record["entries"]) <= 16
+    ):
+        raise ValueError("installation journal is invalid")
+    program, resources, service = validate_marker(paths, record["candidate"])
+    required = {
+        program, resources, service, paths["marker"],
+        paths["bin"] / "hiroute", paths["bin"] / "hirouted",
+        *skill_destinations(paths["home"]),
+    }
+    retired = set()
+    if record["previous"] is not None:
+        retired.update(validate_marker(paths, record["previous"])[:2])
+        retired.difference_update(required)
+    required.update(retired)
+    allowed = required | {
+        paths["state"] / "console-listener.json", paths["state"] / "upgrade-package.json",
+    }
+    seen = set()
+    scratch = set()
+    entries = []
+    for item in record["entries"]:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"path", "parent", "stage", "backup", "backup_dir", "before", "after"}
+            or not isinstance(item["path"], str)
+        ):
+            raise ValueError("installation journal entry is invalid")
+        destination = Path(item["path"])
+        parent = destination.parent
+        if destination not in allowed or destination in seen or ".." in destination.parts:
+            raise ValueError("installation journal destination is invalid")
+        seen.add(destination)
+        current_parent = directory_identity(parent)
+        if current_parent is None or current_parent != item["parent"]:
+            raise ValueError("installation component parent changed during recovery")
+        backup_name = item["backup"]
+        stage_name = item["stage"]
+        if (
+            not isinstance(backup_name, str)
+            or not PORTABLE.fullmatch(backup_name)
+            or not backup_name.startswith(".hiroute-update-backup.")
+            or (stage_name is not None and (
+                not isinstance(stage_name, str)
+                or not PORTABLE.fullmatch(stage_name)
+                or not stage_name.startswith(f".{destination.name}.")
+                or stage_name == backup_name
+            ))
+            or (stage_name is None) != (item["after"] is None)
+            or (stage_name is None) != (destination in retired)
+        ):
+            raise ValueError("installation journal temporary path is invalid")
+        backup_dir = parent / backup_name
+        if directory_identity(backup_dir) not in (None, item["backup_dir"]):
+            raise ValueError("installation backup directory changed during recovery")
+        if backup_dir.is_dir() and any(child.name != "previous" for child in backup_dir.iterdir()):
+            raise ValueError("installation backup directory contains an unexpected file")
+        backup = backup_dir / "previous"
+        stage = parent / stage_name if stage_name is not None else None
+        for temporary in (backup_dir, stage):
+            if temporary is not None:
+                if temporary in scratch:
+                    raise ValueError("installation journal reuses a temporary path")
+                scratch.add(temporary)
+        current, saved = path_identity(destination), path_identity(backup)
+        before, after = item["before"], item["after"]
+        staged = path_identity(stage) if stage is not None else None
+        if staged not in (None, after) or (staged is not None and current == after):
+            raise ValueError("installation staging changed during recovery")
+        if record["phase"] == "committed":
+            valid = current == after and saved in (None, before)
+        elif saved is None and before is not None:
+            valid = current == before
+        else:
+            valid = saved == before and current in (None, after)
+        if not valid:
+            raise ValueError("installation component changed during recovery")
+        entries.append((destination, stage, backup, current, saved, before))
+    if not required <= seen:
+        raise ValueError("installation journal is missing required components")
+    return entries
+
+
+def recover_linux_install(paths):
+    path = linux_install_journal(paths)
+    record = read_linux_install_journal(path)
+    if record is None:
+        return False
+    entries = linux_install_entries(paths, record)
+    if record["phase"] == "prepared":
+        for destination, stage, backup, current, saved, before in reversed(entries):
+            if current is not None and current != before:
+                os.replace(destination, stage)
+            if saved is not None:
+                os.replace(backup, destination)
+                sync_directory(backup.parent)
+            sync_directory(destination.parent)
+    # Recursive cleanup can itself be interrupted. Retire the journal only
+    # after the coherent installation and its user manager have been restored.
+    run_systemctl("daemon-reload")
+    path.unlink()
+    sync_directory(path.parent)
+    for _destination, stage, backup, _current, _saved, _before in entries:
+        try:
+            if stage is not None:
+                remove_path(stage)
+            remove_path(backup)
+            backup.parent.rmdir()
+        except OSError:
+            # An owned scratch directory may survive a crash or cleanup error.
+            # It has no installation authority once the journal is retired.
+            pass
+    return True
+
+
+def publish_linux_install(paths, components, previous, candidate):
+    path = linux_install_journal(paths)
+    entries = []
+    try:
+        for stage, destination in components:
+            parent = destination.parent
+            if stage is not None:
+                sync_staged_component(stage)
+            backup = Path(tempfile.mkdtemp(prefix=".hiroute-update-backup.", dir=parent))
+            entries.append({
+                "path": str(destination), "parent": directory_identity(parent),
+                "stage": stage.name if stage is not None else None,
+                "backup": backup.name, "backup_dir": directory_identity(backup),
+                "before": path_identity(destination),
+                "after": path_identity(stage) if stage is not None else None,
+            })
+            sync_directory(parent)
+        record = {
+            "schema": LINUX_INSTALL_JOURNAL_SCHEMA, "phase": "prepared",
+            "previous": previous, "candidate": candidate, "entries": entries,
+        }
+        write_linux_install_journal(path, record)
+    except BaseException:
+        if path_identity(path) is None:
+            for item in entries:
+                Path(item["path"]).with_name(item["backup"]).rmdir()
+        raise
+    try:
+        for (stage, destination), item in zip(components, entries):
+            if directory_identity(destination.parent) != item["parent"] or path_identity(destination) != item["before"]:
+                raise ValueError("installation component changed before publication")
+            backup = destination.with_name(item["backup"])
+            if item["before"] is not None:
+                os.replace(destination, backup / "previous")
+                sync_directory(backup)
+            if stage is not None:
+                os.replace(stage, destination)
+            sync_directory(destination.parent)
+        write_linux_install_journal(path, dict(record, phase="committed"))
+    except BaseException:
+        recover_linux_install(paths)
+        raise
+    recover_linux_install(paths)
 
 
 def console_desired(args):
@@ -848,10 +1102,23 @@ def retain_recovery_package(paths, current, target_daemon, version):
         # A moved handoff may already have been consumed by a daemon or batch.
         # Retain it even after later transaction rollback. Delete only this
         # invocation's still-unpublished copy, never previous recovery material.
-        if handoff is None or handoff.exists():
+        pending = platform.system() == "Linux" and path_identity(linux_install_journal(paths)) is not None
+        if not pending and (handoff is None or handoff.exists()):
             metadata = retained.lstat()
             if (metadata.st_dev, metadata.st_ino) == (retained_identity.st_dev, retained_identity.st_ino):
                 remove_path(retained)
+
+
+def require_unused_user_service():
+    executable = shutil.which("systemctl")
+    if executable is None:
+        raise ValueError("Desktop setup requires a systemd user manager")
+    result = subprocess.run(
+        [executable, "--user", "show", "--property=LoadState", "--value", "ai.hiroute.cli.service"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=4, check=False,
+    )
+    if result.returncode != 0 or result.stdout.strip() != b"not-found":
+        raise ValueError("fresh Desktop setup requires an unused systemd user service")
 
 
 def install(args):
@@ -870,6 +1137,28 @@ def install(args):
         extract_verified(manifest, archive, staging)
         if desktop_conflict(paths):
             raise ValueError("HiRoute Desktop conflicts with standalone installation")
+        linux = platform.system() == "Linux"
+        if getattr(args, "fresh", False) and not linux:
+            raise ValueError("fresh Desktop setup requires Linux")
+        if linux and getattr(args, "fresh", False):
+            fresh_paths = (
+                paths["marker"],
+                paths["home"] / ".config/systemd/user/ai.hiroute.cli.service",
+                paths["runtime"] / "hiroute/control.sock",
+                linux_install_journal(paths),
+                paths["bin"] / "hiroute",
+                paths["bin"] / "hirouted",
+                paths["lib"] / manifest["version"],
+                paths["data"] / manifest["version"],
+            )
+            if any(path.exists() or path.is_symlink() for path in fresh_paths):
+                raise ValueError("fresh Desktop setup requires an unused standalone owner")
+            require_unused_user_service()
+            if path_identity(paths["state"] / "console-listener.json") is not None:
+                # A reinstall can have retained settings from a removed runtime.
+                desired_console = None
+        if linux:
+            recover_linux_install(paths)
         version = manifest["version"]
         current = None
         if paths["marker"].exists() or paths["marker"].is_symlink():
@@ -963,18 +1252,21 @@ def install(args):
                 staged_components.append(
                     (staged_file(paths["marker"], marker_content, 0o600), paths["marker"])
                 )
-                replace_components(staged_components)
+                if linux:
+                    publish_linux_install(paths, staged_components, current, marker)
+                else:
+                    replace_components(staged_components)
         finally:
-            for staged_component, _destination in staged_components:
-                if staged_component is not None and (
-                    staged_component.exists() or staged_component.is_symlink()
-                ):
-                    remove_path(staged_component)
-            if staged_bin.exists() or staged_bin.is_symlink():
-                remove_path(staged_bin)
-            if staged_data.exists() or staged_data.is_symlink():
-                remove_path(staged_data)
-    run_systemctl("daemon-reload")
+            pending = linux and path_identity(linux_install_journal(paths)) is not None
+            if not pending:
+                for staged_component, _destination in staged_components:
+                    if staged_component is not None and path_identity(staged_component) is not None:
+                        remove_path(staged_component)
+                for stage in (staged_bin, staged_data):
+                    if path_identity(stage) is not None:
+                        remove_path(stage)
+    if not linux:
+        run_systemctl("daemon-reload")
     print(json.dumps({"installed": True, "version": manifest["version"], "marker": str(paths["marker"])}, sort_keys=True))
 
 
@@ -995,7 +1287,21 @@ def uninstall(_args):
         raise ValueError("HOME must identify an absolute home directory")
     paths = layout(home)
     with installation_lock(paths):
+        if platform.system() == "Linux" and path_identity(linux_install_journal(paths)) is not None:
+            raise ValueError("standalone installation is incomplete; run the installer recover command first")
         uninstall_owned(paths)
+
+
+def recover():
+    if platform.system() != "Linux":
+        raise ValueError("standalone installer recovery is supported on Linux")
+    home = Path(os.environ.get("HOME", ""))
+    if not home.is_absolute() or not home.is_dir():
+        raise ValueError("HOME must identify an absolute home directory")
+    paths = layout(home)
+    with installation_lock(paths):
+        recovered = recover_linux_install(paths)
+    print(json.dumps({"recovered": recovered}, sort_keys=True))
 
 
 def uninstall_owned(paths):
@@ -1072,14 +1378,21 @@ def parser():
     add.add_argument("--console-port", type=int, help="explicit console port (otherwise prefer 5838, then a free port)")
     add.add_argument("--console-advertise-address", help="reachable IP for a wildcard network bind")
     add.add_argument("--allow-plaintext-network", action="store_true")
+    add.add_argument("--fresh", action="store_true", help=argparse.SUPPRESS)
     sub.add_parser("uninstall")
+    sub.add_parser("recover", help="resolve an interrupted Linux runtime installation")
     return result
 
 
 def main():
     args = parser().parse_args()
     try:
-        install(args) if args.command == "install" else uninstall(args)
+        if args.command == "install":
+            install(args)
+        elif args.command == "uninstall":
+            uninstall(args)
+        else:
+            recover()
     except (OSError, ValueError, KeyError, json.JSONDecodeError, tarfile.TarError) as error:
         print(f"install failed: {error}", file=sys.stderr)
         raise SystemExit(1)

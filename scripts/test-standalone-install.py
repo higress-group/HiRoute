@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 import plistlib
 import re
+import signal
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -428,6 +430,113 @@ class RecoveryRetentionTests(StandaloneFixture):
             copies = list((paths["state"] / "upgrade-packages").iterdir())
             self.assertEqual(len(copies), 1)
             self.assertEqual((copies[0] / "program/hirouted").read_bytes(), original_program)
+
+
+class LinuxInstallPublicationTests(StandaloneFixture):
+    def invoke(self, command, *arguments, interrupt=""):
+        # Exercise the installer entry with the deterministic package and the
+        # real rename. The fault injection exists only in this child process.
+        driver = """
+import json, os, platform, runpy, signal, sys
+from pathlib import Path
+script, interrupt, *arguments = sys.argv[1:]
+platform.system = lambda: "Linux"
+entry = runpy.run_path(script)["main"]
+entry.__globals__["run_systemctl"] = lambda *args: None
+entry.__globals__["desktop_conflict"] = lambda *args: False
+entry.__globals__["require_unused_user_service"] = lambda: None
+entry.__globals__["candidate_preflight"] = lambda *args: {
+    "history_cutover_required": False, "required_bytes": 0,
+}
+replace = os.replace
+def observed_replace(source, destination):
+    replace(source, destination)
+    path = Path(destination)
+    if interrupt == "unit" and path.name == "ai.hiroute.cli.service":
+        os.kill(os.getpid(), signal.SIGKILL)
+    if interrupt == "commit" and path.name == "linux-install-journal.json":
+        if json.loads(path.read_bytes())["phase"] == "committed":
+            os.kill(os.getpid(), signal.SIGKILL)
+os.replace = observed_replace
+sys.argv = [script, *arguments]
+entry()
+"""
+        with self.environment():
+            return subprocess.run(
+                [sys.executable, "-c", driver, installer.__file__, interrupt,
+                 command, *map(str, arguments)],
+                capture_output=True, text=True, timeout=30,
+            )
+
+    @patch.object(installer.platform, "system", return_value="Linux")
+    def test_first_run_does_not_adopt_an_existing_entry(self, _system):
+        manifest, archive = self.build()
+        entry = self.home / ".local/bin/hiroute"
+        entry.parent.mkdir(parents=True)
+        entry.write_text("user-owned entry")
+        refused = self.invoke("install", "--fresh", "--manifest", manifest, "--archive", archive)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertEqual(entry.read_text(), "user-owned entry")
+        self.assertFalse((self.home / ".local/share/hiroute/standalone.json").exists())
+
+    @patch.object(installer.platform, "system", return_value="Linux")
+    def test_recovery_restores_interrupted_publication_and_finishes_commit(self, _system):
+        first_manifest, first_archive = self.build("0.5.1")
+        first = self.invoke("install", "--manifest", first_manifest, "--archive", first_archive)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        with self.environment():
+            paths = installer.layout(self.home)
+        unit = self.home / ".config/systemd/user/ai.hiroute.cli.service"
+        journal = installer.linux_install_journal(paths)
+        original = paths["marker"].read_bytes(), unit.read_bytes()
+        data = paths["state"] / "routing-data"
+        data.write_text("existing Plan")
+        self.sources["hiroute"].write_bytes(b"updated runtime\n")
+        manifest, archive = self.build("0.5.3")
+        options = ("--manifest", manifest, "--archive", archive)
+
+        interrupted = self.invoke("install", *options, interrupt="unit")
+        self.assertEqual(interrupted.returncode, -signal.SIGKILL, interrupted.stderr)
+        self.assertEqual(json.loads(journal.read_bytes())["phase"], "prepared")
+        self.assertEqual(paths["marker"].read_bytes(), original[0])
+        self.assertIn(b"/0.5.3/hirouted", unit.read_bytes())
+        self.assertNotEqual(self.invoke("uninstall").returncode, 0)
+
+        recovered = self.invoke("recover")
+        self.assertEqual(recovered.returncode, 0, recovered.stderr)
+        self.assertEqual(json.loads(recovered.stdout), {"recovered": True})
+        self.assertFalse(journal.exists())
+        self.assertEqual((paths["marker"].read_bytes(), unit.read_bytes()), original)
+        self.assertFalse((paths["lib"] / "0.5.3").exists())
+        self.assertEqual(data.read_text(), "existing Plan")
+
+        committed = self.invoke("install", *options, interrupt="commit")
+        self.assertEqual(committed.returncode, -signal.SIGKILL, committed.stderr)
+        self.assertEqual(json.loads(journal.read_bytes())["phase"], "committed")
+        finished = self.invoke("recover")
+        self.assertEqual(finished.returncode, 0, finished.stderr)
+        self.assertFalse(journal.exists())
+        self.assertEqual(json.loads(paths["marker"].read_bytes())["version"], "0.5.3")
+        self.assertEqual((paths["bin"] / "hiroute").read_bytes(), b"updated runtime\n")
+        self.assertEqual(data.read_text(), "existing Plan")
+        self.assertEqual(json.loads(self.invoke("recover").stdout), {"recovered": False})
+
+    @patch.object(installer.platform, "system", return_value="Linux")
+    def test_recovery_preserves_changed_components_and_the_pending_record(self, _system):
+        manifest, archive = self.build()
+        interrupted = self.invoke("install", "--manifest", manifest, "--archive", archive, interrupt="unit")
+        self.assertEqual(interrupted.returncode, -signal.SIGKILL, interrupted.stderr)
+        with self.environment():
+            paths = installer.layout(self.home)
+        journal = installer.linux_install_journal(paths)
+        before = journal.read_bytes()
+        unit = self.home / ".config/systemd/user/ai.hiroute.cli.service"
+        unit.write_bytes(b"owner changed the file\n")
+        recovery = self.invoke("recover")
+        self.assertNotEqual(recovery.returncode, 0)
+        self.assertIn("component changed", recovery.stderr)
+        self.assertEqual(journal.read_bytes(), before)
+        self.assertEqual(unit.read_bytes(), b"owner changed the file\n")
 
 
 @unittest.skipUnless(os.name == "posix" and os.uname().sysname == "Linux", "Linux layout test")

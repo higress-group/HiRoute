@@ -89,7 +89,19 @@ pub fn standalone_maintenance_pending(
         );
         return Ok(journal.phase == "prepared");
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        let path = layout
+            .marker_path
+            .with_file_name("service")
+            .join("linux-install-journal.json");
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(_) => Err(StandaloneLayoutError),
+        }
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = layout;
         Ok(false)
@@ -299,6 +311,32 @@ pub struct StandaloneLayoutError;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unfinished_linux_install_blocks_startup_at_the_fixed_marker_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().to_path_buf();
+        let layout = StandaloneLayout::from_values(
+            false,
+            Some(home.clone()),
+            None,
+            Some(home.join("xdg-data")),
+            None,
+        )
+        .unwrap();
+        let service = layout.marker_path.with_file_name("service");
+        let journal = service.join("linux-install-journal.json");
+        std::fs::create_dir_all(&service).unwrap();
+        assert!(!standalone_maintenance_pending(&layout).unwrap());
+
+        std::fs::write(&journal, b"unfinished journal").unwrap();
+        assert!(standalone_maintenance_pending(&layout).unwrap());
+
+        std::fs::remove_file(&journal).unwrap();
+        std::os::unix::fs::symlink(service.join("absent"), &journal).unwrap();
+        assert!(standalone_maintenance_pending(&layout).unwrap());
+    }
 
     #[test]
     #[cfg(unix)]

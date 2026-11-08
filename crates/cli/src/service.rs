@@ -47,9 +47,17 @@ pub(crate) fn recovery() -> Result<serde_json::Value, ServiceFailure> {
         &layout.storage_root(),
         &layout.diagnostics_root(),
     );
-    let instructions = record
-        .as_ref()
-        .map(|record| recovery_instructions(record, &layout.storage_root()));
+    let instructions = if cfg!(target_os = "linux")
+        && !matches!(
+            hiroute_host_runtime::standalone_maintenance_pending(&layout),
+            Ok(false)
+        ) {
+        Some("HiRoute runtime installation needs recovery. As the same user, run the verified standalone installer with the recover command. Keep the package and existing data.".to_owned())
+    } else {
+        record
+            .as_ref()
+            .map(|record| recovery_instructions(record, &layout.storage_root()))
+    };
     Ok(
         json!({"schema":"hiroute.service-recovery/v1", "recovery":record, "instructions":instructions, "diagnostics_root":layout.diagnostics_root()}),
     )
