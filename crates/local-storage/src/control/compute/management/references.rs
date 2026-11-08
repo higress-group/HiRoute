@@ -2,7 +2,7 @@
 use std::collections::BTreeSet;
 
 use super::*;
-use crate::control::plan_references::ActivePlanReferences;
+use crate::control::active_plan_references::ActivePlanReferences;
 use hiroute_domain::ComputeManagementMutationV2;
 
 pub(super) fn validate_removal(
@@ -61,7 +61,7 @@ pub(super) fn read(
     // before a newly prepared version receives its product head.
     for (_, publication) in &active.publications {
         for plan in &publication.plans {
-            let value = serde_json::to_value(&plan)
+            let value = serde_json::to_value(plan)
                 .map_err(|_| corrupt("compute.management.references.publication.plan"))?;
             if references_binding(&value, &bindings) {
                 references.insert(plan.agent_plan_id().as_str().to_owned());

@@ -67,6 +67,7 @@ pub use agent_locator_lookup::{
 };
 pub use agent_read::SucceededAgentOperationV1;
 pub use native_targets::{AgentNativeTargetWitness, CapturedAgentNativeTarget};
+mod active_plan_references;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
 mod compute;
@@ -82,7 +83,6 @@ mod native_permissions;
 #[path = "../agents/native_reference.rs"]
 mod native_reference;
 pub(crate) mod payloads;
-mod plan_references;
 mod read_stamp;
 mod recovery_reads;
 use native_permissions::{

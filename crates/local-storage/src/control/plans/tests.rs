@@ -2,6 +2,8 @@ use super::*;
 use crate::test_tempdir as tempdir;
 use hiroute_domain::*;
 
+mod decision_removal;
+
 fn draft() -> PlanDraftV1 {
     serde_json::from_value(serde_json::json!({
         "schema": PLAN_DRAFT_SCHEMA_V1, "workspace_id": WorkspaceId::DEFAULT,

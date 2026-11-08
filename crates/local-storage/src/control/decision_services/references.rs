@@ -1,7 +1,7 @@
 use hiroute_domain::{PlanReferenceBlockerV1, PlanReferenceProtectionV1};
 
 use super::*;
-use crate::control::plan_references::ActivePlanReferences;
+use crate::control::active_plan_references::ActivePlanReferences;
 
 impl ControlStore {
     pub fn decision_removal_references(
