@@ -73,7 +73,10 @@ fn codex_129th_request_can_continue_while_response_capture_is_paused() {
     let mut replies = (0..127)
         .map(|index| streamed("tool", vec![shell_call(&format!("call-{index}"))]))
         .collect::<Vec<_>>();
-    replies.push(streamed("parallel", search_and_calls()));
+    replies.push(streamed(
+        "parallel",
+        vec![shell_call("parallel-left"), shell_call("parallel-right")],
+    ));
     replies.push(streamed(
         "final",
         vec![message("answer", "final_answer", "Complete.")],
