@@ -72,16 +72,21 @@ fn desired(version: u8, revision: u64, service: Option<Value>) -> Value {
     }
 }
 
+fn service(version: u8) -> Value {
+    let mut value = json!({"id":"decision/removal","revision":1,"name":"Removal fixture","connection":{"kind":"custom","endpoint":"https://decision.example.test/decide","timeout_ms":3000,"auth_header":null}});
+    if version > 1 {
+        value["schema"] = json!(format!("hiroute.decision-service/v{version}"));
+    }
+    value
+}
+
 #[test]
 fn decision_removal_legacy_operations_preserve_history_tombstones_replay_and_full_audit() {
     for version in [1, 2, 3] {
         for deleted in [false, true] {
             let root = tempdir().unwrap();
             let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
-            let mut service = json!({"id":"decision/removal","revision":1,"name":"Removal fixture","connection":{"kind":"custom","endpoint":"https://decision.example.test/decide","timeout_ms":3000,"auth_header":null}});
-            if version > 1 {
-                service["schema"] = json!(format!("hiroute.decision-service/v{version}"));
-            }
+            let service = service(version);
             let saved = execute(
                 &stores,
                 desired(version, 0, Some(service.clone())),
@@ -108,6 +113,10 @@ fn decision_removal_legacy_operations_preserve_history_tombstones_replay_and_ful
                     rusqlite::params![WorkspaceId::DEFAULT,history.reference.plan_id.as_str(),serde_json::to_string(&head).unwrap()],
                 ).unwrap();
             }
+            stores
+                .control()
+                .reconcile_plan_versions(&WorkspaceId::default(), &[], 1)
+                .unwrap();
             assert!(
                 stores
                     .control()
@@ -167,6 +176,170 @@ fn decision_removal_legacy_operations_preserve_history_tombstones_replay_and_ful
                 reopened.control(),
                 reopened.runtime(),
                 reopened.secrets(),
+            )
+            .unwrap();
+        }
+    }
+}
+
+#[test]
+fn decision_removal_terminal_recovery_preserves_the_writer_fence_and_history_for_v1_v2_v3() {
+    for version in [1, 2, 3] {
+        let root = tempdir().unwrap();
+        let operation_id;
+        let history;
+        {
+            let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            let service = service(version);
+            let saved = execute(
+                &stores,
+                desired(version, 0, Some(service.clone())),
+                version,
+                "recovery-save",
+            );
+            let record: DecisionServiceRecord = serde_json::from_value(service).unwrap();
+            history = crate::control::plans::tests::decision_removal::fixture_for(record).1;
+            stores.control().connection.borrow().execute(
+                "INSERT INTO plan_versions(workspace_id,plan_id,content_revision,content_digest,version_json,state,owner_operation_id) VALUES(?1,?2,?3,?4,?5,'published',?6)",
+                rusqlite::params![WorkspaceId::DEFAULT,history.reference.plan_id.as_str(),history.reference.content_revision,history.reference.content_digest.as_str(),serde_json::to_string(&history).unwrap(),saved.operation_id.as_str()],
+            ).unwrap();
+            let external = NoExternal;
+            let protected = ProtectedInput;
+            let runtime = TransactionRuntime::default();
+            let coordinator = TransactionCoordinator::new(
+                stores.control(),
+                stores.secrets(),
+                stores.runtime(),
+                &external,
+                &protected,
+                &runtime,
+            );
+            coordinator.reconcile_startup_and_open().unwrap();
+            let preview = coordinator
+                .preview(
+                    &WorkspaceId::default(),
+                    PreviewRequestV1::new(ChangeSpecV1 {
+                        schema_version: CHANGE_SPEC_SCHEMA_V1,
+                        command_id: if version == 1 {
+                            "decision.services.apply"
+                        } else {
+                            "decision.connections.apply"
+                        }
+                        .into(),
+                        resource_id: Some("decision/removal".into()),
+                        desired_state: desired(version, 1, None),
+                    }),
+                )
+                .unwrap();
+            let accepted = coordinator
+                .accept(
+                    &WorkspaceId::default(),
+                    &VerifiedPrincipal::for_local_control(),
+                    ApplyRequestV1 {
+                        schema_version: CHANGE_SPEC_SCHEMA_V1,
+                        spec: preview.normalized_spec,
+                        accept_digest: preview.change_digest,
+                        expected_revisions: preview.expected_revisions,
+                        idempotency_key: "recovery-remove".into(),
+                        apply_capability: None,
+                    },
+                )
+                .unwrap();
+            operation_id = accepted.operation().operation_id.clone();
+            let fault = crate::control::terminal_fault::inject(OperationState::Succeeded);
+            assert!(coordinator.run_accepted(accepted).is_err());
+            drop(fault);
+            assert_eq!(
+                stores
+                    .control()
+                    .writer_claim_operation()
+                    .unwrap()
+                    .unwrap()
+                    .operation_id,
+                operation_id
+            );
+            let blocked_preview = coordinator
+                .preview(
+                    &WorkspaceId::default(),
+                    PreviewRequestV1::new(ChangeSpecV1 {
+                        schema_version: CHANGE_SPEC_SCHEMA_V1,
+                        command_id: if version == 1 {
+                            "decision.services.apply"
+                        } else {
+                            "decision.connections.apply"
+                        }
+                        .into(),
+                        resource_id: Some("decision/removal".into()),
+                        desired_state: desired(version, 1, None),
+                    }),
+                )
+                .unwrap();
+            assert!(
+                coordinator
+                    .accept(
+                        &WorkspaceId::default(),
+                        &VerifiedPrincipal::for_local_control(),
+                        ApplyRequestV1 {
+                            schema_version: CHANGE_SPEC_SCHEMA_V1,
+                            spec: blocked_preview.normalized_spec,
+                            accept_digest: blocked_preview.change_digest,
+                            expected_revisions: blocked_preview.expected_revisions,
+                            idempotency_key: "blocked-by-removal-recovery".into(),
+                            apply_capability: None,
+                        },
+                    )
+                    .is_err()
+            );
+            assert!(
+                !stores
+                    .control()
+                    .decision_service_records(&WorkspaceId::default())
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let external = NoExternal;
+        let protected = ProtectedInput;
+        let runtime = TransactionRuntime::default();
+        let coordinator = TransactionCoordinator::new(
+            stores.control(),
+            stores.secrets(),
+            stores.runtime(),
+            &external,
+            &protected,
+            &runtime,
+        );
+        for _ in 0..2 {
+            coordinator.reconcile_startup_and_open().unwrap();
+            assert_eq!(
+                stores
+                    .control()
+                    .load_operation(&operation_id)
+                    .unwrap()
+                    .unwrap()
+                    .state,
+                OperationState::Succeeded
+            );
+            assert!(stores.control().writer_claim_operation().unwrap().is_none());
+            assert!(
+                stores
+                    .control()
+                    .decision_service_records(&WorkspaceId::default())
+                    .unwrap()
+                    .is_empty()
+            );
+            assert_eq!(
+                stores
+                    .control()
+                    .published_plan_versions(&WorkspaceId::default())
+                    .unwrap(),
+                vec![history.clone()]
+            );
+            crate::migrations::audit_current_storage(
+                stores.control(),
+                stores.runtime(),
+                stores.secrets(),
             )
             .unwrap();
         }

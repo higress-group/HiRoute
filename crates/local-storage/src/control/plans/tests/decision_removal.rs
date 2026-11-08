@@ -271,15 +271,20 @@ fn decision_removal_checks_publications_with_empty_index_and_no_local_owner() {
                 .unwrap()
                 .is_empty()
         );
-        let change = serde_json::json!({"decision_service_change": {"id":SERVICE_ID,"expected_revision":1,"service":null,"input_slot":null}});
-        assert!(
-            crate::control::decision_services::stage(
-                &store.connection.borrow(),
-                &WorkspaceId::default(),
-                &change
-            )
-            .is_err()
-        );
+        for version in [1, 2, 3] {
+            let error = store
+                .apply_control(
+                    &OperationId::parse("op_0123456789abcdef0123456789abcdef").unwrap(),
+                    &WorkspaceId::default(),
+                    store
+                        .current_revisions(&WorkspaceId::default())
+                        .unwrap()
+                        .target,
+                    &removal_control(version),
+                )
+                .unwrap_err();
+            assert_eq!(error.context, "decision_service.in_use", "V{version}");
+        }
     }
     store
         .connection
@@ -297,45 +302,72 @@ fn decision_removal_checks_publications_with_empty_index_and_no_local_owner() {
     );
 }
 
+fn removal_control(version: u8) -> serde_json::Value {
+    if version == 1 {
+        return serde_json::json!({"decision_service_change": {"id":SERVICE_ID,"expected_revision":1,"service":null,"input_slot":null}});
+    }
+    let mut input = serde_json::json!({"change":{"id":SERVICE_ID,"expected_revision":1,"service":null,"expected_source_revisions":[]}});
+    if version == 3 {
+        input["schema"] =
+            serde_json::json!(hiroute_domain::DECISION_SERVICE_OPERATION_INPUT_SCHEMA_V3);
+    }
+    serde_json::json!({format!("decision_service_operation_v{version}"): {
+        "schema":format!("hiroute.decision-service-operation/v{version}"),
+        "input":input,"sources":[]
+    }})
+}
+
 #[test]
-fn decision_removal_v1_activation_rejects_a_post_stage_draft_and_compensates() {
-    let root = tempdir().unwrap();
-    let stores = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
-    let store = stores.control();
-    save_service(store);
-    let workspace = WorkspaceId::default();
-    let desired = serde_json::json!({"decision_service_change": {"id":SERVICE_ID,"expected_revision":1,"service":null,"input_slot":null}});
-    let effect = store
-        .apply_control(
-            &OperationId::parse("op_0123456789abcdef0123456789abcdef").unwrap(),
-            &workspace,
-            store.current_revisions(&workspace).unwrap().target,
-            &desired,
-        )
-        .unwrap();
-    let mut draft = draft();
-    draft.editor.smart.classifier = ComplexityClassifierModeV1::DecisionService {
-        service: Box::new(service()),
-    };
-    store.save_plan_draft(&draft, None).unwrap();
-    assert_eq!(
-        blockers(store).unwrap()[0].protection,
-        PlanReferenceProtectionV1::Draft
-    );
-    let error = store.activate_control(&effect).unwrap_err();
-    assert_eq!(error.context, "decision_service.in_use");
-    assert_eq!(
-        store.compensate_control(&effect).unwrap(),
-        CompensationOutcome::Compensated
-    );
-    assert_eq!(
-        store.decision_service(&workspace, SERVICE_ID, 1).unwrap(),
-        Some(service())
-    );
-    assert_eq!(
-        store.plan_draft(&workspace, &draft.draft_id).unwrap(),
-        Some(draft)
-    );
+fn decision_removal_activation_rejects_a_post_stage_draft_and_compensates_for_v1_v2_v3() {
+    for version in [1, 2, 3] {
+        let root = tempdir().unwrap();
+        let stores = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+        let store = stores.control();
+        save_service(store);
+        let workspace = WorkspaceId::default();
+        let desired = removal_control(version);
+        let effect = store
+            .apply_control(
+                &OperationId::parse("op_0123456789abcdef0123456789abcdef").unwrap(),
+                &workspace,
+                store.current_revisions(&workspace).unwrap().target,
+                &desired,
+            )
+            .unwrap();
+        let mut draft = draft();
+        draft.editor.smart.classifier = ComplexityClassifierModeV1::DecisionService {
+            service: Box::new(service()),
+        };
+        store.save_plan_draft(&draft, None).unwrap();
+        assert_eq!(
+            blockers(store).unwrap()[0].protection,
+            PlanReferenceProtectionV1::Draft
+        );
+        let error = store.activate_control(&effect).unwrap_err();
+        assert_eq!(error.context, "decision_service.in_use", "V{version}");
+        assert_eq!(
+            store.compensate_control(&effect).unwrap(),
+            CompensationOutcome::Compensated
+        );
+        assert_eq!(
+            store.decision_service(&workspace, SERVICE_ID, 1).unwrap(),
+            Some(service())
+        );
+        assert_eq!(
+            store.plan_draft(&workspace, &draft.draft_id).unwrap(),
+            Some(draft)
+        );
+        assert!(
+            store
+                .apply_control(
+                    &OperationId::parse("op_0123456789abcdef0123456789abcdee").unwrap(),
+                    &workspace,
+                    store.current_revisions(&workspace).unwrap().target,
+                    &desired,
+                )
+                .is_err()
+        );
+    }
 }
 
 #[test]
