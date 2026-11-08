@@ -33,7 +33,17 @@ pub(super) fn trim_oldest_closed_turn(
             {
                 segment.partial = true;
             }
-            entry.closed.pop_front();
+            let removed = entry.closed.pop_front().expect("checked closed turn");
+            if entry.active.finalized
+                && removed.completed.agent_turn_id == entry.active.agent_turn_id
+            {
+                // The finalized active entry also holds membership for a
+                // possible reopen. Retiring the snapshot retires that copy,
+                // so it cannot displace newer complete assessment evidence.
+                entry.active.request_ids = Vec::new();
+                entry.active.executions = Vec::new();
+                entry.active.request_ids_clipped = true;
+            }
             let old = entry.accounted_bytes;
             entry.accounted_bytes = entry_bytes(key, entry);
             Some((old, entry.accounted_bytes))
