@@ -100,6 +100,40 @@ fn quality_summary_bounds_repeated_execution_projection_work() {
 }
 
 #[test]
+fn quality_summary_scales_with_stage_membership_and_checks_exact_coverage() {
+    let (_root, store) = seed();
+    let db = store.connection.lock();
+    let sql = summary_sql();
+    let measure = |count| {
+        let ids: Vec<_> = (0..count).map(|i| format!("request-{i:064x}")).collect();
+        let assessment = serde_json::json!({"request_ids": ids}).to_string();
+        let mut current = ids;
+        *current.last_mut().unwrap() = "late-request".into();
+        let uncovered = serde_json::json!({"request_ids": current}).to_string();
+        db.execute(
+            "UPDATE plan_quality_segments
+             SET assessment_membership_json=?1,
+                 history_membership_json=CASE WHEN segment_id='stage-128' THEN ?2 ELSE ?1 END",
+            [&assessment, &uncovered],
+        )
+        .unwrap();
+        measured(&db, &sql)
+    };
+    let (small, small_work) = measure(160);
+    let (large, large_work) = measure(320);
+    assert_eq!(small, large);
+    assert_eq!(
+        large[0][8],
+        Value::Integer(127),
+        "the late request voids coverage"
+    );
+    assert!(
+        large_work < small_work * 3,
+        "doubling membership grew summary work from {small_work} to {large_work} VM steps"
+    );
+}
+
+#[test]
 fn routing_summary_bounds_unrelated_execution_history_work() {
     let (_root, store) = seed();
     let db = store.connection.lock();

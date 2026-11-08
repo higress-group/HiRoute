@@ -1139,8 +1139,7 @@ impl AgentTurnHistoryStore {
         let record_charge = entry
             .active
             .record_charge((!retained).then_some(request_id.as_str()), &executions);
-        let keep_execution = inner.reserve_scoring_bytes(&scope, record_charge);
-        let charge = executions
+        let finish_charge = executions
             .iter()
             .map(|e| {
                 e.model_configuration_id.len()
@@ -1151,34 +1150,37 @@ impl AgentTurnHistoryStore {
             })
             .sum::<usize>()
             .saturating_mul(3)
-            .saturating_add(request_id.len() * 3 + 4096)
-            .max(if keep_execution {
-                record_charge + 4096
-            } else {
-                0
-            });
+            .saturating_add(request_id.len() * 3 + 4096);
+        if terminal || status != AgentTurnStatus::Completed {
+            tool_batch = None;
+        }
+        let tool_charge = tool_batch
+            .as_ref()
+            .map_or(0, |batch| batch.retained_bytes());
         inner.evict_to_budget(
-            self.max_memory_bytes.saturating_sub(charge),
+            self.max_memory_bytes
+                .saturating_sub(finish_charge.saturating_add(tool_charge)),
             Some(&ticket.key),
         );
-        if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
+        let finished_bytes = inner.accounted_bytes.saturating_add(finish_charge);
+        if finished_bytes > self.max_memory_bytes {
             let entry = matching_entry_mut(&mut inner, ticket)?;
             entry.pending_request = None;
             inner.note_capture_gap(&ticket.key);
             return Err(AgentTurnHistoryError::Resource);
         }
-        if terminal
-            || status != AgentTurnStatus::Completed
-            || tool_batch.as_ref().is_some_and(|batch| {
-                inner
-                    .accounted_bytes
-                    .saturating_add(charge)
-                    .saturating_add(batch.retained_bytes())
-                    > self.max_memory_bytes
-            })
-        {
+        if finished_bytes.saturating_add(tool_charge) > self.max_memory_bytes {
             tool_batch = None;
         }
+        // Growing an optional record buffer must leave room for the accepted
+        // tool batch and the rest of the completed request's routing state.
+        let retained_tool_charge = if tool_batch.is_some() { tool_charge } else { 0 };
+        let with_execution = finish_charge
+            .max(record_charge.saturating_add(4096))
+            .saturating_add(retained_tool_charge);
+        let keep_execution = inner.accounted_bytes.saturating_add(with_execution)
+            <= self.max_memory_bytes
+            && inner.reserve_scoring_bytes(&scope, record_charge);
         let next_segment_id = terminal
             .then(|| self.allocate_id(&mut inner, "segment"))
             .transpose()?;

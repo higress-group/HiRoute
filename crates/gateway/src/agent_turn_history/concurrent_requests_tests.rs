@@ -2,6 +2,8 @@ use super::*;
 
 #[path = "concurrent_encoding_tests.rs"]
 mod encoding;
+#[path = "scoring_budget_tests.rs"]
+mod scoring_budget;
 
 fn scoped(
     store: &AgentTurnHistoryStore,

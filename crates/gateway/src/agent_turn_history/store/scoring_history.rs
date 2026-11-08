@@ -129,6 +129,19 @@ impl StoreInner {
         let Some(limit) = self.scope_history_limit.checked_sub(charge) else {
             return false;
         };
+        if self.scope_history_bytes(scope) <= limit {
+            return true;
+        }
+        // Evicting every closed snapshot still leaves the open captures.
+        // A finalized capture releases its remaining records with its snapshot.
+        let open_bytes = self
+            .scope_entries(scope)
+            .filter(|(_, entry)| !entry.active.finalized)
+            .map(|(_, entry)| entry.active.scoring_bytes())
+            .sum::<usize>();
+        if open_bytes > limit {
+            return false;
+        }
         while self.scope_history_bytes(scope) > limit {
             let oldest = self
                 .scope_entries(scope)
@@ -172,6 +185,7 @@ impl StoreInner {
         entry.accounted_bytes = entry_bytes(key, entry);
         let new = entry.accounted_bytes;
         self.replace_accounting(old, new);
-        debug_assert!(self.scope_history_bytes(&scope) <= self.scope_history_limit);
+        let fits = self.reserve_scoring_bytes(&scope, 0);
+        debug_assert!(fits);
     }
 }

@@ -22,6 +22,8 @@ mod snapshot_tests;
 /// read failure instead of treating corrupt content as a missing field.
 /// A request tombstone with no current membership retires facts before physical
 /// cleanup. Content-only deletion keeps that membership and its quality evidence.
+/// Compare the two membership sets once per coverage check: a later request can
+/// invalidate the score even when the two arrays have the same length.
 pub(super) const SCOPE: &str = "
     SELECT q.*,
       json_extract(q.branch_execution_json,'$.group') AS execution_group,
@@ -32,10 +34,16 @@ pub(super) const SCOPE: &str = "
       CASE WHEN q.assessment_partial=0 AND retired_assessment.request_id IS NULL
         AND COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
-        AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value))) THEN q.score END AS reliable_score,
+        AND (q.assessment_membership_json IS NULL OR NOT EXISTS(
+          SELECT value FROM json_each(q.history_membership_json,'$.request_ids')
+          EXCEPT SELECT value FROM json_each(q.assessment_membership_json,'$.request_ids') WHERE type='text'
+        )) THEN q.score END AS reliable_score,
       (COALESCE(json_extract(q.history_membership_json,'$.clipped'),0)=0
         AND COALESCE(json_extract(q.history_membership_json,'$.capture_partial'),0)=0
-        AND (q.assessment_membership_json IS NULL OR NOT EXISTS(SELECT 1 FROM json_each(q.history_membership_json,'$.request_ids') actual WHERE NOT EXISTS(SELECT 1 FROM json_each(q.assessment_membership_json,'$.request_ids') assessed WHERE assessed.value=actual.value)))) AS assessment_covers_stage,
+        AND (q.assessment_membership_json IS NULL OR NOT EXISTS(
+          SELECT value FROM json_each(q.history_membership_json,'$.request_ids')
+          EXCEPT SELECT value FROM json_each(q.assessment_membership_json,'$.request_ids') WHERE type='text'
+        ))) AS assessment_covers_stage,
       COALESCE(
         (SELECT a.model_id FROM observation_attempt_models_v2 a INDEXED BY observation_attempt_model_names
          JOIN valuation_requests_v2 v INDEXED BY valuation_request_accepted_ordinal ON v.workspace_id=a.workspace_id
