@@ -31,10 +31,10 @@ jobs:
     with:
       target: ${{ matrix.target }}
       runner: ${{ matrix.runner }}
+      release_qualification: true
 
   # Headless archives are internal test/installer payloads, never public assets.
   build-windows:
-    needs: windows-validation
     strategy:
       fail-fast: false
       matrix:
@@ -47,9 +47,48 @@ jobs:
       runner: ${{ matrix.runner }}
 
   build-windows-desktop:
-    needs: windows-validation
     uses: ./.github/workflows/build-release-platform.yml
     with:
       target: x86_64-pc-windows-msvc
       runner: windows-2025
       windows_desktop: true
+      release_qualification: true
+
+  qualify:
+    needs: [windows-validation, build-unix, build-windows, build-windows-desktop]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every validation and package job
+        env:
+          WINDOWS_VALIDATION: ${{ needs.windows-validation.result }}
+          UNIX_PACKAGES: ${{ needs.build-unix.result }}
+          WINDOWS_HEADLESS: ${{ needs.build-windows.result }}
+          WINDOWS_DESKTOP: ${{ needs.build-windows-desktop.result }}
+        run: |
+          test "$WINDOWS_VALIDATION" = success
+          test "$UNIX_PACKAGES" = success
+          test "$WINDOWS_HEADLESS" = success
+          test "$WINDOWS_DESKTOP" = success
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-result-*-${{ github.sha }}-*
+          path: ${{ runner.temp }}/release-results
+      - name: Bind successful validation to the built package identities
+        run: |
+          version=$(python3 scripts/product-version.py check | jq -er .version)
+          python3 scripts/release-qualification.py qualify --results "$RUNNER_TEMP/release-results" \
+            --revision "$GITHUB_SHA" --version "$version" --run-id "$GITHUB_RUN_ID" \
+            --attempt "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/qualification.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qualified-release-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/qualification.json
+          if-no-files-found: error
+          retention-days: 14

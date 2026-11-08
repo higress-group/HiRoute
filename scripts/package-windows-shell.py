@@ -111,6 +111,25 @@ def shell_image(installer, run=None):
         return image
 
 
+def native_deferral(identity, policy):
+    required = policy["platforms"]
+    decisions = [entry for entry in policy["release_decisions"] if all(
+        entry.get(key) == identity.get(key) for key in ("version", "revision", "installer_sha256"))]
+    if (identity.get("native_runtime") != "deferred" or len(decisions) != 1
+            or identity.get("acceptance_decision") != decisions[0].get("decision_url")
+            or not re.fullmatch(r"https://github\.com/higress-group/HiRoute/issues/[1-9][0-9]*#issuecomment-[1-9][0-9]*",
+                                decisions[0].get("decision_url", ""))):
+        raise ValueError("Windows native deferral lacks an exact committed release decision")
+    deferred = decisions[0].get("deferred_cases", {})
+    if (set(deferred) != set(required) or not any(deferred.values())
+            or any(not isinstance(cases, list) or len(cases) != len(set(cases))
+                   or not set(cases) <= set(required[platform])
+                   or set(cases) & {"install.standard-user", "install.console-ready"}
+                   for platform, cases in deferred.items())):
+        raise ValueError("native deferral cannot omit actual standard-user installation and console readiness")
+    return deferred
+
+
 def verify_native_acceptance(identity, policy=None):
     if policy is None:
         policy = json.loads((ROOT / "scripts/windows-desktop-cases.json").read_text())
@@ -124,20 +143,7 @@ def verify_native_acceptance(identity, policy=None):
         raise ValueError("native evidence must cover Windows 11 x64 and the Server selection")
     deferred = {platform: [] for platform in required}
     if identity.get("native_runtime") != "green":
-        decisions = [entry for entry in policy["release_decisions"] if all(
-            entry.get(key) == identity.get(key) for key in ("version", "revision", "installer_sha256"))]
-        if (identity.get("native_runtime") != "deferred" or len(decisions) != 1
-                or identity.get("acceptance_decision") != decisions[0].get("decision_url")
-                or not re.fullmatch(r"https://github\.com/higress-group/HiRoute/issues/[1-9][0-9]*#issuecomment-[1-9][0-9]*",
-                                    decisions[0].get("decision_url", ""))):
-            raise ValueError("Windows native deferral lacks an exact committed release decision")
-        deferred = decisions[0].get("deferred_cases", {})
-        if (set(deferred) != set(required) or not any(deferred.values())
-                or any(not isinstance(cases, list) or len(cases) != len(set(cases))
-                       or not set(cases) <= set(required[platform])
-                       or set(cases) & {"install.standard-user", "install.console-ready"}
-                       for platform, cases in deferred.items())):
-            raise ValueError("native deferral cannot omit actual standard-user installation and console readiness")
+        deferred = native_deferral(identity, policy)
     for native in runs:
         scenarios = native.get("scenarios", {})
         platform = native["platform"]

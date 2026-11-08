@@ -32,6 +32,9 @@ on:
       windows_desktop:
         default: false
         type: boolean
+      release_qualification:
+        default: false
+        type: boolean
       component_probe:
         default: false
         type: boolean
@@ -193,5 +196,12 @@ jobs:
             target/desktop-package/**/build.log
             artifacts/ci
             artifacts/windows-desktop
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: inputs.release_qualification
+        with:
+          name: release-result-${{ inputs.target }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: target/release-candidate/${{ github.sha }}/${{ inputs.target }}/*/result.json
           if-no-files-found: error
           retention-days: 14

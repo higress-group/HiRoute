@@ -31,6 +31,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v')
     runs-on: macos-15
     timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
     outputs:
       revision: ${{ steps.release.outputs.revision }}
       website_revision: ${{ steps.release.outputs.website_revision }}
@@ -56,6 +59,8 @@ jobs:
           prerelease=$(jq -r .isPrerelease <<<"$release_state")
           channel=stable; [[ "$prerelease" == true ]] && channel=preview
           node apps/website/scripts/release-manifest.mjs validate apps/website/data/releases.json --tag "$RELEASE_TAG" --revision "$revision" --channel "$channel"
+          python3 scripts/release-qualification.py verify --repository "$GITHUB_REPOSITORY" \
+            --manifest apps/website/data/releases.json --tag "$RELEASE_TAG" --revision "$revision"
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
           echo "website_revision=$website_revision" >> "$GITHUB_OUTPUT"
           mkdir -p "$RUNNER_TEMP/release-assets"

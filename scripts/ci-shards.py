@@ -229,12 +229,7 @@ def full_commands(plan, metadata):
 
 
 def plan_for_args(base=None, full=False):
-    planner = load_test_plan()
-    paths = planner.changed_paths(base) if base else []
-    result = planner.select(paths, full=full)
-    result["candidate"] = planner.revision("HEAD")
-    result["base"] = planner.revision(base) if base else None
-    return result
+    return load_test_plan().plan_for_base(base, full)
 
 
 def run_commands(shard, commands):
