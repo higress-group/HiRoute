@@ -330,8 +330,8 @@ fn decision_removal_checks_publications_with_empty_index_and_no_local_owner() {
             .clone(),
     ];
     store.connection.borrow().execute(
-        "INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,2,?2,?3,'active',1,1)",
-        params![WorkspaceId::DEFAULT, CanonicalDigest::of_bytes(&bytes).as_str(), bytes],
+        "INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',1,1)",
+        params![WorkspaceId::DEFAULT, publication.publication_revision.get(), CanonicalDigest::of_bytes(&bytes).as_str(), bytes],
     ).unwrap();
     for (state, protection) in [
         ("active", PlanReferenceProtectionV1::ActivePublication),

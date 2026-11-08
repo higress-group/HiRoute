@@ -353,7 +353,10 @@ fn compute_references_decode_production_publication_bytes_and_protect_recovery_l
             .clone(),
     ];
     let bytes = publication.canonical_bytes().unwrap();
-    store.connection.borrow().execute("INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,1,?2,?3,'active',1,1)", params![workspace.as_str(),CanonicalDigest::of_bytes(&bytes).as_str(),bytes]).unwrap();
+    store.connection.borrow().execute(
+        "INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',1,1)",
+        params![workspace.as_str(), publication.publication_revision.get(), CanonicalDigest::of_bytes(&bytes).as_str(), bytes],
+    ).unwrap();
     for state in ["active", "prepared", "lkg"] {
         store
             .connection
