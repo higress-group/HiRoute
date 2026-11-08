@@ -84,6 +84,15 @@ impl ContextIdentityFacts {
         self.routing_identity()
     }
 
+    pub(super) fn reasoning_identity(&self) -> Option<(&'static str, &[String])> {
+        if !matches!(self.identity, Identity::Reliable { .. })
+            || !(self.routing.track || self.routing.replays_context)
+        {
+            return None;
+        }
+        self.routing_identity()
+    }
+
     fn routing_identity(&self) -> Option<(&'static str, &[String])> {
         if let Some(root) = &self.routing.root {
             return Some(("hermes_session", std::slice::from_ref(root)));

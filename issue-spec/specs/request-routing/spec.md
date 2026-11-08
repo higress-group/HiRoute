@@ -329,6 +329,10 @@ destination and unknown reasoning shapes keep their existing native replay seman
 Optional source evidence is bounded and process-local. It cannot select a candidate
 or authorize access.
 
+An explicit Codex compaction request with reliable session identity uses the same
+Responses reasoning source scope as ordinary requests for that authorized session.
+It remains auxiliary and consumes no main decision or history slots.
+
 For a correlated Plan with different candidate endpoints and explicit Responses
 `store:false`, the exact OpenAI platform Responses endpoint also receives portable
 plaintext summaries without unresolved `rs_` references. When no source evidence

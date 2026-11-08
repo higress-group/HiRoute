@@ -177,15 +177,16 @@ impl ResponsesReasoningReplay {
     ) -> Self {
         if request.ingress_protocol != IngressProtocol::Responses
             || authorized.candidates().len() < 2
-            || !matches!(
-                identity.correlation_provenance(),
-                "agent_supplied" | "protocol_state"
-            )
         {
             return Self::default();
         }
         let Some(scope) = holds.digest_key().and_then(|key| {
-            ContextHoldKey::routing_history(authorized, request.ingress_protocol, identity, &key)
+            ContextHoldKey::responses_reasoning(
+                authorized,
+                request.ingress_protocol,
+                identity,
+                &key,
+            )
         }) else {
             return Self::default();
         };

@@ -113,7 +113,13 @@ pub(super) fn facts(headers: &HeaderMap, document: &Value) -> RoutingFacts {
     // These explicit protocol kinds are auxiliary. An unfamiliar kind is
     // observed traffic, not permission to discard an ordinary execution.
     match metadata.request_kind.as_str() {
-        Some("memory" | "prewarm" | "compaction") => return RoutingFacts::detached(),
+        Some("compaction") => {
+            return RoutingFacts {
+                replays_context: true,
+                ..RoutingFacts::detached()
+            };
+        }
+        Some("memory" | "prewarm") => return RoutingFacts::detached(),
         Some("turn") => {}
         _ => return RoutingFacts::uncertain(),
     }

@@ -22,6 +22,13 @@ pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct ContextHoldKey([u8; 32]);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ScopeKind {
+    Hold,
+    History,
+    Reasoning,
+}
+
 impl ContextHoldKey {
     fn on_branch(&self, branch: &[u8; 32]) -> Option<Self> {
         let mut mac = HmacSha256::new_from_slice(&self.0).ok()?;
@@ -40,7 +47,13 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
     ) -> Option<Self> {
-        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, false)
+        Self::scoped_key(
+            authorized,
+            ingress_protocol,
+            identity,
+            digest_key,
+            ScopeKind::Hold,
+        )
     }
 
     pub(crate) fn routing_history(
@@ -49,7 +62,28 @@ impl ContextHoldKey {
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
     ) -> Option<Self> {
-        Self::scoped_key(authorized, ingress_protocol, identity, digest_key, true)
+        Self::scoped_key(
+            authorized,
+            ingress_protocol,
+            identity,
+            digest_key,
+            ScopeKind::History,
+        )
+    }
+
+    pub(crate) fn responses_reasoning(
+        authorized: &AuthorizedRequestPlan,
+        ingress_protocol: IngressProtocol,
+        identity: &ContextIdentityFacts,
+        digest_key: &[u8; 32],
+    ) -> Option<Self> {
+        Self::scoped_key(
+            authorized,
+            ingress_protocol,
+            identity,
+            digest_key,
+            ScopeKind::Reasoning,
+        )
     }
 
     pub(crate) fn scope_id(&self) -> String {
@@ -61,18 +95,21 @@ impl ContextHoldKey {
         ingress_protocol: IngressProtocol,
         identity: &ContextIdentityFacts,
         digest_key: &[u8; 32],
-        history: bool,
+        kind: ScopeKind,
     ) -> Option<Self> {
-        let (identity_kind, identity_parts) = identity.hold_identity()?;
+        let (identity_kind, identity_parts) = match kind {
+            ScopeKind::Reasoning => identity.reasoning_identity()?,
+            ScopeKind::Hold | ScopeKind::History => identity.hold_identity()?,
+        };
         let receipt = authorized.receipt();
         let mut mac = HmacSha256::new_from_slice(digest_key).ok()?;
         frame(
             &mut mac,
             b"domain",
-            if history {
-                b"routing-history/v1"
-            } else {
-                b"context-hold/v1"
+            match kind {
+                ScopeKind::Hold => b"context-hold/v1",
+                ScopeKind::History => b"routing-history/v1",
+                ScopeKind::Reasoning => b"responses-reasoning/v1",
             },
         );
         frame(&mut mac, b"workspace_id", receipt.workspace_id.as_bytes());
@@ -80,7 +117,7 @@ impl ContextHoldKey {
         frame_u64(&mut mac, b"authority_epoch", receipt.authority_epoch);
         frame(&mut mac, b"grant_id", receipt.grant_id.as_bytes());
         frame_u64(&mut mac, b"grant_generation", receipt.grant_generation);
-        if history {
+        if kind != ScopeKind::Hold {
             // Accepted execution remains visible when this Plan is revised;
             // PlanSnapshot separately prevents inheriting an obsolete decision.
             match &authorized.planner_policy().identity {
@@ -104,7 +141,7 @@ impl ContextHoldKey {
             b"served_model_id",
             receipt.served_model_id.as_bytes(),
         );
-        if !history {
+        if kind == ScopeKind::Hold {
             frame(
                 &mut mac,
                 b"route_provenance",
@@ -120,7 +157,7 @@ impl ContextHoldKey {
             ingress_label(ingress_protocol),
         );
         frame(&mut mac, b"identity_kind", identity_kind.as_bytes());
-        if !history && identity.observed_routing_lane() {
+        if kind == ScopeKind::Hold && identity.observed_routing_lane() {
             // A failed native adapter cannot overwrite the verified lane.
             // Unknown-origin requests still have their own reusable history.
             frame(&mut mac, b"input_origin", b"observed-unverified/v1");

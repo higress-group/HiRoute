@@ -29,6 +29,10 @@ fn responses_reasoning_switch_preserves_portable_history_and_target_source_state
             "gpt-return",
             vec![message("msg_c", "final_answer", "Done.")],
         ),
+        streamed(
+            "gpt-compact",
+            vec![message("msg_summary", "final_answer", "Compacted.")],
+        ),
     ]);
     let kimi = NativeProvider::start(vec![
         streamed(
@@ -65,19 +69,19 @@ fn responses_reasoning_switch_preserves_portable_history_and_target_source_state
 
     let session = "same-responses-reasoning-session";
     let mut input = vec![json!({"role": "user", "content": "Find the record."})];
-    input.extend(send(&fixture, session, "turn-a", &input));
+    input.extend(send(&fixture, session, "main", "turn-a", &input));
     assert_eq!(input[1], encrypted);
     input
         .push(json!({"type": "function_call_output", "call_id": "lookup-call", "output": "found"}));
     // Select GPT again after the tool result so this assertion exercises native
     // replay to the same source independently of classifier inheritance.
     input.push(json!({"role": "user", "content": "Verify the record before reporting back."}));
-    input.extend(send(&fixture, session, "turn-a2", &input));
+    input.extend(send(&fixture, session, "main", "turn-a2", &input));
     assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (2, 0, 2));
     assert_eq!(upstream_input(&gpt, 1)[1], encrypted);
 
     input.push(json!({"role": "user", "content": "Say hello."}));
-    let kimi_output = send(&fixture, session, "turn-b", &input);
+    let kimi_output = send(&fixture, session, "main", "turn-b", &input);
     assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (2, 1, 3));
     assert_eq!(kimi_output[0], reference);
     assert_eq!(
@@ -88,7 +92,7 @@ fn responses_reasoning_switch_preserves_portable_history_and_target_source_state
 
     input.extend(kimi_output);
     input.push(json!({"role": "user", "content": "Solve the next complex task."}));
-    send(&fixture, session, "turn-c", &input);
+    let gpt_output = send(&fixture, session, "main", "turn-c", &input);
     assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (3, 1, 4));
     let mut expected = input.clone();
     expected
@@ -100,17 +104,33 @@ fn responses_reasoning_switch_preserves_portable_history_and_target_source_state
         .remove("id");
     assert_eq!(
         upstream_input(&gpt, 2),
-        json!(expected),
+        json!(&expected),
         "Kimi reference must be removed while preserving its summary and earlier GPT state"
     );
 
-    send(&fixture, "unrelated-session", "turn-c", &input);
-    assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (3, 2, 5));
+    let summary_request = json!({"role": "user", "content": "Summarize the conversation."});
+    let mut compact_input = input.clone();
+    compact_input.extend(gpt_output.iter().cloned());
+    compact_input.push(summary_request.clone());
+    send(&fixture, session, "compaction", "turn-c", &compact_input);
+    expected.extend(gpt_output);
+    expected.push(summary_request);
+    assert_eq!(upstream_input(&gpt, 3), json!(expected));
+    assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (4, 1, 4));
+
+    send(&fixture, "unrelated-session", "main", "turn-c", &input);
+    assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (4, 2, 5));
     assert_eq!(upstream_input(&kimi, 1), json!(input));
 }
 
-fn send(fixture: &RuntimeFixture, session: &str, turn: &str, input: &[Value]) -> Vec<Value> {
-    let headers = super::native_history::headers("codex", session, "main", turn, "before");
+fn send(
+    fixture: &RuntimeFixture,
+    session: &str,
+    purpose: &str,
+    turn: &str,
+    input: &[Value],
+) -> Vec<Value> {
+    let headers = super::native_history::headers("codex", session, purpose, turn, "before");
     let response = request(
         fixture.address,
         "POST",
