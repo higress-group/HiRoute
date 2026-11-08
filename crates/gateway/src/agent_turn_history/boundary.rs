@@ -630,7 +630,7 @@ fn function_encoding_digest(
     Some(hash.finalize())
 }
 
-fn tool_digest(
+pub(super) fn tool_digest(
     id: &str,
     kind: ToolKindV1,
     namespace: Option<&str>,

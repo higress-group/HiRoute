@@ -38,6 +38,14 @@ pub const CONTROL_PATH: &str = "/_hiroute/e2e-control/v1";
 pub const NONCE_HEADER: &str = "x-hiroute-e2e-control-nonce";
 pub const E2E_ATTEMPT_TIMEOUT_MS_ENV: &str = "HIROUTE_E2E_ATTEMPT_TIMEOUT_MS";
 
+#[cfg(all(unix, debug_assertions))]
+pub(crate) fn observation_marker(name: &str) -> Option<std::path::PathBuf> {
+    if std::env::var("HIROUTE_E2E_OBSERVATION_CAPTURE").as_deref() != Ok("1") {
+        return None;
+    }
+    Some(std::path::PathBuf::from(std::env::var_os("HIROUTE_OBSERVATION_DIRECTORY")?).join(name))
+}
+
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 const REQUEST_DEADLINE: Duration = Duration::from_secs(5);
 

@@ -323,12 +323,12 @@ fn exact_ingress_retry_retains_cancelled_branch_gap_without_reusing_its_decision
 }
 
 #[test]
-fn long_tool_phase_counts_terminal_requests_and_recovers_after_retirement() {
+fn long_tool_phase_clips_terminal_details_and_preserves_active_turn() {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
     let scope = store.scope_key("workspace", "long-tool-phase").unwrap();
     let input = request(vec![text(MessageRole::User, "Continue the task")]);
-    let mut phases = 0;
+    let mut opening = None;
     for n in 0..160 {
         let begin = store
             .begin(scope.clone(), plan(1), &input, &replay, Instant::now())
@@ -338,12 +338,23 @@ fn long_tool_phase_counts_terminal_requests_and_recovers_after_retirement() {
                 ticket, history, ..
             } => {
                 drop(history);
-                phases += 1;
+                assert_eq!(n, 0, "capacity must preserve the active turn");
+                opening = Some((
+                    ticket.agent_turn_id.clone(),
+                    ticket.capture_turn_anchor.clone(),
+                ));
                 store.commit_decision(&ticket, decision("regular")).unwrap();
                 ticket
             }
             AgentTurnBegin::Continuation { ticket, .. } => ticket,
         };
+        assert_eq!(
+            opening.as_ref(),
+            Some(&(
+                ticket.agent_turn_id.clone(),
+                ticket.capture_turn_anchor.clone()
+            ))
+        );
         let id = format!("tool-request-{n}");
         store.bind_request(&ticket, &id);
         store
@@ -358,7 +369,14 @@ fn long_tool_phase_counts_terminal_requests_and_recovers_after_retirement() {
             .unwrap();
         assert!(store.inner.lock().retained_records(&scope) <= 128);
     }
-    assert!(phases >= 2, "an unbounded active stage must be retired");
+    let inner = store.inner.lock();
+    let active = &inner.entries[&scope].active;
+    assert!(active.request_ids_clipped);
+    assert_eq!(active.request_ids.len(), 128);
+    assert_eq!(active.executions.len(), 128);
+    assert_eq!(active.first_request_id.as_deref(), Some("tool-request-0"));
+    assert_eq!(active.last_request_id.as_deref(), Some("tool-request-159"));
+    drop(inner);
     let a = request(vec![text(MessageRole::User, "new A")]);
     let (a, history) = new_turn(scoped(&store, &scope, &a, &replay).unwrap());
     drop(history);

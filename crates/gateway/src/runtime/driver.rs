@@ -9,16 +9,18 @@ use hiroute_gateway_core::core::execution_plan::{
 };
 use hiroute_gateway_core::core::filter::LocalReply;
 use hiroute_gateway_core::runtime::attempt::{
-    AttemptTimeoutKind, PrecommitEvent, PreparedAttemptHttpRequest, PublishedDisposition,
+    AttemptTimeoutKind, Disposition, PrecommitEvent, PreparedAttemptHttpRequest,
+    PublishedDisposition,
 };
 use hiroute_gateway_core::runtime::body::{
     ChargedBodyQueue, ChargedBytes, Reservation, StreamBudget,
 };
 use hiroute_gateway_core::runtime::driver::{
-    AcceptedBodyFrame, AttemptFailureClass as CoreAttemptFailureClass, AttemptFailureFacts,
-    AttemptMaterializationContext, AttemptMaterializationFailure, DecisionCandidateAuthority,
-    LogicalRequestBodyFrame, LogicalRequestContext, NormalizedAttemptLocalReply, ObservationLabel,
-    PinnedConfigContext, PrecommitClassification, ProviderAcceptedEvent, ProviderAttemptCompletion,
+    AcceptedBodyFrame, AttemptDownstreamOutcome, AttemptFailureClass as CoreAttemptFailureClass,
+    AttemptFailureFacts, AttemptMaterializationContext, AttemptMaterializationFailure,
+    AttemptStreamOutcome, DecisionCandidateAuthority, LogicalRequestBodyFrame,
+    LogicalRequestContext, NormalizedAttemptLocalReply, ObservationLabel, PinnedConfigContext,
+    PrecommitClassification, ProviderAcceptedEvent, ProviderAttemptCompletion,
     ProviderClassificationFacts, ProviderRuntimePort, UpstreamSideEffectSnapshot,
 };
 use hiroute_gateway_core::transport::{GatewayRequestHead, GatewayResponseHead};
@@ -192,6 +194,8 @@ pub struct ProductionAttemptState {
     spending: Option<crate::ports::KeySpendGuard>,
     managed_cpa: bool,
     request_reasoning_projection: Option<RequestReasoningProjection>,
+    reasoning_history_removed: usize,
+    reasoning_origin: Option<crate::responses_reasoning::ReasoningOrigin>,
     request_projection_loss: adapters::RequestProjectionLoss,
     #[cfg(all(unix, debug_assertions))]
     capture: Option<super::stream_capture::Capture>,
@@ -237,6 +241,11 @@ impl ProductionAttemptState {
         request: &crate::server::core_runtime::observation::RequestObservation,
         stable_binding_id: &str,
     ) {
+        request.reasoning_cleanup(
+            hiroute_diagnostics::event::ReasoningCleanupReason::RequestProtocolProjection,
+            self.reasoning_history_removed,
+            None,
+        );
         if let Some(projection) = &self.request_reasoning_projection {
             request.reasoning_cleanup(
                 projection.reason,
@@ -425,10 +434,22 @@ impl ProviderRuntimePort for ProductionProvider {
     fn finalize_attempt_facts(
         &self,
         state: &mut Self::AttemptState,
-        readiness: Option<&mut Self::Readiness>,
+        mut readiness: Option<&mut Self::Readiness>,
         published_facts: Option<&ProviderClassificationFacts>,
         completion: &ProviderAttemptCompletion,
     ) -> Result<ProviderClassificationFacts, Arc<str>> {
+        // The accepted encoder normally prepares the batch before EOS. A
+        // completed attempt may also supply its terminal body directly.
+        if completion.disposition == Disposition::Accept
+            && completion.stream == AttemptStreamOutcome::CompletedEos
+            && completion.downstream == AttemptDownstreamOutcome::Completed
+            && let Some(batch) = readiness
+                .as_deref_mut()
+                .and_then(|ready| ready.projector.as_mut()?.take_tool_batch())
+        {
+            adapters::prepare_tool_handoff(batch);
+            adapters::confirm_tool_handoff();
+        }
         Ok(response::finalize_attempt_facts(
             state,
             readiness.as_deref(),
@@ -456,7 +477,16 @@ impl ProviderRuntimePort for ProductionProvider {
         _pinned_configs: &PinnedConfigContext<'_>,
         _event_configs: &ConfigEventSnapshot,
     ) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
-        response::encode_accepted_event(readiness, event)
+        let frame = response::encode_accepted_event(readiness, event)?;
+        if let Some(projector) = &mut readiness.projector {
+            if let Some(batch) = projector.take_tool_batch() {
+                adapters::prepare_tool_handoff(batch);
+            }
+            if let Some(delivery) = projector.take_reasoning_delivery() {
+                adapters::prepare_reasoning_delivery(delivery);
+            }
+        }
+        Ok(frame)
     }
 
     fn take_accepted_prefix(

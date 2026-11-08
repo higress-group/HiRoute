@@ -32,6 +32,107 @@ fn real_listener_final_phase_correction_preserves_tool_stage_and_assessment_memb
     assert_encrypted_tool_retry(true, true);
 }
 
+#[test]
+fn real_listener_done_reasoning_replay_preserves_multiple_tool_continuations() {
+    let opaque_marker = "synthetic-done-reasoning-state";
+    let mut replies = Vec::new();
+    for step in 1..=2 {
+        let reasoning = json!({"type":"reasoning","id":format!("rs-{step}"),"status":"completed",
+            "summary":[{"type":"summary_text","text":format!("Done summary {step}")}],
+            "encrypted_content":format!("{opaque_marker}-{step}")});
+        replies.push(streamed_snapshots(
+            &format!("tool-{step}"),
+            vec![
+                reasoning,
+                edit(&format!("edit-{step}"), "Apply the next step."),
+            ],
+            false,
+            |output| {
+                output[0]["encrypted_content"] = json!(format!("aggregate-state-{step}"));
+                output[0]["summary"][0]["text"] = json!(format!("Aggregate summary {step}"));
+            },
+        ));
+    }
+    replies.push(streamed(
+        "final",
+        vec![message("final-message", "final_answer", "COMPLETE")],
+    ));
+    let regular = NativeProvider::start(replies);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(SIMPLE), reply(ASSESSED_COMPLEX)]);
+    let fixture = RuntimeFixture::launch_builtin_branches(&[&regular, &primary, &classifier], true);
+    enable_native_provider_state(&fixture);
+    let mut input = vec![json!({"role":"user","content":A_USER})];
+    for step in 1..=2 {
+        let events = send_events(&fixture, &input, "a", false);
+        let replay = events
+            .iter()
+            .filter(|event| event["type"] == "response.output_item.done")
+            .map(|event| event["item"].clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            replay[0]["encrypted_content"],
+            format!("{opaque_marker}-{step}")
+        );
+        assert_eq!(
+            replay[0]["summary"][0]["text"],
+            format!("Done summary {step}")
+        );
+        let aggregate = &events.last().unwrap()["response"]["output"];
+        assert_eq!(
+            aggregate[0]["encrypted_content"],
+            format!("aggregate-state-{step}")
+        );
+        assert_eq!(
+            aggregate[0]["summary"][0]["text"],
+            format!("Aggregate summary {step}")
+        );
+        assert_eq!(aggregate[1], replay[1]);
+        assert_not_closed(&fixture, step);
+        append_receipt(&mut input, replay, &format!("Tool result {step}"));
+    }
+    let final_output = send(&fixture, &input, "a", false);
+    assert_eq!(final_output[0]["content"][0]["text"], "COMPLETE");
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (3, 0, 1)
+    );
+
+    let forwarded = upstream_body(&regular, 2);
+    let replayed = forwarded["input"].as_array().unwrap();
+    for step in 1..=2 {
+        assert!(replayed.iter().any(|item| {
+            item["encrypted_content"] == format!("{opaque_marker}-{step}")
+                && item["summary"][0]["text"] == format!("Done summary {step}")
+        }));
+        assert!(
+            replayed
+                .iter()
+                .any(|item| item["output"] == format!("Tool result {step}"))
+        );
+    }
+
+    let facts = wait_execution_facts(&fixture, 3);
+    let timeline = super::observed_history::timeline(&facts);
+    assert_eq!(timeline.turns.len(), 1);
+    assert_eq!(timeline.turns[0].requests.len(), 3);
+    assert_eq!(timeline.turns[0].status, "completed");
+    let decisions = facts
+        .iter()
+        .filter(|event| event["fact"]["kind"] == "route_decision")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        decisions
+            .iter()
+            .map(|event| event["fact"]["complexity"]["decision_source"]
+                .as_str()
+                .unwrap())
+            .collect::<Vec<_>>(),
+        ["external_classifier", "inherited", "inherited"]
+    );
+    assert_observed_retention(&fixture, &decisions, opaque_marker);
+}
+
 fn reply(body: &'static [u8]) -> ProviderReply {
     ProviderReply::Complete {
         status: 200,
@@ -56,6 +157,15 @@ pub(super) fn streamed(id: &str, output: Vec<Value>) -> ProviderReply {
 }
 
 fn streamed_phases(id: &str, output: Vec<Value>, correct_phase: bool) -> ProviderReply {
+    streamed_snapshots(id, output, correct_phase, |_| {})
+}
+
+fn streamed_snapshots(
+    id: &str,
+    mut output: Vec<Value>,
+    correct_phase: bool,
+    change_terminal: impl FnOnce(&mut [Value]),
+) -> ProviderReply {
     let mut events = vec![json!({"type":"response.created","response":{
         "id":id,"model":"runtime-native","status":"in_progress","output":[]}})];
     for (index, item) in output.iter().enumerate() {
@@ -76,6 +186,10 @@ fn streamed_phases(id: &str, output: Vec<Value>, correct_phase: bool) -> Provide
             }
             "function_call" => {
                 start["arguments"] = json!("");
+            }
+            "web_search_call" => {
+                // The provisional action does not yet carry its final URL.
+                start["action"] = json!({"type":"open_page"});
             }
             other => panic!("unexpected fixture item {other}"),
         }
@@ -113,6 +227,7 @@ fn streamed_phases(id: &str, output: Vec<Value>, correct_phase: bool) -> Provide
         }
         events.push(json!({"type":"response.output_item.done","output_index":index,"item":item}));
     }
+    change_terminal(&mut output);
     events.push(json!({"type":"response.completed","response":{
         "id":id,"model":"runtime-native","status":"completed","output":output,
         "usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}));
@@ -157,6 +272,17 @@ pub(super) fn configure_native_provider_state(publication: &mut GatewayPublicati
 }
 
 fn send(fixture: &RuntimeFixture, input: &[Value], turn: &str, proved: bool) -> Vec<Value> {
+    let events = send_events(fixture, input, turn, proved);
+    events
+        .into_iter()
+        .find(|event| event["type"] == "response.completed")
+        .unwrap()["response"]["output"]
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+fn send_events(fixture: &RuntimeFixture, input: &[Value], turn: &str, proved: bool) -> Vec<Value> {
     let mut context = json!({"version":2,"agent":"dsh","purpose":"main",
         "session_id":SESSION,"turn_id":turn});
     if proved {
@@ -225,10 +351,7 @@ fn send(fixture: &RuntimeFixture, input: &[Value], turn: &str, proved: bool) -> 
         .collect::<Vec<_>>();
     assert_eq!(completed.len(), 1, "{events:?}");
     assert_eq!(completed[0]["response"]["status"], "completed");
-    completed[0]["response"]["output"]
-        .as_array()
-        .unwrap()
-        .clone()
+    events
 }
 
 fn upstream_body(provider: &NativeProvider, index: usize) -> Value {

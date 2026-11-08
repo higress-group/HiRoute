@@ -37,6 +37,86 @@ fn terminal(output: Value) -> Value {
 }
 
 #[test]
+fn native_reasoning_done_replay_requires_consistent_identity_and_tool_evidence() {
+    let done = json!({"type":"reasoning","id":"rs-1","status":"completed",
+        "summary":[{"type":"summary_text","text":"done summary"}],
+        "encrypted_content":"done ciphertext"});
+    let tool = json!({"type":"function_call","id":"fc-1","call_id":"call-1","name":"example",
+        "status":"completed","arguments":"{\"value\":1}"});
+    let mut drift = json!([done, tool]);
+    drift[0]["summary"][0]["text"] = json!("terminal summary");
+    drift[0]["encrypted_content"] = json!("terminal ciphertext");
+    let stream_bytes = |delta: &str, output| {
+        [
+            json!({"type":"response.created","response":{
+                "id":"PRIVATE_RESPONSE","model":"physical","status":"in_progress","output":[]
+            }}),
+            json!({"type":"response.reasoning_summary_text.delta","output_index":0,
+                "item_id":"rs-1","summary_index":0,"delta":delta}),
+            json!({"type":"response.output_item.done","output_index":0,"item":done}),
+            json!({"type":"response.output_item.done","output_index":1,"item":tool}),
+            terminal(output),
+        ]
+        .iter()
+        .flat_map(sse)
+        .collect::<Vec<_>>()
+    };
+    for (pointer, value, expected) in [
+        ("", Value::Null, None),
+        ("/0/id", json!("rs-other"), Some(Reason::ItemIdentity)),
+        ("/0/status", json!("incomplete"), Some(Reason::ItemSnapshot)),
+        (
+            "/0/encrypted_content",
+            json!(""),
+            Some(Reason::ItemSnapshot),
+        ),
+        ("/0/summary", Value::Null, Some(Reason::ItemSnapshot)),
+        (
+            "/1/arguments",
+            json!("{\"value\":2}"),
+            Some(Reason::ItemSnapshot),
+        ),
+    ] {
+        let mut output = drift.clone();
+        if !pointer.is_empty() {
+            *output.pointer_mut(pointer).unwrap() = value;
+        }
+        let mut stream = projector(IngressProtocol::Responses, true);
+        let units = stream
+            .feed(&stream_bytes("done summary", output), false)
+            .unwrap();
+        let replayed = units.last().unwrap().replayed_reasoning.as_slice();
+        assert_eq!(replayed, if expected.is_none() { &[0][..] } else { &[] });
+        assert_eq!(stream.take_reasoning_summary_changes(), 0);
+        let eof = stream.feed(&[], true).unwrap();
+        assert_eq!(
+            stream
+                .take_completion_diagnostic()
+                .map(|(_, evidence)| evidence.reason),
+            expected
+        );
+        if expected.is_none() {
+            assert_eq!(eof[0].terminal, Some(NativeTerminalOutcome::Complete));
+            assert_eq!(stream.take_reasoning_summary_changes(), 1);
+            assert_eq!(stream.take_reasoning_summary_changes(), 0);
+        } else {
+            assert_eq!(eof[0].terminal, Some(NativeTerminalOutcome::Unknown));
+            assert_eq!(stream.take_reasoning_summary_changes(), 0);
+        }
+    }
+
+    let mut stream = projector(IngressProtocol::Responses, true);
+    let units = stream
+        .feed(&stream_bytes("terminal summary", drift), true)
+        .unwrap();
+    assert_eq!(
+        units.last().unwrap().terminal,
+        Some(NativeTerminalOutcome::Unknown)
+    );
+    assert_eq!(stream.take_reasoning_summary_changes(), 0);
+}
+
+#[test]
 fn native_completion_diagnostic_keeps_first_frame_and_emits_only_after_unknown_eof() {
     let mut stream = projector(IngressProtocol::Responses, true);
     let mut bytes = b": transport comment\n\n".to_vec();

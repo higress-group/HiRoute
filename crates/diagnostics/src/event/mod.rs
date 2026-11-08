@@ -85,6 +85,7 @@ pub enum DiagnosticEvent {
     RequestProjection(RequestProjection),
     ResponseFailure(ResponseFailure),
     NativeCompletionUnknown(NativeCompletionUnknown),
+    NativeReasoningSummaryDrift(NativeReasoningSummaryDrift),
     NativeRoutingEvidence(NativeRoutingEvidence),
     Fallback(Fallback),
     SemanticCommit(SemanticCommit),
@@ -210,6 +211,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::RequestProjection(_) => Warn,
             DiagnosticEvent::ResponseFailure(_) => Warn,
             DiagnosticEvent::NativeCompletionUnknown(_) => Warn,
+            DiagnosticEvent::NativeReasoningSummaryDrift(_) => Info,
             DiagnosticEvent::NativeRoutingEvidence(_) => Debug,
             DiagnosticEvent::ContentCaptureEnd(end) => match end.outcome {
                 CaptureOutcome::Success => Info,
@@ -305,6 +307,7 @@ impl DiagnosticEvent {
             DiagnosticEvent::RequestProjection(_) => "request_projection",
             DiagnosticEvent::ResponseFailure(_) => "response_failure",
             DiagnosticEvent::NativeCompletionUnknown(_) => "native_completion_unknown",
+            DiagnosticEvent::NativeReasoningSummaryDrift(_) => "native_reasoning_summary_drift",
             DiagnosticEvent::NativeRoutingEvidence(_) => "native_routing_evidence",
             DiagnosticEvent::Fallback(_) => "fallback",
             DiagnosticEvent::SemanticCommit(_) => "semantic_commit",

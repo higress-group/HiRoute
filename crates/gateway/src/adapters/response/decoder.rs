@@ -54,6 +54,10 @@ struct DecodeDiagnostic {
 }
 
 impl NativeResponseDecoder {
+    pub(crate) fn set_replayed_reasoning(&mut self, indexes: Vec<u32>) {
+        self.state.core_mut().replayed_reasoning = indexes;
+    }
+
     pub(crate) fn with_function_encoding(
         mut self,
         projection: super::super::FunctionEncodingProjection,

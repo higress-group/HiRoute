@@ -15,10 +15,17 @@ pub(super) fn note(stage: Stage, reason: Reason) {
 pub(super) fn native_completion(
     projector: &mut crate::server::core_runtime::adapters::NativeResponseProjector,
 ) {
-    if let Some((protocol, evidence)) = projector.take_completion_diagnostic()
+    let unknown = projector.take_completion_diagnostic();
+    let summary_changes = projector.take_reasoning_summary_changes();
+    if (unknown.is_some() || summary_changes != 0)
         && let Some(observation) = crate::server::core_runtime::observation::active_request()
     {
-        observation.native_completion_unknown(protocol, evidence);
+        if let Some((protocol, evidence)) = unknown {
+            observation.native_completion_unknown(protocol, evidence);
+        }
+        if summary_changes != 0 {
+            observation.native_reasoning_summary_drift(summary_changes);
+        }
     }
 }
 

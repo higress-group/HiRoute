@@ -1016,8 +1016,25 @@ budgets lose the edge. The proof reuses measured tool digests without additional
 reads or larger budgets; it does not combine encoding changes with reasoning omission.
 It SHALL NOT grant exact ancestry, human origin or provider affinity. Multiple compatible
 predecessors remain ambiguous under the existing pending-request and branch-ranking rules.
-Original forwarding, capture and strict request fingerprints remain unchanged. Unavailable
-or ambiguous evidence starts an independent branch. A completed actual same-scope
+When the full response comparison is unavailable, a native Responses stream MAY
+prove a tool continuation separately. Within the same authorized scope and Plan
+revision, the request prefix must match, no user input may be appended, and the
+new results must each occur once and cover the entire outstanding function batch
+of a unique predecessor. Replayed calls must match the delivered call ID, tool
+name, namespace and canonical arguments. Each call must have a reconciled
+`response.output_item.done` and the Gateway must have successfully delivered the
+complete response. Hosted search is not a client callback. The proof is bounded
+and prepared before the terminal write, then confirmed only after successful
+downstream delivery. A uniquely matching continuation can wait for that handoff
+within its request budget. Optional capture does not delay that handoff. The
+confirmed batch is held with the predecessor checkpoint and consumed on
+continuation admission. A full response match takes precedence over waiting for
+a sibling's pending tool batch. A tool continuation inherits the stage and frozen
+decision without granting provider affinity or repairing capture completeness.
+
+Original forwarding, capture and strict request fingerprints remain unchanged.
+A comparable conflicting response, or unavailable or ambiguous evidence without
+a valid tool continuation, starts an independent branch. A completed actual same-scope
 stage MAY remain a contextual assessment candidate with association uncertainty
 explicitly disclosed. It SHALL NOT become a claimed unique predecessor or grant
 provider-prefix affinity. Uncertain executions cannot overwrite a verified head.
@@ -1078,6 +1095,10 @@ cannot be silently uncharged. Optional overflow retains explicit incomplete evid
 where possible and otherwise uses bounded scope-hash gap bookkeeping. Collisions
 are conservative and recoverable; new complete A/B must recover after pressure or
 faults clear. ContextHold retains its independent 50,000,000-byte budget.
+The terminal record count clips older request membership and execution details.
+An in-flight request reserves one slot, and binding its retained request ID
+consumes that same slot. Clipping preserves the active turn decision, input
+occurrence and latest continuation checkpoint. A clipped membership cannot establish complete stage attribution.
 
 #### Scenario: Concurrent responses have the same input prefix
 

@@ -200,6 +200,17 @@ For reasoning history, [native request projection](src/adapters/request/native.r
 uses the retained canonical encrypted state classified by ingress. Missing, null and
 empty-string carriers keep their original shape; nonempty or Replay-backed opaque state
 excludes the standard target, including legacy provider state without a sidecar.
+For correlated native Responses routes, the [source evidence owner](src/responses_reasoning.rs)
+remembers bounded ID and ciphertext fingerprints from accepted deliveries. Candidate
+preflight and final wire materialization omit opaque items proven to come from another
+configured destination and remove only the ID from foreign plaintext reasoning. The
+store retains no response bytes. On a correlated mixed-source Plan with explicit
+`store:false`, the OpenAI platform Responses candidate also receives recognized
+plaintext summaries without untracked `rs_` references. This supports older history
+after restart and leaves opaque or unsupported items to native replay. These
+projections create no retry or ContextHold watermark.
+The [two-way listener scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/responses_reasoning_switch.rs)
+checks foreign omission, same-source tool continuation and unrelated sessions.
 Authorized prefix cleanup uses original canonical positions and excludes tool declarations.
 The [reasoning regressions](src/adapters/responses_dialect_reasoning_tests.rs) and
 [Replay checks](src/adapters/responses_dialect_reasoning_replay_tests.rs) cover these
@@ -753,8 +764,12 @@ proof is incomplete. The protocol projector retains only the first closed reason
 frame ordinal and event shape; the driver attributes it to the actual attempt.
 This diagnostic carries no content or native identities and cannot change the
 provider result, optional capture or downstream output. Native snapshot equality
-uses complete canonical JSON values, independent of object key order; pure SSE
-comments retain the model's terminal state across transport fragmentation.
+uses canonical JSON values independent of object key order. When a successful
+Responses terminal repeats verified reasoning with a different nonempty cipher or
+summary, the earlier `response.output_item.done` supplies the replay evidence.
+`native_reasoning_summary_drift` records how many summaries differed. IDs, other
+fields and tool arguments still have to agree. Native wire retains both snapshots.
+Pure SSE comments retain the model's terminal state across transport fragmentation.
 The shared SSE framer also preserves a comment-only EOF tail without a final
 separator; unfinished data/control fields still fail strict EOF, and a comment
 does not supply missing model-terminal evidence.

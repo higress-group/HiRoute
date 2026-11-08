@@ -170,6 +170,21 @@ keeps unrelated session growth out of the routine scan. Incoming projection and
 fingerprinting stay outside that lock; no model execution owns it.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+The [native Responses tool handoff](../../crates/gateway/src/agent_turn_history/tool_continuation.rs)
+uses the accepted downstream write to release routing before optional capture.
+A full response match bypasses a sibling's pending handoff. A pending request and
+its bound record share one slot. Terminal request details can be clipped while the active checkpoint retains the
+decision and input occurrence. The [long-tool listener case](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_acp_history.rs)
+covers a callback crossing the record limit with capture still in progress.
+[Responses reasoning source evidence](../../crates/gateway/src/responses_reasoning.rs)
+becomes visible on successful downstream EOS. The [source-switch listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/responses_reasoning_switch.rs)
+cover replay while the terminal write is being confirmed and a failed write.
+When that boundary cannot be compared, a [delivered Responses function batch](../../crates/gateway/src/agent_turn_history/tool_continuation.rs)
+can prove one tool continuation from a matching request prefix. The
+[accepted attempt completion](../../crates/gateway/src/runtime/driver.rs)
+publishes the batch after the downstream write. The
+[Codex listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_acp_history.rs)
+covers hosted search, parallel tool results and a later tool step.
 The [retained Hermes Chat listener](../../tools/e2e-harness/tests/p0_gateway_runtime/hermes_long_chat.rs)
 covers independent reasoning/text fields, long-body spill and complete next-input assessment.
 [Opening evidence](../../crates/gateway/src/agent_turn_history/store/opening.rs)
