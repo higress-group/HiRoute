@@ -59,6 +59,32 @@ class TurnInputTests(unittest.TestCase):
         self.assertIs(registered(native), native)
         self.assertIn("llm_request", native.middleware)
 
+    def test_session_model_override_matches_only_the_managed_provider_route(self):
+        adapter = registered().middleware["llm_request"]
+        provider_id = configuration("chat_completions")["model"]["provider"]
+        request = {"messages": [{"role": "user", "content": "continue"}]}
+
+        for provider in (provider_id, f"custom:{provider_id}"):
+            with self.subTest(provider=provider):
+                result = adapter(request, **context(provider=provider))
+                self.assertIsNotNone(result)
+                headers = result["request"]["extra_headers"]
+                self.assertEqual(headers["X-Hermes-Session-Id"], "parent")
+                metadata = json.loads(headers["X-HiRoute-Routing-Context"])
+                self.assertEqual(metadata["session_id"], "parent")
+                self.assertEqual(metadata["turn_id"], "turn")
+
+        selected = context(provider=provider_id)
+        for mismatch in (
+            {"provider": "hiroute-main-other"},
+            {"provider": "custom:hiroute-main-other"},
+            {"model": "another-model"},
+            {"base_url": "http://127.0.0.1:5838/v1"},
+            {"api_mode": "codex_responses"},
+        ):
+            with self.subTest(mismatch=mismatch):
+                self.assertIsNone(adapter(request, **{**selected, **mismatch}))
+
     def test_all_transports_keep_auth_body_tools_and_stream_without_origin_reads(self):
         for mode in ("chat_completions", "codex_responses", "anthropic_messages"):
             with self.subTest(mode=mode):
