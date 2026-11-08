@@ -82,6 +82,7 @@ function decisionStore(services = [], sources = []) {
   c().handlers.save_decision_service_v3 = ({ input }) => {
     const { change, secret } = input;
     if ((store.services.find(item => item.id === change.id)?.revision ?? 0) !== change.expected_revision) throw { code: 'DECISION_REVISION_CONFLICT' };
+    if (!change.service && input.expected_configuration_digest !== store.view(change.id)?.configuration_digest) throw { code: 'DECISION_REMOVAL_TARGET_CHANGED' };
     const closure = change.service ? [sharedSourceOf(change.service)].filter(Boolean) : related(change.id);
     const submitted = change.expected_source_revisions.map(item => item.source_id);
     if (submitted.length !== closure.length || closure.some(id => !submitted.includes(id))) {

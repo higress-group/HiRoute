@@ -220,6 +220,7 @@
     "hiroute.delegation-wait-request/v1",
     "hiroute.delegation-wait/v1",
     "hiroute.desktop-agent-settings-intent/v2",
+    "hiroute.desktop-decision-removal-intent/v1",
     "hiroute.desktop-model-save-intent/v1",
     "hiroute.desktop-plan-intent/v1",
     "hiroute.desktop-price-intent/v1",

@@ -299,9 +299,12 @@ fn referenced_v3_deletion_is_refused_before_journaling_or_rebinding_shared_crede
         OperationState::Succeeded
     );
     let current = saved(&stores);
-    let owner = serde_json::json!({"classifier":{"kind":"decision_service_v3","service":service}})
-        .to_string();
-    stores.control().with_connection(|db| db.execute("INSERT INTO plan_drafts(workspace_id,draft_id,revision,draft_json) VALUES(?1,'draft/pin',1,?2)", rusqlite::params![WorkspaceId::default().as_str(), owner]).unwrap());
+    let mut draft = crate::control::plans::tests::draft();
+    draft.draft_id = "draft/pin".into();
+    draft.editor.smart.classifier = ComplexityClassifierModeV1::DecisionServiceV3 {
+        service: Box::new(service.clone()),
+    };
+    stores.control().save_plan_draft(&draft, None).unwrap();
     let count = || {
         stores.control().with_connection(|db| {
             db.query_row("SELECT count(*) FROM operations", [], |row| {

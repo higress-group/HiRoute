@@ -58,17 +58,25 @@ jobs:
         shell: pwsh
         run: rustup show active-toolchain
       - name: Set up optional compiler cache
-        id: compiler-cache
-        uses: mozilla-actions/sccache-action@v0.0.11
+        id: sccache
         continue-on-error: true
+        timeout-minutes: 3
+        uses: mozilla-actions/sccache-action@v0.0.11
         with:
           disable_annotations: 'true'
-      - name: Enable compiler cache
-        if: steps.compiler-cache.outcome == 'success'
-        shell: pwsh
+      - name: Enable available compiler cache
+        shell: bash
+        env:
+          SCCACHE_SETUP_OUTCOME: ${{ steps.sccache.outcome }}
+          SCCACHE_GHA_ENABLED: 'true'
         run: |
-          'RUSTC_WRAPPER=sccache' >> $env:GITHUB_ENV
-          'SCCACHE_GHA_ENABLED=true' >> $env:GITHUB_ENV
+          if [[ "$SCCACHE_SETUP_OUTCOME" == success ]] && sccache --start-server; then
+            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+            echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          else
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+            echo "::warning::Compiler cache is unavailable; compiling without it."
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

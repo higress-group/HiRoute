@@ -73,8 +73,28 @@ impl PublicationRecordV1 {
         digest: CanonicalDigest,
         bytes: Vec<u8>,
     ) -> Result<Self, PublicationError> {
-        let publication = authenticate(&workspace_id, revision, &digest, &bytes)?;
+        let publication = Self::decode_verified(&workspace_id, revision, &digest, &bytes)?;
         Ok(Self::from_verified(bytes, publication))
+    }
+
+    /// Authenticate a stored row without retaining its bytes or a reusable proof.
+    pub fn decode_verified(
+        workspace_id: &WorkspaceId,
+        revision: GatewayPublicationRevision,
+        digest: &CanonicalDigest,
+        bytes: &[u8],
+    ) -> Result<GatewayPublicationV1, PublicationError> {
+        if CanonicalDigest::of_bytes(bytes) != *digest {
+            return Err(PublicationError::DigestMismatch);
+        }
+        let publication = GatewayPublicationV1::decode_persisted(bytes)?;
+        if publication.workspace_id != *workspace_id {
+            return Err(PublicationError::InvalidWorkspace);
+        }
+        if publication.publication_revision != revision {
+            return Err(PublicationError::InvalidRevision);
+        }
+        Ok(publication)
     }
 
     fn from_verified(bytes: Vec<u8>, publication: GatewayPublicationV1) -> Self {
@@ -98,7 +118,7 @@ impl PublicationRecordV1 {
         if self.matches_proof() {
             return Ok(self.verified.publication.clone());
         }
-        authenticate(
+        Self::decode_verified(
             &self.workspace_id,
             self.publication_revision,
             &self.digest,
@@ -134,23 +154,4 @@ impl PublicationRecordV1 {
         publication.check_current_schema()?;
         Ok(publication)
     }
-}
-
-fn authenticate(
-    workspace_id: &WorkspaceId,
-    revision: GatewayPublicationRevision,
-    digest: &CanonicalDigest,
-    bytes: &[u8],
-) -> Result<GatewayPublicationV1, PublicationError> {
-    if CanonicalDigest::of_bytes(bytes) != *digest {
-        return Err(PublicationError::DigestMismatch);
-    }
-    let publication = GatewayPublicationV1::decode_persisted(bytes)?;
-    if publication.workspace_id != *workspace_id {
-        return Err(PublicationError::InvalidWorkspace);
-    }
-    if publication.publication_revision != revision {
-        return Err(PublicationError::InvalidRevision);
-    }
-    Ok(publication)
 }

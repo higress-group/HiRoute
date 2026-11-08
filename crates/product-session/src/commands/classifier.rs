@@ -36,6 +36,7 @@ pub struct DecisionServiceSaveInputV2 {
 pub struct DecisionServiceSaveInputV3 {
     pub change: hiroute_domain::DecisionServiceChangeV3,
     pub secret: Option<String>,
+    pub expected_configuration_digest: Option<hiroute_application_api::CanonicalDigest>,
 }
 
 pub async fn decision_services_v3(
@@ -50,6 +51,22 @@ pub async fn decision_services_v3(
         .as_ref()
         .ok_or("RESIDENT_UNAVAILABLE")?
         .decision_services_v3()
+        .await
+}
+
+pub async fn preview_decision_removal(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: hiroute_application_api::DecisionRemovalPreviewRequestV1,
+) -> Result<hiroute_application_api::DecisionRemovalPreviewV1, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .preview_decision_removal(input)
         .await
 }
 
@@ -81,7 +98,11 @@ pub async fn save_decision_service_v3(
         .await
         .as_mut()
         .ok_or("RESIDENT_UNAVAILABLE")?
-        .save_decision_service_v3(input.change, input.secret.map(zeroize::Zeroizing::new))
+        .save_decision_service_v3(
+            input.change,
+            input.secret.map(zeroize::Zeroizing::new),
+            input.expected_configuration_digest,
+        )
         .await
 }
 

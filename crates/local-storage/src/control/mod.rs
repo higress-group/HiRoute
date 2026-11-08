@@ -67,6 +67,7 @@ pub use agent_locator_lookup::{
 };
 pub use agent_read::SucceededAgentOperationV1;
 pub use native_targets::{AgentNativeTargetWitness, CapturedAgentNativeTarget};
+mod active_plan_references;
 #[path = "../agents/collaboration_store.rs"]
 mod collaboration_store;
 mod compute;
@@ -1118,6 +1119,7 @@ impl ControlRepositoryPort for ControlStore {
             }
         }
         compute::management::activate(&transaction, &workspace, &staged, operation_id)?;
+        decision_services::activate(&transaction, &workspace, &staged)?;
         decision_services_v2::activate(&transaction, &workspace, &staged, operation_id)?;
         prices::activate(&transaction, &workspace, &staged)?;
         transaction

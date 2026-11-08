@@ -46,6 +46,7 @@ fn main() {
             "decision_services_v2",
             "decision_services_v3",
             "preview_decision_context",
+            "preview_decision_removal",
             "save_decision_service_v3",
             "save_decision_service_v2",
             "test_decision_service_v2",

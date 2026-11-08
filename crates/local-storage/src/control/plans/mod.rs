@@ -14,7 +14,7 @@ pub(super) use draft_operation::finish_draft_operation;
 mod publication;
 pub(super) use publication::{finish_plan_operation, legacy_plan_finalization_required};
 #[cfg(test)]
-mod tests;
+pub(in crate::control) mod tests;
 
 impl ControlStore {
     /// Published immutable content, including versions retained by an admitted Worker.

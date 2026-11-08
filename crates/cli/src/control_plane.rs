@@ -85,6 +85,9 @@ pub(crate) fn command_payload(
             empty::<hiroute_application_api::ClientEmptyRequestV1>(options),
         ),
         "decision.services.apply" | "decision.connections.apply" => Some(preview_or_apply(options)),
+        "decision.removal.preview" => Some(request::<
+            hiroute_application_api::DecisionRemovalPreviewRequestV1,
+        >(options)),
         "decision.context.preview" => Some(request::<
             hiroute_application_api::DecisionContextPreviewRequestV1,
         >(options)),

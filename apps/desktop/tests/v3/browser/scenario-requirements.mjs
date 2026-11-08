@@ -144,6 +144,7 @@ export const productShellRequired = [
   'desktop.decisions.source-closure',
   'desktop.decisions.test-freshness',
   'desktop.decisions.suggested-origin-key',
+  'desktop.decisions.removal-preview-states',
   'desktop.decisions.pending-use-route',
   'desktop.decisions.pending-use-trial',
   'desktop.decisions.source-read-states',

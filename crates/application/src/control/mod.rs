@@ -662,6 +662,13 @@ pub trait ComputeManagementControlPort: Send + Sync {
 }
 
 pub trait RoutingFactsPort: Send + Sync {
+    fn preview_decision_removal(
+        &self,
+        _workspace: &WorkspaceId,
+        _request: hiroute_application_api::DecisionRemovalPreviewRequestV1,
+    ) -> Result<hiroute_application_api::DecisionRemovalPreviewV1, ControlReadError> {
+        Err(ControlReadError::Unavailable)
+    }
     fn preview_decision_context(
         &self,
         _request: hiroute_application_api::DecisionContextPreviewRequestV1,

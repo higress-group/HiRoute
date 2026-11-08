@@ -810,7 +810,6 @@ impl ProductionControlRuntime {
         if recover {
             adapter.reconcile_startup_and_open()?;
             adapter.reconcile_cpa_runtime_from_management()?;
-            adapter.reconcile_delegation_plan_versions()?;
             adapter.recover_delegation_authorizations()?;
             adapter.enable_subscription_maintenance();
             adapter
@@ -989,7 +988,6 @@ impl ProductionControlRuntime {
             .map_err(|error| error.to_string())?;
         self.adapter.reconcile_startup_and_open()?;
         self.adapter.reconcile_cpa_runtime_from_management()?;
-        self.adapter.reconcile_delegation_plan_versions()?;
         self.adapter.recover_delegation_authorizations()?;
         self.adapter.enable_subscription_maintenance();
         self.adapter

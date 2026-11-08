@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-decision-removal"
+description = "Enables the preview_decision_removal command without any pre-configured scope."
+commands.allow = ["preview_decision_removal"]
+
+[[permission]]
+identifier = "deny-preview-decision-removal"
+description = "Denies the preview_decision_removal command without any pre-configured scope."
+commands.deny = ["preview_decision_removal"]

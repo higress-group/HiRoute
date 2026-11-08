@@ -110,6 +110,8 @@ impl LocalControlAdapter {
         let _lifecycle = self
             .lock_subscription_lifecycle()
             .map_err(|error| error.to_string())?;
+        // Replayed deletion guards need the complete set of retained Worker versions.
+        self.reconcile_delegation_plan_versions()?;
         self.coordinator()
             .reconcile_startup_and_open()
             .and_then(|_| {
@@ -421,6 +423,7 @@ impl ControlRepositoryPort for LocalControlAdapter {
     }
 
     fn activate_control(&self, effect: &OwnedEffectV1) -> PortResult<OwnedEffectV1> {
+        crate::publication_failpoint::crash("before_control_activation");
         self.with_native_network_effect(effect, |control| control.activate_control(effect))
     }
 

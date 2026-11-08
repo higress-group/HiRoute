@@ -6,7 +6,7 @@ import { ClassifierProtocolDialog } from '../ClassifierProtocolDialog';
 import { randomId } from '../../random-id.ts';
 import type { DecisionService } from './types';
 import type {
-  DecisionConnectionSources, DecisionServiceApplyResult, DecisionServiceChange, DecisionServices, DecisionServiceNetworkTestResult,
+  DecisionConnectionSources, DecisionRemovalOutcome, DecisionServiceApplyResult, DecisionServiceChange, DecisionServices, DecisionServiceNetworkTestResult,
   DecisionServiceTestArgs, DecisionServiceV3, DecisionServiceView,
 } from './contracts';
 import type { Draft, Plan } from '../../plan-editor';
@@ -256,17 +256,36 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     setSavedBeforeTest(null); setNotice('');
     await test(selected);
   }
-  async function remove(target: DecisionServiceView) {
-    if (busy || !mutable) return;
+  async function remove(target: DecisionServiceView): Promise<DecisionRemovalOutcome> {
+    if (busy || !mutable) return 'unconfirmed';
     setBusy(true); setError(null);
     try {
       const change: DecisionServiceChange = { id: target.service.id, expected_revision: target.service.revision, service: null,
-        expected_source_revisions: expectedSourceRevisions(target.related_sources.map(source => source.source_id), sources, target) };
-      const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v3', { input: { change, secret: null } });
-      if (value.state !== 'succeeded') throw { code: 'DECISION_SERVICE_' + value.state.toUpperCase() };
-      const remaining = await refresh(); if (remaining) setSelectedId(remaining[0]?.service.id ?? null); onChanged?.();
-      setNotice(t('已移除。', 'Removed.'));
+        expected_source_revisions: target.related_sources.flatMap(source => source.revision == null ? [] : [{ source_id: source.source_id, revision: source.revision }]) };
+      const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v3', {
+        input: { change, secret: null, expected_configuration_digest: target.configuration_digest },
+      });
+      if (value.state === 'rolled_back') {
+        await refresh().catch(() => null);
+        return 'rolled_back';
+      }
+      if (value.state !== 'succeeded') {
+        onChanged?.();
+        return 'unconfirmed';
+      }
+      const remaining = await refresh().catch(() => null);
+      if (remaining) {
+        setSelectedId(remaining[0]?.service.id ?? null);
+        setNotice(t('已移除。', 'Removed.'));
+      }
+      else setError({ message: t('已移除。请刷新决策模型列表。', 'Removed. Refresh the decision model list.') });
+      onChanged?.();
       setRemoving(null);
+      return 'removed';
+    } catch (cause) {
+      if (['DECISION_IN_USE', 'REVISION_CONFLICT', 'CHANGE_PREVIEW_STALE', 'DECISION_REVISION_CONFLICT', 'DECISION_SOURCE_REVISION_CONFLICT', 'DECISION_REMOVAL_TARGET_CHANGED'].includes(planErrorCode(cause))) await refresh().catch(() => null);
+      else onChanged?.();
+      throw cause;
     } finally { setBusy(false); }
   }
   const sourceLabel = (view: DecisionServiceView) => view.source ? sourceName(view.source, language) : '';
@@ -292,11 +311,11 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
         {editing ? editing.kind === 'native'
           ? <DecisionModelForm key={editing.key} initial={editing.draft} saved={!editing.isNew} view={editingView} revision={editing.isNew ? 0 : editing.expected} sources={sources} language={language} mutable={mutable && !busy} onNetworkDirty={networkChanged} onRetrySources={async () => { await Promise.all([loadSources(), refresh()]); }} onManageSource={onManageSource ? manageSource : undefined} onSave={save} onCancel={cancelEdit} />
           : <DecisionConnectionForm key={editing.key} initial={editing.record} saved={!editing.isNew} language={language} mutable={mutable && !busy} onSave={(service, secret, runTest) => save(service, secret, runTest, [])} onCancel={cancelEdit} onProtocol={() => setProtocol(true)} />
-          : selected ? <DecisionConnectionDetail key={testKey(selected.service)} view={selected} network={networks[testKey(selected.service)] ?? null} networkDirty={networkDirty} onNetworkDirty={networkChanged} onNetworkSaved={async () => { await Promise.all([refresh(), loadSources()]); }} language={language} mutable={mutable} busy={busy || selected.service.id === unverifiedSave?.id} state={rowState(selected)} result={tests[testKey(selected.service)]} savedBeforeTest={savedBeforeTest === testKey(selected.service)} plans={plans} drafts={drafts} onEdit={() => edit(selected)} onTest={() => void testSelected()} onRefresh={() => void Promise.all([refresh(), loadSources()]).catch(() => {})} onDelete={() => setRemoving(selected)} onProtocol={() => setProtocol(true)} onOpenRoute={onOpenRoute} onUse={onUse ? () => { useGeneration.current++; onUse(selected.service); } : undefined} onManageSource={onManageSource ? manageSource : undefined} />
+          : selected ? <DecisionConnectionDetail key={testKey(selected.service)} view={selected} network={networks[testKey(selected.service)] ?? null} networkDirty={networkDirty} onNetworkDirty={networkChanged} onNetworkSaved={async () => { await Promise.all([refresh(), loadSources()]); }} language={language} mutable={mutable} busy={busy || selected.service.id === unverifiedSave?.id} state={rowState(selected)} result={tests[testKey(selected.service)]} savedBeforeTest={savedBeforeTest === testKey(selected.service)} plans={plans} drafts={drafts} onEdit={() => edit(selected)} onTest={() => void testSelected()} onRefresh={() => void Promise.all([refresh(), loadSources()]).catch(() => {})} onDelete={() => setRemoving(structuredClone(selected))} onProtocol={() => setProtocol(true)} onOpenRoute={onOpenRoute} onUse={onUse ? () => { useGeneration.current++; onUse(selected.service); } : undefined} onManageSource={onManageSource ? manageSource : undefined} />
           : <div className="empty-state"><p>{t('选择连接查看详情，或添加决策模型。', 'Select a connection or add a decision model.')}</p></div>}
       </section>
     </div>
     <ClassifierProtocolDialog open={protocol} language={language} onClose={() => setProtocol(false)} />
-    {removing && <DecisionRemovalDialog target={removing} current={views.find(view => view.service.id === removing.service.id)} language={language} mutable={mutable && !networkDirty} busy={busy} plans={plans} drafts={drafts} onConfirm={remove} onClose={() => { if (!busy) setRemoving(null); }} onOpenRoute={onOpenRoute} />}
+    {removing && <DecisionRemovalDialog target={removing} current={views.find(view => view.service.id === removing.service.id)} language={language} mutable={mutable && !networkDirty && factsCurrent} busy={busy} plans={plans} drafts={drafts} onConfirm={remove} onClose={() => { if (!busy) setRemoving(null); }} onTargetChanged={() => void refresh().catch(() => null)} onOpenRoute={onOpenRoute} />}
   </ProductPage>;
 }

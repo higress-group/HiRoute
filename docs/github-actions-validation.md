@@ -40,9 +40,12 @@ until the required Windows 11 x64 and Server standard-user scenarios pass, and
 the release publisher still enforces those artifact-bound results.
 
 Native Windows jobs enable sccache's GitHub Actions backend so compiler objects
-can be reused across runs. The PR compile job runs Cargo directly when compiler
-cache setup fails. Cargo targets remain local to each checkout. Artifact source,
-executable-byte and runtime-import verification still run for every candidate.
+can be reused across runs. Cargo targets remain local to each checkout; artifact
+source, executable-byte and runtime-import verification still run for every candidate.
+The PR compile job treats caching as optional: bounded setup failure or an
+unsuccessful server probe clears `RUSTC_WRAPPER` and runs every compilation and
+component test directly. Only cache setup permits `continue-on-error`; product
+compilation, shell builds and component tests still fail the job on any error.
 
 Normal Rust checks select the organization `Default` runner group with the
 `cncf-ubuntu-16-64-x86` label. The organization must permit this public repository

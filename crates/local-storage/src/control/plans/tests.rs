@@ -2,7 +2,9 @@ use super::*;
 use crate::test_tempdir as tempdir;
 use hiroute_domain::*;
 
-fn draft() -> PlanDraftV1 {
+pub(in crate::control) mod decision_removal;
+
+pub(in crate::control) fn draft() -> PlanDraftV1 {
     serde_json::from_value(serde_json::json!({
         "schema": PLAN_DRAFT_SCHEMA_V1, "workspace_id": WorkspaceId::DEFAULT,
         "draft_id":"draft/a", "revision":1,
@@ -351,7 +353,10 @@ fn compute_references_decode_production_publication_bytes_and_protect_recovery_l
             .clone(),
     ];
     let bytes = publication.canonical_bytes().unwrap();
-    store.connection.borrow().execute("INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,1,?2,?3,'active',1,1)", params![workspace.as_str(),CanonicalDigest::of_bytes(&bytes).as_str(),bytes]).unwrap();
+    store.connection.borrow().execute(
+        "INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,?2,?3,?4,'active',1,1)",
+        params![workspace.as_str(), publication.publication_revision.get(), CanonicalDigest::of_bytes(&bytes).as_str(), bytes],
+    ).unwrap();
     for state in ["active", "prepared", "lkg"] {
         store
             .connection

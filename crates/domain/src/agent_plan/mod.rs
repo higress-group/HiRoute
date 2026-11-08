@@ -394,7 +394,9 @@ mod routing_identity_tests {
 #[cfg(test)]
 mod alias_tests;
 
+mod references;
 mod version;
+pub use references::*;
 mod version_consistency;
 pub use version::*;
 

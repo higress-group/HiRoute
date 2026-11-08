@@ -245,6 +245,10 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
             request!(ClientEmptyRequestV1),
             response!(DecisionServicesV3),
         ),
+        "decision.removal.preview" => (
+            request!(DecisionRemovalPreviewRequestV1),
+            response!(DecisionRemovalPreviewV1),
+        ),
         "decision.context.preview" => (
             request!(DecisionContextPreviewRequestV1),
             response!(hiroute_domain::ResolvedDecisionContextV1),

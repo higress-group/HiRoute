@@ -106,17 +106,253 @@ fn fixture(state: &'static str, reply: Reply) -> (Session, Arc<Lookup>) {
     (session, lookup)
 }
 fn accepted(state: &str) -> MachineEnvelopeV2<Value> {
-    let mut response = MachineEnvelopeV2::accepted(
-        serde_json::json!({"operation_id":"operation/failed-artifact", "accepted_digest":digest(), "state":state}),
+    accepted_for(
+        "operation/failed-artifact",
+        state,
+        &digest(),
         Some("request/save-once".into()),
+    )
+}
+
+fn accepted_for(
+    operation_id: &str,
+    state: &str,
+    accepted_digest: &CanonicalDigest,
+    request_id: Option<String>,
+) -> MachineEnvelopeV2<Value> {
+    let mut response = MachineEnvelopeV2::accepted(
+        serde_json::json!({"operation_id":operation_id, "accepted_digest":accepted_digest, "state":state}),
+        request_id,
     );
     response.operation = Some(OperationReferenceV1 {
-        operation_id: "operation/failed-artifact".into(),
+        operation_id: operation_id.into(),
         state: state.into(),
         sequence: 9,
         cancellable: state == "activating",
     });
     response
+}
+
+struct DecisionRemovalDispatch {
+    current_digest: CanonicalDigest,
+    deferred_readbacks: usize,
+    submissions: Mutex<Vec<ApplyRequestV1>>,
+    previews: Mutex<Vec<String>>,
+    readbacks: AtomicUsize,
+}
+
+impl ControlDispatch for DecisionRemovalDispatch {
+    fn dispatch(&self, request: LocalControlWireRequestV2) -> MachineEnvelopeV2<Value> {
+        use std::sync::atomic::Ordering::SeqCst;
+        let request_id = Some(request.request_id);
+        match request.operation_id.as_str() {
+            "ApplyDecisionServiceV3" if request.payload.get("accept_digest").is_none() => {
+                let preview: PreviewRequestV1 = serde_json::from_value(request.payload).unwrap();
+                self.previews
+                    .lock()
+                    .unwrap()
+                    .push(preview.spec.resource_id.clone().unwrap());
+                let expected_revisions = RevisionSetV1 {
+                    target: 21,
+                    dependencies: Default::default(),
+                };
+                MachineEnvelopeV2::succeeded(
+                    serde_json::json!({
+                        "change_digest": preview.spec.canonical_digest(&expected_revisions).unwrap(),
+                        "normalized_spec": preview.spec,
+                        "expected_revisions": expected_revisions,
+                    }),
+                    request_id,
+                )
+            }
+            RESOLVE_DECISION_TEST_REVISION_V1 => {
+                let previews = self.previews.lock().unwrap();
+                assert_eq!(
+                    previews.len(),
+                    self.submissions.lock().unwrap().len() + 1,
+                    "the CAS must be pinned before checking the decision identity"
+                );
+                let target: DecisionTestRevisionQueryV1 =
+                    serde_json::from_value(request.payload).unwrap();
+                assert_eq!(previews.last(), Some(&target.id));
+                assert_eq!(target.revision, 1);
+                MachineEnvelopeV2::succeeded(
+                    serde_json::json!({
+                        "id":target.id, "revision":target.revision,
+                        "expected_configuration_digest":self.current_digest,
+                    }),
+                    request_id,
+                )
+            }
+            "ApplyDecisionServiceV3" => {
+                let apply: ApplyRequestV1 = serde_json::from_value(request.payload).unwrap();
+                assert_eq!(apply.expected_revisions.target, 21);
+                assert_eq!(
+                    apply.accept_digest,
+                    apply
+                        .spec
+                        .canonical_digest(&apply.expected_revisions)
+                        .unwrap()
+                );
+                assert_eq!(apply.spec.desired_state["change"]["service"], Value::Null);
+                let (operation_id, state) = match apply.spec.resource_id.as_deref() {
+                    Some("decision/extension") => ("operation/failed-artifact", "rolled_back"),
+                    Some("decision/other") => ("operation/removed-other", "succeeded"),
+                    target => panic!("unexpected removal target {target:?}"),
+                };
+                let response = accepted_for(operation_id, state, &apply.accept_digest, request_id);
+                self.submissions.lock().unwrap().push(apply);
+                response
+            }
+            "FindOperationByIdempotency" => {
+                let lookup: OperationIdempotencyLookupV1 =
+                    serde_json::from_value(request.payload).unwrap();
+                assert_eq!(lookup.principal_kind, PrincipalKind::InteractiveUser);
+                assert_eq!(lookup.operation_kind, "ApplyDecisionServiceV3");
+                assert!(lookup.include_failure_detail);
+                let submissions = self.submissions.lock().unwrap();
+                let [original] = submissions.as_slice() else {
+                    panic!("readback must precede any second submission");
+                };
+                assert_eq!(lookup.idempotency_key, original.idempotency_key);
+                assert_eq!(lookup.accepted_digest, original.accept_digest);
+                if self.readbacks.fetch_add(1, SeqCst) < self.deferred_readbacks {
+                    return MachineEnvelopeV2::failed(
+                        ErrorV1::new(ErrorCode::DaemonUnavailable),
+                        request_id,
+                    );
+                }
+                MachineEnvelopeV2::succeeded(
+                    serde_json::json!({
+                        "digest_matches": true,
+                        "operation": {
+                            "operation_id":"operation/failed-artifact", "state":"rolled_back",
+                            "accepted_digest":original.accept_digest, "sequence":9, "cancellable":false,
+                        }
+                    }),
+                    request_id,
+                )
+            }
+            _ => panic!("unexpected operation {}", request.operation_id),
+        }
+    }
+}
+
+fn removal_change() -> hiroute_domain::DecisionServiceChangeV3 {
+    hiroute_domain::DecisionServiceChangeV3 {
+        id: "decision/extension".into(),
+        expected_revision: 1,
+        service: None,
+        expected_source_revisions: Vec::new(),
+    }
+}
+
+#[tokio::test]
+async fn decision_removal_refuses_a_replacement_at_the_same_revision() {
+    let dispatch = Arc::new(DecisionRemovalDispatch {
+        current_digest: CanonicalDigest::of_bytes(b"replacement service"),
+        deferred_readbacks: 0,
+        submissions: Mutex::default(),
+        previews: Mutex::default(),
+        readbacks: AtomicUsize::new(0),
+    });
+    let mut session = Session::new(
+        Client::in_process("replaced-decision", dispatch.clone()),
+        Arc::new(ReadOnlyAuthority),
+    );
+    let failure = session
+        .save_decision_service_v3(removal_change(), None, Some(digest()))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(failure, DesktopFailure::Native { code } if code == "DECISION_REMOVAL_TARGET_CHANGED")
+    );
+    assert!(dispatch.submissions.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn decision_removal_reads_back_the_original_rollback_without_resubmitting() {
+    let dispatch = Arc::new(DecisionRemovalDispatch {
+        current_digest: digest(),
+        deferred_readbacks: 1,
+        submissions: Mutex::default(),
+        previews: Mutex::default(),
+        readbacks: AtomicUsize::new(0),
+    });
+    let mut session = Session::new(
+        Client::in_process("interrupted-decision", dispatch.clone()),
+        Arc::new(ReadOnlyAuthority),
+    );
+    let change = removal_change();
+    assert!(
+        session
+            .save_decision_service_v3(change.clone(), None, Some(digest()))
+            .await
+            .is_err()
+    );
+    let rolled_back = session
+        .save_decision_service_v3(change, None, Some(digest()))
+        .await
+        .unwrap();
+    assert_eq!(rolled_back.state, "rolled_back");
+    assert_eq!(rolled_back.operation_id, "operation/failed-artifact");
+    assert_eq!(dispatch.submissions.lock().unwrap().len(), 1);
+    assert_eq!(dispatch.previews.lock().unwrap().len(), 1);
+    assert_eq!(
+        dispatch.readbacks.load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+}
+
+#[tokio::test]
+async fn decision_removal_preserves_unconfirmed_operation_when_switching_targets() {
+    let dispatch = Arc::new(DecisionRemovalDispatch {
+        current_digest: digest(),
+        deferred_readbacks: 2,
+        submissions: Mutex::default(),
+        previews: Mutex::default(),
+        readbacks: AtomicUsize::new(0),
+    });
+    let mut session = Session::new(
+        Client::in_process("switch-decision-removal-target", dispatch.clone()),
+        Arc::new(ReadOnlyAuthority),
+    );
+    session
+        .save_decision_service_v3(removal_change(), None, Some(digest()))
+        .await
+        .unwrap_err();
+    let original = session.hint.as_ref().unwrap().clone();
+
+    let mut other = removal_change();
+    other.id = "decision/other".into();
+    let failure = session
+        .save_decision_service_v3(other.clone(), None, Some(digest()))
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        failure,
+        DesktopFailure::Backend { envelope }
+            if envelope.error.as_ref().is_some_and(|error| error.code == ErrorCode::DaemonUnavailable)
+    ));
+    let pending = session.hint.as_ref().unwrap();
+    assert_eq!(pending.idempotency_key, original.idempotency_key);
+    assert_eq!(pending.accepted_digest, original.accepted_digest);
+    assert_eq!(dispatch.submissions.lock().unwrap().len(), 1);
+    assert_eq!(dispatch.previews.lock().unwrap().len(), 1);
+
+    let recovered = session.observe().await.unwrap().unwrap();
+    assert_eq!(recovered.operation_id, "operation/failed-artifact");
+    assert_eq!(recovered.state, "rolled_back");
+    assert_eq!(recovered.accepted_digest, original.accepted_digest);
+
+    let removed = session
+        .save_decision_service_v3(other, None, Some(digest()))
+        .await
+        .unwrap();
+    assert_eq!(removed.operation_id, "operation/removed-other");
+    assert_eq!(removed.state, "succeeded");
+    assert_eq!(dispatch.submissions.lock().unwrap().len(), 2);
+    assert!(session.hint.is_none());
 }
 
 #[tokio::test]
