@@ -11,8 +11,7 @@ operation described in the [standalone CLI guide](standalone-cli.md).
 Download the `hiroute-desktop` package, its detached signature and checksums for
 your machine from the [HiRoute release](https://github.com/higress-group/HiRoute/releases).
 Verify the signature against the release's independently published signing-key
-fingerprint and check the package digest. Install the verified file with
-`sudo pacman -U ./hiroute-desktop-<version>-1-<arch>.pkg.tar.zst`.
+fingerprint and check the package digest. Pass the downloaded package file to `sudo pacman -U`.
 
 Open **HiRoute** from the app launcher. On first run, **Install background service**
 sets up the current user's CLI, service and local console from the package. The

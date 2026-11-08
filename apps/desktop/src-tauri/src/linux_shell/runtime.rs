@@ -220,32 +220,59 @@ impl Installation {
         Ok(revision.to_owned())
     }
 
+    async fn verify_peer(&self, process: &Process) -> Result<(), &'static str> {
+        let endpoint = LocalEndpoint::from_runtime_root(&self.layout.runtime_root);
+        let stream = tokio::time::timeout(
+            QUERY_TIMEOUT,
+            tokio::net::UnixStream::connect(endpoint.path()),
+        )
+        .await
+        .map_err(|_| "SERVICE_NOT_READY")?
+        .map_err(|_| "SERVICE_NOT_READY")?;
+        let pid = stream
+            .peer_cred()
+            .ok()
+            .and_then(|credential| credential.pid());
+        if pid != i32::try_from(process.pid).ok()
+            || Process::inspect(process.pid).as_ref() != Some(process)
+        {
+            return Err("SERVICE_GENERATION_CHANGED");
+        }
+        Ok(())
+    }
+
+    async fn legacy_reply(&self, process: &Process, args: &[&str]) -> Result<Value, &'static str> {
+        self.verify_peer(process).await?;
+        let mut command = command(&self.cli);
+        command.args(args).args(["--output", "json"]);
+        let bytes = bounded_output(command, QUERY_TIMEOUT).await?;
+        self.verify_peer(process).await?;
+        serde_json::from_slice(&bytes).map_err(|_| "SERVICE_RESPONSE_INVALID")
+    }
+
     async fn control_ready(
         &self,
         process: &Process,
         matching_build: bool,
     ) -> Result<bool, &'static str> {
-        let client = self.client(process)?;
-        let request = ClientEmptyRequestV1::default();
         if matching_build {
-            return Ok(client
+            return Ok(self
+                .client(process)?
                 .query::<_, bool>(
                     STANDALONE_SERVICE_READINESS_OPERATION_V1,
                     "linux-desktop-ready",
-                    &request,
+                    &ClientEmptyRequestV1::default(),
                 )
                 .await
                 .is_ok_and(|reply| reply.data == Some(true)));
         }
-        // Released Linux services used the ordinary status projection. Only
-        // the browser fallback can use it, through the same verified peer.
-        Ok(client
-            .query::<_, Value>("GetSystemStatus", "linux-desktop-browser-ready", &request)
+        // The shared client negotiates its own compiled release. The verified
+        // installed CLI is the released client's authority for an older daemon.
+        Ok(self
+            .legacy_reply(process, &["system", "status"])
             .await
             .is_ok_and(|reply| {
-                reply
-                    .data
-                    .is_some_and(|data| data["daemon"] == "role_all" && data["gateway"] == "ready")
+                reply["data"]["daemon"] == "role_all" && reply["data"]["gateway"] == "ready"
             }))
     }
 
@@ -304,10 +331,10 @@ impl LiveConsole {
         let matching_build = installation.version == env!("CARGO_PKG_VERSION")
             && option_env!("HIROUTE_BUILD_SOURCE_SHA") == Some(revision.as_str());
         let process = installation.ready(matching_build).await?;
-        let (origin, url) = launch(&installation, &process).await?;
         if !matching_build {
             return Err("CONSOLE_NATIVE_RELEASE_UNAVAILABLE");
         }
+        let (origin, url) = launch(&installation, &process).await?;
         qualify(&installation, &process, &url, None).await?;
         Ok(Self {
             origin,
@@ -436,7 +463,14 @@ pub(super) async fn legacy_browser_url() -> Result<Url, &'static str> {
     if !installation.control_ready(&process, false).await? {
         return Err("SERVICE_NOT_READY");
     }
-    launch(&installation, &process).await.map(|(_, url)| url)
+    let reply = installation
+        .legacy_reply(&process, &["console", "open", "--loopback-only"])
+        .await
+        .map_err(|_| "CONSOLE_LAUNCH_UNAVAILABLE")?;
+    let url = reply["data"]["url"]
+        .as_str()
+        .ok_or("CONSOLE_LAUNCH_UNAVAILABLE")?;
+    ConsoleOrigin::launch(url).map(|(_, url)| url)
 }
 
 pub(super) async fn enable_login_start() -> Result<(), &'static str> {
