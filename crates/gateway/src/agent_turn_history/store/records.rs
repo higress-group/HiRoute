@@ -34,15 +34,16 @@ pub(super) fn trim_oldest_closed_turn(
                 segment.partial = true;
             }
             let removed = entry.closed.pop_front().expect("checked closed turn");
+            entry.closed_bytes -= removed.bytes;
             if entry.active.finalized
                 && removed.completed.agent_turn_id == entry.active.agent_turn_id
             {
                 // The finalized active entry also holds membership for a
                 // possible reopen. Retiring the snapshot retires that copy,
                 // so it cannot displace newer complete assessment evidence.
-                entry.active.request_ids = Vec::new();
-                entry.active.executions = Vec::new();
-                entry.active.request_ids_clipped = true;
+                entry.active.clear_records();
+                entry.active.output = Default::default();
+                entry.mark_scope_partial();
             }
             let old = entry.accounted_bytes;
             entry.accounted_bytes = entry_bytes(key, entry);
@@ -112,7 +113,7 @@ pub(super) fn close_active(
             .back()
             .is_some_and(|turn| turn.completed.agent_turn_id == entry.active.agent_turn_id)
     {
-        entry.closed.pop_back();
+        entry.pop_closed_back();
     }
     let decision = entry
         .active
@@ -120,7 +121,9 @@ pub(super) fn close_active(
         .as_ref()
         .ok_or(AgentTurnHistoryError::TurnContextUnavailable)?;
     let selected_branch_id = decision.branch_id.clone();
-    let capture_partial = entry.active.capture_partial || entry.active.request_ids_clipped;
+    let capture_partial = entry.active.capture_partial
+        || entry.active.scope_partial
+        || entry.active.request_ids_clipped;
     let attribution = if entry.active.request_ids_clipped {
         ExecutionAttribution::Unknown
     } else {
@@ -179,6 +182,8 @@ pub(super) fn close_active(
         status,
         steps: std::mem::take(&mut entry.active.steps),
     });
+    entry.active.user_bytes = 0;
+    entry.active.steps_bytes = 0;
     let completed = CompletedAgentTurn {
         evaluation_scope,
         history_membership: Some(hiroute_domain::HistoryMembershipV1 {
@@ -224,11 +229,14 @@ pub(super) fn close_active(
         first_request_id: entry.active.first_request_id.clone(),
         last_request_id: entry.active.last_request_id.clone(),
     };
+    let bytes = wire.retained_bytes() + completed_bytes(&completed) + decision_bytes(decision);
+    entry.closed_bytes += bytes;
     entry.closed.push_back(ClosedTurn {
         decision: decision.clone(),
         wire,
         completed: completed.clone(),
         closure_proven: closure.proven(status) && entry.active.provider_outcomes_known,
+        bytes,
     });
     entry.active.finalized = true;
     // Keep the bounded identities of accepted tools: an interrupted stage can
@@ -337,89 +345,6 @@ impl StoreInner {
             .filter_map(|key| self.entries.get_key_value(key))
     }
 
-    pub(super) fn retained_records(&self, scope: &AgentTurnHistoryKey) -> usize {
-        self.scope_entries(scope)
-            .map(|(_, e)| {
-                let closed = e
-                    .closed
-                    .iter()
-                    .map(|t| {
-                        t.completed
-                            .history_membership
-                            .as_ref()
-                            .map_or(1, |m| m.request_ids.len().max(1))
-                    })
-                    .sum::<usize>();
-                let active_is_closed = e.active.finalized
-                    && e.closed
-                        .iter()
-                        .any(|t| t.completed.agent_turn_id == e.active.agent_turn_id);
-                let active = if active_is_closed {
-                    0
-                } else {
-                    e.active.request_ids.len()
-                };
-                // A pending request reserves one slot until binding retains its ID.
-                let unbound = e.pending_request.is_some_and(|pending| !pending.has_record);
-                closed + active + usize::from(unbound)
-            })
-            .sum()
-    }
-
-    pub(super) fn reserve_scope_record(&mut self, scope: &AgentTurnHistoryKey) -> bool {
-        self.trim_scope_records(scope, 127)
-    }
-
-    pub(super) fn limit_terminal_records(&mut self, scope: &AgentTurnHistoryKey) {
-        self.trim_scope_records(scope, 128);
-    }
-
-    fn trim_scope_records(&mut self, scope: &AgentTurnHistoryKey, limit: usize) -> bool {
-        while self.retained_records(scope) > limit {
-            let victim = self
-                .scope_entries(scope)
-                .filter(|(_, e)| !e.closed.is_empty())
-                .min_by_key(|(_, e)| {
-                    (
-                        e.snapshot_pins != 0,
-                        e.closed.front().unwrap().completed.started_at_ms,
-                        e.admission_sequence,
-                    )
-                })
-                .map(|(key, _)| key.clone());
-            // Frozen snapshots own their Arc payload and retain a separate charge.
-            // Trimming a live index never frees their bytes or changes membership.
-            if let Some(key) = victim
-                && trim_oldest_closed_turn(self, &key).unwrap_or(false)
-            {
-                continue;
-            }
-            // Terminal details can be clipped while the active checkpoint,
-            // decision and original input occurrence continue to serve tools.
-            let idle = self
-                .scope_entries(scope)
-                .filter(|(_, e)| e.pending_request.is_none() && !e.active.request_ids.is_empty())
-                .min_by_key(|(_, e)| e.admission_sequence)
-                .map(|(key, _)| key.clone());
-            let Some(key) = idle else {
-                return false;
-            };
-            let entry = self.entries.get_mut(&key).expect("selected entry");
-            let retired = entry.active.request_ids.remove(0);
-            entry
-                .active
-                .executions
-                .retain(|execution| execution.request_id != retired);
-            entry.active.request_ids_clipped = true;
-            entry.history_partial = true;
-            let old = entry.accounted_bytes;
-            entry.accounted_bytes = entry_bytes(&key, entry);
-            let new = entry.accounted_bytes;
-            self.replace_accounting(old, new);
-        }
-        true
-    }
-
     pub(super) fn note_capture_gap(&mut self, key: &AgentTurnHistoryKey) {
         let Some(entry) = self.entries.get_mut(key) else {
             return;
@@ -505,13 +430,8 @@ pub(super) fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> us
         + entry.branch_id.capacity()
         + entry.checkpoint.capture_turn_anchor.capacity()
         + entry.active.decision.as_ref().map_or(0, decision_bytes)
-        + entry.active.request_ids.capacity() * size_of::<String>()
-        + entry
-            .active
-            .request_ids
-            .iter()
-            .map(String::capacity)
-            .sum::<usize>()
+        + entry.active.scoring_bytes()
+        + entry.closed_bytes
         + entry.active.agent_turn_id.capacity()
         + entry
             .active
@@ -523,56 +443,9 @@ pub(super) fn entry_bytes(key: &AgentTurnHistoryKey, entry: &SessionEntry) -> us
             .last_request_id
             .as_ref()
             .map_or(0, String::capacity)
-        + entry.active.user.capacity() * size_of::<VisibleContentPart>()
-        + entry
-            .active
-            .user
-            .iter()
-            .map(VisibleContentPart::retained_bytes)
-            .sum::<usize>()
-        + entry.active.steps.capacity() * size_of::<Vec<VisibleContentPart>>()
-        + entry.active.output.retained_bytes()
         + entry.active.boundary.bytes()
         + entry.tool_batch.as_deref().map_or(0, DeliveredToolBatch::retained_bytes)
         + entry.pending_tool_handoff.as_ref().map_or(0, |_| ToolDeliveryHandoff::INDEX_BYTES)
-        + entry
-            .active
-            .steps
-            .iter()
-            .map(|step| step.capacity() * size_of::<VisibleContentPart>())
-            .sum::<usize>()
-        + entry
-            .active
-            .steps
-            .iter()
-            .flat_map(|step| step.iter())
-            .map(VisibleContentPart::retained_bytes)
-            .sum::<usize>()
-        + entry
-            .active
-            .executions
-            .iter()
-            .map(|execution| {
-                size_of::<AcceptedExecution>()
-                    + execution
-                        .branch_execution
-                        .as_ref()
-                        .map_or(0, |e| e.policy.name.capacity() + 80)
-                    + execution.model_configuration_id.capacity()
-                    + execution.profile_digest.capacity()
-                    + execution.executed_branch_id.capacity()
-                    + execution.request_id.capacity()
-            })
-            .sum::<usize>()
-        + entry
-            .closed
-            .iter()
-            .map(|turn| {
-                turn.wire.retained_bytes()
-                    + completed_bytes(&turn.completed)
-                    + decision_bytes(&turn.decision)
-            })
-            .sum::<usize>()
         + entry.current_segment.as_ref().map_or(0, segment_bytes)
         + entry.referenced_segment.as_ref().map_or(0, segment_bytes)
 }
@@ -722,6 +595,8 @@ fn stage_membership(
         .history_membership
         .clone()?;
     result.request_ids.clear();
+    let mut seen = BTreeSet::new();
+    let mut bytes = 2;
     for turn in entry
         .closed
         .iter()
@@ -746,11 +621,13 @@ fn stage_membership(
         result.capture_partial |= membership.capture_partial;
         result.clipped |= membership.clipped;
         for id in &membership.request_ids {
-            if result.request_ids.contains(id) {
+            if !seen.insert(id) {
                 continue;
             }
-            if result.request_ids.len() < 128 {
+            let charge = hiroute_domain::history_request_id_bytes(id);
+            if bytes + charge <= hiroute_domain::MAX_HISTORY_MEMBERSHIP_BYTES {
                 result.request_ids.push(id.clone());
+                bytes += charge;
             } else {
                 result.clipped = true;
             }
@@ -769,17 +646,7 @@ impl AgentTurnHistoryStore {
         let entry = inner.entries.get(key)?;
         // Charge the immutable snapshot separately: reopening or trimming a
         // live branch cannot make retained Arc payloads disappear from budget.
-        let charge = 2048usize.saturating_add(
-            entry
-                .closed
-                .iter()
-                .map(|turn| {
-                    turn.wire.retained_bytes()
-                        + completed_bytes(&turn.completed)
-                        + decision_bytes(&turn.decision)
-                })
-                .sum::<usize>(),
-        );
+        let charge = 2048usize.saturating_add(entry.closed_bytes);
         inner.evict_to_budget(self.max_memory_bytes.saturating_sub(charge), Some(key));
         if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
             return None;

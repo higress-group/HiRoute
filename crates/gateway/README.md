@@ -503,8 +503,10 @@ the actual Attempt remain required; semantic segments do not require a single
 transport frame ID.
 
 The store retains a 500 MB total budget and a one-hour idle lifetime, with 32 live
-requests/heads and 128 retained terminal records per scope. Snapshot pins and indexes
-are charged. A full budget or optional capture fault records a recoverable gap and
+requests/heads per scope. Each scope retains up to 5,000,000 bytes of scoring
+history across branches. Idle completed history is retired before optional active
+capture is clipped. The shared budget also charges continuation state and pinned
+snapshots, including snapshots whose live history has been retired. A full budget or optional capture fault records a recoverable gap and
 cannot replace delivered model output. Scope-hash gap stripes are fixed at 256;
 collisions disclose extra uncertainty rather than false complete capture. Authorization,
 Replay integrity, provider failures and source cancellation retain their own behavior.

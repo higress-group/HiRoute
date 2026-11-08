@@ -3,7 +3,11 @@ use hiroute_domain::{BranchExecutionPolicyV1, BranchExecutionV1};
 
 #[test]
 fn continuation_inherits_actual_primary_without_rewriting_the_opening_decision() {
-    for scope in [hiroute_domain::SMART_SAVING_SCOPE_ID, "code"] {
+    for (scope, full_scope) in [
+        (hiroute_domain::SMART_SAVING_SCOPE_ID, false),
+        ("code", false),
+        ("code", true),
+    ] {
         let (_directory, replay) = replay();
         let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
         let key = store.scope_key("workspace", scope).unwrap();
@@ -26,6 +30,10 @@ fn continuation_inherits_actual_primary_without_rewriting_the_opening_decision()
         selected.execution_group = hiroute_domain::ExecutionGroupV1::Regular;
         selected.selection_reason = hiroute_domain::ModelGroupReasonV1::SimpleTask;
         store.commit_decision(&ticket, selected.clone()).unwrap();
+        if full_scope {
+            let mut inner = store.inner.lock();
+            inner.scope_history_limit = inner.scope_history_bytes(&key);
+        }
         let mut accepted = execution("primary", "profile", scope, "request");
         accepted.branch_execution = Some(BranchExecutionV1 {
             policy,
@@ -42,6 +50,10 @@ fn continuation_inherits_actual_primary_without_rewriting_the_opening_decision()
                 now,
             )
             .unwrap();
+        assert_eq!(
+            store.inner.lock().entries[&key].active.request_ids_clipped,
+            full_scope
+        );
         let continued = request(vec![
             user,
             tool_call("lookup-1", "lookup"),

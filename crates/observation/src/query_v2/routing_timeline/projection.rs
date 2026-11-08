@@ -38,6 +38,7 @@ pub(super) fn hydrate(
             ExecutionFactV1::AttemptStarted {
                 ordinal,
                 candidate_id,
+                stable_binding_id,
                 model_configuration_id,
                 profile_digest,
                 request_model,
@@ -45,15 +46,26 @@ pub(super) fn hydrate(
                 key_id,
                 ..
             } => {
-                let reasoning = candidates
+                let candidate = candidates
                     .get(&(fact.request_id.as_str(), candidate_id.as_str()))
                     .filter(|candidate| {
                         candidate.model_configuration_id == *model_configuration_id
                             && candidate.profile_digest == *profile_digest
                     })
-                    .and_then(|candidate| candidate.reasoning_profile_id.clone());
+                    .copied();
+                let reasoning =
+                    candidate.and_then(|candidate| candidate.reasoning_profile_id.clone());
                 let identity = (model_configuration_id.clone(), reasoning);
-                attempted.insert((fact.request_id.as_str(), *ordinal), identity.clone());
+                attempted.insert(
+                    (fact.request_id.as_str(), *ordinal),
+                    (
+                        identity.clone(),
+                        candidate.filter(|c| {
+                            c.stable_binding_id == *stable_binding_id
+                                && c.native_model == *request_model
+                        }),
+                    ),
+                );
                 request.candidate = Some(identity);
                 request.identities.insert((
                     model_configuration_id.clone(),
@@ -65,8 +77,10 @@ pub(super) fn hydrate(
                     .insert(*ordinal, (credential_ref.clone(), key_id.clone()));
             }
             ExecutionFactV1::RequestFinished {
+                outcome,
                 accepted_attempt_ordinal,
                 attempts_started,
+                attempts_finished,
                 facts_completeness,
                 ..
             } => {
@@ -78,10 +92,19 @@ pub(super) fn hydrate(
                     || accepted_attempt_ordinal.is_some_and(|n| !request.models.contains_key(&n));
                 request.view.native_model =
                     accepted_attempt_ordinal.and_then(|n| request.models.get(&n).cloned());
+                request.accepted_candidate = None;
                 if let Some(ordinal) = accepted_attempt_ordinal {
-                    request.candidate = attempted
-                        .get(&(fact.request_id.as_str(), *ordinal))
-                        .cloned();
+                    let attempt = attempted.get(&(fact.request_id.as_str(), *ordinal));
+                    request.candidate = attempt.map(|(identity, _)| identity.clone());
+                    if *outcome == ExecutionRequestOutcomeV1::Accepted
+                        && attempts_started == attempts_finished
+                        && !request.identity_gap
+                        && let Some((_, Some(candidate))) = attempt
+                        && let Some(decision) = request.decision.as_ref()
+                    {
+                        request.accepted_candidate =
+                            attribution::AcceptedCandidate::from_facts(candidate, decision);
+                    }
                 }
             }
             ExecutionFactV1::AgentTurnFinished { .. } => request.stage_finished = true,
@@ -135,6 +158,7 @@ pub(super) fn project(
     let mut opening_causes = BTreeMap::new();
     let mut identities = BTreeMap::new();
     let mut finished = BTreeMap::<_, (u64, &Fact)>::new();
+    let mut proven_openings = std::collections::BTreeSet::new();
     let admissions = admission::collect(facts)?;
     let mut admitted_stages = BTreeMap::<_, Vec<_>>::new();
     for (id, admission) in &admissions {
@@ -147,10 +171,24 @@ pub(super) fn project(
         if let ExecutionFactV1::AgentTurnFinished {
             agent_turn_id,
             history_membership,
+            ordinal,
             ..
         } = &fact.value
         {
             let revision = history_membership.as_ref().map_or(0, |m| m.revision);
+            if include_presentation
+                && let Some(membership) = history_membership
+                && let Some(next) = admissions.get(fact.request_id.as_str())
+                && next.epoch == fact.producer_epoch
+                && next.value.agent_turn_id != *agent_turn_id
+                && next.value.branch_id == membership.branch_id
+                && revision.checked_add(1) == Some(next.value.revision)
+                && ordinal.checked_add(1) == Some(next.value.ordinal)
+            {
+                // This request carried the closure of the immediately preceding
+                // stage on the same branch. Its own admission proves the opening.
+                proven_openings.insert(fact.request_id.as_str());
+            }
             let entry = finished
                 .entry((&fact.producer_epoch, agent_turn_id))
                 .or_insert((revision, fact));
@@ -266,9 +304,11 @@ pub(super) fn project(
         // Admission can preserve exact identity even when bounded membership
         // storage clipped. This improves display only; frozen score membership
         // below still has to cover every displayed request.
+        let sealed_members: std::collections::BTreeSet<_> =
+            members.iter().map(|r| r.view.request_id.as_str()).collect();
         for (id, _) in admitted {
             if let Some(request) = requests.get(*id)
-                && !members.iter().any(|r| r.view.request_id == *id)
+                && !sealed_members.contains(id)
             {
                 if history_membership.as_ref().is_none_or(|m| !m.clipped) {
                     return Err(ObservationV2Error::Unavailable);
@@ -333,10 +373,27 @@ pub(super) fn project(
             .ok_or(ObservationV2Error::Unavailable)?
             .into();
         turn.view.evidence_partial |= *history_partial || missing_members;
+        let mut display_attribution = *attribution;
+        if include_presentation
+            && *attribution == AgentTurnAttributionV1::Unknown
+            && let Some(membership) = history_membership.as_ref().filter(|m| m.clipped)
+            && let Some((first, last)) = first_request_id.as_ref().zip(last_request_id.as_ref())
+            && admission::complete_clipped_stage(
+                membership,
+                admitted,
+                (first.as_str(), last.as_str()),
+                members,
+                proven_openings.contains(first.as_str()),
+            )
+            && let Some(group) = attribution::uniform_group(members, plan_id, *plan_revision)
+        {
+            turn.view.group = Some(group);
+            display_attribution = AgentTurnAttributionV1::Single;
+        }
         turn.view.presentation = Some(presentation(
             members,
             turn.view.group,
-            Some(*attribution),
+            Some(display_attribution),
             false,
             !missing_members,
         ));
@@ -461,12 +518,14 @@ pub(super) fn project(
                                 })
                         },
                         |membership| {
+                            let ids: std::collections::BTreeSet<_> =
+                                membership.request_ids.iter().map(String::as_str).collect();
                             !membership.clipped
                                 && base
                                     .view
                                     .requests
                                     .iter()
-                                    .all(|r| membership.request_ids.contains(&r.request_id))
+                                    .all(|r| ids.contains(r.request_id.as_str()))
                         },
                     )
             })

@@ -5,24 +5,64 @@ use crate::agent_turn_history::ToolStatus;
 use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1, WebSearchStatus};
 
 impl ActiveTurn {
+    fn output_charge(
+        &self,
+        index: u32,
+        part: &OutputPart<'_>,
+        append: bool,
+        tool_id: Option<&String>,
+    ) -> usize {
+        let current = self
+            .output
+            .step
+            .and_then(|step| self.steps.get(step))
+            .and_then(|step| {
+                self.output
+                    .blocks
+                    .get(&index)
+                    .and_then(|part| step.get(*part))
+            });
+        let step_charge =
+            usize::from(self.output.step.is_none()) * size_of::<Vec<VisibleContentPart>>();
+        let part_charge = match (current, part) {
+            (Some(VisibleContentPart::Text { text }), OutputPart::Text(value)) => {
+                let len = value.len() + if append { text.len() } else { 0 };
+                len.saturating_sub(text.capacity())
+            }
+            (Some(_), _) => 0,
+            (None, _) => 256 + 2 * size_of::<VisibleContentPart>() + part.bytes(),
+        };
+        let tool_charge = tool_id
+            .filter(|id| !self.output.tools.contains_key(*id))
+            .map_or(0, |id| 256 + id.len());
+        step_charge + part_charge + tool_charge
+    }
+
     /// The original decision remains immutable evidence. A continuation also
     /// inherits any primary relay that actually executed during this turn,
     /// independently of the stronger exact-candidate context hold.
     pub(super) fn continuation_decision(&self) -> Option<BranchDecisionV1> {
         let mut decision = self.decision.clone()?;
         if decision.execution_group == hiroute_domain::ExecutionGroupV1::Regular
-            && self.executions.iter().any(|execution| {
-                execution.executed_branch_id == decision.branch_id
-                    && execution.branch_execution.as_ref().is_some_and(|position| {
-                        position.group == hiroute_domain::ExecutionGroupV1::Primary
-                            && Some(&position.policy) == decision.policy.as_ref()
-                    })
-            })
+            && self.primary_relay
         {
             decision.execution_group = hiroute_domain::ExecutionGroupV1::Primary;
             decision.selection_reason = hiroute_domain::ModelGroupReasonV1::AvailabilityRelay;
         }
         Some(decision)
+    }
+
+    pub(super) fn note_primary_relay(&mut self, executions: &[AcceptedExecution]) {
+        let Some(decision) = &self.decision else {
+            return;
+        };
+        self.primary_relay |= executions.iter().any(|execution| {
+            execution.executed_branch_id == decision.branch_id
+                && execution.branch_execution.as_ref().is_some_and(|position| {
+                    position.group == hiroute_domain::ExecutionGroupV1::Primary
+                        && Some(&position.policy) == decision.policy.as_ref()
+                })
+        });
     }
 }
 
@@ -31,6 +71,7 @@ pub(super) struct AcceptedOutput {
     step: Option<usize>,
     blocks: BTreeMap<u32, usize>,
     tools: BTreeMap<String, Option<(usize, usize)>>,
+    tools_bytes: usize,
 }
 
 impl AcceptedOutput {
@@ -41,12 +82,7 @@ impl AcceptedOutput {
 
     pub(super) fn retained_bytes(&self) -> usize {
         // Include B-tree node slack, not only payloads.
-        self.blocks.len() * 256
-            + self
-                .tools
-                .keys()
-                .map(|id| 256 + id.capacity())
-                .sum::<usize>()
+        self.blocks.len() * 256 + self.tools_bytes
     }
 }
 
@@ -64,7 +100,8 @@ pub(super) fn apply_tool_results(
         let Some(Some((step, part))) = active.output.tools.get(id).copied() else {
             continue;
         };
-        active.output.tools.remove(id);
+        let (id, _) = active.output.tools.remove_entry(id).expect("checked tool");
+        active.output.tools_bytes -= 256 + id.capacity();
         if let Some(VisibleContentPart::ToolActivity { status: target, .. }) = active
             .steps
             .get_mut(step)
@@ -84,7 +121,7 @@ pub(super) fn reopen_finalized(entry: &mut SessionEntry, user: &[VisibleContentP
         .back()
         .is_some_and(|turn| turn.completed.agent_turn_id == entry.active.agent_turn_id)
     {
-        let turn = entry.closed.pop_back().expect("checked last turn");
+        let turn = entry.pop_closed_back().expect("checked last turn");
         let wire = Arc::unwrap_or_clone(turn.wire);
         entry.active.user = wire.user;
         entry.active.steps = wire.steps;
@@ -94,20 +131,20 @@ pub(super) fn reopen_finalized(entry: &mut SessionEntry, user: &[VisibleContentP
         entry.active.capture_partial = true;
         entry.history_partial = true;
     }
+    entry.active.user_bytes = content_bytes(&entry.active.user, entry.active.user.capacity());
+    entry.active.steps_bytes = steps_bytes(&entry.active.steps);
     entry.active.finalized = false;
 }
 
 impl AgentTurnHistoryStore {
     pub(crate) fn accept_output(&self, ticket: &AgentTurnTicket, events: &[ModelStreamEventV1]) {
         let mut inner = self.inner.lock();
-        if matching_entry_mut(&mut inner, ticket).is_err() {
+        let Ok(entry) = matching_entry_mut(&mut inner, ticket) else {
             return;
-        }
+        };
+        let scope = entry.scope.clone();
         if !events.is_empty() {
-            matching_entry_mut(&mut inner, ticket)
-                .expect("checked request")
-                .active
-                .request_output_accepted = true;
+            entry.active.request_output_accepted = true;
         }
         for event in events {
             // Reserve the bounded digest state before accepting any block.
@@ -170,6 +207,16 @@ impl AgentTurnHistoryStore {
                 .saturating_add(tool_id.map_or(0, |id| id.len()))
                 .saturating_mul(2)
                 .saturating_add(2048);
+            let scope_charge = matching_entry_mut(&mut inner, ticket)
+                .expect("checked request")
+                .active
+                .output_charge(index, &part, append, tool_id);
+            if !inner.reserve_scoring_bytes(&scope, scope_charge) {
+                matching_entry_mut(&mut inner, ticket)
+                    .expect("checked request")
+                    .mark_scope_partial();
+                continue;
+            }
             inner.evict_to_budget(
                 self.max_memory_bytes.saturating_sub(charge),
                 Some(&ticket.key),
@@ -184,12 +231,21 @@ impl AgentTurnHistoryStore {
                 continue;
             }
             let active = &mut entry.active;
+            let old_steps_capacity = active.steps.capacity();
             let step_index = *active.output.step.get_or_insert_with(|| {
                 active.steps.reserve_exact(1);
                 active.steps.push(Vec::new());
                 active.steps.len() - 1
             });
+            active.steps_bytes += (active.steps.capacity() - old_steps_capacity)
+                * size_of::<Vec<VisibleContentPart>>();
             let step = &mut active.steps[step_index];
+            let old_capacity = step.capacity();
+            let old_part_bytes = active
+                .output
+                .blocks
+                .get(&index)
+                .map_or(0, |part| step[*part].retained_bytes());
             let part_index = *active.output.blocks.entry(index).or_insert_with(|| {
                 step.reserve_exact(1);
                 step.push(part.owned());
@@ -214,6 +270,9 @@ impl AgentTurnHistoryStore {
                 ) => *status = *value,
                 _ => active.capture_partial = true,
             }
+            active.steps_bytes = active.steps_bytes - old_part_bytes
+                + step[part_index].retained_bytes()
+                + (step.capacity() - old_capacity) * size_of::<VisibleContentPart>();
             if let Some(id) = tool_id {
                 // Ambiguous concurrent reuse affects observation only, never forwarding.
                 active
@@ -225,7 +284,10 @@ impl AgentTurnHistoryStore {
                             *position = None;
                         }
                     })
-                    .or_insert(Some((step_index, part_index)));
+                    .or_insert_with_key(|key| {
+                        active.output.tools_bytes += 256 + key.capacity();
+                        Some((step_index, part_index))
+                    });
             }
             let old = entry.accounted_bytes;
             entry.accounted_bytes = entry_bytes(&ticket.key, entry);

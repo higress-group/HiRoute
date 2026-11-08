@@ -2,6 +2,8 @@ use super::*;
 
 #[path = "concurrent_encoding_tests.rs"]
 mod encoding;
+#[path = "scoring_budget_tests.rs"]
+mod scoring_budget;
 
 fn scoped(
     store: &AgentTurnHistoryStore,
@@ -323,13 +325,72 @@ fn exact_ingress_retry_retains_cancelled_branch_gap_without_reusing_its_decision
 }
 
 #[test]
+fn long_tool_phase_preserves_scoring_below_the_membership_limit() {
+    long_tool_phase(300, false);
+}
+
+#[test]
 fn long_tool_phase_clips_terminal_details_and_preserves_active_turn() {
+    long_tool_phase(300, true);
+}
+
+#[test]
+fn five_mb_scope_budget_clips_only_optional_output() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::new(32 * 1024 * 1024, Duration::from_secs(60));
+    let scope = store.scope_key("workspace", "large-scope-output").unwrap();
+    let input = request(vec![text(MessageRole::User, "Continue the task")]);
+    let now = Instant::now();
+    let (ticket, _) = new_turn(
+        store
+            .begin(scope.clone(), plan(1), &input, &replay, now)
+            .unwrap(),
+    );
+    store.commit_decision(&ticket, decision("regular")).unwrap();
+    store.bind_request(&ticket, "large-output").unwrap();
+    let retained = MAX_SCOPE_HISTORY_BYTES - 100_000;
+    accepted_output::text_output(&store, &ticket, &"x".repeat(retained));
+    {
+        let inner = store.inner.lock();
+        assert!(inner.scope_history_bytes(&scope) >= retained);
+        assert!(!inner.entries[&scope].active.scope_partial);
+    }
+    accepted_output::text_output(&store, &ticket, &"y".repeat(100_000));
+    {
+        let inner = store.inner.lock();
+        assert!(inner.scope_history_bytes(&scope) <= MAX_SCOPE_HISTORY_BYTES);
+        assert!(inner.entries[&scope].active.scope_partial);
+    }
+    store
+        .finish_request(
+            &ticket,
+            "large-output".into(),
+            AgentTurnStatus::Completed,
+            vec![execution("model", "profile", "regular", "large-output")],
+            false,
+            now,
+        )
+        .unwrap();
+    let AgentTurnBegin::Continuation {
+        ticket: continued, ..
+    } = store.begin(scope, plan(1), &input, &replay, now).unwrap()
+    else {
+        panic!("scoring budget must preserve the active decision");
+    };
+    assert_eq!(continued.agent_turn_id, ticket.agent_turn_id);
+    store.abort(&continued);
+}
+
+fn long_tool_phase(request_count: usize, clipped: bool) {
     let (_directory, replay) = replay();
     let store = AgentTurnHistoryStore::new(2 * 1024 * 1024, Duration::from_secs(60));
     let scope = store.scope_key("workspace", "long-tool-phase").unwrap();
+    if clipped {
+        store.inner.lock().scope_history_limit = 16 * 1024;
+    }
     let input = request(vec![text(MessageRole::User, "Continue the task")]);
     let mut opening = None;
-    for n in 0..160 {
+    for n in 0..request_count {
         let begin = store
             .begin(scope.clone(), plan(1), &input, &replay, Instant::now())
             .unwrap();
@@ -357,28 +418,58 @@ fn long_tool_phase_clips_terminal_details_and_preserves_active_turn() {
         );
         let id = format!("tool-request-{n}");
         store.bind_request(&ticket, &id);
-        store
+        let terminal = n + 1 == request_count;
+        if terminal {
+            accepted_output::text_output(&store, &ticket, "Tool phase complete");
+        }
+        let completed = store
             .finish_request(
                 &ticket,
                 id.clone(),
                 AgentTurnStatus::Completed,
                 vec![execution("model", "profile", "regular", &id)],
-                false,
+                terminal,
                 Instant::now(),
             )
             .unwrap();
-        assert!(store.inner.lock().retained_records(&scope) <= 128);
+        if terminal {
+            let completed = completed.unwrap();
+            assert_eq!(completed.history_membership.unwrap().clipped, clipped);
+            assert_eq!(
+                matches!(completed.attribution, ExecutionAttribution::Unknown),
+                clipped
+            );
+        }
+        let inner = store.inner.lock();
+        assert!(inner.scope_history_bytes(&scope) <= inner.scope_history_limit);
     }
     let inner = store.inner.lock();
     let active = &inner.entries[&scope].active;
-    assert!(active.request_ids_clipped);
-    assert_eq!(active.request_ids.len(), 128);
-    assert_eq!(active.executions.len(), 128);
+    assert_eq!(active.request_ids_clipped, clipped);
+    if clipped {
+        assert!(active.executions.len() < request_count);
+    } else {
+        assert_eq!(active.request_ids.len(), request_count);
+        assert_eq!(active.executions.len(), request_count);
+    }
     assert_eq!(active.first_request_id.as_deref(), Some("tool-request-0"));
-    assert_eq!(active.last_request_id.as_deref(), Some("tool-request-159"));
+    assert_eq!(
+        active.last_request_id.as_deref(),
+        Some(format!("tool-request-{}", request_count - 1).as_str())
+    );
     drop(inner);
     let a = request(vec![text(MessageRole::User, "new A")]);
     let (a, history) = new_turn(scoped(&store, &scope, &a, &replay).unwrap());
+    if clipped {
+        assert!(history.assessment_target.is_none());
+    } else {
+        let target = history.assessment_target.as_ref().unwrap();
+        assert_eq!(target.through_turn_id, opening.unwrap().0);
+        assert!(!target.target_partial);
+        let membership = target.history_membership.as_ref().unwrap();
+        assert!(!membership.clipped);
+        assert_eq!(membership.request_ids.len(), request_count);
+    }
     drop(history);
     close_turn(
         &store,

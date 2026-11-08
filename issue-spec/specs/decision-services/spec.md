@@ -1090,15 +1090,18 @@ or invent a missing earlier provider outcome.
 
 The store SHALL bound total history to its configured budget (default 500,000,000
 bytes), including branch indexes and pinned snapshots, with default one-hour idle
-expiry, 32 live captures/heads and 128 terminal records per scope. Pinned payloads
+expiry and 32 live captures/heads per scope. Pinned payloads
 cannot be silently uncharged. Optional overflow retains explicit incomplete evidence
 where possible and otherwise uses bounded scope-hash gap bookkeeping. Collisions
 are conservative and recoverable; new complete A/B must recover after pressure or
 faults clear. ContextHold retains its independent 50,000,000-byte budget.
-The terminal record count clips older request membership and execution details.
-An in-flight request reserves one slot, and binding its retained request ID
-consumes that same slot. Clipping preserves the active turn decision, input
-occurrence and latest continuation checkpoint. A clipped membership cannot establish complete stage attribution.
+Each scope SHALL retain up to 5,000,000 bytes of optional scoring history across
+its branches, including request membership, captured content and closed-stage
+records. It retires old closed history first, then marks unfittable optional
+capture incomplete. The active decision, original input occurrence, accepted
+relay and continuation checkpoint have independent lifetimes under the global
+budget. In-flight scoring snapshots remain charged globally until released.
+A clipped membership cannot establish complete stage attribution.
 
 #### Scenario: Concurrent responses have the same input prefix
 

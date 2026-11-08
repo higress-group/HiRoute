@@ -40,8 +40,12 @@ mod maintenance;
 mod opening;
 #[path = "store/retry.rs"]
 mod retry;
+#[path = "store/scoring_history.rs"]
+mod scoring_history;
+use scoring_history::{content_bytes, steps_bytes};
 
 pub(crate) const DEFAULT_MAX_MEMORY_BYTES: usize = 500_000_000;
+const MAX_SCOPE_HISTORY_BYTES: usize = 5_000_000;
 pub(crate) const DEFAULT_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
 
 pub(crate) struct AgentTurnHistoryStore {
@@ -60,6 +64,7 @@ pub(super) struct StoreInner {
     next_id: u64,
     accounted_bytes: usize,
     peak_accounted_bytes: usize,
+    scope_history_limit: usize,
     expiry_cursor: Option<AgentTurnHistoryKey>,
 }
 
@@ -80,6 +85,7 @@ struct SessionEntry {
     branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
+    closed_bytes: usize,
     current_segment: Option<SegmentState>,
     referenced_segment: Option<SegmentState>,
     next_turn_ordinal: u64,
@@ -166,7 +172,9 @@ impl From<bool> for RequestCompletion {
 
 struct ActiveTurn {
     request_ids: Vec<String>,
+    request_id_bytes: usize,
     request_ids_clipped: bool,
+    scope_partial: bool,
     source_unverified: bool,
     association_unverified: bool,
     opening_cause: hiroute_domain::AgentTurnOpeningCauseV1,
@@ -174,12 +182,17 @@ struct ActiveTurn {
     native_turn: Option<[u8; 32]>,
     ordinal: u64,
     user: Vec<VisibleContentPart>,
+    user_bytes: usize,
+    user_observed: bool,
     steps: Vec<Vec<VisibleContentPart>>,
+    steps_bytes: usize,
     output: output::AcceptedOutput,
     boundary: super::boundary::BoundaryCapture,
     plan: PlanSnapshot,
     decision: Option<BranchDecisionV1>,
     executions: Vec<AcceptedExecution>,
+    execution_bytes: usize,
+    primary_relay: bool,
     started_at_ms: u64,
     first_request_id: Option<String>,
     last_request_id: Option<String>,
@@ -198,6 +211,7 @@ struct ClosedTurn {
     wire: Arc<VisibleAgentTurn>,
     completed: CompletedAgentTurn,
     closure_proven: bool,
+    bytes: usize,
 }
 
 #[derive(Clone)]
@@ -288,6 +302,7 @@ impl AgentTurnHistoryStore {
                 next_id: 1,
                 accounted_bytes: store_fixed_bytes(),
                 peak_accounted_bytes: store_fixed_bytes(),
+                scope_history_limit: MAX_SCOPE_HISTORY_BYTES,
                 expiry_cursor: None,
             })),
         }
@@ -388,9 +403,6 @@ impl AgentTurnHistoryStore {
             inner.note_capture_gap(&key);
             return Ok(None);
         };
-        if !inner.reserve_scope_record(&key) {
-            return Err(AgentTurnHistoryError::Resource);
-        }
         let selection = self.select_branch(&mut inner, &key, &analyzed, decision_inputs)?;
         let branch_key = selection.key.clone();
         match self.begin_locked(
@@ -465,7 +477,9 @@ impl AgentTurnHistoryStore {
             let turn_id = self.allocate_id(inner, "turn")?;
             let active = ActiveTurn {
                 request_ids: Vec::new(),
+                request_id_bytes: 0,
                 request_ids_clipped: false,
+                scope_partial: false,
                 source_unverified: analyzed.user_origin_unverified,
                 association_unverified: false,
                 opening_cause: match decision_inputs.history_continuity {
@@ -481,12 +495,17 @@ impl AgentTurnHistoryStore {
                 native_turn: decision_inputs.native_turn,
                 ordinal: 1,
                 user: latest.user.clone(),
+                user_bytes: content_bytes(&latest.user, latest.user.len()),
+                user_observed: !latest.user.is_empty(),
                 steps: Vec::new(),
+                steps_bytes: 0,
                 output: Default::default(),
                 boundary: Default::default(),
                 plan,
                 decision: None,
                 executions: Vec::new(),
+                execution_bytes: 0,
+                primary_relay: false,
                 started_at_ms: unix_ms(),
                 first_request_id: None,
                 last_request_id: None,
@@ -521,6 +540,7 @@ impl AgentTurnHistoryStore {
                 branch_cursor: analyzed.branch_cursor,
                 active,
                 closed: VecDeque::new(),
+                closed_bytes: 0,
                 current_segment: None,
                 referenced_segment: None,
                 next_turn_ordinal: 2,
@@ -530,9 +550,7 @@ impl AgentTurnHistoryStore {
             };
             entry.accounted_bytes = entry_bytes(&key, &entry);
             if entry.accounted_bytes.saturating_add(store_fixed_bytes()) > self.max_memory_bytes {
-                entry.active.user.clear();
-                entry.active.steps.clear();
-                entry.active.output = Default::default();
+                entry.active.clear_content();
                 entry.active.capture_partial = true;
                 entry.history_partial = true;
                 entry.accounted_bytes = entry_bytes(&key, &entry);
@@ -543,6 +561,7 @@ impl AgentTurnHistoryStore {
             inner.accounted_bytes = inner.accounted_bytes.saturating_add(entry.accounted_bytes);
             inner.scopes.entry(scope).or_default().insert(key.clone());
             inner.entries.insert(key.clone(), entry);
+            inner.limit_scoring_history(&key);
             inner.evict_to_budget(self.max_memory_bytes, Some(&key));
             if inner.accounted_bytes > self.max_memory_bytes {
                 inner.remove(&key);
@@ -593,7 +612,8 @@ impl AgentTurnHistoryStore {
                 || decision_inputs.native_turn != entry.active.native_turn
                 || entry.active.plan != plan
                 || entry.active.decision.is_none()
-                || original_user.is_none_or(|user| user.is_empty())
+                || (original_user.is_none_or(|user| user.is_empty())
+                    && !(entry.active.scope_partial && entry.active.user_observed))
             {
                 return Err(AgentTurnHistoryError::TurnContextUnavailable);
             }
@@ -732,6 +752,7 @@ impl AgentTurnHistoryStore {
                 (decision, ticket, old_bytes, entry.accounted_bytes)
             };
             inner.replace_accounting(old_bytes, new_bytes);
+            inner.limit_scoring_history(&key);
             inner.evict_to_budget(self.max_memory_bytes, Some(&key));
             if inner.accounted_bytes > self.max_memory_bytes {
                 let (old_bytes, new_bytes) = {
@@ -739,8 +760,7 @@ impl AgentTurnHistoryStore {
                         .entries
                         .get_mut(&key)
                         .ok_or(AgentTurnHistoryError::Resource)?;
-                    entry.active.steps.clear();
-                    entry.active.output = Default::default();
+                    entry.active.clear_steps();
                     entry.active.capture_partial = true;
                     entry.history_partial = true;
                     let old_bytes = entry.accounted_bytes;
@@ -847,7 +867,9 @@ impl AgentTurnHistoryStore {
             entry.tool_batch = None;
             entry.active = ActiveTurn {
                 request_ids: Vec::new(),
+                request_id_bytes: 0,
                 request_ids_clipped: false,
+                scope_partial: false,
                 source_unverified: analyzed.user_origin_unverified,
                 association_unverified: false,
                 opening_cause,
@@ -855,12 +877,17 @@ impl AgentTurnHistoryStore {
                 native_turn: decision_inputs.native_turn,
                 ordinal,
                 user: latest.user.clone(),
+                user_bytes: content_bytes(&latest.user, latest.user.len()),
+                user_observed: !latest.user.is_empty(),
                 steps: Vec::new(),
+                steps_bytes: 0,
                 output: Default::default(),
                 boundary: Default::default(),
                 plan,
                 decision: None,
                 executions: Vec::new(),
+                execution_bytes: 0,
+                primary_relay: false,
                 started_at_ms: unix_ms(),
                 first_request_id: None,
                 last_request_id: None,
@@ -894,6 +921,7 @@ impl AgentTurnHistoryStore {
             (ticket, old_bytes, entry.accounted_bytes)
         };
         inner.replace_accounting(old_bytes, new_bytes);
+        inner.limit_scoring_history(&key);
         inner.evict_to_budget(self.max_memory_bytes, Some(&key));
         inner.note_peak();
         while inner.accounted_bytes > self.max_memory_bytes {
@@ -907,9 +935,7 @@ impl AgentTurnHistoryStore {
                     .entries
                     .get_mut(&key)
                     .ok_or(AgentTurnHistoryError::Resource)?;
-                entry.active.user.clear();
-                entry.active.steps.clear();
-                entry.active.output = Default::default();
+                entry.active.clear_content();
                 entry.active.capture_partial = true;
                 entry.history_partial = true;
                 let old_bytes = entry.accounted_bytes;
@@ -1031,12 +1057,27 @@ impl AgentTurnHistoryStore {
         request_id: &str,
     ) -> Option<hiroute_domain::AgentTurnAdmissionV1> {
         let mut inner = self.inner.lock();
-        let charge = request_id.len().saturating_mul(3).saturating_add(256);
-        inner.evict_to_budget(
-            self.max_memory_bytes.saturating_sub(charge),
-            Some(&ticket.key),
-        );
-        let fits = inner.accounted_bytes.saturating_add(charge) <= self.max_memory_bytes;
+        let entry = matching_entry_mut(&mut inner, ticket).ok()?;
+        let scope = entry.scope.clone();
+        let retained = entry
+            .pending_request
+            .is_some_and(|pending| pending.has_record)
+            && entry.active.last_request_id.as_deref() == Some(request_id);
+        let scope_charge = entry.active.record_charge(Some(request_id), &[]);
+        let charge = request_id
+            .len()
+            .saturating_mul(3)
+            .saturating_add(256)
+            .max(scope_charge.saturating_add(request_id.len().saturating_mul(2)));
+        let fits_scope = retained || inner.reserve_scoring_bytes(&scope, scope_charge);
+        if !retained && fits_scope {
+            inner.evict_to_budget(
+                self.max_memory_bytes.saturating_sub(charge),
+                Some(&ticket.key),
+            );
+        }
+        let fits =
+            fits_scope && inner.accounted_bytes.saturating_add(charge) <= self.max_memory_bytes;
         let entry = matching_entry_mut(&mut inner, ticket).ok()?;
         // Admission identity exists independently of bounded membership storage,
         // decision success and the optional affinity cache. Clipping the index
@@ -1049,11 +1090,14 @@ impl AgentTurnHistoryStore {
             ordinal: entry.active.ordinal,
             opening_cause: entry.active.opening_cause,
         };
-        if !fits || entry.active.request_ids.len() >= 128 {
+        if retained {
+            return Some(admission);
+        }
+        if !fits {
             entry.active.request_ids_clipped = true;
             return Some(admission);
         }
-        entry.active.request_ids.push(request_id.to_owned());
+        entry.active.retain_request_id(request_id);
         entry
             .pending_request
             .as_mut()
@@ -1086,7 +1130,16 @@ impl AgentTurnHistoryStore {
             mut tool_batch,
         } = completion.into();
         let mut inner = self.inner.lock();
-        let charge = executions
+        let entry = matching_entry_mut(&mut inner, ticket)?;
+        let scope = entry.scope.clone();
+        let retained = entry
+            .pending_request
+            .is_some_and(|pending| pending.has_record)
+            && entry.active.last_request_id.as_deref() == Some(request_id.as_str());
+        let record_charge = entry
+            .active
+            .record_charge((!retained).then_some(request_id.as_str()), &executions);
+        let finish_charge = executions
             .iter()
             .map(|e| {
                 e.model_configuration_id.len()
@@ -1098,28 +1151,36 @@ impl AgentTurnHistoryStore {
             .sum::<usize>()
             .saturating_mul(3)
             .saturating_add(request_id.len() * 3 + 4096);
+        if terminal || status != AgentTurnStatus::Completed {
+            tool_batch = None;
+        }
+        let tool_charge = tool_batch
+            .as_ref()
+            .map_or(0, |batch| batch.retained_bytes());
         inner.evict_to_budget(
-            self.max_memory_bytes.saturating_sub(charge),
+            self.max_memory_bytes
+                .saturating_sub(finish_charge.saturating_add(tool_charge)),
             Some(&ticket.key),
         );
-        if inner.accounted_bytes.saturating_add(charge) > self.max_memory_bytes {
+        let finished_bytes = inner.accounted_bytes.saturating_add(finish_charge);
+        if finished_bytes > self.max_memory_bytes {
             let entry = matching_entry_mut(&mut inner, ticket)?;
             entry.pending_request = None;
             inner.note_capture_gap(&ticket.key);
             return Err(AgentTurnHistoryError::Resource);
         }
-        if terminal
-            || status != AgentTurnStatus::Completed
-            || tool_batch.as_ref().is_some_and(|batch| {
-                inner
-                    .accounted_bytes
-                    .saturating_add(charge)
-                    .saturating_add(batch.retained_bytes())
-                    > self.max_memory_bytes
-            })
-        {
+        if finished_bytes.saturating_add(tool_charge) > self.max_memory_bytes {
             tool_batch = None;
         }
+        // Growing an optional record buffer must leave room for the accepted
+        // tool batch and the rest of the completed request's routing state.
+        let retained_tool_charge = if tool_batch.is_some() { tool_charge } else { 0 };
+        let with_execution = finish_charge
+            .max(record_charge.saturating_add(4096))
+            .saturating_add(retained_tool_charge);
+        let keep_execution = inner.accounted_bytes.saturating_add(with_execution)
+            <= self.max_memory_bytes
+            && inner.reserve_scoring_bytes(&scope, record_charge);
         let next_segment_id = terminal
             .then(|| self.allocate_id(&mut inner, "segment"))
             .transpose()?;
@@ -1134,13 +1195,12 @@ impl AgentTurnHistoryStore {
             if entry.active.first_request_id.is_none() {
                 entry.active.first_request_id = Some(request_id.clone());
             }
-            if !entry.active.request_ids.contains(&request_id)
-                && entry.active.request_ids.len() < 128
-            {
-                entry.active.request_ids.push(request_id.clone());
-            }
-            if entry.active.request_ids.contains(&request_id) {
-                entry.active.executions.extend(executions);
+            entry.active.note_primary_relay(&executions);
+            if keep_execution {
+                if !retained {
+                    entry.active.retain_request_id(&request_id);
+                }
+                entry.active.retain_executions(executions);
             } else {
                 entry.active.request_ids_clipped = true;
             }
@@ -1170,8 +1230,7 @@ impl AgentTurnHistoryStore {
             (old, entry.accounted_bytes, completed)
         };
         inner.replace_accounting(old, new);
-        let scope = inner.entries.get(&ticket.key).unwrap().scope.clone();
-        inner.limit_terminal_records(&scope);
+        inner.limit_scoring_history(&ticket.key);
         inner.evict_to_budget(self.max_memory_bytes, Some(&ticket.key));
         inner.note_peak();
         Ok(completed)

@@ -153,40 +153,44 @@ fn a_bound_pending_request_reserves_only_one_terminal_record() {
             .begin(scope.clone(), plan(1), input, &replay, Instant::now())
             .unwrap()
     };
-    for index in 0..126 {
-        let ticket = match begin(&input) {
-            AgentTurnBegin::NewTurn { ticket, .. } => {
-                assert_eq!(index, 0);
-                store.commit_decision(&ticket, decision("regular")).unwrap();
-                ticket
-            }
-            AgentTurnBegin::Continuation { ticket, .. } => ticket,
-        };
-        let id = format!("request-{index}");
-        store.bind_request(&ticket, &id).unwrap();
-        store
-            .finish_request(
-                &ticket,
-                id,
-                AgentTurnStatus::Completed,
-                Vec::new(),
-                false,
-                Instant::now(),
-            )
-            .unwrap();
-    }
+    let (opening, _) = new_turn(begin(&input));
+    store
+        .commit_decision(&opening, decision("regular"))
+        .unwrap();
+    store.bind_request(&opening, "opening").unwrap();
+    store
+        .finish_request(
+            &opening,
+            "opening".into(),
+            AgentTurnStatus::Completed,
+            Vec::new(),
+            false,
+            Instant::now(),
+        )
+        .unwrap();
     let AgentTurnBegin::Continuation { ticket: first, .. } = begin(&input) else {
         panic!("the long turn remains open");
     };
-    assert_eq!(store.inner.lock().retained_records(&scope), 127);
     store.bind_request(&first, "first-pending").unwrap();
-    assert_eq!(store.inner.lock().retained_records(&scope), 127);
+    let used = store.inner.lock().scope_history_bytes(&scope);
+    store.bind_request(&first, "first-pending").unwrap();
+    assert_eq!(store.inner.lock().scope_history_bytes(&scope), used);
     let sibling_input = request(vec![text(MessageRole::User, "Independent request")]);
     let (second, _) = new_turn(begin(&sibling_input));
     assert_ne!(first.key, second.key);
-    assert_eq!(store.inner.lock().retained_records(&scope), 128);
     store.bind_request(&second, "second-pending").unwrap();
-    assert_eq!(store.inner.lock().retained_records(&scope), 128);
+    let inner = store.inner.lock();
+    assert!(inner.scope_history_bytes(&scope) > used);
+    assert!(inner.scope_history_bytes(&scope) <= inner.scope_history_limit);
+    assert_eq!(
+        inner.entries[&first.key].active.request_ids,
+        ["opening", "first-pending"]
+    );
+    assert_eq!(
+        inner.entries[&second.key].active.request_ids,
+        ["second-pending"]
+    );
+    drop(inner);
     store.abort(&first);
     store.abort(&second);
 }

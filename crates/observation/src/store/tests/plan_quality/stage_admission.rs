@@ -710,6 +710,190 @@ fn presentation_modes_isolate_frozen_pages_and_incremental_updates() {
 }
 
 #[test]
+fn clipped_long_stage_keeps_its_verified_execution_group() {
+    let (query, directory) = write_clipped_stage(130, None, None, None);
+    let store = open_store(directory.path());
+    let page = store
+        .observed_routing_timeline(&reader(), &query, 5000)
+        .unwrap();
+    assert_eq!(page.turns.len(), 1);
+    let turn = &page.turns[0];
+    let display = turn.presentation.as_ref().unwrap();
+    assert_eq!(turn.requests.len(), 130);
+    assert_eq!(turn.group, Some(hiroute_domain::ExecutionGroupV1::Primary));
+    assert_eq!(
+        display.group_state,
+        hiroute_domain::RoutingTimelineGroupStateV1::Resolved
+    );
+    assert_eq!(
+        display.execution_attribution,
+        AgentTurnAttributionV1::Single
+    );
+    assert!(turn.evidence_partial);
+    assert!(turn.assessment.is_none());
+    assert_eq!(turn.model_configuration_id, None);
+    assert_eq!(
+        display.request_models[0].model_configuration_id.as_deref(),
+        Some(MODEL)
+    );
+
+    let legacy = RoutingTimelineQueryV1 {
+        include_presentation: false,
+        ..query
+    };
+    let page = store
+        .observed_routing_timeline(&reader(), &legacy, 5000)
+        .unwrap();
+    assert_eq!(page.turns[0].group, None);
+    assert!(page.turns[0].presentation.is_none());
+    assert_eq!(page.turns[0].turn_id, turn.turn_id);
+}
+
+#[test]
+fn clipped_stage_keeps_uncertainty_for_admission_gaps_and_mixed_or_missing_receipts() {
+    for (missing_admission, relay, missing_terminal) in [
+        (Some(0), None, None),
+        (Some(1), None, None),
+        (None, Some(1), None),
+        (None, None, Some(1)),
+    ] {
+        let (query, directory) = write_clipped_stage(3, missing_admission, relay, missing_terminal);
+        let store = open_store(directory.path());
+        let page = store
+            .observed_routing_timeline(&reader(), &query, 5000)
+            .unwrap();
+        let turn = page
+            .turns
+            .iter()
+            .find(|t| t.agent_turn_id.as_deref() == Some("turn-a"))
+            .unwrap();
+        let display = turn.presentation.as_ref().unwrap();
+        assert!(turn.evidence_partial);
+        assert_eq!(turn.group, None);
+        assert_eq!(
+            display.group_state,
+            hiroute_domain::RoutingTimelineGroupStateV1::Unavailable
+        );
+        assert_eq!(
+            display.execution_attribution,
+            AgentTurnAttributionV1::Unknown
+        );
+    }
+}
+
+fn write_clipped_stage(
+    count: usize,
+    missing_admission: Option<usize>,
+    relay: Option<usize>,
+    missing_terminal: Option<usize>,
+) -> (RoutingTimelineQueryV1, tempfile::TempDir) {
+    use super::super::support;
+    use hiroute_domain::{ExecutionGroupV1, PlannedBranchV1};
+    let directory = tempfile::tempdir().unwrap();
+    let store = open_store(directory.path());
+    let first = Fixture::new("clipped-0");
+    let channel = fact_channel(&first, 256 * 1024);
+    let writer = writer(&store);
+    let mut sequence = 0;
+    let mut members = Vec::new();
+    for index in 0..count {
+        let mut request = Fixture::new(&format!("clipped-{index}"));
+        request.session = first.session.clone();
+        request.fact_stream = first.fact_stream.clone();
+        let attempt = format!("attempt/clipped-{index}");
+        let at = 1000 + index as i64 * 10;
+        let group = if relay == Some(index) {
+            "economy"
+        } else {
+            "primary"
+        };
+        let mut route = support::route_decision(PLAN);
+        if let ExecutionFactV1::RouteDecision(route) = &mut route {
+            route.branch = PlannedBranchV1::SmartSavingComplex;
+            route.complexity.as_mut().unwrap().execution_group = ExecutionGroupV1::Primary;
+            route.groups[0].group_id = group.into();
+            route.reason_ledger[0].group_id = Some(group.into());
+        }
+        let mut candidate = support::candidate(MODEL);
+        if let ExecutionFactV1::CandidateDecision(candidate) = &mut candidate {
+            candidate.group_id = group.into();
+        }
+        let mut facts = vec![
+            route,
+            candidate,
+            support::attempt_started(MODEL),
+            support::semantic_commit(),
+            support::attempt_finished(),
+        ];
+        if missing_admission != Some(index) {
+            facts.insert(0, admitted("turn-a", "branch-a", index as u64 + 1));
+        }
+        if missing_terminal != Some(index) && index + 1 < count {
+            facts.push(support::request_finished());
+        }
+        for (offset, fact) in facts.into_iter().enumerate() {
+            sequence += 1;
+            let at = at + offset as i64;
+            let envelope = match fact {
+                ExecutionFactV1::AttemptStarted { .. }
+                | ExecutionFactV1::SemanticCommit { .. }
+                | ExecutionFactV1::AttemptFinished(_) => {
+                    request.attempt_fact(sequence, &attempt, fact, at, PLAN)
+                }
+                _ => request.fact(sequence, fact, at),
+            };
+            let result = offer_fact(&writer, &channel, envelope);
+            assert!(matches!(result, WriterCycleOutcome::Ack(_)), "{result:?}");
+        }
+        members.push(request);
+    }
+    let last = members.last().unwrap();
+    let mut close = closed(
+        &first,
+        last,
+        count as u64,
+        &members[2..].iter().collect::<Vec<_>>(),
+    );
+    if let ExecutionFactV1::AgentTurnFinished {
+        attribution,
+        history_partial,
+        history_membership,
+        executed_branch_id,
+        model_configuration_id,
+        profile_digest,
+        finished_at_ms,
+        ..
+    } = &mut close
+    {
+        let membership = history_membership.as_mut().unwrap();
+        membership.clipped = true;
+        membership.capture_partial = true;
+        *attribution = AgentTurnAttributionV1::Unknown;
+        *history_partial = true;
+        *executed_branch_id = None;
+        *model_configuration_id = None;
+        *profile_digest = None;
+        *finished_at_ms = 1000 + count as u64 * 10;
+    }
+    let result = offer_fact(&writer, &channel, last.fact(sequence + 1, close, 4000));
+    assert!(matches!(result, WriterCycleOutcome::Ack(_)), "{result:?}");
+    let result = offer_fact(
+        &writer,
+        &channel,
+        last.fact(sequence + 2, support::request_finished(), 4001),
+    );
+    assert!(matches!(result, WriterCycleOutcome::Ack(_)), "{result:?}");
+    let query = RoutingTimelineQueryV1 {
+        include_presentation: true,
+        include_decision_failure: false,
+        session_id: first.session.to_string(),
+        after_watermark: None,
+        limit: 50,
+    };
+    (query, directory)
+}
+
+#[test]
 fn frozen_baseline_timeline_output() {
     let directory = tempfile::tempdir().unwrap();
     let store = open_store(directory.path());

@@ -16,6 +16,83 @@ fn membership(branch: &str, revision: u64, requests: &[&Fixture]) -> HistoryMemb
 }
 
 #[test]
+fn large_membership_keeps_the_timeline_and_request_receipt_readable() {
+    use super::super::support;
+    use hiroute_domain::{ObservationQueryPort, ReceiptId};
+    let directory = tempfile::tempdir().unwrap();
+    let fixture = Fixture::new("large-membership-carrier");
+    let store = open_store(directory.path());
+    let channel = fact_channel(&fixture, 2 * 1024 * 1024);
+    let writer = writer(&store);
+    let mut events = support::request_facts(
+        &fixture,
+        "attempt/large-membership",
+        support::finished("attempt/large-membership"),
+        1000,
+    );
+    events.pop().unwrap();
+    let mut close = finished(
+        &fixture,
+        "large-segment",
+        "large-turn",
+        1,
+        "smart_saving",
+        1000,
+    );
+    if let ExecutionFactV1::AgentTurnFinished {
+        history_membership,
+        history_partial,
+        ..
+    } = &mut close
+    {
+        let mut value = membership("large-branch", 1, &[&fixture]);
+        value
+            .request_ids
+            .extend((0..7000).map(|index| format!("{index:0160}")));
+        value.clipped = true;
+        *history_membership = Some(value);
+        *history_partial = true;
+    }
+    events.push(fixture.fact(10, close, 1010));
+    events.push(fixture.fact(11, support::request_finished(), 1011));
+    for event in events {
+        let outcome = offer_fact(&writer, &channel, event);
+        assert!(matches!(outcome, WriterCycleOutcome::Ack(_)), "{outcome:?}");
+    }
+    let receipt: String = store
+        .connection
+        .lock()
+        .query_row(
+            "SELECT receipt_id FROM logical_requests WHERE request_id=?1",
+            [fixture.request.as_str()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    drop(writer);
+    drop(store);
+    let store = open_store(directory.path());
+    store
+        .get_receipt(&fixture.workspace, &ReceiptId::parse(receipt).unwrap())
+        .unwrap();
+    let page = store
+        .observed_routing_timeline(
+            &reader(),
+            &RoutingTimelineQueryV1 {
+                session_id: fixture.session.to_string(),
+                after_watermark: None,
+                limit: 10,
+                include_presentation: true,
+                include_decision_failure: false,
+            },
+            5000,
+        )
+        .unwrap();
+    assert_eq!(page.turns.len(), 1);
+    assert_eq!(page.turns[0].requests.len(), 1);
+    assert!(page.turns[0].evidence_partial);
+}
+
+#[test]
 fn interleaved_branches_use_exact_membership_and_late_execution_cannot_extend_a_score() {
     let directory = tempfile::tempdir().unwrap();
     let first = Fixture::new("membership-a1");
@@ -215,14 +292,15 @@ pub(super) fn fact_digests(db: &rusqlite::Connection) -> Vec<String> {
 
 #[test]
 fn partial_or_clipped_current_membership_cannot_reuse_a_frozen_full_score() {
+    let request_count = 160;
     for (clipped, capture_partial) in [(true, false), (false, true), (true, true)] {
         let directory = tempfile::tempdir().unwrap();
-        let mut members: Vec<_> = (0..128)
+        let mut members: Vec<_> = (0..request_count)
             .map(|i| Fixture::new(&format!("bounded-member-{i}")))
             .collect();
         let first_session = members[0].session.clone();
         let fact_stream = members[0].fact_stream.clone();
-        let mut later = Fixture::new("bounded-member-129");
+        let mut later = Fixture::new("bounded-member-later");
         for member in members.iter_mut().chain(std::iter::once(&mut later)) {
             member.session = first_session.clone();
             member.fact_stream = fact_stream.clone();
@@ -261,7 +339,7 @@ fn partial_or_clipped_current_membership_cannot_reuse_a_frozen_full_score() {
             } = &mut closed
             {
                 *history_membership = Some(frozen.clone());
-                *last_request_id = Some(refs[127].request.clone());
+                *last_request_id = Some(refs.last().unwrap().request.clone());
             }
             write(first, closed, 1300);
             let mut scored = assessment(
@@ -289,6 +367,7 @@ fn partial_or_clipped_current_membership_cannot_reuse_a_frozen_full_score() {
 
             let mut current = frozen;
             current.revision = 2;
+            current.request_ids = vec![later.request.to_string()];
             current.clipped = clipped;
             current.capture_partial = capture_partial;
             let mut closed = finished(
@@ -334,9 +413,16 @@ fn partial_or_clipped_current_membership_cannot_reuse_a_frozen_full_score() {
             |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap();
         assert_eq!((original.0, original.1), (0.75, 0));
         let original: HistoryMembershipV1 = serde_json::from_str(&original.2).unwrap();
-        assert_eq!(original.request_ids.len(), 128);
+        assert_eq!(original.request_ids.len(), request_count);
         assert!(!original.request_ids.contains(&later.request.to_string()));
         assert!(!original.clipped && !original.capture_partial);
+        let projected: String = db.query_row(
+            "SELECT history_membership_json FROM plan_quality_segments WHERE segment_id='bounded-stage'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        let projected: HistoryMembershipV1 = serde_json::from_str(&projected).unwrap();
+        assert_eq!(projected.request_ids.len(), request_count + 1);
         assert_eq!(fact_digests(&db), preserved);
     }
 }

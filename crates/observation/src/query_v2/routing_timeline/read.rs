@@ -168,6 +168,7 @@ pub(super) fn read(
                 run_id: link.map(|l| l.run_id.to_string()),
                 decision: None,
                 candidate: None,
+                accepted_candidate: None,
                 identities: Default::default(),
                 identity_gap: false,
                 request_finished: false,
@@ -182,11 +183,25 @@ pub(super) fn read(
             },
         );
     }
-    let mut statement = tx.prepare("SELECT e.rowid,e.request_id,e.event_id,CASE WHEN length(CAST(p.body_json AS BLOB))<=1048576 THEN json_extract(p.body_json,'$.fact') END,COALESCE(length(CAST(p.body_json AS BLOB)),0)>1048576,e.producer_epoch
+    // Only typed membership facts may exceed the ordinary per-fact input bound.
+    // The total query and rendered response budgets still apply.
+    let mut statement = tx.prepare("SELECT e.rowid,e.request_id,e.event_id,
+        CASE WHEN length(CAST(p.body_json AS BLOB))<=1048576 THEN json_extract(p.body_json,'$.fact')
+             WHEN length(CAST(p.body_json AS BLOB))<=?5 AND json_valid(p.body_json) THEN
+               CASE WHEN json_type(p.body_json,'$.fact.history_membership')='object'
+                    AND json_extract(p.body_json,'$.fact.kind') IN ('agent_turn_finished','branch_assessment_recorded','stage_assessment_recorded')
+                    THEN json_extract(p.body_json,'$.fact') END
+        END,COALESCE(length(CAST(p.body_json AS BLOB)),0)>1048576,e.producer_epoch
         FROM execution_fact_events e LEFT JOIN observation_sensitive_payloads_v2 p ON p.id='fact:'||e.envelope_digest
         WHERE e.workspace_id=?1 AND e.session_id=?2 AND e.rowid<=?3 AND (?4 IS NULL OR e.request_id IN(SELECT value FROM json_each(?4))) ORDER BY e.rowid LIMIT 50001")?;
     let rows = statement.query_map(
-        rusqlite::params![reader.workspace().as_str(), session, target.facts, selected],
+        rusqlite::params![
+            reader.workspace().as_str(),
+            session,
+            target.facts,
+            selected,
+            MAX_HISTORY_MEMBERSHIP_FACT_BYTES
+        ],
         |r| {
             Ok((
                 r.get::<_, i64>(0)?,
@@ -208,7 +223,7 @@ pub(super) fn read(
             continue;
         };
         request.fact_count += 1;
-        if oversized {
+        if oversized && value.is_none() {
             return Err(ObservationV2Error::ScopeTooLarge);
         }
         request.position.facts = position;

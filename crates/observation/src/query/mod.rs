@@ -484,12 +484,30 @@ impl ObservationQueryPort for LocalObservationStore {
         if body.is_empty() {
             return Err(ObservationQueryError::InvalidQuery);
         }
+        let request_id = hiroute_domain::LogicalRequestId::parse(request)
+            .map_err(|_| ObservationQueryError::Corrupt)?;
+        let (fact_count, ordinary_bytes, all_bytes): (usize, usize, usize) = connection.query_row(
+            "SELECT count(*),COALESCE(sum(CASE WHEN size<=?3 AND kind IN ('agent_turn_finished','branch_assessment_recorded','stage_assessment_recorded') THEN 0 ELSE size END),0),COALESCE(sum(size),0)
+             FROM (SELECT COALESCE(length(CAST(p.body_json AS BLOB)),length(e.envelope_json)) AS size,
+                          CASE WHEN json_valid(s.body_json) THEN json_extract(s.body_json,'$.event_kind') END AS kind
+                   FROM execution_fact_events e LEFT JOIN observation_sensitive_payloads_v2 p ON p.id='fact:'||e.envelope_digest
+                   LEFT JOIN observation_safe_facts_v2 s ON s.workspace_id=e.workspace_id AND s.request_id=e.request_id AND s.original_digest=e.envelope_digest
+                   WHERE e.workspace_id=?1 AND e.request_id=?2 LIMIT 201)",
+            params![workspace_id.as_str(), request_id.as_str(), hiroute_domain::MAX_HISTORY_MEMBERSHIP_FACT_BYTES],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).map_err(|_|ObservationQueryError::Unavailable)?;
+        if fact_count > 200
+            || ordinary_bytes > 1024 * 1024
+            || all_bytes > 1024 * 1024 + 3 * hiroute_domain::MAX_HISTORY_MEMBERSHIP_FACT_BYTES
+        {
+            return Err(ObservationQueryError::InvalidQuery);
+        }
         let body = crate::store::sensitive::hydrate_bounded(
             &connection,
             "receipt",
             &stored_digest,
             &body,
-            1024 * 1024,
+            1024 * 1024 + all_bytes - ordinary_bytes,
         )
         .map_err(|_| ObservationQueryError::Corrupt)?;
         let receipt: RoutingReceiptV1 =
@@ -497,15 +515,6 @@ impl ObservationQueryPort for LocalObservationStore {
         receipt
             .validate()
             .map_err(|_| ObservationQueryError::Corrupt)?;
-        let request_id = hiroute_domain::LogicalRequestId::parse(request)
-            .map_err(|_| ObservationQueryError::Corrupt)?;
-        let (fact_count, fact_bytes):(u64,u64)=connection.query_row(
-            "SELECT count(*),COALESCE(sum(size),0) FROM (SELECT COALESCE(length(p.body_json),length(e.envelope_json)) AS size FROM execution_fact_events e LEFT JOIN observation_sensitive_payloads_v2 p ON p.id='fact:'||e.envelope_digest WHERE e.workspace_id=?1 AND e.request_id=?2 LIMIT 201)",
-            params![workspace_id.as_str(),request_id.as_str()],|row|Ok((row.get(0)?,row.get(1)?)),
-        ).map_err(|_|ObservationQueryError::Unavailable)?;
-        if fact_count > 200 || fact_bytes > 1024 * 1024 {
-            return Err(ObservationQueryError::InvalidQuery);
-        }
         let rebuilt = crate::receipt::build_receipt_for_request(
             &connection,
             workspace_id,

@@ -960,6 +960,13 @@ Source SPEC comments:
 
 An explicitly requested timeline presentation SHALL distinguish proven pending, resolved, mixed and unavailable group state from independent execution attribution. Pending requires validated opening admission and absence of route/execution/terminal/conflicting evidence; running alone is insufficient. Terminal attribution and actual request identities retain their original authority. Existing callers without opt-in retain response shape and cursor semantics; rich and legacy reads cannot corrupt each other's cache or miss updates. Live transitions preserve one turn, request membership, focus and selection. Content loading, running pending, terminal incomplete, error and privacy-cleared states remain distinct; missing usage never becomes zero.
 
+When a clipped terminal fact has unknown attribution, opt-in presentation MAY
+recover a single execution group from a proven opening, consecutive exact
+admission revisions through the closed endpoint, and complete accepted receipts
+that agree on the frozen Plan revision, group, Binding, model and profile.
+This display recovery preserves the evidence gap, frozen score membership and
+terminal fact. Missing or conflicting execution evidence leaves the group unavailable.
+
 #### Scenario: Opening progresses
 
 - **WHEN** validated admission is followed by route, attempts, finish and a late score
@@ -1019,12 +1026,13 @@ Source SPEC comments:
 
 Current AgentTurnFinished and BranchAssessmentRecorded facts SHALL carry optional
 versioned `history_membership`: version 1, opaque execution branch ID, immutable
-revision, up to 128 exact Gateway request IDs, an explicit clipped flag, relation
+revision, exact Gateway request IDs bounded to 5,000,000 encoded bytes, an explicit clipped flag, relation
 kind and separate source/association/capture uncertainty. Relation kinds are root,
 exact_prefix, ambiguous_prefix and contextual. Producer/native request IDs cannot
 replace Gateway IDs. Current writes use the single current envelope descriptor;
 a registered previous descriptor remains read-only and cannot authenticate the new
-field. Old authenticated bytes/digests remain unchanged.
+field. Older descriptors that carry membership retain their original 128-request
+bound and their authenticated bytes and digests.
 
 For facts with membership, analysis, timeline, quality and cost consumers SHALL use
 those members, never an inclusive ordinal or first/last-time interval across

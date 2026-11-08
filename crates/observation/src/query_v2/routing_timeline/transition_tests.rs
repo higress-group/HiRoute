@@ -21,6 +21,7 @@ fn request(id: &str, model: &str, at: i64) -> Request {
         run_id: None,
         decision: None,
         candidate: Some((model.into(), Some("default".into()))),
+        accepted_candidate: None,
         identities: Default::default(),
         identity_gap: false,
         request_finished: true,

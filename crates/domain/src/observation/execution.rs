@@ -31,6 +31,13 @@ pub fn is_pre_applicability_execution_digest(value: &str) -> bool {
 /// through `validate_persisted_contract`; they are never accepted by live ingestion.
 pub const EXECUTION_FACT_SCHEMA_V2: &str = "hiroute.observation.product-execution-envelope/v2";
 pub const EXECUTION_FACT_PORT_DIGEST_V2: &str =
+    "sha256:9be1cee8087e34febfb89e735fd2c7ab972f54f3db38adfb1dbb9c1d1cb2cee1";
+
+/// Maximum encoded bytes for the exact request ID list in a current membership fact.
+pub const MAX_HISTORY_MEMBERSHIP_BYTES: usize = 5_000_000;
+/// Includes the enclosing execution fact and its trusted correlation.
+pub const MAX_HISTORY_MEMBERSHIP_FACT_BYTES: usize = MAX_HISTORY_MEMBERSHIP_BYTES + 64 * 1024;
+pub(super) const PRE_EXPANDED_HISTORY_MEMBERSHIP_DIGEST: &str =
     "sha256:8435698d0ba7e3dedfffbb37618fbbb251a23425618c53f1a98eb9cd88c01eab";
 
 /// Exact bounded membership of an immutable captured stage revision. Source
@@ -58,6 +65,11 @@ pub enum HistoryRelationV1 {
     Contextual,
 }
 
+/// Conservative encoded cost in a JSON array. Portable request IDs need no escaping.
+pub fn history_request_id_bytes(id: &str) -> usize {
+    id.len() + 3
+}
+
 impl HistoryMembershipV1 {
     pub fn validate(&self) -> Result<(), ExecutionFactError> {
         let mut seen = std::collections::BTreeSet::new();
@@ -66,7 +78,12 @@ impl HistoryMembershipV1 {
             || self.branch_id.len() > 128
             || self.branch_id.chars().any(char::is_control)
             || self.revision == 0
-            || self.request_ids.len() > 128
+            || 2 + self
+                .request_ids
+                .iter()
+                .map(|id| history_request_id_bytes(id))
+                .sum::<usize>()
+                > MAX_HISTORY_MEMBERSHIP_BYTES
             || self
                 .request_ids
                 .iter()
