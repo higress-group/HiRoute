@@ -2,6 +2,34 @@
 
 HiRoute Desktop currently supports macOS 15.0 or later. Near-term releases are self-signed: they do not carry an Apple Developer ID signature or notarization, so macOS asks you to explicitly approve the first launch.
 
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
+
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
+
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
+
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Install and open HiRoute on macOS.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/install-macos/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Follow the guide for the requested installation or checks. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Check the CLI and service: --help · system status
+- Inspect connections and next steps: quickstart
+- Enable the built-in management Skill: agents connect preview --management enable → agents connect apply
+- Restore Agent connections before uninstalling: agents restore preview → agents restore apply
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
+
+</details>
+</aside>
+
 ## Download the right installer
 
 Choose a DMG for your Mac on the [download page](/en/download/):
@@ -35,7 +63,7 @@ Apple maintains the current steps in [Safely open apps on your Mac](https://supp
 
 If macOS says the file is damaged, verify the download domain and SHA256 and download it again. Do not treat an integrity failure as an ordinary first-launch warning.
 
-## Install the Terminal entry (optional)
+## Install the Terminal entry (recommended)
 
 After opening Desktop, go to Settings → CLI → Terminal entry and select Install. It installs the entry paired with the current app at:
 

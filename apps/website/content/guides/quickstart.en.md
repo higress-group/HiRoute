@@ -1,70 +1,102 @@
 # Quickstart
 
-Choose how to run HiRoute, connect model access, then create a route and connect your Agent. To try a new model directly, start from **New models** on Home and follow [Try a new model](/en/docs/model-trial/), which chooses models, publishes the route and maps your Agent in one flow. Difficulty routing can use explicitly selected local rules without an external decision service. Task delegation is independent.
+HiRoute helps you choose **which model handles a stage and which Agent handles a task.** Start with either path, or combine them.
 
-## 1. Choose how to run HiRoute
+**Every management and task operation in the HiRoute UI is also available through the CLI.** Both connect to the same HiRoute service and share configuration, tasks and execution records. Start in the UI and continue in the CLI, or inspect an Agent’s CLI changes in the UI. **For the fastest start, enable the built-in management Skill and let an Agent operate the CLI.**
 
-- **macOS Desktop:** requires macOS 15.0 or later. Public installers are self-signed builds. Verify the SHA256 after downloading, then follow [Install and open HiRoute on macOS](/en/docs/install-macos/).
-- **Windows Desktop:** use the native x64 installer. It installs for the current user and includes the service and CLI without requiring Python or administrator privileges. Follow [Install HiRoute Desktop on Windows](/en/docs/install-windows/).
-- **Linux Web UI and CLI:** designed for servers, remote workstations, and automation. It installs for the current user on x86_64 or ARM64 and needs no `sudo`. Enable the Web UI and open its login URL in a browser to use the same interface as Desktop; the server needs no desktop. Follow [Install HiRoute on Linux](/en/docs/install-linux/).
+| What you want | Where to start | What you get |
+| --- | --- | --- |
+| Lower everyday coding costs and try cheaper models | **Model routing**: connect models → create a route → connect your usual Agent | Regular models for simple work, a primary model for harder stages, and records of usage and performance |
+| Use another model and execution tool from your usual Agent | **Agent routing**: configure an execution Agent → enable task routing → delegate | Call DeepSeek Harness from Codex, or hand coding work from Hermes to Codex |
 
-The [download page](/en/download/) lists available published packages.
+Screenshots use dark mode and example data. Select an image to open it at full size.
 
-Steps 2–5 below apply to Desktop and the Linux Web UI. The browser manages the models, routes, Agents and files on the service host. You can also complete setup through the CLI. Confirm that the local service is ready first; model routing, session records, and delegated execution all depend on it.
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
 
-## Use the CLI or an Agent
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
 
-Run `hiroute quickstart` to inspect the current service, exact targets and reusable sources/Plans. Continue with `--context CONTEXT_ID --plan PLAN_ID`; for a specific Hermes profile, add `--hermes-root /ABSOLUTE/EFFECTIVE/ROOT`. The entry is read-only and shows missing choices and next commands.
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
 
-The main path is source → route → target Agent → native activation → matching request evidence. Existing Preview commands accept concise choices and `--apply-file PATH`, so callers do not hand-write a full editor or transfer digests. See [CLI Quickstart](/en/docs/cli/) for direct difficulty routing, adjustment, uncertain-response recovery and independent facet restoration. The same management Skill can run in any supported Agent and manage another target while leaving its own model native.
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Quickstart.” Use the goal from our conversation and ask only for missing information you need.
 
-For model decisions, start with `hiroute decision services options` and reuse a suitable saved connection. Enter credentials in your own terminal through the hidden prompt, then let the management Agent continue saving, testing and binding the route. Never send keys in chat. See [CLI decision-service onboarding](/en/docs/cli/).
+Page documentation: https://hiroute.ai/en/docs/
+CLI reference: https://hiroute.ai/en/docs/cli/
 
-## 2. Connect a model
+Use the built-in HiRoute management Skill. If it is not enabled, guide me through “Agent → HiRoute management → Enable”: https://hiroute.ai/en/docs/#management-skill
+For task delegation, use the built-in delegation Skill. If needed, guide me through “Agent → Task routing → Enable” and follow the installed Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 
-Open **Models → General models** and select **Add models**. You can connect a subscription, scan this device to reuse existing subscriptions and model configurations, or create a new API connection. General models execute your tasks; this connection is enough for your first route. For connecting a subscription and its API together, API key spending allowances and proxy settings, see [Connect models](/en/docs/models/).
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Inspect configuration and next steps: quickstart
+- Connect models: compute list → compute connection options → compute connection preview → compute connection apply
+- Create, edit and publish model routes: routing options → routing preview → routing apply
+- Connect an Agent to model routes: agents connect preview --context CONTEXT_ID --plan PLAN_ID → agents connect apply
+- Enable built-in management / delegation Skills: agents connect preview + --management enable / --collaboration explicit → agents connect apply
+- Check actual execution: agents connect status --effective · sessions list · sessions show · worker status · worker result
 
-Check the connection, select the model you want HiRoute to use, and save it. **Connection ready** means that the connection has the facts required by routing; it does not claim that every upstream model has completed a live inference test.
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
 
-## 3. Create your first smart route
+</details>
+</aside>
 
-Open **Smart routing** and select **New smart routing**:
+## Install and start HiRoute
 
-1. Enter a name and purpose, such as “Daily development” and “Routine code changes.”
-2. Choose Fixed model with one candidate, or Difficulty routing with regular/primary groups and an explicit decision method.
-3. Select Enable. Only published and enabled routes handle new requests.
+- **macOS**: requires macOS 15.0 or later. Public packages are self-signed. Verify the SHA256, then follow [Install and open on macOS](/en/docs/install-macos/).
+- **Windows**: native x64, installed for the current user, with the service and CLI included. No Python or administrator rights required. See [Windows installation](/en/docs/install-windows/).
+- **Linux**: x86_64 and ARM64, without `sudo`. Enable the Web UI for the same interface in your browser, or use the CLI alone. See [Linux installation](/en/docs/install-linux/).
 
-You can also select **Create routing** in a model's details to create a fixed-model route from that model. For further configuration, use Difficulty routing, Custom branches, or Free first in [Use smart model routing](/en/docs/model-routing/). When you need model judgment and stage assessment, add a built-in connection under **Models → Decision models**, or connect a self-hosted custom extension.
+The [download page](/en/download/) lists released packages. Check that the service is ready before continuing. The browser manages models, Agents and files on the service host. Keep the HiRoute service running while using routes or executing tasks.
 
-## 4. Connect your agent
+<h2 id="management-skill">Recommended: enable management and let your Agent help</h2>
 
-Codex is the example here. Open **Agent**, choose the discovered Codex, select **Enable** under **Model routing**, then:
+1. Open “Agent,” select your usual Agent, and choose “Enable” under “HiRoute management” to open its settings.
+2. If the CLI entry is missing, first choose “Prepare CLI entry” and make sure the Agent can run `hiroute`. Then select “Enable HiRoute management.” Reload Skills or start a new session as prompted.
+3. Tell the Agent what you want: connect a model, create a route for everyday coding, or inspect recent model performance. The built-in management Skill guides it to inspect the current state, configure HiRoute through the CLI and check the result. You can view the changes in the UI at any time.
 
-1. Choose a **Connection mode**. **On demand · CLI only** is recommended: it affects only the HiRoute profile, and ordinary Codex and Desktop keep their settings. **Use by default · CLI and Desktop** makes Codex CLI and Desktop that share the configuration directory use HiRoute.
-2. Under **Models available in Codex**, select your new smart route, and make it the **Default selection**.
-3. On demand, select **Enable and copy launch command**, then start Codex with that command in a terminal. By default, select **Enable model routing**, then restart Codex CLI or Desktop after saving.
+Management works independently, so the calling Agent can keep its existing model connection. Follow either path below in the UI, or give the corresponding guide to an Agent with the management Skill enabled.
 
-When HiRoute is used by default, Codex filters `/resume` by model provider, so earlier sessions may disappear while their files remain. **Find earlier sessions** on the page explains how to get back to them.
+<figure>
+  <a href="/guide-assets/agent-management-en.webp"><img src="/guide-assets/agent-management-en.webp" alt="Dark-mode HiRoute management dialog with CLI entry preparation and an enable button" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>“Agent → HiRoute management → Enable” prepares the built-in Skill. Model routing and task routing are separate settings.</figcaption>
+</figure>
 
-For a separate Codex Desktop window on macOS or Windows Desktop, choose the **Codex Desktop** entry on the Agent page. Enable its model routing and save, then select **Open separate window**. Its configuration stays separate from your ordinary Codex profile.
+## Path one: use model routing in your usual Agent
 
-Other Agents connect like this:
+Start here to address model costs or try a new model on real work.
 
-- **Claude Code:** start `claude` normally and use its native Opus, Sonnet or Haiku preset for mapped routes.
-- **Qoder, Pi, DeepSeek Harness and OpenCode:** HiRoute adds routes you can explicitly select in the Agent's model choices, keeping native models and defaults. Restart the Agent after saving and select a route.
-- **Hermes:** first select the configuration directory Hermes actually uses, then choose one route as its default main model.
+1. **Connect models.** Open “Models → General models → Add models.” Connect a subscription, scan local configuration or add an API. Check the connection, select models and save. See [Connect models](/en/docs/models/).
+2. **Create a route.** Open “Smart routing → New smart routing.” Choose “Fixed model” to get a first connection working. For simple work on a cheaper model, choose “Difficulty routing,” configure Regular and Primary groups and a decision method, then select “Enable.”
+3. **Connect your usual Agent.** Open “Agent,” select Codex or another target, and choose “Enable” under “Model routing.” Select the published route and save. With Codex, you can choose “On demand · CLI only” and copy the launch command. For other modes, restart or load configuration as the page instructs.
+4. **Run a small task and check.** Select the route in your Agent and run a task with a clear expected result. In “Sessions,” confirm the actual route, model and usage. Saving configuration does not switch an already running session.
 
-Keep HiRoute running while you use routing; enabling does not set up automatic startup. HiRoute keeps a restore point. If you disable model routing later, use **Connection details and recovery** to restore the settings that existed before HiRoute managed the connection.
+**Want to try a new model directly?** Use “Try” or “Connect and try” in Home’s “New models” section. The flow takes you through model selection, route publication and Agent mapping. The new model starts with simple turns, backed by your familiar primary model.
 
-## 5. Send a real request
+<figure>
+  <a href="/guide-assets/trial-entry-en.webp"><img src="/guide-assets/trial-entry-en.webp" alt="Dark-mode Home with a new-model card and trial action" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Start a trial from a new-model card on Home. Whether you need a connection depends on the models you already have.</figcaption>
+</figure>
 
-Follow the native loading and model-selection guidance, then submit an authorized small task with a clear result. Saved configuration alone is not proof that a running conversation switched. After it starts, open the routing timeline in **Sessions** to inspect the route, actual model, usage, and execution state.
+Continue with [Try a new model](/en/docs/model-trial/) or [Configure model routing](/en/docs/model-routing/). Actual savings depend on prices, task mix and fallback frequency; use your own execution records to assess them.
 
-## Next steps
+## Path two: delegate work to another Agent
 
-- [Connect models](/en/docs/models/) to connect subscriptions and APIs, combine same-named models into one route, and limit API key spending.
-- [Try a new model](/en/docs/model-trial/) to let a new model take simple work with a primary model as backup, then adjust trust from evidence.
-- [Use smart model routing](/en/docs/model-routing/) to configure the four routing types, decision models, and custom branches, then inspect turn selection, actual execution, and later stage assessment.
-- [Use smart task routing](/en/docs/task-routing/) to delegate independently executable work.
-- [Install HiRoute on Linux](/en/docs/install-linux/) to configure models, routes and Agents through the Web UI or CLI, locally or from another computer.
-- [HiRoute CLI](/en/docs/cli/) to manage HiRoute, inspect runtime facts, start tasks, and recover uncertain submissions from Terminal.
+Your daily conversation does not have to use the same model and harness (the Agent’s execution tool) as every task. Stay in Codex and delegate an independent task to DeepSeek Harness using a DeepSeek model, or ask Hermes to hand coding work to Codex.
+
+1. **Prepare the execution Agent.** Install it on the HiRoute service host and connect the model it will use.
+2. **Publish a route for delegation.** Create or edit a route under “Smart routing,” choose its models, then expand “More settings → Task delegation.” Turn on “Allow delegation to an execution agent,” describe its purpose, choose an execution Agent, check its environment and publish.
+3. **Enable task routing for your main Agent.** Under “Agent,” select the Agent you use daily and enable “Task routing.” Start with “Only when explicitly requested,” complete the skill check shown on the page and save. Your main Agent can keep its existing model connection.
+4. **Delegate explicitly and follow the result.** Ask: “Use HiRoute to delegate this task to [route name], then summarize the changes and test results.” Replace the placeholder with a published route name and specify the goal and working directory. Follow progress under “Agent → Task history.”
+
+<figure>
+  <a href="/guide-assets/agent-task-en.webp"><img src="/guide-assets/agent-task-en.webp" alt="Main Agent task-routing settings with a choice of delegation trigger" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Model routing and task routing are configured separately. This setting controls when the main Agent delegates.</figcaption>
+</figure>
+
+Delegated tasks run with `approve-all`: the execution Agent can write files, run commands and access the network. The working directory is not a sandbox. Start with a small, well-scoped task in an environment where those operations are acceptable.
+
+Continue with [Agent routing: setup, examples and results](/en/docs/task-routing/).
+
+For other operations, copy the Agent instructions from the relevant guide into your conversation. See [HiRoute CLI](/en/docs/cli/) for command details and recovery.

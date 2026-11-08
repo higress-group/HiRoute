@@ -4,6 +4,36 @@ HiRoute manages subscriptions, APIs and local models in one place on your machin
 
 This guide covers general models: how to connect them, how to combine a subscription and an API that offer the same model into one route, and how to limit spending on an API key. Desktop and the Linux Web UI work the same way; for the matching `compute` commands, see [HiRoute CLI](/en/docs/cli/).
 
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
+
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
+
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
+
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Connect models.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/models/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Use the built-in HiRoute management Skill. If it is not enabled, guide me through “Agent → HiRoute management → Enable”: https://hiroute.ai/en/docs/#management-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Inspect or reuse connected models: compute list · compute show · compute connection options
+- Scan local settings, connect a subscription or API: compute scan · compute connection prepare / authorize / login / test
+- Select models and save a connection: compute connection preview → compute connection apply
+- Combine the same model from several sources: routing options → routing preview → routing apply
+- Set key budgets and model prices: compute budgets get / preview · prices effective · prices override preview / apply
+- Set a connection proxy: compute network show / preview / apply
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
+
+</details>
+</aside>
+
 ## Add models
 
 Open **Models → General models** and select **Add models**:
@@ -15,6 +45,19 @@ Open **Models → General models** and select **Add models**:
 - **Browse free models:** see each service's free conditions and how to get a key.
 
 After saving, a model shows **Connection ready**. This means it meets the local conditions for routing; it does not mean upstream inference or tool calls have been verified. Confirm with a real request.
+
+<figure>
+  <a href="/guide-assets/models-add-en.webp"><img src="/guide-assets/models-add-en.webp" alt="Add models dialog offering subscription, device scan and API connection choices" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Use Connect subscription for a sign-in, Scan this device to reuse local configuration, or New API connection for an endpoint and key.</figcaption>
+</figure>
+
+## Choose what to do next
+
+- **Reduce model costs in your daily Agent:** create a [model route](/en/docs/model-routing/) and map it to your Agent.
+- **Try a new model first:** open New models on Home and follow the [trial flow](/en/docs/model-trial/).
+- **Run work with another Agent:** combine execution models and an execution Agent in an [Agent route](/en/docs/task-routing/).
+
+You are ready to configure a route when the saved model appears among its candidates. A successful real request is the next check for upstream inference and tool use.
 
 ## Connect a subscription and its API together
 

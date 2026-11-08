@@ -6,6 +6,34 @@ Check the [download page](/en/download/) for published packages. A complete pack
 
 Linux packages support `x86_64` and ARM64 (`aarch64`), with glibc 2.31 or later. Installation needs no `sudo`; it requires `curl` and Python 3.
 
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
+
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
+
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
+
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Install HiRoute on Linux.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/install-linux/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Follow the guide for the requested installation or checks. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Start and inspect the service: service start · service status · system status
+- Configure and open browser management: console init · console open
+- Discover targets and next steps: quickstart · schema list
+- Enable management, then configure models and routes: agents connect preview --management enable → agents connect apply · compute · routing
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
+
+</details>
+</aside>
+
 ## 1. Install
 
 Run this command to install the latest stable release:
@@ -109,7 +137,7 @@ Writes follow one safety pattern: read schema and options, perform a bounded tes
 
 ## 4. Configure models, routes and Agents
 
-With the Web UI open, follow the visual [Quickstart](/en/docs/) from **Connect a model**. All paths, Agent installations and native files belong to the service host, including when your browser runs on another computer. Desktop-only controls such as application updates and login-start settings are absent.
+With the Web UI open, follow [Quickstart](/en/docs/#management-skill) to enable the built-in management Skill under “Agent → HiRoute management,” then let your Agent configure models and routes. All paths, Agent installations and native files belong to the service host, including when your browser runs on another computer. Desktop-only controls such as application updates and login-start settings are absent.
 
 For terminal or automation use, build the first route through the CLI in this order:
 
@@ -123,19 +151,9 @@ Web UI, CLI and Desktop reuse the same service-owned configuration, storage, pub
 
 ## 5. Delegate a task
 
-Once an execution plan has been published, discover it and submit work from a terminal or main Agent:
+In the Web UI, open “Agent → Select your main Agent → Task routing → Enable.” Choose when to delegate and complete the built-in delegation Skill check. Then give the main Agent your task goal and working directory; the Skill discovers available routes, executes the task and retrieves the result.
 
-```sh
-hiroute worker executors
-hiroute worker plans
-hiroute worker exec \
-  --plan <PLAN_ID> \
-  --cwd /absolute/path/to/project \
-  --submission-key first-task-001 \
-  -- "Analyze this task, implement it, and run the relevant checks"
-```
-
-If a network or process interruption leaves acceptance uncertain, do not retry with a new key. Keep the original `submission-key` and query `worker status --submission ... --operation start`.
+Task history in the UI and `worker list`, `worker status` and `worker result` in the CLI read the same records. See [Agent routing](/en/docs/task-routing/) for illustrated steps and a command map.
 
 ## Model information updates
 

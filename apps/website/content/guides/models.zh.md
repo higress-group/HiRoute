@@ -4,6 +4,36 @@ HiRoute 在本机集中管理订阅、API 和本地模型。“模型”页面�
 
 本文介绍通用模型：怎样接入、怎样把订阅和 API 里的同名模型组合成一条路由，以及怎样限制 API Key 的花费。桌面应用和 Linux Web UI 的操作相同；命令行对应的 `compute` 命令见 [HiRoute CLI](/zh/docs/cli/)。
 
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
+
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
+
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
+
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“接入模型”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/models/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+请使用产品内置的 HiRoute 管理技能；尚未启用时，按图示引导我在“Agent → HiRoute 管理 → 启用”中开启：https://hiroute.ai/zh/docs/#management-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 查看或复用已有模型：compute list · compute show · compute connection options
+- 扫描本机、连接订阅或 API：compute scan · compute connection prepare / authorize / login / test
+- 选择模型并保存接入：compute connection preview → compute connection apply
+- 把同名模型加入同一路由：routing options → routing preview → routing apply
+- 设置 API Key 额度、调整价格：compute budgets get / preview · prices effective · prices override preview / apply
+- 设置接入代理：compute network show / preview / apply
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
+
+</details>
+</aside>
+
 ## 添加模型
 
 打开“模型 → 通用模型”，选择“添加模型”：
@@ -15,6 +45,19 @@ HiRoute 在本机集中管理订阅、API 和本地模型。“模型”页面�
 - **浏览免费模型**：查看各服务的免费条件和获取 Key 的指引。
 
 保存后，模型显示“接入就绪”，表示它满足进入路由的本地条件，不代表上游推理或工具调用已经验证过。用一次真实请求确认实际效果。
+
+<figure>
+  <a href="/guide-assets/models-add-zh.webp"><img src="/guide-assets/models-add-zh.webp" alt="模型页面的添加模型对话框，提供订阅、扫描本机和 API 等入口" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>已有订阅选“连接订阅”；复用本机配置选“扫描本机”；有 Key 和地址选“新建 API 接入”。</figcaption>
+</figure>
+
+## 接入后，选择用途
+
+- **给日常 Agent 降低模型成本**：去 [智能模型路由](/zh/docs/model-routing/) 创建路由，再映射到你的 Agent。
+- **先试一个新模型**：去首页的“新模型”，按 [试用流程](/zh/docs/model-trial/) 完成配置。
+- **给另一种 Agent 执行任务**：去 [Agent 智能路由](/zh/docs/task-routing/) 把执行模型与执行 Agent 组合成可委派的路由。
+
+完成标志是模型已保存、出现在路由候选中；真实请求成功后，再确认上游推理和工具调用是否正常。
 
 ## 订阅和 API 一起接入
 

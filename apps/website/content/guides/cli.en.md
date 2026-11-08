@@ -1,6 +1,48 @@
 # HiRoute CLI
 
-HiRoute CLI is the official terminal entry to the HiRoute local service. It works alongside macOS / Windows Desktop and the Linux Web UI, or as the complete management interface for terminal and automation workflows. Model sources, smart routes, Agent connections, session observation and Worker tasks reuse the same production paths.
+**Every management and task operation in the HiRoute UI is also available through the CLI.** Both connect to the same HiRoute service and share configuration, tasks and execution records. Start in the UI and continue in the CLI, or inspect an Agent’s CLI changes in the UI. **For the fastest start, enable the built-in management Skill and let an Agent operate the CLI.**
+
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
+
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
+
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
+
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “HiRoute CLI.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/cli/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Use the built-in HiRoute management Skill. If it is not enabled, guide me through “Agent → HiRoute management → Enable”: https://hiroute.ai/en/docs/#management-skill
+For task delegation, use the built-in delegation Skill. If needed, guide me through “Agent → Task routing → Enable” and follow the installed Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Home status and setup guidance: system status · quickstart
+- Models and connection settings: compute · prices · decision connections
+- Smart routes: routing options / list / show / preview / apply
+- Agent model routes and built-in Skills: agents connect preview / apply / status · agents restore
+- Delegated tasks and history: worker plans / exec / list / status / result / continue / cancel
+- Sessions, model performance and usage: sessions · observation plan-quality · observation plan-trust · value show
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
+
+</details>
+</aside>
+
+<h2 id="built-in-skills">Enable the built-in Skills in the product first</h2>
+
+| What you want the Agent to do | Where to enable it |
+| --- | --- |
+| Configure models, routes and Agents; inspect execution records | “Agent → Select your usual Agent → HiRoute management → Enable” |
+| Hand work to another model × harness | “Agent → Select your main Agent → Task routing → Enable”; choose when to delegate and complete the Skill check |
+
+Once enabled, tell the Agent your goal. The Skills shipped with HiRoute provide the management and delegation workflows. Management, task routing and model routing can be enabled independently. See the illustrated steps for [management](/en/docs/#management-skill) and [task routing](/en/docs/task-routing/#delegation-skill).
+
+Each guide offers copyable Agent instructions with documentation links and CLI pointers: [Quickstart](/en/docs/#agent-cli), [Connect models](/en/docs/models/#agent-cli), [Try a new model](/en/docs/model-trial/#agent-cli), [Model routing](/en/docs/model-routing/#agent-cli) and [Agent routing](/en/docs/task-routing/#agent-cli).
 
 ## Install and inspect the CLI
 
@@ -316,7 +358,6 @@ For native settings provide the matching concrete `agents restore preview --cont
 --apply-file ...` and `agents restore apply --request-file ...` commands, with actual native-root or
 selection flags and the owned restore reference. Arrange independent access before a restore/reconnect
 can revoke the caller's grant. Native loading/selection remains a separate reported action.
-
 
 ## Analyze historical conversations and estimated API savings
 

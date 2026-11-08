@@ -6,9 +6,10 @@
   "scripts": {
     "prepare:content": "node scripts/prepare-content.mjs",
     "dev": "npm run prepare:content && astro dev",
-    "build": "npm run prepare:content && astro build && node scripts/validate-build.mjs",
+    "build": "npm run check:guides && npm run prepare:content && astro build && node scripts/validate-build.mjs",
     "preview": "astro preview",
-    "pretest": "npm run prepare:content",
+    "check:guides": "node scripts/validate-guides.mjs && node scripts/documentation-review.mjs check-all",
+    "pretest": "npm run check:guides && npm run prepare:content",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
+import { validateAgentGuide } from './agent-guide-contract.mjs';
 import { localePath } from './locale.mjs';
 
 const website = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -12,10 +13,10 @@ const content = path.join(website, 'content/guides');
 export const guidePages = {
   quickstart: {
     zh: '快速开始', en: 'Quickstart',
-    title: { zh: '快速开始：安装、接入模型并连接 Agent', en: 'Quickstart: install, connect models and your Agent' },
+    title: { zh: '快速开始：模型路由与 Agent 路由', en: 'Quickstart: model routing and Agent routing' },
     description: {
-      zh: '选择 macOS、Windows 桌面应用或 Linux Web UI，接入订阅、API 和本地模型，创建第一条路由，再连接 Codex、Claude Code 等 Agent。',
-      en: 'Choose macOS or Windows Desktop or the Linux Web UI, connect subscriptions, APIs and local models, create your first route, then connect Codex, Claude Code or another Agent.',
+      zh: '开启内置管理技能，让 Agent 通过 CLI 快速上手；按图配置模型路由与 Agent 路由。界面和 CLI 共用配置与执行记录，每页附操作对照。',
+      en: 'Enable the management Skill for a faster start with an Agent and CLI. Follow illustrated model and Agent routing guides, with shared UI/CLI data and command maps.',
     },
   },
   'install-macos': {
@@ -67,19 +68,19 @@ export const guidePages = {
     },
   },
   'task-routing': {
-    zh: '使用智能任务路由', en: 'Use smart task routing',
-    title: { zh: '智能任务路由：把任务交给合适的执行 Agent', en: 'Smart task routing: delegate work to execution Agents' },
+    zh: 'Agent 智能路由', en: 'Smart Agent routing',
+    title: { zh: 'Agent 智能路由：跨 Harness 委派任务', en: 'Smart Agent routing: delegate across harnesses' },
     description: {
-      zh: '让主 Agent 把目标清楚、可以独立执行的工作委派给 Codex CLI、Claude Code、Qoder CLI、Pi、DeepSeek Harness 或 OpenCode，并可与模型路由组合使用。',
-      en: 'Let your main Agent delegate well-scoped, independent work to Codex CLI, Claude Code, Qoder CLI, Pi, DeepSeek Harness or OpenCode, alone or together with model routing.',
+      zh: '让 Codex 委派给 DeepSeek Harness，或让 Hermes 用 Codex 编码。按图配置执行 Agent、开启任务路由，再查看进度并取回结果。',
+      en: 'Delegate from Codex to DeepSeek Harness, or use Codex for coding from Hermes. Configure an execution Agent, enable task routing and follow the results with illustrated steps.',
     },
   },
   cli: {
     zh: 'HiRoute CLI', en: 'HiRoute CLI',
     title: { zh: 'HiRoute CLI：在终端管理模型、路由、Agent 与任务', en: 'HiRoute CLI: manage models, routes, Agents and tasks' },
     description: {
-      zh: '在终端连接模型、配置路由、接入 Agent、查看会话和委派任务；与桌面应用、Linux Web UI 共用配置和执行记录，也适合自动化环境。',
-      en: 'Connect models, configure routes and Agents, inspect sessions and delegate tasks from the terminal. The CLI shares configuration and records with Desktop and the Linux Web UI.',
+      zh: '推荐开启内置管理与委派技能，让 Agent 操作 CLI。界面中的管理与任务操作都有 CLI 对应入口，底层配置和记录互通。',
+      en: 'Enable the built-in management and delegation Skills to let an Agent use the CLI. UI management and task operations have CLI equivalents and share configuration and records.',
     },
   },
 };
@@ -91,6 +92,7 @@ export function guideRoute(slug, language) {
 export async function renderUserGuide(slug, language) {
   if (!(slug in guidePages) || !['zh', 'en'].includes(language)) throw new Error('unknown user guide');
   const markdown = await fs.readFile(path.join(content, `${slug}.${language}.md`), 'utf8');
+  validateAgentGuide(markdown, slug, language);
   const renderer = new marked.Renderer();
   renderer.link = ({ href, title, text }) => {
     const external = /^https?:/.test(href) ? ' target="_blank" rel="noreferrer"' : '';

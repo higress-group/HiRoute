@@ -1,8 +1,50 @@
 # HiRoute CLI
 
-HiRoute CLI 让你在终端连接模型、配置路由、接入 Agent、查看会话和委派任务。它连接本机的 HiRoute 服务，与 macOS / Windows 桌面应用、Linux Web UI 使用相同的配置和执行记录，也可以独立用于终端和自动化环境。
+**HiRoute 界面里的各项管理与任务操作，都可以通过 CLI 完成。** 两者连接同一个 HiRoute 服务，共用底层配置、任务和执行记录：在界面里配置后，CLI 可以接着操作；让 Agent 通过 CLI 完成的改动，也能在界面里查看。**推荐先开启内置管理技能，让 Agent 操作 CLI，更快上手 HiRoute。**
 
 本文中的命令名、参数和 JSON 字段均保留原文。例如 `worker` 管理委派任务，`schema` 查看命令接受和返回的数据格式。
+
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
+
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
+
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
+
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“HiRoute CLI”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/cli/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+请使用产品内置的 HiRoute 管理技能；尚未启用时，按图示引导我在“Agent → HiRoute 管理 → 启用”中开启：https://hiroute.ai/zh/docs/#management-skill
+涉及任务委派时，请使用产品内置委派技能；尚未启用时，引导我在“Agent → 任务路由 → 启用”中开启，按已安装技能处理委派：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 首页状态、接入指引：system status · quickstart
+- 模型和接入设置：compute · prices · decision connections
+- 智能路由：routing options / list / show / preview / apply
+- Agent 的模型路由和内置技能：agents connect preview / apply / status · agents restore
+- 委派任务与任务记录：worker plans / exec / list / status / result / continue / cancel
+- 会话、模型表现与用量：sessions · observation plan-quality · observation plan-trust · value show
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
+
+</details>
+</aside>
+
+<h2 id="built-in-skills">先在产品里开启内置技能</h2>
+
+| 你想让 Agent 做什么 | 在产品中开启 |
+| --- | --- |
+| 配置模型、路由和 Agent，查询执行记录 | “Agent → 选择常用 Agent → HiRoute 管理 → 启用” |
+| 把工作交给另一种模型 × Harness | “Agent → 选择主 Agent → 任务路由 → 启用”，选择委派时机并完成技能检查 |
+
+开启后，直接向 Agent 说明目标；管理和委派的流程由随产品提供的技能负责。管理技能、任务路由和模型路由可以分别开启。图示见[开启管理技能](/zh/docs/#management-skill)与[开启任务路由](/zh/docs/task-routing/#delegation-skill)。
+
+各文档都提供可复制给 Agent 的指引，包含文档链接和对应 CLI 操作：[快速开始](/zh/docs/#agent-cli)、[接入模型](/zh/docs/models/#agent-cli)、[试用新模型](/zh/docs/model-trial/#agent-cli)、[模型路由](/zh/docs/model-routing/#agent-cli)、[Agent 路由](/zh/docs/task-routing/#agent-cli)。
 
 ## 安装与检查
 
@@ -323,7 +365,6 @@ hiroute routing show PLAN_ID --output json
 原生接入应给出已填好实际参数的 `agents restore preview --context ... --facet ... --apply-file ...`
 和 `agents restore apply --request-file ...` 命令、原生目录/选择参数及已有恢复点。可能撤销调用方授权
 的恢复或重接入前，先安排独立接续；原生加载/当前会话选择单独报告。
-
 
 ## 分析历史会话和 API 等价省钱效果
 

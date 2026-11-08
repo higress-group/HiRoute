@@ -2,6 +2,34 @@
 
 HiRoute Windows 桌面版提供按当前用户安装的 NSIS 安装包，只支持原生 Windows x64。安装包自带命令行、后台服务、控制台文件和 WebView2 引导安装器，不要求 Python 或管理员权限。可从[下载页](/zh/download/)选择 Windows 桌面安装包。
 
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
+
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
+
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
+
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“Windows 桌面版安装”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/install-windows/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+先按文档完成本次安装或检查目标。安装后，引导我在“Agent → HiRoute 管理 → 启用”中开启产品内置管理技能，后续配置交给该技能：https://hiroute.ai/zh/docs/#management-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 检查 CLI 和服务是否可用：--help · system status
+- 查看当前接入和下一步：quickstart
+- 开启产品内置管理技能：agents connect preview --management enable → agents connect apply
+- 卸载前恢复 Agent 接入：agents restore preview → agents restore apply
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
+
+</details>
+</aside>
+
 ## 校验下载
 
 从 `hiroute.ai/releases/<版本>/` 下载，在 PowerShell 中计算摘要，与下载页该文件旁的完整 SHA-256 比较。新版本的简短文件名为 `HiRoute-<版本>.exe`：

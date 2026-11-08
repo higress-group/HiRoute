@@ -2,6 +2,38 @@
 
 新模型发布后，不必一次让它接管全部工作。HiRoute 的试用让新模型先承担简单的轮次，熟悉的主力模型兜底；新模型某一步没做好、问题又关系到接下来的工作时，主力接手。之后根据你自己任务里的记录，逐步调整新模型承担的工作量。
 
+<aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
+<div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
+
+复制以下指引到 Agent 对话中，再说明你想完成的操作。内容包含文档链接、内置技能入口和 CLI 线索。
+
+<details class="agent-guide-preview">
+<summary>查看给 Agent 的内容</summary>
+
+```text
+请先阅读以下文档，结合我在对话中提出的目标，用 HiRoute CLI 完成“试用新模型”相关操作。目标不明确时，只询问必要信息。
+
+本页文档：https://hiroute.ai/zh/docs/model-trial/
+CLI 参考：https://hiroute.ai/zh/docs/cli/
+
+请使用产品内置的 HiRoute 管理技能；尚未启用时，按图示引导我在“Agent → HiRoute 管理 → 启用”中开启：https://hiroute.ai/zh/docs/#management-skill
+
+操作线索（按本次目标选用；下面均为 hiroute 子命令）：
+- 选试用模型和主力模型：compute list · compute connection options / preview / apply
+- 选择或添加决策连接：decision connections options / list / apply
+- 设置试用路由、信任度并发布：routing options → routing preview → routing apply
+- 映射到常用 Agent：agents connect preview → agents connect apply
+- 查看路由时间线和模型表现：sessions timeline · observation plan-quality samples · observation plan-trust
+- 回放信任度、查看调整建议：observation plan-trust replay / suggestions
+
+试用流程由模型接入、路由配置和 Agent 映射组成；默认“试用”档对应编辑器 smart.judgment.degree.simple_threshold_millis = 900。历史回放读取同一批记录；应用信任度调整使用 routing preview / apply。
+
+界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
+```
+
+</details>
+</aside>
+
 ## 从首页开始
 
 首页的“新模型”列出由 hiroute.ai 维护的推荐，每个模型会标明能否直接试用：
@@ -12,6 +44,11 @@
 
 试用流程分四步：选择模型、核对并发布、映射 Agent、开始使用。
 
+<figure>
+  <a href="/guide-assets/trial-entry-zh.webp"><img src="/guide-assets/trial-entry-zh.webp" alt="首页新模型试用卡片" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>试用位是新模型的统一入口：已有连接可直接试，需要连接时在流程内完成。推荐列表会更新，图中模型为示例。</figcaption>
+</figure>
+
 ## 1. 选择模型
 
 - **要试用的模型**：可以选已接入的模型，也可以在这里复用本机订阅、选择已保存的 API 模型，或连接其他接入点。
@@ -19,6 +56,11 @@
 - **决策连接**：试用需要给每个阶段打胜任分，所以要选择一个决策模型，不提供启发式规则。还没有决策模型时，可以在这里新增，草稿会保留。
 - **接入的 Agent**：选择要使用这条路由的 Agent。
 - **名称与起始信任度**：起始信任度默认是“试用”，新模型最初只承担最简单的工作，之后可以随时调整。
+
+<figure>
+  <a href="/guide-assets/trial-setup-zh.webp"><img src="/guide-assets/trial-setup-zh.webp" alt="试用流程第一步，选择要试用的模型" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>先选择试用模型，再向下选择主力、决策连接和 Agent。页面底部的“检查改动”进入下一步。</figcaption>
+</figure>
 
 ## 2. 核对并发布
 
@@ -46,12 +88,24 @@
 
 在路由编辑器的“信任度”中调整时，“用你的记录回放此设置”会用当前版本的历史记录估算，换成新档位后有多少阶段会交给常规模型。这是对历史分配的估算，不是对未来的预测。
 
+<details>
+<summary>什么时候会出现信任度调整建议？</summary>
+
 证据足够时，首页“需要你处理的事”会给出建议。建议只看当前发布版本的记录：
 
 - **可以上调**：至少 30 个有完整评分的阶段、来自至少 3 个会话，评分覆盖至少六成，其中至少 85% 达到胜任下限。期间模型有更新公告时，只统计公告之后的记录。
 - **建议下调**：至少 30 个完整评分的阶段里，达到胜任下限的不到 70%。已经在最谨慎的档位时，会改为建议回到之前的路由，或建议更换常规模型。
 - **可以分工**：信任度已经到“放手”或更右、表现仍然稳定时，可以按任务类别分工，让常规模型接手其中一类任务。
 
+</details>
+
 建议只是建议。打开后会生成一份独立的草稿，保存和发布仍由你确认，Agent 映射也不会自动改变。没有建议时，保持当前档位就是正常结果。
 
 路由的“模型表现”汇总每个模型的阶段数、胜任率、评分覆盖和费用估算，可以对照建议一起看。供应商可能在同一个模型名下更新模型，记录可能混合多个版本。
+
+<figure>
+  <a href="/decision-assets/readme-report-zh-CN.png"><img src="/decision-assets/readme-report-zh-CN.png" alt="路由的模型表现报告，展示评分覆盖与费用估算" loading="lazy" /></a>
+  <figcaption>在“智能路由 → 模型表现”核对质量和成本。图中数据用于说明界面，不代表模型基准测试或节省承诺。</figcaption>
+</figure>
+
+**怎样算跑通了？** 已发布路由、Agent 已加载它，并在“会话”里看到一次真实执行。之后再积累多个任务的证据，决定是否提高信任度。

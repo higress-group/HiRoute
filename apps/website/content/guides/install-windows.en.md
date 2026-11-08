@@ -2,6 +2,34 @@
 
 HiRoute Desktop for Windows uses a current-user NSIS installer for native Windows x64. It includes the command line, background service, console files and a WebView2 bootstrapper. Python and administrator privileges are not required. Choose a Windows Desktop installer from the [download page](/en/download/).
 
+<aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
+<div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
+
+Copy these instructions into your Agent conversation and describe what you want to do. They include documentation links, built-in Skill setup and CLI pointers.
+
+<details class="agent-guide-preview">
+<summary>Preview the instructions</summary>
+
+```text
+Read the documentation below, then use the HiRoute CLI to carry out my goal for “Install HiRoute Desktop on Windows.” Use the goal from our conversation and ask only for missing information you need.
+
+Page documentation: https://hiroute.ai/en/docs/install-windows/
+CLI reference: https://hiroute.ai/en/docs/cli/
+
+Follow the guide for the requested installation or checks. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
+
+Command pointers (choose only what the goal needs; prefix each with hiroute):
+- Check the CLI and service: --help · system status
+- Inspect connections and next steps: quickstart
+- Enable the built-in management Skill: agents connect preview --management enable → agents connect apply
+- Restore Agent connections before uninstalling: agents restore preview → agents restore apply
+
+The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
+```
+
+</details>
+</aside>
+
 ## Verify the download
 
 Download from `hiroute.ai/releases/<version>/` and compare the full SHA-256 shown beside the file. The short filename for new releases is `HiRoute-<version>.exe`:
