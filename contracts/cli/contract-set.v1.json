@@ -21,7 +21,7 @@
     "empty-request.v1.schema.json": "sha256:44d40c4601343ddfb543fd04751cc0a0a994fe8d7963adc541fe4a245ceba2b1",
     "historical-applicability-test-result.v1.schema.json": "sha256:0c160f3db0ab0b4c35d3a6d2bfe00eba97a11685da48a72071d11ec883d07b89",
     "historical-applicability-test.v1.schema.json": "sha256:81f648094708d5016729e2edc0298c7a64d2bd0845b1da17e1883a53f2c32787",
-    "local-control-hello.v2.schema.json": "sha256:a53095b08a699248466af997198a904f15df548b10eaabf7fccf14eedf0a16c0",
+    "local-control-hello.v2.schema.json": "sha256:2bf655254b269ca12cca18692b5a2fc457afef73b5c4bb2dc9a979e27cfa03e8",
     "local-control.v2.schema.json": "sha256:4b654de90cd6e333b3953379e5b2e1c5125f1dcbe307b7c7c73f12bb2032d18c",
     "machine-envelope.v2.schema.json": "sha256:6ca8fa1456681a063ede1d977df054572be3b01ce942d5ba7efce96d99150aa1",
     "manifest.v1.json": "sha256:9e40f1e59acbbdd713dfc53a017b82ab78a0008830d7cc111294ef201eabc686",
