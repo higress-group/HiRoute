@@ -6,6 +6,7 @@
 //! usage observation.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use hiroute_diagnostics::event::NativeCompletionReason as CompletionReason;
 #[cfg(test)]
