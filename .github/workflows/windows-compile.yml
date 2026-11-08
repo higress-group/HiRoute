@@ -24,7 +24,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      windows_compile: ${{ steps.plan.outputs.windows_compile }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          args=(--full)
+          if [[ -n "$BASE_SHA" ]]; then args=(--base "$BASE_SHA"); fi
+          python3 scripts/test-plan.py "${args[@]}" --github-output
+
   check:
+    needs: scope
+    if: ${{ !cancelled() && (needs.scope.result != 'success' || needs.scope.outputs.windows_compile != 'false') }}
     runs-on: windows-2025
     # A cold build and source-cache upload can exceed the old 30-minute limit.
     timeout-minutes: 45

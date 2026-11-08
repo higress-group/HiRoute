@@ -1605,6 +1605,17 @@
   ],
   "field_compatibility_support": [
     {
+      "contract": "hiroute.release-qualification/v1",
+      "field": "qualification artifact absent for a recorded Windows release",
+      "mode": "legacy_adapter",
+      "owner": "release-publication",
+      "reason": "Replay publication for an already recorded release from the immutable indexed snapshot when a qualification artifact predates the gate or has expired. Require the same repository, tag, source, channel and full asset identities. The publisher still verifies the downloaded installer and its native acceptance.",
+      "removal_condition": "Retire when recorded release publication replay is retired or all retained releases have durable qualification evidence.",
+      "allowed_paths": [
+        "scripts/release-qualification.py"
+      ]
+    },
+    {
       "contract": "hiroute.cpa-managed-login-live/v1",
       "field": "source_snapshots, scenario_end and native source_identity_sha256 absent from retained acceptance reports",
       "mode": "frozen_fixture",

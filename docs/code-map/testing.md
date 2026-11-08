@@ -444,8 +444,10 @@ Shared private filesystem behavior has one [platform contract suite](../../crate
 The [Windows iteration route](../validation-routing.md#windows-iteration-and-release-validation)
 uses managed MSVC cross-compilation and affected execution on the configured Windows
 development machine. The [release workflow](../../.github/workflows/build-release.yml)
-requires the reusable native Windows matrix before package builds; PR/main pushes
-do not start that expensive matrix.
+runs package builds alongside the reusable native Windows matrix. The
+[qualification helper](../../scripts/release-qualification.py) joins successful jobs
+and binds the catalog bytes to the candidate before publication. PR and main pushes
+use their ordinary compile and affected-test selection.
 The [Windows CI entry](../../scripts/windows-headless-ci.ps1) requires nonempty
 native inventories for primitives, shared libraries, installed foreground and
 Task business paths, retained low-level SCM tests, and fixed upstream clients.

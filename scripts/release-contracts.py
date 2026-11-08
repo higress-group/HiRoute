@@ -47,6 +47,22 @@ def version(tag):
     return tuple(int(part) for part in match.groups())
 
 
+def catalog_assets(record, revision):
+    artifacts = []
+    for artifact in record["artifacts"]:
+        names = [(artifact["filename"], artifact["sha256"], artifact["size"])]
+        if artifact["kind"] == "standalone":
+            names.append((artifact["manifest_filename"], artifact["manifest_sha256"], artifact["manifest_size"]))
+        require(f"-{revision[:12]}-" in artifact["filename"], "artifact source differs from tag")
+        for filename, sha256, size in names:
+            require(Path(filename).name == filename and filename not in (".", ".."), "invalid asset name")
+            require(HASH.fullmatch(sha256), "invalid artifact digest")
+            require(type(size) is int and size > 0, "published asset missing or size mismatch")
+            artifacts.append({"filename": filename, "sha256": sha256, "size": size})
+    require(artifacts and len({a["filename"] for a in artifacts}) == len(artifacts), "empty or duplicate manifest assets")
+    return sorted(artifacts, key=lambda a: a["filename"])
+
+
 def create_snapshot(repo, release, manifest, revision, repository):
     tag = release["tagName"]
     version(tag)
@@ -68,20 +84,11 @@ def create_snapshot(repo, release, manifest, revision, repository):
     require(record["channel"] == channel, "publication channel differs from manifest")
     actual = {asset["name"]: asset for asset in release["assets"]}
     require(len(actual) == len(release["assets"]), "duplicate published asset")
-    artifacts = []
-    for artifact in record["artifacts"]:
-        names = [(artifact["filename"], artifact["sha256"], artifact["size"])]
-        if artifact["kind"] == "standalone":
-            names.append((artifact["manifest_filename"], artifact["manifest_sha256"], artifact["manifest_size"]))
-        require(f"-{revision[:12]}-" in artifact["filename"], "artifact source differs from tag")
-        for filename, sha256, size in names:
-            require(Path(filename).name == filename and filename not in (".", ".."), "invalid asset name")
-            require(HASH.fullmatch(sha256), "invalid artifact digest")
-            asset = actual.get(filename, {})
-            require(type(size) is int and size > 0 and asset.get("size") == size, "published asset missing or size mismatch")
-            require(asset.get("digest") == "sha256:" + sha256, "published asset digest differs from verified manifest")
-            artifacts.append({"filename": filename, "sha256": sha256, "size": size})
-    require(artifacts and len({a["filename"] for a in artifacts}) == len(artifacts), "empty or duplicate manifest assets")
+    artifacts = catalog_assets(record, revision)
+    for item in artifacts:
+        asset = actual.get(item["filename"], {})
+        require(asset.get("size") == item["size"], "published asset missing or size mismatch")
+        require(asset.get("digest") == "sha256:" + item["sha256"], "published asset digest differs from verified manifest")
     storage = git(repo, "show", f"{revision}:{STORAGE_SOURCE}")
     versions = re.findall(rb"pub const LATEST_SCHEMA_VERSION:\s*u32\s*=\s*([0-9]+);", storage)
     require(len(versions) == 1, "cannot identify released SQL schema")
@@ -93,7 +100,7 @@ def create_snapshot(repo, release, manifest, revision, repository):
         "schema": SNAPSHOT_SCHEMA,
         "release": {"repository": repository, "tag": tag, "revision": revision,
                     "channel": channel, "published_at": published,
-                    "artifacts": sorted(artifacts, key=lambda a: a["filename"])},
+                    "artifacts": artifacts},
         "storage": {"sql_schema_version": int(versions[0]), "source_path": STORAGE_SOURCE,
                     "source_sha256": digest(storage)},
         "contracts": contracts,

@@ -162,26 +162,31 @@ claim without its corresponding acceptance and publication prerequisites.
 ### Build and publish the frozen artifacts
 
 Run the **build-release-candidates** workflow on the public candidate branch.
-Unix candidate builds start independently of the reusable **windows-headless**
-workflow at the same source commit. All five x64 native scopes and their selected
-Windows 11 x64-artifact replays must succeed before Windows package-build jobs can
-start. The public release has no Windows ARM64 asset: its native headless package
-remains available through `build-release.py` on a native ARM64 host, and its Rust
-installation assessment remains in the default manual **windows-headless** run.
-The release workflow explicitly
-excludes that internal ARM64 assessment; it does not establish ARM64 runtime support.
-Both groups use **build-release-platform** for the same per-target build steps. This expensive Windows matrix
-does not run automatically on PR or main pushes; ordinary iteration uses the
-[cross-compilation and development-machine path](validation-routing.md#windows-iteration-and-release-validation).
-Hosted background compile-only cases and real accounts retain their separate
-runtime gates; the CI dependency does not establish those results.
+Package builds and the reusable **windows-headless** workflow start alongside each
+other at the same source commit. The **qualify** job requires every package build,
+all five x64 native scopes and their selected Windows 11 x64-artifact replays.
+It uploads `qualified-release-<sha>-<attempt>` with the exact public asset names,
+sizes and digests. A failed or missing job prevents qualification. The recorded
+producer attempts identify results reused after a partial retry of that run.
 
-To prepare only an x64 NSIS installer for development-machine acceptance, dispatch
-**build-release-platform** on the exact candidate branch with its default x64
-Windows target, Windows runner and `windows_desktop: true` option. It uploads
-the installer and build evidence, and leaves the identity `awaiting_runtime`.
-It performs no publication and does not replace the required native acceptance
-or the release-candidate matrix.
+The public Windows asset is x64 Desktop. The internal ARM64 Rust installation
+assessment remains in the default manual **windows-headless** run. All package
+jobs use **build-release-platform** for their per-target build steps. Ordinary
+iteration uses the [cross-compilation and development-machine path](validation-routing.md#windows-iteration-and-release-validation).
+Hosted background compilation, logged-on-user acceptance and real accounts retain
+their separate runtime gates.
+
+Start [standard-user NSIS acceptance](validation-routing.md#development-machine-execution)
+as soon as `build-windows-desktop` succeeds. Use the development bundle from that
+same candidate run. Before publishing the GitHub Release, confirm the successful
+qualification and native evidence identify the final installer's exact SHA-256.
+If a later attempt qualifies a different installer, rerun the required native
+cases on that installer.
+
+For Windows-only development, dispatch **build-release-platform** on the exact
+development ref with the default x64 target, Windows runner and
+`windows_desktop: true`. It uploads the installer and build evidence with the
+identity `awaiting_runtime`.
 
 Every package matrix job checks out the dispatch's exact `github.sha`, uses a native
 runner and uploads its own assets and evidence. Ubuntu runner labels select only
@@ -266,8 +271,8 @@ API-key model call on the intended deployment host, using the same frozen archiv
 that live result is separate from the offline build gate. Rebuild after integrating
 product fixes and retain each result at its actual source revision.
 
-1. Require the Windows validation gate and every selected package job to succeed
-   for the same SHA. Keep the exact source
+1. Require a successful qualification for the frozen SHA. Select the exact public
+   assets named in that qualification. Keep the exact source
    commit available; internal master and an exported public commit may differ.
 2. Download public package jobs' `assets/` and `result.json`. Keep Windows
    headless `internal-payloads/` out of the release. Use the measured
@@ -280,8 +285,13 @@ product fixes and retain each result at its actual source revision.
 3. Merge the reviewed website manifest into public `main`, tag the exact built
    source SHA, and attach the exact candidate assets to that GitHub Release.
    The existing [publish-release workflow](../.github/workflows/release.yml)
-   verifies tag/package identity and digests, then publishes OSS/site links and
-   proposes the [release contract snapshot](release-contracts.md).
+   matches the catalog's Windows release assets to a qualification from a successful
+   candidate workflow, then verifies the downloaded bytes and package identities.
+   After those checks it publishes OSS/site links and proposes the
+   [release contract snapshot](release-contracts.md). Rerunning publication for a
+   recorded release uses its exact immutable snapshot when the candidate artifacts
+   have expired. A changed source, channel or asset identity requires qualification
+   for the new candidate.
    Windows Desktop also attaches its `INSTALLER.exe.identity.json`; publication
    verifies the installer digest, source revision and native case evidence. Complete
    acceptance is the default. An explicit maintainer-directed deferral must match
