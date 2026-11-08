@@ -148,6 +148,15 @@ const driver = `(() => {
       await until(() => document.querySelector('[role="dialog"] [role="status"]'), 'loading preview');
       return '[role="dialog"]';
     },
+    async 'removal-publication'() {
+      store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]);
+      c.handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, failure: 'DECISION_IN_USE',
+        blockers: [{ plan_id: 'plan/' + 'retained-publication-'.repeat(8), draft_id: null, revision: 123, protection: 'lkg_publication' },
+          { plan_id: 'plan/retained-execution', draft_id: null, revision: 121, protection: 'unresolved_hold' }] });
+      c.remount(); await open(); await click(label('移除模型', 'Remove model'));
+      await until(() => document.querySelector('[role="dialog"] .callout.warn'), 'publication-only preview');
+      return '[role="dialog"]';
+    },
     async 'removal-error'() {
       store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]);
       c.handlers.preview_decision_removal = () => { throw { code: 'DAEMON_UNAVAILABLE' }; }; c.remount();
@@ -232,7 +241,7 @@ const driver = `(() => {
 export async function decisionModelCaptures(client, baseUrl, output) {
   const results = [];
   const states = ['budget-exhausted', 'detail', 'removal-entry', 'removal', 'removal-blocked', 'shared-edit', 'shared', 'independent', 'source-error', 'detour', 'stale', 'unverified', 'nested-route', 'nested-connection', 'nested-return', 'nested-parent', 'context-known', 'context-unknown', 'context-custom', 'context-question', 'context-invalid', 'context-conflict', 'context-typesafe', 'context-error', 'context-loading'];
-  states.push('removal-loading', 'removal-error');
+  states.push('removal-loading', 'removal-error', 'removal-publication');
   const selected = process.env.HIROUTE_DECISION_CAPTURE_STATES?.split(',').filter(Boolean) ?? states;
   if (selected.length === 0 || selected.some(state => !states.includes(state))) throw new Error('Unknown or empty decision capture state selection');
   for (const language of ['zh', 'en']) for (const theme of ['light', 'dark']) for (const viewport of [{ width: 1200, height: 813 }, { width: 840, height: 975 }, { width: 755, height: 600 }]) for (const state of selected) {

@@ -86,6 +86,13 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
         await click(t('取消', 'Cancel'));
         delete c().handlers.preview_decision_removal;
         c().handlers.save_decision_service_v3 = save;
+        removal().click(); await until(() => all('[role="dialog"] .btn-danger')[0] && !all('[role="dialog"] .btn-danger')[0].disabled, 'captured source revision');
+        const oldSourceRevision = store.sources[0].revision;
+        store.sources[0].revision += 1;
+        await confirm();
+        await until(() => text().includes(t('这份配置已发生变化', 'This configuration changed')), 'source revision invalidates confirmation');
+        assert(all('[role="dialog"] .btn-danger')[0].disabled && calls('save_decision_service_v3').at(-1).payload.input.change.expected_source_revisions[0].revision === oldSourceRevision, 'A removal confirmation silently adopted a newer source revision');
+        await click(t('取消', 'Cancel'));
         const sourceBefore = JSON.stringify(store.sources), managedBefore = JSON.stringify(c().management.sources);
         removal().click(); await until(() => all('[role="dialog"]').length, 'successful removal confirmation'); await confirm();
         await until(() => store.services.length === 0 && text().includes(t('已移除。', 'Removed.')), 'removed configuration readback');

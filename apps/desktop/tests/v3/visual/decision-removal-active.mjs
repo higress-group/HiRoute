@@ -21,7 +21,7 @@ try {
       console.log(`green: ${id}`);
     }
   }
-  process.env.HIROUTE_DECISION_CAPTURE_STATES ??= 'removal,removal-blocked,removal-loading,removal-error';
+  process.env.HIROUTE_DECISION_CAPTURE_STATES ??= 'removal,removal-blocked,removal-loading,removal-error,removal-publication';
   checks.push(...await decisionModelCaptures(client, baseUrl, output));
   await writeFile(path.join(output, 'result.json'), JSON.stringify({ checks }, null, 2));
 } finally {
