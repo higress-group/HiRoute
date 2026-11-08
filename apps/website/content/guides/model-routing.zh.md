@@ -25,6 +25,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 操作线索（按本次目标选用；下面均为 hiroute 子命令）：
 - 选择模型、路由类型与候选顺序：compute list · routing options → routing preview
 - 接入决策模型：decision connections options / list / apply / test
+- 移除决策模型前检查引用：decision removal preview
 - 调整信任度、自定义分支和其他设置：routing show · routing options → routing preview
 - 发布路由并接入 Agent：routing apply · agents connect preview → agents connect apply
 - 查看实际选模、质量与费用：sessions timeline · observation plan-quality samples · observation plan-trust · value show
@@ -74,6 +75,8 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 
 </details>
 
+要移除决策模型或扩展，在“模型 → 决策模型”中打开详情并查看移除对话框。它会列出阻止移除的路由、草稿、执行保留与已安装发布。可从对话框打开对应路由并处理引用。如果修改路由后仍显示发布引用，选择“更新引用状态”再检查。已有使用记录以及共用的 API 接入和 Key 会保留。
+
 ## 3. 配置按难度分流
 
 1. 选择“按难度分流”。“判断方式”默认使用决策模型，选择刚保存的连接版本；也可主动选择“启发式规则”或“自定义扩展”。
@@ -115,6 +118,8 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
   <a href="/guide-assets/agent-editor-zh.webp"><img src="/guide-assets/agent-editor-zh.webp" alt="Codex 模型路由设置中勾选已发布的智能路由" width="1200" height="900" loading="lazy" /></a>
   <figcaption>在 Agent 的“模型路由”中选择可用路由。图中为已启用连接的调整界面。</figcaption>
 </figure>
+
+固定路由计划也可以在 Codex 中按计划名称显示推理档位选择。重新保存 Agent 的模型路由并重启 Codex，即可加载更新后的模型列表。选择器设置的是请求档位，实际执行仍使用计划中为各模型配置的档位。
 
 <details>
 <summary>各 Agent 如何加载路由</summary>

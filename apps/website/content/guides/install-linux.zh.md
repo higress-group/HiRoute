@@ -58,6 +58,8 @@ export PATH="$HOME/.local/bin:$PATH"
 
 安装脚本会下载最新稳定的 Linux 版本，并在安装前检查架构与文件完整性。桌面应用与独立服务版（standalone）不应在同一个 `HOME` 中同时管理服务。
 
+升级时使用同一个安装脚本。替换程序之前，安装器会检查存储升级前提。若需要能够还原旧版，请保留配套安装包和完整数据备份。启动新版服务后，打开已保存的路由并发送一个小请求。启动失败和整组恢复的操作见 [Linux CLI 与服务参考](https://github.com/higress-group/HiRoute/blob/main/docs/standalone-cli.md#storage-upgrade-recovery)。
+
 ## 打开 Web UI
 
 Web UI 通过 HiRoute 的认证 Web 控制台提供，Linux 默认关闭。可以在安装时选择本机访问和端口：

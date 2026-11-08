@@ -1077,8 +1077,7 @@ hiroute protected-input release --candidate candidate/decision-main --output jso
 
 检查 `decision-apply.json` 中的 Operation 状态。提交结果不确定时，按原幂等域使用
 `operations find/get` 查询，并保留完整原请求，不要换 key。编辑期望当前版本并保存下一版本，
-如 `expected_revision: 1`、服务 `revision: 2`；删除使用 `service: null` 和当前期望版本。
-路由、草稿或保留历史版本仍引用的连接不能删除。替换认证使用新的受保护引用，
+如 `expected_revision: 1`、服务 `revision: 2`；移除前按下文检查引用。替换认证使用新的受保护引用，
 已发布旧版本继续持有自己的凭证。Desktop 输入 API Key 时自动处理 Bearer 包装，
 无需用户额外操作 Secret 管理页。
 
@@ -1100,6 +1099,23 @@ hiroute decision services test --request-stdin --output json < decision-test-req
 不能仅凭 CLI 退出码判断通过。测试验证已保存连接的传输与必要响应字段，
 不读取真实会话、不运行业务模型、不产生胜任样本；通过不保证任务质量或持续健康。
 保存连接与测试是独立动作，两者都不会发布路由。
+
+### 检查引用并移除决策模型
+
+先用 `hiroute decision connections list` 获取当前保存的版本号，再执行只读预览：
+
+```sh
+printf '%s\n' '{"id":"routing-decision","expected_revision":3}' | \
+  hiroute decision removal preview --request-stdin --output json
+hiroute decision connections apply --id routing-decision --delete --output json
+```
+
+第一条命令会返回配置摘要和阻止移除的引用。当前路由（包括已停用的路由）、草稿、准备中的版本、
+任务执行或恢复保留，以及当前、准备中和最近可用的发布都可能阻止移除。处理引用后重新预览。
+第二条命令准备提交请求。核对完整请求、摘要、版本和幂等键，再用
+`hiroute decision connections apply --request-file FILE` 提交。若收到版本冲突，重新检查引用。
+
+普通历史版本仍可查看。移除后，重新执行历史版本可能需要原决策配置。共用的 API 接入和 Key 会保留。
 
 历史问题适用性是内置 System One 路由新发布时的默认行为。背景固定最多 8 轮；普通 Preview/Apply 会冻结实际提示词、标准、阈值及内容摘要。已有冻结路由继续原样执行，到下次发布才切换。本地规则和自定义扩展保持原行为。
 

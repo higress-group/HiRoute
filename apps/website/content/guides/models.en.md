@@ -25,7 +25,7 @@ Command pointers (choose only what the goal needs; prefix each with hiroute):
 - Scan local settings, connect a subscription or API: compute scan · compute connection prepare / authorize / login / test
 - Select models and save a connection: compute connection preview → compute connection apply
 - Combine the same model from several sources: routing options → routing preview → routing apply
-- Set key budgets and model prices: compute budgets get / preview · prices effective · prices override preview / apply
+- Set key allowances in the connection details. Read or edit model prices with prices effective · prices override preview / apply.
 - Set a connection proxy: compute network show / preview / apply
 
 The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
@@ -86,7 +86,7 @@ In an API connection's details, open **API keys and allowances**, turn on **Limi
 
 Leave **Initial available amount** blank to start with the full amount, or enter the remainder if some credits were already spent.
 
-Allowances estimate HiRoute traffic only; they are not the provider's account balance. HiRoute reserves funds before forwarding a request and settles them when it finishes. The estimate needs the model's prices: complete all four rates in the same currency under the model's **Edit pricing**. When prices are missing or the allowance is insufficient, HiRoute uses another key or the next candidate.
+Allowances estimate spending for traffic through HiRoute. For known prices, HiRoute reserves funds before forwarding a request and settles the charge when the request finishes. This includes decision model calls that reuse the same API key. Set the applicable input, output and cache rates in the same currency under **Edit pricing**. A request with unknown prices can proceed and stays unpriced in the records, outside the spending total. When the allowance cannot cover a known charge, HiRoute tries another key or the next candidate.
 
 ## Set a proxy
 

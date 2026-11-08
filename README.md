@@ -154,7 +154,7 @@ to evaluate decision prompts against your own tasks.
 HiRoute provides **macOS Desktop, Windows x64 Desktop, Linux Web UI, and CLI**.
 The [download page](https://hiroute.ai/en/download/) lists published packages.
 
-Version 0.5.3 repairs large image requests, including Codex Desktop calls through Qoder-compatible gateways, and improves Windows setup and update diagnostics.
+Version 0.6.0 keeps Responses tool calls and reasoning connected across compaction, offers a reasoning picker in Codex for fixed routing plans, and shows which active routes block decision model removal.
 
 1. **Connect your models.** Add a supported subscription or API connection and choose an
    economical model plus a primary model.

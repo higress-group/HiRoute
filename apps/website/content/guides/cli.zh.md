@@ -24,6 +24,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 操作线索（按本次目标选用；下面均为 hiroute 子命令）：
 - 首页状态、接入指引：system status · quickstart
 - 模型和接入设置：compute · prices · decision connections
+- 检查决策模型的移除阻碍：decision removal preview
 - 智能路由：routing options / list / show / preview / apply
 - Agent 的模型路由和内置技能：agents connect preview / apply / status · agents restore
 - 委派任务与任务记录：worker plans / exec / list / status / result / continue / cancel
@@ -211,6 +212,8 @@ hiroute routing apply --help
 模型、路由和 Agent 分别有 `preview`、`apply` 命令。决策连接是例外：预览和提交都使用同一个 `apply` 命令，见下一节。密码或 API Key 通过 `protected-input` 传入，不放进普通 JSON、命令参数或日志。
 
 ## 管理决策连接
+
+移除决策模型前，用 `decision connections list` 查到已保存的版本号，再按当前安装版本的 schema 和子命令帮助运行 `decision removal preview` 检查引用。先处理预览中阻止移除的路由或草稿，重新预览后再提交。已有历史记录仍可查看。预览和提交的请求格式见 [CLI 参考](https://github.com/higress-group/HiRoute/blob/main/docs/standalone-cli.zh-CN.md)。
 
 桌面应用在“模型 → 决策模型”中管理这些连接。CLI 用 `decision connections list/apply/test` 管理决策连接，包括复用 API 接入、选择协议和设置上下文窗口，用法见上文“通过 CLI 接入决策模型”。原有的 `decision services` 命令保留原来的请求格式，已有连接和发布快照仍然可读。内置决策模型和自定义扩展独立于实际执行任务的通用模型。下面说明 `decision services` 的请求格式：
 

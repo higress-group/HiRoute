@@ -25,6 +25,7 @@ Use the built-in HiRoute management Skill. If it is not enabled, guide me throug
 Command pointers (choose only what the goal needs; prefix each with hiroute):
 - Choose models, routing type and candidate order: compute list · routing options → routing preview
 - Connect a decision model: decision connections options / list / apply / test
+- Check decision model references before removal: decision removal preview
 - Adjust trust, custom branches and other settings: routing show · routing options → routing preview
 - Publish and connect an Agent: routing apply · agents connect preview → agents connect apply
 - Inspect model selection, quality and cost: sessions timeline · observation plan-quality samples · observation plan-trust · value show
@@ -74,6 +75,8 @@ During real routing, the selected decision connection receives the complete curr
 
 </details>
 
+To remove a decision model or extension, open its details under **Models → Decision models** and review the removal dialog. It lists blocking routes, drafts, execution holds and installed publications. Follow the available route links to update the references. If a publication still appears after the route changes, choose **Update references** and review again. Usage history and any shared API connection and keys are retained.
+
 ## 3. Configure Difficulty routing
 
 1. Select Difficulty routing. Decision method defaults to Decision model; select the saved connection revision. You may instead choose Heuristic rules or Custom extension.
@@ -115,6 +118,8 @@ Then open Agent, choose the target agent, enable Model routing, select this rout
   <a href="/guide-assets/agent-editor-en.webp"><img src="/guide-assets/agent-editor-en.webp" alt="Selecting a published smart route in Codex Model routing" width="1200" height="900" loading="lazy" /></a>
   <figcaption>Choose available routes under the Agent’s Model routing. This screenshot shows editing an enabled connection.</figcaption>
 </figure>
+
+For a fixed routing plan, Codex can show a reasoning picker under the plan's display name. Save the Agent's model routing again and restart Codex to load the updated catalog. The picker sets the requested effort. Actual execution uses the level configured for each model in the plan.
 
 <details>
 <summary>How each Agent loads its route</summary>

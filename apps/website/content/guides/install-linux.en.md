@@ -58,6 +58,8 @@ export PATH="$HOME/.local/bin:$PATH"
 
 The installer downloads the latest stable Linux release and checks its architecture and file integrity before installation. Desktop and standalone must not manage the service in the same `HOME`.
 
+Use the same installer to upgrade. It checks the storage prerequisites before replacing the program. Keep a matching package and complete data backup if you may need to restore the previous version. After starting the new service, reopen a saved route and make a small request. For startup failures and whole-group recovery, see the [Linux CLI and service reference](https://github.com/higress-group/HiRoute/blob/main/docs/standalone-cli.md#storage-upgrade-recovery).
+
 ## Open the Web UI
 
 The Web UI uses HiRoute's authenticated Web console. Linux keeps it off unless configured. You can choose local access and a port during installation:

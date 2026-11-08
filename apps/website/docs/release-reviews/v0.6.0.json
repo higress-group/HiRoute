@@ -1,0 +1,52 @@
+{
+  "schema": "hiroute.documentation-review/v1",
+  "tag": "v0.6.0",
+  "product_revision": "e3fe494b48072f348500229bcabd5a76ece3d7cc",
+  "guides": {
+    "status": "updated",
+    "summary": "Updated the English and Chinese README, API key allowance, model routing and CLI guidance for shared decision spending, unpriced usage, the Codex request effort picker and active decision model references. Updated the macOS, Windows and Linux guides to explain storage preflight and complete recovery. The Quickstart installation and Agent activation steps still apply. The decision model removal states were exercised with the candidate production components.",
+    "reviewed_files": [
+      "README.md",
+      "README.zh-CN.md",
+      "apps/website/content/guides/models.en.md",
+      "apps/website/content/guides/models.zh.md",
+      "apps/website/content/guides/model-routing.en.md",
+      "apps/website/content/guides/model-routing.zh.md",
+      "apps/website/content/guides/cli.en.md",
+      "apps/website/content/guides/cli.zh.md",
+      "apps/website/content/guides/quickstart.en.md",
+      "apps/website/content/guides/quickstart.zh.md",
+      "apps/website/content/guides/install-linux.en.md",
+      "apps/website/content/guides/install-linux.zh.md",
+      "apps/website/content/guides/install-macos.en.md",
+      "apps/website/content/guides/install-macos.zh.md",
+      "apps/website/content/guides/install-windows.en.md",
+      "apps/website/content/guides/install-windows.zh.md"
+    ],
+    "content_sha256": "9894376a8173a417499a8674f4d6061415dd68ef29f9d32e52921037a3fc24d6"
+  },
+  "screenshots": {
+    "status": "unchanged",
+    "summary": "Recaptured all eight guide states in both languages with the candidate Desktop components in dark mode. Thirteen images matched byte for byte. The remaining comparison showed the same controls, labels and choices, with differences in scrollbar position, focus or a generated sample route alias. The existing screenshots remain accurate for the illustrated flows. The allowance editor, removal dialog and Codex client's own effort picker are described in text.",
+    "reviewed_files": [
+      "apps/website/docs/guide-assets.md",
+      "apps/website/public/guide-assets/models-add-en.webp",
+      "apps/website/public/guide-assets/models-add-zh.webp",
+      "apps/website/public/guide-assets/trial-entry-en.webp",
+      "apps/website/public/guide-assets/trial-entry-zh.webp",
+      "apps/website/public/guide-assets/trial-setup-en.webp",
+      "apps/website/public/guide-assets/trial-setup-zh.webp",
+      "apps/website/public/guide-assets/agent-editor-en.webp",
+      "apps/website/public/guide-assets/agent-editor-zh.webp",
+      "apps/website/public/guide-assets/agent-management-en.webp",
+      "apps/website/public/guide-assets/agent-management-zh.webp",
+      "apps/website/public/guide-assets/routing-worker-en.webp",
+      "apps/website/public/guide-assets/routing-worker-zh.webp",
+      "apps/website/public/guide-assets/agent-task-en.webp",
+      "apps/website/public/guide-assets/agent-task-zh.webp",
+      "apps/website/public/guide-assets/tasks-en.webp",
+      "apps/website/public/guide-assets/tasks-zh.webp"
+    ],
+    "content_sha256": "050eb39914cd3fbbdd50317eabc0cb71020e5ffc8b29c5bdc71d5fbfcc013751"
+  }
+}
