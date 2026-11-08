@@ -1,7 +1,9 @@
+use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::path::Path;
-use std::time::{Duration, SystemTime};
+use std::sync::Arc;
+use std::time::SystemTime;
 
 use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
 use windows_sys::Win32::Storage::FileSystem::{
@@ -9,7 +11,7 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_SHARE_READ, FILE_SHARE_WRITE,
 };
 
-use super::{ReplayError, SecureDirectory, SecureRoot};
+use super::{ReplayError, SecureRoot};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FileIdentity {
@@ -23,13 +25,8 @@ pub(super) fn open_directory(path: &Path) -> Result<File, ReplayError> {
     Ok(file)
 }
 
-pub(super) fn create_directory(
-    parent: &File,
-    _path: &Path,
-    name: &str,
-) -> Result<File, ReplayError> {
-    let file =
-        hiroute_platform::windows::security::create_owner_only_directory_at(parent, name.as_ref())?;
+pub(super) fn create_directory(parent: &File, name: &OsStr) -> Result<File, ReplayError> {
+    let file = hiroute_platform::windows::security::create_owner_only_directory_at(parent, name)?;
     validate_directory(&file)?;
     Ok(file)
 }
@@ -96,40 +93,21 @@ pub(super) fn remove_directory(
     Ok(())
 }
 
-pub(super) fn cleanup_orphans(
-    root: &SecureRoot,
-    orphan_ttl: Duration,
-    request_prefix: &str,
-) -> Result<(), ReplayError> {
-    let cutoff = SystemTime::now()
-        .checked_sub(orphan_ttl)
-        .unwrap_or(SystemTime::UNIX_EPOCH);
-    for entry in fs::read_dir(&root.path)? {
-        let entry = entry?;
-        let name = entry
-            .file_name()
-            .into_string()
-            .map_err(|_| ReplayError::UnsafePath)?;
+pub(super) fn cleanup_orphans(root: &Arc<SecureRoot>, cutoff: SystemTime, request_prefix: &str) {
+    let Ok(entries) = fs::read_dir(&root.path) else {
+        return;
+    };
+    for entry in entries.map_while(Result::ok) {
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
         if !name.starts_with(request_prefix) {
             continue;
         }
-        let handle = open_directory(&entry.path())?;
-        if handle.metadata()?.modified()? > cutoff {
-            continue;
+        if let Ok(handle) = open_directory(&entry.path()) {
+            let _ = super::remove_expired_orphan(root, &name, handle, cutoff);
         }
-        let directory = SecureDirectory {
-            root: std::sync::Arc::new(SecureRoot {
-                path: root.path.clone(),
-                handle: root.handle.try_clone()?,
-            }),
-            name,
-            path: entry.path(),
-            identity: identity(&handle)?,
-            handle,
-        };
-        super::remove_request_directory(&directory)?;
     }
-    Ok(())
 }
 
 fn validate(file: &File, directory: bool) -> Result<(), ReplayError> {

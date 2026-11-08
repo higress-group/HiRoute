@@ -695,6 +695,8 @@ def run(repository, expected_sha=None):
     if expected_sha is not None:
         assert actual_sha == expected_sha, (actual_sha, expected_sha)
     product = Product(repository)
+    # Drive the product's default Replay layout rather than the harness override.
+    product.env.pop('HIROUTE_REPLAY_ROOT')
     upstream = NativeUpstream(base_host='localhost')
     product.install_codex_fixture(
         MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
@@ -722,6 +724,7 @@ def run(repository, expected_sha=None):
         configure_reference_price(product, saved['binding_id'], 1_000_000)
         publish_plan_and_agent(product, saved['binding_id'])
         gateway_request(product)
+        assert (product.root / 'replay').is_dir()
         session_id, observed_model = assert_session_record(product, started_ms)
         frozen_amounts = timeline_amounts(product, session_id, 1)
         configure_reference_price(product, saved['binding_id'], 2_000_000)

@@ -1,12 +1,13 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, OsStr};
 use std::fs::File;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path};
-use std::time::{Duration, SystemTime};
+use std::sync::Arc;
+use std::time::SystemTime;
 
 use rustix::fs::{AtFlags, Dir, Mode, OFlags};
 
-use super::{ReplayError, SecureDirectory, SecureRoot};
+use super::{ReplayError, SecureRoot};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FileIdentity {
@@ -37,11 +38,7 @@ pub(super) fn open_directory(path: &Path) -> Result<File, ReplayError> {
     Ok(current)
 }
 
-pub(super) fn create_directory(
-    parent: &File,
-    _path: &Path,
-    name: &str,
-) -> Result<File, ReplayError> {
+pub(super) fn create_directory(parent: &File, name: &OsStr) -> Result<File, ReplayError> {
     os(rustix::fs::mkdirat(parent, name, Mode::RWXU))?;
     match os(rustix::fs::openat(
         parent,
@@ -131,46 +128,30 @@ pub(super) fn remove_directory(
     Ok(())
 }
 
-pub(super) fn cleanup_orphans(
-    root: &SecureRoot,
-    orphan_ttl: Duration,
-    request_prefix: &str,
-) -> Result<(), ReplayError> {
-    let cutoff = SystemTime::now()
-        .checked_sub(orphan_ttl)
-        .unwrap_or(SystemTime::UNIX_EPOCH);
-    let mut entries = os(Dir::read_from(&root.handle))?;
-    for entry in &mut entries {
-        let entry = os(entry)?;
+pub(super) fn cleanup_orphans(root: &Arc<SecureRoot>, cutoff: SystemTime, request_prefix: &str) {
+    let Ok(entries) = Dir::read_from(&root.handle) else {
+        return;
+    };
+    for entry in entries.map_while(Result::ok) {
         let Some(name) = utf8_name(entry.file_name()) else {
-            return Err(ReplayError::UnsafePath);
+            continue;
         };
         if !name.starts_with(request_prefix) {
             continue;
         }
-        let handle = File::from(os(rustix::fs::openat(
+        let Ok(handle) = rustix::fs::openat(
             &root.handle,
             name,
             OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
             Mode::empty(),
-        ))?);
-        validate_directory(&handle)?;
-        if handle.metadata()?.modified()? > cutoff {
+        ) else {
             continue;
-        }
-        let directory = SecureDirectory {
-            root: std::sync::Arc::new(SecureRoot {
-                path: root.path.clone(),
-                handle: root.handle.try_clone()?,
-            }),
-            name: name.to_owned(),
-            path: root.path.join(name),
-            identity: identity(&handle)?,
-            handle,
         };
-        super::remove_request_directory(&directory)?;
+        let handle = File::from(handle);
+        if validate_directory(&handle).is_ok() {
+            let _ = super::remove_expired_orphan(root, name, handle, cutoff);
+        }
     }
-    Ok(())
 }
 
 fn remove_children(directory: &File) -> Result<(), ReplayError> {

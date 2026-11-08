@@ -16,6 +16,19 @@ def query(product, source):
     return control(product, 'GetComputeKeyBudgets', {'source_id': source, 'cursor': None})['data']
 
 
+def wait_for_settled_balance(product, source_id, key_id):
+    # Response EOS reaches the client before the attempt finalizes its charge.
+    deadline = time.monotonic() + 5
+    while True:
+        current = query(product, source_id)
+        budget_id = current['bindings'][key_id]
+        balance = next(item for item in current['budgets'] if item['definition']['budget_id'] == budget_id)
+        if balance['reserved_micros'] == 0:
+            return balance
+        assert time.monotonic() < deadline, balance
+        time.sleep(.02)
+
+
 def allowance(product, source_id, key, amount, label, definition=None, currency='USD'):
     snapshot = control(product, 'ListCompute', {})['data']
     source = next(row for row in snapshot['sources'] if row['source_id'] == source_id)
@@ -194,14 +207,8 @@ def run(repository):
         assert query(product, source_id)['budgets'][0]['lifetime_spent_micros'] == 0
         price(product, saved['binding_id'])
         request(NATIVE_TOKEN)
-        deadline = time.monotonic() + 5
-        while True:
-            balance = query(product, source_id)['budgets'][0]
-            if balance['lifetime_spent_micros'] == 7:
-                break
-            assert time.monotonic() < deadline, balance
-            time.sleep(.02)
-        assert balance['reserved_micros'] == 0 and balance['available_micros'] == 999_993, balance
+        balance = wait_for_settled_balance(product, source_id, first)
+        assert balance['lifetime_spent_micros'] == 7 and balance['available_micros'] == 999_993, balance
         # Editing the cap retains the seven micros already spent. One remaining
         # micro cannot cover the bounded reservation, so the next Key is used.
         lowered = allowance(product, source_id, first, 8, 'lower', balance['definition'])
@@ -213,7 +220,8 @@ def run(repository):
         request(fallback)
         allowance(product, source_id, first, 1_000_000, 'restore', reopened['definition'])
         request(NATIVE_TOKEN)
-        assert query(product, source_id)['budgets'][0]['lifetime_spent_micros'] == 14
+        restored = wait_for_settled_balance(product, source_id, first)
+        assert restored['lifetime_spent_micros'] == 14, restored
         request(NATIVE_TOKEN, hosted=True)
         stable = query(product, source_id)['budgets'][0]
         assert stable['lifetime_spent_micros'] == 14 and stable['reserved_micros'] == 0, stable
@@ -225,8 +233,7 @@ def run(repository):
         allowance(product, source_id, second, 1_000_000, 'cny', currency='CNY')
         price(product, saved['binding_id'], currency='CNY')
         request(fallback)
-        cny = query(product, source_id)
-        cny = next(item for item in cny['budgets'] if item['definition']['budget_id'] == cny['bindings'][second])
+        cny = wait_for_settled_balance(product, source_id, second)
         assert cny['lifetime_spent_micros'] == 7 and cny['available_micros'] == 999_993, cny
 
         decision_budget(product, source_id, first, second)
@@ -248,21 +255,16 @@ def run_streams(repository):
                                        context_tokens=131072 if protocol == 'messages' else 32768)
             source = next(row for row in control(product, 'ListCompute', {})['data']['sources']
                           if row['source_id'] == saved['source_id'])
-            allowance(product, saved['source_id'], source['keys'][0]['key_id'], 1_000_000, 'stream-' + protocol)
+            key_id = source['keys'][0]['key_id']
+            allowance(product, saved['source_id'], key_id, 1_000_000, 'stream-' + protocol)
             price(product, saved['binding_id'])
             plan_id, alias = publish_plan(product, saved['binding_id'], protocol)
             agent = 'agent_codex_default' if protocol == 'responses' else 'agent_claude_default'
             configure_model_settings_v2(product, [plan_id], 'budget-stream-' + protocol, agent_id=agent)
             gateway_request(product, protocol, alias, True, product.bearer(product.agent_connection))
             expected = sum(USAGE[(protocol, True)][:2])
-            deadline = time.monotonic() + 5
-            while True:
-                balance = query(product, saved['source_id'])['budgets'][0]
-                if balance['lifetime_spent_micros'] == expected:
-                    break
-                assert time.monotonic() < deadline, balance
-                time.sleep(.02)
-            assert balance['reserved_micros'] == 0 and balance['available_micros'] == 1_000_000 - expected, balance
+            balance = wait_for_settled_balance(product, saved['source_id'], key_id)
+            assert balance['lifetime_spent_micros'] == expected and balance['available_micros'] == 1_000_000 - expected, balance
             assert upstream.requests == [(protocol, True)], upstream.requests
             print(json.dumps({'scenario': 'key-budget-stream-' + protocol, 'state': 'green', 'charged_micros': expected, 'pending_micros': 0}), flush=True)
         finally:

@@ -698,8 +698,10 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertIn('id: sccache', cache_setup)
         self.assertIn('continue-on-error: true', cache_setup)
         self.assertIn('timeout-minutes: 3', cache_setup)
+        self.assertIn("disable_annotations: 'true'", cache_setup)
         check_environment = workflow.split('  check:\n', 1)[1].split('    steps:\n', 1)[0]
         self.assertNotIn('RUSTC_WRAPPER:', check_environment)
+        self.assertNotIn('SCCACHE_GHA_ENABLED:', check_environment)
         self.assertIn('cancel-in-progress: true', workflow)
         self.assertIn('mozilla-actions/sccache-action@', workflow)
         self.assertIn("SCCACHE_GHA_ENABLED: 'true'", workflow)
@@ -743,6 +745,7 @@ class HostedReleasePolicyTests(unittest.TestCase):
         workflow = (REPO / '.github/workflows/windows-compile.yml').read_text()
         probe_step = workflow.split('      - name: Enable available compiler cache\n', 1)[1].split('      - ', 1)[0]
         self.assertIn('SCCACHE_SETUP_OUTCOME: ${{ steps.sccache.outcome }}', probe_step)
+        self.assertIn("SCCACHE_GHA_ENABLED: 'true'", probe_step)
         probe = '\n'.join(line[10:] for line in probe_step.split('        run: |\n', 1)[1].splitlines())
         bash = shutil.which('bash')
         self.assertIsNotNone(bash)
@@ -769,7 +772,10 @@ class HostedReleasePolicyTests(unittest.TestCase):
                                         env=environment, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 wrapper = 'sccache' if enabled else ''
-                self.assertEqual(environment_file.read_text(), f'RUSTC_WRAPPER={wrapper}\n')
+                expected_environment = f'RUSTC_WRAPPER={wrapper}\n'
+                if enabled:
+                    expected_environment += 'SCCACHE_GHA_ENABLED=true\n'
+                self.assertEqual(environment_file.read_text(), expected_environment)
                 self.assertEqual('::warning::' in result.stdout, not enabled)
                 if binary_present and outcome == 'success':
                     self.assertEqual(trace.read_text(), '--start-server\n')
