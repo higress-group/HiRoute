@@ -136,7 +136,7 @@ const driver = `(() => {
     async 'removal-blocked'() {
       store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]); c.remount();
       c.desktop.catalog.plans[0].desired.strategy.classifier = { kind: 'decision_service_v2', service: structuredClone(shared) };
-      c.handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, failure: 'DECISION_IN_USE', blockers: [{ plan_id: c.desktop.catalog.plans[0].agent_plan_id, draft_id: null, revision: 1, protection: 'current_head' }] });
+      c.handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, configuration_digest: c.decisionView(shared).configuration_digest, failure: 'DECISION_IN_USE', blockers: [{ plan_id: c.desktop.catalog.plans[0].agent_plan_id, draft_id: null, revision: 1, protection: 'current_head' }] });
       await open(); await click(label('移除模型', 'Remove model'));
       await until(() => document.querySelector('[role="dialog"] .callout.warn'), 'retained reference rejection');
       return '[role="dialog"]';
@@ -150,7 +150,7 @@ const driver = `(() => {
     },
     async 'removal-publication'() {
       store([structuredClone(shared)], [c.decisionSource(sourceId, { display_name: 'Team OpenAI' })]);
-      c.handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, failure: 'DECISION_IN_USE',
+      c.handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, configuration_digest: c.decisionView(shared).configuration_digest, failure: 'DECISION_IN_USE',
         blockers: [{ plan_id: 'plan/' + 'retained-publication-'.repeat(8), draft_id: null, revision: 123, protection: 'lkg_publication' },
           { plan_id: 'plan/retained-execution', draft_id: null, revision: 121, protection: 'unresolved_hold' }] });
       c.remount(); await open(); await click(label('移除模型', 'Remove model'));

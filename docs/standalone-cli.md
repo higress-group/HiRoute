@@ -1397,7 +1397,8 @@ printf '%s\n' '{"id":"routing-decision","expected_revision":3}' | \
 hiroute decision connections apply --id routing-decision --delete --output json
 ```
 
-The first command is read-only. A blocked result carries `DECISION_IN_USE` in
+The first command is read-only. Its configuration digest identifies the saved
+content checked at the requested revision. A blocked result carries `DECISION_IN_USE` in
 `data.failure` and safe Plan/draft/revision identities and protection reasons in
 `data.blockers`. Current and disabled routes, drafts, prepared versions,
 unresolved execution/recovery holds, and installed active/prepared/LKG

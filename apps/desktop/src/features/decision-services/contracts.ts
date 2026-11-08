@@ -64,11 +64,12 @@ export type DecisionServiceChange = {
   id: string; expected_revision: number; service: DecisionServiceV3 | null;
   expected_source_revisions: DecisionExpectedSourceRevision[];
 };
-export type DecisionServiceSaveArgs = { input: { change: DecisionServiceChange; secret: string | null } };
+export type DecisionServiceSaveArgs = { input: { change: DecisionServiceChange; secret: string | null; expected_configuration_digest?: CanonicalDigest } };
 export type DecisionServiceApplyResult = { operation_id: string; accepted_digest: CanonicalDigest; state: string };
 export type DecisionRemovalProtection = 'current_head' | 'prepared_version' | 'unresolved_hold' | 'draft' | 'active_publication' | 'prepared_publication' | 'lkg_publication';
 export type DecisionRemovalBlocker = { plan_id: string | null; draft_id: string | null; revision: number; protection: DecisionRemovalProtection };
-export type DecisionRemovalPreview = { id: string; revision: number; failure: DecisionFailureCode | null; blockers: DecisionRemovalBlocker[] };
+export type DecisionRemovalPreview = { id: string; revision: number; configuration_digest: CanonicalDigest; failure: DecisionFailureCode | null; blockers: DecisionRemovalBlocker[] };
+export type DecisionRemovalOutcome = 'removed' | 'rolled_back' | 'unconfirmed';
 export type DecisionServiceTestArgs = { input: { id: string; revision: number; expected_configuration_digest: CanonicalDigest } };
 export type DecisionFailureCode =
   | 'DECISION_INVALID_CONFIGURATION' | 'DECISION_SOURCE_NOT_FOUND' | 'DECISION_SOURCE_LINEAGE_MISMATCH'

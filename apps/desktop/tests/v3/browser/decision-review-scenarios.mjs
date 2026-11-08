@@ -76,7 +76,7 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
         assert(store.services.length === 1 && calls('save_decision_service_v3').length === 0, 'Cancel removed the decision configuration');
         const save = c().handlers.save_decision_service_v3;
         c().handlers.save_decision_service_v3 = () => {
-          c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, failure: 'DECISION_IN_USE', blockers: [{ plan_id: 'plan/new-active-reference', draft_id: null, revision: 1, protection: 'active_publication' }] });
+          c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, configuration_digest: store.view(input.id).configuration_digest, failure: 'DECISION_IN_USE', blockers: [{ plan_id: 'plan/new-active-reference', draft_id: null, revision: 1, protection: 'active_publication' }] });
           throw { code: 'REVISION_CONFLICT' };
         };
         removal().click(); await until(() => all('[role="dialog"]').length, 'blocked removal confirmation'); await confirm();
@@ -97,7 +97,7 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
         removal().click(); await until(() => all('[role="dialog"]').length, 'successful removal confirmation'); await confirm();
         await until(() => store.services.length === 0 && text().includes(t('已移除。', 'Removed.')), 'removed configuration readback');
         const input = calls('save_decision_service_v3').at(-1).payload.input;
-        assert(input.change.id === record.id && input.change.expected_revision === 3 && input.change.service === null && input.secret === null, 'Removal changed its exact revision transaction or submitted a secret');
+        assert(input.change.id === record.id && input.change.expected_revision === 3 && input.expected_configuration_digest === c().decisionView(record).configuration_digest && input.change.service === null && input.secret === null, 'Removal lost its captured identity or submitted a secret');
         assert(JSON.stringify(store.sources) === sourceBefore && JSON.stringify(c().management.sources) === managedBefore, 'Removing a decision configuration modified its API source or keys');
         assert(calls('test_decision_service_v3').length === 2 && calls('preview_plan_editor').length === 0, 'Removal implicitly tested or published');
       }
@@ -144,21 +144,22 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
     }),
     scenario('desktop.decisions.removal-preview-states', ['decision-services'], 'Authoritative removal preview fails closed, retries reads and explains publication-only blockers without reclaiming history', async () => {
       const record = { id: 'decision/preview', revision: 1, name: 'Preview-only extension', connection: { kind: 'custom', endpoint: 'https://extension.example.test/decide', timeout_ms: 3000 } };
-      let resolvePreview;
+      let resolvePreview, store;
       await fresh(() => {
-        decisionStore([record]);
+        store = decisionStore([record]);
         c().handlers.preview_decision_removal = () => new Promise(resolve => { resolvePreview = resolve; });
       });
       await click('模型'); await click('决策模型'); await click('移除扩展');
       await until(() => resolvePreview, 'pending reference preview');
       assert(all('[role="dialog"] .btn-danger')[0].disabled && calls('save_decision_service_v3').length === 0, 'Loading preview permits a mutation');
       await click('取消');
-      resolvePreview({ id: record.id, revision: 1, failure: null, blockers: [] }); await pause(40);
+      const configuration_digest = store.view(record.id).configuration_digest;
+      resolvePreview({ id: record.id, revision: 1, configuration_digest, failure: null, blockers: [] }); await pause(40);
       assert(!all('[role="dialog"]').length && calls('save_decision_service_v3').length === 0, 'Late preview reopened or mutated a cancelled dialog');
       let unavailable = true;
       c().handlers.preview_decision_removal = ({ input }) => {
         if (unavailable) throw { code: 'DAEMON_UNAVAILABLE' };
-        return { id: input.id, revision: input.expected_revision, failure: null, blockers: [] };
+        return { id: input.id, revision: input.expected_revision, configuration_digest, failure: null, blockers: [] };
       };
       await click('移除扩展');
       await until(() => text().includes('暂时无法确认引用情况'), 'unavailable references');
@@ -168,7 +169,7 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       assert(calls('save_decision_service_v3').length === 0 && !text().includes('删除历史'), 'An empty active set added history reclamation or a mutation');
       await click('取消');
       let publicationHeld = true;
-      c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision,
+      c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, configuration_digest,
         failure: publicationHeld ? 'DECISION_IN_USE' : null,
         blockers: publicationHeld ? [{ plan_id: 'plan/not-in-current-catalog', draft_id: null, revision: 4, protection: 'lkg_publication' }] : [] });
       c().handlers.refresh_route_references = () => { publicationHeld = false; return {}; };
@@ -180,10 +181,30 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       await until(() => !all('[role="dialog"] .btn-danger')[0].disabled, 'explicit checkpoint refresh');
       assert(calls('refresh_route_references').length === 1 && calls('save_decision_service_v3').length === 0, 'Updating references removed a service or ran twice');
       await click('取消');
-      c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision + 1, failure: null, blockers: [] });
+      c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision + 1, configuration_digest, failure: null, blockers: [] });
       await click('移除扩展');
       await until(() => text().includes('暂时无法确认引用情况'), 'mismatched preview identity');
       assert(all('[role="dialog"] .btn-danger')[0].disabled, 'A preview for another revision permits deletion');
+      await click('取消');
+
+      delete c().handlers.preview_decision_removal;
+      store.services[0] = { ...record, name: 'Replacement at the same revision' };
+      await click('移除扩展');
+      await until(() => text().includes('这份配置已发生变化'), 'reused identity invalidates the old confirmation');
+      assert(all('[role="dialog"] .btn-danger')[0].disabled && calls('save_decision_service_v3').length === 0, 'The old confirmation can remove the replacement');
+      await click('取消');
+
+      store.services[0] = record;
+      c().handlers.save_decision_service_v3 = () => {
+        c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, configuration_digest,
+          failure: 'DECISION_IN_USE', blockers: [{ plan_id: 'plan/new-execution-hold', draft_id: null, revision: 2, protection: 'unresolved_hold' }] });
+        return { state: 'rolled_back', operation_id: 'operation/rollback', accepted_digest: 'sha256:' + '5'.repeat(64) };
+      };
+      await click('移除扩展');
+      await until(() => all('[role="dialog"] .btn-danger')[0] && !all('[role="dialog"] .btn-danger')[0].disabled, 'removable configuration');
+      all('[role="dialog"] .btn-danger')[0].click();
+      await until(() => text().includes('移除已回滚') && text().includes('plan/new-execution-hold'), 'rollback refreshes active blockers');
+      assert(all('[role="dialog"] .btn-danger')[0].disabled && calls('save_decision_service_v3').length === 1 && store.services.length === 1, 'Rollback did not preserve the target or allowed an extra submission');
       await click('取消');
     }),
     scenario('desktop.decisions.suggested-origin-key', ['decision-services'], 'Restoring suggested settings clears a pending key only when the independent origin changes', async () => {

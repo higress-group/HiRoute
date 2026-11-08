@@ -22,6 +22,14 @@ fn client_version_required() -> PortError {
     )
 }
 
+fn decode_record(id: &str, revision: u64, encoded: &str) -> PortResult<DecisionServiceRecord> {
+    let record: DecisionServiceRecord = serde_json::from_str(encoded).map_err(|_| invalid())?;
+    if !record.validate() || record.id() != id || record.revision() != revision {
+        return Err(invalid());
+    }
+    Ok(record)
+}
+
 impl ControlStore {
     pub fn decision_service_versions(
         &self,
@@ -38,12 +46,7 @@ impl ControlStore {
             .map_err(|_| storage())?;
         rows.map(|row| {
             let (revision, encoded) = row.map_err(|_| storage())?;
-            let record: DecisionServiceRecord =
-                serde_json::from_str(&encoded).map_err(|_| invalid())?;
-            if !record.validate() || record.id() != id || record.revision() != revision {
-                return Err(invalid());
-            }
-            Ok(record)
+            decode_record(id, revision, &encoded)
         })
         .collect()
     }
@@ -77,14 +80,7 @@ impl ControlStore {
             |row| row.get(0),
         ).optional().map_err(|_| storage())?;
         encoded
-            .map(|encoded| {
-                let value: DecisionServiceRecord =
-                    serde_json::from_str(&encoded).map_err(|_| invalid())?;
-                if !value.validate() || value.id() != id || value.revision() != revision {
-                    return Err(invalid());
-                }
-                Ok(value)
-            })
+            .map(|encoded| decode_record(id, revision, &encoded))
             .transpose()
     }
 
@@ -117,12 +113,7 @@ impl ControlStore {
             .map_err(|_| storage())?;
         rows.map(|row| {
             let (id, revision, encoded) = row.map_err(|_| storage())?;
-            let value: DecisionServiceRecord =
-                serde_json::from_str(&encoded).map_err(|_| invalid())?;
-            if !value.validate() || value.id() != id || value.revision() != revision {
-                return Err(invalid());
-            }
-            Ok(value)
+            decode_record(&id, revision, &encoded)
         })
         .collect()
     }
@@ -309,7 +300,7 @@ mod tests {
         connection
             .execute_batch(crate::migrations::decision_sources_v34::CONTROL)
             .unwrap();
-        connection.execute_batch("ALTER TABLE plan_versions ADD COLUMN state TEXT DEFAULT 'prepared'; CREATE TABLE plan_heads(workspace_id TEXT,plan_id TEXT,head_json TEXT); CREATE TABLE plan_version_holds(workspace_id TEXT,plan_id TEXT,content_revision INTEGER); CREATE TABLE plan_version_recovery(workspace_id TEXT,ready INTEGER); CREATE TABLE gateway_publications(workspace_id TEXT,state TEXT,publication_bytes BLOB);").unwrap();
+        connection.execute_batch("ALTER TABLE plan_versions ADD COLUMN state TEXT DEFAULT 'prepared'; ALTER TABLE plan_versions ADD COLUMN content_digest TEXT; CREATE TABLE plan_heads(workspace_id TEXT,plan_id TEXT,head_revision INTEGER,head_json TEXT); CREATE TABLE plan_version_holds(workspace_id TEXT,plan_id TEXT,content_revision INTEGER); CREATE TABLE plan_version_recovery(workspace_id TEXT,ready INTEGER); CREATE TABLE gateway_publications(workspace_id TEXT,state TEXT,publication_revision INTEGER,digest TEXT,publication_bytes BLOB);").unwrap();
         connection
             .execute(
                 "INSERT INTO plan_version_recovery VALUES(?1,1)",

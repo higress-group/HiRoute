@@ -121,8 +121,9 @@ fn decision_removal_legacy_operations_preserve_history_tombstones_replay_and_ful
             assert!(
                 stores
                     .control()
-                    .decision_removal_references(&WorkspaceId::default(), "decision/removal", 1)
+                    .decision_removal_preview(&WorkspaceId::default(), "decision/removal", 1)
                     .unwrap()
+                    .1
                     .is_empty()
             );
             let removed = execute(

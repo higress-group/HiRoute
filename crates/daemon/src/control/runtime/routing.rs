@@ -258,15 +258,16 @@ impl RoutingFactsPort for LocalControlAdapter {
         workspace: &WorkspaceId,
         request: hiroute_application_api::DecisionRemovalPreviewRequestV1,
     ) -> Result<hiroute_application_api::DecisionRemovalPreviewV1, ControlReadError> {
-        let blockers = self
+        let (configuration_digest, blockers) = self
             .stores_lock()
             .map_err(super::map_port)?
             .control()
-            .decision_removal_references(workspace, &request.id, request.expected_revision)
+            .decision_removal_preview(workspace, &request.id, request.expected_revision)
             .map_err(super::map_port)?;
         Ok(hiroute_application_api::DecisionRemovalPreviewV1 {
             id: request.id,
             revision: request.expected_revision,
+            configuration_digest,
             failure: (!blockers.is_empty())
                 .then_some(hiroute_application_api::DecisionFailureCodeV2::DecisionInUse),
             blockers,

@@ -1,6 +1,7 @@
 use hiroute_domain::{
-    GatewayPublicationV1, PlanDraftV1, PlanReferenceProtectionV1, PlanVersionV1, PortError,
-    PortErrorCode, PortResult, WorkspaceId,
+    CanonicalDigest, GatewayPublicationRevision, GatewayPublicationV1, PlanDraftV1,
+    PlanReferenceProtectionV1, PlanVersionV1, PortError, PortErrorCode, PortResult,
+    PublicationRecordV1, WorkspaceId,
 };
 use rusqlite::{Connection, OptionalExtension};
 
@@ -11,7 +12,28 @@ thread_local! {
 
 const CURRENT: &str = "EXISTS(SELECT 1 FROM plan_heads h WHERE h.workspace_id=v.workspace_id AND h.plan_id=v.plan_id AND json_extract(h.head_json,'$.status') != 'deleted' AND json_extract(h.head_json,'$.reference.content_revision')=v.content_revision)";
 const HELD: &str = "EXISTS(SELECT 1 FROM plan_version_holds h WHERE h.workspace_id=v.workspace_id AND h.plan_id=v.plan_id AND h.content_revision=v.content_revision)";
-const INVALID_HEAD: &str = "EXISTS(SELECT 1 FROM plan_heads h WHERE h.workspace_id=v.workspace_id AND h.plan_id=v.plan_id AND (json_extract(h.head_json,'$.status') IS NULL OR json_extract(h.head_json,'$.status') NOT IN ('enabled','disabled','deleted') OR json_type(h.head_json,'$.reference.content_revision') IS NOT 'integer' OR json_extract(h.head_json,'$.reference.plan_id') IS NOT h.plan_id OR json_extract(h.head_json,'$.reference.workspace_id') IS NOT h.workspace_id))";
+// The current head must point to published content. Deleted heads may outlive
+// reclaimed content, but their retained identity still has to be well formed.
+const INVALID_HEAD: &str = r#"EXISTS(
+    SELECT 1 FROM plan_heads h WHERE h.workspace_id=v.workspace_id AND h.plan_id=v.plan_id AND (
+        json_extract(h.head_json,'$.status') IS NULL
+        OR json_extract(h.head_json,'$.status') NOT IN ('enabled','disabled','deleted')
+        OR json_extract(h.head_json,'$.reference.plan_id') IS NOT h.plan_id
+        OR json_extract(h.head_json,'$.reference.workspace_id') IS NOT h.workspace_id
+        OR json_type(h.head_json,'$.reference.content_revision') IS NOT 'integer'
+        OR json_extract(h.head_json,'$.reference.content_revision') <= 0
+        OR json_extract(h.head_json,'$.reference.content_revision') > h.head_revision
+        OR json_extract(h.head_json,'$.head_revision') IS NOT h.head_revision
+        OR json_type(h.head_json,'$.reference.content_digest') IS NOT 'text'
+        OR (json_extract(h.head_json,'$.status') != 'deleted' AND NOT EXISTS(
+            SELECT 1 FROM plan_versions current_version
+            WHERE current_version.workspace_id=h.workspace_id AND current_version.plan_id=h.plan_id
+                AND current_version.content_revision=json_extract(h.head_json,'$.reference.content_revision')
+                AND current_version.content_digest=json_extract(h.head_json,'$.reference.content_digest')
+                AND current_version.state='published'
+        ))
+    )
+)"#;
 
 fn unavailable(_: rusqlite::Error) -> PortError {
     PortError::new(
@@ -57,23 +79,28 @@ impl<'a> ActivePlanReferences<'a> {
             ));
         }
         let mut statement = connection.prepare(
-            "SELECT state,publication_bytes FROM gateway_publications WHERE workspace_id=?1 AND state IN ('active','prepared','lkg')",
+            "SELECT state,publication_revision,digest,publication_bytes FROM gateway_publications WHERE workspace_id=?1 AND state IN ('active','prepared','lkg')",
         ).map_err(unavailable)?;
         let rows = statement
             .query_map([workspace.as_str()], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, Vec<u8>>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, u64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Vec<u8>>(3)?,
+                ))
             })
             .map_err(unavailable)?;
         let mut publications = Vec::new();
         for row in rows {
-            let (state, bytes) = row.map_err(unavailable)?;
+            let (state, revision, digest, bytes) = row.map_err(unavailable)?;
+            let revision = GatewayPublicationRevision::new(revision).map_err(|_| corrupt())?;
+            let digest = CanonicalDigest::parse(digest).map_err(|_| corrupt())?;
             #[cfg(test)]
             PUBLICATION_DECODES.set(PUBLICATION_DECODES.get() + 1);
             let publication =
-                GatewayPublicationV1::decode_persisted(&bytes).map_err(|_| corrupt())?;
-            if publication.workspace_id != *workspace {
-                return Err(corrupt());
-            }
+                PublicationRecordV1::decode_verified(workspace, revision, &digest, &bytes)
+                    .map_err(|_| corrupt())?;
             let protection = match state.as_str() {
                 "active" => PlanReferenceProtectionV1::ActivePublication,
                 "prepared" => PlanReferenceProtectionV1::PreparedPublication,

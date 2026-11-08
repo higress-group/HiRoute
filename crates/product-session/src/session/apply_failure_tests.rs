@@ -119,6 +119,161 @@ fn accepted(state: &str) -> MachineEnvelopeV2<Value> {
     response
 }
 
+struct DecisionRemovalDispatch {
+    current_digest: CanonicalDigest,
+    defer_readback: bool,
+    submissions: Mutex<Vec<String>>,
+    previews: AtomicUsize,
+    readbacks: AtomicUsize,
+}
+
+impl ControlDispatch for DecisionRemovalDispatch {
+    fn dispatch(&self, request: LocalControlWireRequestV2) -> MachineEnvelopeV2<Value> {
+        use std::sync::atomic::Ordering::SeqCst;
+        let request_id = Some(request.request_id);
+        match request.operation_id.as_str() {
+            "ApplyDecisionServiceV3" if request.payload.get("accept_digest").is_none() => {
+                let preview: PreviewRequestV1 = serde_json::from_value(request.payload).unwrap();
+                self.previews.fetch_add(1, SeqCst);
+                MachineEnvelopeV2::succeeded(
+                    serde_json::json!({
+                        "normalized_spec": preview.spec,
+                        "change_digest": digest(),
+                        "expected_revisions": {"target": 21, "dependencies": {}},
+                    }),
+                    request_id,
+                )
+            }
+            RESOLVE_DECISION_TEST_REVISION_V1 => {
+                assert_eq!(
+                    self.previews.load(SeqCst),
+                    1,
+                    "the CAS must be pinned before checking the decision identity"
+                );
+                assert_eq!(
+                    request.payload,
+                    serde_json::json!({"id":"decision/extension","revision":1})
+                );
+                MachineEnvelopeV2::succeeded(
+                    serde_json::json!({
+                        "id":"decision/extension", "revision":1,
+                        "expected_configuration_digest":self.current_digest,
+                    }),
+                    request_id,
+                )
+            }
+            "ApplyDecisionServiceV3" => {
+                let apply: ApplyRequestV1 = serde_json::from_value(request.payload).unwrap();
+                assert_eq!(apply.expected_revisions.target, 21);
+                assert_eq!(apply.accept_digest, digest());
+                assert_eq!(apply.spec.desired_state["change"]["service"], Value::Null);
+                self.submissions.lock().unwrap().push(apply.idempotency_key);
+                let mut response = accepted("rolled_back");
+                response.request_id = request_id;
+                response
+            }
+            "FindOperationByIdempotency" => {
+                let lookup: OperationIdempotencyLookupV1 =
+                    serde_json::from_value(request.payload).unwrap();
+                assert_eq!(lookup.principal_kind, PrincipalKind::InteractiveUser);
+                assert_eq!(lookup.operation_kind, "ApplyDecisionServiceV3");
+                assert_eq!(lookup.accepted_digest, digest());
+                assert!(lookup.include_failure_detail);
+                assert_eq!(
+                    self.submissions.lock().unwrap().as_slice(),
+                    &[lookup.idempotency_key]
+                );
+                if self.readbacks.fetch_add(1, SeqCst) == 0 && self.defer_readback {
+                    return MachineEnvelopeV2::failed(
+                        ErrorV1::new(ErrorCode::DaemonUnavailable),
+                        request_id,
+                    );
+                }
+                MachineEnvelopeV2::succeeded(
+                    serde_json::json!({
+                        "digest_matches": true,
+                        "operation": {
+                            "operation_id":"operation/failed-artifact", "state":"rolled_back",
+                            "accepted_digest":digest(), "sequence":9, "cancellable":false,
+                        }
+                    }),
+                    request_id,
+                )
+            }
+            _ => panic!("unexpected operation {}", request.operation_id),
+        }
+    }
+}
+
+fn removal_change() -> hiroute_domain::DecisionServiceChangeV3 {
+    hiroute_domain::DecisionServiceChangeV3 {
+        id: "decision/extension".into(),
+        expected_revision: 1,
+        service: None,
+        expected_source_revisions: Vec::new(),
+    }
+}
+
+#[tokio::test]
+async fn decision_removal_refuses_a_replacement_at_the_same_revision() {
+    let dispatch = Arc::new(DecisionRemovalDispatch {
+        current_digest: CanonicalDigest::of_bytes(b"replacement service"),
+        defer_readback: false,
+        submissions: Mutex::default(),
+        previews: AtomicUsize::new(0),
+        readbacks: AtomicUsize::new(0),
+    });
+    let mut session = Session::new(
+        Client::in_process("replaced-decision", dispatch.clone()),
+        Arc::new(ReadOnlyAuthority),
+    );
+    let failure = session
+        .save_decision_service_v3(removal_change(), None, Some(digest()))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(failure, DesktopFailure::Native { code } if code == "DECISION_REMOVAL_TARGET_CHANGED")
+    );
+    assert!(dispatch.submissions.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn decision_removal_reads_back_the_original_rollback_without_resubmitting() {
+    let dispatch = Arc::new(DecisionRemovalDispatch {
+        current_digest: digest(),
+        defer_readback: true,
+        submissions: Mutex::default(),
+        previews: AtomicUsize::new(0),
+        readbacks: AtomicUsize::new(0),
+    });
+    let mut session = Session::new(
+        Client::in_process("interrupted-decision", dispatch.clone()),
+        Arc::new(ReadOnlyAuthority),
+    );
+    let change = removal_change();
+    assert!(
+        session
+            .save_decision_service_v3(change.clone(), None, Some(digest()))
+            .await
+            .is_err()
+    );
+    let rolled_back = session
+        .save_decision_service_v3(change, None, Some(digest()))
+        .await
+        .unwrap();
+    assert_eq!(rolled_back.state, "rolled_back");
+    assert_eq!(rolled_back.operation_id, "operation/failed-artifact");
+    assert_eq!(dispatch.submissions.lock().unwrap().len(), 1);
+    assert_eq!(
+        dispatch.previews.load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(
+        dispatch.readbacks.load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+}
+
 #[tokio::test]
 async fn failed_apply_response_reads_failure_detail_before_returning_a_terminal_view() {
     for state in ["rolled_back", "needs_attention"] {

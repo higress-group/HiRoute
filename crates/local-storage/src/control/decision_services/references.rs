@@ -1,28 +1,32 @@
-use hiroute_domain::{PlanReferenceBlockerV1, PlanReferenceProtectionV1};
+use hiroute_domain::{CanonicalDigest, PlanReferenceBlockerV1, PlanReferenceProtectionV1};
 
 use super::*;
 use crate::control::active_plan_references::ActivePlanReferences;
 
 impl ControlStore {
-    pub fn decision_removal_references(
+    pub fn decision_removal_preview(
         &self,
         workspace: &WorkspaceId,
         id: &str,
         expected_revision: u64,
-    ) -> PortResult<Vec<PlanReferenceBlockerV1>> {
+    ) -> PortResult<(CanonicalDigest, Vec<PlanReferenceBlockerV1>)> {
         let connection = self.connection.borrow();
         let transaction = connection.unchecked_transaction().map_err(|_| storage())?;
-        let actual: u64 = transaction.query_row(
-            "SELECT COALESCE(MAX(revision),0) FROM decision_services WHERE workspace_id=?1 AND service_id=?2",
-            params![workspace.as_str(), id], |row| row.get(0),
-        ).map_err(|_| storage())?;
-        if expected_revision == 0 || actual != expected_revision {
+        let current: Option<(u64, String)> = transaction.query_row(
+            "SELECT revision,service_json FROM decision_services WHERE workspace_id=?1 AND service_id=?2 ORDER BY revision DESC LIMIT 1",
+            params![workspace.as_str(), id], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional().map_err(|_| storage())?;
+        let Some((revision, encoded)) =
+            current.filter(|(revision, _)| *revision == expected_revision)
+        else {
             return Err(PortError::new(
                 PortErrorCode::Conflict,
                 "decision_service.revision_conflict",
             ));
-        }
-        read(&transaction, workspace, id)
+        };
+        let record = decode_record(id, revision, &encoded)?;
+        let digest = CanonicalDigest::of(&record).map_err(|_| invalid())?;
+        Ok((digest, read(&transaction, workspace, id)?))
     }
 }
 

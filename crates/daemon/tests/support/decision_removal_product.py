@@ -21,10 +21,20 @@ def run(repository):
         def data(command, payload=None):
             return product.public_cli(command, payload)[1]['data']
 
-        def apply_service(preview, key):
+        def apply_service(preview, key, interrupt=False):
             request = {'schema_version': V1, 'spec': preview['normalized_spec'],
                        'accept_digest': preview['change_digest'],
                        'expected_revisions': preview['expected_revisions'], 'idempotency_key': key}
+            if interrupt:
+                product.stop()
+                product.start('before_control_activation')
+                code, error = product.public_cli('decision connections apply', request, success=False)
+                assert code != 0, error
+                product.stop(crash=True)
+                with sqlite3.connect(f'file:{product.storage}/live/control.db?mode=ro', uri=True) as db:
+                    staged = db.execute('SELECT activated,compensated FROM control_effects JOIN writer_claim USING(operation_id)').fetchone()
+                    assert staged == (0, 0), staged
+                product.start()
             result = data('decision connections apply', request)
             assert result['state'] == 'succeeded', result
             assert data('decision connections apply', request) == result
@@ -65,7 +75,9 @@ def run(repository):
             assert service['schema'] == 'hiroute.decision-service/v3'
             apply_service(saved, case + '-save')
             count = operation_count(product)
-            assert removal_preview()['blockers'] == []
+            identity = removal_preview()
+            assert identity['blockers'] == []
+            assert identity['configuration_digest'] == data('decision connections list')['services'][0]['configuration_digest']
             assert operation_count(product) == count, 'preview created an Operation'
             selection = copy.deepcopy(original['candidates'][0])
             routing = {'classifier': {'kind': 'decision_service_v3', 'service': service},
@@ -108,7 +120,8 @@ def run(repository):
             assert removal_preview()['blockers'] == []
             before = rows()
             source_before = source()
-            apply_service(data(f'decision connections apply --id {service_id} --delete'), case + '-remove')
+            apply_service(data(f'decision connections apply --id {service_id} --delete'), case + '-remove',
+                          interrupt=not deleted)
             assert rows() == before, 'removal changed history, heads or reference indexes'
             assert not data('decision connections list')['services']
             source_after = source()

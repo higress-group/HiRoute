@@ -95,17 +95,22 @@ custom extensions. Opening or cancelling its confirmation
 does not mutate a configuration. Confirmed removal retains the existing exact
 revision/source-closure transaction and backend reference guards; a shared API
 connection and its keys are not removed with the decision configuration.
-The confirmation keeps its captured service and related-source revisions:
-refreshed state cannot silently replace its target. `preview_decision_removal`
-reads `decision.removal.preview` with ID and expected revision. Loading, changed,
-unavailable or mismatched responses disable removal. Active blockers use existing
+The confirmation keeps its captured configuration digest, service revision and
+related-source revisions. `preview_decision_removal` reads
+`decision.removal.preview` with ID and expected revision and verifies the returned
+configuration digest. Loading, changed, unavailable or mismatched responses
+disable removal. Active blockers use existing
 `DECISION_IN_USE` in the preview DTO and expose safe Plan/draft/revision identity
 and protection reason; navigation is offered only for available current entries.
 Installed-publication blockers may offer the existing authorized Update references
 checkpoint. Opening/cancelling never performs that mutation. Ordinary history has
 no reclaim action. Apply still uses `save_decision_service_v3`; a stale/revision
-conflict triggers a fresh read-only preview, while an uncertain operation is not
-resubmitted. No global machine error or special recovery command is added.
+conflict triggers a fresh read-only preview. Product Session pins the existing
+Apply revision set before resolving the captured configuration digest. This binds
+the confirmation to the saved content even if its ID and revision are reused.
+After a failed terminal response or a lost acknowledgement, read the original
+Operation by its submission identity. A confirmed rollback refreshes blockers
+before another confirmation is available.
 
 Current hosts use `decision_services_v3`, `preview_decision_context` and
 `save_decision_service_v3`. The preview takes the exact endpoint, model, codec

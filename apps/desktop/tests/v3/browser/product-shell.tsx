@@ -61,6 +61,9 @@ mockIPC((command, payload) => {
   if (control.handlers[command]) return control.handlers[command](args);
   if (command === 'preview_decision_removal') {
     const input = args.input as { id: string; expected_revision: number };
+    const list = control.handlers.decision_services_v3?.({}) as { services: ReturnType<typeof fixtureDecisionView>[] } | undefined;
+    const view = list?.services.find(item => item.service.id === input.id && item.service.revision === input.expected_revision);
+    if (!view) throw { code: 'CHANGE_PREVIEW_STALE' };
     const blockers = [
       ...control.desktop.catalog.plans.flatMap(plan => {
         const classifier = plan.desired.strategy.routing?.classifier ?? plan.desired.strategy.classifier;
@@ -73,7 +76,7 @@ mockIPC((command, payload) => {
           ? [{ plan_id: draft.plan_id ?? null, draft_id: draft.draft_id, revision: draft.revision, protection: 'draft' }] : [];
       }),
     ];
-    return { id: input.id, revision: input.expected_revision, failure: blockers.length ? 'DECISION_IN_USE' : null, blockers };
+    return { id: input.id, revision: input.expected_revision, configuration_digest: view.configuration_digest, failure: blockers.length ? 'DECISION_IN_USE' : null, blockers };
   }
   if (command === 'preview_native_network_route') return fixtureDecisionNetworkRoute();
   if (command === 'native_source_network') {

@@ -3,27 +3,31 @@ import { invoke } from '../../host/index.ts';
 import { Dialog } from '../../ui';
 import type { Draft, Plan } from '../../plan-editor';
 import { planErrorCode } from '../../plan-editor-errors';
-import type { DecisionRemovalPreview, DecisionRemovalProtection, DecisionServiceView } from './contracts';
+import type { DecisionRemovalOutcome, DecisionRemovalPreview, DecisionRemovalProtection, DecisionServiceView } from './contracts';
 import { recordSharedSource } from './form-state';
 
 export function DecisionRemovalDialog({ target, current, language, mutable, busy, plans, drafts, onConfirm, onClose, onOpenRoute }: {
   target: DecisionServiceView; current?: DecisionServiceView; language: 'zh' | 'en'; mutable: boolean; busy: boolean;
-  plans: Plan[]; drafts: Draft[]; onConfirm(target: DecisionServiceView): Promise<void>; onClose(): void;
+  plans: Plan[]; drafts: Draft[]; onConfirm(target: DecisionServiceView): Promise<DecisionRemovalOutcome>; onClose(): void;
   onOpenRoute?(plan?: Plan, draft?: Draft): void;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   const [error, setError] = useState('');
   const [retryable, setRetryable] = useState(false);
   const [preview, setPreview] = useState<DecisionRemovalPreview | null>(null);
+  const [targetChanged, setTargetChanged] = useState(false);
+  const [outcome, setOutcome] = useState<DecisionRemovalOutcome | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [generation, setGeneration] = useState(0);
   const submitting = useRef(false);
   const native = target.service.connection.kind !== 'custom';
   const sourceRevisions = (view: DecisionServiceView) => JSON.stringify(view.related_sources.map(source => [source.source_id, source.revision]).sort());
-  const changed = !current || current.service.revision !== target.service.revision || current.configuration_digest !== target.configuration_digest || sourceRevisions(current) !== sourceRevisions(target);
+  const changed = targetChanged || !current || current.service.revision !== target.service.revision || current.configuration_digest !== target.configuration_digest || sourceRevisions(current) !== sourceRevisions(target);
   const locked = busy || refreshing;
   const references = preview?.blockers ?? [];
+  const canConfirm = mutable && !locked && !changed && !loading && !!preview && !error
+    && references.length === 0 && outcome !== 'unconfirmed';
   const reason: Record<DecisionRemovalProtection, string> = {
     current_head: t('当前路由（含已停用）', 'Current route (including disabled)'),
     prepared_version: t('准备中的版本', 'Prepared version'),
@@ -38,13 +42,15 @@ export function DecisionRemovalDialog({ target, current, language, mutable, busy
     setLoading(true); setPreview(null); setError(''); setRetryable(false);
     if (changed) { setLoading(false); return; }
     void invoke<DecisionRemovalPreview>('preview_decision_removal', { input: { id: target.service.id, expected_revision: target.service.revision } }).then(value => {
-      if (value.id !== target.service.id || value.revision !== target.service.revision || (value.failure !== null && value.failure !== 'DECISION_IN_USE') || (value.failure === null) !== (value.blockers.length === 0)) throw new Error('DECISION_PREVIEW_INVALID');
-      if (active) setPreview(value);
+      if (value.id !== target.service.id || value.revision !== target.service.revision || typeof value.configuration_digest !== 'string' || (value.failure !== null && value.failure !== 'DECISION_IN_USE') || (value.failure === null) !== (value.blockers.length === 0)) throw new Error('DECISION_PREVIEW_INVALID');
+      if (!active) return;
+      if (value.configuration_digest !== target.configuration_digest) setTargetChanged(true);
+      else setPreview(value);
     }).catch(() => {
       if (active) { setRetryable(true); setError(t('暂时无法确认引用情况，请重试。未删除任何配置。', 'References could not be checked. Retry; no configuration was deleted.')); }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [target.service.id, target.service.revision, changed, generation, language]);
+  }, [target.service.id, target.service.revision, target.configuration_digest, changed, generation, language]);
   async function refreshReferences() {
     if (!mutable || locked || changed || submitting.current) return;
     submitting.current = true; setRefreshing(true); setError('');
@@ -56,26 +62,36 @@ export function DecisionRemovalDialog({ target, current, language, mutable, busy
     } finally { submitting.current = false; setRefreshing(false); }
   }
   async function confirm() {
-    if (!mutable || locked || changed || loading || !preview || error || references.length || submitting.current) return;
+    if (!canConfirm || submitting.current) return;
     submitting.current = true;
-    try { await onConfirm(target); }
+    setOutcome(null);
+    try {
+      const result = await onConfirm(target);
+      if (result === 'removed') return;
+      setOutcome(result); setPreview(null);
+      if (result === 'rolled_back') setGeneration(value => value + 1);
+    }
     catch (cause) {
       const code = planErrorCode(cause);
       setPreview(null); setRetryable(false);
-      if (['DECISION_IN_USE', 'REVISION_CONFLICT', 'CHANGE_PREVIEW_STALE', 'DECISION_REVISION_CONFLICT', 'DECISION_SOURCE_REVISION_CONFLICT'].includes(code)) {
+      if (code === 'DECISION_REMOVAL_TARGET_CHANGED') {
+        setTargetChanged(true);
+      } else if (['DECISION_IN_USE', 'REVISION_CONFLICT', 'CHANGE_PREVIEW_STALE', 'DECISION_REVISION_CONFLICT', 'DECISION_SOURCE_REVISION_CONFLICT'].includes(code)) {
         setGeneration(value => value + 1);
       } else {
-        setError(t('移除结果尚未确认。请等待现有操作完成后关闭并重新打开查看，不要重复提交。', 'Removal is not confirmed. Let the existing operation finish, then close and reopen to check; do not submit again.'));
+        setOutcome('unconfirmed');
       }
     } finally { submitting.current = false; }
   }
   return <Dialog open title={t(`移除「${target.service.name}」？`, `Remove “${target.service.name}”?`)} closeLabel={t('关闭', 'Close')} closeDisabled={locked} onClose={onClose}
-    footer={<><button className="btn" type="button" disabled={locked} onClick={onClose}>{t('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-danger" type="button" disabled={!mutable || locked || changed || loading || !preview || !!error || references.length > 0} onClick={() => void confirm()}>{busy ? t('正在保存…', 'Saving…') : native ? t('移除模型', 'Remove model') : t('移除扩展', 'Remove extension')}</button></>}>
+    footer={<><button className="btn" type="button" disabled={locked} onClick={onClose}>{t('取消', 'Cancel')}</button><span className="mc-footer-spacer" /><button className="btn btn-danger" type="button" disabled={!canConfirm} onClick={() => void confirm()}>{busy ? t('正在保存…', 'Saving…') : native ? t('移除模型', 'Remove model') : t('移除扩展', 'Remove extension')}</button></>}>
     <p>{recordSharedSource(target.service)
       ? t('仅移除这个决策模型，保留 API 接入及其 Key。', 'Remove only this decision model; retain its API connection and keys.')
       : native ? t('将移除这个决策模型配置，历史使用记录保留。', 'Remove this decision model configuration; usage history is retained.')
         : t('将移除这个自定义扩展配置，历史使用记录保留。', 'Remove this custom extension configuration; usage history is retained.')}</p>
     <p className="field-help">{t('当前路由、草稿、执行保留和已安装发布会阻止移除；普通历史版本保留，但不再保证可恢复执行。', 'Current routes, drafts, execution holds and installed publications prevent removal. Other history is retained for viewing, without a guarantee of restored execution.')}</p>
+    {outcome === 'rolled_back' && <p role="status">{t('移除已回滚。请核对当前引用。', 'Removal was rolled back. Review the current references.')}</p>}
+    {outcome === 'unconfirmed' && <p className="callout warn" role="alert">{t('移除结果尚未确认。请查看原操作的结果。', 'Removal is unconfirmed. Check the result of the original operation.')}</p>}
     {loading && <p role="status">{t('正在检查路由和任务引用…', 'Checking route and task references…')}</p>}
     {!!references.length && <div className="callout warn" role="alert"><div><strong>{t('仍被引用，请先调整引用再移除。', 'Still referenced. Update references before removing it.')}</strong><ul className="decision-removal-blockers">{references.map((reference, index) => {
       const draft = drafts.find(item => item.draft_id === reference.draft_id);

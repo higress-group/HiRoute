@@ -36,6 +36,7 @@ pub struct DecisionServiceSaveInputV2 {
 pub struct DecisionServiceSaveInputV3 {
     pub change: hiroute_domain::DecisionServiceChangeV3,
     pub secret: Option<String>,
+    pub expected_configuration_digest: Option<hiroute_application_api::CanonicalDigest>,
 }
 
 pub async fn decision_services_v3(
@@ -97,7 +98,11 @@ pub async fn save_decision_service_v3(
         .await
         .as_mut()
         .ok_or("RESIDENT_UNAVAILABLE")?
-        .save_decision_service_v3(input.change, input.secret.map(zeroize::Zeroizing::new))
+        .save_decision_service_v3(
+            input.change,
+            input.secret.map(zeroize::Zeroizing::new),
+            input.expected_configuration_digest,
+        )
         .await
 }
 

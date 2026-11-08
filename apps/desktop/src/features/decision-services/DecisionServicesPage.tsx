@@ -6,7 +6,7 @@ import { ClassifierProtocolDialog } from '../ClassifierProtocolDialog';
 import { randomId } from '../../random-id.ts';
 import type { DecisionService } from './types';
 import type {
-  DecisionConnectionSources, DecisionServiceApplyResult, DecisionServiceChange, DecisionServices, DecisionServiceNetworkTestResult,
+  DecisionConnectionSources, DecisionRemovalOutcome, DecisionServiceApplyResult, DecisionServiceChange, DecisionServices, DecisionServiceNetworkTestResult,
   DecisionServiceTestArgs, DecisionServiceV3, DecisionServiceView,
 } from './contracts';
 import type { Draft, Plan } from '../../plan-editor';
@@ -256,19 +256,30 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     setSavedBeforeTest(null); setNotice('');
     await test(selected);
   }
-  async function remove(target: DecisionServiceView) {
-    if (busy || !mutable) return;
+  async function remove(target: DecisionServiceView): Promise<DecisionRemovalOutcome> {
+    if (busy || !mutable) return 'unconfirmed';
     setBusy(true); setError(null);
     try {
       const change: DecisionServiceChange = { id: target.service.id, expected_revision: target.service.revision, service: null,
         expected_source_revisions: target.related_sources.flatMap(source => source.revision == null ? [] : [{ source_id: source.source_id, revision: source.revision }]) };
-      const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v3', { input: { change, secret: null } });
-      if (value.state !== 'succeeded') throw { code: 'DECISION_SERVICE_' + value.state.toUpperCase() };
-      const remaining = await refresh(); if (remaining) setSelectedId(remaining[0]?.service.id ?? null); onChanged?.();
+      const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v3', {
+        input: { change, secret: null, expected_configuration_digest: target.configuration_digest },
+      });
+      if (value.state === 'rolled_back') return 'rolled_back';
+      if (value.state !== 'succeeded') {
+        onChanged?.();
+        return 'unconfirmed';
+      }
+      const remaining = await refresh().catch(() => null);
+      if (remaining) setSelectedId(remaining[0]?.service.id ?? null);
+      else setError({ message: t('已移除。请刷新决策模型列表。', 'Removed. Refresh the decision model list.') });
+      onChanged?.();
       setNotice(t('已移除。', 'Removed.'));
       setRemoving(null);
+      return 'removed';
     } catch (cause) {
-      if (['DECISION_IN_USE', 'REVISION_CONFLICT', 'CHANGE_PREVIEW_STALE', 'DECISION_REVISION_CONFLICT', 'DECISION_SOURCE_REVISION_CONFLICT'].includes(planErrorCode(cause))) await refresh();
+      if (['DECISION_IN_USE', 'REVISION_CONFLICT', 'CHANGE_PREVIEW_STALE', 'DECISION_REVISION_CONFLICT', 'DECISION_SOURCE_REVISION_CONFLICT', 'DECISION_REMOVAL_TARGET_CHANGED'].includes(planErrorCode(cause))) await refresh().catch(() => null);
+      else onChanged?.();
       throw cause;
     } finally { setBusy(false); }
   }

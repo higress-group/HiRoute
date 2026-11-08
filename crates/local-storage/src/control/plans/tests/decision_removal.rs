@@ -132,7 +132,9 @@ fn save_service(store: &ControlStore) {
 }
 
 fn blockers(store: &ControlStore) -> PortResult<Vec<PlanReferenceBlockerV1>> {
-    store.decision_removal_references(&WorkspaceId::default(), SERVICE_ID, 1)
+    store
+        .decision_removal_preview(&WorkspaceId::default(), SERVICE_ID, 1)
+        .map(|(_, blockers)| blockers)
 }
 
 fn head(store: &ControlStore, version: &PlanVersionV1, status: PlanLifecycleV1) {
@@ -147,6 +149,90 @@ fn head(store: &ControlStore, version: &PlanVersionV1, status: PlanLifecycleV1) 
         "INSERT OR REPLACE INTO plan_heads(workspace_id,plan_id,head_revision,head_json) VALUES(?1,?2,?3,?4)",
         params![WorkspaceId::DEFAULT, head.reference.plan_id.as_str(), head.head_revision, encode(&head).unwrap()],
     ).unwrap();
+}
+
+fn stage_removal(store: &ControlStore, version: u8) -> PortResult<OwnedEffectV1> {
+    let workspace = WorkspaceId::default();
+    store.apply_control(
+        &OperationId::parse("op_0123456789abcdef0123456789abcdef").unwrap(),
+        &workspace,
+        store.current_revisions(&workspace).unwrap().target,
+        &removal_control(version),
+    )
+}
+
+#[test]
+fn decision_removal_rejects_invalid_and_dangling_current_heads() {
+    let root = tempdir().unwrap();
+    let stores = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let store = stores.control();
+    let (_, version) = fixture();
+    save_service(store);
+    seed(store, &version);
+    store
+        .reconcile_plan_versions(&WorkspaceId::default(), &[], 1)
+        .unwrap();
+    head(store, &version, PlanLifecycleV1::Enabled);
+    for bad_revision in [0_u64, version.reference.content_revision + 1] {
+        store.connection.borrow().execute(
+            "UPDATE plan_heads SET head_revision=?1,head_json=json_set(head_json,'$.head_revision',?1,'$.reference.content_revision',?2)",
+            params![version.reference.content_revision + 1, bad_revision],
+        ).unwrap();
+        assert_eq!(blockers(store).unwrap_err().code, PortErrorCode::Corrupt);
+        for api_version in [1, 2, 3] {
+            assert_eq!(
+                stage_removal(store, api_version).unwrap_err().code,
+                PortErrorCode::Corrupt
+            );
+        }
+    }
+    assert_eq!(
+        store
+            .decision_service(&WorkspaceId::default(), SERVICE_ID, 1)
+            .unwrap(),
+        Some(service())
+    );
+}
+
+#[test]
+fn decision_removal_authenticates_publication_row_before_accepting_an_empty_reference_set() {
+    let root = tempdir().unwrap();
+    let stores = crate::LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+    let store = stores.control();
+    save_service(store);
+    let mut unrelated = service();
+    unrelated.id = "decision/unrelated".into();
+    let (publication, _) = fixture_for(DecisionServiceRecord::V1(unrelated));
+    let bytes = publication.canonical_bytes().unwrap();
+    let revision = publication.publication_revision.get();
+    let digest = CanonicalDigest::of_bytes(&bytes);
+    for (stored_revision, stored_digest) in [
+        (revision + 1, digest.clone()),
+        (revision, CanonicalDigest::of_bytes(b"another publication")),
+    ] {
+        store.connection.borrow().execute(
+            "INSERT INTO gateway_publications(workspace_id,publication_revision,digest,publication_bytes,state,created_at,updated_at) VALUES(?1,?2,?3,?4,'lkg',1,1)",
+            params![WorkspaceId::DEFAULT, stored_revision, stored_digest.as_str(), &bytes],
+        ).unwrap();
+        assert_eq!(blockers(store).unwrap_err().code, PortErrorCode::Corrupt);
+        for api_version in [1, 2, 3] {
+            assert_eq!(
+                stage_removal(store, api_version).unwrap_err().code,
+                PortErrorCode::Corrupt
+            );
+        }
+        store
+            .connection
+            .borrow()
+            .execute("DELETE FROM gateway_publications", [])
+            .unwrap();
+    }
+    assert_eq!(
+        store
+            .decision_service(&WorkspaceId::default(), SERVICE_ID, 1)
+            .unwrap(),
+        Some(service())
+    );
 }
 
 #[test]
@@ -273,17 +359,7 @@ fn decision_removal_checks_publications_with_empty_index_and_no_local_owner() {
                 .is_empty()
         );
         for version in [1, 2, 3] {
-            let error = store
-                .apply_control(
-                    &OperationId::parse("op_0123456789abcdef0123456789abcdef").unwrap(),
-                    &WorkspaceId::default(),
-                    store
-                        .current_revisions(&WorkspaceId::default())
-                        .unwrap()
-                        .target,
-                    &removal_control(version),
-                )
-                .unwrap_err();
+            let error = stage_removal(store, version).unwrap_err();
             assert_eq!(error.context, "decision_service.in_use", "V{version}");
         }
     }
@@ -382,7 +458,7 @@ fn decision_removal_preview_is_read_only_and_fails_closed_on_unknown_owners() {
     assert_eq!(store.connection.borrow().total_changes(), before);
     assert!(
         store
-            .decision_removal_references(&WorkspaceId::default(), SERVICE_ID, 2)
+            .decision_removal_preview(&WorkspaceId::default(), SERVICE_ID, 2)
             .is_err()
     );
     for index in 0..1000 {

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::DecisionFailureCodeV2;
+use crate::{CanonicalDigest, DecisionFailureCodeV2};
 pub use hiroute_domain::{PlanReferenceBlockerV1, PlanReferenceProtectionV1};
 
 #[derive(schemars::JsonSchema, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -15,6 +15,7 @@ pub struct DecisionRemovalPreviewRequestV1 {
 pub struct DecisionRemovalPreviewV1 {
     pub id: String,
     pub revision: u64,
+    pub configuration_digest: CanonicalDigest,
     pub failure: Option<DecisionFailureCodeV2>,
     pub blockers: Vec<PlanReferenceBlockerV1>,
 }
@@ -35,6 +36,7 @@ mod tests {
         let preview = DecisionRemovalPreviewV1 {
             id: "decision/fixture".into(),
             revision: 2,
+            configuration_digest: CanonicalDigest::of_bytes(b"decision fixture"),
             failure: Some(DecisionFailureCodeV2::DecisionInUse),
             blockers: vec![PlanReferenceBlockerV1 {
                 plan_id: Some("plan/fixture".into()),
@@ -45,7 +47,7 @@ mod tests {
         };
         let value = serde_json::to_value(&preview).unwrap();
         assert_eq!(value["failure"], "DECISION_IN_USE");
-        assert_eq!(value.as_object().unwrap().len(), 4);
+        assert_eq!(value.as_object().unwrap().len(), 5);
         assert_eq!(
             serde_json::from_value::<DecisionRemovalPreviewV1>(value).unwrap(),
             preview
