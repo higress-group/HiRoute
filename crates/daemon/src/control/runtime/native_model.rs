@@ -12,8 +12,9 @@ use hiroute_domain::{
     PortResult, SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
 };
 use hiroute_integrations::{
-    CodexCatalogBaseline, CodexCatalogError, CodexDefaultPolicy, CodexFileConfiguration,
-    CodexSelectionTarget, codex_catalog_baseline as decode_catalog_baseline, restage_codex_catalog,
+    CodexCatalogBaseline, CodexCatalogError, CodexCatalogProjection, CodexDefaultPolicy,
+    CodexFileConfiguration, CodexSelectionTarget,
+    codex_catalog_baseline as decode_catalog_baseline, restage_codex_catalog,
     sample_codex_catalog_plan, sample_codex_hiroute_only_catalog_plan, stage_codex_catalog,
     stage_codex_configuration, stage_codex_reconfiguration, stage_codex_restoration,
 };
@@ -69,6 +70,7 @@ pub(super) fn codex_catalog_plan_for(
     settings: &AgentModelSelectionV2,
     publication: &GatewayPublicationV1,
     baseline: &CodexCatalogBaseline,
+    projection: CodexCatalogProjection,
 ) -> Result<hiroute_integrations::CodexCatalogPlan, CodexCatalogError> {
     let AgentModelSelectionV2::CodexDefault {
         default_selection,
@@ -120,6 +122,7 @@ pub(super) fn codex_catalog_plan_for(
             explicit_model
                 .as_deref()
                 .ok_or(CodexCatalogError::MissingDefault)?,
+            projection,
         );
     }
     let retained = settings
@@ -127,7 +130,14 @@ pub(super) fn codex_catalog_plan_for(
         .iter()
         .map(|model| model.client_model_id.clone())
         .collect();
-    sample_codex_catalog_plan(&scope, &plans, policy, baseline, Some(&retained))
+    sample_codex_catalog_plan(
+        &scope,
+        &plans,
+        policy,
+        baseline,
+        Some(&retained),
+        projection,
+    )
 }
 
 impl LocalControlAdapter {
@@ -308,8 +318,11 @@ impl LocalControlAdapter {
         } else {
             self.scanner.codex_user_config_target()
         };
-        let derived = codex_catalog_plan_for(&config, settings, &publication, &baseline)
-            .map_err(|_| conflict("codex.catalog.context_drift"))?;
+        let projection = CodexCatalogProjection::for_source_revision(&payload.source_revision)
+            .ok_or_else(|| conflict("codex.catalog.context_drift"))?;
+        let derived =
+            codex_catalog_plan_for(&config, settings, &publication, &baseline, projection)
+                .map_err(|_| conflict("codex.catalog.context_drift"))?;
         let producer_kind = match derived.producer.metadata_source {
             hiroute_integrations::CodexCatalogMetadataSourceV1::UserConfigured => {
                 CodexCatalogProducerKindV1::UserConfigured
@@ -324,8 +337,7 @@ impl LocalControlAdapter {
                 CodexCatalogProducerKindV1::HirouteGenerated
             }
         };
-        if payload.source_revision != hiroute_integrations::CODEX_CATALOG_SOURCE_REVISION
-            || payload.content_digest != derived.content_digest
+        if payload.content_digest != derived.content_digest
             || payload.producer_kind != producer_kind
             || derived.producer.path.to_str() != Some(payload.producer_path.as_str())
             || payload.producer_content_digest != derived.producer.content_digest

@@ -2682,6 +2682,24 @@
       ]
     },
     {
+      "contract": "hiroute.codex-catalog-artifact/v1",
+      "field": "released source_revision be6e8eac029b183056b7e4402879f15d2c85f61b before fixed request choices",
+      "mode": "recovery_read_only",
+      "owner": "agent-connections/codex",
+      "reason": "Accepted operations from the v0.5.3 producer can resume before their managed catalog bytes are staged. The recorded revision selects the released fixed-plan projection and all original content and producer digests must match. Protected staged bytes retain their exact read path.",
+      "removal_condition": "Retire only after accepted operations from supported sources and their recovery copies no longer require this projection.",
+      "allowed_paths": [
+        "crates/integrations/src/agents/codex_catalog.rs",
+        "crates/integrations/src/agents/codex_catalog_effects.rs",
+        "crates/integrations/src/agents/codex_catalog_plan.rs",
+        "crates/integrations/src/agents/codex_catalog_plan_tests.rs",
+        "crates/integrations/src/agents/codex_catalog_source.rs",
+        "crates/daemon/src/control/runtime/native_model.rs",
+        "crates/daemon/src/control/runtime/native_model_tests.rs",
+        "crates/daemon/src/control/runtime/native_model_tests/recovery_admission.rs"
+      ]
+    },
+    {
       "contract": "hiroute.codex-catalog/v1",
       "field": "retained private Worker catalog serial projection before the default-on policy",
       "mode": "recovery_read_only",

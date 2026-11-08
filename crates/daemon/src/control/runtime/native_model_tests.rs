@@ -668,6 +668,7 @@ fn settings_operation(
         &settings,
         &publication,
         &baseline,
+        CodexCatalogProjection::UserRequestLevels,
     )
     .unwrap();
     let catalog_facts = catalog_facts(&catalog_plan);
@@ -1090,6 +1091,30 @@ fn operation(
     before: &[u8],
     original: Option<&OperationId>,
 ) -> OperationV1 {
+    let mut operation = accept_codex_operation(
+        adapter,
+        key,
+        before,
+        original,
+        hiroute_integrations::CODEX_CATALOG_SOURCE_REVISION,
+    );
+    operation.state = OperationState::ApplyingAgentArtifacts;
+    adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .save_operation(&mut operation)
+        .unwrap();
+    operation
+}
+
+fn accept_codex_operation(
+    adapter: &LocalControlAdapter,
+    key: &str,
+    before: &[u8],
+    original: Option<&OperationId>,
+    catalog_source_revision: &str,
+) -> OperationV1 {
     ensure_target_cache(adapter);
     let publication = serde_json::from_slice::<hiroute_domain::GatewayPublicationV1>(
         include_bytes!("../../../../../e2e/product/fixtures/routing/current-publication.v3.json"),
@@ -1161,6 +1186,7 @@ fn operation(
                 },
                 &publication,
                 &baseline,
+                CodexCatalogProjection::for_source_revision(catalog_source_revision).unwrap(),
             )
             .unwrap(),
         )
@@ -1168,7 +1194,9 @@ fn operation(
         None
     };
     let catalog = catalog_plan.as_ref().map(|plan| {
-        settings_codex_catalog_intent(&control, "context/one", &catalog_facts(plan)).unwrap()
+        let mut facts = catalog_facts(plan);
+        facts.source_revision = catalog_source_revision.to_owned();
+        settings_codex_catalog_intent(&control, "context/one", &facts).unwrap()
     });
     let change = original.map_or_else(
         || CodexModelFileAction::Configure {
@@ -1232,7 +1260,7 @@ fn operation(
         "ApplyAgentConnectionChange"
     };
     let scope = IdempotencyScopeV1::new("interactive-user", operation_kind, key).unwrap();
-    let mut operation = OperationV1::new(
+    let operation = OperationV1::new(
         OperationId::derive(&workspace, &scope, &accept),
         workspace.clone(),
         scope,
@@ -1277,8 +1305,6 @@ fn operation(
         stores.control().begin_operation(&operation, &auth).unwrap(),
         BeginOperationOutcome::Created
     );
-    operation.state = OperationState::ApplyingAgentArtifacts;
-    stores.control().save_operation(&mut operation).unwrap();
     operation
 }
 
