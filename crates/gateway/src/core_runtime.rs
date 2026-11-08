@@ -1893,9 +1893,9 @@ impl GatewaySession for ReplayBodySession<'_> {
             #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
             if let Some(path) = super::test_control::observation_marker("reasoning-delivery.pause")
             {
-                let deadline = Instant::now() + Duration::from_secs(2);
+                let deadline = Instant::now() + std::time::Duration::from_secs(2);
                 while path.exists() && Instant::now() < deadline {
-                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
                 }
             }
             delivery.confirm();
