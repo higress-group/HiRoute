@@ -83,9 +83,24 @@ struct SessionEntry {
     current_segment: Option<SegmentState>,
     referenced_segment: Option<SegmentState>,
     next_turn_ordinal: u64,
-    pending_request: Option<u64>,
+    pending_request: Option<PendingRequest>,
     snapshot_pins: u32,
     accounted_bytes: usize,
+}
+
+#[derive(Clone, Copy)]
+struct PendingRequest {
+    token: u64,
+    has_record: bool,
+}
+
+impl PendingRequest {
+    fn new(token: u64) -> Self {
+        Self {
+            token,
+            has_record: false,
+        }
+    }
 }
 
 pub(crate) struct SnapshotPin {
@@ -509,7 +524,7 @@ impl AgentTurnHistoryStore {
                 current_segment: None,
                 referenced_segment: None,
                 next_turn_ordinal: 2,
-                pending_request: Some(request_token),
+                pending_request: Some(PendingRequest::new(request_token)),
                 snapshot_pins: 0,
                 accounted_bytes: 0,
             };
@@ -667,7 +682,7 @@ impl AgentTurnHistoryStore {
                     .checked_add(1)
                     .ok_or(AgentTurnHistoryError::Resource)?;
                 entry.last_access = now;
-                entry.pending_request = Some(request_token);
+                entry.pending_request = Some(PendingRequest::new(request_token));
                 entry.admission_sequence = request_token;
                 if entry.active.finalized {
                     output::reopen_finalized(entry, &latest.user);
@@ -820,7 +835,7 @@ impl AgentTurnHistoryStore {
                 .checked_add(1)
                 .ok_or(AgentTurnHistoryError::Resource)?;
             entry.last_access = now;
-            entry.pending_request = Some(request_token);
+            entry.pending_request = Some(PendingRequest::new(request_token));
             entry.admission_sequence = request_token;
             if reset_branch_context {
                 // Keep visible history, but a new context cannot extend the old
@@ -1040,6 +1055,11 @@ impl AgentTurnHistoryStore {
         }
         entry.active.request_ids.push(request_id.to_owned());
         entry
+            .pending_request
+            .as_mut()
+            .expect("matching pending request")
+            .has_record = true;
+        entry
             .active
             .first_request_id
             .get_or_insert_with(|| request_id.to_owned());
@@ -1166,7 +1186,7 @@ impl AgentTurnHistoryStore {
         let remove = inner.entries.get(&ticket.key).is_some_and(|entry| {
             entry.entry_token == ticket.entry_token
                 && entry.revision == ticket.revision
-                && entry.pending_request == Some(ticket.request_token)
+                && entry.pending_request.map(|pending| pending.token) == Some(ticket.request_token)
                 && ticket.new_turn
                 && entry.active.decision.is_none()
                 && entry.closed.is_empty()
@@ -1178,7 +1198,7 @@ impl AgentTurnHistoryStore {
         if let Some(entry) = inner.entries.get_mut(&ticket.key)
             && entry.entry_token == ticket.entry_token
             && entry.revision == ticket.revision
-            && entry.pending_request == Some(ticket.request_token)
+            && entry.pending_request.map(|pending| pending.token) == Some(ticket.request_token)
         {
             entry.pending_request = None;
             // An externally dropped request cannot drain its capture worker.

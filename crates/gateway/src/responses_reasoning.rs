@@ -3,11 +3,13 @@
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
 use parking_lot::Mutex;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
+use tokio_util::sync::CancellationToken;
 
 use crate::content_ref::ContentValueExt;
 use crate::context_hold::{ContextHoldKey, ContextHoldStore, ContextIdentityFacts};
@@ -18,6 +20,8 @@ use crate::server::publication::SealedCandidateExecutionV1;
 use crate::server::request_plan::{AuthorizedRequestPlan, IngressProtocol};
 
 const RETAINED_ITEMS: usize = 8192;
+const MAX_PENDING_DELIVERIES: usize = 64;
+const DELIVERY_WAIT: Duration = Duration::from_millis(250);
 const REQUEST_ITEMS: usize = 512;
 const RESPONSE_ITEMS: usize = 128;
 const HASH_BYTES: usize = 4 * 1024 * 1024;
@@ -81,6 +85,8 @@ struct RetainedItems {
     // Conflicting deliveries in the same scope remain ambiguous until evicted.
     sources: HashMap<ItemKey, Option<ReasoningSource>>,
     scopes: HashMap<ContextHoldKey, usize>,
+    pending: HashMap<ContextHoldKey, Vec<Arc<PendingReasoning>>>,
+    pending_count: usize,
 }
 
 #[derive(Clone)]
@@ -91,7 +97,7 @@ pub(crate) struct ReasoningOrigin {
 }
 
 impl ReasoningOrigin {
-    pub(crate) fn record(&self, fingerprints: &[Fingerprint]) {
+    fn record(&self, fingerprints: &[Fingerprint]) {
         if fingerprints.is_empty() {
             return;
         }
@@ -117,6 +123,59 @@ impl ReasoningOrigin {
             items.order.push_back(key.clone());
             items.sources.insert(key, Some(self.source));
         }
+    }
+}
+
+struct PendingReasoning {
+    capture: ReasoningCapture,
+    finished: CancellationToken,
+}
+
+/// Owns the fingerprints of a terminal response through its downstream write.
+pub(crate) struct ReasoningDelivery {
+    origin: ReasoningOrigin,
+    pending: Arc<PendingReasoning>,
+    registered: bool,
+}
+
+impl ReasoningDelivery {
+    pub(crate) fn register(mut self) -> Self {
+        let mut items = self.origin.store.0.lock();
+        if items.pending_count < MAX_PENDING_DELIVERIES {
+            items
+                .pending
+                .entry(self.origin.scope.clone())
+                .or_default()
+                .push(Arc::clone(&self.pending));
+            items.pending_count += 1;
+            self.registered = true;
+        }
+        drop(items);
+        self
+    }
+
+    pub(crate) fn confirm(self) {
+        self.origin.record(&self.pending.capture.items);
+    }
+}
+
+impl Drop for ReasoningDelivery {
+    fn drop(&mut self) {
+        if self.registered {
+            let mut items = self.origin.store.0.lock();
+            let pending = items
+                .pending
+                .get_mut(&self.origin.scope)
+                .expect("registered delivery");
+            pending.retain(|entry| !Arc::ptr_eq(entry, &self.pending));
+            if pending.is_empty() {
+                items.pending.remove(&self.origin.scope);
+            }
+            items.pending_count -= 1;
+        }
+        // A successful write recorded its source before this notification. A
+        // cancelled or failed write removes the pending proof without a source.
+        self.pending.finished.cancel();
     }
 }
 
@@ -167,13 +226,14 @@ impl ReasoningReplayProjection<'_> {
 }
 
 impl ResponsesReasoningReplay {
-    pub(crate) fn prepare(
+    pub(crate) async fn prepare(
         store: &Arc<ReasoningStore>,
         holds: &ContextHoldStore,
         authorized: &AuthorizedRequestPlan,
         identity: &ContextIdentityFacts,
         request: &ModelRequestIRV1,
         replay: &ReplayStore,
+        deadline: Instant,
     ) -> Self {
         if request.ingress_protocol != IngressProtocol::Responses
             || authorized.candidates().len() < 2
@@ -208,8 +268,14 @@ impl ResponsesReasoningReplay {
                     .any(|pair| pair[0].endpoint != pair[1].endpoint),
             ..Self::default()
         };
-        if capacity == 0 || !store.0.lock().scopes.contains_key(&scope) {
+        if capacity == 0 {
             return result;
+        }
+        {
+            let items = store.0.lock();
+            if !items.scopes.contains_key(&scope) && !items.pending.contains_key(&scope) {
+                return result;
+            }
         }
         let Some(layout) = request.native_history_layout() else {
             return result;
@@ -248,6 +314,36 @@ impl ResponsesReasoningReplay {
                         .map(|digest| (index, digest))
                 }),
         );
+        let mut pending = store
+            .0
+            .lock()
+            .pending
+            .get(&scope)
+            .cloned()
+            .unwrap_or_default();
+        pending.retain(|delivery| {
+            fingerprints
+                .iter()
+                .any(|(_, digest)| delivery.capture.items.binary_search(digest).is_ok())
+        });
+        if !pending.is_empty() {
+            // A client can read EOS before the writer has returned locally.
+            // Wait only for in-flight writes with an exact replay fingerprint.
+            #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
+            if let Some(path) =
+                crate::server::test_control::observation_marker("reasoning-delivery.waiting")
+            {
+                let _ = std::fs::write(path, b"");
+            }
+            let deadline = deadline.min(Instant::now() + DELIVERY_WAIT);
+            let _ = tokio::time::timeout_at(deadline.into(), async {
+                for delivery in &pending {
+                    delivery.finished.cancelled().await;
+                }
+            })
+            .await;
+            pending.retain(|delivery| !delivery.finished.is_cancelled());
+        }
         {
             let items = store.0.lock();
             result.sources.reserve_exact(fingerprints.len());
@@ -256,6 +352,12 @@ impl ResponsesReasoningReplay {
                     .into_iter()
                     .rev()
                     .filter_map(|(index, digest)| {
+                        if pending
+                            .iter()
+                            .any(|delivery| delivery.capture.items.binary_search(&digest).is_ok())
+                        {
+                            return None;
+                        }
                         let source = (*items.sources.get(&(scope.clone(), digest))?)?;
                         Some((index, source))
                     }),
@@ -359,8 +461,19 @@ impl ReasoningCapture {
         self.completed = true;
     }
 
-    pub(crate) fn delivered(&self) -> &[Fingerprint] {
-        if self.completed { &self.items } else { &[] }
+    pub(crate) fn into_delivery(mut self, origin: ReasoningOrigin) -> Option<ReasoningDelivery> {
+        if !self.completed || self.items.is_empty() {
+            return None;
+        }
+        self.items.sort_unstable();
+        Some(ReasoningDelivery {
+            origin,
+            pending: Arc::new(PendingReasoning {
+                capture: self,
+                finished: CancellationToken::new(),
+            }),
+            registered: false,
+        })
     }
 }
 

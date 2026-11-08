@@ -963,7 +963,9 @@ impl ProductionGatewayRuntime {
                 &identity,
                 &canonical_request,
                 &replay,
-            );
+                authorized.deadline(),
+            )
+            .await;
             let prepared_planner_input =
                 match with_active_request(request_observation.clone(), async {
                     self.planner_inputs
@@ -1868,6 +1870,10 @@ impl GatewaySession for ReplayBodySession<'_> {
         end_stream: bool,
     ) -> Result<(), TransportError> {
         let captured = body.clone();
+        let reasoning = end_stream
+            .then(adapters::take_reasoning_delivery)
+            .flatten()
+            .map(crate::responses_reasoning::ReasoningDelivery::register);
         #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
         if end_stream
             && super::test_control::observation_marker("response-final-write.fail")
@@ -1882,6 +1888,17 @@ impl GatewaySession for ReplayBodySession<'_> {
         .await?;
         if end_stream {
             adapters::confirm_tool_handoff();
+        }
+        if let Some(delivery) = reasoning {
+            #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
+            if let Some(path) = super::test_control::observation_marker("reasoning-delivery.pause")
+            {
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while path.exists() && Instant::now() < deadline {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            }
+            delivery.confirm();
         }
         self.continuation_scanner
             .accept_bytes(&captured, Instant::now());

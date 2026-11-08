@@ -232,7 +232,6 @@ fn codex_stream(
     input: &[Value],
     return_at_eos: bool,
 ) -> (Vec<u8>, bool) {
-    use std::io::Read;
     let headers =
         super::native_history::headers("codex", "tool-handoff-session", "main", turn, "before");
     let headers = headers
@@ -249,32 +248,14 @@ fn codex_stream(
         assert_eq!(response.status, 200);
         return (response.body, response.http_entity_complete);
     }
-    // Read the HTTP entity terminator without waiting for connection teardown,
-    // which happens after the Gateway's asynchronous capture drain.
-    let mut stream = open_request(fixture.address, "POST", "/v1/responses", &headers, &payload);
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    let mut wire = Vec::new();
-    let mut buffer = [0; 8192];
-    loop {
-        let count = stream.read(&mut buffer).unwrap();
-        assert_ne!(count, 0, "downstream closed before the final chunk");
-        wire.extend_from_slice(&buffer[..count]);
-        if let Some(head) = wire.windows(4).position(|window| window == b"\r\n\r\n") {
-            assert!(wire.starts_with(b"HTTP/1.1 200"));
-            assert!(
-                wire_header(&wire, "transfer-encoding")
-                    .unwrap()
-                    .eq_ignore_ascii_case("chunked")
-            );
-            if let Ok((body, true)) =
-                hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[head + 4..])
-            {
-                return (body, true);
-            }
-        }
-    }
+    let body = read_chunked_eos(open_request(
+        fixture.address,
+        "POST",
+        "/v1/responses",
+        &headers,
+        &payload,
+    ));
+    (body, true)
 }
 
 #[test]

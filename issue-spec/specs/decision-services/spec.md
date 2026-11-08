@@ -1028,7 +1028,8 @@ and prepared before the terminal write, then confirmed only after successful
 downstream delivery. A uniquely matching continuation can wait for that handoff
 within its request budget. Optional capture does not delay that handoff. The
 confirmed batch is held with the predecessor checkpoint and consumed on
-continuation admission. It inherits the stage and frozen
+continuation admission. A full response match takes precedence over waiting for
+a sibling's pending tool batch. A tool continuation inherits the stage and frozen
 decision without granting provider affinity or repairing capture completeness.
 
 Original forwarding, capture and strict request fingerprints remain unchanged.
@@ -1095,8 +1096,9 @@ where possible and otherwise uses bounded scope-hash gap bookkeeping. Collisions
 are conservative and recoverable; new complete A/B must recover after pressure or
 faults clear. ContextHold retains its independent 50,000,000-byte budget.
 The terminal record count clips older request membership and execution details.
-It preserves the active turn decision, input occurrence and latest continuation
-checkpoint. A clipped membership cannot establish complete stage attribution.
+An in-flight request reserves one slot, and binding its retained request ID
+consumes that same slot. Clipping preserves the active turn decision, input
+occurrence and latest continuation checkpoint. A clipped membership cannot establish complete stage attribution.
 
 #### Scenario: Concurrent responses have the same input prefix
 

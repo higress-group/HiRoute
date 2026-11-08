@@ -43,6 +43,23 @@ pub(super) struct BranchAdmission {
     completed: Option<Box<CompletedAgentTurn>>,
 }
 
+fn full_response_match(
+    entry: &SessionEntry,
+    analyzed: &super::super::projection::AnalyzedRequest,
+) -> Option<bool> {
+    let position = entry.checkpoint.message_count;
+    let prefix = (position, entry.checkpoint.digest?);
+    if !analyzed.anchors.as_ref()?.prefixes.contains(&prefix) {
+        return None;
+    }
+    let accepted = entry.response_boundary?;
+    let (_, incoming) = analyzed
+        .boundaries
+        .iter()
+        .find(|(start, _)| *start == position)?;
+    accepted.matches(*incoming)
+}
+
 fn unique_tool_candidate<'a>(
     inner: &'a StoreInner,
     scope: &'a AgentTurnHistoryKey,
@@ -129,10 +146,12 @@ impl AgentTurnHistoryStore {
         let (_, entry) = unique_tool_candidate(&inner, scope, analyzed, inputs)?;
         if &entry.active.plan != plan
             || inner.scope_entries(scope).any(|(_, entry)| {
-                analyzed.anchors.as_ref().is_some_and(|anchors| {
-                    entry.checkpoint.digest == Some(anchors.complete)
-                        && entry.checkpoint.message_count == analyzed.message_count
-                })
+                // Admission prefers full response evidence across all siblings.
+                full_response_match(entry, analyzed).is_some()
+                    || analyzed.anchors.as_ref().is_some_and(|anchors| {
+                        entry.checkpoint.digest == Some(anchors.complete)
+                            && entry.checkpoint.message_count == analyzed.message_count
+                    })
             })
         {
             return None;
@@ -221,24 +240,7 @@ impl AgentTurnHistoryStore {
         let mut candidates = inner
             .scope_entries(scope)
             .map(|(key, entry)| {
-                let input_prefix = analyzed.anchors.as_ref().is_some_and(|anchors| {
-                    entry.checkpoint.digest.is_some_and(|digest| {
-                        anchors
-                            .prefixes
-                            .contains(&(entry.checkpoint.message_count, digest))
-                    })
-                });
-                let response = input_prefix
-                    .then(|| {
-                        let accepted = entry.response_boundary?;
-                        let incoming = analyzed
-                            .boundaries
-                            .iter()
-                            .find(|(position, _)| *position == entry.checkpoint.message_count)?
-                            .1;
-                        accepted.matches(incoming)
-                    })
-                    .flatten();
+                let response = full_response_match(entry, analyzed);
                 let prefix = response.is_some();
                 let turn =
                     inputs.native_turn.is_some() && inputs.native_turn == entry.active.native_turn;

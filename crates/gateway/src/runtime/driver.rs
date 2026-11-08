@@ -478,12 +478,13 @@ impl ProviderRuntimePort for ProductionProvider {
         _event_configs: &ConfigEventSnapshot,
     ) -> Result<Option<AcceptedBodyFrame>, Arc<str>> {
         let frame = response::encode_accepted_event(readiness, event)?;
-        if let Some(batch) = readiness
-            .projector
-            .as_mut()
-            .and_then(|p| p.take_tool_batch())
-        {
-            adapters::prepare_tool_handoff(batch);
+        if let Some(projector) = &mut readiness.projector {
+            if let Some(batch) = projector.take_tool_batch() {
+                adapters::prepare_tool_handoff(batch);
+            }
+            if let Some(delivery) = projector.take_reasoning_delivery() {
+                adapters::prepare_reasoning_delivery(delivery);
+            }
         }
         Ok(frame)
     }

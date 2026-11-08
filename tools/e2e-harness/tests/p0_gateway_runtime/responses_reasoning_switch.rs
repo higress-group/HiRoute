@@ -130,29 +130,50 @@ fn send(
     turn: &str,
     input: &[Value],
 ) -> Vec<Value> {
-    let headers = super::native_history::headers("codex", session, purpose, turn, "before");
-    let response = request(
-        fixture.address,
-        "POST",
-        "/v1/responses",
-        &headers
-            .iter()
-            .map(|(name, value)| (name.as_str(), value.as_str()))
-            .collect::<Vec<_>>(),
-        &serde_json::to_vec(&json!({
-            "model": MODEL, "stream": true, "store": false, "input": input,
-            "include": ["reasoning.encrypted_content"],
-            "tools": [{"type": "function", "name": "lookup", "parameters": {"type": "object"}}]
-        }))
-        .unwrap(),
-    );
+    let response = send_wire(fixture, session, purpose, turn, input);
     assert_eq!(
         response.status,
         200,
         "{}",
         String::from_utf8_lossy(&response.body)
     );
-    String::from_utf8(response.body)
+    assert!(response.http_entity_complete);
+    completed_output(&response.body)
+}
+
+fn send_wire(
+    fixture: &RuntimeFixture,
+    session: &str,
+    purpose: &str,
+    turn: &str,
+    input: &[Value],
+) -> WireResponse {
+    let (headers, payload) = request_parts(session, purpose, turn, input);
+    let headers = headers
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    request(fixture.address, "POST", "/v1/responses", &headers, &payload)
+}
+
+fn request_parts(
+    session: &str,
+    purpose: &str,
+    turn: &str,
+    input: &[Value],
+) -> (Vec<(String, String)>, Vec<u8>) {
+    let headers = super::native_history::headers("codex", session, purpose, turn, "before");
+    let payload = serde_json::to_vec(&json!({
+        "model": MODEL, "stream": true, "store": false, "input": input,
+        "include": ["reasoning.encrypted_content"],
+        "tools": [{"type": "function", "name": "lookup", "parameters": {"type": "object"}}]
+    }))
+    .unwrap();
+    (headers, payload)
+}
+
+fn completed_output(body: &[u8]) -> Vec<Value> {
+    std::str::from_utf8(body)
         .unwrap()
         .lines()
         .filter_map(|line| line.strip_prefix("data: "))
@@ -184,4 +205,100 @@ fn excluding(input: &[Value], id: &str) -> Value {
             .cloned()
             .collect(),
     )
+}
+
+#[cfg(all(unix, debug_assertions))]
+#[test]
+fn reasoning_replay_waits_for_exact_pending_delivery_and_ignores_failed_write() {
+    let encrypted = json!({"type":"reasoning","id":"rs_pending","summary":[],
+        "encrypted_content":"synthetic-state","status":"completed"});
+    let final_answer = message("answer", "final_answer", "Done.");
+    let gpt = NativeProvider::start(vec![
+        streamed("pending", vec![encrypted.clone(), final_answer.clone()]),
+        streamed("failed", vec![encrypted.clone(), final_answer.clone()]),
+    ]);
+    let kimi = NativeProvider::start(vec![
+        streamed("continued", vec![final_answer.clone()]),
+        streamed("separate", vec![final_answer.clone()]),
+    ]);
+    let classifier = NativeProvider::start(
+        [
+            CLASSIFIER_COMPLEX,
+            CLASSIFIER_SIMPLE,
+            CLASSIFIER_COMPLEX,
+            CLASSIFIER_SIMPLE,
+        ]
+        .into_iter()
+        .map(|body| ProviderReply::Complete {
+            status: 200,
+            error_kind: None,
+            body,
+        })
+        .collect(),
+    );
+    let fixture =
+        RuntimeFixture::launch_rest_classified_with_native_control(&[&kimi, &gpt, &classifier], 1);
+    let mut publication = fixture.publication();
+    configure_native_provider_state(&mut publication);
+    publication.publication_revision += 1;
+    fixture.publish(&mut publication);
+    let observation = fixture.observation_root.as_ref().unwrap();
+    let pause = observation.join("reasoning-delivery.pause");
+    let waiting = observation.join("reasoning-delivery.waiting");
+    std::fs::write(&pause, b"").unwrap();
+
+    let original = json!({"role":"user","content":"First task."});
+    let (headers, payload) = request_parts(
+        "immediate-replay",
+        "main",
+        "first",
+        std::slice::from_ref(&original),
+    );
+    let headers = headers
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    let body = read_chunked_eos(open_request(
+        fixture.address,
+        "POST",
+        "/v1/responses",
+        &headers,
+        &payload,
+    ));
+    let output = completed_output(&body);
+    assert_eq!(output[0], encrypted);
+    let mut input = vec![original.clone()];
+    input.extend(output);
+    input.push(json!({"role":"user","content":"Continue with a different model."}));
+    std::thread::scope(|threads| {
+        let successor =
+            threads.spawn(|| send(&fixture, "immediate-replay", "main", "second", &input));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !waiting.exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let did_wait = waiting.exists();
+        std::fs::remove_file(&pause).unwrap();
+        assert!(
+            did_wait,
+            "the replay must see the exact in-flight terminal write"
+        );
+        assert_eq!(successor.join().unwrap(), [final_answer.clone()]);
+    });
+    assert_eq!(upstream_input(&kimi, 0), excluding(&input, "rs_pending"));
+
+    let fail = observation.join("response-final-write.fail");
+    std::fs::write(&fail, b"").unwrap();
+    let response = send_wire(
+        &fixture,
+        "failed-replay",
+        "main",
+        "first",
+        std::slice::from_ref(&original),
+    );
+    assert!(!fail.exists());
+    assert!(!response.http_entity_complete);
+    send(&fixture, "failed-replay", "main", "second", &input);
+    assert_eq!(upstream_input(&kimi, 1), json!(input));
+    assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (2, 2, 4));
 }

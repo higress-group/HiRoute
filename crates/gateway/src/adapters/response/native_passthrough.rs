@@ -78,19 +78,25 @@ impl NativeResponseProjector {
         self
     }
 
-    pub(crate) fn with_reasoning_capture(mut self, enabled: bool) -> Self {
-        if enabled {
-            self.state.reasoning_capture =
-                crate::responses_reasoning::ReasoningCapture::new(&self.budget);
-        }
+    pub(crate) fn with_reasoning_capture(
+        mut self,
+        origin: Option<crate::responses_reasoning::ReasoningOrigin>,
+    ) -> Self {
+        self.state.reasoning_capture = origin.and_then(|origin| {
+            let capture = crate::responses_reasoning::ReasoningCapture::new(&self.budget)?;
+            Some((origin, capture))
+        });
         self
     }
 
-    pub(crate) fn delivered_reasoning(&self) -> &[[u8; 32]] {
-        self.state
-            .reasoning_capture
-            .as_ref()
-            .map_or(&[], |capture| capture.delivered())
+    pub(crate) fn take_reasoning_delivery(
+        &mut self,
+    ) -> Option<crate::responses_reasoning::ReasoningDelivery> {
+        if !self.ended {
+            return None;
+        }
+        let (origin, capture) = self.state.reasoning_capture.take()?;
+        capture.into_delivery(origin)
     }
 
     pub(crate) fn new_for_attempt(
@@ -369,7 +375,10 @@ pub(super) struct ProjectionState {
     retained: Vec<Reservation>,
     response_items: BTreeMap<u32, ResponseItemEvidence>,
     tool_batch: Option<ChargedToolBatch>,
-    reasoning_capture: Option<crate::responses_reasoning::ReasoningCapture>,
+    reasoning_capture: Option<(
+        crate::responses_reasoning::ReasoningOrigin,
+        crate::responses_reasoning::ReasoningCapture,
+    )>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
     reasoning_summary_changes: u64,
@@ -557,7 +566,7 @@ impl ProjectionState {
                 self.observe_response_item(index, item, native_type == "response.output_item.done");
                 if native_type == "response.output_item.done"
                     && event_type.is_none_or(|event| event == native_type)
-                    && let Some(capture) = &mut self.reasoning_capture
+                    && let Some((_, capture)) = &mut self.reasoning_capture
                 {
                     capture.observe_item(item);
                 }
@@ -600,7 +609,7 @@ impl ProjectionState {
                 };
                 if native_type == "response.completed"
                     && event_type.is_none_or(|event| event == native_type)
-                    && let Some(capture) = &mut self.reasoning_capture
+                    && let Some((_, capture)) = &mut self.reasoning_capture
                 {
                     capture.observe_completed(response);
                 }
@@ -863,7 +872,7 @@ impl ProjectionState {
                 NativeTerminalOutcome::Unknown
             }
         };
-        if let Some(capture) = &mut self.reasoning_capture {
+        if let Some((_, capture)) = &mut self.reasoning_capture {
             capture.observe_completed(object);
         }
         self.set_terminal(terminal)?;

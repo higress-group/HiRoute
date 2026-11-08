@@ -1,6 +1,7 @@
 //! Stateless tool IDs and request-local delivery bookkeeping.
 use super::ProtocolAdapterError;
 use crate::agent_turn_history::{ChargedToolBatch, ToolDeliveryHandoff};
+use crate::responses_reasoning::ReasoningDelivery;
 use crate::server::core_runtime::model_ir::{ExactProviderPathV1, ModelIrError};
 use crate::server::request_plan::IngressProtocol;
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
@@ -96,11 +97,17 @@ struct PendingTool {
     charge: Arc<Reservation>,
 }
 
+#[derive(Default)]
+struct PendingDelivery {
+    tools: Vec<PendingTool>,
+    reasoning: Option<ReasoningDelivery>,
+}
+
 #[derive(Clone)]
 pub(crate) struct ActiveResponseDelivery {
     projection: ToolIdProjection,
     budget: StreamBudget,
-    pending_tools: Arc<Mutex<Vec<PendingTool>>>,
+    pending: Arc<Mutex<PendingDelivery>>,
     accepted_count: Arc<AtomicUsize>,
     handoff: Option<Arc<ToolDeliveryHandoff>>,
 }
@@ -109,7 +116,7 @@ impl ActiveResponseDelivery {
         Self {
             projection: ToolIdProjection::new(downstream),
             budget,
-            pending_tools: Default::default(),
+            pending: Default::default(),
             accepted_count: Default::default(),
             handoff: None,
         }
@@ -154,6 +161,30 @@ pub(crate) fn prepare_tool_handoff(batch: ChargedToolBatch) {
     });
 }
 
+pub(crate) fn prepare_reasoning_delivery(delivery: ReasoningDelivery) {
+    let _ = ACTIVE_RESPONSE_DELIVERY.try_with(|active| {
+        active
+            .pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .reasoning = Some(delivery);
+    });
+}
+
+pub(crate) fn take_reasoning_delivery() -> Option<ReasoningDelivery> {
+    ACTIVE_RESPONSE_DELIVERY
+        .try_with(|active| {
+            active
+                .pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .reasoning
+                .take()
+        })
+        .ok()
+        .flatten()
+}
+
 pub(crate) fn confirm_tool_handoff() {
     let _ = ACTIVE_RESPONSE_DELIVERY.try_with(|active| {
         if let Some(handoff) = &active.handoff {
@@ -170,10 +201,8 @@ pub(super) fn project_delivered_tool_id(
         return Ok(native_id.to_owned());
     };
     let id = active.projection.project(native_id, owner)?;
-    let mut pending = active
-        .pending_tools
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut pending = active.pending.lock().unwrap_or_else(|e| e.into_inner());
+    let pending = &mut pending.tools;
     if !pending.iter().any(|entry| entry.id == id) {
         let prefix: &[u8] = match active.projection.downstream {
             IngressProtocol::Responses => b"\"call_id\":",
@@ -212,9 +241,10 @@ impl AcceptedResponseDeliveryScanner {
     pub(crate) fn accept_bytes(&mut self, bytes: &[u8], _now: Instant) {
         let mut pending = self
             .active
-            .pending_tools
+            .pending
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        let pending = &mut pending.tools;
         let keep = pending
             .iter()
             .map(|p| p.pattern.len().saturating_sub(1))
@@ -282,7 +312,7 @@ mod tests {
             }
         })
         .await;
-        assert_eq!(active.pending_tools.lock().unwrap().len(), 130);
+        assert_eq!(active.pending.lock().unwrap().tools.len(), 130);
         let mut scanner = active.scanner();
         let wire = serde_json::to_vec(&json!({"call_id":long})).unwrap();
         for chunk in wire.chunks(8191) {

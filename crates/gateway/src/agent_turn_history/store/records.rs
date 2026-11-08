@@ -66,7 +66,7 @@ pub(super) fn matching_entry_mut<'a>(
         .ok_or(AgentTurnHistoryError::TurnContextUnavailable)?;
     if entry.entry_token != ticket.entry_token
         || entry.revision != ticket.revision
-        || entry.pending_request != Some(ticket.request_token)
+        || entry.pending_request.map(|pending| pending.token) != Some(ticket.request_token)
         || entry.active.agent_turn_id != ticket.agent_turn_id
     {
         return Err(AgentTurnHistoryError::TurnContextUnavailable);
@@ -359,9 +359,9 @@ impl StoreInner {
                 } else {
                     e.active.request_ids.len()
                 };
-                // Reserve space for each live completion as well. Conservative
-                // duplicate references count toward the bound, not just stages.
-                closed + active + usize::from(e.pending_request.is_some())
+                // A pending request reserves one slot until binding retains its ID.
+                let unbound = e.pending_request.is_some_and(|pending| !pending.has_record);
+                closed + active + usize::from(unbound)
             })
             .sum()
     }

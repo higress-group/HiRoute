@@ -139,3 +139,54 @@ fn expiry_preserves_pending_requests_and_pinned_snapshots_then_reclaims_them() {
         assert_eq!(inner.accounted_bytes, store_fixed_bytes());
     }
 }
+
+#[test]
+fn a_bound_pending_request_reserves_only_one_terminal_record() {
+    let (_directory, replay) = replay();
+    let store = AgentTurnHistoryStore::default();
+    let scope = store
+        .scope_key("workspace", "concurrent-record-capacity")
+        .unwrap();
+    let input = request(vec![text(MessageRole::User, "Continue the task")]);
+    let begin = |input: &ModelRequestIRV1| {
+        store
+            .begin(scope.clone(), plan(1), input, &replay, Instant::now())
+            .unwrap()
+    };
+    for index in 0..126 {
+        let ticket = match begin(&input) {
+            AgentTurnBegin::NewTurn { ticket, .. } => {
+                assert_eq!(index, 0);
+                store.commit_decision(&ticket, decision("regular")).unwrap();
+                ticket
+            }
+            AgentTurnBegin::Continuation { ticket, .. } => ticket,
+        };
+        let id = format!("request-{index}");
+        store.bind_request(&ticket, &id).unwrap();
+        store
+            .finish_request(
+                &ticket,
+                id,
+                AgentTurnStatus::Completed,
+                Vec::new(),
+                false,
+                Instant::now(),
+            )
+            .unwrap();
+    }
+    let AgentTurnBegin::Continuation { ticket: first, .. } = begin(&input) else {
+        panic!("the long turn remains open");
+    };
+    assert_eq!(store.inner.lock().retained_records(&scope), 127);
+    store.bind_request(&first, "first-pending").unwrap();
+    assert_eq!(store.inner.lock().retained_records(&scope), 127);
+    let sibling_input = request(vec![text(MessageRole::User, "Independent request")]);
+    let (second, _) = new_turn(begin(&sibling_input));
+    assert_ne!(first.key, second.key);
+    assert_eq!(store.inner.lock().retained_records(&scope), 128);
+    store.bind_request(&second, "second-pending").unwrap();
+    assert_eq!(store.inner.lock().retained_records(&scope), 128);
+    store.abort(&first);
+    store.abort(&second);
+}

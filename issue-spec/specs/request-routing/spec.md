@@ -327,7 +327,11 @@ shape. Text, tool calls and results, their identities and order, and the origina
 captured history remain intact. Reasoning that matches the candidate's own
 destination and unknown reasoning shapes keep their existing native replay semantics.
 Optional source evidence is bounded and process-local. It cannot select a candidate
-or authorize access.
+or authorize access. The terminal writer prepares exact fingerprints before the
+write and confirms their origin on successful downstream delivery, independently
+of later cleanup. A replay matching an in-flight write in the same authorized
+scope may wait within a bounded interval and its request deadline. A failed write
+leaves no source evidence.
 
 An explicit Codex compaction request with reliable session identity uses the same
 Responses reasoning source scope as ordinary requests for that authorized session.
