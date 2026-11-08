@@ -14,7 +14,8 @@ use hiroute_gateway::server::request_plan::IngressProtocol;
 use serde_json::{Value, json};
 
 use super::{
-    CodexCatalogError, CodexCatalogMetadataSourceV1, CodexCatalogSelection, CodexDefaultPolicy,
+    CodexCatalogError, CodexCatalogMetadataSourceV1, CodexCatalogProjection, CodexCatalogSelection,
+    CodexDefaultPolicy,
 };
 
 fn generic_prompt() -> &'static str {
@@ -32,6 +33,23 @@ impl CodexCatalogSelection {
         policy: CodexDefaultPolicy<'_>,
         metadata_source: CodexCatalogMetadataSourceV1,
         retained_models: Option<&BTreeSet<String>>,
+    ) -> Result<Value, CodexCatalogError> {
+        self.append_plans_for_projection(
+            plans,
+            policy,
+            metadata_source,
+            retained_models,
+            CodexCatalogProjection::UserRequestLevels,
+        )
+    }
+
+    pub(super) fn append_plans_for_projection(
+        &self,
+        plans: &[CompiledAgentPlanV1],
+        policy: CodexDefaultPolicy<'_>,
+        metadata_source: CodexCatalogMetadataSourceV1,
+        retained_models: Option<&BTreeSet<String>>,
+        projection: CodexCatalogProjection,
     ) -> Result<Value, CodexCatalogError> {
         self.validate_schema()?;
         let priorities = self.plan_priorities(plans.len())?;
@@ -59,7 +77,7 @@ impl CodexCatalogSelection {
             }
         }
         for (plan, priority) in plans.iter().zip(priorities) {
-            models.push(plan_entry(plan, priority)?);
+            models.push(plan_entry(plan, priority, projection)?);
         }
         let updated = Self::parse(merged)?;
         updated.validate_schema()?;
@@ -71,6 +89,7 @@ impl CodexCatalogSelection {
 pub(super) fn plan_entry(
     plan: &CompiledAgentPlanV1,
     priority: i32,
+    projection: CodexCatalogProjection,
 ) -> Result<Value, CodexCatalogError> {
     let (context_window, input_modalities) = match codex_plan_capability_preview(plan) {
         CodexClientCapabilityPreviewV1::Available {
@@ -91,7 +110,6 @@ pub(super) fn plan_entry(
             CodexInputModalityV1::Image => "image",
         })
         .collect::<Vec<_>>();
-    let levels = request_reasoning_levels(plan);
     let following = plan
         .body
         .materialized
@@ -101,6 +119,16 @@ pub(super) fn plan_entry(
         .flat_map(|g| &g.candidates)
         .flat_map(|c| &c.protocol_profiles)
         .any(|p| p.follow_request_reasoning);
+    let (default_reasoning_level, levels) =
+        if projection == CodexCatalogProjection::UserRequestLevels && !following {
+            let levels = ["low", "medium", "high", "xhigh", "max"]
+                .into_iter()
+                .map(|effort| json!({"effort": effort, "description": "Client request level"}))
+                .collect();
+            (Some("medium"), levels)
+        } else {
+            (None, request_reasoning_levels(plan))
+        };
     let description = format!(
         "HiRoute 路由计划：{}；{}",
         plan.body.identity.purpose.as_str(),
@@ -115,7 +143,7 @@ pub(super) fn plan_entry(
         "display_name": plan.body.identity.display_name.as_str(),
         "description": description,
         "visibility": "list", "supported_in_api": true, "priority": priority,
-        "default_reasoning_level": null, "supported_reasoning_levels": levels,
+        "default_reasoning_level": default_reasoning_level, "supported_reasoning_levels": levels,
         "shell_type": "shell_command", "apply_patch_tool_type": null,
         "model_messages": {
             "instructions_template": generic_prompt(), "instructions_variables": null,
@@ -142,12 +170,14 @@ pub(super) fn plan_entry(
 }
 
 /// A Worker owns a fresh private CODEX_HOME, so its only native model is the exact task Plan.
-/// Reuse the same plan entry as the user-target merge without importing or changing that target's
-/// catalog. The run's Gateway grant, not this metadata, still authorizes model requests.
+/// Reuse the plan entry without the user-target presets for fixed plans. This preserves the
+/// private catalog bytes checked on Continue. The run's Gateway grant authorizes model requests.
 pub fn codex_private_worker_catalog(
     plan: &CompiledAgentPlanV1,
 ) -> Result<Vec<u8>, CodexCatalogError> {
-    let catalog = json!({"models": [plan_entry(plan, 0)?]});
+    let catalog = json!({"models": [plan_entry(
+        plan, 0, CodexCatalogProjection::WithoutFixedRequestLevels,
+    )?]});
     CodexCatalogSelection::for_current_adapter(catalog.clone())?;
     serde_json::to_vec(&catalog).map_err(|_| CodexCatalogError::InvalidCatalog)
 }

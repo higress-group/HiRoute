@@ -56,7 +56,7 @@ fn follow_reasoning_catalog_offers_only_frozen_native_efforts_and_keeps_saved_de
     }
     let value = reseal(value);
     let before = serde_json::to_value(&value).unwrap();
-    let entry = plan_entry(&value, 99).unwrap();
+    let entry = plan_entry(&value, 99, CodexCatalogProjection::UserRequestLevels).unwrap();
     let efforts = entry["supported_reasoning_levels"].as_array().unwrap();
     assert!(!efforts.is_empty());
     assert!(efforts.iter().any(|e| e["effort"] == "high"));
@@ -84,12 +84,14 @@ fn hiroute_only_catalog_uses_published_plan_without_native_cache() {
         &scope,
         std::slice::from_ref(&plan),
         plan.model_alias().as_str(),
+        CodexCatalogProjection::UserRequestLevels,
     )
     .unwrap();
     let second = sample_codex_hiroute_only_catalog_plan(
         &scope,
         std::slice::from_ref(&plan),
         plan.model_alias().as_str(),
+        CodexCatalogProjection::UserRequestLevels,
     )
     .unwrap();
     assert_eq!(
@@ -113,15 +115,38 @@ fn hiroute_only_catalog_uses_published_plan_without_native_cache() {
         first.selection.original()["models"][0]["slug"],
         plan.model_alias().as_str()
     );
+    let entry = &first.selection.original()["models"][0];
+    assert_eq!(entry["default_reasoning_level"], "medium");
+    assert_eq!(
+        entry["supported_reasoning_levels"]
+            .as_array()
+            .unwrap()
+            .len(),
+        5
+    );
+    if let Some(directory) = std::env::var_os("HIROUTE_CODEX_CATALOG_PROBE_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("user-fixed.json"),
+            serde_json::to_vec(first.selection.original()).unwrap(),
+        )
+        .unwrap();
+    }
     assert!(!config.exists());
     assert!(matches!(
-        sample_codex_hiroute_only_catalog_plan(&scope, &[plan], "different-default"),
+        sample_codex_hiroute_only_catalog_plan(
+            &scope,
+            &[plan],
+            "different-default",
+            CodexCatalogProjection::UserRequestLevels
+        ),
         Err(CodexCatalogError::MissingDefault)
     ));
 }
 
 #[test]
-fn private_worker_catalog_uses_the_same_plan_entry_as_the_user_target_merge() {
+fn private_worker_catalog_matches_the_user_target_without_fixed_request_levels() {
     let plan = plan();
     let private: Value =
         serde_json::from_slice(&codex_private_worker_catalog(&plan).unwrap()).unwrap();
@@ -138,10 +163,61 @@ fn private_worker_catalog_uses_the_same_plan_entry_as_the_user_target_merge() {
     assert_eq!(private["models"][0]["supports_parallel_tool_calls"], true);
     let mut private_entry = private["models"][0].clone();
     let mut merged_entry = merged["models"].as_array().unwrap().last().unwrap().clone();
-    private_entry.as_object_mut().unwrap().remove("priority");
-    merged_entry.as_object_mut().unwrap().remove("priority");
+    assert!(private_entry["default_reasoning_level"].is_null());
+    assert_eq!(private_entry["supported_reasoning_levels"], json!([]));
+    assert_eq!(merged_entry["default_reasoning_level"], "medium");
+    for key in [
+        "priority",
+        "default_reasoning_level",
+        "supported_reasoning_levels",
+    ] {
+        private_entry.as_object_mut().unwrap().remove(key);
+        merged_entry.as_object_mut().unwrap().remove(key);
+    }
     assert_eq!(private_entry, merged_entry);
     CodexCatalogSelection::for_current_adapter(private).unwrap();
+}
+
+#[test]
+fn released_projection_matches_v0_5_3_catalog_bytes() {
+    // Output digests captured from the v0.5.3 producer at a1cbc5d96c0e8a207ecf276dda89c2c7cc78b4e1
+    // using this publication and its bundled catalog fixture, both with and without
+    // the shipped daemon's serde_json/preserve_order feature.
+    let root = tempfile::tempdir().unwrap();
+    let scope = CodexConfigurationScope::user_file(root.path().join("config.toml"));
+    let plan = plan();
+    let projection =
+        CodexCatalogProjection::for_source_revision("be6e8eac029b183056b7e4402879f15d2c85f61b")
+            .unwrap();
+    let generated = sample_codex_hiroute_only_catalog_plan(
+        &scope,
+        std::slice::from_ref(&plan),
+        plan.model_alias().as_str(),
+        projection,
+    )
+    .unwrap();
+    let merged = original()
+        .append_plans_for_projection(
+            &[plan],
+            policy(),
+            CodexCatalogMetadataSourceV1::UserConfigured,
+            None,
+            projection,
+        )
+        .unwrap();
+    let merged_digest = CanonicalDigest::of_bytes(&serde_json::to_vec(&merged).unwrap());
+    let actual = (generated.content_digest.as_str(), merged_digest.as_str());
+    let released = [
+        (
+            "sha256:6540461fce988bc8bb97a0072d5c7cd6a167a4b4199a7b0cef0045524df8e337",
+            "sha256:677caf1680ea6c7c843f386e1e69df286303bc6514651527f3df37c49465c826",
+        ),
+        (
+            "sha256:16785468fd9a64469802104333892bb1dca1c4df0cefe839d8154a42dfed670a",
+            "sha256:81a96ae0fe2d1e653fa2888522d67052249359ebbfe24d9686f6e2a82ec143d9",
+        ),
+    ];
+    assert!(released.contains(&actual), "catalog digests: {actual:?}");
 }
 
 fn reseal(mut plan: CompiledAgentPlanV1) -> CompiledAgentPlanV1 {
@@ -173,7 +249,7 @@ fn route_can_disable_and_reenable_parallel_tools_for_user_and_worker_catalogs() 
             .codex_parallel_tool_calls = setting;
         let value = reseal(value);
         let enabled = setting.unwrap_or(true);
-        let entry = plan_entry(&value, 0).unwrap();
+        let entry = plan_entry(&value, 0, CodexCatalogProjection::UserRequestLevels).unwrap();
         assert_eq!(entry["supports_parallel_tool_calls"], enabled);
         let private: Value =
             serde_json::from_slice(&codex_private_worker_catalog(&value).unwrap()).unwrap();
@@ -372,7 +448,7 @@ fn user_configured_catalog_does_not_infer_missing_parallel_flag() {
 }
 
 #[test]
-fn plan_catalog_does_not_offer_effort_override_or_mutate_mixed_candidates() {
+fn fixed_plan_catalog_offers_request_levels_without_mutating_mixed_candidates() {
     let plan = plan();
     let before = serde_json::to_value(&plan).unwrap();
     let choices: Vec<_> = plan
@@ -385,9 +461,19 @@ fn plan_catalog_does_not_offer_effort_override_or_mutate_mixed_candidates() {
         .map(|candidate| &candidate.exact_reasoning)
         .collect();
     assert_ne!(choices[0], choices[1]);
-    let entry = plan_entry(&plan, 99).unwrap();
-    assert!(entry["default_reasoning_level"].is_null());
-    assert_eq!(entry["supported_reasoning_levels"], json!([]));
+    let entry = plan_entry(&plan, 99, CodexCatalogProjection::UserRequestLevels).unwrap();
+    assert_eq!(
+        entry["display_name"],
+        plan.body.identity.display_name.as_str()
+    );
+    assert_eq!(entry["default_reasoning_level"], "medium");
+    let efforts: Vec<_> = entry["supported_reasoning_levels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|preset| preset["effort"].as_str().unwrap())
+        .collect();
+    assert_eq!(efforts, ["low", "medium", "high", "xhigh", "max"]);
     assert!(
         entry["description"]
             .as_str()
@@ -646,7 +732,7 @@ fn context_and_modalities_use_all_candidates_common_capabilities() {
         ]
     );
     assert!(fixed_limits.is_empty());
-    let entry = plan_entry(&value, 99).unwrap();
+    let entry = plan_entry(&value, 99, CodexCatalogProjection::UserRequestLevels).unwrap();
     assert_eq!(entry["context_window"], 64000);
     assert_eq!(entry["input_modalities"], json!(["text"]));
 }
@@ -740,12 +826,13 @@ fn context_window_default_custom_and_worker_catalog_agree() {
             .limits
             .context_window_tokens = setting;
         let selected = reseal(selected);
-        let entry = plan_entry(&selected, 0).unwrap();
+        let entry = plan_entry(&selected, 0, CodexCatalogProjection::UserRequestLevels).unwrap();
         assert_eq!(entry["context_window"], expected);
         assert_eq!(entry["max_context_window"], expected);
         let worker: Value =
             serde_json::from_slice(&codex_private_worker_catalog(&selected).unwrap()).unwrap();
-        assert_eq!(worker["models"][0], entry);
+        assert_eq!(worker["models"][0]["context_window"], expected);
+        assert_eq!(worker["models"][0]["max_context_window"], expected);
         assert!(
             matches!(codex_plan_capability_preview(&selected), CodexClientCapabilityPreviewV1::Available { context_window, .. } if context_window == expected)
         );
@@ -770,7 +857,8 @@ fn context_window_overrides_block_plan_catalog_without_editing_user_files() {
             sample_codex_hiroute_only_catalog_plan(
                 &scope,
                 std::slice::from_ref(&plan),
-                plan.model_alias().as_str()
+                plan.model_alias().as_str(),
+                CodexCatalogProjection::UserRequestLevels
             ),
             Err(CodexCatalogError::ContextOverride)
         ));
@@ -781,7 +869,8 @@ fn context_window_overrides_block_plan_catalog_without_editing_user_files() {
             sample_codex_hiroute_only_catalog_plan(
                 &scope,
                 std::slice::from_ref(&plan),
-                plan.model_alias().as_str()
+                plan.model_alias().as_str(),
+                CodexCatalogProjection::UserRequestLevels
             ),
             Err(CodexCatalogError::ContextOverride)
         ));
@@ -791,7 +880,8 @@ fn context_window_overrides_block_plan_catalog_without_editing_user_files() {
         sample_codex_hiroute_only_catalog_plan(
             &scope,
             std::slice::from_ref(&plan),
-            plan.model_alias().as_str()
+            plan.model_alias().as_str(),
+            CodexCatalogProjection::UserRequestLevels
         )
         .is_ok()
     );

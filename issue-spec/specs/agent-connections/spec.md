@@ -437,7 +437,9 @@ installed catalogs change only after model settings are saved again and Codex re
 This capability permits multiple calls; it does not schedule native tools or override
 the client's own request preference. Metadata does not grant account/model rights.
 
-Preview/Apply bind producer kind, exact path, complete content/context digest.
+Preview/Apply bind the catalog projection revision, producer kind, exact path
+and complete content/context digest. An accepted operation uses its recorded
+catalog projection on recovery. Staged catalog bytes are reused when available.
 Drift fails context_drift before config write. Artifact is private and immutable;
 input cache/catalog cannot be modified/deleted. Reconfiguration derives from the
 original pre-managed pointer or current same-target source, never the previous

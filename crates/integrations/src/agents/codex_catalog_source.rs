@@ -7,8 +7,8 @@ use toml_edit::Item;
 
 use super::filesystem_config::read_system_config_bytes;
 use super::{
-    AgentFilesystemScanError as Error, CodexConfigurationScope, CodexDefaultPolicy,
-    sample_codex_configuration,
+    AgentFilesystemScanError as Error, CodexCatalogProjection, CodexConfigurationScope,
+    CodexDefaultPolicy, sample_codex_configuration,
 };
 
 /// Raw selected-target metadata, not installation, account or access proof.
@@ -303,6 +303,7 @@ pub fn sample_codex_catalog_plan(
     policy: CodexDefaultPolicy<'_>,
     baseline: &CodexCatalogBaseline,
     retained_models: Option<&std::collections::BTreeSet<String>>,
+    projection: CodexCatalogProjection,
 ) -> Result<CodexCatalogPlan, super::CodexCatalogError> {
     use super::CodexCatalogSelection;
     if !plans.is_empty()
@@ -346,8 +347,13 @@ pub fn sample_codex_catalog_plan(
     };
     let original = configured.original;
     let selection = CodexCatalogSelection::for_current_adapter(original)?;
-    let merged =
-        selection.append_plans(plans, policy, producer.metadata_source, retained_models)?;
+    let merged = selection.append_plans_for_projection(
+        plans,
+        policy,
+        producer.metadata_source,
+        retained_models,
+        projection,
+    )?;
     let bytes =
         serde_json::to_vec(&merged).map_err(|_| super::CodexCatalogError::InvalidCatalog)?;
     Ok(CodexCatalogPlan {
@@ -364,6 +370,7 @@ pub fn sample_codex_hiroute_only_catalog_plan(
     scope: &CodexConfigurationScope,
     plans: &[CompiledAgentPlanV1],
     explicit_model: &str,
+    projection: CodexCatalogProjection,
 ) -> Result<CodexCatalogPlan, super::CodexCatalogError> {
     if plans.is_empty() || plans.len() > i32::MAX as usize {
         return Err(super::CodexCatalogError::InvalidCatalog);
@@ -371,7 +378,7 @@ pub fn sample_codex_hiroute_only_catalog_plan(
     let models = plans
         .iter()
         .enumerate()
-        .map(|(index, plan)| super::codex_catalog_plan::plan_entry(plan, index as i32))
+        .map(|(index, plan)| super::codex_catalog_plan::plan_entry(plan, index as i32, projection))
         .collect::<Result<Vec<_>, _>>()?;
     let catalog = json!({"models": models});
     let selection = super::CodexCatalogSelection::for_current_adapter(catalog.clone())?;

@@ -4,7 +4,24 @@ use hiroute_domain::valid_client_model_name;
 use serde::Deserialize;
 use serde_json::Value;
 
-pub const CODEX_CATALOG_SOURCE_REVISION: &str = "be6e8eac029b183056b7e4402879f15d2c85f61b";
+pub const CODEX_CATALOG_SOURCE_REVISION: &str = "codex-fixed-request-levels-v1";
+const RELEASED_CODEX_CATALOG_SOURCE_REVISION: &str = "be6e8eac029b183056b7e4402879f15d2c85f61b";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CodexCatalogProjection {
+    UserRequestLevels,
+    WithoutFixedRequestLevels,
+}
+
+impl CodexCatalogProjection {
+    pub fn for_source_revision(revision: &str) -> Option<Self> {
+        match revision {
+            CODEX_CATALOG_SOURCE_REVISION => Some(Self::UserRequestLevels),
+            RELEASED_CODEX_CATALOG_SOURCE_REVISION => Some(Self::WithoutFixedRequestLevels),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum CodexCatalogError {
