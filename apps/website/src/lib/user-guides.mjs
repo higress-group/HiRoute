@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
+import { validateAgentGuide } from './agent-guide-contract.mjs';
 import { localePath } from './locale.mjs';
 
 const website = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -91,6 +92,7 @@ export function guideRoute(slug, language) {
 export async function renderUserGuide(slug, language) {
   if (!(slug in guidePages) || !['zh', 'en'].includes(language)) throw new Error('unknown user guide');
   const markdown = await fs.readFile(path.join(content, `${slug}.${language}.md`), 'utf8');
+  validateAgentGuide(markdown, slug, language);
   const renderer = new marked.Renderer();
   renderer.link = ({ href, title, text }) => {
     const external = /^https?:/.test(href) ? ' target="_blank" rel="noreferrer"' : '';

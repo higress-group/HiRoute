@@ -56,3 +56,11 @@ Keep URLs stable, preserve the literal button labels, and show the next action
 and a completion check for each journey. Keep detailed runtime rules in native
 `details` elements after the core steps. Images link to their full-size source,
 have descriptive alt text, and load lazily. Update Chinese and English together.
+
+At release preparation, follow [documentation maintenance](../README.md#documentation-maintenance)
+and the [release review](release-reviews/README.md). Recapture affected flows when
+their visible controls, labels or behavior change; inspect both languages and
+update the capture revision above (or record per-asset revisions when they differ).
+Do not refresh every image mechanically for an unrelated change. A reused capture
+needs a concrete `unchanged` assessment in the release review; that record binds
+the actual image bytes and provenance to the product candidate being reviewed.

@@ -50,6 +50,50 @@ write opens and selects the text for manual copying; without JavaScript the
 native preview remains readable. Keep both languages aligned. Detailed command
 and recovery rules stay in the CLI guide and installed Skills.
 
+## Documentation maintenance
+
+Treat current user documentation as part of a product change. When a change affects
+setup, navigation, labels, defaults, CLI commands, supported Agents or observable
+results, update the affected guides and their Agent instructions in the same change.
+Review both model routing and Agent routing journeys; retain their independent
+activation paths. Describe released behavior, and distinguish planned capabilities.
+
+New operation guides use `content/guides/<slug>.{zh,en}.md`, `guidePages` and
+`GuidePage.astro`, with an entry in `DocsNav.astro`. Start from an existing guide:
+put its copyable Agent handoff near the introduction, then explain the visual steps,
+expected result and relevant limitations. The copied message must be self-contained:
+canonical page URL, CLI reference, operation-to-command pointers, installed
+`--help`/schema discovery and the product's built-in Skill activation links.
+Keep it heuristic and goal-driven; the installed management/delegation Skills own
+their workflows. Explain UI/CLI parity and shared data. Pure conceptual/API
+references and historical articles retain their own formats; link to a current
+operation guide for executable steps instead of creating a competing setup recipe.
+
+`npm run check:guides` rejects missing language pairs, unregistered guide files and
+incomplete Agent handoffs. Rendering uses the same contract; the final build also
+rejects guides that omit the shared copy interaction. Both `npm test` and
+`npm run build` include these checks, so the website PR and publication jobs enforce
+them. Check actual copy, preview, keyboard and fallback behavior when changing the
+shared interaction; a structurally valid message alone does not prove usability.
+
+When a displayed flow changes, refresh its affected product captures and every
+consumer, including homepage/README reuse. Use dark mode, actual production
+components, appropriate example data and both languages. Follow
+[screenshot provenance and capture commands](docs/guide-assets.md); inspect the
+images and captions, update their source revision and preserve the distinction
+between examples and real execution evidence. Unaffected captures can be reused
+after checking the displayed controls, labels and state against the candidate.
+
+Before a new release, review the accumulated product diff since the previous release,
+finish the affected guides/captures and record the result through the
+[release documentation review](docs/release-reviews/README.md). Assess **guides** and
+**screenshots** separately as `updated` or `unchanged`, name the reviewed files and
+explain each result. The record binds the exact built product SHA and the reviewed
+documentation/image contents. A pending, missing, mismatched or stale review blocks
+new release promotion to OSS/site downloads. Preparing a record does not mark it
+reviewed. This gate catches omissions and stale evidence; the release owner still
+checks factual accuracy and image readability.
+
 English lives at `/en/` and Chinese at `/zh/`; `src/lib/locale.mjs` builds both
 prefixes. The root and the Chinese URLs published without a prefix before English
 became the default (`LEGACY_CHINESE_PATHS`) are redirect pages: an immediate meta

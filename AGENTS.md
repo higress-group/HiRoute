@@ -2,6 +2,7 @@
 
 - Use current Issue/Design decisions, repository durable specs, code and executable tests as authority. Requirements must be self-contained. Resolve consequential conflicts before affected implementation, while continuing unrelated work.
 - Start from the [code map](docs/code-map/README.md) to find the production owner and a representative scenario. Update affected map entries and local guides when responsibilities, entry points or contract boundaries change; keep detailed requirements in their owning specs.
+- For user-facing workflow changes, new user guides and release preparation, follow [website documentation maintenance](apps/website/README.md#documentation-maintenance). Update affected bilingual instructions, Agent/CLI handoffs and product screenshots with the change; complete the revision-bound documentation review before a new release is published.
 - For user-facing critical paths, limit synchronous work to the dependencies needed to complete the operation, and verify that unrelated state growth does not add heavyweight work.
 - For resource optimizations, preserve valid production-request serviceability first, then minimize HiRoute memory use without excessive added foreground latency. Internal memory accounting targets must not become rejection limits for required request state.
 - Follow [agent instruction ownership](.agents/README.md) when changing instructions or skills. Claude uses repository skills exposed through `.claude/skills/` and must not load Codex-only skills through indirect references.

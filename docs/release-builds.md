@@ -145,6 +145,12 @@ projections. Update both README languages, the website homepage/download page an
 the public installation/Quickstart guides together. Linux's `standalone` package
 kind includes its Web UI and CLI; public platform descriptions must reflect both.
 
+Apply [website documentation maintenance](../apps/website/README.md#documentation-maintenance)
+to the accumulated release diff: update affected bilingual guides and their
+copyable Agent/CLI instructions, inspect product screenshots, and recapture changed
+flows in dark mode. Record concrete reasons when existing text or captures remain
+accurate. Finish this work as part of release preparation, not after publication.
+
 Keep baseline results bound to their tested SHA while pending changes are reviewed.
 After integration, assess the intervening production diff and run the affected
 product smoke, including save/reopen, configured Gateway access and independent
@@ -282,6 +288,11 @@ product fixes and retain each result at its actual source revision.
    [short website download links](../apps/website/README.md#public-release-contract).
    Preserve historical records and regenerate website content twice, checking
    that the second run introduces no difference.
+   Complete the [documentation review](../apps/website/docs/release-reviews/README.md)
+   for the exact built product SHA and final website contents in this same PR.
+   Run its `check` command plus website tests/build before publishing the GitHub
+   Release. The publication workflow rejects a new release with a missing, pending,
+   mismatched or stale guide/screenshot review before downloading its assets.
 3. Merge the reviewed website manifest into public `main`, tag the exact built
    source SHA, and attach the exact candidate assets to that GitHub Release.
    The existing [publish-release workflow](../.github/workflows/release.yml)

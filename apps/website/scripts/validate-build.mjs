@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { LEGACY_CHINESE_PATHS } from '../src/lib/locale.mjs';
+import { guidePages, guideRoute } from '../src/lib/user-guides.mjs';
+import { validateAgentGuidePage } from '../src/lib/agent-guide-contract.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const dist = path.join(root, 'dist');
@@ -23,6 +25,10 @@ const required = [
 ];
 for (const relative of required) {
   if (!fs.existsSync(path.join(dist, relative))) throw new Error(`missing website output: ${relative}`);
+}
+for (const slug of Object.keys(guidePages)) for (const language of ['zh', 'en']) {
+  const route = guideRoute(slug, language);
+  validateAgentGuidePage(fs.readFileSync(path.join(dist, output(route)), 'utf8'), route);
 }
 // Baidu re-checks its site verification on the homepage, so losing it unverifies the site.
 if (!fs.readFileSync(path.join(dist, 'index.html'), 'utf8').includes('<meta name="baidu-site-verification" content="codeva-4Bp3IgU4gn">')) {

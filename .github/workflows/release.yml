@@ -59,6 +59,7 @@ jobs:
           prerelease=$(jq -r .isPrerelease <<<"$release_state")
           channel=stable; [[ "$prerelease" == true ]] && channel=preview
           node apps/website/scripts/release-manifest.mjs validate apps/website/data/releases.json --tag "$RELEASE_TAG" --revision "$revision" --channel "$channel"
+          node apps/website/scripts/documentation-review.mjs check --tag "$RELEASE_TAG" --revision "$revision"
           python3 scripts/release-qualification.py verify --repository "$GITHUB_REPOSITORY" \
             --manifest apps/website/data/releases.json --tag "$RELEASE_TAG" --revision "$revision"
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
