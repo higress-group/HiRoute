@@ -220,7 +220,36 @@ impl Installation {
         Ok(revision.to_owned())
     }
 
-    async fn ready(&self) -> Result<Process, &'static str> {
+    async fn control_ready(
+        &self,
+        process: &Process,
+        matching_build: bool,
+    ) -> Result<bool, &'static str> {
+        let client = self.client(process)?;
+        let request = ClientEmptyRequestV1::default();
+        if matching_build {
+            return Ok(client
+                .query::<_, bool>(
+                    STANDALONE_SERVICE_READINESS_OPERATION_V1,
+                    "linux-desktop-ready",
+                    &request,
+                )
+                .await
+                .is_ok_and(|reply| reply.data == Some(true)));
+        }
+        // Released Linux services used the ordinary status projection. Only
+        // the browser fallback can use it, through the same verified peer.
+        Ok(client
+            .query::<_, Value>("GetSystemStatus", "linux-desktop-browser-ready", &request)
+            .await
+            .is_ok_and(|reply| {
+                reply
+                    .data
+                    .is_some_and(|data| data["daemon"] == "role_all" && data["gateway"] == "ready")
+            }))
+    }
+
+    async fn ready(&self, matching_build: bool) -> Result<Process, &'static str> {
         if self.manager().await?.is_none() {
             // A previous CLI can time out after systemd starts. Check the
             // manager and the bound Local Control peer before reporting failure.
@@ -230,16 +259,7 @@ impl Installation {
             loop {
                 match self.manager().await {
                     Ok(Some(process)) => {
-                        if self
-                            .client(&process)?
-                            .query::<_, bool>(
-                                STANDALONE_SERVICE_READINESS_OPERATION_V1,
-                                "linux-desktop-ready",
-                                &ClientEmptyRequestV1::default(),
-                            )
-                            .await
-                            .is_ok_and(|reply| reply.data == Some(true))
-                        {
+                        if self.control_ready(&process, matching_build).await? {
                             return Ok(process);
                         }
                     }
@@ -281,11 +301,11 @@ impl LiveConsole {
     pub async fn open() -> Result<Self, &'static str> {
         let installation = std::sync::Arc::new(Installation::discover()?);
         let revision = installation.verify_pair().await?;
-        let process = installation.ready().await?;
+        let matching_build = installation.version == env!("CARGO_PKG_VERSION")
+            && option_env!("HIROUTE_BUILD_SOURCE_SHA") == Some(revision.as_str());
+        let process = installation.ready(matching_build).await?;
         let (origin, url) = launch(&installation, &process).await?;
-        if installation.version != env!("CARGO_PKG_VERSION")
-            || option_env!("HIROUTE_BUILD_SOURCE_SHA") != Some(revision.as_str())
-        {
+        if !matching_build {
             return Err("CONSOLE_NATIVE_RELEASE_UNAVAILABLE");
         }
         qualify(&installation, &process, &url, None).await?;
@@ -413,6 +433,9 @@ pub(super) async fn legacy_browser_url() -> Result<Url, &'static str> {
     let installation = Installation::discover()?;
     installation.verify_pair().await?;
     let process = installation.manager().await?.ok_or("SERVICE_NOT_READY")?;
+    if !installation.control_ready(&process, false).await? {
+        return Err("SERVICE_NOT_READY");
+    }
     launch(&installation, &process).await.map(|(_, url)| url)
 }
 
