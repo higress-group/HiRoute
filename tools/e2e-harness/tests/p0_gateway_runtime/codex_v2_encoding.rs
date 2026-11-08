@@ -241,7 +241,10 @@ fn complete_tool_stage(v2: bool, declared: bool, streaming: bool, nullable: bool
         // This producer replay omits encoding metadata; the ordinary cases below
         // separately assert the existing consumption of an explicit [] declaration.
         assert_eq!(classifier_body(&regular, 1)["input"], json!(original_input));
-        assert_eq!(classifier_body(&primary, 0)["input"], json!(input));
+        let mut projected = input.clone();
+        assert_eq!(projected[1]["id"], "rs_synthetic");
+        projected[1].as_object_mut().unwrap().remove("id");
+        assert_eq!(classifier_body(&primary, 0)["input"], json!(projected));
     }
     assert_eq!(
         classifier_body(&regular, 1)["input"][tool_index + 2],

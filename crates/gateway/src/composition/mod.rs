@@ -3,8 +3,8 @@
 mod ports;
 mod prepared;
 
-pub use prepared::PreparedPlannerInput;
 pub(crate) use prepared::RequestTemplates;
+pub use prepared::{PreparedPlannerInput, ResponsesReasoningReplay};
 
 pub(crate) use ports::BoundRequestReasoning;
 

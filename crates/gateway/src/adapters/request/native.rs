@@ -1,4 +1,6 @@
 //! Preserve native payloads; only routing and configured controls belong to us.
+use crate::responses_reasoning::{ReasoningReplayAction, ReasoningReplayProjection};
+
 use super::super::FunctionEncodingProjection;
 use super::*;
 
@@ -55,8 +57,9 @@ pub(super) fn project(
     profile: &CandidateProtocolProfile,
     canonical: Value,
     omit_prefix: Option<usize>,
+    reasoning_replay: ReasoningReplayProjection<'_>,
     unbacked: bool,
-) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
+) -> Result<(Value, FunctionEncodingProjection, usize), ProtocolAdapterError> {
     // Ingress classifies this carrier before Replay externalization. Use the
     // retained canonical range, not presence or shifted indexes in a native tree.
     if super::super::responses_dialect::standard_json(profile)
@@ -66,6 +69,9 @@ pub(super) fn project(
             .enumerate()
             .skip(omit_prefix.unwrap_or(0))
             .any(|(index, message)| {
+                if reasoning_replay.action(index) == ReasoningReplayAction::Foreign {
+                    return false;
+                }
                 request.responses_reasoning_history.get(&index).is_some_and(|history| {
                     history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque
                 }) || message.content.iter().any(|part| {
@@ -106,12 +112,13 @@ pub(super) fn project(
             } else {
                 FunctionEncodingProjection::Preserve
             },
+            0,
         );
     }
     let Some(original) = &request.native_body else {
         let mut canonical = canonical;
         normalize_codex_replay(&mut canonical, profile, request);
-        return project_dialect(canonical, profile, FunctionEncodingProjection::Preserve);
+        return project_dialect(canonical, profile, FunctionEncodingProjection::Preserve, 0);
     };
     let mut body = original.clone();
     if unbacked {
@@ -213,26 +220,34 @@ pub(super) fn project(
     // Status sidecars use the original canonical indexes. Normalize before
     // prefix cleanup removes reasoning items and shifts later native positions.
     normalize_codex_replay(&mut body, profile, request);
-    if let Some(end) = omit_prefix {
-        if request.native_only {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(
-                "unknown history cannot be cleaned".into(),
-            ));
-        }
-        clean_prefix(&mut body, request.ingress_protocol, end);
+    if omit_prefix.is_some() && request.native_only {
+        return Err(ProtocolAdapterError::ClientUnrepresentable(
+            "unknown history cannot be cleaned".into(),
+        ));
     }
-    project_dialect(body, profile, FunctionEncodingProjection::Preserve)
+    let removed = if omit_prefix.is_some() || !reasoning_replay.is_empty() {
+        project_reasoning_history(
+            &mut body,
+            request,
+            omit_prefix.unwrap_or(0),
+            reasoning_replay,
+        )
+    } else {
+        0
+    };
+    project_dialect(body, profile, FunctionEncodingProjection::Preserve, removed)
 }
 
 fn project_dialect(
     mut body: Value,
     profile: &CandidateProtocolProfile,
     mut projection: FunctionEncodingProjection,
-) -> Result<(Value, FunctionEncodingProjection), ProtocolAdapterError> {
+    reasoning_removed: usize,
+) -> Result<(Value, FunctionEncodingProjection, usize), ProtocolAdapterError> {
     if super::super::responses_dialect::standard_json(profile) {
         projection = super::super::responses_dialect::project_request(&mut body)?;
     }
-    Ok((body, projection))
+    Ok((body, projection, reasoning_removed))
 }
 
 /// Codex subscription input rejects the output-only reasoning status, including
@@ -380,15 +395,26 @@ fn remove_assignment(object: &mut Map<String, Value>, path: &[String]) {
     }
 }
 
-fn clean_prefix(body: &mut Value, protocol: IngressProtocol, end: usize) {
+fn project_reasoning_history(
+    body: &mut Value,
+    request: &ModelRequestIRV1,
+    end: usize,
+    reasoning_replay: ReasoningReplayProjection<'_>,
+) -> usize {
+    let protocol = request.ingress_protocol;
     let key = if protocol == IngressProtocol::Responses {
         "input"
     } else {
         "messages"
     };
     let Some(items) = body.get_mut(key).and_then(Value::as_array_mut) else {
-        return;
+        return 0;
     };
+    let portable_layout = reasoning_replay
+        .untracked_summary_ids()
+        .then(|| request.native_history_layout())
+        .flatten();
+    let mut removed = 0;
     let mut index = 0usize;
     items.retain_mut(|item| {
         // Chat's leading instructions are outside canonical message indexes;
@@ -402,13 +428,45 @@ fn clean_prefix(body: &mut Value, protocol: IngressProtocol, end: usize) {
         if protocol == IngressProtocol::Responses && item["type"] == "additional_tools" {
             return true;
         }
-        let clean = index < end;
+        let position = index;
         index += 1;
-        if !clean {
+        let clean = position < end;
+        if protocol == IngressProtocol::Responses && item["type"] == "reasoning" {
+            if clean {
+                return false;
+            }
+            let Some(history) = request.responses_reasoning_history.get(&position) else {
+                return true;
+            };
+            let remove_id = match reasoning_replay.action(position) {
+                ReasoningReplayAction::Foreign => {
+                    if history.encrypted_content == ResponsesReasoningEncryptedContentV1::Opaque {
+                        removed += 1;
+                        return false;
+                    }
+                    true
+                }
+                ReasoningReplayAction::PortableSummary => {
+                    portable_layout
+                        .and_then(|layout| layout.get(position))
+                        .is_some_and(|item| item.modeled)
+                        && portable_summary_reference(request, position, history)
+                }
+                ReasoningReplayAction::Preserve => false,
+            };
+            if remove_id
+                && item
+                    .as_object_mut()
+                    .expect("typed reasoning item")
+                    .remove("id")
+                    .is_some()
+            {
+                removed += 1;
+            }
             return true;
         }
-        if protocol == IngressProtocol::Responses && item["type"] == "reasoning" {
-            return false;
+        if !clean {
+            return true;
         }
         if let Some(object) = item.as_object_mut() {
             object.remove("reasoning_content");
@@ -430,4 +488,32 @@ fn clean_prefix(body: &mut Value, protocol: IngressProtocol, end: usize) {
         }
         true
     });
+    removed
+}
+
+fn portable_summary_reference(
+    request: &ModelRequestIRV1,
+    position: usize,
+    history: &ResponsesReasoningHistoryV1,
+) -> bool {
+    matches!(
+        history.encrypted_content,
+        ResponsesReasoningEncryptedContentV1::Absent | ResponsesReasoningEncryptedContentV1::Null
+    ) && request
+        .responses_item_ids
+        .get(&position)
+        .and_then(|id| id.strip_prefix("rs_"))
+        .is_some_and(|suffix| !suffix.is_empty())
+        && request
+            .responses_item_statuses
+            .get(&position)
+            .is_none_or(|status| status == "completed")
+        && history
+            .native_fields
+            .get("summary")
+            .and_then(Value::as_array)
+            .is_some_and(|summary| !summary.is_empty())
+        && history.native_fields.get("content").is_none_or(|content| {
+            content.is_null() || content.as_array().is_some_and(Vec::is_empty)
+        })
 }

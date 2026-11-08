@@ -140,7 +140,9 @@ shapes, and tool identity and arguments retain strict reconciliation.
 For an explicitly selected standard Responses JSON target, absent, explicit-null and
 empty-string reasoning `encrypted_content` SHALL remain distinct non-opaque native
 shapes. Projection SHALL consume the ingress-typed state of retained canonical messages,
-excluding only an authorized reasoning-cleanup prefix. Nonempty strings, including
+excluding an authorized reasoning-cleanup prefix and the source-evidenced items
+specified by the [routing contract](../request-routing/spec.md#requirement-judgment-is-frozen-before-the-pure-planner).
+Nonempty strings, including
 whitespace and Replay-backed ciphertext, remain opaque and SHALL exclude that target;
 legacy canonical encrypted provider state without a reasoning sidecar remains opaque.
 Native input-array shifts or field presence SHALL NOT reclassify those facts. Summary,

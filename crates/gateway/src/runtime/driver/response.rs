@@ -15,10 +15,10 @@ use hiroute_gateway_core::runtime::body::{
     BodyMetadataOwner, ChargedBodyQueue, ChargedBytes, MemoryRole, StreamBudget,
 };
 use hiroute_gateway_core::runtime::driver::{
-    AcceptedBodyFrame, ClassifiedAttemptResult, NormalizedAttemptLocalReply,
-    PrecommitClassification, ProviderAcceptedEvent, ProviderAttemptCompletion,
-    ProviderClassificationFacts, RetryabilityFact, SseTransformSources, UpstreamSideEffectSnapshot,
-    UsageDimension, UsageFact,
+    AcceptedBodyFrame, AttemptTerminationReason, ClassifiedAttemptResult,
+    NormalizedAttemptLocalReply, PrecommitClassification, ProviderAcceptedEvent,
+    ProviderAttemptCompletion, ProviderClassificationFacts, RetryabilityFact, SseTransformSources,
+    UpstreamSideEffectSnapshot, UsageDimension, UsageFact,
 };
 use hiroute_gateway_core::runtime::sse::{EncodedOutputUnit, SemanticProvenance};
 use hiroute_gateway_core::transport::GatewayResponseHead;
@@ -101,7 +101,8 @@ pub(super) fn classify_precommit(
                     )
                     .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
                     .with_function_encoding(state.function_encoding_projection)
-                    .with_omitted_thinking(state.omit_thinking),
+                    .with_omitted_thinking(state.omit_thinking)
+                    .with_reasoning_capture(state.reasoning_origin.is_some()),
                 ));
             } else {
                 state.decoder = Some(
@@ -359,6 +360,12 @@ pub(super) fn finalize_attempt_facts(
     completion: &ProviderAttemptCompletion,
 ) -> ProviderClassificationFacts {
     let mut facts = published_facts.cloned().unwrap_or_default();
+    if completion.termination_reason == AttemptTerminationReason::AcceptedEos
+        && let Some(origin) = &state.reasoning_origin
+        && let Some(projector) = readiness.and_then(|readiness| readiness.projector.as_ref())
+    {
+        origin.record(projector.delivered_reasoning());
+    }
     if let Some(outcome) = readiness
         .and_then(|readiness| readiness.semantic_terminal)
         .or(state.semantic_terminal)

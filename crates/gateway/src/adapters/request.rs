@@ -1,6 +1,7 @@
 use serde_json::{Map, Value, json};
 
 use crate::content_ref::{ContentValueExt, JsonValueExt};
+use crate::responses_reasoning::ReasoningReplayProjection;
 use crate::server::core_runtime::model_ir::*;
 use crate::server::core_runtime::profiles::{
     CandidateContextDemand, CandidateProtocolProfile, ContextProjectionError, ContextProjector,
@@ -21,10 +22,12 @@ mod template_json;
 mod tools;
 pub use reader::sequential_attempt_body;
 pub(crate) use reader::sequential_replay_body;
+#[cfg(test)]
+pub(crate) use template::project_candidate_request_template_with_cleanup;
 pub use template::{PreparedNativeTemplate, project_candidate_request_template};
 pub(crate) use template::{
     PreparedReplayTemplate, ReplacementEncoding, RequestedReplacement,
-    prepare_replay_json_template, project_candidate_request_template_with_cleanup,
+    prepare_replay_json_template, project_candidate_request_template_with_history,
 };
 use tools::{insert_chat_tools, insert_messages_tools, insert_responses_tools};
 
@@ -89,8 +92,14 @@ pub fn project_candidate_request(
             IngressProtocol::Messages => serialize_messages(request, profile, reasoning, None)?,
         }
     };
-    let (mut body, function_encoding_projection) =
-        native::project(request, profile, body, None, true)?;
+    let (mut body, function_encoding_projection, _) = native::project(
+        request,
+        profile,
+        body,
+        None,
+        ReasoningReplayProjection::default(),
+        true,
+    )?;
     native::protect_projected_controls(request, profile, reasoning, &mut body)?;
     let bytes = serde_json::to_vec(&crate::content_ref::borrowed_wire_value(&body))
         .map_err(|error| ProtocolAdapterError::Serialization(error.to_string()))?;

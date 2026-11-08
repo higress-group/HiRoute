@@ -79,6 +79,21 @@ impl NativeResponseProjector {
         self
     }
 
+    pub(crate) fn with_reasoning_capture(mut self, enabled: bool) -> Self {
+        if enabled {
+            self.state.reasoning_capture =
+                crate::responses_reasoning::ReasoningCapture::new(&self.budget);
+        }
+        self
+    }
+
+    pub(crate) fn delivered_reasoning(&self) -> &[[u8; 32]] {
+        self.state
+            .reasoning_capture
+            .as_ref()
+            .map_or(&[], |capture| capture.delivered())
+    }
+
     pub(crate) fn new_for_attempt(
         profile: &CandidateProtocolProfile,
         streaming: bool,
@@ -197,6 +212,7 @@ impl NativeResponseProjector {
                 retained: Vec::new(),
                 response_items: BTreeMap::new(),
                 tool_batch: None,
+                reasoning_capture: None,
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
                 reasoning_summary_changes: 0,
@@ -354,6 +370,7 @@ pub(super) struct ProjectionState {
     retained: Vec<Reservation>,
     response_items: BTreeMap<u32, ResponseItemEvidence>,
     tool_batch: Option<DeliveredBatch>,
+    reasoning_capture: Option<crate::responses_reasoning::ReasoningCapture>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
     reasoning_summary_changes: u64,
@@ -539,6 +556,12 @@ impl ProjectionState {
                 let item = object_field_mut(object, "item")?;
                 self.project_responses_item(index, item)?;
                 self.observe_response_item(index, item, native_type == "response.output_item.done");
+                if native_type == "response.output_item.done"
+                    && event_type.is_none_or(|event| event == native_type)
+                    && let Some(capture) = &mut self.reasoning_capture
+                {
+                    capture.observe_item(item);
+                }
                 response_item_is_semantic(item)
             }
             "response.web_search_call.in_progress"
@@ -576,6 +599,12 @@ impl ProjectionState {
                     "response.incomplete" => ("incomplete", NativeTerminalOutcome::Incomplete),
                     _ => ("failed", NativeTerminalOutcome::Failed),
                 };
+                if native_type == "response.completed"
+                    && event_type.is_none_or(|event| event == native_type)
+                    && let Some(capture) = &mut self.reasoning_capture
+                {
+                    capture.observe_completed(response);
+                }
                 let outcome = if expected.1 == NativeTerminalOutcome::Complete
                     && (self.response_items_uncertain
                         || response.get("status").and_then(Value::as_str) != Some(expected.0))
@@ -835,6 +864,9 @@ impl ProjectionState {
                 NativeTerminalOutcome::Unknown
             }
         };
+        if let Some(capture) = &mut self.reasoning_capture {
+            capture.observe_completed(object);
+        }
         self.set_terminal(terminal)?;
         Ok(ProjectionMetadata {
             semantic,
