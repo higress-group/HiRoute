@@ -1,6 +1,13 @@
-use std::{collections::BTreeMap, io::Read, path::Path, sync::Arc};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::BTreeMap,
+    io::Read,
+    path::Path,
+    sync::{Arc, OnceLock},
+};
 pub(super) struct Assets {
     files: BTreeMap<String, (&'static str, Arc<[u8]>)>,
+    fingerprint: OnceLock<String>,
 }
 impl Assets {
     pub fn load(root: &Path) -> Result<Self, ()> {
@@ -10,7 +17,10 @@ impl Assets {
         if !files.contains_key("/index.html") {
             return Err(());
         }
-        Ok(Self { files })
+        Ok(Self {
+            files,
+            fingerprint: OnceLock::new(),
+        })
     }
     fn visit(
         root: &Path,
@@ -82,5 +92,21 @@ impl Assets {
                 path
             })
             .cloned()
+    }
+
+    /// Fingerprint the exact in-memory files this daemon serves. The Arch package
+    /// computes the same fingerprint from its verified standalone manifest.
+    pub fn fingerprint(&self) -> &str {
+        self.fingerprint.get_or_init(|| {
+            let mut digest = Sha256::new();
+            for (path, (_, bytes)) in &self.files {
+                digest.update(b"console");
+                digest.update(path.as_bytes());
+                digest.update(b"\0");
+                digest.update(format!("{:x}", Sha256::digest(bytes)));
+                digest.update(b"\n");
+            }
+            format!("{:x}", digest.finalize())
+        })
     }
 }

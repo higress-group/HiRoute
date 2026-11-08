@@ -7,7 +7,7 @@ rust-version.workspace = true
 
 [features]
 default = []
-desktop-runtime = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "dep:tauri-plugin-clipboard-manager"]
+desktop-runtime = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "dep:tauri-plugin-clipboard-manager", "dep:tauri-plugin-single-instance", "dep:hiroute-shell", "dep:hiroute-platform", "dep:url", "dep:glib"]
 desktop-pilot = ["desktop-runtime", "dep:tauri-plugin-pilot"]
 
 [dependencies]
@@ -36,6 +36,13 @@ nix = { workspace = true, features = ["signal", "user"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 hiroute-desktop-host-effects = { path = "../../../crates/desktop-host-effects" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+glib = { version = "=0.18.5", optional = true }
+hiroute-shell = { path = "../../shell/src-tauri", optional = true }
+hiroute-platform = { path = "../../../crates/platform", optional = true }
+tauri-plugin-single-instance = { version = "=2.4.1", optional = true }
+url = { version = "=2.5.8", optional = true }
 
 [build-dependencies]
 serde.workspace = true

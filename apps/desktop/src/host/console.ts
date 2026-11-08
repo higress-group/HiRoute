@@ -1,17 +1,18 @@
 import type { ConsoleIdentity, HostCapabilities, HostTransport } from './types.ts';
-import { browserCapabilities } from './types.ts';
+import { browserCapabilities, linuxShellWindow } from './types.ts';
 const SESSION_KEY = 'hiroute.console.session';
 const CONTEXT_KEY = 'hiroute.console.context';
 const API = '/api/console/v1';
 export const CONSOLE_EXPIRED_EVENT = 'hiroute-console-expired';
 export const CONSOLE_UNAVAILABLE_EVENT = 'hiroute-console-unavailable';
 let context: string | undefined;
+let nativeBearer: string | null = null;
 let capabilities: HostCapabilities = browserCapabilities;
 let transport: ConsoleIdentity['transport'] = 'loopback';
 const failure = (code: string) => ({ kind: 'native', code });
 function storage(): Storage { try { return window.sessionStorage; } catch { throw failure('CONSOLE_STORAGE_UNAVAILABLE'); } }
-export function sessionBearer(): string | null { try { return storage().getItem(SESSION_KEY); } catch { return null; } }
-export function clearConsoleSession(): void { try { storage().removeItem(SESSION_KEY); } catch { /* Read-only/denied storage has no usable session. */ } }
+export function sessionBearer(): string | null { if (linuxShellWindow()) return nativeBearer; try { return storage().getItem(SESSION_KEY); } catch { return null; } }
+export function clearConsoleSession(): void { nativeBearer = null; try { storage().removeItem(SESSION_KEY); } catch { /* Read-only/denied storage has no usable session. */ } }
 function contextId(): string {
   if (context) return context;
   // Reload reuses this tab's context. A new document/tab gets its own random id,
@@ -50,7 +51,8 @@ async function request<T>(path: string, options: RequestInit = {}, authenticated
 export async function exchangeConsoleCredential(kind: 'launch' | 'token', value: string): Promise<ConsoleIdentity> {
   const exchange = await request<{ bearer: string }>(`/session/${kind}`, { method: 'POST', body: JSON.stringify(kind === 'launch' ? { code: value } : { token: value }) }, false);
   if (!/^[a-f0-9]{64}$/.test(exchange.bearer)) throw failure('RESPONSE_DATA_INVALID');
-  storage().setItem(SESSION_KEY, exchange.bearer);
+  if (linuxShellWindow()) nativeBearer = exchange.bearer;
+  else storage().setItem(SESSION_KEY, exchange.bearer);
   return readConsoleSession();
 }
 export async function readConsoleSession(): Promise<ConsoleIdentity> {

@@ -68,6 +68,7 @@ pub struct SessionExchange {
 }
 struct Session {
     identity: SessionIdentity,
+    launch_sha256: Option<String>,
     created: u64,
     last_used: u64,
     last_access: Instant,
@@ -205,7 +206,7 @@ impl ConsoleAuth {
         }
         // Consume before session creation: a failed/cancelled exchange cannot replay.
         self.launches.remove(&digest);
-        self.new_session("launch", None, now)
+        self.new_session("launch", None, Some(digest), now)
     }
     pub fn exchange_token(
         &mut self,
@@ -230,12 +231,13 @@ impl ConsoleAuth {
         else {
             return self.failed(peer);
         };
-        self.new_session("token", Some(id), now)
+        self.new_session("token", Some(id), None, now)
     }
     fn new_session(
         &mut self,
         kind: &'static str,
         token_id: Option<String>,
+        launch_sha256: Option<String>,
         now: u64,
     ) -> Result<SessionExchange, AuthError> {
         self.expire(now)?;
@@ -260,6 +262,7 @@ impl ConsoleAuth {
             hash(&secret),
             Session {
                 identity: identity.clone(),
+                launch_sha256,
                 created: now,
                 last_used: now,
                 last_access: Instant::now(),
@@ -301,6 +304,21 @@ impl ConsoleAuth {
         session.last_access = Instant::now();
         session.identity.expires = (now + IDLE_TTL).min(session.created + ABSOLUTE_TTL);
         Ok(session.identity.clone())
+    }
+
+    pub(super) fn native_session_active(
+        &mut self,
+        bearer_sha256: &str,
+        launch_sha256: &str,
+    ) -> Result<bool, AuthError> {
+        if !valid_secret(bearer_sha256) || !valid_secret(launch_sha256) {
+            return Ok(false);
+        }
+        self.expire(now()?)?;
+        Ok(self
+            .sessions
+            .get(bearer_sha256)
+            .is_some_and(|session| session.launch_sha256.as_deref() == Some(launch_sha256)))
     }
     pub fn logout(&mut self, headers: &HeaderMap, peer: IpAddr) -> Result<(), AuthError> {
         let identity = self.authenticate(headers, peer)?;

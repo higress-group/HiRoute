@@ -3,6 +3,36 @@
 mod cpa_manifest;
 
 fn main() {
+    #[cfg(feature = "desktop-runtime")]
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
+        println!("cargo:rerun-if-env-changed=HIROUTE_LINUX_CONSOLE_ASSETS_SHA256");
+        println!("cargo:rerun-if-env-changed=HIROUTE_BUILD_SOURCE_SHA");
+        if std::env::var("PROFILE").as_deref() == Ok("release") {
+            let digest = std::env::var("HIROUTE_LINUX_CONSOLE_ASSETS_SHA256").unwrap_or_default();
+            assert!(
+                digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()),
+                "release Linux Desktop requires the verified packaged console fingerprint"
+            );
+        }
+        // The existing resident library and its test helpers still embed this debug manifest.
+        let manifest = "development-cpa-artifacts.v1.json";
+        println!("cargo:rerun-if-changed={manifest}");
+        let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+        std::fs::copy(manifest, output.join("cpa-artifacts.json"))
+            .expect("copy debug CPA manifest for resident library tests");
+        println!("cargo:rerun-if-changed=linux-permissions");
+        println!("cargo:rerun-if-changed=linux-capabilities");
+        tauri_build::try_build(
+            tauri_build::Attributes::new()
+                .capabilities_path_pattern("./linux-capabilities/*.json")
+                .app_manifest(
+                    tauri_build::AppManifest::new()
+                        .permissions_path_pattern("./linux-permissions/*.toml"),
+                ),
+        )
+        .expect("build restricted Linux Desktop command manifest");
+        return;
+    }
     println!("cargo:rerun-if-env-changed=HIROUTE_CPA_MANIFEST");
     let manifest = match std::env::var_os("HIROUTE_CPA_MANIFEST") {
         Some(path) => std::path::PathBuf::from(path),

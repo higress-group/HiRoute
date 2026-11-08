@@ -285,6 +285,7 @@ impl LocalControlDaemon {
             // The released decision connections CLI prepares its probe through this read.
             && request.operation_id != RESOLVE_DECISION_TEST_REVISION_V1
             && request.operation_id != hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1
+            && request.operation_id != hiroute_application_api::QUALIFY_NATIVE_CONSOLE_V1
             && !command_by_operation(&request.operation_id)
                 .is_some_and(|command| command.lifecycle == CommandLifecycle::Released)
         {
@@ -299,6 +300,7 @@ impl LocalControlDaemon {
                 | "CreateConsoleToken"
                 | "ListConsoleTokens"
                 | "RevokeConsoleToken"
+                | hiroute_application_api::QUALIFY_NATIVE_CONSOLE_V1
         ) {
             if request.protected_grant.is_some() {
                 return MachineEnvelopeV2::failed(

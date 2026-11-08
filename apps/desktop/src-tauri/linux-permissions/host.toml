@@ -1,0 +1,28 @@
+[[permission]]
+identifier = "linux-startup-actions"
+description = "Bundled startup and recovery for the current user's installation."
+commands.allow = [
+  "shell_status",
+  "shell_retry_startup",
+  "shell_install_runtime",
+  "shell_recover_runtime",
+  "shell_open_legacy_browser",
+  "shell_presentation_get",
+  "shell_presentation_set",
+]
+
+[[permission]]
+identifier = "linux-console-actions"
+description = "Typed effects for the verified live HiRoute session. The Rust host rechecks the exact origin and launch for every effect."
+commands.allow = [
+  "shell_capabilities",
+  "shell_open_in_browser",
+  "shell_open_external_url",
+  "shell_save_classifier_openapi",
+  "shell_restart_service",
+  "shell_reconnect",
+  "shell_open_diagnostic_directory",
+  "shell_write_clipboard",
+  "shell_presentation_get",
+  "shell_presentation_set",
+]

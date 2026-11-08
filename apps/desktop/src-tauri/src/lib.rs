@@ -1,17 +1,19 @@
 #![forbid(unsafe_code)]
 #[cfg(unix)]
 pub mod bootstrap;
-#[cfg(feature = "desktop-runtime")]
+#[cfg(all(feature = "desktop-runtime", not(target_os = "linux")))]
 pub mod bridge;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "linux")))]
 mod cli_entry;
 #[cfg(unix)]
 mod cpa_manifest;
 pub use hiroute_product_session::{confirmation, failure, operation_observation, session};
 #[cfg(unix)]
 mod development_cpa;
-#[cfg(feature = "desktop-runtime")]
+#[cfg(all(feature = "desktop-runtime", not(target_os = "linux")))]
 mod duplicate_host;
+#[cfg(all(feature = "desktop-runtime", target_os = "linux"))]
+pub mod linux_shell;
 
 #[cfg(all(test, target_os = "macos"))]
 mod fault_tests;

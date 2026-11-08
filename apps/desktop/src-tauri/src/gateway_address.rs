@@ -3,9 +3,11 @@
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
+#[cfg(any(test, not(target_os = "linux")))]
+pub(crate) use hiroute_host_runtime::GatewayListenerConfigV1;
+pub(crate) use hiroute_host_runtime::GatewayListenerDesiredV1;
 #[cfg(test)]
 pub(crate) use hiroute_host_runtime::GatewayPortModeV1;
-pub(crate) use hiroute_host_runtime::{GatewayListenerConfigV1, GatewayListenerDesiredV1};
 use hiroute_host_runtime::{GatewayListenerReservation, GatewayListenerStore};
 
 #[cfg(test)]
@@ -13,12 +15,14 @@ pub(crate) fn path(root: &Path) -> PathBuf {
     GatewayListenerStore::new(root).path()
 }
 
+#[cfg(not(target_os = "linux"))]
 pub(crate) fn status(root: &Path) -> Result<GatewayListenerConfigV1, String> {
     GatewayListenerStore::new(root)
         .load_or_default()
         .map_err(|error| error.to_string())
 }
 
+#[cfg(any(test, not(target_os = "linux")))]
 pub(crate) fn configure(
     root: &Path,
     desired: GatewayListenerDesiredV1,
@@ -28,6 +32,7 @@ pub(crate) fn configure(
         .map_err(|error| error.to_string())
 }
 
+#[cfg(not(target_os = "linux"))]
 pub(crate) fn recover(root: &Path) -> Result<GatewayListenerConfigV1, String> {
     GatewayListenerStore::new(root)
         .recover()
