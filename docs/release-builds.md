@@ -176,12 +176,17 @@ iteration uses the [cross-compilation and development-machine path](validation-r
 Hosted background compilation, logged-on-user acceptance and real accounts retain
 their separate runtime gates.
 
-To prepare only an x64 NSIS installer for development-machine acceptance, dispatch
-**build-release-platform** on the exact candidate branch with its default x64
-Windows target, Windows runner and `windows_desktop: true` option. It uploads
-the installer and build evidence, and leaves the identity `awaiting_runtime`.
-It performs no publication and does not replace the required native acceptance
-or the release-candidate matrix.
+Start [standard-user NSIS acceptance](validation-routing.md#development-machine-execution)
+as soon as `build-windows-desktop` succeeds. Use the development bundle from that
+same candidate run. Before publishing the GitHub Release, confirm the successful
+qualification and native evidence identify the final installer's exact SHA-256.
+If a later attempt qualifies a different installer, rerun the required native
+cases on that installer.
+
+For Windows-only development, dispatch **build-release-platform** on the exact
+development ref with the default x64 target, Windows runner and
+`windows_desktop: true`. It uploads the installer and build evidence with the
+identity `awaiting_runtime`.
 
 Every package matrix job checks out the dispatch's exact `github.sha`, uses a native
 runner and uploads its own assets and evidence. Ubuntu runner labels select only

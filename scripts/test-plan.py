@@ -513,8 +513,11 @@ def select(paths, full=False, bookkeeping=None):
         if path in SELECTION_TOOLING or path in (INTEGRATION_SKILL, "scripts/test-ci-setup.py"):
             selection_tooling = True
         elif path == "apps/website/data/releases.json":
-            # The native upgrade reader embeds this catalog in its contract test.
-            targets.add(("hiroute-host-runtime", "lib"))
+            # Both the current and frozen upgrade reader tests embed this catalog.
+            targets.update({
+                ("hiroute-host-runtime", "lib"),
+                ("hiroute-host-runtime", "release_catalog_compatibility"),
+            })
             reasons.append("release catalog upgrade reader: " + path)
         elif path in WEBSITE_TOOLING or path.startswith(WEBSITE_PREFIXES):
             # Static site and OSS/release publication have their own Node/browser

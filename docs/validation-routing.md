@@ -349,12 +349,19 @@ These operations create no account. A preparation record alone establishes no
 upgrade, Agent restoration or migration acceptance; business acceptance also
 requires actual before/after Agent files, Operation/status and package identity.
 
-For the NSIS candidate, manually dispatch `build-release-platform.yml` with its
-default x64 Windows/Desktop options. Its `artifacts/windows-desktop` upload
-contains a `development-bundle.zip` made from the measured installer, final shell image hash, embedded
-product binaries and exact compiled installer test. The explicitly declared NSIS
-entry has an x86 bootstrap stub; ordinary product and test images remain x64.
-Stage this bundle with the same `windows stage` entry, then select:
+For final release acceptance, use the `build-windows-desktop` job from the
+[release candidate run](release-builds.md#build-and-publish-the-frozen-artifacts).
+When that job succeeds, download its `artifacts/windows-desktop/development-bundle.zip`
+and start standard-user acceptance while the remaining validation runs. Record the
+installer SHA-256 and source revision. Before publishing the GitHub Release,
+match both to the successful qualification and the native acceptance evidence.
+
+For Windows-only development, manually dispatch `build-release-platform.yml`
+with its default x64 Windows/Desktop options. Both build entries export the
+measured installer, final shell image hash, embedded binaries and exact compiled
+installer test in the bundle. The declared NSIS entry has an x86 bootstrap stub.
+Ordinary product and test images are x64. Stage the bundle with `windows stage`
+and select the bounded installer case below.
 
 ```sh
 python3 scripts/validation.py windows run --harness BUNDLE_ID --product BUNDLE_ID \
@@ -434,12 +441,12 @@ finisher/NSIS scenarios.
 
 Ordinary development uses the configured Linux workbench for Windows MSVC
 cross-compilation and the configured Windows development machine for affected
-native execution. The expensive hosted Windows producer/replay matrix runs from
-`build-release.yml` before release assets can build; `windows-headless.yml` also
-retains an explicit manual entry for diagnosis. PR and main pushes retain their
-ordinary Linux/frontend selection without automatically starting that matrix.
-Affected PRs also run one cached Windows headless compile check; it runs no
-business or account acceptance.
+native execution. For a frozen candidate, `build-release.yml` starts the hosted
+Windows producer/replay matrix and packaging together. Qualification requires both.
+Use the manual `windows-headless.yml` entry for focused diagnosis. PR and main
+pushes follow their ordinary Linux/frontend selection. Affected PRs also run one
+cached Windows headless compile check when selected by the
+[PR plan](test-selection.md#verified-release-bookkeeping).
 That job also runs only the filtered package/journal/restoration-policy component
 fixtures from `hiroute-host-runtime`. It records OS/build, architecture and token
 elevation; fixture success never satisfies native installation or standard-user

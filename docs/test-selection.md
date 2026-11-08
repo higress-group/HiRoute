@@ -19,7 +19,7 @@ semantics, explicit focused/final run associations and the required agent feedba
 | Repository `.gitignore` | Publication-policy regressions and contract checks. Review ignored paths and any affected producer or packaging behavior; ignore rules alone do not change tracked product sources. |
 | Known repository agent instructions and shared validation skill | Link, instruction-consistency and host-discovery checks; no product build from instruction paths alone. Known skill scripts retain their own tests; unknown or product-installed skill paths retain consumer investigation. |
 | `apps/website`, website/model-feed/release workflows and their `.github/scripts` | Dedicated website/feed checks and publication-script regressions; no Desktop frontend or backend product suite. The independent feed workflow retains Rust producer admission and complete metadata projection checks. Website changes retain their build/static browser checks; decision API/source changes keep their broader contract scope. |
-| `apps/website/data/releases.json` | Website checks plus `hiroute-host-runtime` library tests and package Clippy, because the native upgrade reader consumes this catalog; no Desktop build. |
+| `apps/website/data/releases.json` | Website checks, `hiroute-host-runtime` library and `release_catalog_compatibility` tests, and package Clippy for the current and released upgrade readers. |
 | Release contract snapshots under `contracts/releases/`, their generator/PR publisher and release workflow | Snapshot/source/index checks and isolated Git/PR-publisher regressions; no Rust or Desktop build. Release workflow edits also retain the existing website workflow checks. Full plans include these contract-record checks. |
 | Shared product-version tool and its workflow | Version precedence/consistency and lifecycle regressions; tool implementation also retains packaging and real isolated-Git post-release publisher regressions. Manifest/lockfile changes retain their consumer selection; the development update reader has its own focused regression target. |
 | Release candidate workflow and bounded packaging/build/installer scripts | CPA target mapping, candidate-to-publication, Desktop inventory, standalone installer and license regressions; no Rust product suite. Website consumers keep their dedicated workflow. Changes to the pinned CPA source or runtime code retain their broader checks. |
@@ -94,9 +94,9 @@ classification.
 PR planning can prove two bounded changes from the actual merge base. A catalog
 append preserves prior release rows and short links. Any Windows policy append
 preserves the native case definitions and binds the new decision to the catalog's
-installer source and digest. The plan runs the upgrade reader and package-policy
-regressions alongside the website workflow. The publisher validates the actual
-installer and its native evidence.
+installer source and digest. The plan runs the current and released upgrade reader
+tests and package-policy regressions alongside the website workflow. The publisher
+validates the actual installer and its native evidence.
 
 A release record preserves historical snapshots and passes the existing normalized
 version-scope proof. Its plan runs the release inventory checks and the CLI and

@@ -482,8 +482,9 @@ class SelectionTests(unittest.TestCase):
                 self.assertEqual(result["product_checks"], [])
 
     def test_release_catalog_selects_upgrade_reader(self):
-        reader = ["cargo", "test", "--locked", "-p", "hiroute-host-runtime",
-                  "--all-features", "--lib"]
+        cargo_test = ["cargo", "test", "--locked", "-p", "hiroute-host-runtime", "--all-features"]
+        reader = [*cargo_test, "--lib"]
+        released_reader = [*cargo_test, "--test", "release_catalog_compatibility"]
         catalog = "apps/website/data/releases.json"
         for paths in ([catalog], [catalog, "apps/website/src/pages/index.astro"],
                       [catalog, "crates/daemon/src/lib.rs"]):
@@ -494,12 +495,14 @@ class SelectionTests(unittest.TestCase):
                 self.assertEqual(result["frontend"], "crates/daemon/src/lib.rs" in paths)
                 self.assertFalse(result["native_required"])
                 self.assertEqual(result["commands"].count(reader), 1)
+                self.assertEqual(result["commands"].count(released_reader), 1)
                 self.assertIn(["cargo", "clippy", "--locked", "-p", "hiroute-host-runtime",
                                "--all-targets", "--all-features", "--", "-D", "warnings"],
                               result["commands"])
-        # The full workspace already includes this library; do not run it twice.
+        # The full workspace already includes both reader checks.
         full = plan.select([catalog], full=True)
         self.assertNotIn(reader, full["commands"])
+        self.assertNotIn(released_reader, full["commands"])
         self.assertIn(["cargo", "test", "--locked", "--workspace", "--exclude",
                        "hiroute-desktop", "--all-features"], full["commands"])
 
@@ -1063,6 +1066,8 @@ class RevisionPlans(unittest.TestCase):
         self.assertFalse(selected['frontend'])
         self.assertIn(['cargo', 'test', '--locked', '-p', 'hiroute-host-runtime', '--all-features', '--lib'],
                       selected['commands'])
+        self.assertIn(['cargo', 'test', '--locked', '-p', 'hiroute-host-runtime', '--all-features',
+                       '--test', 'release_catalog_compatibility'], selected['commands'])
         self.assertIn(['python3', 'scripts/test-build-release.py'], selected['commands'])
         for change in ('different installer', 'mandatory case deferred', 'native case definition'):
             with self.subTest(change=change):
