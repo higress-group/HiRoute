@@ -41,6 +41,46 @@ pub(super) fn collect(facts: &[Fact]) -> Result<BTreeMap<&str, Admission<'_>>, O
     Ok(requests)
 }
 
+pub(super) fn complete_clipped_stage(
+    membership: &HistoryMembershipV1,
+    admitted: &[(&str, Admission<'_>)],
+    (first_id, last_id): (&str, &str),
+    members: &[&Request],
+    opening_proven: bool,
+) -> bool {
+    let revision = |id| {
+        admitted
+            .iter()
+            .find(|(request, _)| *request == id)
+            .map(|(_, admission)| admission.value.revision)
+    };
+    let Some(first) = revision(first_id) else {
+        return false;
+    };
+    // Revision advances once per admission on a branch. The closing endpoints
+    // can survive clipping, but only a proven opening bounds the missing prefix.
+    if (first != 1 && !opening_proven)
+        || revision(last_id) != Some(membership.revision)
+        || membership
+            .revision
+            .checked_sub(first)
+            .and_then(|n| n.checked_add(1))
+            != u64::try_from(admitted.len()).ok()
+        || members.len() != admitted.len()
+        || admitted.iter().any(|(_, a)| a.value.revision < first)
+    {
+        return false;
+    }
+    let ids: BTreeSet<_> = admitted.iter().map(|(id, _)| *id).collect();
+    members
+        .iter()
+        .all(|r| ids.contains(r.view.request_id.as_str()))
+        && membership
+            .request_ids
+            .iter()
+            .all(|id| ids.contains(id.as_str()))
+}
+
 pub(super) fn pending<'a>(
     ordered: &[&'a Request],
     covered: &BTreeSet<&str>,

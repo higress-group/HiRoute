@@ -1,6 +1,7 @@
 //! A bounded projection of existing facts. Cursors retain a snapshot while paging and
 //! advance only after every changed turn has been delivered.
 mod admission;
+mod attribution;
 pub(crate) mod cache;
 mod projection;
 mod read;
@@ -57,6 +58,7 @@ struct Request {
     run_id: Option<String>,
     decision: Option<RouteDecisionFactV1>,
     candidate: Option<(String, Option<String>)>,
+    accepted_candidate: Option<attribution::AcceptedCandidate>,
     identities: std::collections::BTreeSet<(String, String)>,
     identity_gap: bool,
     request_finished: bool,

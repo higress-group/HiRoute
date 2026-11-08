@@ -168,6 +168,7 @@ pub(super) fn read(
                 run_id: link.map(|l| l.run_id.to_string()),
                 decision: None,
                 candidate: None,
+                accepted_candidate: None,
                 identities: Default::default(),
                 identity_gap: false,
                 request_finished: false,

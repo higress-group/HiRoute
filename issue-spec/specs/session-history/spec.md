@@ -960,6 +960,13 @@ Source SPEC comments:
 
 An explicitly requested timeline presentation SHALL distinguish proven pending, resolved, mixed and unavailable group state from independent execution attribution. Pending requires validated opening admission and absence of route/execution/terminal/conflicting evidence; running alone is insufficient. Terminal attribution and actual request identities retain their original authority. Existing callers without opt-in retain response shape and cursor semantics; rich and legacy reads cannot corrupt each other's cache or miss updates. Live transitions preserve one turn, request membership, focus and selection. Content loading, running pending, terminal incomplete, error and privacy-cleared states remain distinct; missing usage never becomes zero.
 
+When a clipped terminal fact has unknown attribution, opt-in presentation MAY
+recover a single execution group from a proven opening, consecutive exact
+admission revisions through the closed endpoint, and complete accepted receipts
+that agree on the frozen Plan revision, group, Binding, model and profile.
+This display recovery preserves the evidence gap, frozen score membership and
+terminal fact. Missing or conflicting execution evidence leaves the group unavailable.
+
 #### Scenario: Opening progresses
 
 - **WHEN** validated admission is followed by route, attempts, finish and a late score
