@@ -110,7 +110,12 @@ pub(super) fn close_active(
         .as_ref()
         .ok_or(AgentTurnHistoryError::TurnContextUnavailable)?;
     let selected_branch_id = decision.branch_id.clone();
-    let attribution = execution_attribution(&entry.active.executions, &selected_branch_id);
+    let capture_partial = entry.active.capture_partial || entry.active.request_ids_clipped;
+    let attribution = if entry.active.request_ids_clipped {
+        ExecutionAttribution::Unknown
+    } else {
+        execution_attribution(&entry.active.executions, &selected_branch_id)
+    };
     let key = super::evaluation::segment_key(&entry.active, &attribution);
     let evaluation_scope = key.as_ref().and_then(|key| key.evaluation_scope.clone());
     let (segment_id, segment_partial) = if let Some(segment_key) = key {
@@ -121,7 +126,7 @@ pub(super) fn close_active(
                 && (evaluation_scope.is_none()
                     || segment.through_turn_id == entry.active.agent_turn_id)
                 && !((segment.partial || segment_has_unproven_closure(entry, segment))
-                    && !entry.active.capture_partial
+                    && !capture_partial
                     && entry.active.opening_cause
                         == hiroute_domain::AgentTurnOpeningCauseV1::UserMessage
                     && segment.through_turn_id != entry.active.agent_turn_id)
@@ -130,7 +135,7 @@ pub(super) fn close_active(
             let segment = entry.current_segment.as_mut().expect("checked");
             segment.through_turn_id = entry.active.agent_turn_id.clone();
             segment.through_ordinal = entry.active.ordinal;
-            segment.partial |= entry.active.capture_partial;
+            segment.partial |= capture_partial;
             (segment.segment_id.clone(), segment.partial)
         } else {
             let segment_id = next_segment_id;
@@ -141,14 +146,14 @@ pub(super) fn close_active(
                 through_turn_id: entry.active.agent_turn_id.clone(),
                 first_ordinal: entry.active.ordinal,
                 through_ordinal: entry.active.ordinal,
-                partial: entry.active.capture_partial,
+                partial: capture_partial,
             });
-            (segment_id, entry.active.capture_partial)
+            (segment_id, capture_partial)
         }
     } else {
         entry.current_segment = None;
         // Missing executor/rubric attribution is not evidence of missing bytes.
-        (next_segment_id, entry.active.capture_partial)
+        (next_segment_id, capture_partial)
     };
     let status = entry.active.last_request_status;
     let executed_branch_id = match &attribution {
@@ -184,7 +189,7 @@ pub(super) fn close_active(
                     branches::HistoryRelation::Contextual
                         | branches::HistoryRelation::AmbiguousPrefix
                 ),
-            capture_partial: entry.active.capture_partial || segment_partial,
+            capture_partial: capture_partial || segment_partial,
         }),
         opening_cause: entry.active.opening_cause,
         branch_execution: if matches!(attribution, ExecutionAttribution::Single { .. }) {
@@ -205,7 +210,7 @@ pub(super) fn close_active(
         started_at_ms: entry.active.started_at_ms,
         finished_at_ms,
         status,
-        history_partial: entry.active.capture_partial || segment_partial,
+        history_partial: capture_partial || segment_partial,
         first_request_id: entry.active.first_request_id.clone(),
         last_request_id: entry.active.last_request_id.clone(),
     };
@@ -342,7 +347,7 @@ impl StoreInner {
                 let active = if active_is_closed {
                     0
                 } else {
-                    e.active.completed_requests
+                    e.active.request_ids.len()
                 };
                 // Reserve space for each live completion as well. Conservative
                 // duplicate references count toward the bound, not just stages.
@@ -379,18 +384,28 @@ impl StoreInner {
             {
                 continue;
             }
-            // A long tool phase can retain many terminal HTTP records without
-            // closing its stage. Retire its whole idle branch rather than drop
-            // individual attempts and invent a different model attribution.
+            // Terminal details can be clipped while the active checkpoint,
+            // decision and original input occurrence continue to serve tools.
             let idle = self
                 .scope_entries(scope)
-                .filter(|(_, e)| e.pending_request.is_none() && e.snapshot_pins == 0)
+                .filter(|(_, e)| e.pending_request.is_none() && !e.active.request_ids.is_empty())
                 .min_by_key(|(_, e)| e.admission_sequence)
                 .map(|(key, _)| key.clone());
             let Some(key) = idle else {
                 return false;
             };
-            self.remove(&key);
+            let entry = self.entries.get_mut(&key).expect("selected entry");
+            let retired = entry.active.request_ids.remove(0);
+            entry
+                .active
+                .executions
+                .retain(|execution| execution.request_id != retired);
+            entry.active.request_ids_clipped = true;
+            entry.history_partial = true;
+            let old = entry.accounted_bytes;
+            entry.accounted_bytes = entry_bytes(&key, entry);
+            let new = entry.accounted_bytes;
+            self.replace_accounting(old, new);
         }
         true
     }

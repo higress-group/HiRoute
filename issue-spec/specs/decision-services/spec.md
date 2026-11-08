@@ -1091,6 +1091,9 @@ cannot be silently uncharged. Optional overflow retains explicit incomplete evid
 where possible and otherwise uses bounded scope-hash gap bookkeeping. Collisions
 are conservative and recoverable; new complete A/B must recover after pressure or
 faults clear. ContextHold retains its independent 50,000,000-byte budget.
+The terminal record count clips older request membership and execution details.
+It preserves the active turn decision, input occurrence and latest continuation
+checkpoint. A clipped membership cannot establish complete stage attribution.
 
 #### Scenario: Concurrent responses have the same input prefix
 

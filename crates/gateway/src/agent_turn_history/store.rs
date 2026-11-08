@@ -149,7 +149,6 @@ impl From<bool> for RequestCompletion {
 }
 
 struct ActiveTurn {
-    completed_requests: usize,
     request_ids: Vec<String>,
     request_ids_clipped: bool,
     source_unverified: bool,
@@ -449,7 +448,6 @@ impl AgentTurnHistoryStore {
             let request_token = inner.allocate_request_token()?;
             let turn_id = self.allocate_id(inner, "turn")?;
             let active = ActiveTurn {
-                completed_requests: 0,
                 request_ids: Vec::new(),
                 request_ids_clipped: false,
                 source_unverified: analyzed.user_origin_unverified,
@@ -831,7 +829,6 @@ impl AgentTurnHistoryStore {
             entry.response_boundary = None;
             entry.tool_batch = None;
             entry.active = ActiveTurn {
-                completed_requests: 0,
                 request_ids: Vec::new(),
                 request_ids_clipped: false,
                 source_unverified: analyzed.user_origin_unverified,
@@ -1114,10 +1111,13 @@ impl AgentTurnHistoryStore {
             if entry.active.first_request_id.is_none() {
                 entry.active.first_request_id = Some(request_id.clone());
             }
-            if entry.active.request_ids.contains(&request_id) {
-                // The Gateway identifier was already bound before classification.
-            } else if entry.active.request_ids.len() < 128 {
+            if !entry.active.request_ids.contains(&request_id)
+                && entry.active.request_ids.len() < 128
+            {
                 entry.active.request_ids.push(request_id.clone());
+            }
+            if entry.active.request_ids.contains(&request_id) {
+                entry.active.executions.extend(executions);
             } else {
                 entry.active.request_ids_clipped = true;
             }
@@ -1128,8 +1128,6 @@ impl AgentTurnHistoryStore {
             } else {
                 AgentTurnStatus::Unknown
             };
-            entry.active.completed_requests += 1;
-            entry.active.executions.extend(executions);
             entry.response_boundary = (!entry.active.capture_partial)
                 .then(|| entry.active.boundary.evidence())
                 .flatten();
