@@ -59,6 +59,16 @@ The Replay-backed Core session forwards its already charged reader chunks direct
 respecting smaller caller bounds without reserving the opaque network-codec maximum
 or copying each chunk again. Range/EOF verification and final-owner cleanup remain
 with the same Replay reader.
+
+The [product daemon](../daemon/src/role_all.rs) defaults Replay to `replay/`
+beside its `storage/` directory. It is outside storage upgrade snapshots.
+`HIROUTE_REPLAY_ROOT` in the daemon launch environment still overrides the default.
+If the open root was removed, the [Replay manager](src/replay.rs) securely reopens
+or recreates it before admitting new request backing. Each request keeps its own
+directory handles until the last reader releases them. Root preparation uses the
+existing orphan TTL to reclaim expired request directories it can safely remove.
+Unrecognized or inaccessible entries do not block request backing.
+
 Production ingress moves its native tree into the canonical request; context
 identity keeps only the original `metadata` and `client_metadata` roots so
 externalizing native content cannot change Claude/Codex identity enrichment.

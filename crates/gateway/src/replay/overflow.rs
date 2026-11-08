@@ -22,7 +22,7 @@ impl ReplayStore {
     /// Share only the secure root, not the request's raw streams or their TTL.
     pub(crate) fn overflow_factory(&self) -> OverflowFactory {
         OverflowFactory {
-            root: Arc::clone(&self.inner.manager.root),
+            root: Arc::clone(self.inner.directory.root()),
         }
     }
 }

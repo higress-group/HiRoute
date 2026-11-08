@@ -744,3 +744,18 @@ Transport read/write quanta MUST remain bounded independently of accounting
 targets. Optional observation work retains its own bounded channel admission and
 cannot displace required forwarding memory. Existing timeout/retry, content
 identity, historical reads, attribution and recovery contracts remain unchanged.
+
+### Requirement: Replay scratch recovers from directory removal
+
+The product daemon SHALL default Replay scratch to a private directory beside
+the instance storage root. An explicit `HIROUTE_REPLAY_ROOT` SHALL take
+precedence. Replay scratch is request-owned and outside storage upgrade
+snapshots. The last owner releases each request directory. Opening a Replay root
+reclaims safely removable expired scratch according to the configured orphan
+TTL. An unrelated or unsafe entry MUST NOT prevent opening a validated root.
+
+After the Replay directory is removed during operation, the daemon SHALL recover
+its root before admitting new Replay backing. Recovery MUST verify the path
+without following a substituted link. Requests already holding Replay backing
+keep their original handles. A recovery or backing I/O failure remains scoped
+to the affected request.

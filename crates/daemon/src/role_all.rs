@@ -121,6 +121,22 @@ impl RoleAllConfig {
         self.released_commands_only = true;
         self
     }
+
+    fn replay_root(&self) -> Option<PathBuf> {
+        // Derive the default from the resolved storage location. Explicit Replay
+        // overrides still pass through their own path validation.
+        let storage_root = self
+            .storage_root
+            .canonicalize()
+            .unwrap_or_else(|_| self.storage_root.clone());
+        let storage = storage_root.file_name()?;
+        if storage == "storage" {
+            return Some(storage_root.with_file_name("replay"));
+        }
+        let mut name = storage.to_os_string();
+        name.push(".replay");
+        Some(storage_root.with_file_name(name))
+    }
 }
 
 pub struct RoleAllHandle {
@@ -583,10 +599,11 @@ fn start_role_all_with_runtime(
     };
     let upgrade = Arc::new(hiroute_host_runtime::UpgradeDrain::default());
     let gateway_runtime = Arc::new(
-        ProductionGatewayRuntime::compose_with_planner_and_observation(
+        ProductionGatewayRuntime::compose_with_replay_root(
             ports,
             Arc::new(PublicationPlannerInputAuthority),
             observation,
+            config.replay_root(),
         )
         .with_run_request_authority(runtime.delegation_run_authority())
         .with_upgrade_drain(upgrade.clone()),
@@ -1001,6 +1018,22 @@ mod tests {
         let address = listener.local_addr().unwrap();
         drop(listener);
         address
+    }
+
+    #[test]
+    fn default_replay_root_uses_resolved_storage_location() {
+        let directory = tempfile::tempdir().unwrap();
+        let alias = directory.path().join("alias");
+        std::fs::create_dir(&alias).unwrap();
+        std::fs::create_dir(directory.path().join("storage")).unwrap();
+        let config = RoleAllConfig::new(
+            alias.join("..").join("storage"),
+            directory.path().join("runtime"),
+            "127.0.0.1:0".parse::<SocketAddr>().unwrap(),
+            directory.path().join("gateway-lkg.json"),
+        );
+        let resolved = directory.path().canonicalize().unwrap();
+        assert_eq!(config.replay_root(), Some(resolved.join("replay")));
     }
 
     #[test]

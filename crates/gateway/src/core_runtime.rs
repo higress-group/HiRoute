@@ -22,6 +22,7 @@ pub mod profiles;
 mod timing;
 
 use std::future::Future;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
@@ -117,9 +118,19 @@ impl ProductionGatewayRuntime {
         )
     }
     pub fn compose_with_planner_and_observation(
+        ports: ProductionPorts,
+        planner_inputs: Arc<dyn PlannerInputAuthority>,
+        observation: Arc<GatewayObservation>,
+    ) -> Self {
+        Self::compose_with_replay_root(ports, planner_inputs, observation, None)
+    }
+
+    /// Use the owning daemon's state layout as the Replay default.
+    pub fn compose_with_replay_root(
         mut ports: ProductionPorts,
         planner_inputs: Arc<dyn PlannerInputAuthority>,
         observation: Arc<GatewayObservation>,
+        replay_root: Option<PathBuf>,
     ) -> Self {
         ports.credentials = Arc::new(ObservedCredentialResolver::new(Arc::clone(
             &ports.credentials,
@@ -161,7 +172,7 @@ impl ProductionGatewayRuntime {
             context_holds: Arc::new(ContextHoldStore::default()),
             responses_reasoning: Default::default(),
             agent_turn_history: Arc::new(AgentTurnHistoryStore::default()),
-            replay: ReplayManager::from_environment().ok(),
+            replay: ReplayManager::from_environment_with_root(replay_root).ok(),
             executable_sha256: None,
             capture_observation_content: true,
         }
