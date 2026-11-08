@@ -933,7 +933,7 @@ mod tests {
     fn decision_removal_preview_is_discoverable_as_a_read_only_command() {
         let help = execute(["decision", "removal", "preview", "--help"]);
         assert_eq!(help.exit_code, 0, "{}", help.stdout);
-        assert!(help.stdout.contains("expected_revision"));
+        assert!(help.stdout.contains("Read-only; no product side effect."));
         let descriptor = execute(["schema", "show", "--command-id", "decision.removal.preview"]);
         assert_eq!(descriptor.exit_code, 0, "{}", descriptor.stdout);
         let descriptor: Value = serde_json::from_str(&descriptor.stdout).unwrap();
