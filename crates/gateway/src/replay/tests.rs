@@ -696,11 +696,14 @@ fn cleanup_waits_for_last_reader_and_restart_removes_orphans() {
     }
     #[cfg(windows)]
     drop(super::windows_acl::create_owner_only_directory(&orphan).expect("orphan owner and DACL"));
+    let unrelated_file = root.0.join("req-unexpected-file");
+    fs::write(&unrelated_file, b"keep").unwrap();
     std::thread::sleep(Duration::from_millis(3));
     let mut restart = config(&root.0, 64, 16);
     restart.orphan_ttl = Duration::from_millis(1);
     ReplayManager::open(restart).expect("restart cleanup");
     assert!(!orphan.exists());
+    assert_eq!(fs::read(&unrelated_file).unwrap(), b"keep");
 }
 
 #[test]

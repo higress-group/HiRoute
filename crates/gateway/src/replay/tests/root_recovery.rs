@@ -39,7 +39,7 @@ fn recovery_rejects_symlink_replacements_at_the_root_or_its_parent() {
 }
 
 #[test]
-fn concurrent_requests_reuse_the_recovered_root_and_remove_only_expired_orphans() {
+fn concurrent_requests_reuse_the_recovered_root_and_remove_only_safe_expired_orphans() {
     let root = TestRoot::new("recovery-concurrent");
     let manager = ReplayManager::open(config(&root.0, 64, 16)).unwrap();
     fs::remove_dir(&root.0).unwrap();
@@ -47,12 +47,18 @@ fn concurrent_requests_reuse_the_recovered_root_and_remove_only_expired_orphans(
     let expired = root.0.join("req-expired");
     let fresh = root.0.join("req-fresh");
     let unrelated = root.0.join("unrelated");
+    let link = root.0.join("req-link");
+    let file = root.0.join("req-file");
+    let unremovable = root.0.join("req-nested");
     for entry in [&expired, &fresh, &unrelated] {
         fs::create_dir(entry).unwrap();
         fs::write(entry.join("marker"), b"retained or expired").unwrap();
     }
     let old = SystemTime::now() - Duration::from_secs(120);
-    for entry in [&expired, &unrelated] {
+    symlink(&unrelated, &link).unwrap();
+    fs::write(&file, b"unrecognized Replay entry").unwrap();
+    fs::create_dir_all(unremovable.join("nested")).unwrap();
+    for entry in [&expired, &unrelated, &unremovable] {
         fs::File::open(entry).unwrap().set_modified(old).unwrap();
     }
 
@@ -71,8 +77,11 @@ fn concurrent_requests_reuse_the_recovered_root_and_remove_only_expired_orphans(
     assert!(!expired.exists());
     assert!(fresh.join("marker").is_file());
     assert!(unrelated.join("marker").is_file());
+    assert!(fs::symlink_metadata(&link).unwrap().is_symlink());
+    assert_eq!(fs::read(&file).unwrap(), b"unrecognized Replay entry");
+    assert!(unremovable.join("nested").is_dir());
 
     drop(first);
     drop(second);
-    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 2);
+    assert_eq!(fs::read_dir(&root.0).unwrap().count(), 5);
 }

@@ -123,13 +123,19 @@ impl RoleAllConfig {
     }
 
     fn replay_root(&self) -> Option<PathBuf> {
-        let storage = self.storage_root.file_name()?;
+        // Storage is already open here. Its accepted path can contain aliases
+        // or parent components that an explicit Replay override must reject.
+        let storage_root = self
+            .storage_root
+            .canonicalize()
+            .unwrap_or_else(|_| self.storage_root.clone());
+        let storage = storage_root.file_name()?;
         if storage == "storage" {
-            return Some(self.storage_root.with_file_name("replay"));
+            return Some(storage_root.with_file_name("replay"));
         }
         let mut name = storage.to_os_string();
         name.push(".replay");
-        Some(self.storage_root.with_file_name(name))
+        Some(storage_root.with_file_name(name))
     }
 }
 

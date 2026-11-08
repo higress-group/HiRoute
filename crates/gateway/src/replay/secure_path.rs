@@ -1,7 +1,7 @@
 use std::fs::{self, File, Metadata};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use super::ReplayError;
 
@@ -86,8 +86,31 @@ fn finish_open_root(
 ) -> Result<Arc<SecureRoot>, ReplayError> {
     platform::validate_directory(&handle)?;
     let root = Arc::new(SecureRoot { path, handle });
-    platform::cleanup_orphans(&root, orphan_ttl, REQUEST_PREFIX)?;
+    let cutoff = SystemTime::now()
+        .checked_sub(orphan_ttl)
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    // A usable root can serve new requests even if old scratch cannot be removed.
+    platform::cleanup_orphans(&root, cutoff, REQUEST_PREFIX);
     Ok(root)
+}
+
+fn remove_expired_orphan(
+    root: &Arc<SecureRoot>,
+    name: &str,
+    handle: File,
+    cutoff: SystemTime,
+) -> Result<(), ReplayError> {
+    if handle.metadata()?.modified()? > cutoff {
+        return Ok(());
+    }
+    let directory = SecureDirectory {
+        root: Arc::clone(root),
+        name: name.to_owned(),
+        path: root.path.join(name),
+        identity: platform::identity(&handle)?,
+        handle,
+    };
+    remove_request_directory(&directory)
 }
 
 pub(super) fn create_request_directory(

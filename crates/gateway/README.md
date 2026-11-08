@@ -65,8 +65,9 @@ beside its `storage/` directory. It is outside storage upgrade snapshots.
 `HIROUTE_REPLAY_ROOT` in the daemon launch environment still overrides the default.
 If the open root was removed, the [Replay manager](src/replay.rs) securely reopens
 or recreates it before admitting new request backing. Each request keeps its own
-directory handles until the last reader releases them. Root preparation removes
-expired request directories using the existing orphan TTL.
+directory handles until the last reader releases them. Root preparation uses the
+existing orphan TTL to reclaim expired request directories it can safely remove.
+Unrecognized or inaccessible entries do not block request backing.
 
 Production ingress moves its native tree into the canonical request; context
 identity keeps only the original `metadata` and `client_metadata` roots so

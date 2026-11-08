@@ -751,7 +751,8 @@ The product daemon SHALL default Replay scratch to a private directory beside
 the instance storage root. An explicit `HIROUTE_REPLAY_ROOT` SHALL take
 precedence. Replay scratch is request-owned and outside storage upgrade
 snapshots. The last owner releases each request directory. Opening a Replay root
-reclaims expired owned scratch according to the configured orphan TTL.
+reclaims safely removable expired scratch according to the configured orphan
+TTL. An unrelated or unsafe entry MUST NOT prevent opening a validated root.
 
 After the Replay directory is removed during operation, the daemon SHALL recover
 its root before admitting new Replay backing. Recovery MUST verify the path
