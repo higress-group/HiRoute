@@ -558,6 +558,21 @@ class ReleaseQualificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "does not bind a verified candidate"):
             self.qualify()
 
+    def test_linux_container_and_package_reports_must_agree_on_the_assets(self):
+        target = "x86_64-unknown-linux-gnu"
+        directory = self.results / f"release-result-{target}-{self.revision}-1"
+        package = json.loads((directory / "result.json").read_text())
+        container = directory / "container-fixture"
+        container.mkdir()
+        container_result = container / "result.json"
+        container_result.write_text(json.dumps({**package, "execution_host": {"system": "Linux"}}))
+        receipt = self.qualify()
+        self.assertEqual(len(receipt["assets"]), 7)
+        package["website_artifact"]["manifest_sha256"] = "e" * 64
+        container_result.write_text(json.dumps(package))
+        with self.assertRaisesRegex(ValueError, "package reports disagree"):
+            self.qualify()
+
     def test_missing_package_prevents_qualification(self):
         removed = next(self.results.iterdir())
         (removed / "result.json").unlink()

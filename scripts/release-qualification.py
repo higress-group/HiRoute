@@ -44,18 +44,24 @@ def qualify(results, revision, version, run_id, attempt):
     rows = []
     producers = {}
     for target, (producer_attempt, directory) in sorted(selected.items()):
-        paths = list(directory.rglob("result.json"))
-        ledger.require(len(paths) == 1, "expected one package result for " + target)
-        result = read(paths[0])
+        paths = sorted(directory.rglob("result.json"))
+        ledger.require(paths, "missing package result for " + target)
         expected_status = "awaiting_runtime" if target.endswith("windows-msvc") else "completed"
-        ledger.require(result["revision"] == revision and result["target"] == target
-                       and result["status"] == expected_status and result["package_integrity"] == "green",
-                       "package result does not bind a verified candidate for " + target)
-        row = result["website_artifact"]
-        ledger.require(tuple(row[key] for key in ("kind", "platform", "architecture", "format")) == TARGETS[target]
-                       and f"-{version}-{revision[:12]}-" in row["filename"],
-                       "package identity differs from its producer or version: " + target)
-        rows.append(row)
+        artifacts = []
+        for path in paths:
+            result = read(path)
+            ledger.require(result["revision"] == revision and result["target"] == target
+                           and result["status"] == expected_status and result["package_integrity"] == "green",
+                           "package result does not bind a verified candidate for " + target)
+            row = result["website_artifact"]
+            ledger.require(tuple(row[key] for key in ("kind", "platform", "architecture", "format")) == TARGETS[target]
+                           and f"-{version}-{revision[:12]}-" in row["filename"],
+                           "package identity differs from its producer or version: " + target)
+            artifacts.append(row)
+        # The Linux container wrapper and the packager both describe the same
+        # archive after minimum-runtime admission. Bind the bytes once.
+        ledger.require(all(row == artifacts[0] for row in artifacts), "package reports disagree for " + target)
+        rows.append(artifacts[0])
         producers[target] = {"attempt": producer_attempt, "artifact": directory.name}
     return {"schema": SCHEMA, "revision": revision, "version": version,
             "run_id": run_id, "run_attempt": attempt, "producers": producers,
