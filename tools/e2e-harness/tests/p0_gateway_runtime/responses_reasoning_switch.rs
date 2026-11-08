@@ -283,7 +283,10 @@ fn reasoning_replay_waits_for_exact_pending_delivery_and_ignores_failed_write() 
             did_wait,
             "the replay must see the exact in-flight terminal write"
         );
-        assert_eq!(successor.join().unwrap(), [final_answer.clone()]);
+        assert_eq!(
+            successor.join().unwrap().as_slice(),
+            std::slice::from_ref(&final_answer)
+        );
     });
     assert_eq!(upstream_input(&kimi, 0), excluding(&input, "rs_pending"));
 
