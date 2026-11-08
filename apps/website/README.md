@@ -30,6 +30,12 @@ product components with constructed documentation data; see
 They are illustrations, not provider acceptance or model benchmarks. Historical news and experiment
 reports retain their original version and evidence; current setup instructions belong in the guides.
 
+The guides separate model routing and Agent routing into independent walkthroughs.
+Their bilingual dark-mode interaction screenshots live in `public/guide-assets`;
+see [guide screenshot sources](docs/guide-assets.md) for production component
+provenance, reproduction and caption conventions. Regenerate them with
+`node apps/website/scripts/capture-guide-assets.mjs` from the repository root.
+
 English lives at `/en/` and Chinese at `/zh/`; `src/lib/locale.mjs` builds both
 prefixes. The root and the Chinese URLs published without a prefix before English
 became the default (`LEGACY_CHINESE_PATHS`) are redirect pages: an immediate meta

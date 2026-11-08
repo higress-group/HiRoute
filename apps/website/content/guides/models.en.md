@@ -16,6 +16,19 @@ Open **Models → General models** and select **Add models**:
 
 After saving, a model shows **Connection ready**. This means it meets the local conditions for routing; it does not mean upstream inference or tool calls have been verified. Confirm with a real request.
 
+<figure>
+  <a href="/guide-assets/models-add-en.webp"><img src="/guide-assets/models-add-en.webp" alt="Add models dialog offering subscription, device scan and API connection choices" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Use Connect subscription for a sign-in, Scan this device to reuse local configuration, or New API connection for an endpoint and key.</figcaption>
+</figure>
+
+## Choose what to do next
+
+- **Reduce model costs in your daily Agent:** create a [model route](/en/docs/model-routing/) and map it to your Agent.
+- **Try a new model first:** open New models on Home and follow the [trial flow](/en/docs/model-trial/).
+- **Run work with another Agent:** combine execution models and an execution Agent in an [Agent route](/en/docs/task-routing/).
+
+You are ready to configure a route when the saved model appears among its candidates. A successful real request is the next check for upstream inference and tool use.
+
 ## Connect a subscription and its API together
 
 After you connect and check a Codex or Claude subscription, the same form lets you enter the matching OpenAI or Anthropic API key, or choose an existing API connection. Leave it blank to use the subscription only. Choose models and save once, and the available models from both sides are imported together.

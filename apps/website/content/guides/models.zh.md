@@ -16,6 +16,19 @@ HiRoute 在本机集中管理订阅、API 和本地模型。“模型”页面�
 
 保存后，模型显示“接入就绪”，表示它满足进入路由的本地条件，不代表上游推理或工具调用已经验证过。用一次真实请求确认实际效果。
 
+<figure>
+  <a href="/guide-assets/models-add-zh.webp"><img src="/guide-assets/models-add-zh.webp" alt="模型页面的添加模型对话框，提供订阅、扫描本机和 API 等入口" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>已有订阅选“连接订阅”；复用本机配置选“扫描本机”；有 Key 和地址选“新建 API 接入”。</figcaption>
+</figure>
+
+## 接入后，选择用途
+
+- **给日常 Agent 降低模型成本**：去 [智能模型路由](/zh/docs/model-routing/) 创建路由，再映射到你的 Agent。
+- **先试一个新模型**：去首页的“新模型”，按 [试用流程](/zh/docs/model-trial/) 完成配置。
+- **给另一种 Agent 执行任务**：去 [Agent 智能路由](/zh/docs/task-routing/) 把执行模型与执行 Agent 组合成可委派的路由。
+
+完成标志是模型已保存、出现在路由候选中；真实请求成功后，再确认上游推理和工具调用是否正常。
+
 ## 订阅和 API 一起接入
 
 接入 Codex 或 Claude 订阅并完成检查后，可以在同一个表单里填写对应的 OpenAI 或 Anthropic API Key，也可以选择一个已有的 API 接入。留空就只使用订阅。选好模型、保存一次，订阅和 API 两边可用的模型会一起导入。

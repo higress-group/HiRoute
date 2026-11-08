@@ -1,8 +1,17 @@
-# Use smart task routing
+# Smart Agent routing
 
-Model routing decides “which model should handle this stage.” Task routing decides “which execution agent should own this work.” You can enable either capability independently or combine them.
+Stay in your usual Agent and hand work to a better-fitting **model × harness**. A harness is the Agent’s execution tool: it shapes how the Agent uses tools, manages context and completes work. HiRoute calls Agent routing “Task routing” in the UI. It chooses an execution Agent; model routing chooses the models used during execution.
 
-The sections below show Desktop; the Linux Web UI has the same steps. You can also use only the CLI: publish the plan through `routing preview/apply`, connect an Agent through `agents connect preview/apply`, and then use the Worker commands below. Obtain exact fields from the installed schema.
+| Your main Agent | Capability you want | Example task route |
+| --- | --- | --- |
+| Codex | Run a DeepSeek model with DeepSeek Harness (DSH) | “DSH development”: connect an available DeepSeek model and choose DeepSeek Harness as executor |
+| Hermes | Use Codex for coding and tests | “Codex coding”: choose execution models and Codex CLI as executor |
+
+The capabilities work independently. Your main Agent can keep its existing model and sign-in, delegating only when needed. The steps below show Desktop; the Linux Web UI works the same way.
+
+## Before you start
+
+Install the execution Agent on the HiRoute service host and [connect its models](/en/docs/models/). A Fixed model route is enough to start; you can later combine it with [Difficulty routing](/en/docs/model-routing/).
 
 ## What to delegate
 
@@ -10,7 +19,7 @@ Delegation works best for independently executable work with a clear goal, worki
 
 Do not delegate coordination, plan discovery, status checks, waits, or result summaries. An execution agent cannot recursively create another delegation layer.
 
-## Enable delegation on a plan
+## 1. Configure a route for delegation
 
 1. Open Smart routing and create or edit a plan.
 2. Expand More settings, then under Task delegation turn on Allow delegation to an execution agent.
@@ -20,7 +29,12 @@ Do not delegate coordination, plan discovery, status checks, waits, or result su
 
 A missing installation does not block saving the plan, but the chosen execution agent must pass its dependency check before a task can start.
 
-## Allow a main agent to delegate tasks
+<figure>
+  <a href="/guide-assets/routing-worker-en.webp"><img src="/guide-assets/routing-worker-en.webp" alt="Route editor showing task delegation and execution Agent choices" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Choose the execution Agent in the route. This example uses Codex CLI; select DeepSeek Harness here for a DSH route.</figcaption>
+</figure>
+
+## 2. Enable task routing for your main Agent
 
 Open Agent, choose the main agent you use every day, and select Enable under Task routing. Codex, Claude Code, Qoder, Pi, DeepSeek Harness, Hermes and OpenCode can all act as main agents; for Hermes, first select the configuration directory it actually uses.
 
@@ -31,7 +45,20 @@ Task routing affects only delegation; it does not change the model the main agen
 
 Manage routes available for task delegation under Smart routing. The main agent discovers published plans that allow task delegation.
 
-After enabling, explicitly mention HiRoute and delegation in the agent's normal conversation, for example:
+<figure>
+  <a href="/guide-assets/agent-task-en.webp"><img src="/guide-assets/agent-task-en.webp" alt="Codex Task routing dialog with delegation trigger choices" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Start with “Only when explicitly requested.” An already enabled connection shows “Save settings.”</figcaption>
+</figure>
+
+## 3. Delegate in your normal conversation
+
+First check that the route is published, allows delegation and has a ready execution Agent. Replace the route names and absolute paths below with your own:
+
+> In Codex: Use HiRoute to delegate the parser regression in `/absolute/path/to/project` to “DSH development.” Find the failure, fix it and run relevant tests. Summarize the changes and test results.
+
+> In Hermes: Use HiRoute to delegate the login form in `/absolute/path/to/project` to “Codex coding.” Follow the existing components, implement it and run relevant tests. Summarize the result.
+
+You can also use a general request:
 
 - Choose a route: “Use HiRoute to delegate this task to [route name].” Replace the placeholder with a route that allows task delegation under Smart routing.
 - Let the Agent choose: “Use HiRoute to delegate this task and choose a suitable route.”
@@ -40,7 +67,22 @@ With Let the Agent decide by default, the main agent may also select a plan for 
 
 Any other agent that can run commands can delegate directly with the `worker` commands below.
 
-## Start a task from Terminal
+## 4. Follow progress and retrieve the result
+
+Open “Agent → Task history” and select the task. Check its route, execution Agent and run state. Ask the main Agent to retrieve the result, then inspect the actual changes and test output. Saved configuration or an accepted submission does not mean the task has finished.
+
+<figure>
+  <a href="/guide-assets/tasks-en.webp"><img src="/guide-assets/tasks-en.webp" alt="Task history showing the task list, execution Agent and run state" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Example task history: follow execution here, then have your main Agent retrieve and summarize the result.</figcaption>
+</figure>
+
+Add instructions by continuing the same task. If it fails, inspect the cause before continuing or starting again. If a connection drops, query the original submission as shown below to avoid duplicate work.
+
+## CLI execution and recovery
+
+<details>
+<summary>Show commands, submission identifiers and connection recovery</summary>
+
 
 After installing the [HiRoute CLI](/en/docs/cli/), discover executors and plans:
 
@@ -73,6 +115,8 @@ hiroute worker status --submission parser-fix-001 --operation start
 Do not retry with a new key, which could start a duplicate task.
 
 While the task runs, check it with `hiroute worker status --run <RUN_ID>`. When it ends, read its result with `hiroute worker result --run <RUN_ID>`, and use `hiroute worker continue` to add instructions to the same task. See [HiRoute CLI](/en/docs/cli/) for the full commands.
+
+</details>
 
 ## Permission and cancellation boundaries
 

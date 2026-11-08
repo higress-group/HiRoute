@@ -12,10 +12,10 @@ const content = path.join(website, 'content/guides');
 export const guidePages = {
   quickstart: {
     zh: '快速开始', en: 'Quickstart',
-    title: { zh: '快速开始：安装、接入模型并连接 Agent', en: 'Quickstart: install, connect models and your Agent' },
+    title: { zh: '快速开始：模型路由与 Agent 路由', en: 'Quickstart: model routing and Agent routing' },
     description: {
-      zh: '选择 macOS、Windows 桌面应用或 Linux Web UI，接入订阅、API 和本地模型，创建第一条路由，再连接 Codex、Claude Code 等 Agent。',
-      en: 'Choose macOS or Windows Desktop or the Linux Web UI, connect subscriptions, APIs and local models, create your first route, then connect Codex, Claude Code or another Agent.',
+      zh: '选择两条上手路径：用模型路由降低日常任务成本、试用新模型；用 Agent 路由把任务交给合适的模型与执行工具。附夜晚模式操作截图。',
+      en: 'Follow two illustrated paths: use model routing to reduce everyday task costs and try new models, or Agent routing to delegate work to the right model and execution tool.',
     },
   },
   'install-macos': {
@@ -67,11 +67,11 @@ export const guidePages = {
     },
   },
   'task-routing': {
-    zh: '使用智能任务路由', en: 'Use smart task routing',
-    title: { zh: '智能任务路由：把任务交给合适的执行 Agent', en: 'Smart task routing: delegate work to execution Agents' },
+    zh: 'Agent 智能路由', en: 'Smart Agent routing',
+    title: { zh: 'Agent 智能路由：跨 Harness 委派任务', en: 'Smart Agent routing: delegate across harnesses' },
     description: {
-      zh: '让主 Agent 把目标清楚、可以独立执行的工作委派给 Codex CLI、Claude Code、Qoder CLI、Pi、DeepSeek Harness 或 OpenCode，并可与模型路由组合使用。',
-      en: 'Let your main Agent delegate well-scoped, independent work to Codex CLI, Claude Code, Qoder CLI, Pi, DeepSeek Harness or OpenCode, alone or together with model routing.',
+      zh: '让 Codex 委派给 DeepSeek Harness，或让 Hermes 用 Codex 编码。按图配置执行 Agent、开启任务路由，再查看进度并取回结果。',
+      en: 'Delegate from Codex to DeepSeek Harness, or use Codex for coding from Hermes. Configure an execution Agent, enable task routing and follow the results with illustrated steps.',
     },
   },
   cli: {
