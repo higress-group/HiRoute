@@ -107,9 +107,22 @@ impl Session {
             ))
             .map_err(|_| "DECISION_SERVICE_INVALID")?,
         };
-        if self.hint.as_ref().and_then(|hint| hint.intent.as_ref()) == Some(&intent) {
+        if let Some(pending_intent) = self
+            .hint
+            .as_ref()
+            .and_then(|hint| hint.intent.as_ref())
+            .filter(|pending| pending.schema == intent.schema)
+        {
+            let same_intent = pending_intent == &intent;
             let operation = self.find_pending().await?;
-            return self.decision_removal_result(operation);
+            let result = self.decision_removal_result(operation)?;
+            if same_intent {
+                return Ok(result);
+            }
+            // A different removal can replace the hint only after a confirmed outcome.
+            if self.hint.is_some() {
+                return Err("OPERATION_RESULT_UNVERIFIED".into());
+            }
         }
         let target = DecisionTestRevisionQueryV1 {
             id: change.id.clone(),
