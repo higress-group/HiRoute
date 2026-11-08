@@ -265,16 +265,21 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v3', {
         input: { change, secret: null, expected_configuration_digest: target.configuration_digest },
       });
-      if (value.state === 'rolled_back') return 'rolled_back';
+      if (value.state === 'rolled_back') {
+        await refresh().catch(() => null);
+        return 'rolled_back';
+      }
       if (value.state !== 'succeeded') {
         onChanged?.();
         return 'unconfirmed';
       }
       const remaining = await refresh().catch(() => null);
-      if (remaining) setSelectedId(remaining[0]?.service.id ?? null);
+      if (remaining) {
+        setSelectedId(remaining[0]?.service.id ?? null);
+        setNotice(t('已移除。', 'Removed.'));
+      }
       else setError({ message: t('已移除。请刷新决策模型列表。', 'Removed. Refresh the decision model list.') });
       onChanged?.();
-      setNotice(t('已移除。', 'Removed.'));
       setRemoving(null);
       return 'removed';
     } catch (cause) {
@@ -311,6 +316,6 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
       </section>
     </div>
     <ClassifierProtocolDialog open={protocol} language={language} onClose={() => setProtocol(false)} />
-    {removing && <DecisionRemovalDialog target={removing} current={views.find(view => view.service.id === removing.service.id)} language={language} mutable={mutable && !networkDirty && factsCurrent} busy={busy} plans={plans} drafts={drafts} onConfirm={remove} onClose={() => { if (!busy) setRemoving(null); }} onOpenRoute={onOpenRoute} />}
+    {removing && <DecisionRemovalDialog target={removing} current={views.find(view => view.service.id === removing.service.id)} language={language} mutable={mutable && !networkDirty && factsCurrent} busy={busy} plans={plans} drafts={drafts} onConfirm={remove} onClose={() => { if (!busy) setRemoving(null); }} onTargetChanged={() => void refresh().catch(() => null)} onOpenRoute={onOpenRoute} />}
   </ProductPage>;
 }

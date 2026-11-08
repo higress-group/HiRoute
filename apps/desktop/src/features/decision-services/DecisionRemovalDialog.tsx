@@ -6,9 +6,9 @@ import { planErrorCode } from '../../plan-editor-errors';
 import type { DecisionRemovalOutcome, DecisionRemovalPreview, DecisionRemovalProtection, DecisionServiceView } from './contracts';
 import { recordSharedSource } from './form-state';
 
-export function DecisionRemovalDialog({ target, current, language, mutable, busy, plans, drafts, onConfirm, onClose, onOpenRoute }: {
+export function DecisionRemovalDialog({ target, current, language, mutable, busy, plans, drafts, onConfirm, onClose, onTargetChanged, onOpenRoute }: {
   target: DecisionServiceView; current?: DecisionServiceView; language: 'zh' | 'en'; mutable: boolean; busy: boolean;
-  plans: Plan[]; drafts: Draft[]; onConfirm(target: DecisionServiceView): Promise<DecisionRemovalOutcome>; onClose(): void;
+  plans: Plan[]; drafts: Draft[]; onConfirm(target: DecisionServiceView): Promise<DecisionRemovalOutcome>; onClose(): void; onTargetChanged(): void;
   onOpenRoute?(plan?: Plan, draft?: Draft): void;
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
@@ -44,8 +44,12 @@ export function DecisionRemovalDialog({ target, current, language, mutable, busy
     void invoke<DecisionRemovalPreview>('preview_decision_removal', { input: { id: target.service.id, expected_revision: target.service.revision } }).then(value => {
       if (value.id !== target.service.id || value.revision !== target.service.revision || typeof value.configuration_digest !== 'string' || (value.failure !== null && value.failure !== 'DECISION_IN_USE') || (value.failure === null) !== (value.blockers.length === 0)) throw new Error('DECISION_PREVIEW_INVALID');
       if (!active) return;
-      if (value.configuration_digest !== target.configuration_digest) setTargetChanged(true);
-      else setPreview(value);
+      if (value.configuration_digest !== target.configuration_digest) {
+        setTargetChanged(true);
+        onTargetChanged();
+      } else {
+        setPreview(value);
+      }
     }).catch(() => {
       if (active) { setRetryable(true); setError(t('暂时无法确认引用情况，请重试。未删除任何配置。', 'References could not be checked. Retry; no configuration was deleted.')); }
     }).finally(() => { if (active) setLoading(false); });

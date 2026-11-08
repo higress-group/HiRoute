@@ -100,8 +100,12 @@ impl Session {
     ) -> Result<ApplyResultV1, DesktopFailure> {
         let intent = IntentEvidence {
             schema: "hiroute.desktop-decision-removal-intent/v1".into(),
-            digest: CanonicalDigest::of(&(&change, &configuration_digest))
-                .map_err(|_| "DECISION_SERVICE_INVALID")?,
+            digest: CanonicalDigest::of(&(
+                &change.id,
+                change.expected_revision,
+                &configuration_digest,
+            ))
+            .map_err(|_| "DECISION_SERVICE_INVALID")?,
         };
         if self.hint.as_ref().and_then(|hint| hint.intent.as_ref()) == Some(&intent) {
             let operation = self.find_pending().await?;

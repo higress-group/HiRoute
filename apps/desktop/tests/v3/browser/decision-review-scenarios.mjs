@@ -193,10 +193,11 @@ export function decisionReviewScenarios({ fresh, routing, click, until, all, tex
       await until(() => text().includes('这份配置已发生变化'), 'reused identity invalidates the old confirmation');
       assert(all('[role="dialog"] .btn-danger')[0].disabled && calls('save_decision_service_v3').length === 0, 'The old confirmation can remove the replacement');
       await click('取消');
+      await until(() => text().includes('Replacement at the same revision'), 'refreshed replacement detail');
 
-      store.services[0] = record;
+      const replacementDigest = store.view(record.id).configuration_digest;
       c().handlers.save_decision_service_v3 = () => {
-        c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, configuration_digest,
+        c().handlers.preview_decision_removal = ({ input }) => ({ id: input.id, revision: input.expected_revision, configuration_digest: replacementDigest,
           failure: 'DECISION_IN_USE', blockers: [{ plan_id: 'plan/new-execution-hold', draft_id: null, revision: 2, protection: 'unresolved_hold' }] });
         return { state: 'rolled_back', operation_id: 'operation/rollback', accepted_digest: 'sha256:' + '5'.repeat(64) };
       };
