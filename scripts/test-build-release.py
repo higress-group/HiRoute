@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 import struct
 import subprocess
@@ -692,7 +693,13 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertIn('needs: scope', workflow)
         self.assertIn('steps.plan.outputs.windows_compile', workflow)
         self.assertNotIn('matrix:', workflow)
-        self.assertNotIn('continue-on-error:', workflow)
+        self.assertEqual(workflow.count('continue-on-error:'), 1)
+        cache_setup = workflow.split('      - name: Set up optional compiler cache\n', 1)[1].split('      - ', 1)[0]
+        self.assertIn('id: sccache', cache_setup)
+        self.assertIn('continue-on-error: true', cache_setup)
+        self.assertIn('timeout-minutes: 3', cache_setup)
+        check_environment = workflow.split('  check:\n', 1)[1].split('    steps:\n', 1)[0]
+        self.assertNotIn('RUSTC_WRAPPER:', check_environment)
         self.assertIn('cancel-in-progress: true', workflow)
         self.assertIn('mozilla-actions/sccache-action@', workflow)
         self.assertIn("SCCACHE_GHA_ENABLED: 'true'", workflow)
@@ -731,6 +738,43 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertNotIn('--test windows_headless', workflow)
         self.assertNotIn('--test windows_desktop', workflow)
         self.assertNotIn('windows-headless-ci.ps1', workflow)
+
+    def test_pr_windows_compiler_cache_probe_falls_back_to_direct_compilation(self):
+        workflow = (REPO / '.github/workflows/windows-compile.yml').read_text()
+        probe_step = workflow.split('      - name: Enable available compiler cache\n', 1)[1].split('      - ', 1)[0]
+        self.assertIn('SCCACHE_SETUP_OUTCOME: ${{ steps.sccache.outcome }}', probe_step)
+        probe = '\n'.join(line[10:] for line in probe_step.split('        run: |\n', 1)[1].splitlines())
+        bash = shutil.which('bash')
+        self.assertIsNotNone(bash)
+        scenarios = [
+            ('available', 'success', True, 0, True),
+            ('setup_failed', 'failure', True, 0, False),
+            ('setup_skipped', 'skipped', True, 0, False),
+            ('server_failed', 'success', True, 1, False),
+            ('binary_missing', 'success', False, 0, False),
+        ]
+        for name, outcome, binary_present, probe_exit, enabled in scenarios:
+            with self.subTest(scenario=name), tempfile.TemporaryDirectory() as temporary:
+                tools = Path(temporary)
+                trace = tools / 'probe-trace'
+                environment_file = tools / 'github-env'
+                if binary_present:
+                    sccache = tools / 'sccache'
+                    sccache.write_text('#!/bin/sh\nprintf "%s\\n" "$*" > "$SCCACHE_TRACE"\nexit "$SCCACHE_PROBE_EXIT"\n')
+                    sccache.chmod(0o755)
+                environment = dict(os.environ, PATH=str(tools), GITHUB_ENV=str(environment_file),
+                                   RUSTC_WRAPPER='stale-wrapper', SCCACHE_SETUP_OUTCOME=outcome,
+                                   SCCACHE_TRACE=str(trace), SCCACHE_PROBE_EXIT=str(probe_exit))
+                result = subprocess.run([bash, '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', probe],
+                                        env=environment, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                wrapper = 'sccache' if enabled else ''
+                self.assertEqual(environment_file.read_text(), f'RUSTC_WRAPPER={wrapper}\n')
+                self.assertEqual('::warning::' in result.stdout, not enabled)
+                if binary_present and outcome == 'success':
+                    self.assertEqual(trace.read_text(), '--start-server\n')
+                else:
+                    self.assertFalse(trace.exists())
 
 
 if __name__ == "__main__":

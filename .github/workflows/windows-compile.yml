@@ -50,7 +50,6 @@ jobs:
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: 'true'
       CARGO_INCREMENTAL: '0'
-      RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +58,22 @@ jobs:
       - name: Repository Rust toolchain
         shell: pwsh
         run: rustup show active-toolchain
-      - uses: mozilla-actions/sccache-action@v0.0.11
+      - name: Set up optional compiler cache
+        id: sccache
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: mozilla-actions/sccache-action@v0.0.11
+      - name: Enable available compiler cache
+        shell: bash
+        env:
+          SCCACHE_SETUP_OUTCOME: ${{ steps.sccache.outcome }}
+        run: |
+          if [[ "$SCCACHE_SETUP_OUTCOME" == success ]] && sccache --start-server; then
+            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          else
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+            echo "::warning::Compiler cache is unavailable; compiling without it."
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
