@@ -7,12 +7,14 @@ import sys
 from publication_product import Product, V1
 from publication_process import bootstrap, judgment_fixture, plan_change
 from plan_content_process import read_content, operation_count
+from model_connections_product import NativeUpstream, NATIVE_TOKEN, save_native_source
 
 
 def run(repository):
     for deleted in (False, True):
         product = Product(repository)
         product.collaboration_only = True
+        upstream = NativeUpstream()
         case = 'deleted' if deleted else 'historical'
         service_id = 'decision/removal-' + case
 
@@ -44,6 +46,18 @@ def run(repository):
         try:
             bootstrap(product)
             original = copy.deepcopy(product.editor)
+            native = save_native_source(product, upstream, NATIVE_TOKEN,
+                                        inventory_path=None, cli_input=True)
+            product.source_id = native['source_id']
+            original.update(candidates=[{'binding_id': native['binding_id']}],
+                            custom_alias='decision-removal-' + case)
+            product.editor = original
+            change = plan_change(product, 'create', case + '-initial-plan')
+            preview = product.preview('routing preview', {'change': change})
+            product.apply('routing apply', 'ApplyAgentPlanChange', preview,
+                          {'change': change}, case + '-initial-plan')
+            product.plan_id = preview['plan_head']['reference']['plan_id']
+            product.model_alias = preview['plan_head']['model_alias']
             saved = data(f'decision connections apply --id {service_id} --name Removal --provider compatible '
                          f'--model fixture --endpoint https://decision.example.test/decide '
                          f'--wire-protocol system_one --source {product.source_id}')
@@ -108,20 +122,29 @@ def run(repository):
             assert rows() == before, 'daemon reopen changed retained history'
             assert not data('decision connections list')['services']
             if deleted:
-                product.editor = dict(original, custom_alias=product.model_alias)
+                product.editor = dict(original, custom_alias='replacement-' + case)
                 change = plan_change(product, 'create', case + '-alias-reuse')
-                code, result = product.public_cli('routing preview', {'change': change}, success=False)
-                assert code != 0, result
+                count = operation_count(product)
+                fresh = product.preview('routing preview', {'change': change})
+                assert fresh['plan_head']['model_alias'] == 'replacement-' + case
+                change['editor']['custom_alias'] = product.model_alias
+                code, result = product.cli('routing preview', {'change': change}, success=False)
+                assert code == 2 and result['error']['code'] == 'INVALID_ARGUMENTS', result
+                assert operation_count(product) == count
                 assert read_content(product)[0]['status'] == 'deleted'
             else:
                 current = data('routing show ' + product.plan_id)
                 assert current['desired']['mode'] == original['mode']
+            assert not upstream.requests, 'removal scenario made a provider request'
             print(json.dumps({'scenario': 'decision-removal-' + case + '-history-restart',
                               'state': 'green', 'legacy_error': 'REVISION_CONFLICT',
                               'historical_rows': len(before['plan_versions']),
                               'shared_models_and_keys_retained': True}), flush=True)
         finally:
-            product.close()
+            try:
+                product.close()
+            finally:
+                upstream.close()
 
 
 if __name__ == '__main__':
