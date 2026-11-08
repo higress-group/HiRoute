@@ -123,8 +123,8 @@ impl RoleAllConfig {
     }
 
     fn replay_root(&self) -> Option<PathBuf> {
-        // Storage is already open here. Its accepted path can contain aliases
-        // or parent components that an explicit Replay override must reject.
+        // Derive the default from the resolved storage location. Explicit Replay
+        // overrides still pass through their own path validation.
         let storage_root = self
             .storage_root
             .canonicalize()
@@ -1018,6 +1018,22 @@ mod tests {
         let address = listener.local_addr().unwrap();
         drop(listener);
         address
+    }
+
+    #[test]
+    fn default_replay_root_uses_resolved_storage_location() {
+        let directory = tempfile::tempdir().unwrap();
+        let alias = directory.path().join("alias");
+        std::fs::create_dir(&alias).unwrap();
+        std::fs::create_dir(directory.path().join("storage")).unwrap();
+        let config = RoleAllConfig::new(
+            alias.join("..").join("storage"),
+            directory.path().join("runtime"),
+            "127.0.0.1:0".parse::<SocketAddr>().unwrap(),
+            directory.path().join("gateway-lkg.json"),
+        );
+        let resolved = directory.path().canonicalize().unwrap();
+        assert_eq!(config.replay_root(), Some(resolved.join("replay")));
     }
 
     #[test]

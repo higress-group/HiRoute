@@ -695,9 +695,8 @@ def run(repository, expected_sha=None):
     if expected_sha is not None:
         assert actual_sha == expected_sha, (actual_sha, expected_sha)
     product = Product(repository)
-    # Exercise an accepted state path spelling through the default Replay layout.
+    # Drive the product's default Replay layout rather than the harness override.
     product.env.pop('HIROUTE_REPLAY_ROOT')
-    product.storage = product.project / '..' / 'storage'
     upstream = NativeUpstream(base_host='localhost')
     product.install_codex_fixture(
         MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
