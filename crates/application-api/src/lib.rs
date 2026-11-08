@@ -302,7 +302,7 @@ mod protocol_tests {
     #[test]
     fn p0_registry_and_staging_invariants_remain_closed() {
         let commands = planned_commands();
-        assert_eq!(commands.len(), 123);
+        assert_eq!(commands.len(), 124);
         for operation in [
             "GetComputeKeyBudgets",
             "PreviewComputeKeyBudgets",
@@ -314,6 +314,7 @@ mod protocol_tests {
             "TestDecisionServiceV3",
             "TestComputeConnectionV2",
             "PreviewDecisionContextV1",
+            "PreviewDecisionRemovalV1",
             "ListDecisionServicesV3",
             "ApplyDecisionServiceV3",
         ] {
