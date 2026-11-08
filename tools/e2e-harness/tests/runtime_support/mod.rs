@@ -30,6 +30,7 @@ use publication::{PublicationRouteMode, snapshot};
 #[allow(unused_imports)]
 #[cfg(all(unix, debug_assertions))]
 pub use wire::read_chunked_eos;
+#[allow(unused_imports)]
 pub use wire::{WireResponse, open_request, request, request_with_timeout, wire_header};
 
 pub const MODEL: &str = "runtime-model";
