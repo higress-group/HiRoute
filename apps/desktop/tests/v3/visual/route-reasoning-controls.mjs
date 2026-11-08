@@ -42,6 +42,8 @@ export async function reasoningControlScenarios({ client, run, setup, click, sho
       assert.equal(await evaluate(client, 'document.activeElement===document.querySelector(".route-reasoning-policy input[value=follow]")'), true);
       await key('ArrowRight');
       await waitFor(client, 'document.querySelector(".route-reasoning-policy input[value=fixed]").checked');
+      const fixedHelp = await evaluate(client, 'document.querySelector(".route-reasoning-policy .field-help").textContent');
+      assert.match(fixedHelp, language === 'zh' ? /实际执行使用下方各模型的档位.*请求档位/ : /Execution uses the model levels below.*requested level/);
       assert.equal(await evaluate(client, 'document.querySelector("select.effort-select").value'), 'high');
       assert.equal((await current()).writes, 0);
       await evaluate(client, 'document.querySelector(".route-reasoning-field").scrollIntoView({block:"center"});document.querySelector("select.effort-select").focus();true');

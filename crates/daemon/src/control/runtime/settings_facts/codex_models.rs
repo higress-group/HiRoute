@@ -70,6 +70,7 @@ impl LocalControlAdapter {
             },
             &baseline,
             None,
+            hiroute_integrations::CodexCatalogProjection::UserRequestLevels,
         );
         let Ok(catalog) = catalog else {
             return Ok(CodexRestoreModelFacts {
@@ -407,6 +408,7 @@ impl LocalControlAdapter {
             settings,
             publication,
             baseline,
+            hiroute_integrations::CodexCatalogProjection::UserRequestLevels,
         );
         match derived {
             Ok(plan) => {
