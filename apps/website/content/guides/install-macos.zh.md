@@ -2,6 +2,22 @@
 
 HiRoute 桌面应用当前支持 macOS 15.0 或更高版本。短期提供的是自签名安装包，没有 Apple Developer ID 签名和公证；因此 macOS 会要求你明确确认首次启动。
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>交给 Agent：检查 macOS 安装与 CLI</summary>
+
+复制给能在目标主机运行命令的 Agent。
+
+```text
+请按当前文档检查 HiRoute 的 macOS 安装与终端入口：https://hiroute.ai/zh/docs/install-macos/
+1. 检查 macOS 版本、Apple 芯片/Intel 架构与已安装应用；需要下载时核对正确安装包与 SHA256。
+2. 首次打开所需的系统交互由我完成。应用启动后，检查是否已在“设置 → CLI → 终端入口”安装命令；缺失时告诉我准确入口，完成后继续。
+3. 在新终端环境运行 hiroute --help 和 hiroute quickstart，确认 CLI 能连接桌面应用使用的服务；不要另起一个独立服务实例。
+4. 只做安装与连通检查，不改变模型、Agent 配置，不调用模型。报告已完成项和仍需要我的具体操作。
+```
+
+</details>
+
 ## 下载正确的安装包
 
 在 [下载页](/zh/download/) 按 Mac 的架构选择 DMG：

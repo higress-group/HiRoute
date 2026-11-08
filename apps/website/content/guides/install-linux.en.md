@@ -6,6 +6,25 @@ Check the [download page](/en/download/) for published packages. A complete pack
 
 Linux packages support `x86_64` and ARM64 (`aarch64`), with glibc 2.31 or later. Installation needs no `sudo`; it requires `curl` and Python 3.
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>Ask an Agent: install and check the Linux CLI</summary>
+
+Copy this to an Agent that can run commands on the target host.
+
+```text
+Install HiRoute on the target Linux host and check its first start. Do not connect models or start delegated tasks yet.
+Read the current instructions: https://hiroute.ai/en/docs/install-linux/
+1. Check x86_64/ARM64 architecture, the current user and existing installations. Reuse the existing service instead of starting a second instance.
+2. If missing, use the documented official installer for the current user without sudo and record the installed version. Inspect an existing installation first; do not remove its data.
+3. Query hiroute service status. If a start is needed, explicitly run hiroute service start and check status again. Diagnose a failure rather than repeatedly reinstalling.
+4. Run hiroute --help, hiroute schema list --output json and hiroute quickstart to confirm the CLI reaches that same service.
+5. If I want the browser interface, enable it following this page's Web UI instructions and explain login. Do not expose login credentials publicly.
+6. Report install location, version, service state and the available next model-routing or Agent-routing steps. Identify any interaction I need to complete.
+```
+
+</details>
+
 ## 1. Install
 
 Run this command to install the latest stable release:

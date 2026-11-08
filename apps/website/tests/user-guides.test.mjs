@@ -83,3 +83,17 @@ test('routing introductions use current names and condition the cost benefit on 
     assert.doesNotMatch(linux, /signed model information|signature verified|签名已校验/i);
   }
 });
+
+test('schema commands referenced by user guides are released CLI contracts', async () => {
+  const manifest = JSON.parse(await fs.readFile(path.join(root, '../../contracts/cli/manifest.v1.json'), 'utf8'));
+  const commands = new Map(manifest.commands.map(command => [command.command_id, command]));
+  for (const slug of Object.keys(guidePages)) {
+    for (const language of ['zh', 'en']) {
+      const source = await fs.readFile(path.join(root, 'content/guides', `${slug}.${language}.md`), 'utf8');
+      // Uppercase placeholders are intentionally excluded; concrete IDs must exist.
+      for (const [, id] of source.matchAll(/--command-id\s+([a-z][a-z0-9.-]+)/g)) {
+        assert.equal(commands.get(id)?.lifecycle, 'released', `${slug}.${language} references unavailable schema ${id}`);
+      }
+    }
+  }
+});

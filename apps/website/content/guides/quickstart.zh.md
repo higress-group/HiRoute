@@ -9,6 +9,59 @@ HiRoute 帮你做两个选择：**这一阶段用哪个模型，这项任务交�
 
 截图使用夜晚模式与示例数据。点击图片可查看大图。
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>交给 Agent：完成模型路由接入（CLI）</summary>
+
+复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
+
+```text
+请用 HiRoute CLI 为我完成模型路由接入。
+目标 Agent：[名称；若有多个配置，指定目录或 profile]
+模型来源：[已有订阅 / 已保存 API 接入 / 待添加的供应商和地址]
+常规模型：[名称]；主力模型：[名称]
+路由名称：[日常开发]；用途：[我的典型任务]
+决策方式：[已保存决策连接 / 本地启发式规则]
+验证任务：[选填；留空只配置，不调用模型]
+
+1. 运行 hiroute quickstart、hiroute compute list、hiroute routing list，复用已有资源，解析准确的目标 context 和模型 binding。Hermes 使用明确的 --hermes-root。
+2. 缺少来源时，按 compute connection 的 options、prepare 或受保护授权流程接入；先 preview --apply-file，再 apply --request-file。
+3. 读取 routing options。用 routing preview 创建 smart_saving 路由，分别传 --economy、--primary，以及 --decision local_rules 或 --decision-service ID@REVISION，生成新的 Apply 文件后发布。
+4. 用 agents connect preview --context CONTEXT_ID --plan PLAN_ID 准备模型接入。Codex 优先独立的按需 CLI profile；明确原生模型保留和默认策略。其他 Agent 按当前帮助选择协议或预设，只改模型路由。
+5. 应用后查询 agents connect status --effective。按返回指引加载配置；只有填写了验证任务才执行，并用会话记录核对实际路由、模型和结果。不能把配置保存成功说成已生效。
+
+执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
+```
+
+命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
+
+</details>
+
+<details class="agent-prompt">
+<summary>交给 Agent：完成跨 Agent 委派配置（CLI）</summary>
+
+复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
+
+```text
+请用 HiRoute CLI 配置跨 Agent 委派。
+主 Agent：[Codex / Hermes / 其他；明确配置目录或 profile]
+执行 Agent：[DeepSeek Harness / Codex CLI / 其他]
+执行模型：[名称和来源]；任务路由名称：[名称]
+用途：[适合委派的任务与交付物]
+我现在只配置，暂不启动任务；主 Agent 保持原来的模型接入。
+
+1. 运行 hiroute quickstart、hiroute worker executors、hiroute worker plans，核对主 Agent 的 context、执行器可用性和已有路由；缺模型时先按 compute connection 流程接入。
+2. 新建或调整 routing preview，选好执行模型，设置 --delegation enable，并同时填写 --worker-harness 与 --worker-protocol；填写用途。Codex CLI 的 harness 为 codex_cli，DeepSeek Harness 为 deepseek_harness，协议按当前要求选择。
+3. 预览并发布后，使用 agents connect preview --context CONTEXT_ID --collaboration explicit --apply-file NEW_FILE，仅开启主 Agent 的明确请求委派。此步不传 --plan，不修改主 Agent 模型或管理 Skill；按提示完成本机技能检查再应用。
+4. 确认 worker plans 能发现已发布路由，执行器就绪，任务路由已配置。给我一条引用准确路由名称的委派提示词，并列出尚缺的环境条件。
+
+执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
+```
+
+命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
+
+</details>
+
 ## 先安装并启动 HiRoute
 
 - **macOS**：要求 macOS 15.0 或更高版本。公开安装包为自签名构建，核对 SHA256 后，按 [macOS 安装与首次启动](/zh/docs/install-macos/) 打开应用。

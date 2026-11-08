@@ -6,6 +6,34 @@
 
 模型路由选择“用哪个模型”；想换一种执行工具，例如从 Codex 委派给 DSH，请看 [Agent 智能路由](/zh/docs/task-routing/)。
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>交给 Agent：创建或调整模型路由（CLI）</summary>
+
+复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
+
+```text
+请用 HiRoute CLI 完成以下模型路由配置。
+目标：[新建名称 / 已有计划 ID]；用途：[任务场景]
+类型：[固定模型 / 按难度分流 / 自定义分支 / 免费优先]
+模型及顺序：[常规或固定候选；主力候选；如有分支，逐个写明条件和候选]
+决策方式：[已保存连接 / 启发式规则 / 自定义扩展]
+其他改动：[信任度、窗口、等待时间等；留空保持现有值]
+目标 Agent：[选填；留空只发布路由]；验证任务：[选填；空则不调用模型]
+
+1. 读取 routing list/show/options 和当前 schema show --command-id routing.preview --include-schema。调整已有计划前，将完整 routing show 成功响应保存为私有恢复基线。
+2. 固定模型可用 --mode fixed_model --model；按难度分流用 --mode smart_saving --economy --primary，明确选择 --decision local_rules 或 --decision-service ID@REVISION。调整已有计划使用 --plan，未要求的设置保持原样。
+3. 自定义分支、免费优先、信任度和其他细项使用当前 schema 的完整结构化请求，从 routing options 的编辑器生成；不要猜测简化参数。核对全部分支、模型顺序、决策连接版本和评分标准。
+4. 用 routing preview 生成新的 --apply-file，核对后 routing apply --request-file。重新 routing show 确认发布结果。只有填写目标 Agent 时才单独配置其模型映射，并说明重新加载要求。
+5. 仅运行填写的验证任务；用 sessions 与 observation plan-quality samples 分别核对本轮选择、实际执行和后续评分。未知价格不当成零成本，配置保存不当成已实际使用。
+
+执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
+```
+
+命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
+
+</details>
+
 ## 1. 选择路由类型
 
 在“智能路由”中创建或编辑一份计划，在“怎样使用模型”中选择：

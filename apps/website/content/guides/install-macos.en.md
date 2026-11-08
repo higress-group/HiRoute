@@ -2,6 +2,22 @@
 
 HiRoute Desktop currently supports macOS 15.0 or later. Near-term releases are self-signed: they do not carry an Apple Developer ID signature or notarization, so macOS asks you to explicitly approve the first launch.
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>Ask an Agent: check macOS installation and the CLI</summary>
+
+Copy this to an Agent that can run commands on the target host.
+
+```text
+Check HiRoute's macOS installation and Terminal entry using the current guide: https://hiroute.ai/en/docs/install-macos/
+1. Check macOS version, Apple silicon/Intel architecture and existing installation. If a download is needed, verify the matching package and SHA256.
+2. I will complete any first-open system interaction. Once the app starts, check whether Settings → CLI → Terminal entry is installed. If missing, tell me the exact entry and continue after it is installed.
+3. In a fresh terminal environment, run hiroute --help and hiroute quickstart. Confirm the CLI reaches the Desktop service; do not start a separate service instance.
+4. Check installation and connectivity only. Do not change model or Agent configuration or call a model. Report completed checks and specific remaining actions for me.
+```
+
+</details>
+
 ## Download the right installer
 
 Choose a DMG for your Mac on the [download page](/en/download/):

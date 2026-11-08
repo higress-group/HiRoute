@@ -4,6 +4,31 @@ HiRoute 在本机集中管理订阅、API 和本地模型。“模型”页面�
 
 本文介绍通用模型：怎样接入、怎样把订阅和 API 里的同名模型组合成一条路由，以及怎样限制 API Key 的花费。桌面应用和 Linux Web UI 的操作相同；命令行对应的 `compute` 命令见 [HiRoute CLI](/zh/docs/cli/)。
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>交给 Agent：接入模型来源（CLI）</summary>
+
+复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
+
+```text
+请用 HiRoute CLI 接入以下模型，供后续模型路由或 Agent 委派使用。
+来源：[复用订阅 / 已保存接入 / 新 API 的供应商与地址 / 本地模型地址]
+选择模型：[明确名称；或“本次所有可选模型”]
+本次只保存连接和模型，不调用付费推理，也不修改 Agent 的模型设置。
+
+1. 运行 hiroute compute list 和 hiroute compute connection options，优先复用我选定的已保存来源。
+2. 复用本机配置时，用 compute scan --request-stdin 输入 {"schema":"hiroute.compute-scan-request/v2"}；Hermes 明确 native_target。读取 schema show --command-id compute.connection.prepare --include-schema，用扫描返回的引用和版本准备候选。
+3. 新 API、本地模型或独立订阅，按当前 connection options 和相应 authorize/login/test 的帮助选择流程。需要密钥时给我受保护输入的终端步骤；仅做本次授权范围内的检查。
+4. 从当前候选中解析模型引用。使用 compute connection preview --candidate REF --candidate-revision REV，按选择添加 --model-ref，或明确选择 --all-selectable；加 --apply-file NEW_FILE，再 apply --request-file SAME_FILE。
+5. 重新读取 compute list/show 与 routing options，报告来源 ID、模型 binding ID、接入状态和下一步可创建的路由。区分“连接已保存”和“真实模型调用已验证”。
+
+执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
+```
+
+命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
+
+</details>
+
 ## 添加模型
 
 打开“模型 → 通用模型”，选择“添加模型”：

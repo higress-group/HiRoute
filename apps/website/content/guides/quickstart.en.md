@@ -9,6 +9,59 @@ HiRoute helps you choose **which model handles a stage and which Agent handles a
 
 Screenshots use dark mode and example data. Select an image to open it at full size.
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>Ask an Agent: set up model routing (CLI)</summary>
+
+Copy this into an Agent that can run commands on the target host, replace the bracketed values, then send it.
+
+```text
+Use the HiRoute CLI to set up model routing for me.
+Target Agent: [name; specify a directory or profile if there are several]
+Model source: [subscription / saved API connection / provider and endpoint to add]
+Regular model: [name]; Primary model: [name]
+Route name: [Daily development]; Purpose: [my typical tasks]
+Decision method: [saved decision connection / local heuristic rules]
+Verification task: [optional; blank means configure only, with no model call]
+
+1. Run hiroute quickstart, hiroute compute list and hiroute routing list. Reuse resources and resolve the exact target context and model bindings. Give Hermes an explicit --hermes-root.
+2. If a source is missing, use compute connection options, prepare or protected authorization as appropriate; preview --apply-file, then apply --request-file.
+3. Read routing options. Create a smart_saving route with routing preview, --economy, --primary, and either --decision local_rules or --decision-service ID@REVISION. Generate a fresh Apply file and publish it.
+4. Prepare agents connect preview --context CONTEXT_ID --plan PLAN_ID. For Codex, prefer a separate on-demand CLI profile and explicitly choose native model retention and default policies. Follow installed help for other Agents' protocols or presets. Change only model routing.
+5. After applying, query agents connect status --effective and follow its native loading instructions. Run only the verification task supplied above, then match session evidence to the route, model and result. Saved configuration does not prove effective use.
+
+Execution rules: inspect current configuration, command --help and the required schemas; use returned IDs, revisions and protocols. Preview first, check that the effects match this goal, then Apply. Ask only for missing required choices or changes beyond the goal. Keep private Apply files and submission identifiers; look up an uncertain operation before retrying the same submission. Credentials use protected input in my own terminal, never chat, arguments or ordinary files. Report saved configuration, native settings still to load, and real execution evidence or remaining verification separately.
+```
+
+See [HiRoute CLI](/en/docs/cli/) for command formats, credential setup and recovery.
+
+</details>
+
+<details class="agent-prompt">
+<summary>Ask an Agent: set up cross-Agent delegation (CLI)</summary>
+
+Copy this into an Agent that can run commands on the target host, replace the bracketed values, then send it.
+
+```text
+Use the HiRoute CLI to configure cross-Agent delegation.
+Main Agent: [Codex / Hermes / another; specify directory or profile]
+Execution Agent: [DeepSeek Harness / Codex CLI / another]
+Execution model: [name and source]; Task route name: [name]
+Purpose: [suitable tasks and deliverables]
+Configure only for now; do not start a task. Keep the main Agent's existing model connection.
+
+1. Run hiroute quickstart, hiroute worker executors and hiroute worker plans. Resolve the main Agent's context, executor readiness and existing routes. Connect missing models through compute connection first.
+2. Create or edit a routing preview with the execution model, --delegation enable, and both --worker-harness and --worker-protocol. Supply the purpose. Codex CLI uses codex_cli; DeepSeek Harness uses deepseek_harness. Select the protocol from current requirements.
+3. After previewing and publishing, use agents connect preview --context CONTEXT_ID --collaboration explicit --apply-file NEW_FILE to enable explicit-request delegation only. Omit --plan here; preserve the main Agent's model and management Skill. Complete any required local skill check before applying.
+4. Confirm the route is discoverable in worker plans, the executor is ready and task routing is configured. Give me a delegation prompt using the exact route name, and list any missing prerequisites.
+
+Execution rules: inspect current configuration, command --help and the required schemas; use returned IDs, revisions and protocols. Preview first, check that the effects match this goal, then Apply. Ask only for missing required choices or changes beyond the goal. Keep private Apply files and submission identifiers; look up an uncertain operation before retrying the same submission. Credentials use protected input in my own terminal, never chat, arguments or ordinary files. Report saved configuration, native settings still to load, and real execution evidence or remaining verification separately.
+```
+
+See [HiRoute CLI](/en/docs/cli/) for command formats, credential setup and recovery.
+
+</details>
+
 ## Install and start HiRoute
 
 - **macOS**: requires macOS 15.0 or later. Public packages are self-signed. Verify the SHA256, then follow [Install and open on macOS](/en/docs/install-macos/).

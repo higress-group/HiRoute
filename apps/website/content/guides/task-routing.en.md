@@ -9,6 +9,34 @@ Stay in your usual Agent and hand work to a better-fitting **model × harness**.
 
 The capabilities work independently. Your main Agent can keep its existing model and sign-in, delegating only when needed. The steps below show Desktop; the Linux Web UI works the same way.
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>Ask an Agent: configure and use task delegation (CLI)</summary>
+
+Copy this into an Agent that can run commands on the target host, replace the bracketed values, then send it.
+
+```text
+Use the HiRoute CLI to configure cross-Agent delegation.
+Main Agent: [Codex / Hermes / another; specify directory or profile]
+Execution: [DSH development: DeepSeek Harness with a chosen DeepSeek model / Codex coding: Codex CLI with a chosen model / another]
+Route name or ID: [name or ID]; Purpose: [task scope and deliverables]
+Trigger: [only when explicitly requested / let the Agent decide by default]
+Task: [optional; blank means configure only]; Working directory: [absolute task path]
+
+1. Read quickstart, compute list, worker executors and worker plans. Connect missing execution models. List missing executor dependencies; a saved route is not proof of readiness. Hermes needs its effective configuration directory.
+2. Choose the models in routing preview and set --delegation enable, --purpose, and both --worker-harness and --worker-protocol. Codex CLI uses codex_cli / responses. DSH uses deepseek_harness; choose its protocol from current route capabilities. Preview and publish.
+3. Prepare agents connect preview --context CONTEXT_ID --collaboration explicit (or the explicitly selected delegate_by_default). Omit --plan; preserve the main Agent's model and management Skill. Complete any required agents check ... --scope collaboration, apply and query status.
+4. If Task is blank, finish with the available route and a delegation prompt. If supplied, this request authorizes that task in the specified environment. Explain that Worker uses approve-all and the working directory is not a sandbox, then start worker exec --plan PLAN_ID --cwd ABS_PATH --submission-key UNIQUE_KEY -- TASK. Save task ID and run ID.
+5. Follow worker status/wait, retrieve worker result, and inspect actual changes and tests. For uncertain acceptance, query worker status --submission ORIGINAL_KEY --operation start; do not start a duplicate with a new key. To continue, use the same task ID, its latest run ID and a new continuation submission key.
+6. Summarize configuration, run state, deliverables and test evidence. Failure does not authorize automatically switching Agents; cancellation does not undo external effects already produced.
+
+Execution rules: inspect current configuration, command --help and the required schemas; use returned IDs, revisions and protocols. Preview first, check that the effects match this goal, then Apply. Ask only for missing required choices or changes beyond the goal. Keep private Apply files and submission identifiers; look up an uncertain operation before retrying the same submission. Credentials use protected input in my own terminal, never chat, arguments or ordinary files. Report saved configuration, native settings still to load, and real execution evidence or remaining verification separately.
+```
+
+See [HiRoute CLI](/en/docs/cli/) for command formats, credential setup and recovery.
+
+</details>
+
 ## Before you start
 
 Install the execution Agent on the HiRoute service host and [connect its models](/en/docs/models/). A Fixed model route is enough to start; you can later combine it with [Difficulty routing](/en/docs/model-routing/).

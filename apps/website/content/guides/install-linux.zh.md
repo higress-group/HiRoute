@@ -6,6 +6,25 @@ Linux 版提供 **Web UI 与 CLI**，适合服务器、远程工作站和自动�
 
 Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或更高版本。无需 `sudo`；安装需要 `curl` 与 Python 3。
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>交给 Agent：安装并检查 Linux CLI</summary>
+
+复制给能在目标主机运行命令的 Agent。
+
+```text
+请在目标 Linux 主机安装 HiRoute 并完成首次检查，暂不接入模型或启动委派任务。
+先读取当前安装说明：https://hiroute.ai/zh/docs/install-linux/
+1. 核对 x86_64/ARM64 架构、当前用户与已有安装。复用已有服务，避免启动第二个实例。
+2. 未安装时使用文档中的官方安装入口，按当前用户安装，无需 sudo；记录实际安装版本。已经安装时先检查，不擅自卸载数据。
+3. 使用 hiroute service status 查询状态；需要启动时显式运行 hiroute service start，再检查 status。启动失败先读取诊断信息，不循环重装。
+4. 运行 hiroute --help、hiroute schema list --output json 和 hiroute quickstart，确认 CLI 可以连接同一服务。
+5. 如我需要浏览器界面，按本页 Web UI 步骤开启并给出登录方式；不要把登录凭证发到公共位置。
+6. 报告安装位置、版本、服务状态和下一步可选择的模型路由或 Agent 路由配置。需要我完成的交互单独说明。
+```
+
+</details>
+
 ## 1. 安装
 
 运行以下命令安装最新稳定版：

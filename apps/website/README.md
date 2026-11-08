@@ -36,6 +36,14 @@ see [guide screenshot sources](docs/guide-assets.md) for production component
 provenance, reproduction and caption conventions. Regenerate them with
 `node apps/website/scripts/capture-guide-assets.mjs` from the repository root.
 
+Each user guide keeps its own CLI prompt in a native `details.agent-prompt`
+block, with the first block anchored at `#agent-cli`. Write a complete task in
+one `text` code fence: goal/inputs, current CLI discovery, execution steps and
+completion evidence. `public/scripts/agent-prompts.js` adds localized copy
+feedback; without JavaScript the text remains selectable. Keep prompt commands
+aligned with the released CLI manifest and schema, and keep credentials out of
+the template inputs. Detailed command/recovery rules remain in the CLI guide.
+
 English lives at `/en/` and Chinese at `/zh/`; `src/lib/locale.mjs` builds both
 prefixes. The root and the Chinese URLs published without a prefix before English
 became the default (`LEGACY_CHINESE_PATHS`) are redirect pages: an immediate meta

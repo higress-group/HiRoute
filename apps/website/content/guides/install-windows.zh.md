@@ -2,6 +2,22 @@
 
 HiRoute Windows 桌面版提供按当前用户安装的 NSIS 安装包，只支持原生 Windows x64。安装包自带命令行、后台服务、控制台文件和 WebView2 引导安装器，不要求 Python 或管理员权限。可从[下载页](/zh/download/)选择 Windows 桌面安装包。
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>交给 Agent：检查 Windows 安装与 CLI</summary>
+
+复制给能在目标主机运行命令的 Agent。
+
+```text
+请按当前文档检查 HiRoute 的 Windows 安装和 CLI：https://hiroute.ai/zh/docs/install-windows/
+1. 检查原生 Windows x64、当前用户的安装和正确安装包；需要安装时核对下载摘要。系统要求的安装交互由我完成。
+2. 检查安装包自带的 CLI 和 PATH，在新终端中运行 hiroute --help；入口未发现时按文档处理，不额外安装 Python 或改用 Linux/WSL 的安装命令。
+3. 启动已安装的 HiRoute 桌面应用，再用 hiroute quickstart 检查其服务和配置目标；复用桌面服务，不启动第二个实例。
+4. 只检查安装与连通性，不调整模型、Agent 配置，也不调用模型。报告安装版本、CLI 入口、服务状态和仍需我处理的交互。
+```
+
+</details>
+
 ## 校验下载
 
 从 `hiroute.ai/releases/<版本>/` 下载，在 PowerShell 中计算摘要，与下载页该文件旁的完整 SHA-256 比较。新版本的简短文件名为 `HiRoute-<版本>.exe`：

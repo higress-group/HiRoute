@@ -9,6 +9,34 @@
 
 两条能力可以独立启用。主 Agent 可以保留原来的模型与登录，只在需要时委派任务。下面以桌面应用说明，Linux Web UI 操作相同。
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>交给 Agent：配置并使用任务委派（CLI）</summary>
+
+复制到能在目标主机运行命令的 Agent 输入框，替换方括号中的内容后发送。
+
+```text
+请用 HiRoute CLI 完成跨 Agent 委派。
+主 Agent：[Codex / Hermes / 其他；明确目录或 profile]
+执行方：[DSH 开发：DeepSeek Harness + 指定 DeepSeek 模型 / Codex 编码：Codex CLI + 指定模型 / 其他]
+路由名称或 ID：[名称或 ID]；用途：[任务范围与交付物]
+委派时机：[仅在明确要求时 / 默认由 Agent 判断]
+执行任务：[选填，留空只配置]；工作目录：[任务所在绝对路径]
+
+1. 用 quickstart、compute list、worker executors、worker plans 读取现状。缺少执行模型时先接入；执行器缺依赖时列出缺项，不能把“路由已保存”报告成“可以执行”。Hermes 必须选实际配置目录。
+2. 在 routing preview 中选择模型，设置 --delegation enable、--purpose，并同时传 --worker-harness 和 --worker-protocol。Codex CLI 对应 codex_cli / responses；DSH 对应 deepseek_harness，协议按当前路由能力选择。预览并发布。
+3. 为主 Agent 准备 agents connect preview --context CONTEXT_ID --collaboration explicit（或用户明确选择的 delegate_by_default），不传 --plan，保留它的模型和管理 Skill。完成必要的 agents check ... --scope collaboration，再应用并查询状态。
+4. 若执行任务为空，交付可用路由和调用提示词后结束。若填写了任务，这次指令授权在该环境执行该任务；说明 Worker 使用 approve-all、工作目录不是沙箱，再用 worker exec --plan PLAN_ID --cwd ABS_PATH --submission-key UNIQUE_KEY -- TASK 启动，保存 task ID 和 run ID。
+5. 用 worker status/wait 跟进，并用 worker result 读取结果，核对实际改动与测试。提交结果不确定时，先用 worker status --submission ORIGINAL_KEY --operation start 查询；不要用新键重复启动。需要继续时沿用 task ID，使用最新 run ID 和新的继续操作提交键。
+6. 汇总配置、运行状态、交付物与测试证据。执行失败不等于换一个 Agent 自动重试；取消也不会撤销已经完成的外部操作。
+
+执行约定：先读取当前配置、命令 --help 和所需 schema，使用实际返回的 ID、版本与协议。先 Preview，核对改动符合以上目标后 Apply；只在缺少必要选择或超出目标时问我。保留私有 Apply 文件和提交标识，响应不确定先查询原操作，不重新生成提交。凭证只走受保护输入，由我在自己的终端录入，不进入聊天、命令参数或普通文件。最后分别报告：已保存的配置、需要加载的原生设置、真实执行证据或待验证项。
+```
+
+命令格式、凭证接入和恢复细节见 [HiRoute CLI](/zh/docs/cli/)。
+
+</details>
+
 ## 开始前
 
 在 HiRoute 服务所在主机安装目标执行 Agent，并按 [接入模型](/zh/docs/models/) 准备执行模型。先选一条固定模型路由即可，之后也能组合 [按难度分流](/zh/docs/model-routing/)。

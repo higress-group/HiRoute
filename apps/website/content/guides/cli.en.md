@@ -2,6 +2,28 @@
 
 HiRoute CLI is the official terminal entry to the HiRoute local service. It works alongside macOS / Windows Desktop and the Linux Web UI, or as the complete management interface for terminal and automation workflows. Model sources, smart routes, Agent connections, session observation and Worker tasks reuse the same production paths.
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>Ask an Agent: work through the CLI</summary>
+
+Copy this to an Agent that can run commands on the target host.
+
+```text
+Use the locally installed HiRoute CLI to complete: [configuration, query or execution goal].
+Scope: [read-only / allowed configuration changes / explicitly authorized task and directory]
+
+1. Start with hiroute --help, hiroute quickstart and hiroute schema list --output json. Read each needed command's --help and schema show --command-id COMMAND_ID --include-schema. A command missing from this installation is not available functionality.
+2. Treat model sources, routes and Agent model/management/collaboration facets separately. Reuse resources; do not guess IDs, revisions, directories or protocols from display names.
+3. Preview configuration changes, check their scope, then submit the exact Apply file. Decision connections use decision connections apply --apply-file to prepare the preview and submission, then the same command with --request-file to submit. Do not invent decision connections preview.
+4. Read complete stdout JSON and preserve stderr and the actual exit code separately. Check business and Operation state; acceptance is not completion. Credentials use protected input in my own terminal.
+5. Before editing an existing route, save and validate a complete routing show response as a private recovery baseline. Look up uncertain operations with their original identifiers; do not create a new idempotency key to resubmit them.
+6. Call models or execute tasks only within the scope above. Report completed effects, resource IDs, remaining native loading, actual request/task evidence and anything unverified.
+```
+
+</details>
+
+For a ready-made task, use the prompt embedded in [Quickstart](/en/docs/#agent-cli), [Connect models](/en/docs/models/#agent-cli), [Try a new model](/en/docs/model-trial/#agent-cli), [Model routing](/en/docs/model-routing/#agent-cli) or [Agent routing](/en/docs/task-routing/#agent-cli). Each prompt includes its goal, CLI path and completion checks.
+
 ## Install and inspect the CLI
 
 - macOS Desktop: open Settings → CLI → Terminal entry and select Install.

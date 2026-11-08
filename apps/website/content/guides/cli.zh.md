@@ -4,6 +4,28 @@ HiRoute CLI 让你在终端连接模型、配置路由、接入 Agent、查看�
 
 本文中的命令名、参数和 JSON 字段均保留原文。例如 `worker` 管理委派任务，`schema` 查看命令接受和返回的数据格式。
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>交给 Agent：按本页 CLI 约定执行任务</summary>
+
+复制给能在目标主机运行命令的 Agent。
+
+```text
+请用本机已安装的 HiRoute CLI 完成：[填写配置、查询或任务执行目标]。
+操作范围：[只读检查 / 允许的配置改动 / 明确授权的执行任务与目录]
+
+1. 先运行 hiroute --help、hiroute quickstart 和 hiroute schema list --output json。对实际需要的命令读取 --help 和 schema show --command-id COMMAND_ID --include-schema；当前安装未提供的命令不能当作可用能力。
+2. 模型来源、路由和 Agent 的模型/管理/协作能力分别处理，复用已有资源，不根据名称猜 ID、版本、配置目录或协议。
+3. 配置变更先 Preview，再核对目标并提交对应 Apply 文件。决策连接使用 decision connections apply --apply-file 生成预览和提交文件，再用同一命令的 --request-file 提交；不要发明 decision connections preview。
+4. 完整读取 stdout JSON，单独保留 stderr 和真实退出码；检查业务状态及 Operation，接受请求不等于完成。凭证走受保护输入，在我自己的终端录入。
+5. 需要恢复已有路由时，先保存并验证完整 routing show 响应作为私有基线；响应不确定则先用原查询标识找回操作，不能新建幂等键重复提交。
+6. 只在以上授权范围内调用模型或执行任务。报告完成事实、所用 ID、尚需原生加载的步骤、实际请求或任务证据，以及不能验证的部分。
+```
+
+</details>
+
+具体任务可以直接复制对应文档中的提示词：[快速开始](/zh/docs/#agent-cli)、[接入模型](/zh/docs/models/#agent-cli)、[试用新模型](/zh/docs/model-trial/#agent-cli)、[模型路由](/zh/docs/model-routing/#agent-cli)、[Agent 路由](/zh/docs/task-routing/#agent-cli)。每段都包含目标、CLI 路径与完成检查。
+
 ## 安装与检查
 
 - macOS 桌面应用：打开“设置” → “CLI” → “终端入口”，选择“安装”。

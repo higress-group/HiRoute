@@ -460,6 +460,15 @@ html:lang(en) .section-title>p{flex:0 1 335px}
 .docs-content details{margin:24px 0;padding:16px 20px;border:1px solid var(--line);border-radius:8px}
 .docs-content summary{cursor:pointer;font-size:15px;font-weight:600;line-height:1.7}
 .docs-content details[open]>summary{margin-bottom:16px}
+.docs-content .agent-prompt{background:#f0f2fb}
+.agent-prompt-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:16px}
+.agent-prompt-actions button{font:inherit;font-size:13px;font-weight:600;padding:8px 12px;border:1px solid #c4cce9;border-radius:5px;background:#fff;color:#354bbc;cursor:pointer}
+.agent-prompt-actions button:hover{background:#e8ebf8}
+.agent-prompt-actions button:focus-visible{outline:2px solid var(--highlight);outline-offset:3px}
+.agent-prompt-actions button:disabled{opacity:.6;cursor:wait}
+.agent-prompt-actions [role=status]{font-size:13px;color:var(--muted)}
+.docs-content .agent-prompt pre{margin-top:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.docs-content .agent-prompt pre code{width:auto;min-width:0;white-space:pre-wrap}
 .docs-content pre{max-width:100%;padding:20px;overflow:auto;background:#11141b;color:#dce2f2;border-radius:8px;font:13px/1.8 ui-monospace,monospace}
 .docs-content pre code{display:block;width:max-content;min-width:100%}
 .docs-content code:not(pre code){padding:2px 5px;border-radius:3px;background:#eceef5;font:13px ui-monospace,monospace}

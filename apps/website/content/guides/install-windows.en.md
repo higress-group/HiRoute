@@ -2,6 +2,22 @@
 
 HiRoute Desktop for Windows uses a current-user NSIS installer for native Windows x64. It includes the command line, background service, console files and a WebView2 bootstrapper. Python and administrator privileges are not required. Choose a Windows Desktop installer from the [download page](/en/download/).
 
+
+<details class="agent-prompt" id="agent-cli">
+<summary>Ask an Agent: check Windows installation and the CLI</summary>
+
+Copy this to an Agent that can run commands on the target host.
+
+```text
+Check HiRoute's Windows installation and CLI using the current guide: https://hiroute.ai/en/docs/install-windows/
+1. Check native Windows x64, the current user's installation and the correct package; verify its download checksum if installation is needed. I will complete any system installer interaction.
+2. Check the bundled CLI and PATH, then run hiroute --help in a new terminal. If missing, follow the guide; do not install Python or substitute Linux/WSL installation commands.
+3. Start the installed HiRoute Desktop app and use hiroute quickstart to inspect its service and configuration targets. Reuse the Desktop service rather than starting a second instance.
+4. Check installation and connectivity only; do not alter model or Agent configuration or call a model. Report installed version, CLI entry, service state and any interaction still needed from me.
+```
+
+</details>
+
 ## Verify the download
 
 Download from `hiroute.ai/releases/<version>/` and compare the full SHA-256 shown beside the file. The short filename for new releases is `HiRoute-<version>.exe`:
