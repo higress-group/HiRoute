@@ -79,6 +79,12 @@
     "host_only": false
   },
   {
+    "name": "preview_decision_removal",
+    "args": [{ "name": "input", "type": "hiroute_application_api::DecisionRemovalPreviewRequestV1" }],
+    "result": "Result<hiroute_application_api::DecisionRemovalPreviewV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
     "name": "preview_decision_context",
     "args": [{ "name": "input", "type": "hiroute_application_api::DecisionContextPreviewRequestV1" }],
     "result": "Result<hiroute_domain::ResolvedDecisionContextV1, DesktopFailure>",

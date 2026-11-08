@@ -913,6 +913,15 @@ const COMMANDS: &[StaticCommandDescriptor] = &[
         "Save a versioned decision connection with exact source and credential revisions."
     ),
     command!(
+        "decision.removal.preview",
+        ["decision", "removal", "preview"],
+        "PreviewDecisionRemovalV1",
+        [],
+        Released,
+        Query,
+        "Inspect active decision-model references without changing configuration or history."
+    ),
+    command!(
         "decision.context.preview",
         ["decision", "context", "preview"],
         "PreviewDecisionContextV1",

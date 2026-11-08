@@ -53,6 +53,22 @@ pub async fn decision_services_v3(
         .await
 }
 
+pub async fn preview_decision_removal(
+    window: &ClientContext<'_>,
+    state: &CommandState<'_>,
+    input: hiroute_application_api::DecisionRemovalPreviewRequestV1,
+) -> Result<hiroute_application_api::DecisionRemovalPreviewV1, DesktopFailure> {
+    main_window(window)?;
+    state
+        .0
+        .lock()
+        .await
+        .as_ref()
+        .ok_or("RESIDENT_UNAVAILABLE")?
+        .preview_decision_removal(input)
+        .await
+}
+
 pub async fn preview_decision_context(
     window: &ClientContext<'_>,
     state: &CommandState<'_>,

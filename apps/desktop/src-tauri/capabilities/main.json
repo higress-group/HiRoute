@@ -67,6 +67,7 @@
     "allow-decision-services-v2",
     "allow-decision-services-v3",
     "allow-preview-decision-context",
+    "allow-preview-decision-removal",
     "allow-save-decision-service-v3",
     "allow-save-decision-service-v2",
     "allow-test-decision-service-v2",

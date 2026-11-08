@@ -6,6 +6,12 @@ use hiroute_domain::{
 };
 
 impl Session {
+    pub async fn preview_decision_removal(
+        &self,
+        input: hiroute_application_api::DecisionRemovalPreviewRequestV1,
+    ) -> Result<hiroute_application_api::DecisionRemovalPreviewV1, DesktopFailure> {
+        query(&self.client, "PreviewDecisionRemovalV1", &input).await
+    }
     pub async fn decision_services_v3(&self) -> Result<DecisionServicesV3, DesktopFailure> {
         query(
             &self.client,

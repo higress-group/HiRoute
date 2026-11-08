@@ -38,6 +38,21 @@ fn check_service(
     workspace: &WorkspaceId,
     operation: &DecisionServiceOperationState,
 ) -> PortResult<()> {
+    check_service_revision(connection, workspace, operation)?;
+    let change = &operation.input.change;
+    if change.service.is_none()
+        && super::decision_services::references(connection, workspace, &change.id)?
+    {
+        return Err(error(PortErrorCode::Conflict, "decision_service.in_use"));
+    }
+    Ok(())
+}
+
+fn check_service_revision(
+    connection: &Connection,
+    workspace: &WorkspaceId,
+    operation: &DecisionServiceOperationState,
+) -> PortResult<()> {
     let change = &operation.input.change;
     let actual: u64 = connection.query_row(
         "SELECT COALESCE(MAX(revision),0) FROM decision_services WHERE workspace_id=?1 AND service_id=?2",
@@ -48,11 +63,6 @@ fn check_service(
             PortErrorCode::Conflict,
             "decision.v2.service_revision",
         ));
-    }
-    if change.service.is_none()
-        && super::decision_services::references(connection, workspace, &change.id)?
-    {
-        return Err(error(PortErrorCode::Conflict, "decision_service.in_use"));
     }
     Ok(())
 }
@@ -300,7 +310,7 @@ pub(super) fn finish(connection: &Connection, operation: &OperationV1) -> PortRe
     if done {
         return Ok(());
     }
-    check_service(connection, &operation.workspace_id, &change)?;
+    check_service_revision(connection, &operation.workspace_id, &change)?;
     if !current_matches(
         connection,
         &operation.workspace_id,

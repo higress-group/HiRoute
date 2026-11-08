@@ -261,7 +261,7 @@ export function DecisionServicesPage({ language, active, mutable, tabs, intent, 
     setBusy(true); setError(null);
     try {
       const change: DecisionServiceChange = { id: target.service.id, expected_revision: target.service.revision, service: null,
-        expected_source_revisions: expectedSourceRevisions(target.related_sources.map(source => source.source_id), sources, target) };
+        expected_source_revisions: target.related_sources.flatMap(source => source.revision == null ? [] : [{ source_id: source.source_id, revision: source.revision }]) };
       const value = await invoke<DecisionServiceApplyResult>('save_decision_service_v3', { input: { change, secret: null } });
       if (value.state !== 'succeeded') throw { code: 'DECISION_SERVICE_' + value.state.toUpperCase() };
       const remaining = await refresh(); if (remaining) setSelectedId(remaining[0]?.service.id ?? null); onChanged?.();

@@ -21,6 +21,7 @@ pub mod compiler;
 pub mod compute_management;
 pub mod control;
 mod control_plane;
+mod decision_removal;
 mod decision_v2;
 pub mod delegation;
 pub mod model_catalog;
@@ -177,6 +178,7 @@ impl ApplicationService {
             | "ListDecisionServicesV2"
             | "ListDecisionServicesV3" => self.list_decision_v2(request),
             "PreviewDecisionContextV1" => self.preview_decision_context(request),
+            "PreviewDecisionRemovalV1" => self.preview_decision_removal(request),
             "TestDecisionServiceV2" | "TestDecisionServiceV3" => self.test_decision_v2(request),
             "ListDecisionServices" => {
                 if serde_json::from_value::<hiroute_application_api::ClientEmptyRequestV1>(

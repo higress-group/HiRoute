@@ -7,6 +7,8 @@ use hiroute_domain::{
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
+mod references;
+
 fn invalid() -> PortError {
     PortError::new(PortErrorCode::InvalidData, "decision_service.invalid")
 }
@@ -144,6 +146,15 @@ fn check(
     workspace: &WorkspaceId,
     change: &DecisionServiceChangeV1,
 ) -> PortResult<()> {
+    validate_change(connection, workspace, change, true)
+}
+
+fn validate_change(
+    connection: &Connection,
+    workspace: &WorkspaceId,
+    change: &DecisionServiceChangeV1,
+    check_references: bool,
+) -> PortResult<()> {
     change.validate().map_err(|_| invalid())?;
     let actual = connection
         .query_row(
@@ -177,7 +188,10 @@ fn check(
             return Err(client_version_required());
         }
     }
-    if change.service.is_none() && references(connection, workspace, &change.id)? {
+    if check_references
+        && change.service.is_none()
+        && references(connection, workspace, &change.id)?
+    {
         return Err(PortError::new(
             PortErrorCode::Conflict,
             "decision_service.in_use",
@@ -218,11 +232,20 @@ pub(super) fn references(
     workspace: &WorkspaceId,
     id: &str,
 ) -> PortResult<bool> {
-    connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM decision_plan_references WHERE workspace_id=?1 AND service_id=?2)",
-        params![workspace.as_str(), id],
-        |row| row.get(0),
-    ).map_err(|_| storage())
+    Ok(!references::read(connection, workspace, id)?.is_empty())
+}
+
+pub(super) fn activate(
+    connection: &Connection,
+    workspace: &WorkspaceId,
+    staged: &str,
+) -> PortResult<()> {
+    let staged: Value = serde_json::from_str(staged).map_err(|_| invalid())?;
+    stage(
+        connection,
+        workspace,
+        staged.get("value").ok_or_else(invalid)?,
+    )
 }
 
 pub(super) fn finish(connection: &Connection, operation: &OperationV1) -> PortResult<()> {
@@ -253,7 +276,7 @@ pub(super) fn finish(connection: &Connection, operation: &OperationV1) -> PortRe
     if done {
         return Ok(());
     }
-    check(connection, &operation.workspace_id, &change)?;
+    validate_change(connection, &operation.workspace_id, &change, false)?;
     if let Some(service) = &change.service {
         let encoded = serde_json::to_string(service).map_err(|_| invalid())?;
         connection.execute("INSERT INTO decision_services(workspace_id,service_id,revision,service_json) VALUES(?1,?2,?3,?4)", params![operation.workspace_id.as_str(),service.id,service.revision,encoded]).map_err(|_| storage())?;
@@ -285,6 +308,13 @@ mod tests {
         connection.execute_batch("CREATE TABLE decision_services(workspace_id TEXT,service_id TEXT,revision INTEGER,service_json TEXT); CREATE TABLE plan_versions(workspace_id TEXT,plan_id TEXT,content_revision INTEGER,version_json TEXT); CREATE TABLE plan_drafts(workspace_id TEXT,draft_id TEXT,draft_json TEXT);").unwrap();
         connection
             .execute_batch(crate::migrations::decision_sources_v34::CONTROL)
+            .unwrap();
+        connection.execute_batch("ALTER TABLE plan_versions ADD COLUMN state TEXT DEFAULT 'prepared'; CREATE TABLE plan_heads(workspace_id TEXT,plan_id TEXT,head_json TEXT); CREATE TABLE plan_version_holds(workspace_id TEXT,plan_id TEXT,content_revision INTEGER); CREATE TABLE plan_version_recovery(workspace_id TEXT,ready INTEGER); CREATE TABLE gateway_publications(workspace_id TEXT,state TEXT,publication_bytes BLOB);").unwrap();
+        connection
+            .execute(
+                "INSERT INTO plan_version_recovery VALUES(?1,1)",
+                [WorkspaceId::DEFAULT],
+            )
             .unwrap();
         connection
     }

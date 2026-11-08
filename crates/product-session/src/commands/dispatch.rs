@@ -619,6 +619,17 @@ pub async fn dispatch(
             serde_json::to_value(save_decision_service_v3(window, state, input.input).await?)
                 .map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
+        "preview_decision_removal" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Arguments {
+                input: hiroute_application_api::DecisionRemovalPreviewRequestV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            serde_json::to_value(preview_decision_removal(window, state, input.input).await?)
+                .map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "preview_decision_context" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]

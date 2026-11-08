@@ -82,6 +82,7 @@ mod native_permissions;
 #[path = "../agents/native_reference.rs"]
 mod native_reference;
 pub(crate) mod payloads;
+mod plan_references;
 mod read_stamp;
 mod recovery_reads;
 use native_permissions::{
@@ -1118,6 +1119,7 @@ impl ControlRepositoryPort for ControlStore {
             }
         }
         compute::management::activate(&transaction, &workspace, &staged, operation_id)?;
+        decision_services::activate(&transaction, &workspace, &staged)?;
         decision_services_v2::activate(&transaction, &workspace, &staged, operation_id)?;
         prices::activate(&transaction, &workspace, &staged)?;
         transaction
