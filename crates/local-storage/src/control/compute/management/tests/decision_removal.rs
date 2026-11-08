@@ -104,13 +104,14 @@ fn decision_removal_legacy_operations_preserve_history_tombstones_replay_and_ful
             if deleted {
                 let head = PlanHeadV1 {
                     reference: history.reference.clone(),
-                    head_revision: 1,
+                    head_revision: history.reference.content_revision + 1,
                     model_alias: history.compiled.model_alias().clone(),
                     status: PlanLifecycleV1::Deleted,
                 };
+                head.validate().unwrap();
                 stores.control().connection.borrow().execute(
-                    "INSERT INTO plan_heads(workspace_id,plan_id,head_revision,head_json) VALUES(?1,?2,1,?3)",
-                    rusqlite::params![WorkspaceId::DEFAULT,history.reference.plan_id.as_str(),serde_json::to_string(&head).unwrap()],
+                    "INSERT INTO plan_heads(workspace_id,plan_id,head_revision,head_json) VALUES(?1,?2,?3,?4)",
+                    rusqlite::params![WorkspaceId::DEFAULT,history.reference.plan_id.as_str(),head.head_revision,serde_json::to_string(&head).unwrap()],
                 ).unwrap();
             }
             stores
@@ -157,7 +158,8 @@ fn decision_removal_legacy_operations_preserve_history_tombstones_replay_and_ful
             )
             .unwrap();
             drop(stores);
-            let reopened = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
+            let reopened = LocalStorageSet::open_for_daemon_startup(root.path())
+                .unwrap_or_else(|error| panic!("V{version}, deleted={deleted}: {error:?}"));
             assert_eq!(
                 reopened
                     .control()
@@ -203,6 +205,10 @@ fn decision_removal_terminal_recovery_preserves_the_writer_fence_and_history_for
                 "INSERT INTO plan_versions(workspace_id,plan_id,content_revision,content_digest,version_json,state,owner_operation_id) VALUES(?1,?2,?3,?4,?5,'published',?6)",
                 rusqlite::params![WorkspaceId::DEFAULT,history.reference.plan_id.as_str(),history.reference.content_revision,history.reference.content_digest.as_str(),serde_json::to_string(&history).unwrap(),saved.operation_id.as_str()],
             ).unwrap();
+            stores
+                .control()
+                .reconcile_plan_versions(&WorkspaceId::default(), &[], 1)
+                .unwrap();
             let external = NoExternal;
             let protected = ProtectedInput;
             let runtime = TransactionRuntime::default();
@@ -247,7 +253,8 @@ fn decision_removal_terminal_recovery_preserves_the_writer_fence_and_history_for
                 .unwrap();
             operation_id = accepted.operation().operation_id.clone();
             let fault = crate::control::terminal_fault::inject(OperationState::Succeeded);
-            assert!(coordinator.run_accepted(accepted).is_err());
+            let completion = coordinator.run_accepted(accepted);
+            assert!(completion.is_err(), "V{version}: {completion:?}");
             drop(fault);
             assert_eq!(
                 stores

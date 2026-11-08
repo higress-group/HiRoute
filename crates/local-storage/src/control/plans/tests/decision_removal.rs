@@ -138,13 +138,14 @@ fn blockers(store: &ControlStore) -> PortResult<Vec<PlanReferenceBlockerV1>> {
 fn head(store: &ControlStore, version: &PlanVersionV1, status: PlanLifecycleV1) {
     let head = PlanHeadV1 {
         reference: version.reference.clone(),
-        head_revision: 1,
+        head_revision: version.reference.content_revision,
         model_alias: version.compiled.model_alias().clone(),
         status,
     };
+    head.validate().unwrap();
     store.connection.borrow().execute(
-        "INSERT OR REPLACE INTO plan_heads(workspace_id,plan_id,head_revision,head_json) VALUES(?1,?2,1,?3)",
-        params![WorkspaceId::DEFAULT, head.reference.plan_id.as_str(), encode(&head).unwrap()],
+        "INSERT OR REPLACE INTO plan_heads(workspace_id,plan_id,head_revision,head_json) VALUES(?1,?2,?3,?4)",
+        params![WorkspaceId::DEFAULT, head.reference.plan_id.as_str(), head.head_revision, encode(&head).unwrap()],
     ).unwrap();
 }
 
