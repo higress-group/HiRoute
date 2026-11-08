@@ -73,6 +73,14 @@ jobs:
           cache-dependency-path: apps/website/package-lock.json
       - run: npm ci --ignore-scripts
         working-directory: apps/website
+      - name: Fetch published experiment evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive_url=$(python3 -c 'import json; print(json.load(open("experiments/evidence-manifest.json"))["archive"]["url"])')
+          release_url=${archive_url%/*}
+          gh release download "${release_url##*/}" --repo higress-group/HiRoute \
+            --pattern "${archive_url##*/}" --dir experiments
       - name: Verify published experiment evidence
         run: |
           python3 experiments/reproduce.py fetch
