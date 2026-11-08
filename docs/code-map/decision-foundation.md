@@ -170,6 +170,12 @@ keeps unrelated session growth out of the routine scan. Incoming projection and
 fingerprinting stay outside that lock; no model execution owns it.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+When that boundary cannot be compared, a [delivered Responses function batch](../../crates/gateway/src/agent_turn_history/tool_continuation.rs)
+can prove one tool continuation from a matching request prefix. The
+[accepted attempt completion](../../crates/gateway/src/runtime/driver.rs)
+publishes the batch after the downstream write. The
+[Codex listener regression](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_acp_history.rs)
+covers hosted search, parallel tool results and a later tool step.
 The [retained Hermes Chat listener](../../tools/e2e-harness/tests/p0_gateway_runtime/hermes_long_chat.rs)
 covers independent reasoning/text fields, long-body spill and complete next-input assessment.
 [Opening evidence](../../crates/gateway/src/agent_turn_history/store/opening.rs)

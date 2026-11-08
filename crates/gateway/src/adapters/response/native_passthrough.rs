@@ -14,13 +14,16 @@ use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget}
 use hiroute_gateway_core::runtime::sse::{EofPolicy, SseFramer, SseLimits};
 use serde_json::{Map, Value};
 
+use crate::agent_turn_history::DeliveredToolBatch;
 use crate::server::core_runtime::model_ir::{
     ExactProviderPathV1, ModelError, ModelIrError, ModelUsage, ToolKindV1,
 };
 use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 use crate::server::request_plan::IngressProtocol;
 
-use super::super::continuation::{ToolIdProjection, project_delivered_tool_id};
+use super::super::continuation::{
+    DeliveredBatch, ToolIdProjection, project_delivered_tool_id, tracks_tool_batch,
+};
 use super::super::{ChatToolIdentity, ChatToolProjection, ProtocolAdapterError};
 use super::wire::optional_str;
 
@@ -193,6 +196,7 @@ impl NativeResponseProjector {
                 tools: BTreeMap::new(),
                 retained: Vec::new(),
                 response_items: BTreeMap::new(),
+                tool_batch: None,
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
                 reasoning_summary_changes: 0,
@@ -274,6 +278,14 @@ impl NativeResponseProjector {
         &self.state.usage
     }
 
+    pub(crate) fn take_tool_batch(&mut self) -> Option<DeliveredBatch> {
+        if self.ended && self.state.terminal == Some(NativeTerminalOutcome::Complete) {
+            self.state.tool_batch.take()
+        } else {
+            None
+        }
+    }
+
     pub(crate) fn take_reasoning_summary_changes(&mut self) -> u64 {
         if self.ended && self.state.terminal == Some(NativeTerminalOutcome::Complete) {
             std::mem::take(&mut self.state.reasoning_summary_changes)
@@ -341,6 +353,7 @@ pub(super) struct ProjectionState {
     tools: BTreeMap<u32, NativeToolIdentity>,
     retained: Vec<Reservation>,
     response_items: BTreeMap<u32, ResponseItemEvidence>,
+    tool_batch: Option<DeliveredBatch>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
     reasoning_summary_changes: u64,
@@ -579,6 +592,9 @@ impl ProjectionState {
                 terminal = Some(outcome);
                 if outcome == NativeTerminalOutcome::Complete {
                     replayed_reasoning = replayed_done;
+                    if matches!(self.authority, ToolIdDelivery::Active) && tracks_tool_batch() {
+                        self.tool_batch = self.completed_tool_batch(response);
+                    }
                 }
                 if expected.1 == NativeTerminalOutcome::Failed {
                     failure = Some(loose_error(response.get("error").unwrap_or(&Value::Null)));
@@ -604,6 +620,22 @@ impl ProjectionState {
             replayed_reasoning,
             ..ProjectionMetadata::opaque()
         })
+    }
+
+    fn completed_tool_batch(&self, response: &Map<String, Value>) -> Option<DeliveredBatch> {
+        let batch = DeliveredToolBatch::from_completed_output(
+            response.get("output")?.as_array()?,
+            |index| {
+                self.response_items
+                    .get(&(index as u32))
+                    .is_some_and(|item| item.done.is_some())
+            },
+        )?;
+        let charge = self
+            .budget
+            .reserve(MemoryRole::SemanticState, batch.retained_bytes())
+            .ok()?;
+        Some((batch, charge))
     }
 
     fn project_messages_sse(

@@ -187,6 +187,10 @@ fn streamed_snapshots(
             "function_call" => {
                 start["arguments"] = json!("");
             }
+            "web_search_call" => {
+                // The provisional action does not yet carry its final URL.
+                start["action"] = json!({"type":"open_page"});
+            }
             other => panic!("unexpected fixture item {other}"),
         }
         events.push(json!({"type":"response.output_item.added","output_index":index,"item":start}));

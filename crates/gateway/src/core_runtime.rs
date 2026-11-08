@@ -46,7 +46,7 @@ use http::{HeaderMap, HeaderValue, Method, StatusCode};
 
 use crate::agent_turn_history::{
     AcceptedExecution, AgentTurnBegin, AgentTurnHistoryError, AgentTurnHistoryStore,
-    AgentTurnStatus, AgentTurnTicket, PlanSnapshot,
+    AgentTurnStatus, AgentTurnTicket, PlanSnapshot, RequestCompletion,
 };
 use crate::content_ref::{
     ContentRef, compact_ingress_document_with_markers, externalize_model_request,
@@ -1349,7 +1349,8 @@ impl ProductionGatewayRuntime {
             let frozen_candidates: Arc<[DecisionCandidateAuthority]> = frozen_candidates.into();
             let route_binding = frozen_candidates[0].binding;
             let active_continuation =
-                adapters::ActiveResponseDelivery::new(protocol, budget.clone());
+                adapters::ActiveResponseDelivery::new(protocol, budget.clone())
+                    .track_tool_batch(agent_turn_guard.is_some());
             request_observation.bind_tool_id_projection(active_continuation.tool_id_projection());
             let response_delivery = active_continuation.clone();
             let admission = BoundRequestAdmission {
@@ -1480,6 +1481,12 @@ impl ProductionGatewayRuntime {
                     (true, false) => AgentTurnStatus::Interrupted,
                     (false, _) => AgentTurnStatus::Failed,
                 };
+                let tool_batch = response_delivery.take_tool_batch();
+                let terminal = matches!(
+                    status,
+                    AgentTurnStatus::Interrupted | AgentTurnStatus::Failed
+                ) || (tool_batch.is_none()
+                    && response_delivery.accepted_count() == 0);
                 if guard
                     .finish_deferred_decision(planner_input.classification_decision.as_ref())
                     .is_ok()
@@ -1491,10 +1498,10 @@ impl ProductionGatewayRuntime {
                         // Delivered tools keep a successful stage open for the
                         // client's continuation. They cannot keep a cancelled
                         // or failed request alive indefinitely.
-                        matches!(
-                            status,
-                            AgentTurnStatus::Interrupted | AgentTurnStatus::Failed
-                        ) || response_delivery.accepted_count() == 0,
+                        RequestCompletion {
+                            terminal,
+                            tool_batch: tool_batch.map(|(batch, _charge)| batch),
+                        },
                         Instant::now(),
                     )
                 {

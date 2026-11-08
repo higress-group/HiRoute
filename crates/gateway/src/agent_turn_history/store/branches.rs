@@ -1,6 +1,8 @@
 //! Bounded branch selection. A session is a namespace, never a serial execution slot.
 use super::*;
+use crate::agent_turn_history::tool_continuation::ToolResultSuffix;
 use crate::context_hold::HistoryContinuity;
+use crate::server::request_plan::IngressProtocol;
 
 pub(super) const MAX_HEADS: usize = 32;
 const MAX_TERMINAL_RECORDS: usize = 128;
@@ -41,6 +43,54 @@ pub(super) struct BranchAdmission {
     completed: Option<Box<CompletedAgentTurn>>,
 }
 
+fn unique_tool_predecessor<'a>(
+    inner: &'a StoreInner,
+    scope: &'a AgentTurnHistoryKey,
+    analyzed: &super::super::projection::AnalyzedRequest,
+    inputs: &TurnDecisionInputs,
+) -> Option<&'a AgentTurnHistoryKey> {
+    if analyzed.tool_suffixes.is_empty() {
+        return None;
+    }
+    let mut matches = inner.scope_entries(scope).filter(|(_, entry)| {
+        let position = entry.checkpoint.message_count;
+        let Some(batch) = &entry.tool_batch else {
+            return false;
+        };
+        // A comparable but conflicting full response is stronger evidence
+        // than a tool-only match. Preserve the original rejection.
+        if entry.response_boundary.is_some()
+            && analyzed
+                .boundaries
+                .iter()
+                .any(|(start, _)| *start == position)
+        {
+            return false;
+        }
+        !super::opening::has_appended_input(&entry.checkpoint, analyzed)
+            && super::opening::request_prefix(&entry.checkpoint, analyzed)
+                == super::opening::RequestPrefix::Match
+            && inputs
+                .native_turn
+                .zip(entry.active.native_turn)
+                .is_none_or(|(a, b)| a == b)
+            && (analyzed.branch_cursor == (None, None)
+                || entry.branch_cursor == (None, None)
+                || analyzed.branch_cursor == entry.branch_cursor)
+            && analyzed
+                .tool_suffixes
+                .iter()
+                .any(|(start, suffix)| *start == position && batch.matches(suffix))
+    });
+    let (key, entry) = matches.next()?;
+    (matches.next().is_none()
+        && entry.pending_request.is_none()
+        && !entry.active.finalized
+        && entry.active.decision.is_some()
+        && (entry.active.source_unverified || !analyzed.user_origin_unverified))
+        .then_some(key)
+}
+
 impl AgentTurnHistoryStore {
     pub(crate) fn prepare_scoped_request(
         &self,
@@ -48,15 +98,19 @@ impl AgentTurnHistoryStore {
         request: &ModelRequestIRV1,
         replay: &ReplayStore,
     ) -> Result<super::super::projection::AnalyzedRequest, AgentTurnHistoryError> {
-        let mut positions = {
+        let heads = {
             let inner = self.inner.lock();
             inner
                 .scope_entries(scope)
                 .map(|(_, e)| e)
                 .take(MAX_HEADS)
-                .map(|e| e.checkpoint.message_count)
+                .map(|e| (e.checkpoint.message_count, e.tool_batch.is_some()))
                 .collect::<Vec<_>>()
         };
+        let mut positions = heads
+            .iter()
+            .map(|(position, _)| *position)
+            .collect::<Vec<_>>();
         positions.sort_unstable();
         positions.dedup();
         let mut analyzed = analyze_request(request, replay)?;
@@ -86,6 +140,20 @@ impl AgentTurnHistoryStore {
             Some(replay),
             &positions,
         );
+        if request.ingress_protocol == IngressProtocol::Responses
+            && heads.iter().any(|(_, has_batch)| *has_batch)
+            && let Some(layout) = request.native_history_layout()
+        {
+            let mut tool_budget = crate::context_hold::fingerprint::FingerprintBudget::default();
+            analyzed.tool_suffixes = positions
+                .into_iter()
+                .filter(|position| heads.contains(&(*position, true)))
+                .filter_map(|position| {
+                    ToolResultSuffix::measure(request, layout, position, replay, &mut tool_budget)
+                        .map(|suffix| (position, suffix))
+                })
+                .collect();
+        }
         Ok(analyzed)
     }
 
@@ -191,13 +259,23 @@ impl AgentTurnHistoryStore {
         let selected = candidates.first();
         let exact = selected.is_some_and(|c| c.1);
         let retry = !exact && selected.is_some_and(|c| retry_key == Some(&c.0));
+        // The exact ingress can already belong to another execution, even
+        // when its pending tool batch has been consumed. Do not reassign a
+        // repeated submission to a sibling's older checkpoint.
+        let tool_key = (!exact && !retry && !candidates.iter().any(|c| retry_matches(&c.0)))
+            .then(|| unique_tool_predecessor(inner, scope, analyzed, &inputs))
+            .flatten();
+        let tool_continuation = tool_key.is_some();
+        let selected = tool_key
+            .and_then(|key| candidates.iter().find(|candidate| &candidate.0 == key))
+            .or(selected);
         let ambiguous = selected.is_some_and(|first| {
             first.1
                 && candidates.iter().skip(1).any(|c| {
                     c.1 && c.2 == first.2 && (first.7 || c.7 || c.3 == first.3 && c.4 == first.4)
                 })
         });
-        let projected = selected.is_some_and(|c| c.7) && !ambiguous;
+        let projected = tool_continuation || selected.is_some_and(|c| c.7) && !ambiguous;
         let selected_entry = selected.and_then(|c| inner.entries.get(&c.0));
         // Old internal callers without measured anchors retain their explicit
         // continuity contract. Production always supplies measured evidence.
@@ -207,7 +285,7 @@ impl AgentTurnHistoryStore {
         let reusable = selected_entry.is_some_and(|entry| {
             entry.pending_request.is_none()
                 && (entry.active.source_unverified || !analyzed.user_origin_unverified)
-        }) && (exact && !ambiguous || retry || legacy_exact);
+        }) && (exact && !ambiguous || retry || legacy_exact || tool_continuation);
         let opening_cause = (analyzed.measured && !reusable).then(|| {
             super::opening::fork_opening_cause(
                 inner.scope_entries(scope).map(|(_, entry)| entry),
@@ -217,7 +295,9 @@ impl AgentTurnHistoryStore {
         if let Some(entry) = selected_entry
             && analyzed.measured
         {
-            inputs.history_continuity = if retry {
+            inputs.history_continuity = if tool_continuation {
+                HistoryContinuity::Continuing
+            } else if retry {
                 HistoryContinuity::NativeSameTurn
             } else if exact && !ambiguous {
                 if inputs.native_turn.is_some()

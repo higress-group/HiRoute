@@ -9,16 +9,18 @@ use hiroute_gateway_core::core::execution_plan::{
 };
 use hiroute_gateway_core::core::filter::LocalReply;
 use hiroute_gateway_core::runtime::attempt::{
-    AttemptTimeoutKind, PrecommitEvent, PreparedAttemptHttpRequest, PublishedDisposition,
+    AttemptTimeoutKind, Disposition, PrecommitEvent, PreparedAttemptHttpRequest,
+    PublishedDisposition,
 };
 use hiroute_gateway_core::runtime::body::{
     ChargedBodyQueue, ChargedBytes, Reservation, StreamBudget,
 };
 use hiroute_gateway_core::runtime::driver::{
-    AcceptedBodyFrame, AttemptFailureClass as CoreAttemptFailureClass, AttemptFailureFacts,
-    AttemptMaterializationContext, AttemptMaterializationFailure, DecisionCandidateAuthority,
-    LogicalRequestBodyFrame, LogicalRequestContext, NormalizedAttemptLocalReply, ObservationLabel,
-    PinnedConfigContext, PrecommitClassification, ProviderAcceptedEvent, ProviderAttemptCompletion,
+    AcceptedBodyFrame, AttemptDownstreamOutcome, AttemptFailureClass as CoreAttemptFailureClass,
+    AttemptFailureFacts, AttemptMaterializationContext, AttemptMaterializationFailure,
+    AttemptStreamOutcome, DecisionCandidateAuthority, LogicalRequestBodyFrame,
+    LogicalRequestContext, NormalizedAttemptLocalReply, ObservationLabel, PinnedConfigContext,
+    PrecommitClassification, ProviderAcceptedEvent, ProviderAttemptCompletion,
     ProviderClassificationFacts, ProviderRuntimePort, UpstreamSideEffectSnapshot,
 };
 use hiroute_gateway_core::transport::{GatewayRequestHead, GatewayResponseHead};
@@ -425,10 +427,21 @@ impl ProviderRuntimePort for ProductionProvider {
     fn finalize_attempt_facts(
         &self,
         state: &mut Self::AttemptState,
-        readiness: Option<&mut Self::Readiness>,
+        mut readiness: Option<&mut Self::Readiness>,
         published_facts: Option<&ProviderClassificationFacts>,
         completion: &ProviderAttemptCompletion,
     ) -> Result<ProviderClassificationFacts, Arc<str>> {
+        // This callback runs after the accepted attempt's final write, unlike
+        // projection and precommit, which may still be cancelled or relayed.
+        if completion.disposition == Disposition::Accept
+            && completion.stream == AttemptStreamOutcome::CompletedEos
+            && completion.downstream == AttemptDownstreamOutcome::Completed
+            && let Some(batch) = readiness
+                .as_deref_mut()
+                .and_then(|ready| ready.projector.as_mut()?.take_tool_batch())
+        {
+            adapters::note_delivered_tool_batch(batch);
+        }
         Ok(response::finalize_attempt_facts(
             state,
             readiness.as_deref(),

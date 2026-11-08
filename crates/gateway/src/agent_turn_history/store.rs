@@ -14,8 +14,8 @@ use super::projection::project_user;
 use super::{
     AcceptedExecution, AgentTurnBegin, AgentTurnHistoryError, AgentTurnHistoryKey,
     AgentTurnHistorySnapshot, AgentTurnStatus, AgentTurnTicket, AssessmentTarget,
-    CompletedAgentTurn, ExecutionAttribution, PlanSnapshot, TurnDecisionInputs, VisibleAgentTurn,
-    VisibleContentPart,
+    CompletedAgentTurn, DeliveredToolBatch, ExecutionAttribution, PlanSnapshot, TurnDecisionInputs,
+    VisibleAgentTurn, VisibleContentPart,
 };
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::ModelRequestIRV1;
@@ -75,6 +75,7 @@ struct SessionEntry {
     capture_gap_epoch: u64,
     checkpoint: TranscriptCheckpoint,
     response_boundary: Option<super::boundary::BoundaryEvidence>,
+    tool_batch: Option<DeliveredToolBatch>,
     branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
@@ -130,6 +131,21 @@ struct CaptureAdmission {
     scope: AgentTurnHistoryKey,
     now: Instant,
     gap_epoch: u64,
+}
+
+pub(crate) struct RequestCompletion {
+    pub(crate) terminal: bool,
+    pub(crate) tool_batch: Option<DeliveredToolBatch>,
+}
+
+#[cfg(test)]
+impl From<bool> for RequestCompletion {
+    fn from(terminal: bool) -> Self {
+        Self {
+            terminal,
+            tool_batch: None,
+        }
+    }
 }
 
 struct ActiveTurn {
@@ -486,6 +502,7 @@ impl AgentTurnHistoryStore {
                 capture_gap_epoch: gap_epoch,
                 checkpoint,
                 response_boundary: None,
+                tool_batch: None,
                 branch_cursor: analyzed.branch_cursor,
                 active,
                 closed: VecDeque::new(),
@@ -673,6 +690,7 @@ impl AgentTurnHistoryStore {
                 entry.active.output.next_step();
                 entry.active.boundary = Default::default();
                 entry.response_boundary = None;
+                entry.tool_batch = None;
                 entry.active.last_request_status = AgentTurnStatus::Unknown;
                 entry.active.request_output_accepted = false;
                 entry.checkpoint = TranscriptCheckpoint {
@@ -811,6 +829,7 @@ impl AgentTurnHistoryStore {
             }
             entry.branch_cursor = analyzed.branch_cursor;
             entry.response_boundary = None;
+            entry.tool_batch = None;
             entry.active = ActiveTurn {
                 completed_requests: 0,
                 request_ids: Vec::new(),
@@ -1040,9 +1059,13 @@ impl AgentTurnHistoryStore {
         request_id: String,
         status: AgentTurnStatus,
         executions: Vec<AcceptedExecution>,
-        terminal: bool,
+        completion: impl Into<RequestCompletion>,
         now: Instant,
     ) -> Result<Option<CompletedAgentTurn>, AgentTurnHistoryError> {
+        let RequestCompletion {
+            terminal,
+            mut tool_batch,
+        } = completion.into();
         let mut inner = self.inner.lock();
         let charge = executions
             .iter()
@@ -1065,6 +1088,18 @@ impl AgentTurnHistoryStore {
             entry.pending_request = None;
             inner.note_capture_gap(&ticket.key);
             return Err(AgentTurnHistoryError::Resource);
+        }
+        if terminal
+            || status != AgentTurnStatus::Completed
+            || tool_batch.as_ref().is_some_and(|batch| {
+                inner
+                    .accounted_bytes
+                    .saturating_add(charge)
+                    .saturating_add(batch.retained_bytes())
+                    > self.max_memory_bytes
+            })
+        {
+            tool_batch = None;
         }
         let next_segment_id = terminal
             .then(|| self.allocate_id(&mut inner, "segment"))
@@ -1098,6 +1133,7 @@ impl AgentTurnHistoryStore {
             entry.response_boundary = (!entry.active.capture_partial)
                 .then(|| entry.active.boundary.evidence())
                 .flatten();
+            entry.tool_batch = tool_batch;
             let completed = if let Some(next_segment_id) = next_segment_id {
                 Some(close_active(
                     entry,

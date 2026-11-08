@@ -7,6 +7,189 @@ use serde_json::{Value, json};
 const TOOL: &[u8] = br#"{"id":"tool","model":"runtime-native","status":"completed","output":[{"type":"reasoning","id":"rs","summary":[{"type":"summary_text","text":"Check the synthetic command."}],"content":null,"encrypted_content":null,"status":"completed"},{"type":"function_call","id":"fc","call_id":"call","name":"exec_command","arguments":"{\"cmd\":\"echo SYNTHETIC\"}","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":1}}"#;
 
 #[test]
+fn codex_hosted_search_and_parallel_tool_results_preserve_the_executing_stage() {
+    use super::native_encrypted_continuation::{message, streamed};
+
+    let regular = NativeProvider::start(vec![
+        streamed("initial", vec![shell_call("first")]),
+        streamed("search", search_and_calls()),
+        streamed("after-search", vec![shell_call("last")]),
+        streamed(
+            "final",
+            vec![message("answer", "final_answer", "Complete.")],
+        ),
+    ]);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&regular, &primary, &classifier],
+        1,
+    );
+    let turn = "hosted-search-turn";
+    let mut input = vec![json!({"role":"user","content":"Inspect the fixture."})];
+    for expected_calls in [1, 2, 1] {
+        let output = send(&fixture, turn, &input, true);
+        let results = tool_results(&output);
+        assert_eq!(results.len(), expected_calls);
+        input.extend(output);
+        input.extend(results);
+    }
+    let output = send(&fixture, turn, &input, true);
+    assert_eq!(output[0]["content"][0]["text"], "Complete.");
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (4, 0, 1)
+    );
+
+    let facts = wait_execution_facts(&fixture, 4);
+    let timeline = super::observed_history::timeline(&facts);
+    assert_eq!(timeline.turns.len(), 1);
+    assert_eq!(timeline.turns[0].requests.len(), 4);
+    assert_eq!(timeline.turns[0].status, "completed");
+    assert!(
+        timeline.turns[0].evidence_partial,
+        "the optional recording gap remains visible"
+    );
+    let decisions = facts
+        .iter()
+        .filter(|event| event["fact"]["kind"] == "route_decision")
+        .map(|event| {
+            event["fact"]["complexity"]["decision_source"]
+                .as_str()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        decisions,
+        ["external_classifier", "inherited", "inherited", "inherited"]
+    );
+}
+
+#[test]
+fn codex_hosted_search_does_not_inherit_on_conflicting_or_incomplete_tool_input() {
+    use super::native_encrypted_continuation::{message, streamed};
+
+    for case in [
+        "arguments",
+        "wrong_id",
+        "missing_result",
+        "duplicate_result",
+        "new_user",
+        "rewritten_prefix",
+    ] {
+        let regular = NativeProvider::start(vec![
+            streamed("search", search_and_calls()),
+            streamed(
+                "final",
+                vec![message("answer", "final_answer", "New branch.")],
+            ),
+        ]);
+        let primary = NativeProvider::start(vec![]);
+        let classifier =
+            NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_SIMPLE)]);
+        let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+            &[&regular, &primary, &classifier],
+            1,
+        );
+        let mut input = vec![json!({"role":"user","content":"Inspect the fixture."})];
+        let mut output = send(&fixture, "same-native-id", &input, true);
+        let mut results = tool_results(&output);
+        match case {
+            "arguments" => output[2]["arguments"] = json!("{\"cmd\":\"echo different\"}"),
+            "wrong_id" => results[1]["call_id"] = json!("not-delivered"),
+            "missing_result" => {
+                results.pop();
+            }
+            "duplicate_result" => results.push(results[0].clone()),
+            "new_user" | "rewritten_prefix" => {}
+            _ => unreachable!(),
+        }
+        if case == "rewritten_prefix" {
+            input[0]["content"] = json!("Inspect a different fixture.");
+        }
+        input.extend(output);
+        input.extend(results);
+        if case == "new_user" {
+            input.push(json!({"role":"user","content":"Start another task."}));
+        }
+        send(&fixture, "same-native-id", &input, true);
+        let facts = wait_execution_facts(&fixture, 2);
+        assert_eq!(classifier.calls(), 2, "{case}");
+        assert_eq!(
+            super::observed_history::timeline(&facts).turns.len(),
+            2,
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn codex_repeated_tool_input_does_not_move_to_a_sibling_batch() {
+    use super::native_encrypted_continuation::{message, streamed};
+
+    let hosted = search_and_calls().remove(0);
+    let call = shell_call("shared");
+    let regular = NativeProvider::start(vec![
+        streamed("exact", vec![call.clone()]),
+        streamed("sibling", vec![hosted, call]),
+        streamed(
+            "finish",
+            vec![message("answer", "final_answer", "Complete.")],
+        ),
+        streamed(
+            "duplicate",
+            vec![message("repeat", "final_answer", "Repeated.")],
+        ),
+    ]);
+    let primary = NativeProvider::start(vec![]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE); 3]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&regular, &primary, &classifier],
+        1,
+    );
+    let turn = "shared-native-turn";
+    let mut input = vec![json!({"role":"user","content":"Inspect the fixture."})];
+    let exact = send(&fixture, turn, &input, true);
+    assert_eq!(tool_results(&send(&fixture, turn, &input, true)).len(), 1);
+    let results = tool_results(&exact);
+    input.extend(exact);
+    input.extend(results);
+    send(&fixture, turn, &input, true);
+    assert_eq!(
+        classifier.calls(),
+        2,
+        "the first continuation has an exact predecessor"
+    );
+    send(&fixture, turn, &input, true);
+    assert_eq!(
+        classifier.calls(),
+        3,
+        "a duplicate must not claim the sibling's batch"
+    );
+}
+
+fn shell_call(call: &str) -> Value {
+    json!({"type":"function_call","id":format!("fc-{call}"),"call_id":call,
+        "name":"exec_command","status":"completed","arguments":"{\"cmd\":\"printf fixture\"}"})
+}
+
+fn search_and_calls() -> Vec<Value> {
+    vec![
+        json!({"type":"web_search_call","id":"ws-open","status":"completed",
+            "action":{"type":"open_page","url":"https://example.com/"}}),
+        json!({"type":"function_call","id":"fc-list","call_id":"list","namespace":"mcp",
+            "name":"list_artifacts","status":"completed","arguments":"{}"}),
+        shell_call("parallel"),
+    ]
+}
+
+fn tool_results(output: &[Value]) -> Vec<Value> {
+    output.iter().filter(|item| item["type"] == "function_call")
+        .map(|item| json!({"type":"function_call_output","call_id":item["call_id"],"output":"fixture"}))
+        .collect()
+}
+
+#[test]
 fn codex_commentary_between_reasoning_and_tool_keeps_one_stage() {
     let mut output: Vec<Value> = serde_json::from_slice::<Value>(TOOL).unwrap()["output"]
         .as_array()

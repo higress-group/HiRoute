@@ -18,7 +18,7 @@ pub(crate) use tool_projection::{ChatToolIdentity, ChatToolProjection};
 
 pub(crate) use continuation::{
     AcceptedResponseDeliveryScanner, ActiveResponseDelivery, ToolIdProjection,
-    with_active_response_delivery,
+    note_delivered_tool_batch, with_active_response_delivery,
 };
 pub use ingress::decode_ingress_request;
 #[cfg(test)]

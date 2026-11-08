@@ -1016,8 +1016,21 @@ budgets lose the edge. The proof reuses measured tool digests without additional
 reads or larger budgets; it does not combine encoding changes with reasoning omission.
 It SHALL NOT grant exact ancestry, human origin or provider affinity. Multiple compatible
 predecessors remain ambiguous under the existing pending-request and branch-ranking rules.
-Original forwarding, capture and strict request fingerprints remain unchanged. Unavailable
-or ambiguous evidence starts an independent branch. A completed actual same-scope
+When the full response comparison is unavailable, a native Responses stream MAY
+prove a tool continuation separately. Within the same authorized scope and Plan
+revision, the request prefix must match, no user input may be appended, and the
+new results must each occur once and cover the entire outstanding function batch
+of a unique predecessor. Replayed calls must match the delivered call ID, tool
+name, namespace and canonical arguments. Each call must have a reconciled
+`response.output_item.done` and the Gateway must have successfully delivered the
+complete response. Hosted search is not a client callback. The proof is bounded
+and request-local until completion, then held with the predecessor checkpoint
+and consumed on continuation admission. It inherits the stage and frozen
+decision without granting provider affinity or repairing capture completeness.
+
+Original forwarding, capture and strict request fingerprints remain unchanged.
+A comparable conflicting response, or unavailable or ambiguous evidence without
+a valid tool continuation, starts an independent branch. A completed actual same-scope
 stage MAY remain a contextual assessment candidate with association uncertainty
 explicitly disclosed. It SHALL NOT become a claimed unique predecessor or grant
 provider-prefix affinity. Uncertain executions cannot overwrite a verified head.
