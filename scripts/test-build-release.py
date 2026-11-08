@@ -692,10 +692,20 @@ class HostedReleasePolicyTests(unittest.TestCase):
         self.assertIn('needs: scope', workflow)
         self.assertIn('steps.plan.outputs.windows_compile', workflow)
         self.assertNotIn('matrix:', workflow)
-        self.assertNotIn('continue-on-error:', workflow)
+        # Only provisioning the optional compiler cache may fail without
+        # failing the job. The native compile and test steps remain mandatory.
+        steps = workflow.split('\n      - ')
+        cache_setup = next(step for step in steps if step.startswith('name: Set up optional compiler cache\n'))
+        self.assertEqual(workflow.count('continue-on-error:'), 1)
+        self.assertIn('continue-on-error: true', cache_setup)
+        self.assertIn('mozilla-actions/sccache-action@', cache_setup)
+        self.assertIn("disable_annotations: 'true'", cache_setup)
+        cache_enable = next(step for step in steps if step.startswith('name: Enable compiler cache\n'))
+        self.assertIn("if: steps.compiler-cache.outcome == 'success'", cache_enable)
+        self.assertIn("'RUSTC_WRAPPER=sccache' >> $env:GITHUB_ENV", cache_enable)
+        self.assertIn("'SCCACHE_GHA_ENABLED=true' >> $env:GITHUB_ENV", cache_enable)
+        self.assertNotRegex(workflow, r'(?m)^\s+RUSTC_WRAPPER:')
         self.assertIn('cancel-in-progress: true', workflow)
-        self.assertIn('mozilla-actions/sccache-action@', workflow)
-        self.assertIn("SCCACHE_GHA_ENABLED: 'true'", workflow)
         self.assertIn('actions/cache@', workflow)
         self.assertIn('cargo check --locked --target x86_64-pc-windows-msvc '
                       '-p hiroute-cli -p hiroute-daemon -p hiroute-platform '
