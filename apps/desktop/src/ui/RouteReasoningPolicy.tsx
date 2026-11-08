@@ -21,7 +21,7 @@ export function RouteReasoningPolicy({ followRequest, difficultyRouting, languag
     </div>
     <p className="field-help" id={`${id}-help`}>
       {followRequest ? text('未指定或不支持时，使用下方各模型的档位。', 'Use the levels below when a request omits one or it is unsupported.')
-        : text('始终使用下方各模型的档位。', 'Always use the levels set below.')}
+        : text('实际执行使用下方各模型的档位。客户端选择的是请求档位。', 'Execution uses the model levels below. The client selection sets the requested level.')}
       {difficultyRouting && text(' 跟随请求可能改变各组的能力与成本。', ' Following requests may change each group’s capability and cost.')}
     </p>
   </div>;

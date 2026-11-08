@@ -5,7 +5,10 @@ use hiroute_domain::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{CODEX_CATALOG_SOURCE_REVISION, CodexCatalogProducerFactsV1, CodexCatalogSelection};
+use super::{
+    CODEX_CATALOG_SOURCE_REVISION, CodexCatalogProducerFactsV1, CodexCatalogProjection,
+    CodexCatalogSelection,
+};
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -146,7 +149,7 @@ fn decode(intent: &ExternalEffectIntentV1) -> PortResult<CatalogPayload> {
     let payload: CatalogPayload =
         serde_json::from_value(value["payload"].clone()).map_err(|_| invalid())?;
     if payload.schema != "hiroute.codex-catalog-artifact/v1"
-        || payload.source_revision != CODEX_CATALOG_SOURCE_REVISION
+        || CodexCatalogProjection::for_source_revision(&payload.source_revision).is_none()
         || payload.context_id.is_empty()
         || payload.context_id.len() > 256
         || payload.context_id.contains(['\0', '\r', '\n'])

@@ -122,9 +122,14 @@ New defaults prefer a supported declared native default when present; otherwise
 an explicit valid authoring default is shown without claiming a provider default.
 Difficulty routing explains the possible capability/cost change on enabling it.
 The ordinary Save/Publish action persists the policy with frozen supported controls.
-Codex catalogs offer the union of supported frozen native effort values only for
-following routes, explaining per-candidate fallback; fixed routes retain no caller
-override options. Existing client configuration and saved model choices are preserved.
+For following plans, Codex catalogs offer the union of supported frozen native
+effort values and explain per-candidate fallback. For fixed plans, user-target
+Codex catalogs offer the request levels `low`, `medium`, `high`, `xhigh`, and
+`max` with `medium` as the catalog default. The picker uses the plan's display name.
+The fixed-level helper explains that execution uses each candidate's configured
+level even when the client selects another request level. Private Worker catalogs
+for fixed plans have no request level choices. Existing client configuration and
+saved model choices are preserved.
 
 At execution, a plan with following disabled overrides caller effort with that
 candidate's exact native choice. Responses toggles render `reasoning.effort=low/none`; Messages manual toggles

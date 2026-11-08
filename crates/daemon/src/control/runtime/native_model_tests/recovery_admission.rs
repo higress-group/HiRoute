@@ -1,6 +1,80 @@
-//! Recover the durable publication-compensated / Secret-active crash window.
+//! Recover accepted native settings operations at durable interruption points.
 use super::*;
 use hiroute_gateway::server::composition::RuntimePublicationFeed;
+
+#[test]
+fn startup_recovers_released_codex_settings_before_catalog_staging() {
+    if crate::test_support::isolated_agent_home(
+        "control::runtime::native_model::tests::recovery_admission::startup_recovers_released_codex_settings_before_catalog_staging",
+    ) {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let runtime = open_without_fixture_grants(root.path());
+    let adapter = &runtime.adapter;
+    ensure_target_cache(adapter);
+    let config = adapter.scanner.codex_user_config_target();
+    let before = b"# original Codex settings\n";
+    fs::write(&config, before).unwrap();
+    fs::set_permissions(&config, fs::Permissions::from_mode(0o600)).unwrap();
+    let operation = accept_codex_operation(
+        adapter,
+        "released-catalog-before-stage",
+        before,
+        None,
+        "be6e8eac029b183056b7e4402879f15d2c85f61b",
+    );
+    let catalog = operation
+        .plan
+        .external()
+        .iter()
+        .find(|intent| is_settings_codex_catalog(intent))
+        .unwrap();
+    assert!(
+        adapter
+            .artifacts
+            .load_native_restore(&operation.operation_id, catalog)
+            .unwrap()
+            .is_none()
+    );
+    drop(runtime);
+
+    let recovered = open_without_fixture_grants(root.path());
+    recovered.adapter.reconcile_startup_and_open().unwrap();
+    let persisted = recovered
+        .adapter
+        .stores_lock()
+        .unwrap()
+        .control()
+        .load_operation(&operation.operation_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        persisted.state,
+        OperationState::Succeeded,
+        "{:?}",
+        persisted.safe_error_code
+    );
+    let bytes = recovered
+        .adapter
+        .artifacts
+        .read_native_target(catalog.target())
+        .unwrap()
+        .unwrap();
+    let payload = decode_settings_codex_catalog(catalog).unwrap();
+    assert_eq!(CanonicalDigest::of_bytes(&bytes), payload.content_digest);
+    let written: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(written["models"][0]["default_reasoning_level"].is_null());
+    assert_eq!(
+        written["models"][0]["supported_reasoning_levels"],
+        json!([])
+    );
+    assert!(
+        fs::read_to_string(config)
+            .unwrap()
+            .contains("model_catalog_json")
+    );
+}
 
 #[test]
 fn startup_recovers_publication_compensated_before_secret_rollback() {
