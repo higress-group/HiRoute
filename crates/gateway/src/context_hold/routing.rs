@@ -40,6 +40,7 @@ pub(crate) struct NativeCheckpoint {
 pub(super) struct RoutingFacts {
     pub(super) adapter: Option<hiroute_diagnostics::event::NativeAdapterEvidence>,
     pub(super) track: bool,
+    pub(super) replays_context: bool,
     pub(super) native: NativeCheckpoint,
     pub(super) root: Option<String>,
     /// Coherent native identity claims disagree. Missing or malformed optional
@@ -52,6 +53,7 @@ impl Default for RoutingFacts {
         Self {
             adapter: None,
             track: true,
+            replays_context: false,
             native: NativeCheckpoint::default(),
             root: None,
             identity_conflict: false,

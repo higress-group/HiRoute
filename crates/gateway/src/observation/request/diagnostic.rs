@@ -54,6 +54,15 @@ impl RequestObservation {
         ));
     }
 
+    pub(crate) fn native_reasoning_summary_drift(&self, changed_items: u64) {
+        self.emit_diagnostic(DiagnosticEvent::NativeReasoningSummaryDrift(
+            hiroute_diagnostics::event::NativeReasoningSummaryDrift {
+                request_token: self.inner.request_token,
+                changed_items,
+            },
+        ));
+    }
+
     #[cfg(test)]
     pub(crate) fn response_failure(
         &self,

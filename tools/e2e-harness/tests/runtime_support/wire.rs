@@ -223,3 +223,32 @@ fn read_response(
         http_entity_complete,
     })
 }
+
+#[cfg(all(unix, debug_assertions))]
+pub fn read_chunked_eos(mut stream: TcpStream) -> Vec<u8> {
+    // Read the HTTP entity terminator without waiting for connection teardown,
+    // which happens after the Gateway's asynchronous capture drain.
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut wire = Vec::new();
+    let mut buffer = [0; 8192];
+    loop {
+        let count = stream.read(&mut buffer).unwrap();
+        assert_ne!(count, 0, "downstream closed before the final chunk");
+        wire.extend_from_slice(&buffer[..count]);
+        if let Some(head) = wire.windows(4).position(|window| window == b"\r\n\r\n") {
+            assert!(wire.starts_with(b"HTTP/1.1 200"));
+            assert!(
+                wire_header(&wire, "transfer-encoding")
+                    .unwrap()
+                    .eq_ignore_ascii_case("chunked")
+            );
+            if let Ok((body, true)) =
+                hiroute_e2e::gateway_fixture::decode_chunked_response_body(&wire[head + 4..])
+            {
+                return body;
+            }
+        }
+    }
+}

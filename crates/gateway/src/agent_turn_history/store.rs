@@ -14,8 +14,8 @@ use super::projection::project_user;
 use super::{
     AcceptedExecution, AgentTurnBegin, AgentTurnHistoryError, AgentTurnHistoryKey,
     AgentTurnHistorySnapshot, AgentTurnStatus, AgentTurnTicket, AssessmentTarget,
-    CompletedAgentTurn, ExecutionAttribution, PlanSnapshot, TurnDecisionInputs, VisibleAgentTurn,
-    VisibleContentPart,
+    CompletedAgentTurn, DeliveredToolBatch, ExecutionAttribution, PlanSnapshot,
+    ToolDeliveryHandoff, TurnDecisionInputs, VisibleAgentTurn, VisibleContentPart,
 };
 use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::ModelRequestIRV1;
@@ -75,15 +75,32 @@ struct SessionEntry {
     capture_gap_epoch: u64,
     checkpoint: TranscriptCheckpoint,
     response_boundary: Option<super::boundary::BoundaryEvidence>,
+    tool_batch: Option<Arc<DeliveredToolBatch>>,
+    pending_tool_handoff: Option<Arc<ToolDeliveryHandoff>>,
     branch_cursor: (Option<[u8; 32]>, Option<[u8; 32]>),
     active: ActiveTurn,
     closed: VecDeque<ClosedTurn>,
     current_segment: Option<SegmentState>,
     referenced_segment: Option<SegmentState>,
     next_turn_ordinal: u64,
-    pending_request: Option<u64>,
+    pending_request: Option<PendingRequest>,
     snapshot_pins: u32,
     accounted_bytes: usize,
+}
+
+#[derive(Clone, Copy)]
+struct PendingRequest {
+    token: u64,
+    has_record: bool,
+}
+
+impl PendingRequest {
+    fn new(token: u64) -> Self {
+        Self {
+            token,
+            has_record: false,
+        }
+    }
 }
 
 pub(crate) struct SnapshotPin {
@@ -132,8 +149,22 @@ struct CaptureAdmission {
     gap_epoch: u64,
 }
 
+pub(crate) struct RequestCompletion {
+    pub(crate) terminal: bool,
+    pub(crate) tool_batch: Option<Arc<DeliveredToolBatch>>,
+}
+
+#[cfg(test)]
+impl From<bool> for RequestCompletion {
+    fn from(terminal: bool) -> Self {
+        Self {
+            terminal,
+            tool_batch: None,
+        }
+    }
+}
+
 struct ActiveTurn {
-    completed_requests: usize,
     request_ids: Vec<String>,
     request_ids_clipped: bool,
     source_unverified: bool,
@@ -433,7 +464,6 @@ impl AgentTurnHistoryStore {
             let request_token = inner.allocate_request_token()?;
             let turn_id = self.allocate_id(inner, "turn")?;
             let active = ActiveTurn {
-                completed_requests: 0,
                 request_ids: Vec::new(),
                 request_ids_clipped: false,
                 source_unverified: analyzed.user_origin_unverified,
@@ -486,13 +516,15 @@ impl AgentTurnHistoryStore {
                 capture_gap_epoch: gap_epoch,
                 checkpoint,
                 response_boundary: None,
+                tool_batch: None,
+                pending_tool_handoff: None,
                 branch_cursor: analyzed.branch_cursor,
                 active,
                 closed: VecDeque::new(),
                 current_segment: None,
                 referenced_segment: None,
                 next_turn_ordinal: 2,
-                pending_request: Some(request_token),
+                pending_request: Some(PendingRequest::new(request_token)),
                 snapshot_pins: 0,
                 accounted_bytes: 0,
             };
@@ -650,7 +682,7 @@ impl AgentTurnHistoryStore {
                     .checked_add(1)
                     .ok_or(AgentTurnHistoryError::Resource)?;
                 entry.last_access = now;
-                entry.pending_request = Some(request_token);
+                entry.pending_request = Some(PendingRequest::new(request_token));
                 entry.admission_sequence = request_token;
                 if entry.active.finalized {
                     output::reopen_finalized(entry, &latest.user);
@@ -673,6 +705,7 @@ impl AgentTurnHistoryStore {
                 entry.active.output.next_step();
                 entry.active.boundary = Default::default();
                 entry.response_boundary = None;
+                entry.tool_batch = None;
                 entry.active.last_request_status = AgentTurnStatus::Unknown;
                 entry.active.request_output_accepted = false;
                 entry.checkpoint = TranscriptCheckpoint {
@@ -802,7 +835,7 @@ impl AgentTurnHistoryStore {
                 .checked_add(1)
                 .ok_or(AgentTurnHistoryError::Resource)?;
             entry.last_access = now;
-            entry.pending_request = Some(request_token);
+            entry.pending_request = Some(PendingRequest::new(request_token));
             entry.admission_sequence = request_token;
             if reset_branch_context {
                 // Keep visible history, but a new context cannot extend the old
@@ -811,8 +844,8 @@ impl AgentTurnHistoryStore {
             }
             entry.branch_cursor = analyzed.branch_cursor;
             entry.response_boundary = None;
+            entry.tool_batch = None;
             entry.active = ActiveTurn {
-                completed_requests: 0,
                 request_ids: Vec::new(),
                 request_ids_clipped: false,
                 source_unverified: analyzed.user_origin_unverified,
@@ -1022,6 +1055,11 @@ impl AgentTurnHistoryStore {
         }
         entry.active.request_ids.push(request_id.to_owned());
         entry
+            .pending_request
+            .as_mut()
+            .expect("matching pending request")
+            .has_record = true;
+        entry
             .active
             .first_request_id
             .get_or_insert_with(|| request_id.to_owned());
@@ -1040,9 +1078,13 @@ impl AgentTurnHistoryStore {
         request_id: String,
         status: AgentTurnStatus,
         executions: Vec<AcceptedExecution>,
-        terminal: bool,
+        completion: impl Into<RequestCompletion>,
         now: Instant,
     ) -> Result<Option<CompletedAgentTurn>, AgentTurnHistoryError> {
+        let RequestCompletion {
+            terminal,
+            mut tool_batch,
+        } = completion.into();
         let mut inner = self.inner.lock();
         let charge = executions
             .iter()
@@ -1066,6 +1108,18 @@ impl AgentTurnHistoryStore {
             inner.note_capture_gap(&ticket.key);
             return Err(AgentTurnHistoryError::Resource);
         }
+        if terminal
+            || status != AgentTurnStatus::Completed
+            || tool_batch.as_ref().is_some_and(|batch| {
+                inner
+                    .accounted_bytes
+                    .saturating_add(charge)
+                    .saturating_add(batch.retained_bytes())
+                    > self.max_memory_bytes
+            })
+        {
+            tool_batch = None;
+        }
         let next_segment_id = terminal
             .then(|| self.allocate_id(&mut inner, "segment"))
             .transpose()?;
@@ -1075,14 +1129,18 @@ impl AgentTurnHistoryStore {
                 return Err(AgentTurnHistoryError::Integrity);
             }
             entry.pending_request = None;
+            entry.pending_tool_handoff = None;
             entry.last_access = now;
             if entry.active.first_request_id.is_none() {
                 entry.active.first_request_id = Some(request_id.clone());
             }
-            if entry.active.request_ids.contains(&request_id) {
-                // The Gateway identifier was already bound before classification.
-            } else if entry.active.request_ids.len() < 128 {
+            if !entry.active.request_ids.contains(&request_id)
+                && entry.active.request_ids.len() < 128
+            {
                 entry.active.request_ids.push(request_id.clone());
+            }
+            if entry.active.request_ids.contains(&request_id) {
+                entry.active.executions.extend(executions);
             } else {
                 entry.active.request_ids_clipped = true;
             }
@@ -1093,11 +1151,10 @@ impl AgentTurnHistoryStore {
             } else {
                 AgentTurnStatus::Unknown
             };
-            entry.active.completed_requests += 1;
-            entry.active.executions.extend(executions);
             entry.response_boundary = (!entry.active.capture_partial)
                 .then(|| entry.active.boundary.evidence())
                 .flatten();
+            entry.tool_batch = tool_batch;
             let completed = if let Some(next_segment_id) = next_segment_id {
                 Some(close_active(
                     entry,
@@ -1129,7 +1186,7 @@ impl AgentTurnHistoryStore {
         let remove = inner.entries.get(&ticket.key).is_some_and(|entry| {
             entry.entry_token == ticket.entry_token
                 && entry.revision == ticket.revision
-                && entry.pending_request == Some(ticket.request_token)
+                && entry.pending_request.map(|pending| pending.token) == Some(ticket.request_token)
                 && ticket.new_turn
                 && entry.active.decision.is_none()
                 && entry.closed.is_empty()
@@ -1141,7 +1198,7 @@ impl AgentTurnHistoryStore {
         if let Some(entry) = inner.entries.get_mut(&ticket.key)
             && entry.entry_token == ticket.entry_token
             && entry.revision == ticket.revision
-            && entry.pending_request == Some(ticket.request_token)
+            && entry.pending_request.map(|pending| pending.token) == Some(ticket.request_token)
         {
             entry.pending_request = None;
             // An externally dropped request cannot drain its capture worker.

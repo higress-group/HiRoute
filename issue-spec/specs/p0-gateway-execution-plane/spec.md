@@ -129,10 +129,20 @@ Final text annotations may append to the exact accepted annotation prefix before
 text completion; they SHALL NOT remove, replace or reorder an accepted citation,
 or extend an already sealed text item. This does not make unknown annotation
 types portable or change accepted text/identity validation.
+For native Responses streams, `response.output_item.done` supplies the reasoning
+item the client can replay. A successful `response.completed` may repeat that
+reasoning item with different nonempty ciphertext or a different valid summary.
+HiRoute SHALL use the completed item's earlier snapshot for completion evidence
+and capture when its identity, remaining fields and preceding stream evidence
+agree. Summary differences SHALL produce a count-only diagnostic. Both frames
+remain on the native wire. Item ID and type, missing or malformed ciphertext
+shapes, and tool identity and arguments retain strict reconciliation.
 For an explicitly selected standard Responses JSON target, absent, explicit-null and
 empty-string reasoning `encrypted_content` SHALL remain distinct non-opaque native
 shapes. Projection SHALL consume the ingress-typed state of retained canonical messages,
-excluding only an authorized reasoning-cleanup prefix. Nonempty strings, including
+excluding an authorized reasoning-cleanup prefix and the source-evidenced items
+specified by the [routing contract](../request-routing/spec.md#requirement-judgment-is-frozen-before-the-pure-planner).
+Nonempty strings, including
 whitespace and Replay-backed ciphertext, remain opaque and SHALL exclude that target;
 legacy canonical encrypted provider state without a reasoning sidecar remains opaque.
 Native input-array shifts or field presence SHALL NOT reclassify those facts. Summary,

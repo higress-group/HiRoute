@@ -869,8 +869,16 @@ pub(crate) fn write_canonical_object(
     writer: &mut impl Write,
     object: &serde_json::Map<String, serde_json::Value>,
 ) -> std::io::Result<()> {
+    write_canonical_object_filtered(writer, object, |_| true)
+}
+
+pub(crate) fn write_canonical_object_filtered(
+    writer: &mut impl Write,
+    object: &serde_json::Map<String, serde_json::Value>,
+    include: impl Fn(&str) -> bool,
+) -> std::io::Result<()> {
     writer.write_all(b"{")?;
-    let mut keys = object.keys().collect::<Vec<_>>();
+    let mut keys = object.keys().filter(|key| include(key)).collect::<Vec<_>>();
     keys.sort_unstable();
     for (index, key) in keys.into_iter().enumerate() {
         if index != 0 {

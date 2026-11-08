@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget};
 
+pub use crate::responses_reasoning::ResponsesReasoningReplay;
 use crate::server::core_runtime::adapters::PreparedNativeTemplate;
 use crate::server::core_runtime::profiles::PlannerInputV1;
 use crate::server::publication::PreparedCandidateExecution;
@@ -15,6 +16,7 @@ pub struct PreparedPlannerInput {
 }
 
 pub(crate) struct RequestTemplates {
+    pub(crate) reasoning: ResponsesReasoningReplay,
     entries: BTreeMap<String, Entry>,
     executions: BTreeMap<u32, (Arc<PreparedCandidateExecution>, Reservation)>,
     budget: StreamBudget,
@@ -30,6 +32,7 @@ struct Entry {
 impl RequestTemplates {
     pub(crate) fn new(budget: StreamBudget) -> Self {
         Self {
+            reasoning: ResponsesReasoningReplay::default(),
             entries: BTreeMap::new(),
             executions: BTreeMap::new(),
             budget,

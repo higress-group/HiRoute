@@ -338,7 +338,7 @@ impl CanonicalResponseTracker {
                 .native_pending
                 .drain(..unit.source_bytes)
                 .collect::<Vec<_>>();
-            self.feed_capture_decoder(&source, false)?;
+            self.feed_capture_decoder(&source, false, unit.replayed_reasoning)?;
             self.push_wire(unit.bytes)?;
         }
         if self.native_pending.is_empty() {
@@ -349,15 +349,23 @@ impl CanonicalResponseTracker {
             if !self.native_pending.is_empty() {
                 return Err("native_response_incomplete_tail");
             }
-            self.feed_capture_decoder(&[], true)?;
+            self.feed_capture_decoder(&[], true, Vec::new())?;
             self.source_ended = true;
             self.finish_decoder()?;
         }
         Ok(())
     }
 
-    fn feed_capture_decoder(&mut self, bytes: &[u8], end_stream: bool) -> Result<(), &'static str> {
-        let mut status = self.decode_status(|decoder| decoder.feed(bytes, end_stream))?;
+    fn feed_capture_decoder(
+        &mut self,
+        bytes: &[u8],
+        end_stream: bool,
+        replayed_reasoning: Vec<u32>,
+    ) -> Result<(), &'static str> {
+        let mut status = self.decode_status(|decoder| {
+            decoder.set_replayed_reasoning(replayed_reasoning);
+            decoder.feed(bytes, end_stream)
+        })?;
         loop {
             let events = self
                 .decoder

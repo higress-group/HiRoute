@@ -27,6 +27,52 @@ pub(super) struct AddedTextPrefix {
     hash: [u8; 32],
 }
 
+pub(super) struct ReasoningDoneEvidence {
+    stable: [u8; 32],
+    summary: Option<[u8; 32]>,
+}
+
+impl ReasoningDoneEvidence {
+    fn from_item(item: &Map<String, Value>) -> Option<Self> {
+        if item.get("type")?.as_str()? != "reasoning" || item.get("id")?.as_str()?.is_empty() {
+            return None;
+        }
+        let has_ciphertext = match item.get("encrypted_content") {
+            None | Some(Value::Null) => false,
+            Some(Value::String(value)) => !value.is_empty(),
+            _ => return None,
+        };
+        let summary = if let Some(summary) = item.get("summary") {
+            let parts = summary.as_array()?;
+            if parts.iter().any(|part| {
+                part.get("type").and_then(Value::as_str) != Some("summary_text")
+                    || !part.get("text").is_some_and(Value::is_string)
+            }) {
+                return None;
+            }
+            let mut hash = Sha256::new();
+            crate::replay::write_canonical_json(&mut hash, summary)
+                .expect("JSON writes to an infallible digest");
+            Some(hash.finalize().into())
+        } else {
+            None
+        };
+        // Keep every other field and the presence of a nonempty cipher in the
+        // identity of the snapshot. Two nonempty ciphers may encode the same
+        // replay state with different bytes.
+        let mut stable = Sha256::new();
+        stable.update([u8::from(has_ciphertext)]);
+        crate::replay::write_canonical_object_filtered(&mut stable, item, |key| {
+            key != "summary" && !(has_ciphertext && key == "encrypted_content")
+        })
+        .expect("JSON object writes to an infallible digest");
+        Some(Self {
+            stable: stable.finalize().into(),
+            summary,
+        })
+    }
+}
+
 impl ProjectionState {
     pub(super) fn chat_terminal(&self) -> NativeTerminalOutcome {
         if self.chat_uncertain || !self.chat_seen {
@@ -85,7 +131,8 @@ impl ProjectionState {
     ) {
         if !self.response_items.contains_key(&index) {
             // Failure to retain evidence must not reject otherwise legal wire.
-            let Ok(charge) = self.budget.reserve(MemoryRole::SemanticState, 128) else {
+            let size = std::mem::size_of::<ResponseItemEvidence>() + 32;
+            let Ok(charge) = self.budget.reserve(MemoryRole::SemanticState, size) else {
                 self.response_items_uncertain = true;
                 self.completion_diagnostic.note(Reason::EvidenceBudget);
                 return;
@@ -117,6 +164,12 @@ impl ProjectionState {
                 self.completion_diagnostic.note(Reason::EvidenceBudget);
             }
         }
+        let reasoning_done = if done {
+            ReasoningDoneEvidence::from_item(item)
+                .filter(|_| self.reasoning_done_matches_stream(index, item))
+        } else {
+            None
+        };
         let known = self
             .response_items
             .get_mut(&index)
@@ -130,6 +183,7 @@ impl ProjectionState {
             self.completion_diagnostic.note(Reason::ItemIdentity);
         }
         known.identity = identity;
+        known.reasoning_done = reasoning_done;
         if done {
             let digest = digest_item(item);
             if known.done.is_some_and(|previous| previous != digest) {
@@ -140,34 +194,60 @@ impl ProjectionState {
         }
     }
 
-    pub(super) fn reconcile_response_items(&mut self, response: &Map<String, Value>) {
+    fn reasoning_done_matches_stream(&self, index: u32, item: &Map<String, Value>) -> bool {
+        self.response_items[&index]
+            .added_text
+            .iter()
+            .all(|prefix| added_text_matches(item, prefix))
+            && self
+                .response_deltas
+                .range((index, 0, "")..)
+                .take_while(|((delta_index, _, _), _)| *delta_index == index)
+                .filter(|((_, _, kind), _)| reasoning_delta(kind))
+                .all(|((_, position, kind), delta)| delta.mismatch(item, *position, kind).is_none())
+    }
+
+    pub(super) fn reconcile_response_items(
+        &mut self,
+        response: &Map<String, Value>,
+        allow_done_replay: bool,
+    ) -> Vec<u32> {
+        self.reasoning_summary_changes = 0;
         if self.response_items.is_empty() {
-            return;
+            return Vec::new();
         }
         let Some(output) = response.get("output").and_then(Value::as_array) else {
             self.response_items_uncertain = true;
             self.completion_diagnostic.note(Reason::MissingOutput);
-            return;
+            return Vec::new();
         };
+        let mut replayed = Vec::new();
         for (&index, known) in &self.response_items {
             let Some(item) = output.get(index as usize).and_then(Value::as_object) else {
                 self.response_items_uncertain = true;
                 self.completion_diagnostic
                     .note_output(Reason::MissingOutputItem, index);
-                return;
+                return Vec::new();
             };
             let reason = if known.identity != response_item_identity(item) {
                 Some(Reason::ItemIdentity)
             } else if known.done.is_some_and(|digest| digest != digest_item(item)) {
-                Some(Reason::ItemSnapshot)
-            } else if known.added_text.iter().any(|prefix| {
-                final_text(item, prefix.position, prefix.kind)
-                    .and_then(|text| text.as_bytes().get(..prefix.length))
-                    .is_none_or(|text| {
-                        let digest: [u8; 32] = Sha256::digest(text).into();
-                        digest != prefix.hash
-                    })
-            }) {
+                if allow_done_replay
+                    && let Some(done) = &known.reasoning_done
+                    && let Some(terminal) = ReasoningDoneEvidence::from_item(item)
+                    && done.stable == terminal.stable
+                {
+                    replayed.push(index);
+                    self.reasoning_summary_changes += u64::from(done.summary != terminal.summary);
+                    None
+                } else {
+                    Some(Reason::ItemSnapshot)
+                }
+            } else if known
+                .added_text
+                .iter()
+                .any(|prefix| !added_text_matches(item, prefix))
+            {
                 Some(Reason::AddedTextPrefix)
             } else {
                 None
@@ -177,6 +257,7 @@ impl ProjectionState {
                 self.completion_diagnostic.note_output(reason, index);
             }
         }
+        replayed
     }
 
     pub(super) fn observe_response_payload(
@@ -224,6 +305,11 @@ impl ProjectionState {
             });
             return delta.is_some();
         };
+        if reasoning_delta(kind)
+            && let Some(known) = self.response_items.get_mut(&index)
+        {
+            known.reasoning_done = None;
+        }
         let key = (index, position, kind);
         let had_prior = self.response_deltas.contains_key(&key);
         if !had_prior {
@@ -285,60 +371,27 @@ impl ProjectionState {
         delta.is_some()
     }
 
-    pub(super) fn reconcile_response_deltas(&mut self, response: &Map<String, Value>) {
+    pub(super) fn reconcile_response_deltas(
+        &mut self,
+        response: &Map<String, Value>,
+        replayed_reasoning: &[u32],
+    ) {
         if self.response_deltas.is_empty() {
             return;
         }
         let output = response.get("output").and_then(Value::as_array);
         for (&(index, position, kind), known) in &self.response_deltas {
-            let item = output.and_then(|output| output.get(index as usize));
-            let id = item.and_then(|item| item.get("id")).and_then(Value::as_str);
-            let item_type = item
-                .and_then(|item| item.get("type"))
-                .and_then(Value::as_str);
-            let expected_type = match kind {
-                "output_text" | "refusal" => "message",
-                "reasoning_summary_text" | "reasoning_text" => "reasoning",
-                "function_call_arguments" => "function_call",
-                "custom_tool_call_input" => "custom_tool_call",
-                _ => unreachable!("tracked delta kind"),
-            };
-            let text = item
-                .and_then(Value::as_object)
-                .and_then(|item| final_text(item, position as usize, kind));
-            let observed: [u8; 32] = known.hash.clone().finalize().into();
-            let reason = if output.is_none() {
-                Some(Reason::MissingOutput)
-            } else if item.is_none() {
-                Some(Reason::MissingOutputItem)
-            } else if item_type != Some(expected_type) {
-                Some(Reason::DeltaFinalType)
-            } else if id.is_none_or(|id| {
-                let digest: [u8; 32] = Sha256::digest(id.as_bytes()).into();
-                known.item_id != digest
-            }) {
-                Some(Reason::DeltaFinalIdentity)
-            } else if text.is_none_or(|text| {
-                let prefix = if known.saw_delta {
-                    known.prefix_length
-                } else {
-                    0
-                };
-                text.as_bytes().get(prefix..).is_none_or(|suffix| {
-                    let digest: [u8; 32] = Sha256::digest(suffix).into();
-                    observed != digest
-                })
-            }) {
-                Some(Reason::DeltaFinalText)
-            } else if text.is_some_and(|text| {
-                known.done_digest.is_some_and(|digest| {
-                    let final_digest: [u8; 32] = Sha256::digest(text.as_bytes()).into();
-                    digest != final_digest
-                })
-            }) {
-                Some(Reason::DoneFinalText)
-            } else {
-                None
+            if reasoning_delta(kind) && replayed_reasoning.binary_search(&index).is_ok() {
+                // These deltas were already checked against output_item.done.
+                continue;
+            }
+            let reason = match output {
+                None => Some(Reason::MissingOutput),
+                Some(output) => match output.get(index as usize) {
+                    None => Some(Reason::MissingOutputItem),
+                    Some(Value::Object(item)) => known.mismatch(item, position, kind),
+                    Some(_) => Some(Reason::DeltaFinalType),
+                },
             };
             if let Some(reason) = reason {
                 self.response_items_uncertain = true;
@@ -346,6 +399,61 @@ impl ProjectionState {
             }
         }
     }
+}
+
+impl ResponseDeltaEvidence {
+    fn mismatch(&self, item: &Map<String, Value>, position: u32, kind: &str) -> Option<Reason> {
+        let expected_type = match kind {
+            "output_text" | "refusal" => "message",
+            "reasoning_summary_text" | "reasoning_text" => "reasoning",
+            "function_call_arguments" => "function_call",
+            "custom_tool_call_input" => "custom_tool_call",
+            _ => unreachable!("tracked delta kind"),
+        };
+        if item.get("type").and_then(Value::as_str) != Some(expected_type) {
+            return Some(Reason::DeltaFinalType);
+        }
+        if item.get("id").and_then(Value::as_str).is_none_or(|id| {
+            let digest: [u8; 32] = Sha256::digest(id.as_bytes()).into();
+            self.item_id != digest
+        }) {
+            return Some(Reason::DeltaFinalIdentity);
+        }
+        let prefix = if self.saw_delta {
+            self.prefix_length
+        } else {
+            0
+        };
+        let observed: [u8; 32] = self.hash.clone().finalize().into();
+        let Some(text) = final_text(item, position as usize, kind) else {
+            return Some(Reason::DeltaFinalText);
+        };
+        if text.as_bytes().get(prefix..).is_none_or(|suffix| {
+            let digest: [u8; 32] = Sha256::digest(suffix).into();
+            observed != digest
+        }) {
+            return Some(Reason::DeltaFinalText);
+        }
+        self.done_digest
+            .filter(|expected| {
+                let digest: [u8; 32] = Sha256::digest(text.as_bytes()).into();
+                *expected != digest
+            })
+            .map(|_| Reason::DoneFinalText)
+    }
+}
+
+fn reasoning_delta(kind: &str) -> bool {
+    matches!(kind, "reasoning_summary_text" | "reasoning_text")
+}
+
+fn added_text_matches(item: &Map<String, Value>, prefix: &AddedTextPrefix) -> bool {
+    final_text(item, prefix.position, prefix.kind)
+        .and_then(|text| text.as_bytes().get(..prefix.length))
+        .is_some_and(|text| {
+            let digest: [u8; 32] = Sha256::digest(text).into();
+            digest == prefix.hash
+        })
 }
 
 fn added_text_prefixes(item: &Map<String, Value>) -> Vec<AddedTextPrefix> {

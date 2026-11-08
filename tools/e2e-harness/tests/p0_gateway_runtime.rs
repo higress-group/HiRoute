@@ -51,6 +51,8 @@ mod native_routing_availability;
 mod native_tool_conflict;
 #[path = "p0_gateway_runtime/observed_history.rs"]
 mod observed_history;
+#[path = "p0_gateway_runtime/responses_reasoning_switch.rs"]
+mod responses_reasoning_switch;
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};

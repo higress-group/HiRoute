@@ -58,6 +58,7 @@ pub(super) fn feed_projected_sse(
             semantic: metadata.semantic,
             terminal: metadata.terminal,
             failure: metadata.failure,
+            replayed_reasoning: metadata.replayed_reasoning,
         })
         .collect();
     if state.protocol == super::IngressProtocol::Responses {
@@ -74,6 +75,7 @@ pub(super) fn feed_projected_sse(
                 semantic: false,
                 terminal: Some(terminal),
                 failure: None,
+                replayed_reasoning: Vec::new(),
             });
         }
         return Ok(output);
@@ -125,6 +127,7 @@ impl SseVisitor for ProjectionVisitor<'_> {
                 terminal: None,
                 failure: None,
                 source_bytes: event.raw().len(),
+                replayed_reasoning: Vec::new(),
             });
             return emitter.pass_raw();
         }

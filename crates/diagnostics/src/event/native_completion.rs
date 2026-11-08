@@ -14,6 +14,14 @@ pub struct NativeCompletionUnknown {
     pub evidence: NativeCompletionEvidence,
 }
 
+/// A terminal aggregate repeated completed reasoning with different summaries.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeReasoningSummaryDrift {
+    pub request_token: Option<CorrelationToken>,
+    pub changed_items: u64,
+}
+
 /// Fixed-size first-cause evidence. No IDs, content, hashes or dynamic field names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -58,6 +66,24 @@ pub enum NativeCompletionReason {
 mod tests {
     use super::*;
     use crate::event::DiagnosticEvent;
+
+    #[test]
+    fn reasoning_summary_drift_records_only_a_count_and_correlation() {
+        let event = DiagnosticEvent::NativeReasoningSummaryDrift(NativeReasoningSummaryDrift {
+            request_token: None,
+            changed_items: 2,
+        });
+        let wire = r#"{"native_reasoning_summary_drift":{"request_token":null,"changed_items":2}}"#;
+        assert_eq!(serde_json::to_string(&event).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_str::<DiagnosticEvent>(wire).unwrap(),
+            event
+        );
+        assert!(serde_json::from_str::<DiagnosticEvent>(
+            r#"{"native_reasoning_summary_drift":{"request_token":null,"changed_items":2,"text":"private"}}"#
+        )
+        .is_err());
+    }
 
     #[test]
     fn native_completion_event_is_closed_and_preserves_existing_failure_bytes() {

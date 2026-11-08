@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use hiroute_gateway_core::runtime::attempt::PrecommitEvent;
 use hiroute_gateway_core::runtime::body::{BudgetTree, MemoryRole, Reservation, StreamBudget};
+use tokio_util::sync::CancellationToken;
 
 use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 
@@ -517,6 +518,16 @@ fn process_job(
                 abort_capture(&request, &attempt, "canonical_capture_state_unavailable");
                 return;
             };
+            #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
+            if end_stream
+                && let Some(path) =
+                    crate::server::test_control::observation_marker("response-capture.pause")
+            {
+                let deadline = std::time::Instant::now() + Duration::from_secs(2);
+                while path.exists() && std::time::Instant::now() < deadline {
+                    thread::sleep(CAPTURE_POLL_INTERVAL);
+                }
+            }
             state.accepted_started = true;
             state.request.begin_response_content(&attempt);
             match state.tracker.correlate_accepted_output(&bytes, end_stream) {
@@ -643,7 +654,10 @@ impl RequestObservation {
         }
     }
 
-    pub(crate) async fn finish_agent_turn_output(&self) {
+    pub(crate) async fn finish_agent_turn_output(
+        &self,
+        tool_continuation: Option<&CancellationToken>,
+    ) {
         let Some((store, ticket)) = self.inner.agent_turn_output.get() else {
             return;
         };
@@ -664,7 +678,7 @@ impl RequestObservation {
         capture.cancel_unless_terminal("agent_turn_response_incomplete");
         // Only drain the existing bounded worker. A stuck decoder must never hold
         // the session lease indefinitely; late events are rejected by its ticket.
-        let completed = tokio::time::timeout(Duration::from_millis(250), async {
+        let drain = async {
             loop {
                 let notified = capture.status.completion.notified();
                 if capture.status.finished.load(Ordering::Acquire) {
@@ -672,10 +686,29 @@ impl RequestObservation {
                 }
                 notified.await;
             }
+        };
+        let handoff = async {
+            if let Some(tool_continuation) = tool_continuation {
+                tool_continuation.cancelled().await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        };
+        let completed = tokio::time::timeout(Duration::from_millis(250), async {
+            tokio::select! {
+                biased;
+                () = drain => true,
+                () = handoff => false,
+            }
         })
-        .await
-        .is_ok();
-        if !completed || capture.failure_reason().is_some() {
+        .await;
+        if matches!(completed, Ok(false)) {
+            // The archive worker still owns this request's stream. Its late
+            // output must not change the successor's routing history.
+            store.mark_output_partial(ticket);
+            return;
+        }
+        if completed.is_err() || capture.failure_reason().is_some() {
             store.mark_output_partial(ticket);
             capture.fail("agent_turn_capture_incomplete");
         }

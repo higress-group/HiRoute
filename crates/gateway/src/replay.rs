@@ -31,7 +31,9 @@ pub(crate) use overflow::{
 };
 pub use stream::ReplayReader;
 use stream::{ReplayStream, ReplayStreamBuilder};
-pub(crate) use stream::{write_canonical_json, write_canonical_object};
+pub(crate) use stream::{
+    write_canonical_json, write_canonical_object, write_canonical_object_filtered,
+};
 
 // Raw Replay backing has its own unchanged residency policy. This is separate
 // from the encoded Content overflow queue and from forwarding accounting; the

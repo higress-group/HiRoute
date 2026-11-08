@@ -101,7 +101,8 @@ pub(super) fn classify_precommit(
                     )
                     .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
                     .with_function_encoding(state.function_encoding_projection)
-                    .with_omitted_thinking(state.omit_thinking),
+                    .with_omitted_thinking(state.omit_thinking)
+                    .with_reasoning_capture(state.reasoning_origin.take()),
                 ));
             } else {
                 state.decoder = Some(

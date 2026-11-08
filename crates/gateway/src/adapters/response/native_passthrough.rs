@@ -6,6 +6,7 @@
 //! usage observation.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use hiroute_diagnostics::event::NativeCompletionReason as CompletionReason;
 #[cfg(test)]
@@ -14,13 +15,14 @@ use hiroute_gateway_core::runtime::body::{MemoryRole, Reservation, StreamBudget}
 use hiroute_gateway_core::runtime::sse::{EofPolicy, SseFramer, SseLimits};
 use serde_json::{Map, Value};
 
+use crate::agent_turn_history::{ChargedToolBatch, DeliveredToolBatch};
 use crate::server::core_runtime::model_ir::{
     ExactProviderPathV1, ModelError, ModelIrError, ModelUsage, ToolKindV1,
 };
 use crate::server::core_runtime::profiles::CandidateProtocolProfile;
 use crate::server::request_plan::IngressProtocol;
 
-use super::super::continuation::{ToolIdProjection, project_delivered_tool_id};
+use super::super::continuation::{ToolIdProjection, project_delivered_tool_id, tracks_tool_batch};
 use super::super::{ChatToolIdentity, ChatToolProjection, ProtocolAdapterError};
 use super::wire::optional_str;
 
@@ -49,6 +51,7 @@ pub(crate) struct NativeProjectedUnit {
     pub(crate) semantic: bool,
     pub(crate) terminal: Option<NativeTerminalOutcome>,
     pub(crate) failure: Option<ModelError>,
+    pub(crate) replayed_reasoning: Vec<u32>,
 }
 
 pub(crate) struct NativeResponseProjector {
@@ -73,6 +76,27 @@ impl NativeResponseProjector {
     pub(crate) fn with_omitted_thinking(mut self, omitted: bool) -> Self {
         self.state.omit_thinking = omitted && self.state.protocol == IngressProtocol::Messages;
         self
+    }
+
+    pub(crate) fn with_reasoning_capture(
+        mut self,
+        origin: Option<crate::responses_reasoning::ReasoningOrigin>,
+    ) -> Self {
+        self.state.reasoning_capture = origin.and_then(|origin| {
+            let capture = crate::responses_reasoning::ReasoningCapture::new(&self.budget)?;
+            Some((origin, capture))
+        });
+        self
+    }
+
+    pub(crate) fn take_reasoning_delivery(
+        &mut self,
+    ) -> Option<crate::responses_reasoning::ReasoningDelivery> {
+        if !self.ended {
+            return None;
+        }
+        let (origin, capture) = self.state.reasoning_capture.take()?;
+        capture.into_delivery(origin)
     }
 
     pub(crate) fn new_for_attempt(
@@ -192,8 +216,11 @@ impl NativeResponseProjector {
                 tools: BTreeMap::new(),
                 retained: Vec::new(),
                 response_items: BTreeMap::new(),
+                tool_batch: None,
+                reasoning_capture: None,
                 response_deltas: BTreeMap::new(),
                 response_items_uncertain: false,
+                reasoning_summary_changes: 0,
                 completion_diagnostic: diagnostic::CompletionDiagnostic::default(),
                 responses_done_seen: false,
                 usage: ModelUsage::default(),
@@ -245,6 +272,7 @@ impl NativeResponseProjector {
                         .ok_or(ModelIrError::MissingTerminalEvent)?,
                 ),
                 failure: metadata.failure,
+                replayed_reasoning: Vec::new(),
             }]);
         }
 
@@ -269,6 +297,22 @@ impl NativeResponseProjector {
 
     pub(crate) fn usage(&self) -> &ModelUsage {
         &self.state.usage
+    }
+
+    pub(crate) fn take_tool_batch(&mut self) -> Option<ChargedToolBatch> {
+        if self.ended && self.state.terminal == Some(NativeTerminalOutcome::Complete) {
+            self.state.tool_batch.take()
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn take_reasoning_summary_changes(&mut self) -> u64 {
+        if self.ended && self.state.terminal == Some(NativeTerminalOutcome::Complete) {
+            std::mem::take(&mut self.state.reasoning_summary_changes)
+        } else {
+            0
+        }
     }
 
     pub(crate) fn awaiting_responses_eof(&self) -> bool {
@@ -312,6 +356,7 @@ struct ResponseItemEvidence {
     identity: Option<[u8; 32]>,
     done: Option<[u8; 32]>,
     added_text: Vec<evidence::AddedTextPrefix>,
+    reasoning_done: Option<evidence::ReasoningDoneEvidence>,
 }
 
 pub(super) struct ProjectionState {
@@ -329,8 +374,14 @@ pub(super) struct ProjectionState {
     tools: BTreeMap<u32, NativeToolIdentity>,
     retained: Vec<Reservation>,
     response_items: BTreeMap<u32, ResponseItemEvidence>,
+    tool_batch: Option<ChargedToolBatch>,
+    reasoning_capture: Option<(
+        crate::responses_reasoning::ReasoningOrigin,
+        crate::responses_reasoning::ReasoningCapture,
+    )>,
     response_deltas: BTreeMap<evidence::ResponseDeltaKey, evidence::ResponseDeltaEvidence>,
     response_items_uncertain: bool,
+    reasoning_summary_changes: u64,
     completion_diagnostic: diagnostic::CompletionDiagnostic,
     responses_done_seen: bool,
     usage: ModelUsage,
@@ -352,6 +403,7 @@ pub(super) struct ProjectionMetadata {
     pub(super) terminal: Option<NativeTerminalOutcome>,
     pub(super) failure: Option<ModelError>,
     pub(super) source_bytes: usize,
+    pub(super) replayed_reasoning: Vec<u32>,
 }
 
 impl ProjectionState {
@@ -429,10 +481,8 @@ impl ProjectionState {
             return Ok((
                 None,
                 ProjectionMetadata {
-                    semantic: false,
                     terminal: Some(terminal),
-                    failure: None,
-                    source_bytes: 0,
+                    ..ProjectionMetadata::opaque()
                 },
             ));
         }
@@ -461,6 +511,7 @@ impl ProjectionState {
             self.terminal = Some(NativeTerminalOutcome::Unknown);
             metadata.terminal = None;
             metadata.failure = None;
+            metadata.replayed_reasoning.clear();
         }
         if self.omit_thinking {
             omit_messages_thinking_text(&mut value);
@@ -500,6 +551,7 @@ impl ProjectionState {
         }
         let mut terminal = None;
         let mut failure = None;
+        let mut replayed_reasoning = Vec::new();
         let semantic = match native_type.as_str() {
             "response.created" | "response.in_progress" => {
                 let response = object_field_mut(object, "response")?;
@@ -512,6 +564,12 @@ impl ProjectionState {
                 let item = object_field_mut(object, "item")?;
                 self.project_responses_item(index, item)?;
                 self.observe_response_item(index, item, native_type == "response.output_item.done");
+                if native_type == "response.output_item.done"
+                    && event_type.is_none_or(|event| event == native_type)
+                    && let Some((_, capture)) = &mut self.reasoning_capture
+                {
+                    capture.observe_item(item);
+                }
                 response_item_is_semantic(item)
             }
             "response.web_search_call.in_progress"
@@ -540,14 +598,21 @@ impl ProjectionState {
                 self.project_response_identity(response)?;
                 self.project_responses_output(response)?;
                 let semantic = responses_output_is_semantic(response);
-                self.reconcile_response_items(response);
-                self.reconcile_response_deltas(response);
+                let replayed_done =
+                    self.reconcile_response_items(response, native_type == "response.completed");
+                self.reconcile_response_deltas(response, &replayed_done);
                 self.observe_usage(IngressProtocol::Responses, response.get("usage"));
                 let expected = match native_type.as_str() {
                     "response.completed" => ("completed", NativeTerminalOutcome::Complete),
                     "response.incomplete" => ("incomplete", NativeTerminalOutcome::Incomplete),
                     _ => ("failed", NativeTerminalOutcome::Failed),
                 };
+                if native_type == "response.completed"
+                    && event_type.is_none_or(|event| event == native_type)
+                    && let Some((_, capture)) = &mut self.reasoning_capture
+                {
+                    capture.observe_completed(response);
+                }
                 let outcome = if expected.1 == NativeTerminalOutcome::Complete
                     && (self.response_items_uncertain
                         || response.get("status").and_then(Value::as_str) != Some(expected.0))
@@ -562,6 +627,12 @@ impl ProjectionState {
                 };
                 self.set_terminal(outcome)?;
                 terminal = Some(outcome);
+                if outcome == NativeTerminalOutcome::Complete {
+                    replayed_reasoning = replayed_done;
+                    if matches!(self.authority, ToolIdDelivery::Active) && tracks_tool_batch() {
+                        self.tool_batch = self.completed_tool_batch(response);
+                    }
+                }
                 if expected.1 == NativeTerminalOutcome::Failed {
                     failure = Some(loose_error(response.get("error").unwrap_or(&Value::Null)));
                 }
@@ -583,8 +654,25 @@ impl ProjectionState {
             semantic,
             terminal,
             failure,
-            source_bytes: 0,
+            replayed_reasoning,
+            ..ProjectionMetadata::opaque()
         })
+    }
+
+    fn completed_tool_batch(&self, response: &Map<String, Value>) -> Option<ChargedToolBatch> {
+        let batch = DeliveredToolBatch::from_completed_output(
+            response.get("output")?.as_array()?,
+            |index| {
+                self.response_items
+                    .get(&(index as u32))
+                    .is_some_and(|item| item.done.is_some())
+            },
+        )?;
+        let charge = self
+            .budget
+            .reserve(MemoryRole::SemanticState, batch.retained_bytes())
+            .ok()?;
+        Some((Arc::new(batch), charge))
     }
 
     fn project_messages_sse(
@@ -707,7 +795,7 @@ impl ProjectionState {
             semantic,
             terminal,
             failure,
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -719,10 +807,9 @@ impl ProjectionState {
             let outcome = NativeTerminalOutcome::Failed;
             self.set_terminal(outcome)?;
             return Ok(ProjectionMetadata {
-                semantic: false,
                 terminal: Some(outcome),
                 failure: Some(loose_error(&Value::Object(object.clone()))),
-                source_bytes: 0,
+                ..ProjectionMetadata::opaque()
             });
         }
         self.project_identity(object)?;
@@ -763,9 +850,7 @@ impl ProjectionState {
         }
         Ok(ProjectionMetadata {
             semantic,
-            terminal: None,
-            failure: None,
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -787,13 +872,16 @@ impl ProjectionState {
                 NativeTerminalOutcome::Unknown
             }
         };
+        if let Some((_, capture)) = &mut self.reasoning_capture {
+            capture.observe_completed(object);
+        }
         self.set_terminal(terminal)?;
         Ok(ProjectionMetadata {
             semantic,
             terminal: Some(terminal),
             failure: (terminal == NativeTerminalOutcome::Failed)
                 .then(|| loose_error(object.get("error").unwrap_or(&Value::Null))),
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -832,8 +920,7 @@ impl ProjectionState {
                         .any(|block| block.as_object().is_some_and(message_block_is_semantic))
                 }),
             terminal: Some(terminal),
-            failure: None,
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 
@@ -884,8 +971,7 @@ impl ProjectionState {
                     })
                 }),
             terminal: Some(terminal),
-            failure: None,
-            source_bytes: 0,
+            ..ProjectionMetadata::opaque()
         })
     }
 

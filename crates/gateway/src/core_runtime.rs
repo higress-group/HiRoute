@@ -46,7 +46,7 @@ use http::{HeaderMap, HeaderValue, Method, StatusCode};
 
 use crate::agent_turn_history::{
     AcceptedExecution, AgentTurnBegin, AgentTurnHistoryError, AgentTurnHistoryStore,
-    AgentTurnStatus, AgentTurnTicket, PlanSnapshot,
+    AgentTurnStatus, AgentTurnTicket, PlanSnapshot, RequestCompletion,
 };
 use crate::content_ref::{
     ContentRef, compact_ingress_document_with_markers, externalize_model_request,
@@ -87,6 +87,7 @@ pub struct ProductionGatewayRuntime {
     classifier_connector: PingoraConnectorAdapter,
     observation: Arc<GatewayObservation>,
     context_holds: Arc<ContextHoldStore>,
+    responses_reasoning: Arc<crate::responses_reasoning::ReasoningStore>,
     agent_turn_history: Arc<AgentTurnHistoryStore>,
     replay: Option<ReplayManager>,
     executable_sha256: Option<Arc<str>>,
@@ -158,6 +159,7 @@ impl ProductionGatewayRuntime {
             classifier_connector: connector,
             observation,
             context_holds: Arc::new(ContextHoldStore::default()),
+            responses_reasoning: Default::default(),
             agent_turn_history: Arc::new(AgentTurnHistoryStore::default()),
             replay: ReplayManager::from_environment().ok(),
             executable_sha256: None,
@@ -810,22 +812,26 @@ impl ProductionGatewayRuntime {
                     )
                 });
                 set_phase(LocalPhase::History);
-                let tracking = match self.begin_authorized_decision_history(
-                    &request_observation,
-                    PlanSnapshot {
-                        plan_id: plan_id.clone(),
-                        plan_revision: *revision,
-                    },
-                    capture_scope,
-                    prepared_hold,
-                    decision_history::HistoryInput {
-                        request: &canonical_request,
-                        replay: &replay,
-                        current_input: routing_view.current_input(),
-                        current_input_position: routing_view.current_input_position(),
-                        current_input_unavailable: routing_view.current_input_unavailable(),
-                    },
-                ) {
+                let tracking = match self
+                    .begin_authorized_decision_history_after_handoff(
+                        &request_observation,
+                        PlanSnapshot {
+                            plan_id: plan_id.clone(),
+                            plan_revision: *revision,
+                        },
+                        capture_scope,
+                        prepared_hold,
+                        decision_history::HistoryInput {
+                            request: &canonical_request,
+                            replay: &replay,
+                            current_input: routing_view.current_input(),
+                            current_input_position: routing_view.current_input_position(),
+                            current_input_unavailable: routing_view.current_input_unavailable(),
+                        },
+                        authorized.deadline(),
+                    )
+                    .await
+                {
                     Ok(tracking) => tracking,
                     Err(_) => {
                         return write_typed_error_phase(
@@ -950,10 +956,20 @@ impl ProductionGatewayRuntime {
             request_observation.capture_request_async(&canonical_request, &replay);
             drop(routing_view);
             set_phase(LocalPhase::Prepare);
+            let reasoning = crate::responses_reasoning::ResponsesReasoningReplay::prepare(
+                &self.responses_reasoning,
+                &self.context_holds,
+                &authorized,
+                &identity,
+                &canonical_request,
+                &replay,
+                authorized.deadline(),
+            )
+            .await;
             let prepared_planner_input =
                 match with_active_request(request_observation.clone(), async {
                     self.planner_inputs
-                        .build_prepared_input(*canonical_request, &authorized, &budget)
+                        .build_prepared_input(*canonical_request, &authorized, &budget, reasoning)
                         .map(Box::new)
                 })
                 .await
@@ -1111,6 +1127,7 @@ impl ProductionGatewayRuntime {
                     .map_err(|_| TransportError::Io("planner output identity is invalid".into()))?;
             let mut frozen_candidates =
                 Vec::with_capacity(planner_output.ledger.ordered_candidates.len());
+            let mut first_reasoning_source = None;
             let mut hold_candidates =
                 Vec::with_capacity(planner_output.ledger.ordered_candidates.len());
             let mut agent_turn_candidates = std::collections::BTreeMap::new();
@@ -1207,6 +1224,12 @@ impl ProductionGatewayRuntime {
                         TransportError::Io("current candidate binding unavailable".into())
                     })?;
                 let profile = execution.bytes().clone();
+                if frozen_candidates.is_empty() && prepared_templates.reasoning.can_project() {
+                    first_reasoning_source =
+                        Some(crate::responses_reasoning::ReasoningSource::for_execution(
+                            execution.execution(),
+                        ));
+                }
                 prepared_templates.insert_execution(binding.local_id(), execution);
                 frozen_candidates.push(DecisionCandidateAuthority {
                     binding,
@@ -1319,13 +1342,22 @@ impl ProductionGatewayRuntime {
                         .iter()
                         .find(|candidate| candidate.candidate_id == first_id)?
                         .protocol_profile;
-                    let normal =
-                        adapters::project_candidate_request_template(&canonical_request, profile)
-                            .ok()?;
-                    let cleaned = adapters::project_candidate_request_template_with_cleanup(
+                    let reasoning_replay = first_reasoning_source
+                        .map_or_else(Default::default, |source| {
+                            prepared_templates.reasoning.project(|| source)
+                        });
+                    let normal = adapters::project_candidate_request_template_with_history(
+                        &canonical_request,
+                        profile,
+                        None,
+                        reasoning_replay,
+                    )
+                    .ok()?;
+                    let cleaned = adapters::project_candidate_request_template_with_history(
                         &canonical_request,
                         profile,
                         Some(canonical_request.messages.len()),
+                        reasoning_replay,
                     )
                     .ok()?;
                     (normal.bytes != cleaned.bytes)
@@ -1348,8 +1380,19 @@ impl ProductionGatewayRuntime {
             }
             let frozen_candidates: Arc<[DecisionCandidateAuthority]> = frozen_candidates.into();
             let route_binding = frozen_candidates[0].binding;
+            if protocol == IngressProtocol::Responses
+                && let Some(guard) = agent_turn_guard.as_mut()
+            {
+                guard.tool_handoff = self
+                    .agent_turn_history
+                    .register_tool_handoff(guard.ticket());
+            }
             let active_continuation =
-                adapters::ActiveResponseDelivery::new(protocol, budget.clone());
+                adapters::ActiveResponseDelivery::new(protocol, budget.clone()).with_tool_handoff(
+                    agent_turn_guard
+                        .as_ref()
+                        .and_then(|guard| guard.tool_handoff.clone()),
+                );
             request_observation.bind_tool_id_projection(active_continuation.tool_id_projection());
             let response_delivery = active_continuation.clone();
             let admission = BoundRequestAdmission {
@@ -1444,9 +1487,18 @@ impl ProductionGatewayRuntime {
             };
             set_phase(LocalPhase::History);
             if let Some(mut guard) = agent_turn_guard.take() {
+                let tool_batch = guard
+                    .tool_handoff
+                    .as_ref()
+                    .and_then(|handoff| handoff.delivered_batch());
+                let waiting = guard
+                    .tool_handoff
+                    .as_ref()
+                    .filter(|_| tool_batch.is_some())
+                    .map(|handoff| &handoff.requested);
                 wait(
                     WaitKind::LocalWork,
-                    request_observation.finish_agent_turn_output(),
+                    request_observation.finish_agent_turn_output(waiting),
                 )
                 .await;
                 let executions = request_observation
@@ -1480,6 +1532,11 @@ impl ProductionGatewayRuntime {
                     (true, false) => AgentTurnStatus::Interrupted,
                     (false, _) => AgentTurnStatus::Failed,
                 };
+                let terminal = matches!(
+                    status,
+                    AgentTurnStatus::Interrupted | AgentTurnStatus::Failed
+                ) || (tool_batch.is_none()
+                    && response_delivery.accepted_count() == 0);
                 if guard
                     .finish_deferred_decision(planner_input.classification_decision.as_ref())
                     .is_ok()
@@ -1491,10 +1548,10 @@ impl ProductionGatewayRuntime {
                         // Delivered tools keep a successful stage open for the
                         // client's continuation. They cannot keep a cancelled
                         // or failed request alive indefinitely.
-                        matches!(
-                            status,
-                            AgentTurnStatus::Interrupted | AgentTurnStatus::Failed
-                        ) || response_delivery.accepted_count() == 0,
+                        RequestCompletion {
+                            terminal,
+                            tool_batch,
+                        },
                         Instant::now(),
                     )
                 {
@@ -1692,6 +1749,7 @@ struct AgentTurnRequestGuard {
     store: Arc<AgentTurnHistoryStore>,
     ticket: Option<AgentTurnTicket>,
     decision_deferred: bool,
+    tool_handoff: Option<Arc<crate::agent_turn_history::ToolDeliveryHandoff>>,
 }
 
 impl AgentTurnRequestGuard {
@@ -1700,6 +1758,7 @@ impl AgentTurnRequestGuard {
             store,
             ticket: Some(ticket),
             decision_deferred: false,
+            tool_handoff: None,
         }
     }
 
@@ -1709,6 +1768,9 @@ impl AgentTurnRequestGuard {
 
     fn disarm(&mut self) {
         self.ticket = None;
+        if let Some(handoff) = self.tool_handoff.take() {
+            handoff.closed.cancel();
+        }
     }
 }
 
@@ -1719,6 +1781,9 @@ impl Drop for AgentTurnRequestGuard {
     fn drop(&mut self) {
         if let Some(ticket) = self.ticket.take() {
             self.store.abort(&ticket);
+        }
+        if let Some(handoff) = self.tool_handoff.take() {
+            handoff.closed.cancel();
         }
     }
 }
@@ -1805,11 +1870,36 @@ impl GatewaySession for ReplayBodySession<'_> {
         end_stream: bool,
     ) -> Result<(), TransportError> {
         let captured = body.clone();
+        let reasoning = end_stream
+            .then(adapters::take_reasoning_delivery)
+            .flatten()
+            .map(crate::responses_reasoning::ReasoningDelivery::register);
+        #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
+        if end_stream
+            && super::test_control::observation_marker("response-final-write.fail")
+                .is_some_and(|path| std::fs::remove_file(path).is_ok())
+        {
+            return Err(TransportError::Io("injected terminal write failure".into()));
+        }
         wait(
             WaitKind::DownstreamWrite,
             self.inner.write_response_body(body, end_stream),
         )
         .await?;
+        if end_stream {
+            adapters::confirm_tool_handoff();
+        }
+        if let Some(delivery) = reasoning {
+            #[cfg(all(unix, debug_assertions, feature = "e2e-test-control"))]
+            if let Some(path) = super::test_control::observation_marker("reasoning-delivery.pause")
+            {
+                let deadline = Instant::now() + std::time::Duration::from_secs(2);
+                while path.exists() && Instant::now() < deadline {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+            }
+            delivery.confirm();
+        }
         self.continuation_scanner
             .accept_bytes(&captured, Instant::now());
         self.response_capture.accepted_frame(&captured, end_stream);
