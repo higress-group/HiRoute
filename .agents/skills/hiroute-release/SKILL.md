@@ -54,18 +54,19 @@ Use [Omarchy in Actions](../../../docs/release-builds.md#prepare-omarchy-package
 for both architecture builds and signing, and x86_64 KVM upgrade and Gateway
 coverage. Reserve the existing hardware-accelerated local ARM64 Omarchy guest
 for one brief graphical smoke after hosted verification of the signed final
-candidate. Verify and install or update that package in the standard locations.
-Open from the Omarchy launcher and confirm the native window and authenticated
-console are usable. Add a representative affected visual interaction when
-relevant. Record the tested package digest, guest platform and result, then
-shut down the test guest. Run deeper change-specific acceptance in hosted or
-other capable test environments before the smoke. Keep the local smoke pending
-if the required local session is unavailable.
+candidate. Follow the [local smoke procedure](../../../docs/release-builds.md#run-the-local-omarchy-smoke)
+to exit the previous Desktop, use the standard installed paths and check that
+the candidate's live console renders in the new native window. Add a
+representative affected visual interaction when relevant. Run deeper
+change-specific acceptance in hosted or other capable test environments before
+the smoke. Keep the local smoke pending if the required local session is unavailable.
 
 ## Publish and record
 
 Follow the [public release notes guidance](../../../docs/release-builds.md#write-public-release-notes).
-Keep build and acceptance evidence in the release Issue or PR. Publish the
-qualified assets at their frozen source within the user's release authorization.
+Keep build and acceptance evidence in the release Issue or PR. For Omarchy,
+require passing hosted x86_64 and local ARM64 evidence for the exact signed
+packages. Publish the qualified assets at their frozen source within the user's
+release authorization.
 Verify GitHub assets and public catalog availability, then follow the
 [release snapshot and development version workflow](../../../docs/release-contracts.md#publication-and-retry).

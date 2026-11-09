@@ -204,4 +204,4 @@ jobs:
           retention-days: 14
       - name: Identify the remaining release gate
         run: |
-          echo 'Attach the ARM64 native Omarchy acceptance of the exact signed artifact before publishing.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Record the passing local ARM64 graphical smoke for the exact signed package and candidate runtime before publishing.' >> "$GITHUB_STEP_SUMMARY"

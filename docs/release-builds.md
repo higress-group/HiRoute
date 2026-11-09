@@ -323,12 +323,29 @@ same-Plan Gateway receipts. Retain `omarchy-x86-kvm-evidence` with the release
 review. On failure, rerun the failed jobs to reuse successful build or signing
 artifacts.
 
+### Run the local Omarchy smoke
+
 After the hosted workflow succeeds, use the existing hardware-accelerated local
-ARM64 Omarchy guest for the final graphical smoke. Verify and install or update
-the exact signed ARM64 package with the [standard installation steps](linux-desktop.md).
-Open HiRoute from Apps and check the native window and authenticated console.
-Record the candidate SHA, package SHA-256, guest version and observed result in
-the release Issue or PR, then shut down the test guest.
+ARM64 Omarchy guest for one final graphical smoke. Close any previous HiRoute
+Desktop window and confirm the old Desktop process has exited. Verify and
+install or update the exact signed ARM64 package with the
+[standard installation steps](linux-desktop.md). Open HiRoute from Apps and
+complete the normal service setup or [update](linux-desktop.md#update-or-remove-the-background-service)
+if prompted.
+
+Confirm the authenticated console renders inside the newly opened native window.
+Check that the installed Desktop and the running service both report the frozen
+`source_revision`.
+
+```sh
+hiroute-desktop --version
+service_pid=$(systemctl --user show ai.hiroute.cli.service -p MainPID --value)
+"/proc/$service_pid/exe" --version
+```
+
+Record the passing smoke with the candidate SHA, package SHA-256 and guest
+version in the release Issue or PR before publishing the Omarchy assets. Shut
+down the test guest after the smoke.
 
 ### Publish the qualified artifacts
 
