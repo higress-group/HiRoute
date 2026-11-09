@@ -100,6 +100,7 @@ jobs:
               python3 scripts/package-linux-desktop.py --verify-package "$RUNNER_TEMP/release-assets/$package" \
                 --public-key "$key" --manifest "$RUNNER_TEMP/release-assets/$manifest" --archive "$RUNNER_TEMP/release-assets/$archive"
             done < "$RUNNER_TEMP/omarchy-assets.tsv"
+          fi
 
   publish:
     needs: verify-release
