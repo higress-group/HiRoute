@@ -121,6 +121,20 @@ def verify_member(tar, package_path, name, expected_sha256, expected_size):
             raise ValueError(f"Omarchy package member differs from the qualified runtime: {name}")
 
 
+def verify_desktop_architecture(tar, package_path, name, arch):
+    machine = {"aarch64": 183, "x86_64": 62}[arch]
+    with subprocess.Popen([tar, "-xOf", str(package_path), name], stdout=subprocess.PIPE) as reader:
+        header = reader.stdout.read(20)
+        if (len(header) != 20 or header[:6] != b"\x7fELF\x02\x01"
+                or int.from_bytes(header[18:20], "little") != machine):
+            reader.kill()
+            raise ValueError("Omarchy desktop executable does not match the package architecture")
+        while reader.stdout.read(1024 * 1024):
+            pass
+        if reader.wait() != 0:
+            raise ValueError("Omarchy desktop executable is unreadable")
+
+
 def verify_package(args):
     package_path = args.verify_package.resolve()
     signature = package_path.with_name(package_path.name + ".sig")
@@ -140,15 +154,21 @@ def verify_package(args):
     if arch not in SUPPORTED or manifest["target"] != f"{arch}-unknown-linux-gnu":
         raise ValueError("Omarchy package requires a supported Linux standalone runtime")
     version = manifest["version"]
+    revision = manifest["revision"]
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Omarchy package requires an exact source revision")
     prefix = "usr/share/hiroute-desktop/standalone/"
     runtime_name = f"{prefix}HiRoute-{version}-linux-{arch}.tar.gz"
     manifest_name = f"{prefix}manifest.json"
+    desktop = "usr/bin/hiroute-desktop"
+    source_files = {
+        "usr/share/applications/ai.hiroute.desktop.desktop": "apps/desktop/arch/ai.hiroute.desktop.desktop",
+        "usr/share/icons/hicolor/scalable/apps/ai.hiroute.desktop.svg": "apps/desktop/src-tauri/icons/icon.svg",
+        "usr/share/licenses/hiroute-desktop/LICENSE": "LICENSE",
+        f"{prefix}install-standalone.py": "scripts/install-standalone.py",
+    }
     required = {
-        ".PKGINFO", ".BUILDINFO", ".MTREE", "usr/bin/hiroute-desktop",
-        "usr/share/applications/ai.hiroute.desktop.desktop",
-        "usr/share/icons/hicolor/scalable/apps/ai.hiroute.desktop.svg",
-        "usr/share/licenses/hiroute-desktop/LICENSE",
-        f"{prefix}install-standalone.py", manifest_name, runtime_name,
+        ".PKGINFO", ".BUILDINFO", ".MTREE", desktop, *source_files, manifest_name, runtime_name,
     }
     tar = shutil.which("bsdtar") or "tar"
     files = [name for name in output(tar, "-tf", str(package_path)).splitlines() if not name.endswith("/")]
@@ -164,9 +184,13 @@ def verify_package(args):
     if (info.get("pkgname") != "hiroute-desktop" or info.get("arch") != arch
             or not re.fullmatch(re.escape(version.replace("-", ".")) + r"-[0-9]+(?:\.[0-9]+)?", info.get("pkgver", ""))):
         raise ValueError("Omarchy package metadata differs from the qualified runtime")
+    verify_desktop_architecture(tar, package_path, desktop, arch)
     verify_member(tar, package_path, manifest_name, standalone["digest"](args.manifest), args.manifest.stat().st_size)
     verify_member(tar, package_path, runtime_name, manifest["archive"]["sha256"], manifest["archive"]["size"])
-    return {"architecture": arch, "revision": manifest["revision"], "version": version,
+    for name, path in source_files.items():
+        source = subprocess.check_output(["git", "show", f"{revision}:{path}"], cwd=ROOT)
+        verify_member(tar, package_path, name, hashlib.sha256(source).hexdigest(), len(source))
+    return {"architecture": arch, "revision": revision, "version": version,
             "signing_fingerprint": signers[0], "sha256": standalone["digest"](package_path)}
 
 

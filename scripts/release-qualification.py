@@ -95,8 +95,8 @@ def verify(repo, repository, manifest, tag, revision):
     releases = [row for row in manifest["releases"] if row["version"] == tag[1:]]
     ledger.require(len(releases) == 1, "expected one release catalog record")
     release = releases[0]
-    if not any(row["platform"] == "Windows" for row in release["artifacts"]):
-        return {"qualification": "not required without a Windows installer"}
+    if not any(row["platform"] in {"Windows", "Omarchy"} for row in release["artifacts"]):
+        return {"qualification": "not required without Windows or Omarchy packages"}
     assets = ledger.catalog_assets(release, revision)
     if recorded(repo, repository, tag, revision, release, assets):
         return {"qualification": "recorded release", "revision": revision}
