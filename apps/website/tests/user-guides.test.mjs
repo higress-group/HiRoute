@@ -19,6 +19,19 @@ test('every public user guide renders in Chinese and English', async () => {
   assert.equal(guideRoute('cli', 'en'), '/en/docs/cli/');
 });
 
+test('Omarchy guides retain signature verification and the shared-service first launch', async () => {
+  for (const language of ['zh', 'en']) {
+    const html = await renderUserGuide('install-omarchy', language);
+    assert.match(html, /CB5F8ADEDC272ED8879D206C5642FA57EA8DF169/);
+    assert.match(html, /sha256sum --check/);
+    assert.match(html, /pacman-key --lsign-key/);
+    assert.match(html, /pacman-key --verify [^\n]+ &amp;&amp;\n\s*sudo pacman -U/);
+    assert.match(html, /Install background service|安装后台服务/);
+    assert.match(html, new RegExp(`/${language}/download/#omarchy`));
+    assert.match(html, new RegExp(`/${language}/docs/models/`));
+  }
+});
+
 test('guides cover Desktop, Linux headless, and the released management CLI', async () => {
   const installZh = await renderUserGuide('install-macos', 'zh');
   const installEn = await renderUserGuide('install-macos', 'en');

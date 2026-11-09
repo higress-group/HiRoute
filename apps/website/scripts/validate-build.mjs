@@ -11,7 +11,7 @@ const site = 'https://hiroute.ai';
 // former unprefixed Chinese URLs are redirect pages.
 const localized = [
   '', 'news/', 'news/astra-qwen-smart-routing/', 'news/hiroute-open-source/', 'download/', 'changelog/',
-  'docs/', 'docs/install-macos/', 'docs/install-linux/', 'docs/install-windows/', 'docs/models/',
+  'docs/', 'docs/install-macos/', 'docs/install-omarchy/', 'docs/install-linux/', 'docs/install-windows/', 'docs/models/',
   'docs/model-trial/', 'docs/model-routing/', 'docs/task-routing/', 'docs/cli/',
   'docs/decision-extensions/', 'docs/decision-api/', 'docs/jev-decider/',
 ];

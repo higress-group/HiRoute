@@ -1,77 +1,94 @@
 ---
 import SiteLayout from '../layouts/SiteLayout.astro';
-import { artifactUrl, formatBytes, releaseManifest } from '../lib/releases.mjs';
+import { releaseManifest } from '../lib/releases.mjs';
+import { architectureLabel, installPlatforms } from '../lib/install-platforms.mjs';
 import ReleaseArtifact from './ReleaseArtifact.astro';
+import InstallPlatforms from './InstallPlatforms.astro';
+import InstallDetails from './InstallDetails.astro';
+import InstallCommand from './InstallCommand.astro';
 import { localePath } from '../lib/locale.mjs';
 const { language = 'zh' } = Astro.props;
-const en = language === 'en';
-const t = (zh, english) => en ? english : zh;
-const path = localePath(language, '/download/');
-const alternatePath = localePath(en ? 'zh' : 'en', '/download/');
-const docs = slug => localePath(language, `/docs/${slug}/`);
-const changelog = localePath(language, '/changelog/');
-const formatDate = value => new Intl.DateTimeFormat(en ? 'en' : 'zh-CN', { dateStyle: 'long' }).format(new Date(value));
+const t = (zh, en) => language === 'en' ? en : zh;
 const stable = releaseManifest.releases.find(release => release.channel === 'stable');
 const preview = releaseManifest.releases.find(release => release.channel === 'preview');
-const stableArtifacts = (kind, platform) => stable?.artifacts.filter(artifact => artifact.kind === kind && artifact.platform === platform) ?? [];
-const macArtifacts = stableArtifacts('desktop', 'macOS').sort((a, b) => Number(a.architecture !== 'arm64') - Number(b.architecture !== 'arm64'));
-const macMinimum = macArtifacts[0]?.minimum_os ?? '15.0';
-const stableLinux = stableArtifacts('standalone', 'Linux');
-const stableOmarchy = stableArtifacts('desktop', 'Omarchy');
-const linuxArchitectures = stableLinux.map(artifact => artifact.architecture).join(' / ');
-const distributionLabel = distribution => distribution === 'unsigned' ? t('未签名 · 请核对 SHA-256', 'Unsigned · verify SHA-256')
-  : distribution === 'self-signed' ? t('自签名 · 首次打开需手动确认', 'Self-signed · approve on first launch') : t('Developer ID 签名与公证', 'Developer ID signed and notarized');
-const desktopPlatforms = [{
-  id: 'macos', name: 'macOS', artifacts: macArtifacts, button: t('下载 DMG', 'Download DMG'),
-  summary: t(`需要 macOS ${macMinimum} 或更高版本。应用内运行本机服务，可在设置中安装 CLI。`, `Requires macOS ${macMinimum} or later. The app runs the local service and can install the CLI from Settings.`),
-  option: artifact => artifact.architecture === 'arm64' ? [t('Apple 芯片', 'Apple silicon'), 'arm64 · DMG'] : [t('Intel 芯片', 'Intel'), `${artifact.architecture} · DMG`],
-  guide: docs('install-macos'), guideLabel: t('安装与首次启动', 'Install and first launch'),
-}, {
-  id: 'windows', name: 'Windows', artifacts: stableArtifacts('desktop', 'Windows'), button: t('下载安装包', 'Download installer'),
-  summary: t('适用于 Windows x64。按当前用户安装，自带服务与 CLI，不需要管理员权限。', 'For Windows x64. Installs for the current user with the service and CLI included; no administrator rights required.'),
-  option: () => [t('x64 安装包', 'x64 installer'), 'NSIS'],
-  guide: docs('install-windows'), guideLabel: t('SmartScreen 提示与安装步骤', 'SmartScreen prompt and installation'),
-}];
+const platforms = installPlatforms(stable, language);
+const guide = slug => localePath(language, `/docs/${slug}/`);
+const formatDate = value => new Intl.DateTimeFormat(language === 'en' ? 'en' : 'zh-CN', { dateStyle: 'long' }).format(new Date(value));
 ---
-<SiteLayout language={language} title={t('下载 HiRoute：macOS、Windows 桌面应用与 Linux', 'Download HiRoute for macOS, Windows and Linux')}
-  description={t('下载 HiRoute：macOS / Windows 桌面应用，Linux Web UI 与 CLI。', 'Download HiRoute: macOS / Windows Desktop and Linux Web UI and CLI.')}
-  path={path} alternatePath={alternatePath}>
-  <section class="page-hero wrap download-hero"><div class="eyebrow section-label">{t('下载', 'DOWNLOAD')}</div><h1>{t('下载 HiRoute', 'Download HiRoute')}</h1><p>{t('macOS 与 Windows 桌面应用自带本机服务，安装后即可在应用中接入模型、配置路由和 Agent。服务器和远程工作站可以使用 Linux Web UI 与 CLI。', 'macOS and Windows Desktop include the local service, so you can set up models, routes and Agents right in the app. Servers and remote workstations can use the Linux Web UI and CLI.')}</p>
-    {stable && <div class="release-meta"><span class="release-channel">{t(`稳定版 ${stable.version}`, `Stable ${stable.version}`)}</span><time datetime={stable.published_at}>{formatDate(stable.published_at)}</time><a class="text-link" href={changelog}>{t('更新日志', 'Changelog')} →</a></div>}
+<SiteLayout language={language} title={t('安装 HiRoute：macOS、Omarchy、Windows 与 Linux Server', 'Install HiRoute on macOS, Omarchy, Windows and Linux Server')}
+  description={t('选择运行环境，下载 HiRoute 桌面应用或安装 Linux 服务。提供架构选择、签名校验、安装命令与首次启动步骤。', 'Choose your platform, download HiRoute Desktop or install the Linux service. Find architecture options, signature verification, commands and first-launch steps.')}
+  path={localePath(language, '/download/')} alternatePath={localePath(language === 'en' ? 'zh' : 'en', '/download/')}>
+  <section class="page-hero wrap download-hero">
+    <div class="eyebrow section-label">{t('开始使用', 'GET STARTED')}</div>
+    <h1>{t('安装 HiRoute', 'Install HiRoute')}</h1>
+    <p>{t('选择你的运行环境。用桌面应用管理本机，或用 Web UI 与 CLI 管理服务器。', 'Choose your environment. Use the desktop app on your computer, or the Web UI and CLI on a server.')}</p>
+    {stable && <div class="release-meta">
+      <span class="release-channel">{t(`稳定版 ${stable.version}`, `Stable ${stable.version}`)}</span>
+      <time datetime={stable.published_at}>{formatDate(stable.published_at)}</time>
+      <a class="text-link" href={localePath(language, '/changelog/')}>{t('更新日志', 'Changelog')} →</a>
+    </div>}
   </section>
 
-  <section class="content-section wrap desktop-downloads">
-    {stable ? <div class="platform-grid">{desktopPlatforms.map(platform => <article class="platform-card" id={platform.id}>
-      <div><span class="platform-kind">{t('桌面应用', 'Desktop')}</span><h2>{platform.name}</h2><p>{platform.artifacts.length > 0 ? platform.summary : t('安装包准备中，通过完整性检查、安装走查和发布审核后出现在这里。', 'The package appears here after integrity checks, installation review and release approval.')}</p></div>
-      {platform.artifacts.length > 0 && <div class="platform-options">{platform.artifacts.map((artifact, index) => {
-        const [label, detail] = platform.option(artifact);
-        return <div class="platform-option"><div><strong>{label}</strong><span>{detail} · {formatBytes(artifact.size, language)}</span></div><a class:list={['button', { outline: index > 0 }]} href={artifactUrl(stable, artifact)}>{platform.button}</a><code>SHA256 {artifact.sha256}</code></div>;
-      })}</div>}
-      <div class="platform-foot">{[...new Set(platform.artifacts.map(artifact => artifact.distribution))].map(distribution => <span class:list={['distribution-badge', { 'self-signed': distribution === 'self-signed' }]}>{distributionLabel(distribution)}</span>)}<a class="text-link" href={platform.guide}>{platform.guideLabel} →</a></div>
-    </article>)}</div> : <div class="empty-release"><span>{t('准备中', 'IN PREPARATION')}</span><h2>{t('首个公开版本尚未发布', 'The first public release is not published yet')}</h2><p>{t('安装包通过完整性检查、安装走查和发布审核后才会出现在这里。你可以先阅读快速开始。', 'Packages appear here only after integrity checks, installation review, and release approval. Start with the Quickstart in the meantime.')}</p><div class="actions"><a class="button" href={localePath(language, '/docs/')}>{t('快速开始', 'Quickstart')} ↗</a></div></div>}
+  <section class="wrap install-picker" data-install-picker aria-label={t('选择并安装', 'Choose and install')}>
+    <InstallPlatforms platforms={platforms} language={language} picker />
+    <div class="install-prompt" data-install-prompt hidden>
+      <span aria-hidden="true">↑</span>
+      <h2>{t('从你的运行环境开始', 'Start with your environment')}</h2>
+      <p>{t('选择上方卡片，查看安装包和完整步骤。', 'Choose a card above to see the download and installation steps.')}</p>
+    </div>
+    {platforms.map(platform => <article class="install-panel" id={platform.id} data-install-panel aria-labelledby={`${platform.id}-heading`}>
+      <header class="install-panel-heading">
+        <div><span class="install-platform-type">{platform.type}</span><h2 id={`${platform.id}-heading`}>{platform.name}</h2></div>
+        <a class="text-link" href={guide(platform.guide)}>{t('安装指南', 'Installation guide')} →</a>
+      </header>
+      {platform.artifacts.length === 0 ? <p class="install-unavailable">{t('此平台暂未提供稳定版安装包。可先阅读安装指南，了解运行要求。', 'A stable package is not available for this platform yet. Read the installation guide for its requirements.')}</p> : <>
+        <p class="install-requirements">
+          {platform.id === 'macos' && t(`macOS ${platform.artifacts[0].minimum_os} 或更高版本。在“关于本机”中确认 Apple 芯片或 Intel。`, `macOS ${platform.artifacts[0].minimum_os} or later. Check About This Mac for Apple silicon or Intel.`)}
+          {platform.id === 'omarchy' && t('Omarchy 桌面环境。运行 uname -m 确认架构，安装时需要 sudo。', 'Omarchy desktop environment. Run uname -m to check your architecture. Installation requires sudo.')}
+          {platform.id === 'windows' && t('Windows x64 · 按当前用户安装 · 自带服务与 CLI', 'Windows x64 · Per-user installation · Service and CLI included')}
+          {platform.id === 'linux' && t('x86_64 或 ARM64 · glibc 2.31+ · curl 与 Python 3 · 按当前用户安装', 'x86_64 or ARM64 · glibc 2.31+ · curl and Python 3 · Per-user installation')}
+        </p>
+        {platform.kind === 'desktop' ? <>
+          {platform.artifacts.length > 1 && <nav class="install-architectures" aria-label={t(`${platform.name} 芯片架构`, `${platform.name} architecture`)}>
+            {platform.artifacts.map(artifact => <a href={`#${platform.id}-${artifact.architecture}`} data-install-architecture>
+              {architectureLabel(platform.id, artifact.architecture, language)}
+            </a>)}
+          </nav>}
+          {platform.artifacts.map(artifact => <InstallDetails release={stable} artifact={artifact} platform={platform} language={language} />)}
+        </> : <>
+          <ol class="install-steps">
+            <li><h3>{t('安装 HiRoute', 'Install HiRoute')}</h3>
+              <p>{t('安装器自动识别架构，下载并校验最新稳定版，安装到 ~/.local。', 'The installer detects your architecture, downloads and verifies the latest stable release, and installs under ~/.local.')}</p>
+              <InstallCommand command="curl -fsSL https://hiroute.ai/install.sh | sh" language={language} label={t('安装命令', 'installation command')} />
+              <details class="install-verification"><summary>{t('先查看脚本', 'Inspect the script first')}</summary>
+                <InstallCommand command="curl -fsSLo install.sh https://hiroute.ai/install.sh && less install.sh" language={language} label={t('脚本检查命令', 'script inspection command')} />
+                <p>{t('查看并确认刚下载的脚本后，再运行它。', 'After reviewing the downloaded script, run it.')}</p>
+                <InstallCommand command="sh install.sh" language={language} label={t('已审阅脚本的执行命令', 'command to run the reviewed script')} />
+              </details>
+            </li>
+            <li><h3>{t('启动并检查服务', 'Start and check the service')}</h3>
+              <InstallCommand command={'hiroute service start\nhiroute system status'} language={language} label={t('服务启动与检查命令', 'service startup and status commands')} />
+              <p>{t('如果找不到 hiroute，请将 ~/.local/bin 加入 PATH 后重新打开终端。', 'If hiroute is not found, add ~/.local/bin to PATH and open a new terminal.')}</p>
+            </li>
+            <li><h3>{t('连接模型，开始使用', 'Connect a model and get started')}</h3>
+              <p>{t('使用 CLI 完成配置，或按指南启用 Web UI，在浏览器中管理模型、路由和 Agent。', 'Configure HiRoute with the CLI, or follow the guide to enable the Web UI and manage models, routes and Agents in your browser.')}</p>
+              <a class="text-link" href={guide('install-linux')}>{t('启用 Web UI 与远程访问', 'Enable the Web UI and remote access')} →</a>
+            </li>
+          </ol>
+          <details class="install-verification"><summary>{t('校验与其他下载', 'Checksums and other downloads')}</summary>
+            <p>{t('离线安装或手动校验时，下载对应架构的归档与伴随清单。', 'For offline installation or manual verification, download the archive and companion manifest for your architecture.')}</p>
+            <div class="artifact-list">{platform.artifacts.map(artifact => <ReleaseArtifact release={stable} artifact={artifact} language={language} />)}</div>
+          </details>
+          <div class="install-next"><a class="text-link" href={guide('models')}>{t('接入第一个模型', 'Connect your first model')} →</a><a class="text-link" href={guide('cli')}>{t('CLI 使用指南', 'CLI guide')} →</a></div>
+        </>}
+      </>}
+    </article>)}
   </section>
-
-  {stableOmarchy.length > 0 && <section class="content-section wrap linux-section" id="omarchy">
-    <div class="platform-heading"><div><span class="platform-kind">{t('桌面应用', 'Desktop')}</span><h2>Omarchy</h2><p>{t('使用 pacman 安装。在 Omarchy 启动器打开 HiRoute，与当前用户的 Linux 后台服务共用路由和会话。', 'Install with pacman and open HiRoute from the Omarchy launcher. The app shares routes and sessions with the current user’s Linux service.')}</p></div><a class="text-link" href={`https://github.com/higress-group/HiRoute/blob/v${stable.version}/docs/linux-desktop.md`}>{t('签名验证与安装步骤', 'Signature verification and installation')} →</a></div>
-    <div class="artifact-list">{stableOmarchy.map(artifact => <ReleaseArtifact release={stable} artifact={artifact} language={language} />)}</div>
+  {preview && <section class="content-section wrap release-section" id="preview">
+    <details class="install-verification"><summary>{t(`预览版 ${preview.version}`, `Preview ${preview.version}`)}</summary>
+      <p>{preview.notes[language]}</p>
+      <div class="artifact-list">{preview.artifacts.map(artifact => <ReleaseArtifact release={preview} artifact={artifact} language={language} />)}</div>
+    </details>
   </section>}
-
-  <section class="content-section wrap linux-section" id="linux">
-    <div class="platform-heading"><div><span class="platform-kind">{t('Web UI 与 CLI', 'Web UI and CLI')}</span><h2>Linux</h2><p>{t('适合服务器、远程工作站和自动化环境。启用 Web UI 后，可以在另一台电脑的浏览器中接入模型、配置路由和 Agent、查看会话；也可以只用 CLI。', 'For servers, remote workstations and automation. With the Web UI enabled, connect models, configure routes and Agents, and inspect sessions from a browser on another computer, or use only the CLI.')}</p></div><a class="text-link" href={docs('install-linux')}>{t('Linux 安装与 Web UI', 'Linux installation and Web UI')} →</a></div>
-    <div class:list={['install-command', { unavailable: stableLinux.length === 0 }]}>
-      <span>{stableLinux.length > 0 ? t(`一条命令，按当前用户安装 · ${linuxArchitectures}`, `One command, installed for the current user · ${linuxArchitectures}`) : t('首个 Linux 稳定包准备中', 'First stable Linux package in preparation')}</span>
-      <pre><code>curl -fsSL https://hiroute.ai/install.sh | sh</code></pre>
-      <p>{stableLinux.length > 0 ? t('安装器识别架构，下载最新稳定版并校验后安装到 ~/.local；不使用 sudo，也不会自动启动服务。安装后运行 hiroute service start，再用 hiroute system status 确认服务。Web UI 默认关闭，按 Linux 指南启用。', 'The installer detects the architecture, downloads the latest stable release, verifies it and installs under ~/.local. It uses no sudo and never starts the service automatically. Afterwards, run hiroute service start and confirm readiness with hiroute system status. The Web UI is off by default; enable it with the Linux guide.') : t('命令已经纳入发布流程；在首个稳定包通过完整性检查和安装走查后开放。当前执行会明确返回“尚无稳定包”，不会下载候选构建。', 'The command is wired into the release flow and becomes active after the first stable package passes integrity and installation review. Until then it exits clearly instead of downloading a candidate build.')}</p>
-    </div>
-    <div class="install-extras">
-      <details class="review-install"><summary>{t('希望先查看脚本？', 'Prefer to inspect the script first?')}</summary><pre><code>curl -fsSLo install.sh https://hiroute.ai/install.sh
-less install.sh
-sh install.sh</code></pre></details>
-      {stableLinux.length > 0 && <details class="review-install manual-archives"><summary>{t('手动下载归档与伴随清单', 'Manual archives and companion manifests')}</summary><p>{t('用于离线安装、镜像和审计。', 'For offline installation, mirroring and audits.')}</p><div class="artifact-list">{stableLinux.map(artifact => <ReleaseArtifact release={stable} artifact={artifact} language={language} />)}</div></details>}
-    </div>
-  </section>
-
-  {preview && <section class="content-section wrap release-section" id="preview"><article class="release-card"><div class="release-heading"><div><span class="release-channel">{t('预览版', 'Preview')}</span><h2>HiRoute {preview.version}</h2><p>{preview.notes[language]}</p></div><time datetime={preview.published_at}>{formatDate(preview.published_at)}</time></div><div class="artifact-list">{preview.artifacts.map(artifact => <ReleaseArtifact release={preview} artifact={artifact} language={language} />)}</div></article></section>}
-
-  <section class="content-section wrap install-note"><h2>{t('安装须知', 'Before you install')}</h2><ol><li>{t('下载后，用安装包旁的完整 SHA256 核对文件。', 'After downloading, verify the file against the full SHA256 shown next to it.')}</li><li>{t(`macOS 桌面应用要求 macOS ${macMinimum} 或更高版本：Apple 芯片选择 arm64，Intel 芯片选择 x86_64。`, `macOS Desktop requires macOS ${macMinimum} or later. Choose arm64 for Apple silicon and x86_64 for Intel.`)}</li><li>{t('Windows 桌面应用只支持 x64，按当前用户安装，不需要管理员权限。', 'Windows Desktop supports x64 only and installs for the current user without administrator rights.')}</li><li>{t('Linux 独立服务版按当前用户安装。安装完成后由你启动服务并检查状态。', 'Linux standalone installs for the current user. Start the service and verify its status after installing.')}</li><li>{t('Omarchy 桌面应用与 CLI 共用当前用户的兼容 Linux 服务。macOS 或 Windows 桌面应用与独立服务版应使用不同的 HOME。', 'Omarchy Desktop and the CLI share the current user’s compatible Linux service. Use separate HOME directories for macOS or Windows Desktop and standalone.')}</li></ol><div class="self-signed-note"><strong>{t('关于 macOS 自签名版本', 'About self-signed macOS builds')}</strong><p>{t('短期发布没有 Apple Developer ID 签名和公证。macOS 首次阻止启动时，请在“系统设置 → 隐私与安全性”中确认“仍要打开”；不需要关闭 Gatekeeper 或 SIP。', 'Near-term releases do not have an Apple Developer ID signature or notarization. If macOS blocks the first launch, approve Open Anyway under System Settings → Privacy & Security. Do not disable Gatekeeper or SIP.')}</p><a class="text-link" href={docs('install-macos')}>{t('查看完整 macOS 步骤', 'Read the macOS installation steps')} →</a></div><div class="self-signed-note"><strong>{t('关于 Windows 未签名版本', 'About unsigned Windows builds')}</strong><p>{t('下载后先核对 SHA-256；遇到 SmartScreen 未知发布者提示时，按安装指南确认来源后继续。', 'Verify SHA-256 before opening the installer; follow the installation guide for a SmartScreen unknown-publisher prompt.')}</p><a class="text-link" href={docs('install-windows')}>{t('查看 Windows 安装与恢复步骤', 'Read Windows installation and recovery steps')} →</a></div><a class="text-link" href={changelog}>{t('查看更新日志', 'View changelog')} →</a></section>
+  <script is:inline src="/scripts/install.js" defer></script>
 </SiteLayout>

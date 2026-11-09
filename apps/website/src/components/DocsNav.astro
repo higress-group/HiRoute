@@ -8,8 +8,9 @@ const prefix = localePath(language, '');
   <span>{en ? 'GET STARTED' : '开始使用'}</span>
   <a class:list={{active:active === 'quickstart'}} href={`${prefix}/docs/`}>{en ? 'Quickstart' : '快速开始'}</a>
   <a class:list={{active:active === 'install-macos'}} href={`${prefix}/docs/install-macos/`}>{en ? 'Install on macOS' : 'macOS 安装与首次启动'}</a>
-  <a class:list={{active:active === 'install-linux'}} href={`${prefix}/docs/install-linux/`}>{en ? 'Linux Web UI and CLI' : 'Linux Web UI 与 CLI'}</a>
+  <a class:list={{active:active === 'install-omarchy'}} href={`${prefix}/docs/install-omarchy/`}>{en ? 'Install on Omarchy' : 'Omarchy 桌面版安装'}</a>
   <a class:list={{active:active === 'install-windows'}} href={`${prefix}/docs/install-windows/`}>{en ? 'Install on Windows' : 'Windows 桌面版安装'}</a>
+  <a class:list={{active:active === 'install-linux'}} href={`${prefix}/docs/install-linux/`}>{en ? 'Linux Web UI and CLI' : 'Linux Web UI 与 CLI'}</a>
 
   <span>{en ? 'MODEL ROUTING' : '模型智能路由'}</span>
   <a class:list={{active:active === 'models'}} href={`${prefix}/docs/models/`}>{en ? 'Connect models' : '接入模型'}</a>

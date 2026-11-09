@@ -27,6 +27,14 @@ export const guidePages = {
       en: 'HiRoute Desktop supports macOS 15.0 or later. Choose the Apple silicon or Intel installer, verify its SHA-256 and approve the first launch.',
     },
   },
+  'install-omarchy': {
+    zh: 'Omarchy 桌面版安装', en: 'Install HiRoute Desktop on Omarchy',
+    title: { zh: '在 Omarchy 上安装和更新 HiRoute', en: 'Install and update HiRoute on Omarchy' },
+    description: {
+      zh: '选择 x86_64 或 ARM64 的 HiRoute Arch 包，验证 OpenPGP 签名后通过 pacman 安装，从 Apps 打开并配置当前用户的后台服务。',
+      en: 'Choose the x86_64 or ARM64 HiRoute Arch package, verify its OpenPGP signature, install with pacman, and open HiRoute from Apps to set up the user service.',
+    },
+  },
   'install-linux': {
     zh: 'Linux Web UI 与 CLI 安装', en: 'Install HiRoute on Linux: Web UI and CLI',
     title: { zh: '在 Linux 上安装：Web UI 与 CLI', en: 'Install HiRoute on Linux: Web UI and CLI' },

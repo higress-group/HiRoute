@@ -69,8 +69,8 @@ export function pageSources(pathname) {
   const [, language, route] = pathname.match(/^\/(en|zh)(\/.*)$/) ?? [];
   if (!language) return [];
   const app = file => `apps/website/${file}`;
-  if (route === '/') return [app('src/components/HomePage.astro'), 'news/index.json', app('data/releases.json')];
-  if (route === '/download/') return [app('src/components/DownloadPage.astro'), app('data/releases.json'), app('data/short-downloads.json')];
+  if (route === '/') return [app('src/components/HomePage.astro'), app('src/components/InstallPlatforms.astro'), app('src/lib/install-platforms.mjs'), 'news/index.json', app('data/releases.json')];
+  if (route === '/download/') return [app('src/components/DownloadPage.astro'), app('src/components/InstallPlatforms.astro'), app('src/components/InstallDetails.astro'), app('src/components/InstallCommand.astro'), app('src/lib/install-platforms.mjs'), app('public/scripts/install.js'), app('src/styles/install.css'), app('data/releases.json'), app('data/short-downloads.json')];
   if (route === '/changelog/') return [app('src/components/ChangelogPage.astro'), app('data/releases.json')];
   if (route === '/news/') return ['news/index.json'];
   if (route === '/docs/') return [app(`content/guides/quickstart.${language}.md`)];
