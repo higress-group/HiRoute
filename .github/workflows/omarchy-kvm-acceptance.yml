@@ -1,0 +1,36 @@
+name: Omarchy x86 KVM candidate acceptance
+
+on:
+  push:
+    branches: [codex/omarchy-kvm-validation]
+
+permissions: {}
+
+jobs:
+  native:
+    if: github.repository == 'higress-group/HiRoute'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    permissions:
+      # GitHub restricts draft release assets to tokens with repository push access.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install QEMU and grant the runner access to KVM
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends acl qemu-system-x86 qemu-utils tesseract-ocr
+          sudo setfacl -m "u:$(id -u):rw" /dev/kvm
+      - name: Install the frozen signed package in a hardware-accelerated Omarchy desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/validate-omarchy-kvm-candidate.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: omarchy-x86-kvm-evidence
+          path: ${{ runner.temp }}/omarchy-evidence
+          retention-days: 7
+          if-no-files-found: warn
