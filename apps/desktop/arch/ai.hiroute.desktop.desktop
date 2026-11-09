@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=HiRoute
+Comment=Manage AI model routing, sources and sessions
+Comment[zh_CN]=管理 AI 模型路由、来源和会话
+Exec=/usr/bin/hiroute-desktop
+TryExec=/usr/bin/hiroute-desktop
+Icon=ai.hiroute.desktop
+Terminal=false
+Categories=Development;
+StartupNotify=true
+StartupWMClass=ai.hiroute.desktop

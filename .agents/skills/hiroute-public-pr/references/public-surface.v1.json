@@ -48,6 +48,7 @@
     "docs/desktop-interactions.md",
     "docs/diagnostic-troubleshooting.md",
     "docs/github-actions-validation.md",
+    "docs/linux-desktop.md",
     "docs/local-rust-validation.md",
     "docs/local-user-configuration.md",
     "docs/macos-installation.md",

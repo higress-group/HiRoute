@@ -601,6 +601,33 @@ class ReleaseQualificationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "no successful candidate qualification"):
                 verify()
 
+    def test_omarchy_without_windows_requires_the_qualified_linux_archive(self):
+        receipt = self.qualify()
+        linux = next(item for item in self.release["artifacts"] if item["platform"] == "Linux")
+        filename = f"HiRoute-{self.version}-{self.revision[:12]}-omarchy-{linux['architecture']}.pkg.tar.xz"
+        omarchy = {"kind": "desktop", "platform": "Omarchy", "filename": filename, "sha256": "d" * 64, "size": 128,
+                   "signature_filename": filename + ".sig", "signature_sha256": "e" * 64, "signature_size": 16,
+                   "checksum_filename": filename + ".sha256", "checksum_sha256": "f" * 64, "checksum_size": 140}
+        self.release["artifacts"] = [linux, omarchy]
+        run = {"databaseId": 42, "attempt": 2, "headSha": self.revision, "conclusion": "success"}
+
+        def download(command, **_):
+            (Path(command[command.index("--dir") + 1]) / "qualification.json").write_text(json.dumps(receipt))
+            return subprocess.CompletedProcess(command, 0)
+
+        def verify():
+            return self.qualifier.verify(self.root, "example/HiRoute", {"releases": [self.release]},
+                                         "v" + self.version, self.revision)
+
+        with patch.object(self.qualifier.subprocess, "check_output", return_value="[]"):
+            with self.assertRaisesRegex(ValueError, "no successful candidate qualification"):
+                verify()
+        with patch.object(self.qualifier.subprocess, "check_output", return_value=json.dumps([run])), \
+                patch.object(self.qualifier.subprocess, "run", side_effect=download):
+            self.assertEqual(verify()["run_id"], 42)
+            linux["sha256"] = "0" * 64
+            with self.assertRaisesRegex(ValueError, "no successful candidate qualification"):
+                verify()
 
 
 class HostedReleasePolicyTests(unittest.TestCase):

@@ -1,0 +1,25 @@
+pkgname=hiroute-desktop
+pkgver=0.0.0
+_runtime_version=0.0.0
+pkgrel=1
+pkgdesc='HiRoute native desktop for the current user'
+arch=('aarch64' 'x86_64')
+url='https://github.com/higress-group/HiRoute'
+license=('Apache-2.0')
+depends=('gtk3' 'webkit2gtk-4.1' 'systemd' 'python' 'wl-clipboard' 'xdg-utils' 'xdg-desktop-portal')
+options=('!strip' '!debug')
+source=('hiroute-desktop' 'ai.hiroute.desktop.desktop' 'icon.svg' 'LICENSE'
+        'manifest.json' 'runtime.tar.gz' 'install-standalone.py')
+sha256sums=()
+
+package() {
+  install -Dm755 "$srcdir/hiroute-desktop" "$pkgdir/usr/bin/hiroute-desktop"
+  install -Dm644 "$srcdir/ai.hiroute.desktop.desktop" "$pkgdir/usr/share/applications/ai.hiroute.desktop.desktop"
+  install -Dm644 "$srcdir/icon.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/ai.hiroute.desktop.svg"
+  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/hiroute-desktop/LICENSE"
+  local name
+  for name in manifest.json install-standalone.py; do
+    install -Dm644 "$srcdir/$name" "$pkgdir/usr/share/hiroute-desktop/standalone/$name"
+  done
+  install -Dm644 "$srcdir/runtime.tar.gz" "$pkgdir/usr/share/hiroute-desktop/standalone/HiRoute-${_runtime_version}-linux-${CARCH}.tar.gz"
+}

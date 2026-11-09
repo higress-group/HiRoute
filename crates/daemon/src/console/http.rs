@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
 use zeroize::Zeroizing;
 const PREFIX: &str = "/api/console/v1";
-const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'";
 type Reply = Response<Full<Bytes>>;
 fn normalize_authority(host: &str, port: u16) -> &str {
     if port == 80 {

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { linuxShellWindow } from '../host/types.ts';
+import { currentShellPresentation, listenShellPresentation, updateShellPresentation } from './shell-presentation.ts';
 
 export type Language = 'zh' | 'en';
 export type LanguagePreference = 'system' | Language;
@@ -107,14 +109,21 @@ export function usePresentationPreferences(
   storage: StorageLike | undefined = browserStorage(),
 ): PresentationPreferenceController {
   const [preferences, setPreferences] = useState<PresentationPreferences>(() =>
-    loadPresentationPreferences(storage),
+    linuxShellWindow() ? { ...currentShellPresentation(), textScale: 1 } : loadPresentationPreferences(storage),
   );
   const [prefersDark, setPrefersDark] = useState(browserPrefersDark);
   const [systemLanguage, setSystemLanguage] = useState(browserLanguage);
 
   useEffect(() => {
-    savePresentationPreferences(storage, preferences);
+    if (!linuxShellWindow()) savePresentationPreferences(storage, preferences);
   }, [preferences, storage]);
+
+  useEffect(() => {
+    if (!linuxShellWindow()) return;
+    const update = () => setPreferences({ ...currentShellPresentation(), textScale: 1 });
+    update();
+    return listenShellPresentation(update);
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -138,7 +147,13 @@ export function usePresentationPreferences(
     theme: preferences.theme,
     textScale: preferences.textScale,
     resolvedTheme: resolveTheme(preferences.theme, prefersDark),
-    setLanguage: (language: LanguagePreference) => setPreferences(current => ({ ...current, language })),
-    setTheme: (theme: ThemePreference) => setPreferences(current => ({ ...current, theme })),
+    setLanguage: (language: LanguagePreference) => {
+      if (linuxShellWindow()) updateShellPresentation({ language });
+      else setPreferences(current => ({ ...current, language }));
+    },
+    setTheme: (theme: ThemePreference) => {
+      if (linuxShellWindow()) updateShellPresentation({ theme });
+      else setPreferences(current => ({ ...current, theme }));
+    },
   }), [preferences, prefersDark, systemLanguage]);
 }

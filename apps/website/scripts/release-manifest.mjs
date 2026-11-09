@@ -4,7 +4,7 @@ import path from 'node:path';
 import { artifactAssets, publicationAssets, validateReleaseManifest, verifyDesktopIdentity } from '../src/lib/releases.mjs';
 
 const [command, manifestPath, ...args] = process.argv.slice(2);
-if (!command || !manifestPath) throw new Error('usage: release-manifest.mjs <validate|artifacts|publication-assets|desktop-artifacts|standalone-packages|verify-assets|verify-desktop-identity> MANIFEST [options]');
+if (!command || !manifestPath) throw new Error('usage: release-manifest.mjs <validate|artifacts|publication-assets|desktop-artifacts|omarchy-packages|standalone-packages|verify-assets|verify-desktop-identity> MANIFEST [options]');
 const manifest = validateReleaseManifest(JSON.parse(fs.readFileSync(manifestPath, 'utf8')));
 const tagIndex = args.indexOf('--tag');
 const tag = tagIndex >= 0 ? args[tagIndex + 1] : null;
@@ -20,6 +20,7 @@ function expectedFilename(artifact) {
   if (!release || !revision) throw new Error('--tag and --revision are required');
   if (artifact.kind === 'desktop') {
     if (artifact.platform === 'Windows') return `HiRoute-${release.version}-${revision.slice(0, 12)}-windows-x86_64-setup.exe`;
+    if (artifact.platform === 'Omarchy') return `HiRoute-${release.version}-${revision.slice(0, 12)}-omarchy-${artifact.architecture}.${artifact.format}`;
     const suffix = artifact.distribution === 'self-signed' ? 'trial' : 'developer-id';
     return `HiRoute-${release.version}-${revision.slice(0, 12)}-macos-${artifact.architecture}-${suffix}.dmg`;
   }
@@ -40,8 +41,16 @@ if (command === 'validate') {
   }
 } else if (command === 'desktop-artifacts') {
   if (!release) throw new Error('--tag is required');
-  for (const artifact of release.artifacts.filter(item => item.kind === 'desktop')) {
+  for (const artifact of release.artifacts.filter(item => item.kind === 'desktop' && item.platform !== 'Omarchy')) {
     process.stdout.write(`${artifact.filename}\n`);
+  }
+} else if (command === 'omarchy-packages') {
+  if (!release) throw new Error('--tag is required');
+  for (const artifact of release.artifacts.filter(item => item.platform === 'Omarchy')) {
+    const runtime = release.artifacts.find(item => item.kind === 'standalone' && item.platform === 'Linux'
+      && item.architecture === artifact.architecture);
+    if (!runtime) throw new Error(`Omarchy package needs its qualified standalone runtime: ${artifact.filename}`);
+    process.stdout.write([artifact.filename, runtime.manifest_filename, runtime.filename].join('\t') + '\n');
   }
 } else if (command === 'standalone-packages') {
   if (!release) throw new Error('--tag is required');
@@ -80,6 +89,12 @@ if (command === 'validate') {
         throw new Error(`standalone package identity differs from release record: ${artifact.filename}`);
       }
     }
+    if (artifact.platform === 'Omarchy') {
+      const checksum = fs.readFileSync(path.join(directory, artifact.checksum_filename), 'utf8');
+      if (checksum !== `${artifact.sha256}  ${artifact.filename}\n`) {
+        throw new Error(`Omarchy checksum differs from the release record: ${artifact.filename}`);
+      }
+    }
   }
   process.stdout.write(`${count} release asset(s) verified\n`);
 } else if (command === 'verify-desktop-identity') {
@@ -88,7 +103,8 @@ if (command === 'validate') {
   const identityIndex = args.indexOf('--identity');
   if (filenameIndex < 0 || !args[filenameIndex + 1]) throw new Error('--filename is required');
   if (identityIndex < 0 || !args[identityIndex + 1]) throw new Error('--identity is required');
-  const artifact = release.artifacts.find(item => item.kind === 'desktop' && item.filename === args[filenameIndex + 1]);
+  const artifact = release.artifacts.find(item => item.kind === 'desktop' && item.platform !== 'Omarchy'
+    && item.filename === args[filenameIndex + 1]);
   if (!artifact) throw new Error(`desktop artifact is not declared by ${tag}: ${args[filenameIndex + 1]}`);
   const identity = JSON.parse(fs.readFileSync(path.resolve(args[identityIndex + 1]), 'utf8'));
   verifyDesktopIdentity(release, artifact, identity, revision);

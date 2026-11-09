@@ -79,6 +79,23 @@ class ReleaseContractsTests(unittest.TestCase):
             contracts.record_snapshot(self.directory, changed)
         self.assertEqual(before, {p.name: p.read_bytes() for p in self.directory.iterdir()})
 
+    def test_snapshot_binds_the_omarchy_archive_signature_and_checksum(self):
+        filename = f"HiRoute-1.2.0-{self.revision[:12]}-omarchy-x86_64.pkg.tar.xz"
+        omarchy = {"kind": "desktop", "platform": "Omarchy", "filename": filename, "sha256": "2" * 64, "size": 2048,
+                   "signature_filename": filename + ".sig", "signature_sha256": "3" * 64, "signature_size": 128,
+                   "checksum_filename": filename + ".sha256", "checksum_sha256": "4" * 64, "checksum_size": 140}
+        self.manifest["schema"] = "hiroute.website.releases/v3"
+        self.manifest["releases"][0]["artifacts"].append(omarchy)
+        for prefix in ("", "signature_", "checksum_"):
+            self.release["assets"].append({"name": omarchy[prefix + "filename"], "size": omarchy[prefix + "size"],
+                                           "digest": "sha256:" + omarchy[prefix + "sha256"]})
+        assets = self.snapshot()["release"]["artifacts"]
+        self.assertEqual(len(assets), 4)
+        self.assertEqual({item["filename"] for item in assets}, {item["name"] for item in self.release["assets"]})
+        self.release["assets"][-1]["digest"] = "sha256:" + "5" * 64
+        with self.assertRaisesRegex(ValueError, "asset digest"):
+            self.snapshot()
+
     def test_older_rerun_and_preview_do_not_replace_latest_stable(self):
         old = self.snapshot()
         contracts.record_snapshot(self.directory, old)

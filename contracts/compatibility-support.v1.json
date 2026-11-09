@@ -281,6 +281,7 @@
     "hiroute.key-budget/v1",
     "hiroute.launcher-upgrade-status/v1",
     "hiroute.launcher-upgrade/v1",
+    "hiroute.linux-install-journal/v1",
     "hiroute.local-pipe/v1",
     "hiroute.machine-envelope/v2",
     "hiroute.managed-artifact-backup/v2",

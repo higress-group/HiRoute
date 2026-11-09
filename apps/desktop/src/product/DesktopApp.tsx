@@ -721,13 +721,14 @@ export function DesktopApp() {
     const timeout = window.setTimeout(() => setDismissedOperationId(feedbackId), 4500);
     return () => window.clearTimeout(timeout);
   }, [operationView.phase, feedbackId]);
+  const host = hostCapabilities();
   return <PresentationRoot
     language={language}
     theme={preferences.resolvedTheme}
     textScale={preferences.textScale}
   >
-    <div className={`app-window host-${hostCapabilities().host}`}>
-      <header className="titlebar" data-tauri-drag-region="deep" onMouseDown={event => {
+    <div className={`app-window host-${host.host}${host.compositor_frame === true ? ' compositor-frame' : ''}`}>
+      {host.compositor_frame !== true && <header className="titlebar" data-tauri-drag-region="deep" onMouseDown={event => {
         if (!hostCapabilities().titlebar || event.button !== 0 || event.detail !== 2) return;
         event.preventDefault();
         event.stopPropagation();
@@ -739,7 +740,7 @@ export function DesktopApp() {
         <div className="titlebar-main" data-tauri-drag-region>
           <div className="window-title"><span>{trialOpen ? (language === 'zh' ? '试用新模型' : 'Try a new model') : text.pages[page]}</span></div>
         </div>
-      </header>
+      </header>}
       <HomeNavigation
         language={language}
         items={navigation}

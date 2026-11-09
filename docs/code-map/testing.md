@@ -451,6 +451,10 @@ runs package builds alongside the reusable native Windows matrix. The
 [qualification helper](../../scripts/release-qualification.py) joins successful jobs
 and binds the catalog bytes to the candidate before publication. PR and main pushes
 use their ordinary compile and affected-test selection.
+The [Omarchy packager](../../scripts/package-linux-desktop.py) uses the qualified
+Linux standalone bundle. Its publication check verifies the signed Arch package,
+the bundled runtime, and the Desktop executable architecture. Native installation
+and lifecycle acceptance use the [Omarchy release path](../release-builds.md).
 The [Windows CI entry](../../scripts/windows-headless-ci.ps1) requires nonempty
 native inventories for primitives, shared libraries, installed foreground and
 Task business paths, retained low-level SCM tests, and fixed upstream clients.

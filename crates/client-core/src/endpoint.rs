@@ -17,8 +17,13 @@ impl LocalEndpoint {
 
     /// The native launcher must obtain this PID from its own child handle, not a WebView.
     pub fn for_child(root: impl AsRef<Path>, child_pid: u32) -> Self {
+        Self::for_verified_process(root, child_pid)
+    }
+
+    /// The caller obtains the expected PID from an OS-owned launch or manager record.
+    pub fn for_verified_process(root: impl AsRef<Path>, pid: u32) -> Self {
         Self {
-            expected_pid: Some(child_pid),
+            expected_pid: Some(pid),
             ..Self::from_runtime_root(root)
         }
     }

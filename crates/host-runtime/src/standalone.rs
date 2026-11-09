@@ -89,7 +89,19 @@ pub fn standalone_maintenance_pending(
         );
         return Ok(journal.phase == "prepared");
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        let path = layout
+            .marker_path
+            .with_file_name("service")
+            .join("linux-install-journal.json");
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(_) => Err(StandaloneLayoutError),
+        }
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let _ = layout;
         Ok(false)
@@ -268,17 +280,7 @@ pub fn read_standalone_install_record(
 
 #[cfg(unix)]
 fn marker_file(path: &Path) -> Result<std::fs::File, StandaloneLayoutError> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(nix::libc::O_NOFOLLOW)
-        .open(path)
-        .map_err(|_| StandaloneLayoutError)?;
-    let metadata = file.metadata().map_err(|_| StandaloneLayoutError)?;
-    if !metadata.is_file() {
-        return Err(StandaloneLayoutError);
-    }
-    Ok(file)
+    hiroute_platform::private_fs::open_regular_file(path).map_err(|_| StandaloneLayoutError)
 }
 
 #[cfg(windows)]
@@ -299,6 +301,46 @@ pub struct StandaloneLayoutError;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn standalone_record_refuses_fifo_without_a_writer() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("standalone.json");
+        nix::unistd::mkfifo(&path, nix::sys::stat::Mode::S_IRUSR).unwrap();
+        let (send, receive) = std::sync::mpsc::channel();
+        std::thread::spawn(move || send.send(read_standalone_install_record(&path)).ok());
+        assert!(matches!(
+            receive.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(Err(StandaloneLayoutError))
+        ));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unfinished_linux_install_blocks_startup_at_the_fixed_marker_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().to_path_buf();
+        let layout = StandaloneLayout::from_values(
+            false,
+            Some(home.clone()),
+            None,
+            Some(home.join("xdg-data")),
+            None,
+        )
+        .unwrap();
+        let service = layout.marker_path.with_file_name("service");
+        let journal = service.join("linux-install-journal.json");
+        std::fs::create_dir_all(&service).unwrap();
+        assert!(!standalone_maintenance_pending(&layout).unwrap());
+
+        std::fs::write(&journal, b"unfinished journal").unwrap();
+        assert!(standalone_maintenance_pending(&layout).unwrap());
+
+        std::fs::remove_file(&journal).unwrap();
+        std::os::unix::fs::symlink(service.join("absent"), &journal).unwrap();
+        assert!(standalone_maintenance_pending(&layout).unwrap());
+    }
 
     #[test]
     #[cfg(unix)]
