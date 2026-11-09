@@ -53,6 +53,9 @@ def catalog_assets(record, revision):
         names = [(artifact["filename"], artifact["sha256"], artifact["size"])]
         if artifact["kind"] == "standalone":
             names.append((artifact["manifest_filename"], artifact["manifest_sha256"], artifact["manifest_size"]))
+        if artifact.get("platform") == "Omarchy":
+            for prefix in ("signature", "checksum"):
+                names.append((artifact[prefix + "_filename"], artifact[prefix + "_sha256"], artifact[prefix + "_size"]))
         require(f"-{revision[:12]}-" in artifact["filename"], "artifact source differs from tag")
         for filename, sha256, size in names:
             require(Path(filename).name == filename and filename not in (".", ".."), "invalid asset name")

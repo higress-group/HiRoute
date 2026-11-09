@@ -9,6 +9,13 @@ export type HostCapabilities = {
   login_start: boolean;
   /** Absent on older Windows shells: retain the local-command fallback. */
   codex_desktop_launch?: boolean;
+  compositor_frame?: boolean;
+  open_in_browser?: boolean;
+  restart_service?: boolean;
+  remove_runtime?: boolean;
+  reconnect?: boolean;
+  native_clipboard?: boolean;
+  presentation?: boolean;
   directory_reveal: 'native' | 'path';
   diagnostic_directory?: string;
   recovery_directory?: string;
@@ -27,3 +34,7 @@ export const browserCapabilities: HostCapabilities = {
   host: 'console', platform: 'browser', updates: false, cli_entry: false,
   quit: false, titlebar: false, login_start: false, directory_reveal: 'path',
 };
+
+export function linuxShellWindow(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window && '__HIROUTE_LINUX_SHELL__' in window;
+}

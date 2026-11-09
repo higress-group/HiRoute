@@ -2,6 +2,7 @@ import { type PropsWithChildren, useEffect, useRef, useState } from 'react';
 import { HiRouteMark, PresentationRoot, UiIcon, usePresentationPreferences } from '../ui';
 import { safeDiagnosticCode } from '../error-code';
 import { hostKind, initializeShellHost, invoke } from './index.ts';
+import { linuxShellWindow } from './types.ts';
 import { clearConsoleSession, CONSOLE_EXPIRED_EVENT, CONSOLE_UNAVAILABLE_EVENT, exchangeConsoleCredential, readConsoleSession, sessionBearer } from './console.ts';
 type Phase = 'loading' | 'login' | 'expired' | 'unavailable' | 'assets' | 'ready';
 export function ConsoleRoot({ children }: PropsWithChildren) {
@@ -48,10 +49,19 @@ function ConsoleSessionRoot({ children }: PropsWithChildren) {
       if (location.pathname === '/launch') history.replaceState(null, '', '/');
       if (values.length) {
         setBusy(true);
-        void initializeShellHost().then(() => {
+        void (async () => {
+          const linux = linuxShellWindow();
+          if (!linux) await initializeShellHost();
           if (values.length !== 1 || !/^[a-f0-9]{64}$/.test(values[0])) throw { code: 'CONSOLE_CREDENTIAL_INVALID' };
-          return exchangeConsoleCredential('launch', values[0]);
-        }).then(accept).catch(cause => { clearConsoleSession(); if (shell) { void reconnectShell(); return; } setError(safeDiagnosticCode(cause, 'CONSOLE_CREDENTIAL_INVALID')); setPhase('login'); }).finally(() => setBusy(false));
+          const identity = await exchangeConsoleCredential('launch', values[0]);
+          if (linux) await initializeShellHost();
+          accept(identity);
+        })().catch(cause => {
+          clearConsoleSession();
+          if (shell && !linuxShellWindow()) { void reconnectShell(); return; }
+          setError(safeDiagnosticCode(cause, 'CONSOLE_CREDENTIAL_INVALID'));
+          setPhase(shell ? 'unavailable' : 'login');
+        }).finally(() => setBusy(false));
       } else void retry();
     }
     return () => { window.removeEventListener(CONSOLE_EXPIRED_EVENT, expired); window.removeEventListener(CONSOLE_UNAVAILABLE_EVENT, unavailable); };

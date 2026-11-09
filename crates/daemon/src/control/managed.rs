@@ -1,6 +1,8 @@
 //! Bounded Local Control listener lifetime for the role=all composition root.
 
 use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -89,7 +91,15 @@ pub fn start_control(
     application: ApplicationService,
     runtime_root: impl AsRef<Path>,
 ) -> Result<ManagedControlHandle, ManagedControlError> {
-    start_control_inner(application, runtime_root.as_ref(), None, false, None)
+    start_control_inner(
+        application,
+        runtime_root.as_ref(),
+        None,
+        false,
+        None,
+        #[cfg(target_os = "linux")]
+        None,
+    )
 }
 
 pub(crate) fn start_control_with_agent_grants(
@@ -98,6 +108,7 @@ pub(crate) fn start_control_with_agent_grants(
     resolver: Arc<dyn AgentGrantResolverPort>,
     released_commands_only: bool,
     upgrade: Option<Arc<hiroute_host_runtime::UpgradeDrain>>,
+    #[cfg(target_os = "linux")] agent_removal_lock: Option<PathBuf>,
 ) -> Result<ManagedControlHandle, ManagedControlError> {
     start_control_inner(
         application,
@@ -105,6 +116,8 @@ pub(crate) fn start_control_with_agent_grants(
         Some(resolver),
         released_commands_only,
         upgrade,
+        #[cfg(target_os = "linux")]
+        agent_removal_lock,
     )
 }
 
@@ -114,6 +127,7 @@ fn start_control_inner(
     resolver: Option<Arc<dyn AgentGrantResolverPort>>,
     released_commands_only: bool,
     upgrade: Option<Arc<hiroute_host_runtime::UpgradeDrain>>,
+    #[cfg(target_os = "linux")] agent_removal_lock: Option<PathBuf>,
 ) -> Result<ManagedControlHandle, ManagedControlError> {
     let (listener, guard, endpoint) =
         bind_listener(runtime_root).map_err(ManagedControlError::Start)?;
@@ -140,6 +154,8 @@ fn start_control_inner(
     } else {
         daemon
     };
+    #[cfg(target_os = "linux")]
+    let daemon = daemon.with_agent_removal_lock(agent_removal_lock);
     let phase = Arc::new(std::sync::Mutex::new(ManagedControlPhase::Ready));
     let shutdown = Arc::new(AtomicBool::new(false));
     let worker_phase = Arc::clone(&phase);
@@ -452,6 +468,8 @@ mod tests {
             root.path(),
             Arc::new(FixtureGrantResolver),
             false,
+            None,
+            #[cfg(target_os = "linux")]
             None,
         )
         .unwrap();

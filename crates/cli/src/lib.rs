@@ -816,6 +816,13 @@ fn native_help_document(descriptor: &CommandDescriptorV1) -> String {
 
 pub fn main_entry() -> u8 {
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();
+    #[cfg(target_os = "linux")]
+    if arguments
+        .first()
+        .is_some_and(|argument| argument == "__standalone-agent-removal")
+    {
+        return service::desktop_agent_removal(&arguments[1..]);
+    }
     #[cfg(windows)]
     if let Some(verb) = arguments
         .first()

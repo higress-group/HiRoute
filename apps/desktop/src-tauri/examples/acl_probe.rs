@@ -1,17 +1,18 @@
 //! Explicit macOS development acceptance executable, never a product command/bridge.
 //! Uses production handlers and capability manifest in two real WebViews.
-use hiroute_desktop::{
-    bootstrap::Resident,
-    bridge::{self, DesktopState},
-};
-use std::{
-    io::{Read, Write},
-    sync::{Arc, Mutex, atomic::AtomicU64},
-    time::Duration,
-};
-use tauri::Manager;
-
+#[cfg(target_os = "macos")]
 fn main() {
+    use hiroute_desktop::{
+        bootstrap::Resident,
+        bridge::{self, DesktopState},
+    };
+    use std::{
+        io::{Read, Write},
+        sync::{Arc, Mutex, atomic::AtomicU64},
+        time::Duration,
+    };
+    use tauri::Manager;
+
     const { assert!(cfg!(debug_assertions), "development acceptance only") };
     let root = std::path::PathBuf::from(
         std::env::var_os("HIROUTE_DESKTOP_TEST_ROOT").expect("isolated root required"),
@@ -91,4 +92,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
     });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main() {
+    eprintln!("The ACL probe requires macOS.");
+    std::process::exit(1);
 }

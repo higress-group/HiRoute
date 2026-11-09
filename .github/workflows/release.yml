@@ -91,6 +91,15 @@ jobs:
           while IFS=$'\t' read -r manifest archive; do
             python3 scripts/package-standalone.py verify "$RUNNER_TEMP/release-assets/$manifest" "$RUNNER_TEMP/release-assets/$archive"
           done < "$RUNNER_TEMP/standalone-assets.tsv"
+          node apps/website/scripts/release-manifest.mjs omarchy-packages apps/website/data/releases.json --tag "$RELEASE_TAG" > "$RUNNER_TEMP/omarchy-assets.tsv"
+          if [[ -s "$RUNNER_TEMP/omarchy-assets.tsv" ]]; then
+            key="$RUNNER_TEMP/omarchy-release-key.asc"
+            git show "$RELEASE_REVISION:assets/packaging/omarchy-release-key.asc" > "$key"
+            if ! command -v gpg >/dev/null || ! command -v gpgv >/dev/null; then brew install gnupg; fi
+            while IFS=$'\t' read -r package manifest archive; do
+              python3 scripts/package-linux-desktop.py --verify-package "$RUNNER_TEMP/release-assets/$package" \
+                --public-key "$key" --manifest "$RUNNER_TEMP/release-assets/$manifest" --archive "$RUNNER_TEMP/release-assets/$archive"
+            done < "$RUNNER_TEMP/omarchy-assets.tsv"
 
   publish:
     needs: verify-release

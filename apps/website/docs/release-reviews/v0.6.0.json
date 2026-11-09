@@ -4,7 +4,7 @@
   "product_revision": "9fed4150abd9a331452d4bc1136d60a76d5ccb62",
   "guides": {
     "status": "updated",
-    "summary": "Updated both languages for shared decision allowances, unpriced usage, the Codex reasoning picker and decision model references. Reviewed macOS, Windows and Linux storage preflight and complete recovery. The Linux guide, Quickstart and README now lead Omarchy users to the signed Arch package and explain reuse of a compatible standalone service. The shared Agent activation steps still apply.",
+    "summary": "Updated both languages for shared decision allowances, unpriced usage, the Codex reasoning picker and decision model references. Reviewed macOS, Windows and Linux storage preflight and complete recovery. The Linux guide, Quickstart and README lead Omarchy users to the download section with separate package, signature and checksum links. The installation guide and download page explain service reuse. The shared Agent activation steps still apply.",
     "reviewed_files": [
       "README.md",
       "README.zh-CN.md",
@@ -23,7 +23,7 @@
       "apps/website/content/guides/install-windows.en.md",
       "apps/website/content/guides/install-windows.zh.md"
     ],
-    "content_sha256": "a665523f59da6766261770ea99375d673c4d58e519811d0cda94035d0b09cc35"
+    "content_sha256": "74558cc3c472ee54c196452512b9b559a711a96fc419d70b876f42bfe18f42e9"
   },
   "screenshots": {
     "status": "unchanged",
