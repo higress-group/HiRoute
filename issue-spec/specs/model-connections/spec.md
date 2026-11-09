@@ -272,6 +272,40 @@ When a later client includes downloaded facts, the selected data revision and ac
 Source SPEC comments:
 - https://github.com/higress-group/HiRoute/issues/191#issuecomment-6295418452
 
+### Requirement: Editor suggestions stay separate from declared capability facts
+
+Template and metadata capability prefill SHALL be presented as editable
+suggestions in the current editor context, distinct from the capability facts
+serialized by Check and Save requests. A new local model's serialized facts
+SHALL start with `value: null` and an unknown basis. Only an explicit field edit
+or an explicit adoption action writes a field as a user declaration; clearing a
+field SHALL yield unknown and be remembered so a later adoption does not refill
+it. Untouched suggestions SHALL remain pending across focus, opening the
+editor, selecting a template, editing the label, Back, Check and ordinary Save.
+
+The Check request and its Save branch SHALL carry the draft's actual declared
+facts; the daemon SHALL resolve any applicable trusted catalog defaults itself.
+Selection rows SHALL label official catalog membership separately from current
+directory observation: membership identifies an official match, the exact
+`upstream_model_id` in `observed_model_ids` identifies a return from this check,
+and a completed reachable directory distinguishes **Not returned by this check**
+from the **Not confirmed by this check** used for a partial, unavailable,
+invalid or omitted directory. A reachability failure supplies no negative
+directory observation.
+
+#### Scenario: Edit one suggested limit before Save
+
+- **WHEN** the editor suggests a 200,000-token context and the user sets it to
+  32,000 without touching other fields
+- **THEN** only context is declared; other suggested capabilities remain unknown
+  through Check, Save, restart and saved-source recheck.
+
+#### Scenario: Label-only edit preserves unknown facts
+
+- **WHEN** the user edits only a model's display label and saves
+- **THEN** the saved local row keeps the new label and its unknown optional
+  capabilities; a later same-ID catalog candidate does not replace it.
+
 ### Requirement: Directory access and inference evidence are independent
 
 Model directory reads are optional enhancements. They use the selected account,
@@ -357,6 +391,14 @@ from their private safe recheck descriptor. A legacy custom source lacking that
 descriptor fails closed; connector-owned subscriptions use their reauthorization
 workflow. Recheck shares deduplication, cancellation, candidate, save, and recovery
 contracts and reveals no reconstruction secrets.
+
+For saved custom sources, each local model SHALL be reconstructed from its saved
+values and bases. Historical user declarations SHALL be kept as stored, and on an
+exact upstream ID collision with a new catalog candidate the saved local row takes
+precedence, preserving its label, explicit values and local identity. Current
+qualification and denial still apply by ID in candidate generation. Saved
+registered sources continue to resolve exact catalog-bound facts from the current
+trusted defaults projection and retain their added local declarations.
 
 Native discovery/preparation/preview associations are process-local, not durable
 permissions. The trusted process retains full effective configuration layers,

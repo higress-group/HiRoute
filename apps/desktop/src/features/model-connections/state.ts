@@ -1,9 +1,11 @@
 import { randomId } from '../../random-id.ts';
 import type {
   CandidateModelView,
+  CapabilityKey,
   ComputeCandidateRef,
   ComputeManagementChange,
   ComputeSaveResult,
+  ModelCapabilities,
   ModelConnectionDraft,
   ModelDeclaration,
   ModelConnectionDraftInput,
@@ -11,6 +13,90 @@ import type {
   RevisionSet,
 } from './types';
 import type { ManagedSource } from '../models/types';
+
+export const capabilityKeys: readonly CapabilityKey[] = [
+  'tool',
+  'vision',
+  'streaming',
+  'context_tokens',
+  'max_output_tokens',
+  'native_reasoning',
+];
+
+/** Every optional fact starts genuinely unknown; nothing here is a user declaration. */
+export function unknownCapabilities(): ModelCapabilities {
+  return {
+    tool: { value: null, basis: 'unknown' },
+    vision: { value: null, basis: 'unknown' },
+    streaming: { value: null, basis: 'unknown' },
+    context_tokens: { value: null, basis: 'unknown' },
+    max_output_tokens: { value: null, basis: 'unknown' },
+    native_reasoning: { value: null, basis: 'unknown' },
+  };
+}
+
+/** Editable starting values offered by the generic editor, never committed on their own. */
+export function suggestedCapabilities(): ModelCapabilities {
+  return {
+    tool: { value: true, basis: 'user_declared' },
+    vision: { value: false, basis: 'user_declared' },
+    streaming: { value: true, basis: 'user_declared' },
+    context_tokens: { value: 200_000, basis: 'user_declared' },
+    max_output_tokens: { value: 32_768, basis: 'user_declared' },
+    native_reasoning: { value: { kind: 'toggle', parameter: 'enable_thinking' }, basis: 'user_declared' },
+  };
+}
+
+/** Values the editor should display: a declared fact, else an un-cleared suggestion. */
+export function displayCapabilities(model: ModelDeclaration): ModelCapabilities {
+  const result = { ...model.capabilities };
+  const suggestions = model.suggested_capabilities;
+  const cleared = new Set<CapabilityKey>(model.cleared_capabilities ?? []);
+  if (!suggestions) return result;
+  for (const key of capabilityKeys) {
+    if (result[key].basis === 'unknown' && !cleared.has(key) && suggestions[key].value !== null) {
+      Object.assign(result, { [key]: suggestions[key] });
+    }
+  }
+  return result;
+}
+
+/**
+ * Record one explicit capability edit. A cleared field stays unknown and is remembered so
+ * Apply suggestions cannot silently refill it.
+ */
+export function declareCapability<K extends CapabilityKey>(
+  model: ModelDeclaration,
+  key: K,
+  fact: ModelCapabilities[K],
+): ModelDeclaration {
+  const cleared = new Set<CapabilityKey>(model.cleared_capabilities ?? []);
+  if (fact.value === null) cleared.add(key);
+  else cleared.delete(key);
+  const capabilities = { ...model.capabilities };
+  Object.assign(capabilities, { [key]: fact });
+  return { ...model, capabilities, cleared_capabilities: [...cleared] };
+}
+
+/** Explicit adoption fills only fields with no declaration that the user has not cleared. */
+export function applySuggestedCapabilities(model: ModelDeclaration): ModelDeclaration {
+  const suggestions = model.suggested_capabilities;
+  if (!suggestions) return model;
+  const cleared = new Set<CapabilityKey>(model.cleared_capabilities ?? []);
+  const capabilities = { ...model.capabilities };
+  for (const key of capabilityKeys) {
+    if (capabilities[key].basis === 'unknown' && !cleared.has(key)
+      && suggestions[key].value !== null) {
+      Object.assign(capabilities, { [key]: suggestions[key] });
+    }
+  }
+  return {
+    ...model,
+    capabilities,
+    cleared_capabilities: (model.cleared_capabilities ?? [])
+      .filter(key => capabilities[key].basis === 'unknown'),
+  };
+}
 
 export function savedSourceConnectionFields(source: ManagedSource) {
   const baseUrl = (target: ManagedSource['target']) => {
@@ -56,8 +142,14 @@ export function buildCheckDraft(draft: ModelConnectionDraft): ModelConnectionDra
   return {
     ...wireDraft,
     configuration_revision: provenance.configuration_revision,
-    models: models.filter(model => model.upstream_model_id).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
+    models: models.filter(model => model.upstream_model_id).map(toWireModel),
   };
+}
+
+/** Suggestions stay in the editor; the wire model carries only the draft's declared facts. */
+export function toWireModel(model: ModelDeclaration): Omit<ModelDeclaration, 'client_id' | 'suggested_capabilities'> {
+  const { client_id: _clientId, suggested_capabilities: _suggestions, ...wire } = model;
+  return { ...wire, display_name: model.display_name.trim() || model.upstream_model_id };
 }
 
 export type CheckExpectation = {
@@ -187,6 +279,7 @@ export function clientIdempotencyKey(prefix: string): string {
   return `${safePrefix}:${entropy}`.slice(0, 64);
 }
 
+/** A new local model declares nothing yet; the generic defaults are only suggestions. */
 export function blankModel(upstreamModelId = '', displayName = upstreamModelId): ModelDeclaration {
   return {
     client_id: clientOperationId('model'),
@@ -194,42 +287,33 @@ export function blankModel(upstreamModelId = '', displayName = upstreamModelId):
     display_name: displayName,
     catalog_configuration_id: null,
     membership: 'user_declared',
-    capabilities: {
-      tool: { value: true, basis: 'user_declared' },
-      vision: { value: false, basis: 'user_declared' },
-      streaming: { value: true, basis: 'user_declared' },
-      context_tokens: { value: 200_000, basis: 'user_declared' },
-      max_output_tokens: { value: 32_768, basis: 'user_declared' },
-      native_reasoning: { value: { kind: 'toggle', parameter: 'enable_thinking' }, basis: 'user_declared' },
-    },
+    capabilities: unknownCapabilities(),
+    suggested_capabilities: suggestedCapabilities(),
   };
 }
 
-/** Apply editable execution defaults only where a model still has no capability fact. */
-export function withCapabilityFallback(model: ModelDeclaration): ModelDeclaration {
-  const fallback = blankModel().capabilities;
-  const capabilities = { ...model.capabilities };
-  for (const key of Object.keys(fallback) as Array<keyof ModelDeclaration['capabilities']>) {
-    if (capabilities[key].value === null) {
-      // Each capability has a different value type; this assignment preserves the keyed shape.
-      Object.assign(capabilities, { [key]: fallback[key] });
-    }
-  }
-  if (capabilities.max_output_tokens.value! > capabilities.context_tokens.value!) {
-    capabilities.max_output_tokens = { value: capabilities.context_tokens.value, basis: 'user_declared' };
-  }
-  return { ...model, capabilities };
+/**
+ * Give a model the editable suggestions of another basis without declaring them. Used when
+ * a template provides facts the user has not accepted yet.
+ */
+export function withSuggestions(
+  model: ModelDeclaration,
+  suggestions: ModelCapabilities | undefined,
+): ModelDeclaration {
+  if (!suggestions) return model;
+  return model.suggested_capabilities ? model : { ...model, suggested_capabilities: suggestions };
 }
 
 /** Include the full template catalog while preserving explicit model edits. */
 export function withRegisteredModels(
   models: ModelDeclaration[],
   candidates: ReadonlyArray<Pick<ModelDeclaration, 'upstream_model_id' | 'display_name'> &
-    { capability_prefill?: ModelDeclaration['capabilities'] }>,
+    { capability_prefill?: ModelCapabilities }>,
 ): ModelDeclaration[] {
   const ids = new Set(models.map(model => model.upstream_model_id));
   return [...models, ...candidates.filter(candidate => !ids.has(candidate.upstream_model_id))
-    .map(candidate => candidate.capability_prefill
-      ? { ...blankModel(candidate.upstream_model_id, candidate.display_name), capabilities: candidate.capability_prefill }
-      : blankModel(candidate.upstream_model_id, candidate.display_name))];
+    .map(candidate => withSuggestions(
+      blankModel(candidate.upstream_model_id, candidate.display_name),
+      candidate.capability_prefill,
+    ))];
 }

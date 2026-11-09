@@ -13,7 +13,8 @@ import { confirmDiscard, useDiscardGuard } from '../../ui/discard-guard';
 import { saveFailureDefinitelyPreAdmission } from '../subscriptions/model';
 import {
   blankModel,
-  withCapabilityFallback,
+  toWireModel,
+  withSuggestions,
   withRegisteredModels,
   buildCheckDraft,
   buildSaveChange,
@@ -39,7 +40,7 @@ import type {
   ProviderMetadataRecord,
   UpstreamProtocol,
 } from './types';
-import { checkFailureCode, modelAvailabilityMessage } from './copy';
+import { checkFailureCode, modelAvailabilityMessage, modelObservationMessage } from './copy';
 import { metadataModelPrefill } from './metadata-prefill';
 import { customApiPrefillOptions, initialRegisteredOption, metadataProviderCandidates, metadataProviderOption, registeredModelCandidates, sortRegisteredOptions, templateEndpointForProtocol } from './registered-metadata';
 import { ConnectionDirectory } from './ConnectionDirectory';
@@ -254,12 +255,11 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
       additional_endpoints,
       models: candidates.map(candidate => {
         const record = records.get(candidate.upstream_model_id);
-        if (candidate.capability_prefill) return {
-          ...blankModel(candidate.upstream_model_id, candidate.display_name),
-          capabilities: candidate.capability_prefill,
-        };
-        return record ? withCapabilityFallback(metadataModelPrefill(record, clientOperationId('model')))
-          : blankModel(candidate.upstream_model_id, candidate.display_name);
+        if (record) return metadataModelPrefill(record, clientOperationId('model'));
+        return withSuggestions(
+          blankModel(candidate.upstream_model_id, candidate.display_name),
+          candidate.capability_prefill,
+        );
       }),
     });
     if (credentialContextChanged) editingSession.current.beginPrefillFromContext(editingKey.current, metadataPrefillKey, `provider:${provider.provider_record_key}`, withProvider);
@@ -606,9 +606,9 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const selectedModels = automaticInferenceModel
       ? [...base.models, blankModel(automaticInferenceModel)] : base.models;
     const current = { ...base, inference_model_id: inferenceModelId, models: selectedModels };
-    // The check needs complete execution defaults, but the editable draft must
-    // retain the user's declarations (including an explicit unknown value).
-    const checkedModels = selectedModels.map(withCapabilityFallback);
+    // Submit the draft's actual declarations. Untouched suggestions and unknown fields stay
+    // unknown; the daemon resolves any applicable trusted catalog defaults on its own.
+    const checkedModels = selectedModels;
     if (current.display_name.trim().length > 60 || (!current.existing_source_id && (props.existingNames ?? []).includes(current.display_name.trim()))) { setError('CONNECTION_NAME_CONFLICT'); return; }
     const allowedIds = new Set([...preservedModelIds.current,
       ...(!custom ? registeredCandidates.map(model => model.upstream_model_id) : [])]);
@@ -683,7 +683,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
         : await backend.checkRegisteredModelConnection({
             display_name: checkingDraft.display_name,
             inference_model_id: inferenceModelId,
-            models: checkedModels.filter(model => model.upstream_model_id).map(({ client_id: _clientId, ...model }) => ({ ...model, display_name: model.display_name.trim() || model.upstream_model_id })),
+            models: checkedModels.filter(model => model.upstream_model_id).map(toWireModel),
             connection_option_id: registeredOption!.connection_option_id,
             expected_catalog: connectionOptions!.catalog,
             candidate_ref: checkingDraft.candidate_ref,
@@ -931,8 +931,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
 
                 </select></label>
                 {selectedPrefill && <p className="field-help">{zh
-                  ? `已收录 ${metadataCandidates.length} 个模型，检查接入后统一选择；未知能力采用可编辑兜底：上下文 200K、输出 32K、工具与流式开启、视觉关闭、思考开关。`
-                  : `${metadataCandidates.length} models in this catalog. Choose after checking the connection; missing capabilities use editable defaults (200K context, 32K output, tools and streaming on, vision off, reasoning toggle).`}</p>}
+                  ? `已收录 ${metadataCandidates.length} 个模型，检查接入后统一选择。资料中的能力只作为可编辑建议显示，需你确认后才提交；未填写的保持未知。`
+                  : `${metadataCandidates.length} models in this catalog. Choose them after checking the connection. Catalog facts appear only as editable suggestions and stay unknown until you confirm them.`}</p>}
               </div></Disclosure>}
             </> : optionsLoading
               ? <div className="oc-status-row" role="status"><span className="oc-spinner" /><div className="row-main"><strong>{zh ? '正在读取接入方式' : 'Loading connection'}</strong><p>{zh ? '从本机可信目录确认当前支持的产品。' : 'Checking supported products in the local trusted catalog.'}</p></div></div>
@@ -991,7 +991,8 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
           {result.directory === 'partial' && <div className="callout warn"><UiIcon name="warning" /><span>{zh ? '模型目录只读取到一部分。可以先保存已确认的模型，稍后再重新检查。' : 'Only part of the model catalog was read. You can save confirmed models and check again later.'}</span></div>}
           <fieldset className="v3-catalog model-result-list" disabled={!props.mutable}><legend className="sr-only">{zh ? '选择保存的模型' : 'Select models to save'}</legend>{result.candidate.models.map((model, index) => {
             const canSelect = modelCanBeSelected(result, model, true);
-            return <div className="model-result-row" key={model.model_ref}><label className="check-row"><input type="checkbox" data-autofocus={index === 0 || undefined} disabled={!canSelect} checked={canSelect && selected.has(model.model_ref)} onChange={event => { const next = new Set(selected); if (event.target.checked) next.add(model.model_ref); else next.delete(model.model_ref); selectionRef.current = { result, refs: next }; setSelected(next); setError(''); }} /><div><strong>{model.display_name}</strong><span>{draft.display_name}{model.fact_basis === 'runtime_fallback' ? ` · ${zh ? '运行时保守兜底' : 'Conservative runtime fallback'}` : ''}{!canSelect ? ` · ${modelAvailabilityMessage(model.reason, zh)}` : ''}</span></div></label>{custom && !canSelect && <button className="btn btn-quiet" type="button" onClick={() => {
+            const observation = modelObservationMessage(result, model, zh);
+            return <div className="model-result-row" key={model.model_ref}><label className="check-row"><input type="checkbox" data-autofocus={index === 0 || undefined} disabled={!canSelect} checked={canSelect && selected.has(model.model_ref)} onChange={event => { const next = new Set(selected); if (event.target.checked) next.add(model.model_ref); else next.delete(model.model_ref); selectionRef.current = { result, refs: next }; setSelected(next); setError(''); }} /><div><strong>{model.display_name}</strong><span>{observation ? `${observation} · ` : ''}{draft.display_name}{model.fact_basis === 'runtime_fallback' ? ` · ${zh ? '运行时保守兜底' : 'Conservative runtime fallback'}` : ''}{!canSelect ? ` · ${modelAvailabilityMessage(model.reason, zh)}` : ''}</span></div></label>{custom && !canSelect && <button className="btn btn-quiet" type="button" onClick={() => {
               const prefilled = draftRef.current.models.find(value => value.upstream_model_id === model.upstream_model_id);
               const manualDraft = { ...draftRef.current, edit_revision: draftRef.current.edit_revision + 1, check_id: '', models: [prefilled ?? blankModel(model.upstream_model_id, model.display_name)] };
               draftRef.current = manualDraft; setDraft(manualDraft); setResult(null); setScreen('manual'); setError('');

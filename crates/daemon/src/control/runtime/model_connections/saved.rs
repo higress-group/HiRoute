@@ -170,22 +170,25 @@ impl LocalControlAdapter {
         }
         let base_url = draft.base_url.clone();
         let request_path = draft.request_path_override.clone().unwrap_or_default();
+        // Reconstruct saved local models from their saved values and bases. An exact
+        // upstream ID collision with a current catalog candidate keeps the saved local
+        // row so its label, explicit values and local identity survive the recheck.
+        // Qualification and denial still apply by ID in candidate generation.
         for model in &source.models {
-            if model.catalog_configuration_id.is_none()
-                && !draft
-                    .models
-                    .iter()
-                    .any(|declared| declared.upstream_model_id == model.upstream_model_id)
+            if model.catalog_configuration_id.is_some() {
+                continue;
+            }
+            let local = saved_model(model)?;
+            match draft
+                .models
+                .iter()
+                .position(|declared| declared.upstream_model_id == model.upstream_model_id)
             {
-                let mut declaration = saved_model(model)?;
-                super::saved_prefill::fill_unknown_registered_model(
-                    &mut declaration,
-                    catalog.model_metadata(),
-                    &base_url,
-                    &request_path,
-                    draft.protocol,
-                );
-                draft.models.push(declaration);
+                Some(position) if draft.models[position].catalog_configuration_id.is_some() => {
+                    draft.models[position] = local;
+                }
+                Some(_) => {}
+                None => draft.models.push(local),
             }
         }
         // Offer current same-product declarations for explicit append. These are not
@@ -902,9 +905,9 @@ mod tests {
     }
 
     #[test]
-    fn saved_registered_recheck_prefills_only_unknown_product_capabilities() {
+    fn saved_registered_recheck_preserves_saved_local_capability_facts() {
         if crate::test_support::isolated_agent_home(
-            "control::runtime::model_connections::saved::tests::saved_registered_recheck_prefills_only_unknown_product_capabilities",
+            "control::runtime::model_connections::saved::tests::saved_registered_recheck_preserves_saved_local_capability_facts",
         ) {
             return;
         }
@@ -939,7 +942,7 @@ mod tests {
             model.model_ref = format!("model/saved-unknown-{index}");
             model.binding_id = format!("binding/saved-unknown-{index}");
             model.upstream_model_id = id.into();
-            model.display_name = id.into();
+            model.display_name = format!("Local {id}");
             model.catalog_configuration_id = None;
             model.membership = ComputeManagementMembershipV2::UserDeclared;
             model.capabilities = ComputeManagedCapabilitiesV2 {
@@ -985,18 +988,29 @@ mod tests {
                 .any(|saved| saved.upstream_model_id == model.upstream_model_id)),
             "saved-source check must retain unselected product candidates for append"
         );
-        for (id, vision) in [("deepseek-v4-flash", false), ("deepseek-v4.1-flash", true)] {
+        // A saved local row is reconstructed from its stored facts. Same-ID catalog
+        // candidates must not replace its label, membership or unknown capabilities.
+        for id in ["deepseek-v4-flash", "deepseek-v4.1-flash", "my-private-model"] {
             let model = draft
                 .models
                 .iter()
                 .find(|model| model.upstream_model_id == id)
                 .unwrap();
-            assert_eq!(model.capabilities.vision.value, Some(vision), "{id}");
+            assert_eq!(model.display_name, format!("Local {id}"), "{id}");
+            assert_eq!(model.catalog_configuration_id, None, "{id}");
+            assert_eq!(
+                model.membership,
+                ComputeModelMembershipV2::UserDeclared,
+                "{id}"
+            );
+            assert_eq!(model.capabilities.vision.value, None, "{id}");
             assert_eq!(
                 model.capabilities.vision.basis,
-                NativeCandidateFactBasisV1::UserDeclared
+                NativeCandidateFactBasisV1::Unknown,
+                "{id}"
             );
-            assert_eq!(model.catalog_configuration_id, None);
+            assert_eq!(model.capabilities.context_tokens.value, None, "{id}");
+            assert_eq!(model.capabilities.max_output_tokens.value, None, "{id}");
         }
         let v4 = draft
             .models
@@ -1004,15 +1018,32 @@ mod tests {
             .find(|model| model.upstream_model_id == "deepseek-v4-flash")
             .unwrap();
         assert_eq!(v4.capabilities.tool.value, Some(false));
-        let private = draft
+        assert_eq!(
+            v4.capabilities.tool.basis,
+            NativeCandidateFactBasisV1::UserDeclared
+        );
+        // Same-product append candidates keep unknown optional facts and never
+        // become UserDeclared from descriptive metadata.
+        let append = draft
             .models
             .iter()
-            .find(|model| model.upstream_model_id == "my-private-model")
-            .unwrap();
-        assert_eq!(private.capabilities.context_tokens.value, Some(200_000));
-        assert_eq!(private.capabilities.max_output_tokens.value, Some(32_768));
-        assert_eq!(private.capabilities.vision.value, Some(false));
-        assert_eq!(private.capabilities.tool.value, Some(true));
+            .find(|model| {
+                !source
+                    .models
+                    .iter()
+                    .any(|saved| saved.upstream_model_id == model.upstream_model_id)
+                    && model.catalog_configuration_id.is_none()
+            })
+            .expect("saved-source check must retain unselected product candidates");
+        assert_eq!(append.capabilities.context_tokens.value, None);
+        assert_eq!(
+            append.capabilities.context_tokens.basis,
+            NativeCandidateFactBasisV1::Unknown
+        );
+        assert_eq!(
+            append.capabilities.tool.basis,
+            NativeCandidateFactBasisV1::Unknown
+        );
     }
 
     #[test]

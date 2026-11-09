@@ -32,20 +32,31 @@ export type NativeReasoning =
 
 export type FactValue<T> = { value: T | null; basis: FactBasis };
 
+export type ModelCapabilities = {
+  tool: FactValue<boolean>;
+  vision: FactValue<boolean>;
+  streaming: FactValue<boolean>;
+  context_tokens: FactValue<number>;
+  max_output_tokens: FactValue<number>;
+  native_reasoning: FactValue<Exclude<NativeReasoning, { kind: 'unknown' }>>;
+};
+
+export type CapabilityKey = keyof ModelCapabilities;
+
 export type ModelDeclaration = {
   client_id: string;
   upstream_model_id: string;
   display_name: string;
   catalog_configuration_id: string | null;
   membership: 'observed' | 'user_declared';
-  capabilities: {
-    tool: FactValue<boolean>;
-    vision: FactValue<boolean>;
-    streaming: FactValue<boolean>;
-    context_tokens: FactValue<number>;
-    max_output_tokens: FactValue<number>;
-    native_reasoning: FactValue<Exclude<NativeReasoning, { kind: 'unknown' }>>;
-  };
+  capabilities: ModelCapabilities;
+  /**
+   * Editable starting values from a template or metadata record. They are shown in the
+   * editor but never serialized until a field edit or an explicit adoption declares them.
+   */
+  suggested_capabilities?: ModelCapabilities;
+  /** Fields the user explicitly cleared, which Apply suggestions must not refill. */
+  cleared_capabilities?: CapabilityKey[];
 };
 
 export type ModelConnectionDraft = {

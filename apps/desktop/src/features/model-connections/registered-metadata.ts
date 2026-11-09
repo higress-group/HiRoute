@@ -1,4 +1,4 @@
-import type { ComputeConnectionOption, ModelConnectionDraft, ModelDeclaration, ModelMetadataCatalog, ProviderMetadataRecord, UpstreamProtocol } from './types';
+import type { ComputeConnectionOption, ModelCapabilities, ModelConnectionDraft, ModelMetadataCatalog, ProviderMetadataRecord, UpstreamProtocol } from './types';
 
 type RegisteredEndpoint = NonNullable<ComputeConnectionOption['endpoints']>[number];
 
@@ -24,16 +24,16 @@ export type RegisteredModelCandidate = {
   upstream_model_id: string;
   display_name: string;
   source: 'built_in' | 'product_metadata';
-  capability_prefill?: ModelDeclaration['capabilities'];
+  capability_prefill?: ModelCapabilities;
 };
 
 type CanonicalModel = ModelMetadataCatalog['canonical_models'][number];
 type BindingOverrides = ModelMetadataCatalog['endpoint_bindings'][number]['capability_overrides'];
 
 /** Product facts take precedence over publisher facts; the editable fallback fills only gaps. */
-function catalogCapabilities(model: CanonicalModel, overrides: BindingOverrides = {}, productKey = ''): ModelDeclaration['capabilities'] {
+function catalogCapabilities(model: CanonicalModel, overrides: BindingOverrides = {}, productKey = ''): ModelCapabilities {
   const basis = 'user_declared' as const;
-  const capabilities: ModelDeclaration['capabilities'] = {
+  const capabilities: ModelCapabilities = {
     tool: { value: true, basis },
     vision: { value: false, basis },
     streaming: { value: true, basis },

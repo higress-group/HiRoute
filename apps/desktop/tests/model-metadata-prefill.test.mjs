@@ -43,17 +43,20 @@ function record(overrides = {}) {
   };
 }
 
-test('metadata prefill copies only fields authorized by explicit usage scenarios', () => {
+test('metadata prefill suggests only fields authorized by explicit usage scenarios', () => {
   const projected = metadataModelPrefill(record({
     usable_for: ['context-limit-prefill', 'vision-capability-prefill'],
   }), 'model/test');
 
-  assert.deepEqual(projected.capabilities.context_tokens, { value: 128_000, basis: 'user_declared' });
-  assert.deepEqual(projected.capabilities.vision, { value: true, basis: 'user_declared' });
-  assert.deepEqual(projected.capabilities.max_output_tokens, { value: null, basis: 'unknown' });
-  assert.deepEqual(projected.capabilities.tool, { value: null, basis: 'unknown' });
-  assert.deepEqual(projected.capabilities.streaming, { value: null, basis: 'unknown' });
-  assert.deepEqual(projected.capabilities.native_reasoning, { value: null, basis: 'unknown' });
+  for (const key of ['tool', 'vision', 'streaming', 'context_tokens', 'max_output_tokens', 'native_reasoning']) {
+    assert.deepEqual(projected.capabilities[key], { value: null, basis: 'unknown' }, key);
+  }
+  assert.deepEqual(projected.suggested_capabilities.context_tokens, { value: 128_000, basis: 'user_declared' });
+  assert.deepEqual(projected.suggested_capabilities.vision, { value: true, basis: 'user_declared' });
+  assert.deepEqual(projected.suggested_capabilities.max_output_tokens, { value: null, basis: 'unknown' });
+  assert.deepEqual(projected.suggested_capabilities.tool, { value: null, basis: 'unknown' });
+  assert.deepEqual(projected.suggested_capabilities.streaming, { value: null, basis: 'unknown' });
+  assert.deepEqual(projected.suggested_capabilities.native_reasoning, { value: null, basis: 'unknown' });
 });
 
 test('unknown and conditional facts remain unknown while explicit unsupported reasoning is safe', () => {
@@ -70,18 +73,21 @@ test('unknown and conditional facts remain unknown while explicit unsupported re
   assert.equal(unknown.capabilities.context_tokens.value, null);
   assert.equal(unknown.capabilities.vision.value, null);
   assert.equal(unknown.capabilities.native_reasoning.value, null);
+  assert.equal(unknown.suggested_capabilities.context_tokens.value, null);
+  assert.equal(unknown.suggested_capabilities.vision.value, null);
+  assert.equal(unknown.suggested_capabilities.native_reasoning.value, null);
 
   const conflict = metadataModelPrefill(record({
     context_tokens: { state: 'conflict', value: null, candidates: [8_192, 16_384] },
     usable_for: ['context-limit-prefill'],
   }), 'model/test');
-  assert.deepEqual(conflict.capabilities.context_tokens, { value: null, basis: 'unknown' });
+  assert.deepEqual(conflict.suggested_capabilities.context_tokens, { value: null, basis: 'unknown' });
 
   const unsafeInteger = metadataModelPrefill(record({
     context_tokens: { state: 'known', value: Number.MAX_SAFE_INTEGER + 1 },
     usable_for: ['context-limit-prefill'],
   }), 'model/test');
-  assert.deepEqual(unsafeInteger.capabilities.context_tokens, { value: null, basis: 'unknown' });
+  assert.deepEqual(unsafeInteger.suggested_capabilities.context_tokens, { value: null, basis: 'unknown' });
 
   const unsupported = metadataModelPrefill(record({
     capability_hints: {
@@ -89,10 +95,11 @@ test('unknown and conditional facts remain unknown while explicit unsupported re
     },
     usable_for: ['reasoning-capability-prefill'],
   }), 'model/test');
-  assert.deepEqual(unsupported.capabilities.native_reasoning, {
+  assert.deepEqual(unsupported.suggested_capabilities.native_reasoning, {
     value: { kind: 'fixed', profile: 'non-thinking' },
     basis: 'user_declared',
   });
+  assert.deepEqual(unsupported.capabilities.native_reasoning, { value: null, basis: 'unknown' });
 });
 
 test('cost and reasoning hints are display-only and scenario gated', () => {
@@ -114,9 +121,9 @@ test('records without a native text execution outcome never prefill a text model
         'vision-capability-prefill',
       ],
     }), 'model/test');
-    assert.deepEqual(projected.capabilities.context_tokens, { value: null, basis: 'unknown' });
-    assert.deepEqual(projected.capabilities.max_output_tokens, { value: null, basis: 'unknown' });
-    assert.deepEqual(projected.capabilities.vision, { value: null, basis: 'unknown' });
-    assert.deepEqual(projected.capabilities.native_reasoning, { value: null, basis: 'unknown' });
+    assert.deepEqual(projected.suggested_capabilities.context_tokens, { value: null, basis: 'unknown' });
+    assert.deepEqual(projected.suggested_capabilities.max_output_tokens, { value: null, basis: 'unknown' });
+    assert.deepEqual(projected.suggested_capabilities.vision, { value: null, basis: 'unknown' });
+    assert.deepEqual(projected.suggested_capabilities.native_reasoning, { value: null, basis: 'unknown' });
   }
 });
