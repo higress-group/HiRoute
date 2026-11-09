@@ -46,6 +46,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 
 - **macOS**：要求 macOS 15.0 或更高版本。公开安装包为自签名构建，核对 SHA256 后，按 [macOS 安装与首次启动](/zh/docs/install-macos/) 打开应用。
 - **Windows**：原生 x64，按当前用户安装，自带服务与 CLI，不需要 Python 或管理员权限。参见 [Windows 安装](/zh/docs/install-windows/)。
+- **Omarchy** 用户可验证签名后用 `pacman` 安装 Arch 包，再从启动器打开 HiRoute。参见 [Omarchy 安装](/zh/docs/install-linux/#omarchy)。
 - **Linux**：支持 x86_64 与 ARM64，无需 `sudo`。开启 Web UI 后，在浏览器中使用相同界面；也可只用 CLI。参见 [Linux 安装](/zh/docs/install-linux/)。
 
 [下载页](/zh/download/)列出已发布的安装包。打开后先确认服务就绪；浏览器管理的是服务所在主机的模型、Agent 和文件。使用路由或运行任务时，请保持 HiRoute 服务运行。

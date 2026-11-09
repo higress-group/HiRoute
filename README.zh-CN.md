@@ -131,7 +131,7 @@ HiRoute 在本地运行，将受支持的订阅、API 接入和本地模型集�
 [安装指南](https://hiroute.ai/zh/docs/) ·
 [最新版本](https://github.com/higress-group/HiRoute/releases/latest)
 
-HiRoute 提供 **macOS 桌面版、Windows x64 桌面版、Linux Web UI 与 CLI**。
+HiRoute 提供 **macOS、Windows x64 和 Omarchy 桌面应用**，以及 Linux Web UI 与 CLI。
 已发布的安装包见[下载页](https://hiroute.ai/zh/download/)。
 
 0.6.0 改善 Responses 会话压缩后的推理与工具调用衔接，让 Codex 的固定路由计划也能显示推理档位选择，并在移除决策模型时列出仍在引用它的路由。
@@ -151,7 +151,9 @@ HiRoute 提供 **macOS 桌面版、Windows x64 桌面版、Linux Web UI 与 CLI*
 WebView2 引导安装器和 CLI，不要求 Python 或管理员权限。校验摘要、首次启动和恢复步骤见
 [Windows 安装指南](https://hiroute.ai/zh/docs/install-windows/)。
 
-**Linux：** 支持 x86_64 与 ARM64，无需 `sudo`，安装到当前用户目录：
+**Omarchy** 用户可验证签名后使用 `pacman` 安装，再从启动器打开 HiRoute。见 [Omarchy 安装指南](docs/linux-desktop.md)。
+
+**Linux 独立服务版**支持 x86_64 与 ARM64，无需 `sudo`，安装到当前用户目录。
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh

@@ -151,7 +151,7 @@ to evaluate decision prompts against your own tasks.
 [Installation guides](https://hiroute.ai/en/docs/) ·
 [Latest release](https://github.com/higress-group/HiRoute/releases/latest)
 
-HiRoute provides **macOS Desktop, Windows x64 Desktop, Linux Web UI, and CLI**.
+HiRoute provides **macOS, Windows x64, and Omarchy desktop apps**, plus a Linux Web UI and CLI.
 The [download page](https://hiroute.ai/en/download/) lists published packages.
 
 Version 0.6.0 keeps Responses tool calls and reasoning connected across compaction, offers a reasoning picker in Codex for fixed routing plans, and shows which active routes block decision model removal.
@@ -177,7 +177,10 @@ no Python or administrator privileges are required. See the
 [Windows installation guide](https://hiroute.ai/en/docs/install-windows/) for
 checksum verification, first launch and recovery.
 
-**Linux:** install the current-user CLI and daemon on x86_64 or ARM64 without `sudo`:
+**Omarchy** users can verify the signed Arch package, install it with `pacman`,
+and open HiRoute from the launcher. Follow the [Omarchy installation guide](docs/linux-desktop.md).
+
+**Linux standalone** installs the current-user CLI and daemon on x86_64 or ARM64 without `sudo`.
 
 ```sh
 curl -fsSL https://hiroute.ai/install.sh | sh
