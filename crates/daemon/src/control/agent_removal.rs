@@ -1,5 +1,6 @@
 //! Shared Linux Agent mutation admission against exclusive standalone teardown.
 
+use fs2::FileExt;
 use std::{
     fs::{self, File, OpenOptions},
     io,
@@ -30,7 +31,7 @@ pub(crate) fn try_lock_shared(path: &Path) -> io::Result<File> {
     {
         return Err(io::ErrorKind::PermissionDenied.into());
     }
-    file.try_lock_shared().map_err(io::Error::from)?;
+    FileExt::try_lock_shared(&file)?;
     let current = fs::symlink_metadata(path)?;
     let current_directory = fs::symlink_metadata(parent)?;
     if (current.dev(), current.ino()) != (metadata.dev(), metadata.ino())
@@ -58,9 +59,9 @@ mod tests {
             .write(true)
             .open(&path)
             .unwrap();
-        assert!(teardown.try_lock().is_err());
+        assert!(FileExt::try_lock_exclusive(&teardown).is_err());
         drop(active_write);
-        teardown.try_lock().unwrap();
+        FileExt::try_lock_exclusive(&teardown).unwrap();
 
         let daemon = LocalControlDaemon::new(ApplicationService::default())
             .with_agent_removal_lock(Some(path));
