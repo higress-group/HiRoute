@@ -48,10 +48,12 @@ mod tests {
     use crate::control::{LOCAL_CONTROL_SCHEMA_V2, LocalControlDaemon};
     use hiroute_application::ApplicationService;
     use hiroute_application_api::{ErrorCode, LocalControlWireRequestV2};
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn shared_mutation_excludes_teardown_and_teardown_refuses_both_apply_entries() {
         let dir = tempfile::tempdir().unwrap();
+        fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let path = dir.path().join("agent-removal.lock");
         let active_write = try_lock_shared(&path).unwrap();
         let teardown = OpenOptions::new()
