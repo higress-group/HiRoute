@@ -449,16 +449,21 @@ fn installed() -> Result<(StandaloneLayout, StandaloneInstallRecordV1), ServiceF
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn require_restored_before_remove() -> u8 {
+pub(crate) fn desktop_agent_removal(args: &[std::ffi::OsString]) -> u8 {
     let Ok((layout, _)) = installed() else {
         return 6;
     };
     if ensure_not_maintaining(&layout).is_err() {
         return 6;
     }
-    match restore_agents::require_restored(&layout) {
-        Ok(()) => 0,
+    match restore_agents::desktop_removal(&layout, args) {
+        Ok(report) => {
+            println!("{report}");
+            0
+        }
         Err(error) if error.to_string().starts_with("AGENT_RESTORE_REQUIRED:") => 3,
+        Err(error) if error.to_string() == "AGENT_RESTORE_PREVIEW_CHANGED" => 4,
+        Err(error) if error.to_string() == "STANDALONE_REMOVAL_RECOVERY_PENDING" => 5,
         Err(_) => 6,
     }
 }

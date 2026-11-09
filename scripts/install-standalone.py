@@ -3,6 +3,8 @@
 
 import argparse
 from contextlib import contextmanager
+import ctypes
+import errno
 import fcntl
 import hashlib
 import http.client
@@ -657,6 +659,19 @@ def path_identity(path):
             metadata.st_uid, metadata.st_size, metadata.st_mtime_ns]
 
 
+def rename_noreplace(source, destination):
+    # A path can appear after the last ownership check. Publish only into an
+    # empty destination, including when restoring a backed-up component.
+    try:
+        rename = ctypes.CDLL(None, use_errno=True).renameat2
+    except AttributeError as error:
+        raise OSError(errno.ENOSYS, "atomic Linux installation rename unavailable") from error
+    at_fdcwd, rename_noreplace_flag = -100, 1
+    if rename(at_fdcwd, os.fsencode(source), at_fdcwd, os.fsencode(destination), rename_noreplace_flag):
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(destination))
+
+
 def directory_identity(path):
     identity = path_identity(path)
     if identity is None:
@@ -823,9 +838,9 @@ def recover_linux_install(paths):
     if record["phase"] == "prepared":
         for destination, stage, backup, current, saved, before in reversed(entries):
             if current is not None and current != before:
-                os.replace(destination, stage)
+                rename_noreplace(destination, stage)
             if saved is not None:
-                os.replace(backup, destination)
+                rename_noreplace(backup, destination)
                 sync_directory(backup.parent)
             sync_directory(destination.parent)
     # Recursive cleanup can itself be interrupted. Retire the journal only
@@ -833,11 +848,15 @@ def recover_linux_install(paths):
     reload_linux_user_manager()
     path.unlink()
     sync_directory(path.parent)
-    for _destination, stage, backup, _current, _saved, _before in entries:
+    skills = skill_destinations(paths["home"])
+    for destination, stage, backup, _current, _saved, _before in entries:
         try:
             if stage is not None:
                 remove_path(stage)
-            remove_path(backup)
+            if destination in skills:
+                remove_managed_skill(backup)
+            else:
+                remove_path(backup)
             backup.parent.rmdir()
         except OSError:
             # An owned scratch directory may survive a crash or cleanup error.
@@ -913,7 +932,7 @@ def publish_linux_install(paths, components, previous, candidate, *, fresh=False
                 os.replace(destination, backup / "previous")
                 sync_directory(backup)
             if stage is not None:
-                os.replace(stage, destination)
+                rename_noreplace(stage, destination)
             sync_directory(destination.parent)
         write_linux_install_journal(path, dict(record, phase="committed"))
     except BaseException:
@@ -1401,11 +1420,77 @@ def owned_skill(path, expected):
     return (
         path.is_dir()
         and not path.is_symlink()
+        and all(child.name == "SKILL.md" for child in path.iterdir())
         and (path / "SKILL.md").is_file()
         and not (path / "SKILL.md").is_symlink()
         and expected.is_file()
         and (path / "SKILL.md").read_bytes() == expected.read_bytes()
     )
+
+
+def remove_managed_skill(path):
+    # The package owns one leaf. A user file added after validation keeps
+    # the directory alive, including in an installation's backup directory.
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return
+    try:
+        try:
+            os.unlink("SKILL.md", dir_fd=descriptor)
+        except FileNotFoundError:
+            pass
+    finally:
+        os.close(descriptor)
+    try:
+        path.rmdir()
+    except OSError as error:
+        if error.errno not in (errno.ENOENT, errno.ENOTEMPTY, errno.EEXIST):
+            raise
+
+
+@contextmanager
+def fence_agent_writes(paths):
+    service = paths["data"] / "service"
+    service.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if service.resolve() != service or service.stat().st_uid != os.getuid():
+        raise ValueError("could not verify the user service directory")
+    lock = service / "agent-removal.lock"
+    descriptor = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    try:
+        metadata = os.fstat(descriptor)
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.getuid()
+                or stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_nlink != 1):
+            raise ValueError("could not verify the Agent settings lock")
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        current = lock.lstat()
+        if (current.st_dev, current.st_ino) != (metadata.st_dev, metadata.st_ino):
+            raise ValueError("the Agent settings lock changed")
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def agent_removal_request(cli, *arguments):
+    try:
+        reply = subprocess.run(
+            [str(cli), "__standalone-agent-removal", *arguments],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=90, check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ValueError("could not complete Agent settings restoration") from error
+    if reply.returncode == 3:
+        return {"code": "RUNTIME_AGENT_RESTORE_REQUIRED"}
+    if reply.returncode == 4:
+        return {"code": "RUNTIME_REMOVE_PREVIEW_CHANGED"}
+    if reply.returncode == 5:
+        return {"code": "RUNTIME_REMOVE_RECOVERY_PENDING"}
+    if reply.returncode != 0 or len(reply.stdout) > 16 * 1024:
+        raise ValueError("could not verify managed Agent settings")
+    report = load_json_bytes(reply.stdout)
+    if not isinstance(report, dict):
+        raise ValueError("invalid Agent settings removal response")
+    return report
 
 
 def uninstall(args):
@@ -1417,26 +1502,29 @@ def uninstall(args):
         if platform.system() == "Linux" and path_identity(linux_install_journal(paths)) is not None:
             raise ValueError("standalone installation is incomplete; run the installer recover command first")
         process = getattr(args, "desktop_process", None)
-        if process is not None:
-            if platform.system() != "Linux":
-                raise ValueError("Desktop removal requires Linux")
-            marker = read_marker(paths)
-            owner = desktop_runtime_owner(paths, marker, process)
-            cli = Path(marker["install_root"]) / "hiroute"
-            try:
-                check = subprocess.run(
-                    [str(cli), "__standalone-require-agents-restored"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False,
-                )
-            except subprocess.TimeoutExpired as error:
-                raise ValueError("could not check managed Agent settings") from error
-            if check.returncode == 3:
-                print(json.dumps({"installed": True, "code": "RUNTIME_AGENT_RESTORE_REQUIRED"}))
-                return
-            if check.returncode != 0:
-                raise ValueError("could not check managed Agent settings")
+        if process is None:
+            uninstall_owned(paths)
+            return
+        if platform.system() != "Linux":
+            raise ValueError("Desktop removal requires Linux")
+        marker = read_marker(paths)
+        owner = desktop_runtime_owner(paths, marker, process)
+        cli = Path(marker["install_root"]) / "hiroute"
+        confirmation = getattr(args, "expect_agent_preview", None)
+        if confirmation is None:
+            print(json.dumps(agent_removal_request(cli, "preview")))
+            return
+        restored = agent_removal_request(cli, "restore", confirmation)
+        if restored.get("restored") is not True:
+            print(json.dumps(restored))
+            return
+        with fence_agent_writes(paths):
             require_desktop_owner(paths, marker, owner)
-        uninstall_owned(paths, desktop=process is not None)
+            checked = agent_removal_request(cli, "check")
+            if checked.get("ready") is not True:
+                print(json.dumps(checked))
+                return
+            uninstall_owned(paths, desktop=True)
 
 
 def recover():
@@ -1505,9 +1593,7 @@ def uninstall_owned(paths, *, desktop=False):
         if entry.exists() or entry.is_symlink():
             entry.unlink()
     for value in marker["installed_skills"]:
-        skill = Path(value)
-        if skill.exists():
-            shutil.rmtree(skill)
+        remove_managed_skill(Path(value))
     if service.exists() or service.is_symlink():
         service.unlink()
     if install_root.is_dir():
@@ -1536,6 +1622,7 @@ def parser():
     add.add_argument("--expect-owner", help=argparse.SUPPRESS)
     remove = sub.add_parser("uninstall")
     remove.add_argument("--desktop-process", nargs=2, help=argparse.SUPPRESS)
+    remove.add_argument("--expect-agent-preview", help=argparse.SUPPRESS)
     sub.add_parser("recover", help="resolve an interrupted Linux runtime installation")
     return result
 
@@ -1545,6 +1632,8 @@ def main():
     args = arguments.parse_args()
     if getattr(args, "expect_owner", None) is not None and args.desktop_revision is None:
         arguments.error("--expect-owner requires --desktop-revision")
+    if getattr(args, "expect_agent_preview", None) is not None and args.desktop_process is None:
+        arguments.error("--expect-agent-preview requires --desktop-process")
     try:
         if args.command == "install":
             install(args)

@@ -3,7 +3,6 @@ use super::restore_plan;
 use crate::LocalControlClient;
 use hiroute_application_api::*;
 use serde_json::{Value, json};
-#[cfg(windows)]
 use std::time::Instant;
 use std::{io, time::Duration};
 
@@ -34,7 +33,6 @@ fn call(client: &LocalControlClient, operation: &str, payload: Value) -> io::Res
         .data
         .ok_or_else(|| io::Error::other("AGENT_RESTORE_UNAVAILABLE"))
 }
-#[cfg(windows)]
 fn preview(client: &LocalControlClient, spec: &AgentSettingsSpecV2) -> io::Result<Value> {
     let value = call(
         client,
@@ -105,17 +103,43 @@ fn restore_targets(
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn require_restored(layout: &hiroute_host_runtime::StandaloneLayout) -> io::Result<()> {
+pub(super) fn desktop_removal(
+    layout: &hiroute_host_runtime::StandaloneLayout,
+    args: &[std::ffi::OsString],
+) -> io::Result<Value> {
     let client = LocalControlClient::new("hiroute-cli", &layout.runtime_root)
         .with_timeout(Duration::from_secs(3));
-    let list = call(&client, "ListAgents", json!({}))?;
-    let targets = restore_targets(&client, &list, |_| true)?;
-    if !targets.is_empty() {
-        return Err(restore_plan::decision(
-            targets.into_iter().map(|(name, _)| name).collect(),
-        ));
+    let status = call(&client, "GetSystemStatus", json!({}))?;
+    if status["recoverable_operations"].as_u64() != Some(0) {
+        return Err(io::Error::other("STANDALONE_REMOVAL_RECOVERY_PENDING"));
     }
-    Ok(())
+    let list = call(&client, "ListAgents", json!({}))?;
+    if matches!(args, [mode] if mode == "check") {
+        let targets = restore_targets(&client, &list, |_| true)?;
+        if !targets.is_empty() {
+            return Err(restore_plan::decision(
+                targets.into_iter().map(|(name, _)| name).collect(),
+            ));
+        }
+        return Ok(json!({ "ready": true }));
+    }
+    let targets = restore_targets(&client, &list, |spec| preview(&client, spec).is_ok())?;
+    let confirmation = CanonicalDigest::of(&targets).map_err(io::Error::other)?;
+    match args {
+        [mode] if mode == "preview" => {
+            let agents: std::collections::BTreeSet<_> =
+                targets.iter().map(|(name, _)| name).collect();
+            Ok(json!({ "agents": agents, "confirmation": confirmation }))
+        }
+        [mode, expected] if mode == "restore" => {
+            if expected.to_str() != Some(confirmation.as_str()) {
+                return Err(io::Error::other("AGENT_RESTORE_PREVIEW_CHANGED"));
+            }
+            apply_restores(&client, targets)?;
+            Ok(json!({ "restored": true }))
+        }
+        _ => Err(io::ErrorKind::InvalidInput.into()),
+    }
 }
 
 #[cfg(windows)]
@@ -135,15 +159,22 @@ pub(super) fn restore(_layout: &hiroute_host_runtime::StandaloneLayout) -> io::R
         }
     };
     let specs = restore_targets(&client, &list, |spec| preview(&client, spec).is_ok())?;
+    apply_restores(&client, specs)
+}
+
+fn apply_restores(
+    client: &LocalControlClient,
+    specs: Vec<(String, AgentSettingsSpecV2)>,
+) -> io::Result<()> {
     // Refresh Preview before every Apply because prior restores may advance shared revisions.
     for (name, spec) in specs {
         let result = (|| -> io::Result<()> {
-            let preview = preview(&client, &spec)?;
+            let preview = preview(client, &spec)?;
             let mut bytes = [0; 16];
             getrandom::fill(&mut bytes).map_err(|e| io::Error::other(e.to_string()))?;
             let key: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
             let applied = call(
-                &client,
+                client,
                 "ApplyAgentConnectionRestore",
                 json!({"expected_revisions":preview["expected_revisions"], "spec":preview["spec"], "accept_digest":preview["accept_digest"], "dependency_digest":preview["dependency_digest"], "idempotency_key":key}),
             )?;
@@ -152,7 +183,7 @@ pub(super) fn restore(_layout: &hiroute_host_runtime::StandaloneLayout) -> io::R
                 .ok_or_else(|| io::Error::other("AGENT_RESTORE_UNAVAILABLE"))?;
             let deadline = Instant::now() + Duration::from_secs(30);
             loop {
-                let view = call(&client, "GetOperation", json!({"operation_id":operation}))?;
+                let view = call(client, "GetOperation", json!({"operation_id":operation}))?;
                 match view["state"].as_str() {
                     Some("succeeded") => break Ok(()),
                     Some("rolled_back" | "needs_attention") | None => {

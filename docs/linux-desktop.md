@@ -35,9 +35,10 @@ Choose **Open in browser** to keep using the existing service until you are read
 An update carries forward the existing listener, login-start setting and data.
 
 To remove the current user's runtime, open **Settings**, find **Desktop app**
-and choose **Remove service…**. Restore any HiRoute-managed settings in
-**Agents** first. Removing the service stops current requests and removes
-the owned CLI and user unit. Saved sources, Plans and history are available
+and choose **Remove service…**. Review the listed Agents before confirming.
+HiRoute restores their eligible managed settings, then stops the service and
+removes the owned CLI and user unit. Use **Agents** to resolve settings that
+require attention before retrying. Saved sources, Plans and history are available
 when you reinstall the runtime. The package and its launcher stay installed.
 
 ## Build a local candidate

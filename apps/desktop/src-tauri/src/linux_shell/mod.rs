@@ -410,13 +410,29 @@ async fn shell_restart_service(
 }
 
 #[tauri::command]
+async fn shell_preview_runtime_removal(
+    window: WebviewWindow,
+    host: HostState<'_>,
+    bearer: String,
+) -> Result<runtime::RemovalPreview, &'static str> {
+    let bearer = Zeroizing::new(bearer);
+    authorize(&window, &host, &bearer)
+        .await?
+        .preview_removal()
+        .await
+}
+
+#[tauri::command]
 async fn shell_remove_runtime(
     window: WebviewWindow,
     host: HostState<'_>,
     bearer: String,
+    confirmation: String,
 ) -> Result<(), &'static str> {
     let bearer = Zeroizing::new(bearer);
     let session = authorize(&window, &host, &bearer).await?;
+    hiroute_application_api::CanonicalDigest::parse(&confirmation)
+        .map_err(|_| "RUNTIME_REMOVE_PREVIEW_CHANGED")?;
     {
         let mut state = host.lock().map_err(|_| STATE_UNAVAILABLE)?;
         if state.busy {
@@ -424,7 +440,7 @@ async fn shell_remove_runtime(
         }
         state.busy = true;
     }
-    let result = session.remove().await;
+    let result = session.remove(&confirmation).await;
     host.lock().map_err(|_| STATE_UNAVAILABLE)?.busy = false;
     result?;
     start(window, host.inner().clone(), Action::Connect)
@@ -513,7 +529,7 @@ pub fn run() {
             shell_status, shell_retry_startup, shell_install_runtime, shell_recover_runtime, shell_open_legacy_browser,
             shell_preview_runtime_update, shell_update_runtime,
             shell_capabilities, shell_open_in_browser, shell_open_external_url, shell_save_classifier_openapi,
-            shell_restart_service, shell_remove_runtime, shell_reconnect, shell_open_diagnostic_directory, shell_write_clipboard,
+            shell_restart_service, shell_preview_runtime_removal, shell_remove_runtime, shell_reconnect, shell_open_diagnostic_directory, shell_write_clipboard,
             shell_presentation_get, shell_presentation_set,
         ])
         .setup(move |app| {
