@@ -21,12 +21,12 @@ jobs:
       - name: Install QEMU and grant the runner access to KVM
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends acl qemu-system-x86 qemu-utils tesseract-ocr
+          sudo apt-get install -y -qq --no-install-recommends acl imagemagick qemu-system-x86 qemu-utils tesseract-ocr
           sudo setfacl -m "u:$(id -u):rw" /dev/kvm
-      - name: Install the frozen signed package in a hardware-accelerated Omarchy desktop
+      - name: Upgrade the released runtime from the signed package and replay its Plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/validate-omarchy-kvm-candidate.sh
+        run: bash scripts/validate-omarchy-kvm-candidate.sh upgrade
       - uses: actions/upload-artifact@v4
         if: always()
         with:
