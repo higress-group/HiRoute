@@ -103,8 +103,11 @@ wait_for_witness() {
 
 "${guest_copy[@]}" "$previous/$archive" "$previous/$archive.json" "$previous/install-predecessor.py" "$guest:release-check/"
 guest_phase predecessor "$archive" "$predecessor" "$prior_version" | tee "$evidence/predecessor.txt"
-"${guest_copy[@]}" -r crates/daemon/tests/support scripts/omarchy-kvm-plan.py \
-    crates/integrations/src/agents/codex_bundled_catalog.json "$guest:release-check/"
+mkdir "$work/fixture"
+git archive "$revision" crates/daemon/tests/support crates/integrations/src/agents/codex_bundled_catalog.json |
+    tar -xf - -C "$work/fixture"
+"${guest_copy[@]}" -r "$work/fixture/crates/daemon/tests/support" scripts/omarchy-kvm-plan.py \
+    "$work/fixture/crates/integrations/src/agents/codex_bundled_catalog.json" "$guest:release-check/"
 mkfifo "$work/witness-input"
 exec 9<> "$work/witness-input"
 "${guest_ssh[@]}" 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"; cd "$HOME/release-check"; exec python3 -u omarchy-kvm-plan.py' <&9 9>&- \

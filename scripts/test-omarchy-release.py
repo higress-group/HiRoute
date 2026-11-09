@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Release admission and real OpenPGP subkey fixtures without production credentials."""
 import importlib.util
+import io
 import json
 from pathlib import Path
 import runpy
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -51,6 +53,47 @@ class CandidateAdmission(unittest.TestCase):
             package.write_bytes(b"replaced")
             with self.assertRaisesRegex(ValueError, "bytes differ"):
                 release.asset(directory, package.name, [row])
+
+
+class InstallMetadata(unittest.TestCase):
+    def test_signer_rejects_privileged_modes_links_and_extra_members(self):
+        verify = runpy.run_path(str(SCRIPTS / "package-linux-desktop.py"))["verify_install_metadata"]
+        executable = "usr/bin/hiroute-desktop"
+        with tempfile.TemporaryDirectory() as scratch:
+            package = Path(scratch) / "fixture.pkg.tar.xz"
+
+            def write(binary, extra=None):
+                with tarfile.open(package, "w:xz") as archive:
+                    directory = tarfile.TarInfo("usr/bin")
+                    directory.type, directory.mode = tarfile.DIRTYPE, 0o755
+                    archive.addfile(directory)
+                    archive.addfile(binary, io.BytesIO(b"binary"))
+                    if extra is not None:
+                        archive.addfile(extra)
+
+            binary = tarfile.TarInfo(executable)
+            binary.mode, binary.size = 0o755, 6
+            write(binary)
+            verify(package, {executable}, executable)
+
+            for change in ({"mode": 0o4755}, {"mode": 0o2755}, {"uid": 1000},
+                           {"type": tarfile.SYMTYPE, "linkname": "/bin/sh", "size": 0},
+                           {"type": tarfile.LNKTYPE, "linkname": "/bin/sh", "size": 0},
+                           {"pax_headers": {"SCHILY.xattr.security.capability": "fixture"}}):
+                with self.subTest(change=change):
+                    invalid = tarfile.TarInfo(executable)
+                    invalid.mode, invalid.size = binary.mode, binary.size
+                    for field, value in change.items():
+                        setattr(invalid, field, value)
+                    write(invalid)
+                    with self.assertRaisesRegex(ValueError, "Unexpected Arch package"):
+                        verify(package, {executable}, executable)
+
+            extra = tarfile.TarInfo("etc")
+            extra.type, extra.mode = tarfile.DIRTYPE, 0o755
+            write(binary, extra)
+            with self.assertRaisesRegex(ValueError, "Unexpected Arch package"):
+                verify(package, {executable}, executable)
 
 
 @unittest.skipUnless(all(shutil.which(tool) for tool in ("gpg", "gpgv", "gpgconf")),

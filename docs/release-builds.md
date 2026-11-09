@@ -299,7 +299,7 @@ Configure an `omarchy-signing` GitHub environment restricted to the `main` branc
 with a release reviewer. Set `OMARCHY_SIGNING_SUBKEY` to the armored OpenPGP
 signing subkey export and `OMARCHY_SIGNING_PASSPHRASE` to its passphrase. Keep the
 primary private key and revocation certificate offline. The signer checks both
-package inventories and their embedded runtimes before importing the subkey into
+package inventories, install permissions and embedded runtimes before importing the subkey into
 a temporary keyring. It verifies the signatures against the frozen public key
 and uploads `omarchy-signed` with the packages, signatures, checksums and identities.
 

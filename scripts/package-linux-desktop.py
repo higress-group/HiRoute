@@ -2,15 +2,17 @@
 """Build the native Arch Desktop candidate from a verified standalone bundle."""
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
 import re
 import runpy
 import shutil
 import subprocess
+import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -149,7 +151,41 @@ def verify_signature(package_path, public_key):
     return signers[0]
 
 
-def inspect_package(package_path, manifest_path, archive_path):
+def verify_install_metadata(package_path, required, executable):
+    directories = {str(parent) for name in required for parent in PurePosixPath(name).parents
+                   if parent != PurePosixPath(".")}
+    seen = set()
+    with ExitStack() as stack:
+        if package_path.name.endswith(".zst"):
+            decompressor = stack.enter_context(subprocess.Popen(
+                ["zstd", "-dc", "--", str(package_path)], stdout=subprocess.PIPE))
+            archive = stack.enter_context(tarfile.open(fileobj=decompressor.stdout, mode="r|"))
+        else:
+            decompressor = None
+            archive = stack.enter_context(tarfile.open(package_path, mode="r|xz"))
+        for member in archive:
+            name = member.name
+            if name in seen or member.uid != 0 or member.gid != 0 or member.linkname or (
+                    member.pax_headers.keys() - {"mtime", "atime", "ctime"}):
+                raise ValueError(f"Unexpected Arch package metadata for {name}")
+            seen.add(name)
+            if name in directories and member.isdir() and member.mode == 0o755 and member.size == 0:
+                continue
+            expected_mode = 0o755 if name == executable else 0o644
+            if (name not in required or member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE)
+                    or member.mode != expected_mode):
+                raise ValueError(f"Unexpected Arch package type or permissions for {name}")
+        if decompressor is not None:
+            # Let zstd finish and verify its input even when tar reached the end marker first.
+            while decompressor.stdout.read(1024 * 1024):
+                pass
+            if decompressor.wait() != 0:
+                raise ValueError("Arch package zstd stream is invalid")
+    if not required <= seen:
+        raise ValueError("Arch package is missing expected files")
+
+
+def inspect_package(package_path, manifest_path, archive_path, *, strict_install_metadata=False):
     standalone = runpy.run_path(str(ROOT / "scripts/package-standalone.py"))
     manifest = standalone["verify"](manifest_path, archive_path)
     arch = manifest["target"].split("-", 1)[0]
@@ -172,6 +208,8 @@ def inspect_package(package_path, manifest_path, archive_path):
     required = {
         ".PKGINFO", ".BUILDINFO", ".MTREE", desktop, *source_files, manifest_name, runtime_name,
     }
+    if strict_install_metadata:
+        verify_install_metadata(package_path, required, desktop)
     tar = shutil.which("bsdtar") or "tar"
     files = [name for name in output(tar, "-tf", str(package_path)).splitlines() if not name.endswith("/")]
     if len(files) != len(required) or set(files) != required:

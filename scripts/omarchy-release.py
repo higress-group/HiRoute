@@ -201,7 +201,7 @@ def sign(inputs, unsigned, destination):
             require(suffix, "Unexpected Arch package format")
             package = stage / f"HiRoute-{version}-{revision[:12]}-omarchy-{arch}.{suffix}"
             shutil.copyfile(source, package)
-            identity = packager["inspect_package"](package, manifest, archive)
+            identity = packager["inspect_package"](package, manifest, archive, strict_install_metadata=True)
             require(identity["architecture"] == arch, "Arch package architecture differs")
             package.with_name(package.name + ".sha256").write_text(f"{identity['sha256']}  {package.name}\n")
             rows.append({**identity, "kind": "desktop", "platform": "Omarchy", "distribution": "openpgp",
