@@ -50,7 +50,7 @@ if [[ "$phase" == prepare ]]; then
     hiroute-desktop --version | jq -e --arg revision "$revision" \
         'select(.source_revision==$revision and .arch=="x86_64" and .version=="0.6.0")'
     find_wayland
-    hyprctl dispatch exec '/usr/bin/gtk-launch ai.hiroute.desktop'
+    hyprctl -i "$HYPRLAND_INSTANCE_SIGNATURE" dispatch 'hl.dsp.exec_cmd([[uwsm-app -- ai.hiroute.desktop.desktop]])' | grep -qx ok
     for _ in $(seq 1 60); do
         if active_native_window >/dev/null; then sleep 4; break; fi
         sleep 1
