@@ -54,12 +54,17 @@ Use [Omarchy in Actions](../../../docs/release-builds.md#prepare-omarchy-package
 for both architecture builds and signing, and x86_64 KVM upgrade and Gateway
 coverage. Reserve the existing hardware-accelerated local ARM64 Omarchy guest
 for one brief graphical smoke after hosted verification of the signed final
-candidate. Follow the [local smoke procedure](../../../docs/release-builds.md#run-the-local-omarchy-smoke)
-to exit the previous Desktop, use the standard installed paths and check that
-the candidate's live console renders in the new native window. Add a
-representative affected visual interaction when relevant. Run deeper
+candidate. Read the private `~/.config/hiroute/omarchy-smoke/config.json` or the
+path set in `HIROUTE_OMARCHY_SMOKE_CONFIG`. Follow the
+[local smoke procedure](../../../docs/release-builds.md#run-the-local-omarchy-smoke)
+to verify the guest and its active Wayland session, exit the previous Desktop
+and update in the standard installed paths. Confirm the frozen revision in
+Desktop and the live service, then inspect a private `grim` capture of the
+authenticated console in the candidate's native Wayland window. Add one
+representative interaction when the change affects the UI. Run deeper
 change-specific acceptance in hosted or other capable test environments before
-the smoke. Keep the local smoke pending if the required local session is unavailable.
+the smoke. Keep the local smoke pending when the guest or its unlocked desktop
+is unavailable.
 
 ## Publish and record
 

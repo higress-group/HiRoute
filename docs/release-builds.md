@@ -326,14 +326,45 @@ artifacts.
 ### Run the local Omarchy smoke
 
 After the hosted workflow succeeds, use the existing hardware-accelerated local
-ARM64 Omarchy guest for one final graphical smoke. Close any previous HiRoute
-Desktop window and confirm the old Desktop process has exited. Verify and
-install or update the exact signed ARM64 package with the
+ARM64 Omarchy guest for one final graphical smoke. Read the host's private
+`~/.config/hiroute/omarchy-smoke/config.json` or the path set in
+`HIROUTE_OMARCHY_SMOKE_CONFIG`. Use mode `0700` for its private directory
+and `0600` for the config and SSH files. Resolve relative SSH file paths from
+the config directory. The version 1 format uses these fields with local values.
+
+```json
+{
+  "schema_version": 1,
+  "ssh": {
+    "host": "127.0.0.1",
+    "port": 2222,
+    "user": "release-check",
+    "identity_file": "id_ed25519",
+    "known_hosts_file": "known_hosts"
+  },
+  "vm": { "disk_path": "/path/to/existing-omarchy-disk.img" },
+  "capture": { "method": "grim" }
+}
+```
+
+Confirm the running guest uses hardware acceleration and `vm.disk_path`.
+Check that the configured SSH destination reaches that guest. Connect as
+`ssh.user` with the configured port and identity. Set `BatchMode=yes`,
+`IdentitiesOnly=yes`, `StrictHostKeyChecking=yes`, and `UserKnownHostsFile`
+to the resolved `ssh.known_hosts_file`. Keep guest startup, autologin and wake
+settings local to the smoke machine. Confirm noninteractive package privileges
+with `sudo -k -n` and check for an active, unlocked local Wayland session owned
+by the configured user. Keep the smoke pending if the guest or its desktop is
+unavailable.
+
+Close any previous HiRoute Desktop window and confirm the old Desktop process
+has exited. Check the exact ARM64 package SHA-256 and detached signature using
+the release key at the frozen source. Install or update the verified package in
+the standard locations with the
 [standard installation steps](linux-desktop.md). Open HiRoute from Apps and
 complete the normal service setup or [update](linux-desktop.md#update-or-remove-the-background-service)
 if prompted.
 
-Confirm the authenticated console renders inside the newly opened native window.
 Check that the installed Desktop and the running service both report the frozen
 `source_revision`.
 
@@ -343,9 +374,26 @@ service_pid=$(systemctl --user show ai.hiroute.cli.service -p MainPID --value)
 "/proc/$service_pid/exe" --version
 ```
 
-Record the passing smoke with the candidate SHA, package SHA-256 and guest
-version in the release Issue or PR before publishing the Omarchy assets. Shut
-down the test guest after the smoke.
+From SSH, bind `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` and
+`WAYLAND_DISPLAY` to the active local session. Use `loginctl show-session` and
+`hyprctl -j instances` to identify the session and its Wayland socket.
+Bring HiRoute forward. Set `capture_path` to a PNG file in the private evidence
+directory and check the native window before capturing the active session.
+
+```sh
+hyprctl -j clients | jq -e \
+  'any(.[]; .class == "ai.hiroute.desktop" and .mapped and .xwayland == false)' &&
+  (umask 077; grim -t png "$capture_path")
+```
+
+Inspect the image to confirm the authenticated HiRoute console renders in the
+window. Treat QMP `screendump` as a VM diagnostic on this GL display path. Add
+one representative visual interaction when the release changes the UI.
+
+Record a passing smoke with the candidate SHA, package SHA-256, guest version
+and observed result in the release Issue or PR before publishing the Omarchy
+assets. Keep captures, machine paths, launch settings and credentials in
+private local storage. Shut down the test guest after the smoke.
 
 ### Publish the qualified artifacts
 
