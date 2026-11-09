@@ -143,6 +143,9 @@ container; the HOME is removed afterwards. Logs and package evidence are retaine
 
 ## Hosted build and publication
 
+Use the [HiRoute release skill](../.agents/skills/hiroute-release/SKILL.md#choose-acceptance-scope)
+to select patch or minor acceptance and reuse existing evidence.
+
 ### Prepare before freezing the final candidate
 
 Track release acceptance in [the release acceptance Issue](https://github.com/higress-group/HiRoute/issues/193).
@@ -317,11 +320,15 @@ and uploads `omarchy-signed` with the packages, signatures, checksums and identi
 The x86_64 job installs the exact signed package in Omarchy on GitHub KVM. It
 uses the recorded stable predecessor to verify the native Wayland upgrade and
 same-Plan Gateway receipts. Retain `omarchy-x86-kvm-evidence` with the release
-review. Run the required ARM64 native acceptance against the signed ARM64
-package on a capable remote host and record its SHA-256 before publishing. The
-hosted ARM64 package build and x86_64 acceptance cover their respective stages.
-On failure, rerun the failed jobs to reuse the successful build or signing
+review. On failure, rerun the failed jobs to reuse successful build or signing
 artifacts.
+
+After the hosted workflow succeeds, use the existing hardware-accelerated local
+ARM64 Omarchy guest for the final graphical smoke. Verify and install or update
+the exact signed ARM64 package with the [standard installation steps](linux-desktop.md).
+Open HiRoute from Apps and check the native window and authenticated console.
+Record the candidate SHA, package SHA-256, guest version and observed result in
+the release Issue or PR, then shut down the test guest.
 
 ### Publish the qualified artifacts
 
