@@ -655,21 +655,38 @@ def path_identity(path):
         metadata = path.lstat()
     except FileNotFoundError:
         return None
+    return file_identity(metadata)
+
+
+def file_identity(metadata):
     return [metadata.st_dev, metadata.st_ino, metadata.st_mode,
             metadata.st_uid, metadata.st_size, metadata.st_mtime_ns]
 
 
-def rename_noreplace(source, destination):
+def rename_noreplace(source, destination, *, source_fd=-100, destination_fd=-100):
     # A path can appear after the last ownership check. Publish only into an
     # empty destination, including when restoring a backed-up component.
     try:
         rename = ctypes.CDLL(None, use_errno=True).renameat2
     except AttributeError as error:
         raise OSError(errno.ENOSYS, "atomic Linux installation rename unavailable") from error
-    at_fdcwd, rename_noreplace_flag = -100, 1
-    if rename(at_fdcwd, os.fsencode(source), at_fdcwd, os.fsencode(destination), rename_noreplace_flag):
+    rename_noreplace_flag = 1
+    if rename(source_fd, os.fsencode(source), destination_fd, os.fsencode(destination), rename_noreplace_flag):
         code = ctypes.get_errno()
         raise OSError(code, os.strerror(code), str(destination))
+
+
+def capture_owned_path(source, destination, expected, *, source_fd=-100, sha256=None):
+    rename_noreplace(source, destination, source_fd=source_fd)
+    if path_identity(destination) == expected and (sha256 is None or digest(destination) == sha256):
+        return
+    try:
+        rename_noreplace(destination, source, destination_fd=source_fd)
+    except OSError:
+        # A concurrent writer may have filled the original path. Preserve the
+        # captured file and let recovery report the ownership conflict.
+        pass
+    raise ValueError(f"installation component changed while moving {source}")
 
 
 def directory_identity(path):
@@ -838,9 +855,9 @@ def recover_linux_install(paths):
     if record["phase"] == "prepared":
         for destination, stage, backup, current, saved, before in reversed(entries):
             if current is not None and current != before:
-                rename_noreplace(destination, stage)
+                capture_owned_path(destination, stage, current)
             if saved is not None:
-                rename_noreplace(backup, destination)
+                capture_owned_path(backup, destination, saved)
                 sync_directory(backup.parent)
             sync_directory(destination.parent)
     # Recursive cleanup can itself be interrupted. Retire the journal only
@@ -929,11 +946,16 @@ def publish_linux_install(paths, components, previous, candidate, *, fresh=False
                 raise ValueError("installation component changed before publication")
             backup = destination.with_name(item["backup"])
             if item["before"] is not None:
-                os.replace(destination, backup / "previous")
+                capture_owned_path(destination, backup / "previous", item["before"])
                 sync_directory(backup)
             if stage is not None:
-                rename_noreplace(stage, destination)
+                capture_owned_path(stage, destination, item["after"])
             sync_directory(destination.parent)
+        for item in entries:
+            destination = Path(item["path"])
+            prior = destination.with_name(item["backup"]) / "previous"
+            if path_identity(destination) != item["after"] or path_identity(prior) != item["before"]:
+                raise ValueError("installation ownership changed before commit")
         write_linux_install_journal(path, dict(record, phase="committed"))
     except BaseException:
         recover_linux_install(paths)
@@ -1187,7 +1209,7 @@ def desktop_systemctl(*arguments, timeout=4):
 
 
 def desktop_runtime_owner(paths, marker, expected_process=None):
-    program, resources, unit = validate_owned_runtime(paths, marker)
+    program, resources, unit, _skills = validate_owned_runtime(paths, marker)
     cli, daemon = program / "hiroute", program / "hirouted"
     for path in (cli, daemon, unit, program, resources):
         identity = path_identity(path)
@@ -1428,20 +1450,41 @@ def owned_skill(path, expected):
     )
 
 
-def remove_managed_skill(path):
+def remove_managed_skill(path, owner=None):
     # The package owns one leaf. A user file added after validation keeps
     # the directory alive, including in an installation's backup directory.
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except FileNotFoundError:
+        if owner is not None:
+            raise ValueError(f"owned Skill disappeared during removal: {path}")
         return
     try:
-        try:
-            os.unlink("SKILL.md", dir_fd=descriptor)
-        except FileNotFoundError:
-            pass
+        if owner is not None:
+            directory, leaf, sha256 = owner
+            current = os.stat("SKILL.md", dir_fd=descriptor, follow_symlinks=False)
+            if (file_identity(os.fstat(descriptor)) != directory or file_identity(current) != leaf
+                    or os.listdir(descriptor) != ["SKILL.md"]):
+                raise ValueError(f"owned Skill changed during removal: {path}")
+        if owner is not None and platform.system() == "Linux":
+            scratch = Path(tempfile.mkdtemp(prefix=".hiroute-remove-skill.", dir=path.parent))
+            captured = scratch / "SKILL.md"
+            try:
+                capture_owned_path("SKILL.md", captured, leaf, source_fd=descriptor, sha256=sha256)
+                captured.unlink()
+            finally:
+                if not captured.exists() and not captured.is_symlink():
+                    scratch.rmdir()
+        else:
+            try:
+                os.unlink("SKILL.md", dir_fd=descriptor)
+            except FileNotFoundError:
+                if owner is not None:
+                    raise
     finally:
         os.close(descriptor)
+    if owner is not None and (path_identity(path) or [])[:2] != directory[:2]:
+        raise ValueError(f"owned Skill directory changed during removal: {path}")
     try:
         path.rmdir()
     except OSError as error:
@@ -1557,10 +1600,16 @@ def validate_owned_runtime(paths, marker):
         ):
             raise ValueError(f"owned entry changed; refusing to remove: {entry}")
     expected_skill = resource_root / "skills/hiroute-management/SKILL.md"
+    skills = {}
     for value in marker["installed_skills"]:
         skill = Path(value)
-        if (skill.exists() or skill.is_symlink()) and not owned_skill(skill, expected_skill):
+        directory = path_identity(skill)
+        if directory is None:
+            continue
+        leaf = path_identity(skill / "SKILL.md")
+        if not owned_skill(skill, expected_skill):
             raise ValueError(f"owned Skill changed; refusing to remove: {skill}")
+        skills[skill] = (directory, leaf, digest(expected_skill))
     if service.exists() or service.is_symlink():
         if service.is_symlink() or not service.is_file() or service.read_bytes() != expected_service:
             raise ValueError("owned service definition changed; refusing to remove")
@@ -1571,15 +1620,16 @@ def validate_owned_runtime(paths, marker):
         if directory.exists() or directory.is_symlink():
             if directory.is_symlink() or not directory.is_dir() or directory.parent != parent:
                 raise ValueError(f"owned installation directory changed: {directory}")
-    return install_root, resource_root, service
+    return install_root, resource_root, service, skills
 
 
 def uninstall_owned(paths, *, desktop=False):
     home = paths["home"]
     marker = read_marker(paths)
-    install_root, resource_root, service = validate_owned_runtime(paths, marker)
+    install_root, resource_root, service, skills = validate_owned_runtime(paths, marker)
+    unit = path_identity(service)
     if desktop:
-        desktop_systemctl("disable", "--now", SERVICE_LABEL + ".service", timeout=50)
+        desktop_systemctl("stop", SERVICE_LABEL + ".service", timeout=50)
     elif platform.system() == "Linux":
         run_systemctl("disable", "--now", SERVICE_LABEL)
     else:
@@ -1588,12 +1638,24 @@ def uninstall_owned(paths, *, desktop=False):
         login = home / "Library/LaunchAgents/ai.hiroute.cli.plist"
         if login.is_symlink() and Path(os.readlink(login)) == service:
             login.unlink()
+    try:
+        _, _, _, stopped_skills = validate_owned_runtime(paths, marker)
+        if path_identity(service) != unit:
+            raise ValueError("owned service definition changed while stopping the service")
+        if stopped_skills != skills:
+            raise ValueError("owned Skill changed while stopping the service")
+        for skill, owner in skills.items():
+            remove_managed_skill(skill, owner)
+    except (OSError, ValueError):
+        if desktop and path_identity(service) == unit:
+            desktop_systemctl("start", SERVICE_LABEL + ".service", timeout=50)
+        raise
+    if desktop:
+        desktop_systemctl("disable", SERVICE_LABEL + ".service")
     for name in ("hiroute", "hirouted"):
         entry = paths["bin"] / name
         if entry.exists() or entry.is_symlink():
             entry.unlink()
-    for value in marker["installed_skills"]:
-        remove_managed_skill(Path(value))
     if service.exists() or service.is_symlink():
         service.unlink()
     if install_root.is_dir():
