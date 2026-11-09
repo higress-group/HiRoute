@@ -181,12 +181,12 @@ mod tests {
                 .iter()
                 .any(|model| model.upstream_model_id == "qwen3.6-plus")
         );
-        let facts = |fact: &NativeCandidateFactValueV1<_>| {
+        fn facts<T>(fact: &NativeCandidateFactValueV1<T>) -> (bool, bool) {
             (
                 fact.value.is_none(),
                 fact.basis == NativeCandidateFactBasisV1::Unknown,
             )
-        };
+        }
         assert!(candidates.iter().all(|model| {
             model.catalog_configuration_id.is_none()
                 && model.membership == hiroute_application_api::ComputeModelMembershipV2::UserDeclared
