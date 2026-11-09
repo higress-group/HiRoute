@@ -482,23 +482,25 @@ if interrupt in ("desktop-owner", "desktop-owner-changed"):
             report.write(action + chr(10))
         return ""
     entry.__globals__["desktop_systemctl"] = observed_systemctl
-if interrupt in ("desktop-removal", "desktop-removal-changed-skill"):
+if interrupt.startswith("desktop-removal"):
     import fcntl
     entry.__globals__["desktop_runtime_owner"] = lambda *args: "owned"
     lock = Path.home() / ".local/share/hiroute/service/agent-removal.lock"
     def trace(action):
         with (Path.home() / "desktop-removal-actions").open("a") as report:
             report.write(action + chr(10))
-    def assert_fenced():
+    def assert_fenced(expected):
         with lock.open("rb") as competing_writer:
             try:
                 fcntl.flock(competing_writer, fcntl.LOCK_SH | fcntl.LOCK_NB)
             except BlockingIOError:
-                return
-            raise AssertionError("Agent writes are not fenced")
+                fenced = True
+            else:
+                fenced = False
+        assert fenced == expected, f"expected the Agent removal fence to be {expected}"
     def observed_agent_removal(cli, operation, *expected):
         if operation == "check":
-            assert_fenced()
+            assert_fenced(True)
             trace("check")
             return {"ready": True}
         if operation == "restore":
@@ -508,12 +510,16 @@ if interrupt in ("desktop-removal", "desktop-removal-changed-skill"):
             return {"restored": True}
         return {"agents": ["agent_codex_default"], "confirmation": "reviewed"}
     def observed_remove_service(action, *args, **kwargs):
-        assert_fenced()
+        assert_fenced(action not in ("enable", "start"))
+        if action == "show":
+            return "enabled" if interrupt == "desktop-removal-disable-fails" else "disabled"
         trace(action)
         if action == "stop" and interrupt == "desktop-removal-changed-skill":
             leaf = Path.home() / ".agents/skills/hiroute-management/SKILL.md"
             leaf.rename(Path.home() / "saved-owned-skill.md")
             leaf.write_text("replacement user Skill")
+        if action == "disable" and interrupt == "desktop-removal-disable-fails":
+            raise ValueError("could not disable the user service")
         return ""
     entry.__globals__["agent_removal_request"] = observed_agent_removal
     entry.__globals__["desktop_systemctl"] = observed_remove_service
@@ -714,6 +720,31 @@ entry()
         self.assertTrue((paths["bin"] / "hiroute").is_symlink())
         skill = self.home / ".agents/skills/hiroute-management/SKILL.md"
         self.assertEqual(skill.read_text(), "replacement user Skill")
+
+    @patch.object(installer.platform, "system", return_value="Linux")
+    def test_removal_disable_failure_keeps_runtime_and_recovers_service(self, _system):
+        manifest, archive = self.build()
+        installed = self.invoke("install", "--manifest", manifest, "--archive", archive)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        with self.environment():
+            paths = installer.layout(self.home)
+        data = paths["state"] / "routing-data"
+        data.write_text("saved Plan")
+        marker = json.loads(paths["marker"].read_bytes())
+        original = [paths["marker"], Path(marker["service_definition"]), data,
+                    Path(marker["install_root"]) / "hirouted",
+                    *(Path(skill) / "SKILL.md" for skill in marker["installed_skills"])]
+        contents = {path: path.read_bytes() for path in original}
+        removed = self.invoke("uninstall", "--desktop-process", "1", "1",
+                              "--expect-agent-preview", "reviewed",
+                              interrupt="desktop-removal-disable-fails")
+        self.assertNotEqual(removed.returncode, 0)
+        self.assertIn("could not disable the user service", removed.stderr)
+        trace = self.home / "desktop-removal-actions"
+        self.assertEqual(trace.read_text().splitlines(),
+                         ["restore", "check", "stop", "disable", "enable", "start"])
+        self.assertEqual({path: path.read_bytes() for path in original}, contents)
+        self.assertTrue((paths["bin"] / "hiroute").is_symlink())
 
     @patch.object(installer.platform, "system", return_value="Linux")
     def test_upgrade_rejects_a_different_file_captured_as_the_prior_owner(self, _system):

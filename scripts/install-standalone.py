@@ -1561,13 +1561,7 @@ def uninstall(args):
         if restored.get("restored") is not True:
             print(json.dumps(restored))
             return
-        with fence_agent_writes(paths):
-            require_desktop_owner(paths, marker, owner)
-            checked = agent_removal_request(cli, "check")
-            if checked.get("ready") is not True:
-                print(json.dumps(checked))
-                return
-            uninstall_owned(paths, desktop=True)
+        uninstall_desktop(paths, owner)
 
 
 def recover():
@@ -1623,14 +1617,65 @@ def validate_owned_runtime(paths, marker):
     return install_root, resource_root, service, skills
 
 
-def uninstall_owned(paths, *, desktop=False):
+def require_stopped_runtime(paths, marker, service, unit, skills):
+    _, _, _, current_skills = validate_owned_runtime(paths, marker)
+    if path_identity(service) != unit:
+        raise ValueError("owned service definition changed while stopping the service")
+    if current_skills != skills:
+        raise ValueError("owned Skill changed while stopping the service")
+
+
+def uninstall_desktop(paths, owner):
+    label = SERVICE_LABEL + ".service"
+    restart_identity = None
+    disable_attempted = False
+    try:
+        with fence_agent_writes(paths):
+            marker = read_marker(paths)
+            require_desktop_owner(paths, marker, owner)
+            checked = agent_removal_request(Path(marker["install_root"]) / "hiroute", "check")
+            if checked.get("ready") is not True:
+                print(json.dumps(checked))
+                return
+            install_root, resource_root, service, skills = validate_owned_runtime(paths, marker)
+            daemon = install_root / "hirouted"
+            unit = path_identity(service)
+            state = desktop_systemctl("show", "--property=UnitFileState", "--value", label).strip()
+            if state not in ("enabled", "enabled-runtime", "disabled"):
+                raise ValueError("could not verify the user service launch-at-login setting")
+            require_desktop_owner(paths, marker, owner)
+            restart_identity = (path_identity(paths["marker"]), unit, path_identity(daemon))
+            desktop_systemctl("stop", label, timeout=50)
+            require_stopped_runtime(paths, marker, service, unit, skills)
+            disable_attempted = True
+            desktop_systemctl("disable", label)
+            require_stopped_runtime(paths, marker, service, unit, skills)
+            remove_owned_runtime(paths, install_root, resource_root, service, skills)
+    except (OSError, ValueError):
+        # Daemon startup needs the shared Agent lock. Recover only after
+        # releasing the exclusive lock and while the same runtime is intact.
+        if restart_identity is not None:
+            try:
+                current = (path_identity(paths["marker"]), path_identity(service), path_identity(daemon))
+                if current == restart_identity:
+                    if disable_attempted and state in ("enabled", "enabled-runtime"):
+                        enable_options = ("--runtime",) if state == "enabled-runtime" else ()
+                        try:
+                            desktop_systemctl("enable", *enable_options, label)
+                        except (OSError, ValueError) as error:
+                            print(f"could not restore launch at login: {error}", file=sys.stderr)
+                    desktop_systemctl("start", label, timeout=50)
+            except (OSError, ValueError) as error:
+                print(f"could not restart the owned service: {error}", file=sys.stderr)
+        raise
+
+
+def uninstall_owned(paths):
     home = paths["home"]
     marker = read_marker(paths)
     install_root, resource_root, service, skills = validate_owned_runtime(paths, marker)
     unit = path_identity(service)
-    if desktop:
-        desktop_systemctl("stop", SERVICE_LABEL + ".service", timeout=50)
-    elif platform.system() == "Linux":
+    if platform.system() == "Linux":
         run_systemctl("disable", "--now", SERVICE_LABEL)
     else:
         domain = f"gui/{os.getuid()}/{SERVICE_LABEL}"
@@ -1638,20 +1683,13 @@ def uninstall_owned(paths, *, desktop=False):
         login = home / "Library/LaunchAgents/ai.hiroute.cli.plist"
         if login.is_symlink() and Path(os.readlink(login)) == service:
             login.unlink()
-    try:
-        _, _, _, stopped_skills = validate_owned_runtime(paths, marker)
-        if path_identity(service) != unit:
-            raise ValueError("owned service definition changed while stopping the service")
-        if stopped_skills != skills:
-            raise ValueError("owned Skill changed while stopping the service")
-        for skill, owner in skills.items():
-            remove_managed_skill(skill, owner)
-    except (OSError, ValueError):
-        if desktop and path_identity(service) == unit:
-            desktop_systemctl("start", SERVICE_LABEL + ".service", timeout=50)
-        raise
-    if desktop:
-        desktop_systemctl("disable", SERVICE_LABEL + ".service")
+    require_stopped_runtime(paths, marker, service, unit, skills)
+    remove_owned_runtime(paths, install_root, resource_root, service, skills)
+
+
+def remove_owned_runtime(paths, install_root, resource_root, service, skills):
+    for skill, owner in skills.items():
+        remove_managed_skill(skill, owner)
     for name in ("hiroute", "hirouted"):
         entry = paths["bin"] / name
         if entry.exists() or entry.is_symlink():
