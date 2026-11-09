@@ -1,0 +1,15 @@
+---
+import '../styles/install.css';
+import { localePath } from '../lib/locale.mjs';
+const { platforms, language, picker = false } = Astro.props;
+const en = language === 'en';
+---
+<nav class="install-platforms" aria-label={en ? 'Choose your platform' : '选择运行环境'}>
+  {platforms.map(platform => <a class="install-platform" href={`${picker ? '' : localePath(language, '/download/')}#${platform.id}`}
+    data-install-platform={picker ? platform.id : undefined}>
+    <span class="install-platform-type">{platform.type}</span>
+    <strong>{platform.name}</strong>
+    <span class="install-platform-architectures">{platform.architectures || (en ? 'Packages coming soon' : '安装包准备中')}</span>
+    <span class="install-platform-indicator" aria-hidden="true">↗</span>
+  </a>)}
+</nav>

@@ -1,0 +1,13 @@
+---
+const { command, language, label } = Astro.props;
+const en = language === 'en';
+---
+<div class="install-code">
+  <div class="install-code-line">
+    <pre tabindex="0" aria-label={label}><code>{command}</code></pre>
+    <button class="install-copy" type="button" data-copy-install hidden aria-label={en ? `Copy ${label}` : `复制${label}`}>
+      {en ? 'Copy' : '复制'}
+    </button>
+  </div>
+  <p class="install-copy-status" role="status" aria-atomic="true"></p>
+</div>

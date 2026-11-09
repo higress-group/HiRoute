@@ -8,7 +8,7 @@ The standalone packages support `x86_64` and ARM64 (`aarch64`) with glibc 2.31 o
 
 <h2 id="omarchy">Install on Omarchy</h2>
 
-Choose the signed Arch package for your architecture in the [Omarchy downloads](/en/download/#omarchy). Follow the signature verification and `pacman` instructions there, then open **HiRoute** from the app launcher. Choose **Install background service** on first run or attach to an existing compatible service. The desktop app and CLI share the same routes, Agents and sessions.
+Choose the signed Arch package for your architecture in the [Omarchy downloads](/en/download/#omarchy). Follow the [Omarchy installation guide](/en/docs/install-omarchy/) to verify signatures and install with `pacman`, then open **HiRoute** from the app launcher. Choose **Install background service** on first run or attach to an existing compatible service. The desktop app and CLI share the same routes, Agents and sessions.
 
 <aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
 <div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>

@@ -1,0 +1,75 @@
+---
+import { artifactAssets, artifactUrl, DOWNLOAD_ORIGIN, formatBytes } from '../lib/releases.mjs';
+import { architectureLabel } from '../lib/install-platforms.mjs';
+import { localePath } from '../lib/locale.mjs';
+import InstallCommand from './InstallCommand.astro';
+const { release, artifact, platform, language } = Astro.props;
+const t = (zh, en) => language === 'en' ? en : zh;
+const omarchy = platform.id === 'omarchy';
+const macos = platform.id === 'macos';
+const guide = localePath(language, `/docs/${platform.guide}/`);
+const companions = omarchy ? artifactAssets(release, artifact).slice(1) : [];
+const publicKey = `https://raw.githubusercontent.com/higress-group/HiRoute/v${release.version}/assets/packaging/omarchy-release-key.asc`;
+const fingerprint = 'CB5F8ADEDC272ED8879D206C5642FA57EA8DF169';
+const distribution = artifact.distribution;
+const format = platform.id === 'windows' ? 'EXE' : macos ? 'DMG' : artifact.format;
+const signing = distribution === 'openpgp' ? t('OpenPGP 签名', 'OpenPGP signed')
+  : distribution === 'self-signed' ? t('自签名 · 首次打开需确认', 'Self-signed · first launch needs approval')
+  : distribution === 'unsigned' ? t('未签名 · 请先核对 SHA-256', 'Unsigned · verify SHA-256 before opening')
+  : t('Developer ID 签名与公证', 'Developer ID signed and notarized');
+---
+<div class="install-artifact" id={`${platform.id}-${artifact.architecture}`} data-install-artifact>
+  <div class="install-download">
+    <div>
+      <h3>{platform.name} · {architectureLabel(platform.id, artifact.architecture, language)}</h3>
+      <p>{format} · {formatBytes(artifact.size, language)} · HiRoute {release.version}</p>
+    </div>
+    <a class="button" href={artifactUrl(release, artifact)}>{t('下载安装包', 'Download installer')} <span aria-hidden="true">↓</span></a>
+  </div>
+  <p class="install-signing">{signing}</p>
+  {omarchy && <div class="install-companions">
+    <span>{t('将配套文件保存到安装包所在文件夹', 'Save these files alongside the package')}</span>
+    {companions.map(asset => <a href={`${DOWNLOAD_ORIGIN}/${asset.key}`} download>{asset.filename.endsWith('.sig') ? t('下载签名 .sig', 'Download signature .sig') : t('下载校验文件', 'Download checksum')}</a>)}
+  </div>}
+  <details class="install-verification">
+    <summary>{t('校验与签名信息', 'Checksums and signing')}</summary>
+    <p>{t('下载后核对完整 SHA-256。', 'Verify the complete SHA-256 after downloading.')}</p>
+    <InstallCommand command={artifact.sha256} language={language} label="SHA-256" />
+    <a class="text-link" href={guide}>{t('查看校验步骤', 'Verification instructions')} →</a>
+  </details>
+
+  <ol class="install-steps">
+    {macos && <>
+      <li><h3>{t('安装到应用程序', 'Install in Applications')}</h3><p>{t('打开下载的 DMG，将 HiRoute 拖入“应用程序”。', 'Open the downloaded DMG and drag HiRoute into Applications.')}</p></li>
+      <li><h3>{t('首次打开 HiRoute', 'Open HiRoute')}</h3>
+        <p>{distribution === 'self-signed'
+          ? t('从“应用程序”打开 HiRoute。如果系统拦截，请前往“系统设置 → 隐私与安全性”，选择“仍要打开”。', 'Open HiRoute from Applications. If macOS blocks it, go to System Settings → Privacy & Security and choose Open Anyway.')
+          : t('从“应用程序”打开 HiRoute，应用会启动本机服务。', 'Open HiRoute from Applications. The app starts the local service.')}</p>
+        <p>{t('按启动页指引安装后台服务，或连接已有的兼容服务，进入控制台。', 'Follow the startup screen to install the background service or connect to an existing compatible service, then open the console.')}</p>
+      </li>
+    </>}
+    {platform.id === 'windows' && <>
+      <li><h3>{t('运行安装程序', 'Run the installer')}</h3><p>{t('核对 SHA-256 后运行安装包。按当前用户安装，自带服务与 CLI，无需管理员权限。', 'Verify SHA-256, then run the installer. It installs for the current user with the service and CLI included, without administrator rights.')}</p>
+        {distribution === 'unsigned' && <p>{t('如遇 SmartScreen 未知发布者提示，请按安装指南确认文件来源后继续。', 'For a SmartScreen unknown-publisher prompt, follow the installation guide to confirm the source before continuing.')}</p>}
+      </li>
+      <li><h3>{t('从开始菜单打开 HiRoute', 'Open HiRoute from Start')}</h3><p>{t('打开应用，等待本机服务就绪后进入控制台。', 'Open the app and wait for the local service to be ready. The console then opens.')}</p></li>
+    </>}
+    {omarchy && <>
+      <li><h3>{t('核对文件与发布密钥', 'Verify the files and release key')}</h3>
+        <p>{t('在保存安装包、签名和校验文件的文件夹中运行。', 'Run in the folder containing the package, signature and checksum.')}</p>
+        <InstallCommand command={`sha256sum --check "${artifact.filename}.sha256" &&\ncurl -fsSLo omarchy-release-key.asc ${publicKey} &&\ngpg --show-keys --with-fingerprint omarchy-release-key.asc`} language={language} label={t('文件与密钥检查命令', 'file and key checks')} />
+        <p>{t('确认主密钥指纹与下方一致，再继续安装。', 'Confirm that the primary key fingerprint matches before continuing.')}</p>
+        <code class="install-fingerprint">{fingerprint}</code>
+      </li>
+      <li><h3>{t('验证签名并安装', 'Verify the signature and install')}</h3>
+        <InstallCommand command={`sudo pacman-key --add omarchy-release-key.asc &&\nsudo pacman-key --lsign-key ${fingerprint} &&\nsudo pacman -U "${artifact.filename}"`} language={language} label={t('签名包安装命令', 'signed package installation')} />
+        <p>{t('pacman 使用同目录的 .sig 验证包签名。验证失败时请停止并重新核对来源与文件。', 'pacman verifies the adjacent .sig file. If verification fails, stop and recheck the source and files.')}</p>
+      </li>
+      <li><h3>{t('从 Apps 打开 HiRoute', 'Open HiRoute from Apps')}</h3><p>{t('首次打开时选择“安装后台服务”，或连接已有的兼容服务。应用与 CLI 共用当前用户的模型、路由和会话。', 'On first launch, choose Install background service or connect to an existing compatible service. The app and CLI share the current user’s models, routes and sessions.')}</p></li>
+    </>}
+  </ol>
+  <div class="install-next">
+    <a class="text-link" href={localePath(language, '/docs/models/')}>{t('接入第一个模型', 'Connect your first model')} →</a>
+    <a class="text-link" href={guide}>{t('完整安装指南', 'Full installation guide')} →</a>
+  </div>
+</div>

@@ -6,9 +6,9 @@ Linux 版提供 Omarchy 桌面应用，以及适用于服务器、远程工作�
 
 独立服务安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或更高版本。安装需要 `curl` 与 Python 3，按当前用户运行。
 
-<h2 id="omarchy">在 Omarchy 上安装</h2>
+<h2 id="omarchy">Omarchy 桌面应用</h2>
 
-在 [Omarchy 下载区](/zh/download/#omarchy)选择对应架构的签名 Arch 包，按页面指引验证签名并用 `pacman` 安装，然后从启动器打开 **HiRoute**。首次运行可选择**安装后台服务**，也可连接已有的兼容服务。桌面应用与 CLI 共用路由、Agent 和会话。
+在 [Omarchy 安装页](/zh/download/#omarchy) 选择对应架构的签名 Arch 包，按 [Omarchy 安装指南](/zh/docs/install-omarchy/) 验证签名并使用 `pacman` 安装。从 Apps 打开 HiRoute，首次运行时安装后台服务，或连接已有的兼容服务。桌面应用与 CLI 共用模型、路由、Agent 和会话。
 
 <aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
 <div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>

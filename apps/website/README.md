@@ -50,6 +50,18 @@ write opens and selects the text for manual copying; without JavaScript the
 native preview remains readable. Keep both languages aligned. Detailed command
 and recovery rules stay in the CLI guide and installed Skills.
 
+## Installation entry points
+
+The homepage and download page share `InstallPlatforms.astro` and the platform
+catalog in `src/lib/install-platforms.mjs`. Keep macOS, Omarchy, Windows and
+Linux Server at equal visual weight. Release artifacts remain owned by
+`data/releases.json`. The download page progressively enhances native fragment
+links with `public/scripts/install.js`, preserving platform/architecture deep links,
+browser history, keyboard navigation and readable installation steps without
+JavaScript. Keep copying feedback and manual-copy fallback available for commands
+and checksums. Omarchy's bilingual guide owns the public package installation
+walkthrough; its signing key and service behavior follow `docs/linux-desktop.md`.
+
 ## Documentation maintenance
 
 Treat current user documentation as part of a product change. When a change affects
