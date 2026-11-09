@@ -58,9 +58,9 @@ candidate. Read the private `~/.config/hiroute/omarchy-smoke/config.json` or the
 path set in `HIROUTE_OMARCHY_SMOKE_CONFIG`. Follow the
 [local smoke procedure](../../../docs/release-builds.md#run-the-local-omarchy-smoke)
 to verify the guest and its active Wayland session, exit the previous Desktop
-and update in the standard installed paths. Confirm the frozen revision in
-Desktop and the live service, then inspect a private `grim` capture of the
-authenticated console in the candidate's native Wayland window. Add one
+and update in the standard installed paths. Bind the foreground native Wayland
+Desktop and live service to the signed candidate, then inspect a private
+`grim` capture of the authenticated console. Add one
 representative interaction when the change affects the UI. Run deeper
 change-specific acceptance in hosted or other capable test environments before
 the smoke. Keep the local smoke pending when the guest or its unlocked desktop

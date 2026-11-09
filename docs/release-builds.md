@@ -347,48 +347,66 @@ the config directory. The version 1 format uses these fields with local values.
 }
 ```
 
-Confirm the running guest uses hardware acceleration and `vm.disk_path`.
-Check that the configured SSH destination reaches that guest. Connect as
-`ssh.user` with the configured port and identity. Set `BatchMode=yes`,
-`IdentitiesOnly=yes`, `StrictHostKeyChecking=yes`, and `UserKnownHostsFile`
-to the resolved `ssh.known_hosts_file`. Keep guest startup, autologin and wake
-settings local to the smoke machine. Confirm noninteractive package privileges
-with `sudo -k -n` and check for an active, unlocked local Wayland session owned
-by the configured user. Keep the smoke pending if the guest or its desktop is
-unavailable.
+Confirm the running guest uses hardware acceleration and `vm.disk_path` and
+that the configured SSH endpoint reaches that guest. Set the `ssh_*` variables
+from the matching `ssh` fields, using the resolved paths. Connect with the
+configured identity and host keys.
 
-Close any previous HiRoute Desktop window and confirm the old Desktop process
-has exited. Check the exact ARM64 package SHA-256 and detached signature using
-the release key at the frozen source. Install or update the verified package in
-the standard locations with the
+```sh
+ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes -o GlobalKnownHostsFile=none \
+  -o "UserKnownHostsFile=\"$ssh_known_hosts_file\"" \
+  -i "$ssh_identity_file" -p "$ssh_port" -l "$ssh_user" "$ssh_host"
+```
+
+Keep guest startup, autologin and wake settings local to the smoke machine.
+Confirm noninteractive package privileges with `sudo -k -n` and check for an
+active, unlocked local Wayland session owned by the configured user. Keep the
+smoke pending if the guest or its desktop is unavailable.
+
+Use the `omarchy-signed` artifact from the successful x86_64 verification run.
+In its `signed.json`, match `revision` to the frozen SHA and select the `aarch64`
+package entry. Check the named package against its recorded `sha256` and verify
+the detached signature using the release key at the frozen source. Close any
+previous HiRoute Desktop window and confirm the old process has exited.
+Install or update the verified package in the standard locations with the
 [standard installation steps](linux-desktop.md). Open HiRoute from Apps and
 complete the normal service setup or [update](linux-desktop.md#update-or-remove-the-background-service)
 if prompted.
 
-Check that the installed Desktop and the running service both report the frozen
-`source_revision`.
-
-```sh
-hiroute-desktop --version
-service_pid=$(systemctl --user show ai.hiroute.cli.service -p MainPID --value)
-"/proc/$service_pid/exe" --version
-```
-
 From SSH, bind `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` and
 `WAYLAND_DISPLAY` to the active local session. Use `loginctl show-session` and
 `hyprctl -j instances` to identify the session and its Wayland socket.
-Bring HiRoute forward. Set `capture_path` to a PNG file in the private evidence
-directory and check the native window before capturing the active session.
+Bring HiRoute forward. Set `candidate_sha` to the frozen revision and
+`capture_path` to a new PNG path in the private evidence directory. Run the
+checks and capture in Bash.
 
-```sh
-hyprctl -j clients | jq -e \
-  'any(.[]; .class == "ai.hiroute.desktop" and .mapped and .xwayland == false)' &&
-  (umask 077; grim -t png "$capture_path")
+```bash
+(
+  set -euo pipefail
+  address=$(hyprctl -j activewindow | jq -er .address)
+  desktop_pid=$(hyprctl -j clients | jq -er --arg address "$address" '
+    .[] | select(.address == $address and .class == "ai.hiroute.desktop"
+      and .mapped and .xwayland == false) | .pid')
+  service_pid=$(systemctl --user show ai.hiroute.cli.service -p MainPID --value)
+  [[ "$desktop_pid" =~ ^[1-9][0-9]*$ && "$service_pid" =~ ^[1-9][0-9]*$ ]]
+  test "$(readlink "/proc/$desktop_pid/exe")" = /usr/bin/hiroute-desktop
+  "/proc/$desktop_pid/exe" --version | jq -e --arg sha "$candidate_sha" '.source_revision == $sha'
+  "/proc/$service_pid/exe" --version | jq -e --arg sha "$candidate_sha" '.source_revision == $sha'
+  manifest=/usr/share/hiroute-desktop/standalone/manifest.json
+  daemon_sha=$(jq -er '.files["bin/hirouted"].sha256' "$manifest")
+  printf '%s  %s\n' "$daemon_sha" "/proc/$service_pid/exe" | sha256sum --check -
+  umask 077
+  set -C
+  grim -t png - > "$capture_path"
+)
 ```
 
-Inspect the image to confirm the authenticated HiRoute console renders in the
-window. Treat QMP `screendump` as a VM diagnostic on this GL display path. Add
-one representative visual interaction when the release changes the UI.
+Require the checks and capture to succeed. The running daemon digest must match
+the packaged runtime even when a rebuild has the same source revision. Inspect
+the new image to confirm the authenticated HiRoute console renders in the window.
+Treat QMP `screendump` as a VM diagnostic on this GL display path. Add one
+representative visual interaction when the release changes the UI.
 
 Record a passing smoke with the candidate SHA, package SHA-256, guest version
 and observed result in the release Issue or PR before publishing the Omarchy
