@@ -3,6 +3,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-auto-rows: 1fr;
   gap: 16px;
+  scroll-margin-top: 16px;
 }
 .install-platform {
   position: relative;

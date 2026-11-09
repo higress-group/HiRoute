@@ -24,6 +24,7 @@
       if (option.hash === `#${current?.id}`) option.setAttribute('aria-current', 'true');
       else option.removeAttribute('aria-current');
     }
+    return selected;
   }
 
   picker.addEventListener('click', event => {
@@ -31,7 +32,10 @@
     if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     if (location.hash !== link.hash) history.pushState(null, '', link.hash);
-    showSelection();
+    const panel = showSelection();
+    if (link.dataset.installPlatform && panel && panel.querySelector('.install-panel-heading').getBoundingClientRect().bottom > window.innerHeight) {
+      link.parentElement.scrollIntoView({ block: 'start' });
+    }
   });
   picker.addEventListener('keydown', event => {
     const link = event.target.closest('[data-install-platform], [data-install-architecture]');

@@ -15,18 +15,19 @@ from the repository. Use `gpg --show-keys --with-fingerprint omarchy-release-key
 to check its primary fingerprint against `CB5F8ADEDC272ED8879D206C5642FA57EA8DF169`.
 Keep the package, its `.sig` and its `.sha256` together and check the digest.
 Once you have verified the fingerprint, add and locally sign the release key
-in the pacman keyring, then install the downloaded package.
+in the pacman keyring. Verify the detached signature before installing the package.
 
 ```sh
 package=HiRoute-0.6.0-REVISION-omarchy-ARCH.pkg.tar.xz
-sha256sum --check "$package.sha256"
-sudo pacman-key --add omarchy-release-key.asc
-sudo pacman-key --lsign-key CB5F8ADEDC272ED8879D206C5642FA57EA8DF169
+sha256sum --check "$package.sha256" &&
+sudo pacman-key --add omarchy-release-key.asc &&
+sudo pacman-key --lsign-key CB5F8ADEDC272ED8879D206C5642FA57EA8DF169 &&
+sudo pacman-key --verify "$package.sig" "$package" &&
 sudo pacman -U "$package"
 ```
 
-Set `package` to the exact downloaded filename. Pacman verifies the adjacent
-signature using its normal signature policy.
+Set `package` to the exact downloaded filename. If the `.sig` file is missing
+or verification fails, recheck the source and files.
 
 Open **HiRoute** from the app launcher. On first run, **Install background service**
 sets up the current user's CLI, service and local console from the package. The

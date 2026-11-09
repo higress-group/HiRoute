@@ -61,7 +61,9 @@ const formatDate = value => new Intl.DateTimeFormat(language === 'en' ? 'en' : '
               <p>{t('安装器自动识别架构，下载并校验最新稳定版，安装到 ~/.local。', 'The installer detects your architecture, downloads and verifies the latest stable release, and installs under ~/.local.')}</p>
               <InstallCommand command="curl -fsSL https://hiroute.ai/install.sh | sh" language={language} label={t('安装命令', 'installation command')} />
               <details class="install-verification"><summary>{t('先查看脚本', 'Inspect the script first')}</summary>
-                <InstallCommand command={'curl -fsSLo install.sh https://hiroute.ai/install.sh\nless install.sh\nsh install.sh'} language={language} label={t('脚本检查命令', 'script inspection commands')} />
+                <InstallCommand command="curl -fsSLo install.sh https://hiroute.ai/install.sh && less install.sh" language={language} label={t('脚本检查命令', 'script inspection command')} />
+                <p>{t('查看并确认刚下载的脚本后，再运行它。', 'After reviewing the downloaded script, run it.')}</p>
+                <InstallCommand command="sh install.sh" language={language} label={t('已审阅脚本的执行命令', 'command to run the reviewed script')} />
               </details>
             </li>
             <li><h3>{t('启动并检查服务', 'Start and check the service')}</h3>

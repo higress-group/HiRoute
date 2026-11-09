@@ -60,10 +60,11 @@ After checking the fingerprint, add the release key to pacman's keyring and loca
 ```sh
 sudo pacman-key --add omarchy-release-key.asc &&
 sudo pacman-key --lsign-key CB5F8ADEDC272ED8879D206C5642FA57EA8DF169 &&
+sudo pacman-key --verify "$package.sig" "$package" &&
 sudo pacman -U "$package"
 ```
 
-pacman verifies the signature using its normal signature policy. Resolve any verification failure before proceeding.
+Installation starts only after signature verification succeeds. If the `.sig` file is missing or verification fails, recheck the source and files.
 
 ## 4. Open HiRoute from Apps
 

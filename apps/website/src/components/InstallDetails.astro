@@ -44,8 +44,8 @@ const signing = distribution === 'openpgp' ? t('OpenPGP 签名', 'OpenPGP signed
       <li><h3>{t('首次打开 HiRoute', 'Open HiRoute')}</h3>
         <p>{distribution === 'self-signed'
           ? t('从“应用程序”打开 HiRoute。如果系统拦截，请前往“系统设置 → 隐私与安全性”，选择“仍要打开”。', 'Open HiRoute from Applications. If macOS blocks it, go to System Settings → Privacy & Security and choose Open Anyway.')
-          : t('从“应用程序”打开 HiRoute，应用会启动本机服务。', 'Open HiRoute from Applications. The app starts the local service.')}</p>
-        <p>{t('按启动页指引安装后台服务，或连接已有的兼容服务，进入控制台。', 'Follow the startup screen to install the background service or connect to an existing compatible service, then open the console.')}</p>
+          : t('从“应用程序”打开 HiRoute。', 'Open HiRoute from Applications.')}</p>
+        <p>{t('HiRoute 会启动随附的本机服务并打开控制台。', 'HiRoute starts its bundled local service and opens the console.')}</p>
       </li>
     </>}
     {platform.id === 'windows' && <>
@@ -62,8 +62,8 @@ const signing = distribution === 'openpgp' ? t('OpenPGP 签名', 'OpenPGP signed
         <code class="install-fingerprint">{fingerprint}</code>
       </li>
       <li><h3>{t('验证签名并安装', 'Verify the signature and install')}</h3>
-        <InstallCommand command={`sudo pacman-key --add omarchy-release-key.asc &&\nsudo pacman-key --lsign-key ${fingerprint} &&\nsudo pacman -U "${artifact.filename}"`} language={language} label={t('签名包安装命令', 'signed package installation')} />
-        <p>{t('pacman 使用同目录的 .sig 验证包签名。验证失败时请停止并重新核对来源与文件。', 'pacman verifies the adjacent .sig file. If verification fails, stop and recheck the source and files.')}</p>
+        <InstallCommand command={`sudo pacman-key --add omarchy-release-key.asc &&\nsudo pacman-key --lsign-key ${fingerprint} &&\nsudo pacman-key --verify "${artifact.signature_filename}" "${artifact.filename}" &&\nsudo pacman -U "${artifact.filename}"`} language={language} label={t('签名包安装命令', 'signed package installation')} />
+        <p>{t('签名验证成功后才会安装。若 .sig 缺失或验证失败，请重新核对来源与文件。', 'Installation starts only after signature verification succeeds. If the .sig file is missing or verification fails, recheck the source and files.')}</p>
       </li>
       <li><h3>{t('从 Apps 打开 HiRoute', 'Open HiRoute from Apps')}</h3><p>{t('首次打开时选择“安装后台服务”，或连接已有的兼容服务。应用与 CLI 共用当前用户的模型、路由和会话。', 'On first launch, choose Install background service or connect to an existing compatible service. The app and CLI share the current user’s models, routes and sessions.')}</p></li>
     </>}

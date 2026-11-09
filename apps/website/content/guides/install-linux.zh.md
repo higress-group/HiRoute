@@ -49,8 +49,12 @@ curl -fsSL https://hiroute.ai/install.sh | sh
 希望先检查脚本时：
 
 ```sh
-curl -fsSLo install.sh https://hiroute.ai/install.sh
-less install.sh
+curl -fsSLo install.sh https://hiroute.ai/install.sh && less install.sh
+```
+
+查看并确认刚下载的脚本后，再运行它。
+
+```sh
 sh install.sh
 ```
 

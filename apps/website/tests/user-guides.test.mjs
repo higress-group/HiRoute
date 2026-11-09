@@ -25,7 +25,7 @@ test('Omarchy guides retain signature verification and the shared-service first 
     assert.match(html, /CB5F8ADEDC272ED8879D206C5642FA57EA8DF169/);
     assert.match(html, /sha256sum --check/);
     assert.match(html, /pacman-key --lsign-key/);
-    assert.match(html, /pacman -U/);
+    assert.match(html, /pacman-key --verify [^\n]+ &amp;&amp;\n\s*sudo pacman -U/);
     assert.match(html, /Install background service|安装后台服务/);
     assert.match(html, new RegExp(`/${language}/download/#omarchy`));
     assert.match(html, new RegExp(`/${language}/docs/models/`));

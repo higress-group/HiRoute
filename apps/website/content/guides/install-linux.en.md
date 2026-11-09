@@ -49,8 +49,12 @@ curl -fsSL https://hiroute.ai/install.sh | sh
 To inspect the script first:
 
 ```sh
-curl -fsSLo install.sh https://hiroute.ai/install.sh
-less install.sh
+curl -fsSLo install.sh https://hiroute.ai/install.sh && less install.sh
+```
+
+After reviewing the downloaded script, run it.
+
+```sh
 sh install.sh
 ```
 

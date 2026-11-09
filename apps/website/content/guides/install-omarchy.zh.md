@@ -60,10 +60,11 @@ gpg --show-keys --with-fingerprint omarchy-release-key.asc
 ```sh
 sudo pacman-key --add omarchy-release-key.asc &&
 sudo pacman-key --lsign-key CB5F8ADEDC272ED8879D206C5642FA57EA8DF169 &&
+sudo pacman-key --verify "$package.sig" "$package" &&
 sudo pacman -U "$package"
 ```
 
-pacman 按正常签名策略验证安装包。出现校验失败时，先解决文件或签名问题，再继续。
+签名验证成功后才会安装。若 `.sig` 缺失或验证失败，请重新核对来源与文件。
 
 ## 4. 从 Apps 打开 HiRoute
 

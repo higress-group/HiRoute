@@ -9,10 +9,11 @@ const script = fs.readFileSync(new URL('../public/scripts/install.js', import.me
 
 // Exercise the shipped navigation handler with the same native fragment links
 // as the static page. Browser acceptance covers layout, real keys and clipboard.
-function visit(hash = '') {
+function visit(hash = '', viewportHeight = 900) {
   const listeners = {};
   const windowListeners = {};
   const history = [];
+  const scrolls = [];
   const location = { hash };
   const prompt = { hidden: true };
   let focused;
@@ -29,7 +30,8 @@ function visit(hash = '') {
   }
   const platforms = installPlatforms(latestRelease(), 'en');
   const cards = platforms.map(platform => link(platform.id, platform.id));
-  for (const card of cards) card.parentElement = { querySelectorAll: () => cards };
+  const navigation = { querySelectorAll: () => cards, scrollIntoView: options => scrolls.push(options) };
+  for (const card of cards) card.parentElement = navigation;
   const panels = platforms.map(platform => {
     const artifacts = platform.kind === 'desktop'
       ? platform.artifacts.map(artifact => ({ id: `${platform.id}-${artifact.architecture}` })) : [];
@@ -37,6 +39,7 @@ function visit(hash = '') {
     for (const option of options) option.parentElement = { querySelectorAll: () => options };
     return {
       id: platform.id, artifacts, options,
+      querySelector: () => ({ getBoundingClientRect: () => ({ bottom: 765 }) }),
       querySelectorAll: selector => selector === '[data-install-artifact]' ? artifacts : options,
     };
   });
@@ -49,10 +52,10 @@ function visit(hash = '') {
     location,
     history: { pushState: (_state, _title, value) => { history.push(value); location.hash = value; } },
     document: { querySelector: () => picker, documentElement: { lang: 'en' } },
-    window: { addEventListener: (name, callback) => { windowListeners[name] = callback; } },
+    window: { innerHeight: viewportHeight, addEventListener: (name, callback) => { windowListeners[name] = callback; } },
   });
   return {
-    cards, panels, prompt, history,
+    cards, panels, prompt, history, scrolls,
     visible: () => panels.filter(panel => !panel.hidden).map(panel => panel.id),
     click(target, modifiers = {}) {
       let prevented = false;
@@ -108,6 +111,19 @@ test('platform and architecture links restore the matching state through browser
   page.navigate('#macos-x86_64', 'hashchange');
   assert.deepEqual(page.visible(), ['macos']);
   assert.equal(page.cards[0].getAttribute('aria-current'), 'true');
+});
+
+test('selecting a platform reveals offscreen details on a short viewport', () => {
+  const short = visit('', 640);
+  short.click(short.cards[1]);
+  assert.deepEqual(short.visible(), ['omarchy']);
+  assert.equal(short.scrolls.length, 1);
+  short.click(short.panels[1].options.find(option => option.hash.endsWith('aarch64')));
+  assert.equal(short.scrolls.length, 1);
+
+  const tall = visit();
+  tall.click(tall.cards[1]);
+  assert.equal(tall.scrolls.length, 0);
 });
 
 test('direct links select the correct architecture and preserve modified navigation', () => {
