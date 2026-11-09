@@ -80,6 +80,22 @@
         ],
         "server": []
       }
+    },
+    {
+      "version": "0.6.0",
+      "revision": "9fed4150abd9a331452d4bc1136d60a76d5ccb62",
+      "installer_sha256": "7e0afd4366b24e7b8c4f94ea973d707cc955aabbdd310ba0594a50e6f44caeff",
+      "decision_url": "https://github.com/higress-group/HiRoute/issues/193#issuecomment-6731262412",
+      "deferred_cases": {
+        "windows11": [
+          "update.success",
+          "update.digest-before-stop",
+          "update.cancel-active-worker",
+          "update.replace-rollback",
+          "update.killed-resume"
+        ],
+        "server": []
+      }
     }
   ]
 }

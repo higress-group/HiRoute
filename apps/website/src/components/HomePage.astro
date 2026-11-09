@@ -14,8 +14,14 @@ const release = latestRelease('stable');
 const preferredArtifact = release?.artifacts.find(item => item.kind === 'desktop' && item.platform === 'macOS' && item.architecture === 'arm64')
   ?? release?.artifacts.find(item => item.kind === 'desktop' && item.platform === 'macOS');
 const windowsArtifact = release?.artifacts.find(item => item.kind === 'desktop' && item.platform === 'Windows');
+const omarchyArtifact = release?.artifacts.find(item => item.kind === 'desktop' && item.platform === 'Omarchy');
 const linuxArtifact = release?.artifacts.find(item => item.kind === 'standalone' && item.platform === 'Linux');
-const releaseKinds = [preferredArtifact && t('macOS 桌面应用', 'macOS Desktop'), windowsArtifact && t('Windows 桌面应用', 'Windows Desktop'), linuxArtifact && 'Linux'].filter(Boolean).join(' / ');
+const releaseKinds = [
+  preferredArtifact && t('macOS 桌面应用', 'macOS Desktop'),
+  windowsArtifact && t('Windows 桌面应用', 'Windows Desktop'),
+  omarchyArtifact && t('Omarchy 桌面应用', 'Omarchy Desktop'),
+  linuxArtifact && t('Linux Web UI 与 CLI', 'Linux Web UI and CLI'),
+].filter(Boolean).join(' / ');
 const operatingSystems = ['macOS', 'Windows', 'Linux'].filter(platform => release?.artifacts.some(item => item.platform === platform));
 // Search title and snippet name the problem people search for; the hero keeps the slogan.
 const description = t('HiRoute 是开源的本地 Agent 模型路由：在 Codex、Claude Code 等 Agent 中组合订阅、API 和本地模型。常规工作交给经济模型，难点留给主力，订阅额度用得更久；经济模型没做好，主力随时接手。', 'HiRoute is an open-source local model router for Codex, Claude Code and other agents. Combine subscriptions, APIs and local models: routine work goes to economical models and hard parts to your primary model, so your subscriptions go further.');
@@ -34,7 +40,7 @@ const description = t('HiRoute 是开源的本地 Agent 模型路由：在 Codex
       <h1>{en ? <><span>Pay for your strongest model</span><span class="hero-accent">only where the work needs it.</span></> : <><span>只在需要的地方，</span><span class="hero-accent">为最强的模型付费。</span></>}</h1>
       <p class="intro">{t('HiRoute 是开源的 Agent 模型路由。常规工作交给经济模型，复杂任务交给主力；经济模型没做好，主力随时接手。继续用你熟悉的 Agent，组合订阅、API 和本地模型，让订阅额度用得更久。', 'HiRoute is an open-source model router for agents. Routine work goes to economical models and complex work to your primary model, which steps in when an economical model falls short. Keep your Agent, combine subscriptions, APIs and local models, and make your subscriptions go further.')}</p>
       <div class="actions"><a class="button" href={localePath(language, '/download/')}>{t('下载 HiRoute', 'Download HiRoute')} <span>↗</span></a><a class="button outline" href="#tour">{t('观看 3 分钟介绍', 'Watch the 3-minute tour')} <span>▶</span></a></div>
-      <p class="small-note">{t('支持 Codex、Claude Code、Qoder、OpenCode 等 Agent · macOS / Windows 桌面版 · Linux Web UI + CLI', 'Works with Codex, Claude Code, Qoder, OpenCode and more · macOS / Windows Desktop · Linux Web UI + CLI')}</p>
+      <p class="small-note">{t('支持 Codex、Claude Code、Qoder、OpenCode 等 Agent · macOS / Windows 桌面版 · Linux Web UI + CLI', 'Works with Codex, Claude Code, Qoder, OpenCode and more · macOS / Windows Desktop · Linux Web UI + CLI')}{omarchyArtifact && t(' · Omarchy 桌面应用', ' · Omarchy Desktop')}</p>
     </div>
     <div class="journey-art" aria-label={t('一个长任务中的模型分工示意', 'How models share one long task')}>
       <div class="journey-goal"><span>{t('一个长任务 · 每个阶段选对模型', 'ONE LONG TASK · THE RIGHT MODEL FOR EACH STAGE')}</span><strong>{t('大部分工作很常规，少数决策才需要最强的模型。', 'Most of the work is routine. Only a few decisions need your strongest model.')}</strong></div>

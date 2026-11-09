@@ -22,6 +22,7 @@ For task delegation, use the built-in delegation Skill. If needed, guide me thro
 Command pointers (choose only what the goal needs; prefix each with hiroute):
 - Home status and setup guidance: system status · quickstart
 - Models and connection settings: compute · prices · decision connections
+- Check what blocks decision model removal: decision removal preview
 - Smart routes: routing options / list / show / preview / apply
 - Agent model routes and built-in Skills: agents connect preview / apply / status · agents restore
 - Delegated tasks and history: worker plans / exec / list / status / result / continue / cancel
@@ -215,6 +216,8 @@ The CLI supports the complete headless loop:
 Configuration writes preview first, then apply with the complete request, preview digest, exact revisions, and idempotency key. Models, routes, and Agents use their own `preview/apply` commands. Decision connections use the same `apply` command for both preview and save. Pass passwords and API keys through `protected-input`, never through ordinary JSON, arguments, or logs. Obtain exact fields from the matching `schema show`, `options`, and leaf `--help`.
 
 ## Manage decision connections
+
+Before removing a decision model, inspect its saved revision with `decision connections list` and check active references with `decision removal preview`. Follow the installed schema and leaf help. Update any routes or drafts shown as blockers, then preview the removal again before applying it. Existing history remains available for review. The [CLI reference](https://github.com/higress-group/HiRoute/blob/main/docs/standalone-cli.md) describes the preview and apply requests.
 
 Desktop manages these connections under Models → Decision models. In the CLI, `decision connections list/apply/test` manages decision connections, including reused API connections, protocols and context windows; see Connect a decision service from the CLI above. The original `decision services` commands keep their original request format, and existing connections and published snapshots stay readable. Built-in decision models and custom extensions are independent of general models that execute tasks. The `decision services` request format works as follows:
 

@@ -2,6 +2,109 @@
   "schema": "hiroute.website.releases/v3",
   "releases": [
     {
+      "version": "0.6.0",
+      "channel": "stable",
+      "published_at": "2026-11-09",
+      "notes": {
+        "zh": "新增带签名的 Omarchy 桌面安装包。改善 Responses 会话连续性、Codex 请求档位选择和 Hermes 路由归属，并改进决策额度和模型移除。 Windows 原生验证范围见发行说明。",
+        "en": "Add signed Omarchy Desktop packages. Improve Responses continuity, Codex effort selection, Hermes route attribution, shared decision budgets, and decision model removal. See the release notes for the Windows native validation scope."
+      },
+      "artifacts": [
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "arm64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.6.0-9fed4150abd9-macos-arm64-trial.dmg",
+          "sha256": "bf74200841bed89325df7d1fc1fcb076c4a541e236d0583639512e539796057c",
+          "size": 102595190
+        },
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "x86_64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.6.0-9fed4150abd9-macos-x86_64-trial.dmg",
+          "sha256": "5837f79bcf54c1dc9864e421f7f15598ebdae16b16eeb92d87f5971e3a3d832d",
+          "size": 111625284
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "x86_64",
+          "target": "x86_64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.6.0-9fed4150abd9-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "aea1280899ef40317afcfdbc49321cdb3a013ab836d13578c71e493ed7268d14",
+          "size": 86994424,
+          "manifest_filename": "hiroute-0.6.0-9fed4150abd9-x86_64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "12229476e99bb76702a74fa9c161a16ad6228a7f99a5962fee47f0eaffb9f239",
+          "manifest_size": 3929
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "aarch64",
+          "target": "aarch64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.6.0-9fed4150abd9-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "4f4fbbf3ea79cfab55a2398dacd088342b9a7650e1401df5c2d27ec969ef5fdc",
+          "size": 82268252,
+          "manifest_filename": "hiroute-0.6.0-9fed4150abd9-aarch64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "8aeedb27c04e7c49079b1eaaa52d1c8086e7b6f456f395e7f8d97bee0e797a98",
+          "manifest_size": 3931
+        },
+        {
+          "kind": "desktop",
+          "platform": "Windows",
+          "architecture": "x86_64",
+          "format": "nsis",
+          "distribution": "unsigned",
+          "filename": "HiRoute-0.6.0-9fed4150abd9-windows-x86_64-setup.exe",
+          "sha256": "7e0afd4366b24e7b8c4f94ea973d707cc955aabbdd310ba0594a50e6f44caeff",
+          "size": 72620984
+        },
+        {
+          "kind": "desktop",
+          "platform": "Omarchy",
+          "architecture": "aarch64",
+          "format": "pkg.tar.xz",
+          "distribution": "openpgp",
+          "filename": "HiRoute-0.6.0-9fed4150abd9-omarchy-aarch64.pkg.tar.xz",
+          "size": 84808072,
+          "sha256": "bb2fc418713b2b119d3c5df60ffbb711497c6e89b6908c35fe3d1a5e434bc6a9",
+          "signature_filename": "HiRoute-0.6.0-9fed4150abd9-omarchy-aarch64.pkg.tar.xz.sig",
+          "signature_size": 147,
+          "signature_sha256": "9a1e1b49fadf79b6d3ffe4831d0dc577075864d7e4850c32b15ac533841f21c2",
+          "checksum_filename": "HiRoute-0.6.0-9fed4150abd9-omarchy-aarch64.pkg.tar.xz.sha256",
+          "checksum_size": 120,
+          "checksum_sha256": "524bd0ef051824db7aed66184ef0a453e3f2f61b1246ba205b9662946f13bd08"
+        },
+        {
+          "kind": "desktop",
+          "platform": "Omarchy",
+          "architecture": "x86_64",
+          "format": "pkg.tar.zst",
+          "distribution": "openpgp",
+          "filename": "HiRoute-0.6.0-9fed4150abd9-omarchy-x86_64.pkg.tar.zst",
+          "size": 92006641,
+          "sha256": "e118fa15d9e10a5c3f874e427cf8f7daac8f6a3e33c7cf574a1e25ccedf572b7",
+          "signature_filename": "HiRoute-0.6.0-9fed4150abd9-omarchy-x86_64.pkg.tar.zst.sig",
+          "signature_size": 147,
+          "signature_sha256": "f6ed3d2197b1b7acdfb8d56ee9fc7cea9bcb9722ea8abdbe598ce59be0a6b959",
+          "checksum_filename": "HiRoute-0.6.0-9fed4150abd9-omarchy-x86_64.pkg.tar.zst.sha256",
+          "checksum_size": 120,
+          "checksum_sha256": "405ccf67a7820662296baf7d9960513b8d4955ba54a445e854614acf980e7194"
+        }
+      ]
+    },
+    {
       "version": "0.5.3",
       "channel": "stable",
       "published_at": "2026-11-06",

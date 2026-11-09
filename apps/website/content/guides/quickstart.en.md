@@ -46,6 +46,7 @@ The UI and CLI connect to the same HiRoute service and share configuration and e
 
 - **macOS**: requires macOS 15.0 or later. Public packages are self-signed. Verify the SHA256, then follow [Install and open on macOS](/en/docs/install-macos/).
 - **Windows**: native x64, installed for the current user, with the service and CLI included. No Python or administrator rights required. See [Windows installation](/en/docs/install-windows/).
+- On **Omarchy**, verify and install the signed Arch package with `pacman`, then open HiRoute from the app launcher. See [Omarchy installation](/en/docs/install-linux/#omarchy).
 - **Linux**: x86_64 and ARM64, without `sudo`. Enable the Web UI for the same interface in your browser, or use the CLI alone. See [Linux installation](/en/docs/install-linux/).
 
 The [download page](/en/download/) lists released packages. Check that the service is ready before continuing. The browser manages models, Agents and files on the service host. Keep the HiRoute service running while using routes or executing tasks.

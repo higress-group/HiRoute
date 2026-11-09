@@ -1,10 +1,14 @@
 # Install HiRoute on Linux
 
-HiRoute on Linux provides a **Web UI and CLI** for servers, remote workstations and automation. Use your browser to connect models, configure routes and Agents, inspect sessions and manage delegated tasks. The service host needs no desktop environment; the CLI also supports the full management workflow.
+HiRoute on Linux provides an Omarchy desktop app and a standalone **Web UI and CLI** for servers, remote workstations and automation. Use your browser to connect models, configure routes and Agents, inspect sessions and manage delegated tasks. The standalone service runs without a desktop environment, and the CLI supports the full management workflow.
 
 Check the [download page](/en/download/) for published packages. A complete package includes the local service, Gateway, CLI, Web UI console assets and Agent management Skill.
 
-Linux packages support `x86_64` and ARM64 (`aarch64`), with glibc 2.31 or later. Installation needs no `sudo`; it requires `curl` and Python 3.
+The standalone packages support `x86_64` and ARM64 (`aarch64`) with glibc 2.31 or later. Standalone installation requires `curl` and Python 3 and runs as the current user.
+
+<h2 id="omarchy">Install on Omarchy</h2>
+
+Choose the signed Arch package for your architecture in the [Omarchy downloads](/en/download/#omarchy). Follow the signature verification and `pacman` instructions there, then open **HiRoute** from the app launcher. Choose **Install background service** on first run or attach to an existing compatible service. The desktop app and CLI share the same routes, Agents and sessions.
 
 <aside class="agent-guide" id="agent-cli" aria-label="Instructions for your Agent">
 <div class="agent-guide-heading"><strong>Let your Agent use this guide</strong></div>
@@ -20,7 +24,7 @@ Read the documentation below, then use the HiRoute CLI to carry out my goal for 
 Page documentation: https://hiroute.ai/en/docs/install-linux/
 CLI reference: https://hiroute.ai/en/docs/cli/
 
-Follow the guide for the requested installation or checks. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
+Follow the guide for the requested installation or checks. On Omarchy, follow the signed package verification and installation steps from the Omarchy download section. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
 
 Command pointers (choose only what the goal needs; prefix each with hiroute):
 - Start and inspect the service: service start · service status · system status
@@ -34,7 +38,7 @@ The UI and CLI connect to the same HiRoute service and share configuration and e
 </details>
 </aside>
 
-## 1. Install
+## 1. Install the standalone service
 
 Run this command to install the latest stable release:
 
@@ -56,7 +60,9 @@ The entry points are installed under `~/.local/bin`. If your shell cannot find `
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The installer downloads the latest stable Linux release and checks its architecture and file integrity before installation. Desktop and standalone must not manage the service in the same `HOME`.
+The installer downloads the latest stable standalone release and checks its architecture and file integrity before installation.
+
+Use the same installer to upgrade. It checks the storage prerequisites before replacing the program. Keep a matching package and complete data backup if you may need to restore the previous version. After starting the new service, reopen a saved route and make a small request. For startup failures and whole-group recovery, see the [Linux CLI and service reference](https://github.com/higress-group/HiRoute/blob/main/docs/standalone-cli.md#storage-upgrade-recovery).
 
 ## Open the Web UI
 

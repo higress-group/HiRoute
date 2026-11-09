@@ -1,10 +1,14 @@
 # 在 Linux 上安装 HiRoute
 
-Linux 版提供 **Web UI 与 CLI**，适合服务器、远程工作站和自动化环境。你可以在浏览器中接入模型、配置路由与 Agent、查看会话和管理委派任务；服务主机无需安装桌面环境，CLI 也支持完整管理流程。
+Linux 版提供 Omarchy 桌面应用，以及适用于服务器、远程工作站和自动化环境的独立 **Web UI 与 CLI**。你可以在浏览器中接入模型、配置路由与 Agent、查看会话和管理委派任务。独立服务无需桌面环境，CLI 也支持完整管理流程。
 
 [下载页](/zh/download/)列出已发布的安装包。完整安装包包括本机服务、Gateway、CLI、Web UI 控制台文件，以及供 Agent 使用的管理 Skill。
 
-Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或更高版本。无需 `sudo`；安装需要 `curl` 与 Python 3。
+独立服务安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或更高版本。安装需要 `curl` 与 Python 3，按当前用户运行。
+
+<h2 id="omarchy">在 Omarchy 上安装</h2>
+
+在 [Omarchy 下载区](/zh/download/#omarchy)选择对应架构的签名 Arch 包，按页面指引验证签名并用 `pacman` 安装，然后从启动器打开 **HiRoute**。首次运行可选择**安装后台服务**，也可连接已有的兼容服务。桌面应用与 CLI 共用路由、Agent 和会话。
 
 <aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
 <div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
@@ -20,7 +24,7 @@ Linux 安装包支持 `x86_64` 和 ARM64（`aarch64`），要求 glibc 2.31 或�
 本页文档：https://hiroute.ai/zh/docs/install-linux/
 CLI 参考：https://hiroute.ai/zh/docs/cli/
 
-先按文档完成本次安装或检查目标。安装后，引导我在“Agent → HiRoute 管理 → 启用”中开启产品内置管理技能，后续配置交给该技能：https://hiroute.ai/zh/docs/#management-skill
+先按文档完成本次安装或检查目标。在 Omarchy 上按下载区的步骤验证并安装签名包。安装后，引导我在“Agent → HiRoute 管理 → 启用”中开启产品内置管理技能，后续配置交给该技能：https://hiroute.ai/zh/docs/#management-skill
 
 操作线索（按本次目标选用；下面均为 hiroute 子命令）：
 - 启动与检查服务：service start · service status · system status
@@ -34,7 +38,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 </details>
 </aside>
 
-## 1. 安装
+## 1. 安装独立服务
 
 运行以下命令安装最新稳定版：
 
@@ -56,7 +60,9 @@ sh install.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-安装脚本会下载最新稳定的 Linux 版本，并在安装前检查架构与文件完整性。桌面应用与独立服务版（standalone）不应在同一个 `HOME` 中同时管理服务。
+安装脚本会下载最新稳定的独立服务版，并在安装前检查架构与文件完整性。
+
+升级时使用同一个安装脚本。替换程序之前，安装器会检查存储升级前提。若需要能够还原旧版，请保留配套安装包和完整数据备份。启动新版服务后，打开已保存的路由并发送一个小请求。启动失败和整组恢复的操作见 [Linux CLI 与服务参考](https://github.com/higress-group/HiRoute/blob/main/docs/standalone-cli.md#storage-upgrade-recovery)。
 
 ## 打开 Web UI
 

@@ -1,0 +1,52 @@
+{
+  "schema": "hiroute.documentation-review/v1",
+  "tag": "v0.6.0",
+  "product_revision": "9fed4150abd9a331452d4bc1136d60a76d5ccb62",
+  "guides": {
+    "status": "updated",
+    "summary": "Updated both languages for shared decision allowances, unpriced usage, the Codex reasoning picker and decision model references. Reviewed macOS, Windows and Linux storage preflight and complete recovery. The Linux guide, Quickstart and README lead Omarchy users to the download section with separate package, signature and checksum links. The installation guide and download page explain service reuse. The shared Agent activation steps still apply.",
+    "reviewed_files": [
+      "README.md",
+      "README.zh-CN.md",
+      "apps/website/content/guides/models.en.md",
+      "apps/website/content/guides/models.zh.md",
+      "apps/website/content/guides/model-routing.en.md",
+      "apps/website/content/guides/model-routing.zh.md",
+      "apps/website/content/guides/cli.en.md",
+      "apps/website/content/guides/cli.zh.md",
+      "apps/website/content/guides/quickstart.en.md",
+      "apps/website/content/guides/quickstart.zh.md",
+      "apps/website/content/guides/install-linux.en.md",
+      "apps/website/content/guides/install-linux.zh.md",
+      "apps/website/content/guides/install-macos.en.md",
+      "apps/website/content/guides/install-macos.zh.md",
+      "apps/website/content/guides/install-windows.en.md",
+      "apps/website/content/guides/install-windows.zh.md"
+    ],
+    "content_sha256": "74558cc3c472ee54c196452512b9b559a711a96fc419d70b876f42bfe18f42e9"
+  },
+  "screenshots": {
+    "status": "unchanged",
+    "summary": "Recaptured all eight guide states in both languages with the frozen Desktop components in dark mode. Thirteen images matched byte for byte. Both trial setup images retained the same controls and differed in generated route aliases and button focus. The Chinese worker route image retained the same actions, with a different scrollbar position. The existing images still show the illustrated flows. The new Omarchy setup steps and the Codex client's effort picker are described in text.",
+    "reviewed_files": [
+      "apps/website/docs/guide-assets.md",
+      "apps/website/public/guide-assets/models-add-en.webp",
+      "apps/website/public/guide-assets/models-add-zh.webp",
+      "apps/website/public/guide-assets/trial-entry-en.webp",
+      "apps/website/public/guide-assets/trial-entry-zh.webp",
+      "apps/website/public/guide-assets/trial-setup-en.webp",
+      "apps/website/public/guide-assets/trial-setup-zh.webp",
+      "apps/website/public/guide-assets/agent-editor-en.webp",
+      "apps/website/public/guide-assets/agent-editor-zh.webp",
+      "apps/website/public/guide-assets/agent-management-en.webp",
+      "apps/website/public/guide-assets/agent-management-zh.webp",
+      "apps/website/public/guide-assets/routing-worker-en.webp",
+      "apps/website/public/guide-assets/routing-worker-zh.webp",
+      "apps/website/public/guide-assets/agent-task-en.webp",
+      "apps/website/public/guide-assets/agent-task-zh.webp",
+      "apps/website/public/guide-assets/tasks-en.webp",
+      "apps/website/public/guide-assets/tasks-zh.webp"
+    ],
+    "content_sha256": "050eb39914cd3fbbdd50317eabc0cb71020e5ffc8b29c5bdc71d5fbfcc013751"
+  }
+}

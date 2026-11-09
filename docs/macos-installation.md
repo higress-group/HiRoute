@@ -89,10 +89,11 @@ ID and source directory. Use the preserved-material action, match the batch and
 read `RECOVERY.md` or `恢复说明.md` before restoration. Unknown or unverified
 locations cannot authorize recovery. Offline `hiroute service recovery --output json`
 also names the verified batch and absolute source directory.
-Insufficient-space errors require freeing unrelated files;
-retain sealed history and recovery packages. A format-changing update keeps
-configuration, credentials and routing, seals old HiRoute observations, and starts
-current history/statistics at cutover. Native Agent history is unchanged.
+Insufficient-space errors require freeing unrelated files. Retain sealed history
+and recovery packages. A Core storage upgrade preserves configuration,
+credentials, routing and compatible observations. An Observation format change
+can retire older HiRoute history and start a new generation. Follow the
+[release recovery rules](release-contracts.md#upgrade-and-manual-recovery) for the detected format.
 
 The updater shipped by v0.3.1 launches its own installation helper. New preflight
 code cannot retrofit that helper. Use only the transition sequence validated for
