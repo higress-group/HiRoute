@@ -957,6 +957,7 @@ class IntegrationPreflightTests(unittest.TestCase):
                  'issue-spec/project/workflow.md', '.claude/skills/issue-spec-apply',
                  '.agents/skills/hiroute-implementation-writer/SKILL.md',
                  '.agents/skills/hiroute-validation/SKILL.md', '.claude/skills/hiroute-validation',
+                 '.agents/skills/hiroute-release/SKILL.md', '.claude/skills/hiroute-release',
                  '.agents/skills/issue-spec-workflow/release.json',
                  '.agents/skills/hiroute-workflow-improvement/SKILL.md',
                  '.agents/skills/hiroute-workflow-improvement/references/feedback.md',

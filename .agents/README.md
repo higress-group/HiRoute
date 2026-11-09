@@ -12,6 +12,10 @@ retention and handoff guidance for ordinary changes as well as integration.
 Its linked guides retain runner commands and report details. Keep integration
 ownership in `hiroute-integrate`, rather than making it a prerequisite for testing.
 
+The shared [release skill](skills/hiroute-release/SKILL.md) owns release acceptance
+tiers, evidence reuse and publication coordination. Its graphical smoke runs
+in a session with access to the local test guest.
+
 `hiroute-ui-quality` owns shared interaction and visual-delivery guidance for the
 product UI. Its [interaction reference](../docs/desktop-interactions.md) is the
 single current source for equivalent controls, edit/confirmation state and

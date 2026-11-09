@@ -143,6 +143,9 @@ container; the HOME is removed afterwards. Logs and package evidence are retaine
 
 ## Hosted build and publication
 
+Use the [HiRoute release skill](../.agents/skills/hiroute-release/SKILL.md#choose-acceptance-scope)
+to select patch or minor acceptance and reuse existing evidence.
+
 ### Prepare before freezing the final candidate
 
 Track release acceptance in [the release acceptance Issue](https://github.com/higress-group/HiRoute/issues/193).
@@ -167,6 +170,17 @@ documentation or version fields changed. Build every final package from the same
 frozen source, and execute all outstanding package-bound/native gates against
 those actual artifacts; an earlier baseline pass does not satisfy them.
 
+### Write public release notes
+
+Write the GitHub Release body and website catalog summary for people deciding
+whether and how to upgrade. Cover user-visible changes, supported platforms,
+and known limitations that affect normal use. Link to installation, upgrade,
+and package verification instructions where applicable.
+
+Keep build and publication steps, validation environments, passed or deferred
+checks, and run links in the release Issue or PR. Review the public notes for
+this separation before publishing or editing a release.
+
 Prepare release notes separately from `apps/website/data/releases.json`. Add the public catalog
 record only after exact package hashes and required acceptance are available.
 Until then, distinguish upcoming platform capabilities from the versions actually
@@ -176,6 +190,8 @@ claim without its corresponding acceptance and publication prerequisites.
 ### Build and publish the frozen artifacts
 
 Run the **build-release-candidates** workflow on the public candidate branch.
+For a release with Omarchy packages, dispatch it from the frozen, reviewed
+version commit on `main` so the protected signing workflow can admit the run.
 Package builds and the reusable **windows-headless** workflow start alongside each
 other at the same source commit. The **qualify** job requires every package build,
 all five x64 native scopes and their selected Windows 11 x64-artifact replays.
@@ -284,6 +300,120 @@ aarch64 runtime compatibility. Release acceptance additionally needs a protected
 API-key model call on the intended deployment host, using the same frozen archive;
 that live result is separate from the offline build gate. Rebuild after integrating
 product fixes and retain each result at its actual source revision.
+
+### Prepare Omarchy packages in Actions
+
+After the candidate run succeeds, dispatch [Prepare Omarchy release](../.github/workflows/omarchy-release.yml)
+on `main` with its `candidate_run_id`. The workflow uses the qualified Linux
+archive and manifest from each producer's recorded attempt. Both native builders
+use the stable Omarchy mirrors with package-signature checks. The ARM64 builder
+also verifies the generic Arch Linux ARM root filesystem before importing it.
+
+Configure an `omarchy-signing` GitHub environment restricted to the `main` branch
+with a release reviewer. Set `OMARCHY_SIGNING_SUBKEY` to the armored OpenPGP
+signing subkey export and `OMARCHY_SIGNING_PASSPHRASE` to its passphrase. Keep the
+primary private key and revocation certificate offline. The signer checks both
+package inventories, install permissions and embedded runtimes before importing the subkey into
+a temporary keyring. It verifies the signatures against the frozen public key
+and uploads `omarchy-signed` with the packages, signatures, checksums and identities.
+
+The x86_64 job installs the exact signed package in Omarchy on GitHub KVM. It
+uses the recorded stable predecessor to verify the native Wayland upgrade and
+same-Plan Gateway receipts. Retain `omarchy-x86-kvm-evidence` with the release
+review. On failure, rerun the failed jobs to reuse successful build or signing
+artifacts.
+
+### Run the local Omarchy smoke
+
+After the hosted workflow succeeds, use the existing hardware-accelerated local
+ARM64 Omarchy guest for one final graphical smoke. Read the host's private
+`~/.config/hiroute/omarchy-smoke/config.json` or the path set in
+`HIROUTE_OMARCHY_SMOKE_CONFIG`. Use mode `0700` for its private directory
+and `0600` for the config and SSH files. Resolve relative SSH file paths from
+the config directory. The version 1 format uses these fields with local values.
+
+```json
+{
+  "schema_version": 1,
+  "ssh": {
+    "host": "127.0.0.1",
+    "port": 2222,
+    "user": "release-check",
+    "identity_file": "id_ed25519",
+    "known_hosts_file": "known_hosts"
+  },
+  "vm": { "disk_path": "/path/to/existing-omarchy-disk.img" },
+  "capture": { "method": "grim" }
+}
+```
+
+Confirm the running guest uses hardware acceleration and `vm.disk_path` and
+that the configured SSH endpoint reaches that guest. Set the `ssh_*` variables
+from the matching `ssh` fields, using the resolved paths. Connect with the
+configured identity and host keys.
+
+```sh
+ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes \
+  -o StrictHostKeyChecking=yes -o GlobalKnownHostsFile=none \
+  -o "UserKnownHostsFile=\"$ssh_known_hosts_file\"" \
+  -i "$ssh_identity_file" -p "$ssh_port" -l "$ssh_user" "$ssh_host"
+```
+
+Keep guest startup, autologin and wake settings local to the smoke machine.
+Confirm noninteractive package privileges with `sudo -k -n` and check for an
+active, unlocked local Wayland session owned by the configured user. Keep the
+smoke pending if the guest or its desktop is unavailable.
+
+Use the `omarchy-signed` artifact from the successful x86_64 verification run.
+In its `signed.json`, match `revision` to the frozen SHA and select the `aarch64`
+package entry. Check the named package against its recorded `sha256` and verify
+the detached signature using the release key at the frozen source. Close any
+previous HiRoute Desktop window and confirm the old process has exited.
+Install or update the verified package in the standard locations with the
+[standard installation steps](linux-desktop.md). Open HiRoute from Apps and
+complete the normal service setup or [update](linux-desktop.md#update-or-remove-the-background-service)
+if prompted.
+
+From SSH, bind `XDG_RUNTIME_DIR`, `HYPRLAND_INSTANCE_SIGNATURE` and
+`WAYLAND_DISPLAY` to the active local session. Use `loginctl show-session` and
+`hyprctl -j instances` to identify the session and its Wayland socket.
+Bring HiRoute forward. Set `candidate_sha` to the frozen revision and
+`capture_path` to a new PNG path in the private evidence directory. Run the
+checks and capture in Bash.
+
+```bash
+(
+  set -euo pipefail
+  address=$(hyprctl -j activewindow | jq -er .address)
+  desktop_pid=$(hyprctl -j clients | jq -er --arg address "$address" '
+    .[] | select(.address == $address and .class == "ai.hiroute.desktop"
+      and .mapped and .xwayland == false) | .pid')
+  service_pid=$(systemctl --user show ai.hiroute.cli.service -p MainPID --value)
+  [[ "$desktop_pid" =~ ^[1-9][0-9]*$ && "$service_pid" =~ ^[1-9][0-9]*$ ]]
+  test "$(readlink "/proc/$desktop_pid/exe")" = /usr/bin/hiroute-desktop
+  "/proc/$desktop_pid/exe" --version | jq -e --arg sha "$candidate_sha" '.source_revision == $sha'
+  "/proc/$service_pid/exe" --version | jq -e --arg sha "$candidate_sha" '.source_revision == $sha'
+  manifest=/usr/share/hiroute-desktop/standalone/manifest.json
+  daemon_sha=$(jq -er '.files["bin/hirouted"].sha256' "$manifest")
+  printf '%s  %s\n' "$daemon_sha" "/proc/$service_pid/exe" | sha256sum --check -
+  umask 077
+  set -C
+  grim -t png - > "$capture_path"
+)
+```
+
+Require the checks and capture to succeed. The running daemon digest must match
+the packaged runtime even when a rebuild has the same source revision. Inspect
+the new image to confirm the authenticated HiRoute console renders in the window.
+Treat QMP `screendump` as a VM diagnostic on this GL display path. Add one
+representative visual interaction when the release changes the UI.
+
+Record a passing smoke with the candidate SHA, package SHA-256, guest version
+and observed result in the release Issue or PR before publishing the Omarchy
+assets. Keep captures, machine paths, launch settings and credentials in
+private local storage. Shut down the test guest after the smoke.
+
+### Publish the qualified artifacts
 
 1. Require a successful qualification for the frozen SHA. Select the exact public
    assets named in that qualification. Keep the exact source

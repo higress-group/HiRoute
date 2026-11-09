@@ -2,15 +2,17 @@
 """Build the native Arch Desktop candidate from a verified standalone bundle."""
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import platform
 import re
 import runpy
 import shutil
 import subprocess
+import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -135,21 +137,57 @@ def verify_desktop_architecture(tar, package_path, name, arch):
             raise ValueError("Omarchy desktop executable is unreadable")
 
 
-def verify_package(args):
-    package_path = args.verify_package.resolve()
+def verify_signature(package_path, public_key):
     signature = package_path.with_name(package_path.name + ".sig")
     with tempfile.TemporaryDirectory(prefix="hiroute-omarchy-verify-") as directory:
         keyring = Path(directory) / "trusted.gpg"
         subprocess.run(["gpg", "--no-options", "--homedir", directory, "--batch", "--dearmor",
-                        "--output", str(keyring), str(args.public_key.resolve())], check=True)
+                        "--output", str(keyring), str(public_key.resolve())], check=True)
         status = output("gpgv", "--homedir", directory, "--keyring", str(keyring), "--status-fd", "1",
                         str(signature), str(package_path))
     signers = [line.split()[-1] for line in status.splitlines() if line.startswith("[GNUPG:] VALIDSIG ")]
     if len(signers) != 1 or not re.fullmatch(r"[0-9A-F]{40}", signers[0]):
         raise ValueError("Omarchy package requires one trusted OpenPGP signature")
+    return signers[0]
 
+
+def verify_install_metadata(package_path, required, executable):
+    directories = {str(parent) for name in required for parent in PurePosixPath(name).parents
+                   if parent != PurePosixPath(".")}
+    seen = set()
+    with ExitStack() as stack:
+        if package_path.name.endswith(".zst"):
+            decompressor = stack.enter_context(subprocess.Popen(
+                ["zstd", "-dc", "--", str(package_path)], stdout=subprocess.PIPE))
+            archive = stack.enter_context(tarfile.open(fileobj=decompressor.stdout, mode="r|"))
+        else:
+            decompressor = None
+            archive = stack.enter_context(tarfile.open(package_path, mode="r|xz"))
+        for member in archive:
+            name = member.name
+            if name in seen or member.uid != 0 or member.gid != 0 or member.linkname or (
+                    member.pax_headers.keys() - {"mtime", "atime", "ctime"}):
+                raise ValueError(f"Unexpected Arch package metadata for {name}")
+            seen.add(name)
+            if name in directories and member.isdir() and member.mode == 0o755 and member.size == 0:
+                continue
+            expected_mode = 0o755 if name == executable else 0o644
+            if (name not in required or member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE)
+                    or member.mode != expected_mode):
+                raise ValueError(f"Unexpected Arch package type or permissions for {name}")
+        if decompressor is not None:
+            # Let zstd finish and verify its input even when tar reached the end marker first.
+            while decompressor.stdout.read(1024 * 1024):
+                pass
+            if decompressor.wait() != 0:
+                raise ValueError("Arch package zstd stream is invalid")
+    if not required <= seen:
+        raise ValueError("Arch package is missing expected files")
+
+
+def inspect_package(package_path, manifest_path, archive_path, *, strict_install_metadata=False):
     standalone = runpy.run_path(str(ROOT / "scripts/package-standalone.py"))
-    manifest = standalone["verify"](args.manifest, args.archive)
+    manifest = standalone["verify"](manifest_path, archive_path)
     arch = manifest["target"].split("-", 1)[0]
     if arch not in SUPPORTED or manifest["target"] != f"{arch}-unknown-linux-gnu":
         raise ValueError("Omarchy package requires a supported Linux standalone runtime")
@@ -170,6 +208,8 @@ def verify_package(args):
     required = {
         ".PKGINFO", ".BUILDINFO", ".MTREE", desktop, *source_files, manifest_name, runtime_name,
     }
+    if strict_install_metadata:
+        verify_install_metadata(package_path, required, desktop)
     tar = shutil.which("bsdtar") or "tar"
     files = [name for name in output(tar, "-tf", str(package_path)).splitlines() if not name.endswith("/")]
     if len(files) != len(required) or set(files) != required:
@@ -185,13 +225,20 @@ def verify_package(args):
             or not re.fullmatch(re.escape(version.replace("-", ".")) + r"-[0-9]+(?:\.[0-9]+)?", info.get("pkgver", ""))):
         raise ValueError("Omarchy package metadata differs from the qualified runtime")
     verify_desktop_architecture(tar, package_path, desktop, arch)
-    verify_member(tar, package_path, manifest_name, standalone["digest"](args.manifest), args.manifest.stat().st_size)
+    verify_member(tar, package_path, manifest_name, standalone["digest"](manifest_path), manifest_path.stat().st_size)
     verify_member(tar, package_path, runtime_name, manifest["archive"]["sha256"], manifest["archive"]["size"])
     for name, path in source_files.items():
         source = subprocess.check_output(["git", "show", f"{revision}:{path}"], cwd=ROOT)
         verify_member(tar, package_path, name, hashlib.sha256(source).hexdigest(), len(source))
     return {"architecture": arch, "revision": revision, "version": version,
-            "signing_fingerprint": signers[0], "sha256": standalone["digest"](package_path)}
+            "sha256": standalone["digest"](package_path)}
+
+
+def verify_package(args):
+    package_path = args.verify_package.resolve()
+    fingerprint = verify_signature(package_path, args.public_key)
+    return {**inspect_package(package_path, args.manifest, args.archive),
+            "signing_fingerprint": fingerprint}
 
 
 def main():
