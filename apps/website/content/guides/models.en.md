@@ -53,6 +53,8 @@ After saving, a model shows **Connection ready**. This means it meets the local 
 
 ## Choose what to do next
 
+Have a Qoder or WorkBuddy account? Connect the models it offers through [headless Magpie](/en/docs/magpie-model-sources/). See [Agent integrations](/en/docs/agent-integrations/) for other sources and setup steps.
+
 - **Reduce model costs in your daily Agent:** create a [model route](/en/docs/model-routing/) and map it to your Agent.
 - **Try a new model first:** open New models on Home and follow the [trial flow](/en/docs/model-trial/).
 - **Run work with another Agent:** combine execution models and an execution Agent in an [Agent route](/en/docs/task-routing/).

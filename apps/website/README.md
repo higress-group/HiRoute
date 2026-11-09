@@ -81,6 +81,14 @@ their workflows. Explain UI/CLI parity and shared data. Pure conceptual/API
 references and historical articles retain their own formats; link to a current
 operation guide for executable steps instead of creating a competing setup recipe.
 
+Agent-specific tutorials are registered in `src/lib/agent-guides.mjs` and linked
+from the integration overview and the docs navigation. List native connections
+on the homepage and in the first group of the overview. List extra sources such
+as WorkBuddy in the overview's model sources group. Use stable anchors when a
+guide needs one step from the shared Magpie setup.
+Keep reusable model and delegation procedures in their guides; each Agent page
+shows its own model discovery, selection and a concrete cross-Agent example.
+
 `npm run check:guides` rejects missing language pairs, unregistered guide files and
 incomplete Agent handoffs. Rendering uses the same contract; the final build also
 rejects guides that omit the shared copy interaction. Both `npm test` and
@@ -95,6 +103,9 @@ components, appropriate example data and both languages. Follow
 images and captions, update their source revision and preserve the distinction
 between examples and real execution evidence. Unaffected captures can be reused
 after checking the displayed controls, labels and state against the candidate.
+When an Agent tutorial shows a detailed control, use the matching figure class
+(`guide-shot-dialog`, `guide-shot-panel` or `guide-shot-models`) and check the
+mobile crop. Keep the figure linked to the full image.
 
 Before a new release, review the accumulated product diff since the previous release,
 finish the affected guides/captures and record the result through the

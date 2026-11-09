@@ -53,6 +53,8 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 
 ## 接入后，选择用途
 
+已有 Qoder 或 WorkBuddy 账号？可以通过 [Magpie headless](/zh/docs/magpie-model-sources/) 把可用模型接入 HiRoute。[按 Agent 接入](/zh/docs/agent-integrations/) 也列出了其他来源与各自的配置步骤。
+
 - **给日常 Agent 降低模型成本**：去 [智能模型路由](/zh/docs/model-routing/) 创建路由，再映射到你的 Agent。
 - **先试一个新模型**：去首页的“新模型”，按 [试用流程](/zh/docs/model-trial/) 完成配置。
 - **给另一种 Agent 执行任务**：去 [Agent 智能路由](/zh/docs/task-routing/) 把执行模型与执行 Agent 组合成可委派的路由。

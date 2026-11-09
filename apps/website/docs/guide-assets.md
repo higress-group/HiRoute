@@ -7,7 +7,7 @@ Do not describe planned enterprise APIs or commercial offerings as available UI.
 
 ## Dark-mode captures
 
-`public/guide-assets/*-{zh,en}.webp` were captured on 2026-11-08 from Desktop
+The original guides' captures below were made on 2026-11-08 from Desktop
 production React components at source revision
 `a3e3446b151ac6d8e5e99fd422858183b36ab55a`.
 The website change does not alter those components.
@@ -44,6 +44,34 @@ Chrome is not at the platform default. It captures 1200 × 900 dark-mode WebP
 images in both languages. Inspect every changed image before publishing.
 Set `GUIDE_CAPTURE_STATE=agent-management` (or another asset name above) to
 refresh only that interaction in both languages.
+
+## Agent integration captures
+
+`public/guide-assets/agent-guide-*-{zh,en}.webp` use the production Desktop
+components at `82fb2fbc866231535494dc551e3c8df2a0e70d1e`, captured on
+2026-11-10. The capture opens real product forms with example plan names and
+disposable host replies. The Magpie endpoint, Qoder model IDs and displayed
+model names are drawn from a local Magpie 0.1.3056 and HiRoute 0.6.0 setup.
+Only those example configuration facts are carried into the screenshots.
+
+| Asset | Where to look |
+| --- | --- |
+| `agent-guide-claude` | Advanced settings in Model routing, with Sonnet mapped |
+| `agent-guide-qoder`, `agent-guide-pi`, `agent-guide-dsh`, `agent-guide-opencode` | Adding a published route to the respective Agent |
+| `agent-guide-hermes` | The Hermes profile and its main model route |
+| `agent-guide-magpie-api` | Custom API configured with the local URL and Responses |
+| `agent-guide-qoder-models` | The two Qoder models in General models |
+| `agent-guide-difficulty` | Heuristic rules and both model groups |
+| `agent-guide-pi-worker`, `agent-guide-dsh-worker` | Selecting the executor under Task delegation |
+
+Capture the full group after installing Desktop dependencies as above:
+
+```sh
+GUIDE_CAPTURE_GROUP=agents node apps/website/scripts/capture-guide-assets.mjs
+```
+
+Use `GUIDE_CAPTURE_STATE` to refresh one pair. These images illustrate setup;
+the shared session assets below show what a user can inspect after a real run.
 
 The guides also reuse the dark `readme-trial`, `readme-report` and `readme-session`
 assets. See [their provenance](../../../decision-extensions/assets/README.md):

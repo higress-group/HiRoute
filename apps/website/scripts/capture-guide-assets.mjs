@@ -1,4 +1,4 @@
-// Capture production UI with synthetic host replies in a disposable browser profile.
+// Capture production UI in a disposable browser profile.
 // Run from any directory after installing apps/desktop dependencies.
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -7,10 +7,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connectPage, evaluate, navigate, waitFor } from '../../desktop/tests/v3/visual/cdp-client.mjs';
+import { agentGuideCaptureStates, openAgentGuideCapture } from './agent-guide-captures.mjs';
 
 const website = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const desktop = path.resolve(website, '../desktop');
 const output = path.join(website, 'public/guide-assets');
+const generalStates = ['models-add', 'trial-entry', 'trial-setup', 'agent-editor', 'agent-management', 'routing-worker', 'agent-task', 'tasks'];
+const captureStates = process.env.GUIDE_CAPTURE_STATE
+  ? [...generalStates, ...agentGuideCaptureStates].filter(state => state === process.env.GUIDE_CAPTURE_STATE)
+  : process.env.GUIDE_CAPTURE_GROUP === 'agents' ? agentGuideCaptureStates : generalStates;
+if (!captureStates.length) throw new Error('Unknown GUIDE_CAPTURE_STATE');
 const availablePort = () => new Promise((resolve, reject) => {
   const server = net.createServer();
   server.once('error', reject);
@@ -48,14 +54,16 @@ try {
   client = await connectPage(cdpPort);
   const click = copy => evaluate(client, `(() => {
     const button = [...document.querySelectorAll('button,summary')].find(n => n.getClientRects().length &&
-      (n.textContent.trim() === ${JSON.stringify(copy)} || n.querySelector('.disclosure-label')?.textContent.trim() === ${JSON.stringify(copy)} || n.querySelector('strong')?.textContent.trim() === ${JSON.stringify(copy)}));
+      (n.getAttribute('aria-label') === ${JSON.stringify(copy)} || n.textContent.trim() === ${JSON.stringify(copy)} || n.querySelector('.disclosure-label')?.textContent.trim() === ${JSON.stringify(copy)} || n.querySelector('strong')?.textContent.trim() === ${JSON.stringify(copy)}));
     if (!button || button.disabled) throw Error('Missing action: ' + ${JSON.stringify(copy)});
     button.click();
   })()`);
   for (const language of ['zh', 'en']) {
     const t = (zh, en) => language === 'zh' ? zh : en;
-    for (const state of ['models-add', 'trial-entry', 'trial-setup', 'agent-editor', 'agent-management', 'routing-worker', 'agent-task', 'tasks'].filter(state => !process.env.GUIDE_CAPTURE_STATE || state === process.env.GUIDE_CAPTURE_STATE)) {
-      if (state.startsWith('trial-')) {
+    for (const state of captureStates) {
+      if (agentGuideCaptureStates.includes(state)) {
+        await openAgentGuideCapture(client, base, language, state, click);
+      } else if (state.startsWith('trial-')) {
         await navigate(client, `${base}new-model-trial.html?native=1&view=${state === 'trial-entry' ? 'home' : 'quickstart'}&lang=${language}&theme=dark`, { width: 1200, height: 900 });
         await waitFor(client, 'Boolean(document.querySelector(".new-models"))');
         await waitFor(client, `[...document.querySelectorAll('.new-models button')].some(n => !n.disabled && /^(试用|接入并试用|Try it|Try|Connect and try)$/.test(n.textContent.trim()))`);

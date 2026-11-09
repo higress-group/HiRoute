@@ -44,6 +44,8 @@ The UI and CLI connect to the same HiRoute service and share configuration and e
 
 ## Before you start
 
+The [Agent integration guides](/en/docs/agent-integrations/) show combinations such as using Qoder models with Pi or delegating from Hermes to Codex.
+
 Install the execution Agent on the HiRoute service host and [connect its models](/en/docs/models/). A Fixed model route is enough to start; you can later combine it with [Difficulty routing](/en/docs/model-routing/).
 
 ## What to delegate

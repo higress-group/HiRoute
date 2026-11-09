@@ -2,6 +2,7 @@
 import SiteLayout from '../layouts/SiteLayout.astro';
 import DocsNav from './DocsNav.astro';
 import { guidePages, guideRoute, renderUserGuide } from '../lib/user-guides.mjs';
+import { agentGuideHub, agentGuides, magpieGuide } from '../lib/agent-guides.mjs';
 import { localePath } from '../lib/locale.mjs';
 import { breadcrumbs } from '../lib/seo.mjs';
 const { language = 'zh', guide } = Astro.props;
@@ -12,6 +13,9 @@ const path = guideRoute(guide, language);
 const alternatePath = guideRoute(guide, en ? 'zh' : 'en');
 const html = await renderUserGuide(guide, language);
 const trail = [['HiRoute', localePath(language)], [en ? 'Docs' : '文档', guideRoute('quickstart', language)]];
+if (Object.hasOwn(agentGuides, guide) || guide === magpieGuide) {
+  trail.push([guidePages[agentGuideHub][language], guideRoute(agentGuideHub, language)]);
+}
 if (guide !== 'quickstart') trail.push([page[language], path]);
 ---
 <SiteLayout language={language} title={title} description={page.description[language]}
