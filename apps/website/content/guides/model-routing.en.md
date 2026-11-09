@@ -77,7 +77,7 @@ During real routing, the selected decision connection receives the complete curr
 
 To remove a decision model or extension, open its details under **Models → Decision models** and review the removal dialog. It lists blocking routes, drafts, execution holds and installed publications. Follow the available route links to update the references. If a publication still appears after the route changes, choose **Update references** and review again. Usage history and any shared API connection and keys are retained.
 
-## 3. Configure Difficulty routing
+<h2 id="difficulty-routing">3. Configure Difficulty routing</h2>
 
 1. Select Difficulty routing. Decision method defaults to Decision model; select the saved connection revision. You may instead choose Heuristic rules or Custom extension.
 2. Add models for explicit, bounded work to Regular models.
@@ -109,6 +109,8 @@ With a custom extension, skip the trust and judgment-setting steps: the extensio
 </details>
 
 ## 4. Publish and connect an agent
+
+For steps specific to Codex, Claude Code, Pi and other clients, see the [illustrated Agent guides](/en/docs/agent-integrations/).
 
 Select Enable or Publish changes to freeze the connection revision, task conditions, judgment settings, model order, and reasoning configuration. Missing models or connections and invalid judgment settings block publication. Invalid fields in collapsed sections are expanded and located.
 

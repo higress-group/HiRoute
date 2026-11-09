@@ -1,30 +1,69 @@
 ---
 import { localePath } from '../lib/locale.mjs';
+import { agentGuideHub, agentGuides, magpieGuide } from '../lib/agent-guides.mjs';
+import { guidePages, guideRoute } from '../lib/user-guides.mjs';
 const { language = 'zh', active } = Astro.props;
 const en = language === 'en';
 const prefix = localePath(language, '');
+const current = guidePages[active]?.[language] ?? {
+  mechanism: en ? 'Decision models and routing' : '决策模型与路由机制',
+  api: en ? 'Custom extension API' : '自定义扩展 API',
+  jev: en ? 'Jev reference extension' : 'Jev 参考扩展',
+}[active];
+const nativeGuides = Object.keys(agentGuides).filter(slug => agentGuides[slug].native);
+const sourceGuides = [...Object.keys(agentGuides).filter(slug => !agentGuides[slug].native), magpieGuide];
 ---
-<aside class="docs-nav" aria-label={en ? 'HiRoute documentation' : 'HiRoute 文档'}>
-  <span>{en ? 'GET STARTED' : '开始使用'}</span>
-  <a class:list={{active:active === 'quickstart'}} href={`${prefix}/docs/`}>{en ? 'Quickstart' : '快速开始'}</a>
-  <a class:list={{active:active === 'install-macos'}} href={`${prefix}/docs/install-macos/`}>{en ? 'Install on macOS' : 'macOS 安装与首次启动'}</a>
-  <a class:list={{active:active === 'install-omarchy'}} href={`${prefix}/docs/install-omarchy/`}>{en ? 'Install on Omarchy' : 'Omarchy 桌面版安装'}</a>
-  <a class:list={{active:active === 'install-windows'}} href={`${prefix}/docs/install-windows/`}>{en ? 'Install on Windows' : 'Windows 桌面版安装'}</a>
-  <a class:list={{active:active === 'install-linux'}} href={`${prefix}/docs/install-linux/`}>{en ? 'Linux Web UI and CLI' : 'Linux Web UI 与 CLI'}</a>
+<details class="docs-nav">
+  <summary>
+    {en ? 'Documentation' : '文档目录'}
+    {current && <span class="docs-nav-current">{current}</span>}
+  </summary>
+  <nav class="docs-nav-links" aria-label={en ? 'HiRoute documentation' : 'HiRoute 文档'}>
+    <span>{en ? 'GET STARTED' : '开始使用'}</span>
+    <a aria-current={active === 'quickstart' ? 'page' : undefined} href={`${prefix}/docs/`}>{en ? 'Quickstart' : '快速开始'}</a>
+    <a aria-current={active === agentGuideHub ? 'page' : undefined}
+      href={guideRoute(agentGuideHub, language)}>{guidePages[agentGuideHub][language]}</a>
+    <a aria-current={active === 'install-macos' ? 'page' : undefined} href={`${prefix}/docs/install-macos/`}>{en ? 'Install on macOS' : 'macOS 安装与首次启动'}</a>
+    <a aria-current={active === 'install-omarchy' ? 'page' : undefined} href={`${prefix}/docs/install-omarchy/`}>{en ? 'Install on Omarchy' : 'Omarchy 桌面版安装'}</a>
+    <a aria-current={active === 'install-windows' ? 'page' : undefined} href={`${prefix}/docs/install-windows/`}>{en ? 'Install on Windows' : 'Windows 桌面版安装'}</a>
+    <a aria-current={active === 'install-linux' ? 'page' : undefined} href={`${prefix}/docs/install-linux/`}>{en ? 'Linux Web UI and CLI' : 'Linux Web UI 与 CLI'}</a>
 
-  <span>{en ? 'MODEL ROUTING' : '模型智能路由'}</span>
-  <a class:list={{active:active === 'models'}} href={`${prefix}/docs/models/`}>{en ? 'Connect models' : '接入模型'}</a>
-  <a class:list={{active:active === 'model-trial'}} href={`${prefix}/docs/model-trial/`}>{en ? 'Try a new model' : '试用新模型'}</a>
-  <a class:list={{active:active === 'model-routing'}} href={`${prefix}/docs/model-routing/`}>{en ? 'Smart model routing' : '智能模型路由'}</a>
-  <span>{en ? 'AGENT ROUTING' : 'AGENT 智能路由'}</span>
-  <a class:list={{active:active === 'task-routing'}} href={`${prefix}/docs/task-routing/`}>{en ? 'Delegate across Agents' : '跨 Agent 委派任务'}</a>
+    <span>{en ? 'MODEL ROUTING' : '模型智能路由'}</span>
+    <a aria-current={active === 'models' ? 'page' : undefined} href={`${prefix}/docs/models/`}>{en ? 'Connect models' : '接入模型'}</a>
+    <a aria-current={active === 'model-trial' ? 'page' : undefined} href={`${prefix}/docs/model-trial/`}>{en ? 'Try a new model' : '试用新模型'}</a>
+    <a aria-current={active === 'model-routing' ? 'page' : undefined} href={`${prefix}/docs/model-routing/`}>{en ? 'Smart model routing' : '智能模型路由'}</a>
+    <span>{en ? 'TASK DELEGATION' : '任务委派'}</span>
+    <a aria-current={active === 'task-routing' ? 'page' : undefined} href={`${prefix}/docs/task-routing/`}>{en ? 'Delegate across Agents' : '跨 Agent 委派任务'}</a>
+    <span>{en ? 'AGENT GUIDES' : 'Agent 接入教程'}</span>
+    {nativeGuides.map(slug =>
+      <a aria-current={active === slug ? 'page' : undefined}
+        href={guideRoute(slug, language)}>{guidePages[slug][language]}</a>
+    )}
+    <span>{en ? 'MORE MODEL SOURCES' : '更多模型来源'}</span>
+    {sourceGuides.map(slug =>
+      <a aria-current={active === slug ? 'page' : undefined}
+        href={guideRoute(slug, language)}>{guidePages[slug][language]}</a>
+    )}
 
-  <span>{en ? 'AUTOMATION' : '自动化接入'}</span>
-  <a class:list={{active:active === 'cli'}} href={`${prefix}/docs/cli/`}>HiRoute CLI</a>
+    <span>{en ? 'AUTOMATION' : '自动化接入'}</span>
+    <a aria-current={active === 'cli' ? 'page' : undefined} href={`${prefix}/docs/cli/`}>HiRoute CLI</a>
 
-  <span>{en ? 'DECISIONS' : '决策机制'}</span>
-  <a class:list={{active:active === 'mechanism'}} href={`${prefix}/docs/decision-extensions/`}>{en ? 'Decision models and routing' : '决策模型与路由机制'}</a>
-  <a class:list={{active:active === 'api'}} href={`${prefix}/docs/decision-api/`}>{en ? 'Custom extension API' : '自定义扩展 API'}</a>
-  <a class:list={{active:active === 'jev'}} href={`${prefix}/docs/jev-decider/`}>{en ? 'Jev reference extension' : 'Jev 参考扩展'}</a>
-  <a href="/api/decision.openapi.json" download>{en ? 'Download OpenAPI' : '下载 OpenAPI'}</a>
-</aside>
+    <span>{en ? 'DECISIONS' : '决策机制'}</span>
+    <a aria-current={active === 'mechanism' ? 'page' : undefined} href={`${prefix}/docs/decision-extensions/`}>{en ? 'Decision models and routing' : '决策模型与路由机制'}</a>
+    <a aria-current={active === 'api' ? 'page' : undefined} href={`${prefix}/docs/decision-api/`}>{en ? 'Custom extension API' : '自定义扩展 API'}</a>
+    <a aria-current={active === 'jev' ? 'page' : undefined} href={`${prefix}/docs/jev-decider/`}>{en ? 'Jev reference extension' : 'Jev 参考扩展'}</a>
+    <a href="/api/decision.openapi.json" download>{en ? 'Download OpenAPI' : '下载 OpenAPI'}</a>
+  </nav>
+</details>
+<script is:inline>
+  (() => {
+    const menu = document.currentScript.previousElementSibling;
+    const wide = window.matchMedia('(min-width: 901px)');
+    function updateLayout() {
+      menu.open = wide.matches;
+      menu.toggleAttribute('data-sidebar', wide.matches);
+    }
+    updateLayout();
+    wide.addEventListener('change', updateLayout);
+  })();
+</script>

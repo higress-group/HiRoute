@@ -44,6 +44,8 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 
 ## 开始前
 
+[按 Agent 接入](/zh/docs/agent-integrations/) 有按来源组织的组合示例，包括用 Qoder 模型让 Pi 执行，以及让 Hermes 委派给 Codex。
+
 在 HiRoute 服务所在主机安装目标执行 Agent，并按 [接入模型](/zh/docs/models/) 准备执行模型。先选一条固定模型路由即可，之后也能组合 [按难度分流](/zh/docs/model-routing/)。
 
 ## 适合委派什么

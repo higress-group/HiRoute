@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { marked } from 'marked';
 import { validateAgentGuide } from './agent-guide-contract.mjs';
 import { localePath } from './locale.mjs';
+import { agentGuideHub, agentGuides, magpieGuide } from './agent-guides.mjs';
 
 const website = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const content = path.join(website, 'content/guides');
@@ -83,6 +84,23 @@ export const guidePages = {
       en: 'Delegate from Codex to DeepSeek Harness, or use Codex for coding from Hermes. Configure an execution Agent, enable task routing and follow the results with illustrated steps.',
     },
   },
+  [agentGuideHub]: {
+    zh: '按 Agent 接入', en: 'Agent integrations',
+    title: { zh: 'AI Agent 接入教程：Codex、Claude Code、Qoder 等', en: 'AI Agent integrations: Codex, Claude Code, Qoder and more' },
+    description: {
+      zh: '按你正在使用的 Agent 选择图文教程，接入订阅、API 和本地模型，按难度分流，并将任务交给合适的执行 Agent。',
+      en: 'Find the setup guide for your Agent. Reuse subscriptions, APIs and local models, route by task difficulty, and delegate to the executor you choose.',
+    },
+  },
+  [magpieGuide]: {
+    zh: 'Magpie 模型来源', en: 'Magpie model sources',
+    title: { zh: 'Magpie headless 接入 HiRoute：添加 Qoder 与 WorkBuddy 模型', en: 'Connect headless Magpie as a HiRoute model source' },
+    description: {
+      zh: '在本机后台运行 Magpie，读取 Qoder 或 WorkBuddy 的可用模型目录，再将本地 API 接入 HiRoute 的模型与任务路由。',
+      en: 'Run Magpie in the background, find the Qoder or WorkBuddy models available to your account, and connect its local API to HiRoute.',
+    },
+  },
+  ...agentGuides,
   cli: {
     zh: 'HiRoute CLI', en: 'HiRoute CLI',
     title: { zh: 'HiRoute CLI：在终端管理模型、路由、Agent 与任务', en: 'HiRoute CLI: manage models, routes, Agents and tasks' },

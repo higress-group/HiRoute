@@ -66,6 +66,8 @@ Management works independently, so the calling Agent can keep its existing model
 
 ## Path one: use model routing in your usual Agent
 
+Already use Codex, Claude Code, Qoder, Pi, DeepSeek Harness, OpenCode or Hermes? [Find your Agent's setup guide](/en/docs/agent-integrations/) for the model sources it can reuse and the steps to load a route.
+
 Start here to address model costs or try a new model on real work.
 
 1. **Connect models.** Open “Models → General models → Add models.” Connect a subscription, scan local configuration or add an API. Check the connection, select models and save. See [Connect models](/en/docs/models/).
