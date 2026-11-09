@@ -1,10 +1,10 @@
 {
   "schema": "hiroute.documentation-review/v1",
   "tag": "v0.6.0",
-  "product_revision": "e3fe494b48072f348500229bcabd5a76ece3d7cc",
+  "product_revision": "9fed4150abd9a331452d4bc1136d60a76d5ccb62",
   "guides": {
     "status": "updated",
-    "summary": "Updated the English and Chinese README, API key allowance, model routing and CLI guidance for shared decision spending, unpriced usage, the Codex request effort picker and active decision model references. Updated the macOS, Windows and Linux guides to explain storage preflight and complete recovery. The Quickstart installation and Agent activation steps still apply. The decision model removal states were exercised with the candidate production components.",
+    "summary": "Updated both languages for shared decision allowances, unpriced usage, the Codex reasoning picker and decision model references. Reviewed macOS, Windows and Linux storage preflight and complete recovery. The Linux guide, Quickstart and README now lead Omarchy users to the signed Arch package and explain reuse of a compatible standalone service. The shared Agent activation steps still apply.",
     "reviewed_files": [
       "README.md",
       "README.zh-CN.md",
@@ -23,11 +23,11 @@
       "apps/website/content/guides/install-windows.en.md",
       "apps/website/content/guides/install-windows.zh.md"
     ],
-    "content_sha256": "9894376a8173a417499a8674f4d6061415dd68ef29f9d32e52921037a3fc24d6"
+    "content_sha256": "a665523f59da6766261770ea99375d673c4d58e519811d0cda94035d0b09cc35"
   },
   "screenshots": {
     "status": "unchanged",
-    "summary": "Recaptured all eight guide states in both languages with the candidate Desktop components in dark mode. Thirteen images matched byte for byte. The remaining comparison showed the same controls, labels and choices, with differences in scrollbar position, focus or a generated sample route alias. The existing screenshots remain accurate for the illustrated flows. The allowance editor, removal dialog and Codex client's own effort picker are described in text.",
+    "summary": "Recaptured all eight guide states in both languages with the frozen Desktop components in dark mode. Thirteen images matched byte for byte. Both trial setup images retained the same controls and differed in generated route aliases and button focus. The Chinese worker route image retained the same actions, with a different scrollbar position. The existing images still show the illustrated flows. The new Omarchy setup steps and the Codex client's effort picker are described in text.",
     "reviewed_files": [
       "apps/website/docs/guide-assets.md",
       "apps/website/public/guide-assets/models-add-en.webp",
