@@ -135,21 +135,23 @@ def verify_desktop_architecture(tar, package_path, name, arch):
             raise ValueError("Omarchy desktop executable is unreadable")
 
 
-def verify_package(args):
-    package_path = args.verify_package.resolve()
+def verify_signature(package_path, public_key):
     signature = package_path.with_name(package_path.name + ".sig")
     with tempfile.TemporaryDirectory(prefix="hiroute-omarchy-verify-") as directory:
         keyring = Path(directory) / "trusted.gpg"
         subprocess.run(["gpg", "--no-options", "--homedir", directory, "--batch", "--dearmor",
-                        "--output", str(keyring), str(args.public_key.resolve())], check=True)
+                        "--output", str(keyring), str(public_key.resolve())], check=True)
         status = output("gpgv", "--homedir", directory, "--keyring", str(keyring), "--status-fd", "1",
                         str(signature), str(package_path))
     signers = [line.split()[-1] for line in status.splitlines() if line.startswith("[GNUPG:] VALIDSIG ")]
     if len(signers) != 1 or not re.fullmatch(r"[0-9A-F]{40}", signers[0]):
         raise ValueError("Omarchy package requires one trusted OpenPGP signature")
+    return signers[0]
 
+
+def inspect_package(package_path, manifest_path, archive_path):
     standalone = runpy.run_path(str(ROOT / "scripts/package-standalone.py"))
-    manifest = standalone["verify"](args.manifest, args.archive)
+    manifest = standalone["verify"](manifest_path, archive_path)
     arch = manifest["target"].split("-", 1)[0]
     if arch not in SUPPORTED or manifest["target"] != f"{arch}-unknown-linux-gnu":
         raise ValueError("Omarchy package requires a supported Linux standalone runtime")
@@ -185,13 +187,20 @@ def verify_package(args):
             or not re.fullmatch(re.escape(version.replace("-", ".")) + r"-[0-9]+(?:\.[0-9]+)?", info.get("pkgver", ""))):
         raise ValueError("Omarchy package metadata differs from the qualified runtime")
     verify_desktop_architecture(tar, package_path, desktop, arch)
-    verify_member(tar, package_path, manifest_name, standalone["digest"](args.manifest), args.manifest.stat().st_size)
+    verify_member(tar, package_path, manifest_name, standalone["digest"](manifest_path), manifest_path.stat().st_size)
     verify_member(tar, package_path, runtime_name, manifest["archive"]["sha256"], manifest["archive"]["size"])
     for name, path in source_files.items():
         source = subprocess.check_output(["git", "show", f"{revision}:{path}"], cwd=ROOT)
         verify_member(tar, package_path, name, hashlib.sha256(source).hexdigest(), len(source))
     return {"architecture": arch, "revision": revision, "version": version,
-            "signing_fingerprint": signers[0], "sha256": standalone["digest"](package_path)}
+            "sha256": standalone["digest"](package_path)}
+
+
+def verify_package(args):
+    package_path = args.verify_package.resolve()
+    fingerprint = verify_signature(package_path, args.public_key)
+    return {**inspect_package(package_path, args.manifest, args.archive),
+            "signing_fingerprint": fingerprint}
 
 
 def main():

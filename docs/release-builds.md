@@ -176,6 +176,8 @@ claim without its corresponding acceptance and publication prerequisites.
 ### Build and publish the frozen artifacts
 
 Run the **build-release-candidates** workflow on the public candidate branch.
+For a release with Omarchy packages, dispatch it from the frozen, reviewed
+version commit on `main` so the protected signing workflow can admit the run.
 Package builds and the reusable **windows-headless** workflow start alongside each
 other at the same source commit. The **qualify** job requires every package build,
 all five x64 native scopes and their selected Windows 11 x64-artifact replays.
@@ -284,6 +286,33 @@ aarch64 runtime compatibility. Release acceptance additionally needs a protected
 API-key model call on the intended deployment host, using the same frozen archive;
 that live result is separate from the offline build gate. Rebuild after integrating
 product fixes and retain each result at its actual source revision.
+
+### Prepare Omarchy packages in Actions
+
+After the candidate run succeeds, dispatch [Prepare Omarchy release](../.github/workflows/omarchy-release.yml)
+on `main` with its `candidate_run_id`. The workflow uses the qualified Linux
+archive and manifest from each producer's recorded attempt. Both native builders
+use the stable Omarchy mirrors with package-signature checks. The ARM64 builder
+also verifies the generic Arch Linux ARM root filesystem before importing it.
+
+Configure an `omarchy-signing` GitHub environment restricted to the `main` branch
+with a release reviewer. Set `OMARCHY_SIGNING_SUBKEY` to the armored OpenPGP
+signing subkey export and `OMARCHY_SIGNING_PASSPHRASE` to its passphrase. Keep the
+primary private key and revocation certificate offline. The signer checks both
+package inventories and their embedded runtimes before importing the subkey into
+a temporary keyring. It verifies the signatures against the frozen public key
+and uploads `omarchy-signed` with the packages, signatures, checksums and identities.
+
+The x86_64 job installs the exact signed package in Omarchy on GitHub KVM. It
+uses the recorded stable predecessor to verify the native Wayland upgrade and
+same-Plan Gateway receipts. Retain `omarchy-x86-kvm-evidence` with the release
+review. Run the required ARM64 native acceptance against the signed ARM64
+package on a capable remote host and record its SHA-256 before publishing. The
+hosted ARM64 package build and x86_64 acceptance cover their respective stages.
+On failure, rerun the failed jobs to reuse the successful build or signing
+artifacts.
+
+### Publish the qualified artifacts
 
 1. Require a successful qualification for the frozen SHA. Select the exact public
    assets named in that qualification. Keep the exact source

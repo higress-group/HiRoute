@@ -1,0 +1,207 @@
+name: Prepare Omarchy release
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful build-release-candidates run ID from main
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - '.github/workflows/omarchy-release.yml'
+      - 'scripts/*omarchy*'
+      - 'scripts/package-linux-desktop.py'
+      - 'apps/desktop/arch/PKGBUILD'
+
+permissions:
+  contents: read
+
+jobs:
+  tooling:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check the release tooling without production credentials
+        run: |
+          command -v gpg gpgv gpgconf
+          bash -n scripts/build-omarchy-package.sh
+          bash -n scripts/validate-omarchy-kvm-candidate.sh
+          bash -n scripts/validate-omarchy-kvm-guest.sh
+          python3 scripts/test-omarchy-release.py
+
+  prepare:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'higress-group/HiRoute' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      revision: ${{ steps.candidate.outputs.revision }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit the already-qualified Linux runtime bytes
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          python3 scripts/omarchy-release.py prepare --repository "$GITHUB_REPOSITORY" \
+            --run-id "$CANDIDATE_RUN_ID" --output "$RUNNER_TEMP/qualified"
+          jq -r '"revision=" + .revision' "$RUNNER_TEMP/qualified/candidate.json" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: omarchy-qualified-linux
+          path: ${{ runner.temp }}/qualified
+          compression-level: 0
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    needs: prepare
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || needs.prepare.result == 'success') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x86_64
+            runner: ubuntu-24.04
+          - architecture: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Probe the native Arch builder
+        if: github.event_name == 'pull_request'
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          test "$(uname -m)" = "$ARCHITECTURE"
+          bash scripts/build-omarchy-package.sh --probe
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          ref: ${{ needs.prepare.outputs.revision }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          node-version: '22'
+      - name: Install the repository Rust toolchain
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: candidate
+        run: rustup show active-toolchain
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: omarchy-qualified-linux
+          path: ${{ runner.temp }}/qualified
+      - name: Produce an unsigned native package
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          test "$(uname -m)" = "$ARCHITECTURE"
+          bash scripts/build-omarchy-package.sh candidate "$RUNNER_TEMP/qualified" "$RUNNER_TEMP/unsigned"
+          printf 'Frozen source %s\n\n' "$(git -C candidate rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          (cd "$RUNNER_TEMP/unsigned" && sha256sum -- *.pkg.tar.*) >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: omarchy-unsigned-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/unsigned/*.pkg.tar.*
+          compression-level: 0
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 14
+
+  sign:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'higress-group/HiRoute' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: omarchy-signing
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: omarchy-qualified-linux
+          path: ${{ runner.temp }}/qualified
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: omarchy-unsigned-*
+          path: ${{ runner.temp }}/unsigned
+      - name: Install signature and archive tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends gnupg libarchive-tools zstd
+      - name: Inspect, sign and independently verify the exact package bytes
+        env:
+          OMARCHY_SIGNING_SUBKEY: ${{ secrets.OMARCHY_SIGNING_SUBKEY }}
+          OMARCHY_SIGNING_PASSPHRASE: ${{ secrets.OMARCHY_SIGNING_PASSPHRASE }}
+        run: |
+          python3 scripts/omarchy-release.py sign --inputs "$RUNNER_TEMP/qualified" \
+            --unsigned "$RUNNER_TEMP/unsigned" --output "$RUNNER_TEMP/signed"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: omarchy-signed
+          path: ${{ runner.temp }}/signed
+          compression-level: 0
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 14
+
+  verify-x86:
+    needs: sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: omarchy-signed
+          path: ${{ runner.temp }}/signed
+      - name: Stage the recorded stable x86_64 predecessor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/omarchy-release.py previous --repository "$GITHUB_REPOSITORY" \
+            --output "$RUNNER_TEMP/predecessor"
+      - name: Install the KVM test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends acl imagemagick qemu-system-x86 qemu-utils tesseract-ocr
+          test -c /dev/kvm
+          sudo setfacl -m "u:$(id -u):rw" /dev/kvm
+      - name: Verify the signed upgrade and retained Plan on native Wayland
+        run: bash scripts/validate-omarchy-kvm-candidate.sh "$RUNNER_TEMP/signed" "$RUNNER_TEMP/predecessor"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: omarchy-x86-kvm-evidence
+          path: ${{ runner.temp }}/omarchy-evidence
+          overwrite: true
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Identify the remaining release gate
+        run: |
+          echo 'Attach the ARM64 native Omarchy acceptance of the exact signed artifact before publishing.' >> "$GITHUB_STEP_SUMMARY"

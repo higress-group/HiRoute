@@ -91,7 +91,8 @@ def project_agent_tooling(path):
 WEBSITE_TOOLING = {".github/workflows/website.yml", ".github/workflows/model-feed.yml",
                    ".github/workflows/release.yml"}
 RELEASE_BUILD_TESTS = ("test-build-cpa.py", "test-build-release.py", "test-linux-release.py", "test-package-desktop.py",
-                       "test-standalone-install.py", "test-windows-ci-package.py", "test-third-party-licenses.py")
+                       "test-standalone-install.py", "test-windows-ci-package.py", "test-third-party-licenses.py",
+                       "test-omarchy-release.py")
 RELEASE_BUILD_TOOLING = {"scripts/linux-release-abi.py", "scripts/linux-release-runtime.py",
                          "scripts/linux-release-container.py", "scripts/linux-release-baseline.json",
                          "scripts/linux-release.Dockerfile", ".github/workflows/build-release.yml",
@@ -101,6 +102,10 @@ RELEASE_BUILD_TOOLING = {"scripts/linux-release-abi.py", "scripts/linux-release-
                          "scripts/build-cpa.py", "scripts/package-desktop.py",
                          "scripts/package-standalone.py", "scripts/install-standalone.py",
                          "scripts/package-windows-shell.py", "scripts/release-qualification.py",
+                         ".github/workflows/omarchy-release.yml", "scripts/package-linux-desktop.py",
+                         "scripts/build-omarchy-package.sh", "scripts/omarchy-builder.Dockerfile",
+                         "scripts/omarchy-release.py", "scripts/omarchy-kvm-plan.py", "scripts/omarchy-qmp-check.py",
+                         "scripts/validate-omarchy-kvm-candidate.sh", "scripts/validate-omarchy-kvm-guest.sh",
                          "scripts/windows-ci-package.py",
                          "scripts/collect-third-party-licenses.py",
                          *("scripts/" + name for name in RELEASE_BUILD_TESTS)}
