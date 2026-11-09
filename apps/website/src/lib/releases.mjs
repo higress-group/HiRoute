@@ -62,7 +62,19 @@ export function validateReleaseManifest(value) {
       const windowsDesktopValid = commonValid && value.schema === RELEASE_SCHEMA && artifact.kind === 'desktop'
         && !Object.keys(artifact).some(key => !['kind', 'platform', 'architecture', 'format', 'distribution', 'filename', 'sha256', 'size'].includes(key))
         && artifact.platform === 'Windows' && artifact.architecture === 'x86_64' && artifact.format === 'nsis' && artifact.distribution === 'unsigned';
-      if (!desktopValid && !windowsDesktopValid && !standaloneValid) {
+      const omarchyDesktopValid = commonValid && value.schema === RELEASE_SCHEMA && artifact.kind === 'desktop'
+        && artifact.platform === 'Omarchy' && Object.hasOwn(STANDALONE_TARGETS.Linux, artifact.architecture)
+        && ['pkg.tar.xz', 'pkg.tar.zst'].includes(artifact.format) && artifact.distribution === 'openpgp'
+        && !Object.keys(artifact).some(key => ![
+          'kind', 'platform', 'architecture', 'format', 'distribution', 'filename', 'sha256', 'size',
+          'signature_filename', 'signature_sha256', 'signature_size', 'checksum_filename', 'checksum_sha256', 'checksum_size',
+        ].includes(key))
+        && artifact.signature_filename === `${artifact.filename}.sig`
+        && artifact.checksum_filename === `${artifact.filename}.sha256`
+        && ['signature', 'checksum'].every(prefix => FILENAME.test(artifact[`${prefix}_filename`])
+          && SHA256.test(artifact[`${prefix}_sha256`] ?? '') && Number.isSafeInteger(artifact[`${prefix}_size`])
+          && artifact[`${prefix}_size`] > 0 && artifact[`${prefix}_size`] <= 16 * 1024);
+      if (!desktopValid && !windowsDesktopValid && !standaloneValid && !omarchyDesktopValid) {
         throw new Error(`invalid public artifact in ${release.version}`);
       }
       if (desktopValid) {
@@ -76,19 +88,24 @@ export function validateReleaseManifest(value) {
           ? artifact.filename.slice(prefix.length, -suffix.length) : '';
         if (!/^[0-9a-f]{12}$/.test(revision)) throw new Error(`artifact filename does not match release: ${artifact.filename}`);
       }
+      if (omarchyDesktopValid) {
+        const prefix = `HiRoute-${release.version}-`, suffix = `-omarchy-${artifact.architecture}.${artifact.format}`;
+        const revision = artifact.filename.startsWith(prefix) && artifact.filename.endsWith(suffix)
+          ? artifact.filename.slice(prefix.length, -suffix.length) : '';
+        if (!/^[0-9a-f]{12}$/.test(revision)) throw new Error(`artifact filename does not match release: ${artifact.filename}`);
+      }
       if (standaloneValid) {
         const expected = new RegExp(`^hiroute-${release.version.replaceAll('.', '\\.')}-[0-9a-f]{12}-${artifact.target}\\.tar\\.gz$`);
         if (!expected.test(artifact.filename)) throw new Error(`artifact filename does not match release: ${artifact.filename}`);
       }
-      if (filenames.has(artifact.filename)) throw new Error(`duplicate artifact: ${artifact.filename}`);
-      filenames.add(artifact.filename);
-      if (standaloneValid) {
-        if (filenames.has(artifact.manifest_filename)) throw new Error(`duplicate artifact: ${artifact.manifest_filename}`);
-        filenames.add(artifact.manifest_filename);
+      for (const { filename } of artifactAssets(release, artifact)) {
+        if (filenames.has(filename)) throw new Error(`duplicate artifact: ${filename}`);
+        filenames.add(filename);
       }
     }
     if (SHORT_DOWNLOAD_VERSIONS.has(release.version)) {
       for (const artifact of release.artifacts) {
+        if (artifact.platform === 'Omarchy') continue;
         const name = shortDownloadName(release, artifact);
         for (const filename of artifact.kind === 'standalone' ? [name, `${name}.json`] : [name]) {
           if (!FILENAME.test(filename) || filenames.has(filename)) throw new Error(`invalid or duplicate short download filename: ${filename}`);
@@ -104,12 +121,11 @@ export function projectReleaseManifest(value, schema = RELEASE_SCHEMA) {
   validateReleaseManifest(value);
   if (![RELEASE_SCHEMA, LEGACY_RELEASE_SCHEMA].includes(schema)) throw new Error('unsupported catalog projection');
   const projected = structuredClone(value); projected.schema = schema;
-  if (schema === LEGACY_RELEASE_SCHEMA) {
-    projected.releases = projected.releases.flatMap(release => {
-      release.artifacts = release.artifacts.filter(artifact => artifact.platform !== 'Windows');
-      return release.artifacts.length ? [release] : [];
-    });
-  }
+  projected.releases = projected.releases.flatMap(release => {
+    release.artifacts = release.artifacts.filter(artifact => artifact.platform !== 'Omarchy'
+      && (schema !== LEGACY_RELEASE_SCHEMA || artifact.platform !== 'Windows'));
+    return release.artifacts.length ? [release] : [];
+  });
   return validateReleaseManifest(projected);
 }
 
@@ -129,7 +145,8 @@ function shortDownloadName(release, artifact) {
 }
 
 export function artifactUrl(release, artifact) {
-  const filename = SHORT_DOWNLOAD_VERSIONS.has(release.version) ? shortDownloadName(release, artifact) : artifact.filename;
+  const filename = SHORT_DOWNLOAD_VERSIONS.has(release.version) && artifact.platform !== 'Omarchy'
+    ? shortDownloadName(release, artifact) : artifact.filename;
   return `${DOWNLOAD_ORIGIN}/${releaseKey(release, filename)}`;
 }
 
@@ -157,12 +174,18 @@ export function artifactAssets(release, artifact) {
     sha256: artifact.manifest_sha256,
     size: artifact.manifest_size,
   });
+  if (artifact.platform === 'Omarchy') {
+    for (const prefix of ['signature', 'checksum']) {
+      const filename = artifact[`${prefix}_filename`];
+      assets.push({ filename, key: releaseKey(release, filename), sha256: artifact[`${prefix}_sha256`], size: artifact[`${prefix}_size`] });
+    }
+  }
   return assets;
 }
 
 export function publicationAssets(release, artifact) {
   const assets = artifactAssets(release, artifact);
-  if (!SHORT_DOWNLOAD_VERSIONS.has(release.version)) return assets;
+  if (!SHORT_DOWNLOAD_VERSIONS.has(release.version) || artifact.platform === 'Omarchy') return assets;
   const name = shortDownloadName(release, artifact);
   const aliases = assets.map((asset, index) => ({
     ...asset,

@@ -144,6 +144,17 @@ registration at their recorded locations. Reload the manager and verify actual
 Control/Gateway readiness and a real request. Installation-command success alone
 is insufficient.
 
+An interrupted Linux installer can also leave the runtime publication incomplete.
+Use the same verified installer as the same user to recover the installation files.
+The command restores the previous complete publication or finishes the committed
+one. It preserves routing data and stops on changed ownership. Review the result,
+then use the normal service start and readiness checks.
+
+```sh
+python3 scripts/install-standalone.py recover
+hiroute service start --output json
+```
+
 Known Observation formats 1–5 are replaced by format 6 without converting or copying
 their bodies. The saved capacity setting is preserved, including an explicit disabled
 limit. Startup uses same-filesystem renames; after actual service readiness, existing

@@ -1,0 +1,11 @@
+{
+  "identifier": "linux-startup",
+  "description": "Bundled startup and recovery for the current user's installation.",
+  "local": true,
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "linux-startup-actions"
+  ]
+}

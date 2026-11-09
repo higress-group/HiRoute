@@ -264,6 +264,19 @@ and exits. Deleting the App alone preserves data; optional cleanup cannot delete
 projects or native Agent credentials. Package construction alone is not signing,
 notarization, native installation, or live-Agent evidence.
 
+Linux standalone installation MUST record owned program, resource, service and
+entry-point changes before publishing them. An incomplete installation MUST block
+startup through the installed daemon and service entry. The verified installer
+MUST restore a coherent previous generation or finish an already committed
+generation during recovery. It MUST preserve business storage and refuse to
+overwrite installation components changed outside the interrupted transaction.
+
+#### Scenario: Interrupted Linux publication
+
+- **WHEN** Linux standalone publication stops before committing its installation identity
+- **THEN** the service refuses to open the incomplete installation and the same user can recover the previous installation with the verified installer.
+- **AND** the Plan, configuration and history are available from that installation after startup.
+
 ### Requirement: Windows x64 Desktop installs per user and opens ready to use
 
 HiRoute SHALL provide a Windows x64 Desktop installer that a standard user can run without administrator rights, Python or a terminal. In this release it is the only supported Windows installation path. It SHALL verify the package, publish the user-owned Windows standalone installation (CLI, daemon, CPA and Skills), register the default Task Scheduler manager, add the Desktop shell, start the service and open the shell when the service is ready. Login start and tray residency SHALL be enabled by default and SHALL be optional during installation. An unattended mode SHALL install with the defaults without prompts. An existing Task Scheduler installation for the same user SHALL be upgraded in place with its data and Agent recovery references preserved. SCM service installation is not offered in this release: an existing SCM-managed installation SHALL be refused before writing, with an explanation, and SHALL remain unchanged. The installer SHALL refuse non-x64 systems before writing. A missing WebView2 runtime SHALL be installed or explained. An interrupted installation SHALL be repairable by running the installer again. Uninstall SHALL restore managed Agent access before removing the manager registration, shell and entries, and SHALL preserve business data unless the user explicitly selects its removal. When neither Agent storage nor its upgrade backup exists, first-install recovery SHALL NOT require a working daemon. If the service is unavailable and Agent state cannot be enumerated, recovery or uninstall SHALL offer a separate default-No interactive confirmation to stop the owned unresponsive Task and proceed with restoration unverified. It SHALL warn that affected Agents cannot be enumerated, configured Agents may need manual restoration and active work may be interrupted; this continuation SHALL retain all business data. Silent and passive modes SHALL refuse this continuation, and enumerated restore conflicts SHALL still block removal. Verified obsolete versioned packages SHALL be pruned only after both installation owners commit; rollback sources SHALL be retained until then. Uninstall SHALL remove its verified current package and preserve changed or foreign files.

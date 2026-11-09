@@ -159,6 +159,18 @@ impl ConsoleEndpoint for LiveEndpoint {
             .ok_or(AuthError::Unavailable)?
             .launch_target(loopback_only)
     }
+
+    fn qualifies_native_assets(&self, origin: &str, assets_sha256: &str) -> bool {
+        self.0.upgrade().is_some_and(|server| {
+            server
+                .launch_target(true)
+                .is_ok_and(|target| target.origin == origin)
+                && server
+                    .assets
+                    .as_ref()
+                    .is_some_and(|assets| assets.fingerprint() == assets_sha256)
+        })
+    }
 }
 impl Server {
     fn launch_target(&self, loopback_only: bool) -> Result<LaunchTarget, AuthError> {

@@ -9,6 +9,10 @@ use std::{
 
 pub trait ConsoleEndpoint: Send + Sync {
     fn launch_target(&self, loopback_only: bool) -> Result<LaunchTarget, AuthError>;
+
+    fn qualifies_native_assets(&self, _origin: &str, _assets_sha256: &str) -> bool {
+        false
+    }
 }
 pub struct ConsoleControl {
     pub(super) auth: Arc<Mutex<ConsoleAuth>>,
@@ -36,6 +40,7 @@ impl ConsoleControl {
                 | "CreateConsoleToken"
                 | "ListConsoleTokens"
                 | "RevokeConsoleToken"
+                | QUALIFY_NATIVE_CONSOLE_V1
         ) {
             return None;
         }
@@ -57,6 +62,29 @@ impl ConsoleControl {
     }
     fn execute(&self, request: &LocalControlWireRequestV2) -> Result<Value, AuthError> {
         match request.operation_id.as_str() {
+            QUALIFY_NATIVE_CONSOLE_V1 => {
+                let input: QualifyNativeConsoleRequestV1 =
+                    serde_json::from_value(request.payload.clone())
+                        .map_err(|_| AuthError::Invalid)?;
+                let qualified = self.endpoint.get().is_some_and(|endpoint| {
+                    endpoint.qualifies_native_assets(&input.origin, &input.assets_sha256)
+                });
+                if !qualified {
+                    return Ok(json!(false));
+                }
+                if let Some(session) = input.session {
+                    return Ok(json!(
+                        self.auth
+                            .lock()
+                            .map_err(|_| AuthError::Unavailable)?
+                            .native_session_active(
+                                &session.bearer_sha256,
+                                &session.launch_sha256
+                            )?
+                    ));
+                }
+                Ok(json!(true))
+            }
             "CreateConsoleLaunch" => {
                 let input: ConsoleLaunchRequestV1 = serde_json::from_value(request.payload.clone())
                     .map_err(|_| AuthError::Invalid)?;

@@ -15,6 +15,10 @@
     var(--bg);
 }
 
+.app-window.compositor-frame {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .titlebar {
   position: relative;
   z-index: 20;

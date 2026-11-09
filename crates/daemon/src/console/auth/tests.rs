@@ -70,6 +70,37 @@ fn launch_is_loopback_only_short_lived_and_single_use() {
     );
 }
 #[test]
+fn native_authority_requires_the_window_launch_and_an_active_session() {
+    let (_root, mut auth) = auth();
+    let target = local_target();
+    let launch = auth.create_launch(local_target()).unwrap();
+    let native = auth
+        .exchange_launch(&launch, peer(), &target.origin)
+        .unwrap();
+    let separate = auth.create_launch(local_target()).unwrap();
+    let browser = auth
+        .exchange_launch(&separate, peer(), &target.origin)
+        .unwrap();
+    let launch_sha256 = hash(&launch);
+    assert!(
+        auth.native_session_active(&hash(&native.bearer), &launch_sha256)
+            .unwrap()
+    );
+    assert!(
+        !auth
+            .native_session_active(&hash(&browser.bearer), &launch_sha256)
+            .unwrap()
+    );
+    auth.logout(&headers(&native.bearer), peer()).unwrap();
+    assert!(
+        !auth
+            .native_session_active(&hash(&native.bearer), &launch_sha256)
+            .unwrap()
+    );
+    assert!(auth.authenticate(&headers(&browser.bearer), peer()).is_ok());
+}
+
+#[test]
 fn token_revocation_ends_sessions_and_disk_never_contains_credentials() {
     let (root, mut a) = auth();
     let token = a.create_token("Test".into(), None).unwrap();

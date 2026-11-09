@@ -15,9 +15,9 @@ use crate::LocalControlClient;
 const SERVICE_LABEL: &str = "ai.hiroute.cli";
 const MAX_LOG_BYTES: usize = 256 * 1024;
 
-#[cfg(windows)]
+#[cfg(any(target_os = "linux", windows))]
 mod restore_agents;
-#[cfg(any(windows, test))]
+#[cfg(any(target_os = "linux", windows, test))]
 mod restore_plan;
 #[cfg(windows)]
 mod windows;
@@ -47,9 +47,17 @@ pub(crate) fn recovery() -> Result<serde_json::Value, ServiceFailure> {
         &layout.storage_root(),
         &layout.diagnostics_root(),
     );
-    let instructions = record
-        .as_ref()
-        .map(|record| recovery_instructions(record, &layout.storage_root()));
+    let instructions = if cfg!(target_os = "linux")
+        && !matches!(
+            hiroute_host_runtime::standalone_maintenance_pending(&layout),
+            Ok(false)
+        ) {
+        Some("HiRoute runtime installation needs recovery. As the same user, run the verified standalone installer with the recover command. Keep the package and existing data.".to_owned())
+    } else {
+        record
+            .as_ref()
+            .map(|record| recovery_instructions(record, &layout.storage_root()))
+    };
     Ok(
         json!({"schema":"hiroute.service-recovery/v1", "recovery":record, "instructions":instructions, "diagnostics_root":layout.diagnostics_root()}),
     )
@@ -440,6 +448,26 @@ fn installed() -> Result<(StandaloneLayout, StandaloneInstallRecordV1), ServiceF
     Ok((layout, record))
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn desktop_agent_removal(args: &[std::ffi::OsString]) -> u8 {
+    let Ok((layout, _)) = installed() else {
+        return 6;
+    };
+    if ensure_not_maintaining(&layout).is_err() {
+        return 6;
+    }
+    match restore_agents::desktop_removal(&layout, args) {
+        Ok(report) => {
+            println!("{report}");
+            0
+        }
+        Err(error) if error.to_string().starts_with("AGENT_RESTORE_REQUIRED:") => 3,
+        Err(error) if error.to_string() == "AGENT_RESTORE_PREVIEW_CHANGED" => 4,
+        Err(error) if error.to_string() == "STANDALONE_REMOVAL_RECOVERY_PENDING" => 5,
+        Err(_) => 6,
+    }
+}
+
 fn ensure_not_maintaining(layout: &StandaloneLayout) -> Result<(), ServiceFailure> {
     if hiroute_host_runtime::standalone_maintenance_pending(layout)
         .map_err(|_| ServiceFailure::Unavailable)?
@@ -500,7 +528,8 @@ fn wait_stopped(layout: &StandaloneLayout, timeout: Duration) -> Result<(), Serv
 }
 
 fn control_ready(timeout: Duration) -> bool {
-    let operation = if cfg!(windows) {
+    let bounded_readiness = cfg!(any(windows, target_os = "linux"));
+    let operation = if bounded_readiness {
         hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1
     } else {
         "GetSystemStatus"
@@ -519,7 +548,7 @@ fn control_ready(timeout: Duration) -> bool {
             response.status == MachineStatus::Succeeded
                 && response.error.is_none()
                 && response.data.is_some_and(|data| {
-                    if cfg!(windows) {
+                    if bounded_readiness {
                         data == true
                     } else {
                         data["daemon"] == "role_all" && data["gateway"] == "ready"

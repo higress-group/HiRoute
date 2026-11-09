@@ -1,4 +1,4 @@
-//! Owner credential operations. Credential exchanges never traverse Local Control.
+//! Owner credential operations. Credential exchanges remain on the HTTP console.
 use serde::{Deserialize, Serialize};
 #[derive(Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -26,4 +26,22 @@ pub struct ConsoleRevokeTokenRequestV1 {
 pub struct ConsoleLaunchV1 {
     pub url: String,
     pub expires_in: u32,
+}
+
+pub const QUALIFY_NATIVE_CONSOLE_V1: &str = "QualifyNativeConsoleV1";
+
+/// Private Local Control admission for a matching native console host.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct QualifyNativeConsoleRequestV1 {
+    pub origin: String,
+    pub assets_sha256: String,
+    pub session: Option<NativeConsoleSessionV1>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct NativeConsoleSessionV1 {
+    pub bearer_sha256: String,
+    pub launch_sha256: String,
 }

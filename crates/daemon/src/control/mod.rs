@@ -27,6 +27,8 @@ use hiroute_platform::windows::pipe::{Listener as LocalListener, Stream as Local
 #[cfg(unix)]
 use std::os::unix::net::{UnixListener as LocalListener, UnixStream as LocalStream};
 
+#[cfg(target_os = "linux")]
+pub(crate) mod agent_removal;
 #[cfg(test)]
 mod capacity_tests;
 #[cfg(any(unix, windows))]
@@ -212,6 +214,8 @@ fn category_event_code(category: hiroute_application_api::ErrorCategory) -> Even
 #[derive(Clone)]
 pub struct LocalControlDaemon {
     upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
+    #[cfg(target_os = "linux")]
+    agent_removal_lock: Option<PathBuf>,
     application: ApplicationService,
     released_commands_only: bool,
     diagnostic_client: Option<hiroute_diagnostics::event::ControlClientName>,
@@ -224,6 +228,8 @@ impl LocalControlDaemon {
     pub fn new(application: ApplicationService) -> Self {
         Self {
             upgrade: Arc::new(hiroute_host_runtime::UpgradeDrain::default()),
+            #[cfg(target_os = "linux")]
+            agent_removal_lock: None,
             application,
             released_commands_only: false,
             diagnostic_client: None,
@@ -242,6 +248,12 @@ impl LocalControlDaemon {
         upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
     ) -> Self {
         self.upgrade = upgrade;
+        self
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn with_agent_removal_lock(mut self, lock: Option<PathBuf>) -> Self {
+        self.agent_removal_lock = lock;
         self
     }
 
@@ -285,6 +297,7 @@ impl LocalControlDaemon {
             // The released decision connections CLI prepares its probe through this read.
             && request.operation_id != RESOLVE_DECISION_TEST_REVISION_V1
             && request.operation_id != hiroute_application_api::STANDALONE_SERVICE_READINESS_OPERATION_V1
+            && request.operation_id != hiroute_application_api::QUALIFY_NATIVE_CONSOLE_V1
             && !command_by_operation(&request.operation_id)
                 .is_some_and(|command| command.lifecycle == CommandLifecycle::Released)
         {
@@ -299,6 +312,7 @@ impl LocalControlDaemon {
                 | "CreateConsoleToken"
                 | "ListConsoleTokens"
                 | "RevokeConsoleToken"
+                | hiroute_application_api::QUALIFY_NATIVE_CONSOLE_V1
         ) {
             if request.protected_grant.is_some() {
                 return MachineEnvelopeV2::failed(
@@ -394,6 +408,27 @@ impl LocalControlDaemon {
                 Some(request.request_id),
             );
         }
+        // Both Local Control and the authenticated console share this dispatcher.
+        // The synchronous settings transaction (including a retry) keeps its
+        // permit through acceptance and execution.
+        #[cfg(target_os = "linux")]
+        let _agent_write = if matches!(
+            request.operation_id.as_str(),
+            "ApplyAgentConnectionChange" | "ApplyAgentConnectionRestore"
+        ) && let Some(lock) = &self.agent_removal_lock
+        {
+            match agent_removal::try_lock_shared(lock) {
+                Ok(file) => Some(file),
+                Err(_) => {
+                    return MachineEnvelopeV2::failed(
+                        ErrorV1::new(ErrorCode::DaemonUnavailable),
+                        Some(request.request_id),
+                    );
+                }
+            }
+        } else {
+            None
+        };
         self.application.dispatch(request.authenticate_ambient())
     }
 }

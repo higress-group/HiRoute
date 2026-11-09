@@ -69,6 +69,18 @@ class ContractConvergenceTests(unittest.TestCase):
         legacy["removal_condition"] = ""
         self.assertTrue(any("lacks owner" in error for error in self.run_audit({"legacy.rs": '"hiroute.sample/v1"'}, value)))
 
+    def test_standalone_installer_owns_its_declared_journal_contract(self):
+        journal = "hiroute.linux-install-journal/v1"
+        value = registry()
+        value["subjects"][0]["legacy_support"] = []
+        value["production_contracts"].insert(0, journal)
+        source = f'LINUX_INSTALL_JOURNAL_SCHEMA = "{journal}"\n'
+        self.assertEqual(self.run_audit({"scripts/install-standalone.py": source}, value), [])
+        self.assertIn(
+            f"stale production contract declaration: {journal}",
+            self.run_audit({"scripts/test-standalone-install.py": source}, value),
+        )
+
     def test_database_schema_change_is_not_hidden_by_a_fixture(self):
         for version in (17, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 40):
             with self.subTest(version=version):

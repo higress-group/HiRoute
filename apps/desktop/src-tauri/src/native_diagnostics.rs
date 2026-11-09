@@ -61,6 +61,7 @@ impl NativeDiagnostics {
         self.port.clone()
     }
 
+    #[cfg(any(test, not(target_os = "linux")))]
     pub fn with_upgrade_progress(
         mut self,
         progress: std::sync::Arc<

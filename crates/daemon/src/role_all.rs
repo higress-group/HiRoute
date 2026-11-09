@@ -72,6 +72,8 @@ pub struct RoleAllConfig {
     pub diagnostics: DiagnosticsPort,
     /// Standalone exposes only the current public release manifest at Local Control.
     pub released_commands_only: bool,
+    #[cfg(target_os = "linux")]
+    agent_removal_lock: Option<PathBuf>,
     /// Progress only on the inherited native readiness pipe; it grants no control authority.
     pub upgrade_progress: Option<hiroute_host_runtime::StorageUpgradeProgress>,
 }
@@ -98,6 +100,8 @@ impl RoleAllConfig {
             codex_desktop_engine: None,
             diagnostics: DiagnosticsPort::default(),
             released_commands_only: false,
+            #[cfg(target_os = "linux")]
+            agent_removal_lock: None,
             upgrade_progress: None,
         }
     }
@@ -119,6 +123,19 @@ impl RoleAllConfig {
 
     pub fn with_released_commands_only(mut self) -> Self {
         self.released_commands_only = true;
+        self
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn with_standalone_agent_removal_lock(
+        mut self,
+        layout: &hiroute_host_runtime::StandaloneLayout,
+    ) -> Self {
+        self.agent_removal_lock = Some(
+            layout
+                .home
+                .join(".local/share/hiroute/service/agent-removal.lock"),
+        );
         self
     }
 
@@ -424,6 +441,16 @@ pub fn start_role_all(config: RoleAllConfig) -> Result<RoleAllHandle, RoleAllErr
     if validate_gateway_listen(config.gateway_listen).is_err() {
         return Err(RoleAllError::InvalidConfiguration);
     }
+    // Startup may reconcile a previously accepted Agent settings transaction.
+    #[cfg(target_os = "linux")]
+    let _agent_write = config
+        .agent_removal_lock
+        .as_deref()
+        .map(crate::control::agent_removal::try_lock_shared)
+        .transpose()
+        .map_err(|_| {
+            RoleAllError::Component("Agent settings", "removal lock unavailable".into())
+        })?;
 
     // Verify one catalog before either CPA or Local Control can consume it. CPA construction is
     // side-effect free; an approved subscription check starts it lazily.
@@ -677,6 +704,8 @@ fn start_role_all_with_runtime(
         runtime.agent_grant_resolver(),
         config.released_commands_only,
         Some(upgrade.clone()),
+        #[cfg(target_os = "linux")]
+        config.agent_removal_lock.clone(),
     ) {
         Ok(control) => {
             config

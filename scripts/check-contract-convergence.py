@@ -88,7 +88,9 @@ def historical_release_snapshot(path, source):
 
 
 def production_source_path(path):
-    """Select shipped/internal Rust sources, not tests, fixtures, docs, or third-party data."""
+    """Select production contract owners."""
+    if path == "scripts/install-standalone.py":
+        return True
     value = Path(path)
     if value.suffix != ".rs":
         return False
@@ -251,7 +253,9 @@ def discover_production_contracts(texts):
     for path, source in texts.items():
         if not production_source_path(path):
             continue
-        for contract in INTERNAL_CONTRACT.findall(without_cfg_test_items(source)):
+        if path.endswith(".rs"):
+            source = without_cfg_test_items(source)
+        for contract in INTERNAL_CONTRACT.findall(source):
             occurrences.setdefault(contract, set()).add(path)
     return occurrences
 

@@ -1,0 +1,16 @@
+{
+  "identifier": "linux-console",
+  "description": "Typed effects for the verified live HiRoute session. The Rust host rechecks the exact origin and launch for every effect.",
+  "local": false,
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*"
+    ]
+  },
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "linux-console-actions"
+  ]
+}

@@ -95,11 +95,16 @@ def verify(repo, repository, manifest, tag, revision):
     releases = [row for row in manifest["releases"] if row["version"] == tag[1:]]
     ledger.require(len(releases) == 1, "expected one release catalog record")
     release = releases[0]
-    if not any(row["platform"] == "Windows" for row in release["artifacts"]):
-        return {"qualification": "not required without a Windows installer"}
+    if not any(row["platform"] in {"Windows", "Omarchy"} for row in release["artifacts"]):
+        return {"qualification": "not required without Windows or Omarchy packages"}
     assets = ledger.catalog_assets(release, revision)
     if recorded(repo, repository, tag, revision, release, assets):
         return {"qualification": "recorded release", "revision": revision}
+    # The native Arch build reuses the qualified Linux archive and is verified
+    # with its signature and bundled runtime by the publication workflow.
+    workflow_assets = ledger.catalog_assets({
+        "artifacts": [row for row in release["artifacts"] if row["platform"] != "Omarchy"],
+    }, revision)
     runs = json.loads(subprocess.check_output([
         "gh", "run", "list", "--repo", repository, "--workflow", "build-release.yml",
         "--commit", revision, "--event", "workflow_dispatch", "--status", "success",
@@ -116,7 +121,7 @@ def verify(repo, repository, manifest, tag, revision):
                 print(f"Qualification unavailable for run {run['databaseId']}: {result.stderr.strip()}", file=sys.stderr)
                 continue
             receipt = read(Path(scratch) / "qualification.json")
-            if matches(receipt, run, revision, tag, assets):
+            if matches(receipt, run, revision, tag, workflow_assets):
                 return {"qualification": "candidate workflow", "revision": revision,
                         "run_id": run["databaseId"], "run_attempt": run["attempt"]}
     raise ValueError("no successful candidate qualification matches the release catalog bytes")

@@ -1,0 +1,15 @@
+{
+  "build": {
+    "frontendDist": "../../shell/dist"
+  },
+  "app": {
+    "windows": [],
+    "enableGTKAppId": true,
+    "security": {
+      "capabilities": ["linux-startup", "linux-console"]
+    }
+  },
+  "bundle": {
+    "icon": ["icons/icon.png"]
+  }
+}
