@@ -6,8 +6,8 @@
       "channel": "stable",
       "published_at": "2026-11-09",
       "notes": {
-        "zh": "新增带签名的 Omarchy 桌面安装包。改善 Responses 会话连续性、Codex 请求档位选择和 Hermes 路由归属，并改进决策额度和模型移除。 Windows 原生验证范围见发行说明。",
-        "en": "Add signed Omarchy Desktop packages. Improve Responses continuity, Codex effort selection, Hermes route attribution, shared decision budgets, and decision model removal. See the release notes for the Windows native validation scope."
+        "zh": "新增带签名的 Omarchy 桌面安装包。改善 Responses 会话连续性、Codex 请求档位选择和 Hermes 路由归属，并改进决策额度和模型移除。",
+        "en": "Add signed Omarchy Desktop packages. Improve Responses continuity, Codex effort selection, Hermes route attribution, shared decision budgets, and decision model removal."
       },
       "artifacts": [
         {

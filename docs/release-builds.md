@@ -167,6 +167,17 @@ documentation or version fields changed. Build every final package from the same
 frozen source, and execute all outstanding package-bound/native gates against
 those actual artifacts; an earlier baseline pass does not satisfy them.
 
+### Write public release notes
+
+Write the GitHub Release body and website catalog summary for people deciding
+whether and how to upgrade. Cover user-visible changes, supported platforms,
+and known limitations that affect normal use. Link to installation, upgrade,
+and package verification instructions where applicable.
+
+Keep build and publication steps, validation environments, passed or deferred
+checks, and run links in the release Issue or PR. Review the public notes for
+this separation before publishing or editing a release.
+
 Prepare release notes separately from `apps/website/data/releases.json`. Add the public catalog
 record only after exact package hashes and required acceptance are available.
 Until then, distinguish upcoming platform capabilities from the versions actually

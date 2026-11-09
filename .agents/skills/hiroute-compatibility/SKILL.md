@@ -91,7 +91,10 @@ this skill does not add a full workspace or physical-machine run to every task.
 
 At release handoff, assess the accumulated diff against supported released sources and reuse
 applicable revision-bound evidence. Validate affected old-to-new production paths with exact
-released inputs/packages and the final candidate within the authorized validation scope;
-record any remaining evidence gap in development notes. No changed boundary means no invented
-migration test. After publication, follow the existing snapshot workflow and retain historical
-records; the snapshot records release facts, not successful upgrade acceptance.
+released inputs/packages and the final candidate within the authorized validation scope.
+Record validation scope and remaining evidence gaps in the release Issue or PR.
+Keep migration tests scoped to affected boundaries. After publication, follow the existing
+snapshot workflow and retain historical release records.
+
+Follow the [public release notes guidance](../../../docs/release-builds.md#write-public-release-notes)
+when publishing or editing a release.
