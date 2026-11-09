@@ -67,11 +67,13 @@ the approved payload and live owner under the install lock before stopping the
 user service. It SHALL preserve the listener, startup settings and routing
 data through the standalone install and recovery paths.
 
-The native removal action SHALL require a live admitted session and confirmation.
-The installer SHALL verify runtime ownership and check managed Agent settings
-before stopping the service and removing owned components. Outstanding Agent
-restores use the ordinary Agent workflow. The operation SHALL preserve saved
-routing data, history, credentials and the installed desktop package.
+The native removal action SHALL require a live admitted session and preview
+the managed Agents before confirmation. It SHALL verify the approved intent
+and restore eligible settings through the existing Agent Preview and Apply
+operations. The installer SHALL verify runtime ownership and hold the Agent
+write gate across a final readiness check, service stop and owned teardown.
+The operation SHALL preserve saved routing data, history, credentials and the
+installed desktop package.
 
 #### Scenario: Defer an available runtime update
 
@@ -79,9 +81,9 @@ routing data, history, credentials and the installed desktop package.
 - **THEN** The previous service keeps handling requests and can open a new
   authenticated browser session.
 
-#### Scenario: Managed Agent settings require restoration
+#### Scenario: Managed Agent settings cannot be restored
 
-- **WHEN** The user confirms removal with outstanding managed settings
+- **WHEN** Managed settings have drift or a pending recovery blocks removal
 - **THEN** The native console directs the user to the Agent restore workflow
   and the service and install remain available.
 

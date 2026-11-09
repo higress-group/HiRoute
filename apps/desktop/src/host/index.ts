@@ -68,7 +68,7 @@ async function invokeHost<T>(command: string, args: Record<string, unknown> = {}
     const linux = linuxShellWindow();
     const shellCommand = command.startsWith('update_') || command.startsWith('login_start_')
       || ['open_external_url', 'save_classifier_openapi', 'open_in_browser', 'restart_service', 'reconnect', 'launch_codex_desktop'].includes(command)
-      || (linux && ['open_diagnostic_directory', 'write_clipboard', 'remove_runtime'].includes(command));
+      || (linux && ['open_diagnostic_directory', 'write_clipboard', 'preview_runtime_removal', 'remove_runtime'].includes(command));
     if (shellCommand) {
       const nativeArgs = linux && command !== 'reconnect' ? { ...args, bearer: sessionBearer() } : args;
       return (await import('@tauri-apps/api/core')).invoke<T>(`shell_${command}`, nativeArgs);

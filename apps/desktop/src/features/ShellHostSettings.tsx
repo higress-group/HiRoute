@@ -3,6 +3,10 @@ import { hostCapabilities, invoke } from '../host/index.ts';
 import { safeDiagnosticCode } from '../error-code';
 import type { Language } from '../ui/preferences';
 import { Dialog } from '../ui/Dialog';
+import { agentDisplayName } from './agents/ecosystems';
+
+type RemovalReview = { agents: string[]; confirmation: string };
+
 export function ShellHostSettings({ active, language }: { active: boolean; language: Language }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const host = hostCapabilities();
@@ -15,6 +19,7 @@ export function ShellHostSettings({ active, language }: { active: boolean; langu
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmation, setConfirmation] = useState<'restart_service' | 'remove_runtime' | null>(null);
+  const [removalReview, setRemovalReview] = useState<RemovalReview | null>(null);
   const removing = confirmation === 'remove_runtime';
   const confirmTitle = removing
     ? text('移除后台服务？', 'Remove the background service?')
@@ -29,6 +34,23 @@ export function ShellHostSettings({ active, language }: { active: boolean; langu
       .catch(cause => { if (current) setError(safeDiagnosticCode(cause, 'SHELL_LOGIN_UNAVAILABLE')); });
     return () => { current = false; };
   }, [active, login]);
+  function closeConfirmation() {
+    setConfirmation(null);
+    setRemovalReview(null);
+  }
+  async function previewRemoval() {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      setRemovalReview(await invoke<RemovalReview>('preview_runtime_removal'));
+      setConfirmation('remove_runtime');
+    } catch (cause) {
+      setError(safeDiagnosticCode(cause, 'RUNTIME_REMOVE_BLOCKED'));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function action(command: string, args = {}) {
     if (busy) return;
     setBusy(true); setError('');
@@ -36,7 +58,7 @@ export function ShellHostSettings({ active, language }: { active: boolean; langu
       const value = await invoke<{ enabled: boolean } | null>(command, args);
       if (command === 'login_start_set' && value) setEnabled(value.enabled);
     } catch (cause) { setError(safeDiagnosticCode(cause, 'SHELL_HOST_UNAVAILABLE')); }
-    finally { setBusy(false); setConfirmation(null); }
+    finally { setBusy(false); closeConfirmation(); }
   }
   if (!login && !browser && !restart && !remove) return null;
   return <section className="settings-group"><h2>{windows ? text('Windows 桌面应用', 'Windows Desktop') : text('本机桌面应用', 'Desktop app')}</h2><div className="settings-list">
@@ -45,19 +67,28 @@ export function ShellHostSettings({ active, language }: { active: boolean; langu
     </div>}
     {browser && <div className="settings-row"><div className="settings-copy"><strong>{text('在浏览器中打开', 'Open in browser')}</strong><span>{text('创建一次性本机入口；浏览器会话需要重新进入', 'Create a one-time local entry; the browser session requires re-entry')}</span></div><button className="btn" type="button" disabled={busy} onClick={() => void action('open_in_browser')}>{text('打开', 'Open')}</button></div>}
     {restart && <div className="settings-row"><div className="settings-copy"><strong>{text('重新启动后台服务', 'Restart background service')}</strong><span>{text('桌面窗口可以保留；现有调用可能暂时中断', 'Keep the Desktop window open; current calls may be interrupted')}</span></div><button className="btn" type="button" disabled={busy} onClick={() => setConfirmation('restart_service')}>{text('重启服务…', 'Restart service…')}</button></div>}
-    {remove && <div className="settings-row"><div className="settings-copy"><strong>{text('移除后台服务', 'Remove background service')}</strong><span>{text('停止服务并移除当前用户的 CLI，保留已保存的数据', 'Stop the service and remove this account’s CLI. Saved data is kept.')}</span></div><button className="btn" type="button" disabled={busy} onClick={() => setConfirmation('remove_runtime')}>{text('移除服务…', 'Remove service…')}</button></div>}
-    <Dialog open={confirmation !== null} title={confirmTitle} closeLabel={text('取消', 'Cancel')} closeDisabled={busy} onClose={() => setConfirmation(null)}
+    {remove && <div className="settings-row"><div className="settings-copy"><strong>{text('移除后台服务', 'Remove background service')}</strong><span>{text('停止服务并移除当前用户的 CLI，保留已保存的数据', 'Stop the service and remove this account’s CLI. Saved data is kept.')}</span></div><button className="btn" type="button" disabled={busy} onClick={() => void previewRemoval()}>{text('移除服务…', 'Remove service…')}</button></div>}
+    <Dialog open={confirmation !== null} title={confirmTitle} closeLabel={text('取消', 'Cancel')} closeDisabled={busy} onClose={closeConfirmation}
       footer={<>
-        <button className="btn" type="button" disabled={busy} onClick={() => setConfirmation(null)}>{text('取消', 'Cancel')}</button>
+        <button className="btn" type="button" disabled={busy} onClick={closeConfirmation}>{text('取消', 'Cancel')}</button>
         <button className={removing ? 'btn btn-danger' : 'btn btn-primary'} type="button" disabled={busy}
-          onClick={() => { if (confirmation) void action(confirmation); }}>{confirmLabel}</button>
+          onClick={() => {
+            if (removing && removalReview) void action('remove_runtime', { confirmation: removalReview.confirmation });
+            else if (confirmation === 'restart_service') void action(confirmation);
+          }}>{confirmLabel}</button>
       </>}>
       <p>{removing
-        ? text('进行中的调用会停止。请先在 Agent 中恢复由 HiRoute 管理的设置。重新安装服务后可继续使用已保存的路由和历史记录。', 'Current requests will stop. Restore any HiRoute-managed settings in Agents first. Your saved routes and history will be available after reinstalling the service.')
+        ? text('进行中的调用会停止。重新安装服务后可继续使用已保存的路由和历史记录。', 'Current requests will stop. Your saved routes and history will be available after reinstalling the service.')
         : text('现有调用可能暂时中断。请先等待当前调用和 Worker 任务完成，再确认重启。', 'Current calls may be interrupted. Wait for current calls and Worker tasks to finish before restarting.')}</p>
+      {removing && !!removalReview?.agents.length && <p>{text('停服务前将恢复以下 Agent 的受管设置。', 'HiRoute will restore managed settings for these agents before stopping the service.')}{' '}
+        {removalReview.agents.map(id => agentDisplayName(id, language)).join(' · ')}</p>}
     </Dialog>
     {error && <div className="settings-inline-error" role="status">{error === 'RUNTIME_AGENT_RESTORE_REQUIRED'
       ? text('请在 Agent 中检查并恢复由 HiRoute 管理的设置，然后重试。', 'Review and restore HiRoute-managed settings in Agents, then try again.')
+      : error === 'RUNTIME_REMOVE_PREVIEW_CHANGED'
+        ? text('Agent 设置在预览后已变化。请重新打开移除确认。', 'Agent settings changed after the review. Open the removal confirmation again.')
+      : error === 'RUNTIME_REMOVE_RECOVERY_PENDING'
+        ? text('有操作需要恢复。请完成恢复后再移除服务。', 'An operation needs recovery. Complete recovery before removing the service.')
       : error === 'RUNTIME_REMOVE_BLOCKED'
         ? text('无法验证运行时或完成移除。请检查当前用户的服务状态后重试。', 'Could not verify or remove the runtime. Check the current user’s service and try again.')
         : error}</div>}

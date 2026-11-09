@@ -58,6 +58,14 @@ class HTTPSResponse(io.BytesIO):
 
 class StandaloneFixture(unittest.TestCase):
     def setUp(self):
+        if sys.platform != "linux":
+            def simulated_linux_rename(source, destination):
+                if os.path.lexists(destination):
+                    raise FileExistsError(destination)
+                os.rename(source, destination)
+            rename = patch.object(installer, "rename_noreplace", simulated_linux_rename)
+            rename.start()
+            self.addCleanup(rename.stop)
         preflight = patch.object(installer, "candidate_preflight", return_value={"schema": "hiroute.upgrade-preflight/v1", "history_cutover_required": False, "required_bytes": 0, "available_bytes": 1000000000, "recovery": None})
         self.preflight = preflight.start()
         self.addCleanup(preflight.stop)
@@ -165,7 +173,7 @@ class ConsoleInstallationTests(StandaloneFixture):
             installer.install(self.install_args(manifest, archive))
             self.assertEqual(config.read_bytes(), original, "an upgrade without options must preserve the exact configuration")
             args.console_port = 8124
-            replace = installer.os.replace
+            replace = installer.rename_noreplace
             failed = False
             def fail_marker(source, destination):
                 nonlocal failed
@@ -173,7 +181,7 @@ class ConsoleInstallationTests(StandaloneFixture):
                     failed = True
                     raise OSError("injected commit failure")
                 return replace(source, destination)
-            with patch.object(installer.os, "replace", side_effect=fail_marker):
+            with patch.object(installer, "rename_noreplace", side_effect=fail_marker):
                 with self.assertRaisesRegex(OSError, "injected"):
                     installer.install(args)
             self.assertTrue(failed)
@@ -417,12 +425,14 @@ class RecoveryRetentionTests(StandaloneFixture):
             manifest, archive = self.build("0.2.0")
             args = self.install_args(manifest, archive)
             self.preflight.return_value = {"history_cutover_required": True}
-            replace = installer.os.replace
+            owner = installer if sys.platform == "linux" else installer.os
+            method = "rename_noreplace" if sys.platform == "linux" else "replace"
+            replace = getattr(owner, method)
             def fail_marker(source, destination):
                 if Path(destination) == paths["marker"] and Path(source).name.startswith("." + paths["marker"].name + "."):
                     raise OSError("publication interrupted")
                 return replace(source, destination)
-            with patch.object(installer.os, "replace", side_effect=fail_marker):
+            with patch.object(owner, method, side_effect=fail_marker):
                 with self.assertRaisesRegex(OSError, "publication interrupted"):
                     installer.install(args)
             self.assertEqual(paths["marker"].read_bytes(), marker)
@@ -467,16 +477,59 @@ if interrupt in ("desktop-owner", "desktop-owner-changed"):
             report.write(action + chr(10))
         return ""
     entry.__globals__["desktop_systemctl"] = observed_systemctl
+if interrupt == "desktop-removal":
+    import fcntl
+    entry.__globals__["desktop_runtime_owner"] = lambda *args: "owned"
+    lock = Path.home() / ".local/share/hiroute/service/agent-removal.lock"
+    def trace(action):
+        with (Path.home() / "desktop-removal-actions").open("a") as report:
+            report.write(action + chr(10))
+    def assert_fenced():
+        with lock.open("rb") as competing_writer:
+            try:
+                fcntl.flock(competing_writer, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return
+            raise AssertionError("Agent writes are not fenced")
+    def observed_agent_removal(cli, operation, *expected):
+        if operation == "check":
+            assert_fenced()
+            trace("check")
+            return {"ready": True}
+        if operation == "restore":
+            if expected != ("reviewed",):
+                return {"code": "RUNTIME_REMOVE_PREVIEW_CHANGED"}
+            trace("restore")
+            return {"restored": True}
+        return {"agents": ["agent_codex_default"], "confirmation": "reviewed"}
+    def observed_remove_service(action, *args, **kwargs):
+        assert_fenced()
+        trace(action)
+        return ""
+    entry.__globals__["agent_removal_request"] = observed_agent_removal
+    entry.__globals__["desktop_systemctl"] = observed_remove_service
 replace = os.replace
 def observed_replace(source, destination):
     replace(source, destination)
     path = Path(destination)
-    if interrupt == "unit" and path.name == "ai.hiroute.cli.service":
-        os.kill(os.getpid(), signal.SIGKILL)
     if interrupt == "commit" and path.name == "linux-install-journal.json":
         if json.loads(path.read_bytes())["phase"] == "committed":
             os.kill(os.getpid(), signal.SIGKILL)
 os.replace = observed_replace
+publish = entry.__globals__["rename_noreplace"]
+if sys.platform != "linux":
+    def publish(source, destination):
+        if os.path.lexists(destination):
+            raise FileExistsError(destination)
+        os.rename(source, destination)
+def observed_publish(source, destination):
+    path = Path(destination)
+    if interrupt == "publication-entry" and path == Path.home() / ".local/bin/hiroute":
+        path.write_text("concurrent user entry")
+    publish(source, destination)
+    if interrupt == "unit" and path.name == "ai.hiroute.cli.service":
+        os.kill(os.getpid(), signal.SIGKILL)
+entry.__globals__["rename_noreplace"] = observed_publish
 sys.argv = [script, *arguments]
 entry()
 """
@@ -524,6 +577,27 @@ entry()
         self.assertFalse(installer.linux_install_journal(paths).exists())
 
     @patch.object(installer.platform, "system", return_value="Linux")
+    def test_first_run_refuses_a_file_created_at_the_publication_rename(self, _system):
+        manifest, archive = self.build()
+        refused = self.invoke("install", "--fresh", "--manifest", manifest, "--archive", archive,
+                              interrupt="publication-entry")
+        self.assertNotEqual(refused.returncode, 0)
+        with self.environment():
+            paths = installer.layout(self.home)
+        entry = paths["bin"] / "hiroute"
+        self.assertEqual(entry.read_text(), "concurrent user entry")
+        self.assertFalse(paths["marker"].exists())
+        journal = installer.linux_install_journal(paths)
+        self.assertEqual(json.loads(journal.read_bytes())["phase"], "prepared")
+        self.assertNotEqual(self.invoke("recover").returncode, 0)
+        saved = entry.with_name("saved-user-entry")
+        entry.rename(saved)
+        recovered = self.invoke("recover")
+        self.assertEqual(recovered.returncode, 0, recovered.stderr)
+        self.assertFalse(journal.exists())
+        self.assertEqual(saved.read_text(), "concurrent user entry")
+
+    @patch.object(installer.platform, "system", return_value="Linux")
     def test_desktop_update_binds_live_owner_and_preserves_console(self, _system):
         manifest, archive = self.build("0.5.3")
         installed = self.invoke("install", "--manifest", manifest, "--archive", archive,
@@ -553,6 +627,54 @@ entry()
         self.assertEqual(json.loads(paths["marker"].read_bytes())["version"], "0.6.0")
         self.assertEqual(listener.read_bytes(), settings)
         self.assertEqual((self.home / "desktop-service-actions").read_text(), "stop\n")
+
+    @patch.object(installer.platform, "system", return_value="Linux")
+    def test_desktop_keeps_user_files_in_the_management_skill_directory(self, _system):
+        manifest, archive = self.build("0.5.3")
+        installed = self.invoke("install", "--manifest", manifest, "--archive", archive)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        skill = self.home / ".agents/skills/hiroute-management"
+        reference = skill / "references.md"
+        reference.write_text("user reference")
+        with self.environment():
+            paths = installer.layout(self.home)
+        marker = paths["marker"].read_bytes()
+        manifest, archive = self.build("0.6.0")
+        revision = json.loads(manifest.read_bytes())["revision"]
+        preview = self.invoke("install", "--manifest", manifest, "--archive", archive,
+                              "--desktop-revision", revision)
+        removal = self.invoke("uninstall", "--desktop-process", "1", "1")
+        for attempt in (preview, removal):
+            self.assertNotEqual(attempt.returncode, 0)
+            self.assertIn("owned Skill changed", attempt.stderr)
+        self.assertEqual(paths["marker"].read_bytes(), marker)
+        self.assertEqual(reference.read_text(), "user reference")
+
+    @patch.object(installer.platform, "system", return_value="Linux")
+    def test_desktop_removal_rechecks_agents_under_the_stop_fence(self, _system):
+        manifest, archive = self.build()
+        installed = self.invoke("install", "--manifest", manifest, "--archive", archive)
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        with self.environment():
+            paths = installer.layout(self.home)
+        data = paths["state"] / "routing-data"
+        data.write_text("saved Plan")
+        args = ("--desktop-process", "1", "1")
+        review = self.invoke("uninstall", *args, interrupt="desktop-removal")
+        self.assertEqual(review.returncode, 0, review.stderr)
+        self.assertEqual(json.loads(review.stdout)["agents"], ["agent_codex_default"])
+        stale = self.invoke("uninstall", *args, "--expect-agent-preview", "changed",
+                            interrupt="desktop-removal")
+        self.assertEqual(json.loads(stale.stdout)["code"], "RUNTIME_REMOVE_PREVIEW_CHANGED")
+        self.assertTrue(paths["marker"].exists())
+        trace = self.home / "desktop-removal-actions"
+        self.assertFalse(trace.exists())
+        removed = self.invoke("uninstall", *args, "--expect-agent-preview", "reviewed",
+                              interrupt="desktop-removal")
+        self.assertEqual(removed.returncode, 0, removed.stderr)
+        self.assertEqual(trace.read_text().splitlines(), ["restore", "check", "disable"])
+        self.assertFalse(paths["marker"].exists())
+        self.assertEqual(data.read_text(), "saved Plan")
 
     @patch.object(installer.platform, "system", return_value="Linux")
     def test_recovery_restores_interrupted_publication_and_finishes_commit(self, _system):
@@ -1111,7 +1233,7 @@ class InstallerTests(StandaloneFixture):
             "<!-- Managed by HiRoute standalone installer -->\n"
         )
         manifest2, archive2 = self.build("0.2.0")
-        original_replace = installer.os.replace
+        original_replace = installer.rename_noreplace
         failed = False
         agents_skill = self.home / ".agents/skills/hiroute-management"
 
@@ -1124,7 +1246,7 @@ class InstallerTests(StandaloneFixture):
 
         with self.environment(), patch.object(installer.subprocess, "run"), patch(
             "builtins.print"
-        ), patch.object(installer.os, "replace", side_effect=fail_once):
+        ), patch.object(installer, "rename_noreplace", side_effect=fail_once):
             with self.assertRaisesRegex(OSError, "injected replacement failure"):
                 installer.install(self.install_args(manifest2, archive2))
 

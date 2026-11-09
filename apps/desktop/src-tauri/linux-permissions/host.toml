@@ -22,6 +22,7 @@ commands.allow = [
   "shell_open_external_url",
   "shell_save_classifier_openapi",
   "shell_restart_service",
+  "shell_preview_runtime_removal",
   "shell_remove_runtime",
   "shell_reconnect",
   "shell_open_diagnostic_directory",

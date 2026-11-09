@@ -399,13 +399,29 @@ impl NativeSession {
         self.installation.service("restart").await
     }
 
-    pub async fn remove(&self) -> Result<(), &'static str> {
+    fn removal_command(&self) -> Result<Command, &'static str> {
         let mut command = installer_command("uninstall")?;
         command
             .arg("--desktop-process")
             .arg(self.process.pid.to_string())
             .arg(self.process.start_time.to_string());
-        remove(command).await
+        Ok(command)
+    }
+
+    pub async fn preview_removal(&self) -> Result<RemovalPreview, &'static str> {
+        let reply = removal_reply(self.removal_command()?, Duration::from_secs(100)).await?;
+        serde_json::from_value(reply).map_err(|_| "RUNTIME_REMOVE_BLOCKED")
+    }
+
+    pub async fn remove(&self, confirmation: &str) -> Result<(), &'static str> {
+        let mut command = self.removal_command()?;
+        command.args(["--expect-agent-preview", confirmation]);
+        let reply = removal_reply(command, Duration::from_secs(240)).await?;
+        if reply["installed"] == false && reply["data_preserved"] == true {
+            Ok(())
+        } else {
+            Err("RUNTIME_REMOVE_BLOCKED")
+        }
     }
 }
 
@@ -586,18 +602,23 @@ pub(super) async fn update(owner: &str) -> Result<(), &'static str> {
         })
 }
 
-async fn remove(command: Command) -> Result<(), &'static str> {
-    let output = bounded_output(command, Duration::from_secs(120))
+#[derive(Deserialize, Serialize)]
+pub(super) struct RemovalPreview {
+    agents: Vec<String>,
+    confirmation: String,
+}
+
+async fn removal_reply(command: Command, timeout: Duration) -> Result<Value, &'static str> {
+    let output = bounded_output(command, timeout)
         .await
         .map_err(|_| "RUNTIME_REMOVE_BLOCKED")?;
     let reply: Value = serde_json::from_slice(&output).map_err(|_| "RUNTIME_REMOVE_BLOCKED")?;
-    if reply["installed"] == false && reply["data_preserved"] == true {
-        return Ok(());
+    match reply["code"].as_str() {
+        Some("RUNTIME_AGENT_RESTORE_REQUIRED") => Err("RUNTIME_AGENT_RESTORE_REQUIRED"),
+        Some("RUNTIME_REMOVE_PREVIEW_CHANGED") => Err("RUNTIME_REMOVE_PREVIEW_CHANGED"),
+        Some("RUNTIME_REMOVE_RECOVERY_PENDING") => Err("RUNTIME_REMOVE_RECOVERY_PENDING"),
+        _ => Ok(reply),
     }
-    if reply["code"] == "RUNTIME_AGENT_RESTORE_REQUIRED" {
-        return Err("RUNTIME_AGENT_RESTORE_REQUIRED");
-    }
-    Err("RUNTIME_REMOVE_BLOCKED")
 }
 
 pub(super) async fn resume_recovered() -> Result<(), &'static str> {
