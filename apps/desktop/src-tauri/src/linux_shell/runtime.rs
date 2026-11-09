@@ -9,6 +9,7 @@ use hiroute_host_runtime::{
     standalone_daemon_binary, standalone_host_target, standalone_maintenance_pending,
 };
 use hiroute_shell::ConsoleOrigin;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
@@ -397,6 +398,15 @@ impl NativeSession {
         }
         self.installation.service("restart").await
     }
+
+    pub async fn remove(&self) -> Result<(), &'static str> {
+        let mut command = installer_command("uninstall")?;
+        command
+            .arg("--desktop-process")
+            .arg(self.process.pid.to_string())
+            .arg(self.process.start_time.to_string());
+        remove(command).await
+    }
 }
 
 async fn qualify(
@@ -484,37 +494,46 @@ pub(super) async fn enable_login_start() -> Result<(), &'static str> {
         .map_err(|_| "SHELL_LOGIN_UNAVAILABLE")
 }
 
-pub(super) async fn install(recover: bool) -> Result<(), &'static str> {
-    let root = Path::new(PACKAGE);
-    let installer = root.join("install-standalone.py");
-    if !installer
+fn package_file(name: &str) -> Result<PathBuf, &'static str> {
+    let path = Path::new(PACKAGE).join(name);
+    if !path
         .symlink_metadata()
         .is_ok_and(|m| m.is_file() && m.uid() == 0 && m.mode() & 0o022 == 0)
-        || installer.canonicalize().ok().as_ref() != Some(&installer)
+        || path.canonicalize().ok().as_ref() != Some(&path)
     {
         return Err("PACKAGE_PAYLOAD_UNAVAILABLE");
     }
+    Ok(path)
+}
+
+fn installer_command(verb: &str) -> Result<Command, &'static str> {
+    let mut command = command("/usr/bin/python3");
+    command
+        .arg("-I")
+        .arg(package_file("install-standalone.py")?)
+        .arg(verb);
+    Ok(command)
+}
+
+fn bundled_payload(command: &mut Command) -> Result<(), &'static str> {
     let archive = format!(
         "HiRoute-{}-linux-{}.tar.gz",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::ARCH
     );
-    let mut command = command("/usr/bin/python3");
-    command.arg("-I").arg(installer);
-    if recover {
-        command.arg("recover");
-    } else {
-        command
-            .args([
-                "install",
-                "--fresh",
-                "--console-mode",
-                "loopback",
-                "--manifest",
-            ])
-            .arg(root.join("manifest.json"))
-            .arg("--archive")
-            .arg(root.join(archive));
+    command
+        .arg("--manifest")
+        .arg(package_file("manifest.json")?)
+        .arg("--archive")
+        .arg(package_file(&archive)?);
+    Ok(())
+}
+
+pub(super) async fn install(recover: bool) -> Result<(), &'static str> {
+    let mut command = installer_command(if recover { "recover" } else { "install" })?;
+    if !recover {
+        command.args(["--fresh", "--console-mode", "loopback"]);
+        bundled_payload(&mut command)?;
     }
     bounded_output(command, Duration::from_secs(120))
         .await
@@ -526,6 +545,72 @@ pub(super) async fn install(recover: bool) -> Result<(), &'static str> {
                 "RUNTIME_INSTALL_FAILED"
             }
         })
+}
+
+#[derive(Deserialize, Serialize)]
+pub(super) struct UpdatePreview {
+    installed: String,
+    candidate: String,
+    owner: String,
+}
+
+fn update_command() -> Result<Command, &'static str> {
+    let revision = option_env!("HIROUTE_BUILD_SOURCE_SHA").ok_or("PACKAGE_PAYLOAD_UNAVAILABLE")?;
+    let mut command = installer_command("install")?;
+    bundled_payload(&mut command)?;
+    command.args(["--desktop-revision", revision]);
+    Ok(command)
+}
+
+pub(super) async fn preview_update() -> Result<UpdatePreview, &'static str> {
+    let bytes = bounded_output(update_command()?, Duration::from_secs(120))
+        .await
+        .map_err(|_| "RUNTIME_UPDATE_BLOCKED")?;
+    serde_json::from_slice(&bytes).map_err(|_| "RUNTIME_UPDATE_BLOCKED")
+}
+
+pub(super) async fn update(owner: &str) -> Result<(), &'static str> {
+    let mut command = update_command()?;
+    command.args(["--expect-owner", owner]);
+    bounded_output(command, Duration::from_secs(240))
+        .await
+        .map(|_| ())
+        .map_err(|_| {
+            if layout().ok().is_some_and(|layout| {
+                standalone_maintenance_pending(&layout).is_ok_and(|pending| pending)
+            }) {
+                "SHELL_INSTALL_RECOVERY_REQUIRED"
+            } else {
+                "RUNTIME_UPDATE_BLOCKED"
+            }
+        })
+}
+
+async fn remove(command: Command) -> Result<(), &'static str> {
+    let output = bounded_output(command, Duration::from_secs(120))
+        .await
+        .map_err(|_| "RUNTIME_REMOVE_BLOCKED")?;
+    let reply: Value = serde_json::from_slice(&output).map_err(|_| "RUNTIME_REMOVE_BLOCKED")?;
+    if reply["installed"] == false && reply["data_preserved"] == true {
+        return Ok(());
+    }
+    if reply["code"] == "RUNTIME_AGENT_RESTORE_REQUIRED" {
+        return Err("RUNTIME_AGENT_RESTORE_REQUIRED");
+    }
+    Err("RUNTIME_REMOVE_BLOCKED")
+}
+
+pub(super) async fn resume_recovered() -> Result<(), &'static str> {
+    let installation = match Installation::discover() {
+        Ok(installation) => installation,
+        Err("INSTALLATION_REQUIRED") => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    installation.verify_pair().await?;
+    if installation.manager().await?.is_none() {
+        installation.service("start").await?;
+    }
+    Ok(())
 }
 
 pub(super) fn command(program: impl AsRef<OsStr>) -> Command {

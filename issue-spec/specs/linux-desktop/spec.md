@@ -57,6 +57,34 @@ capabilities implemented by its adapter.
 - **THEN** The open window follows the system. An explicit HiRoute choice
   takes precedence and persists on reopening.
 
+### Requirement: Upgrade and remove the user runtime explicitly
+
+Replacing or removing the package SHALL leave the current-user runtime running.
+A native upgrade SHALL offer the verified, newer package payload only through
+an explicit preview and confirmation. Preview reports the versions and restart
+impact, verifies the package and runs storage preflight. Apply SHALL recheck
+the approved payload and live owner under the install lock before stopping the
+user service. It SHALL preserve the listener, startup settings and routing
+data through the standalone install and recovery paths.
+
+The native removal action SHALL require a live admitted session and confirmation.
+The installer SHALL verify runtime ownership and check managed Agent settings
+before stopping the service and removing owned components. Outstanding Agent
+restores use the ordinary Agent workflow. The operation SHALL preserve saved
+routing data, history, credentials and the installed desktop package.
+
+#### Scenario: Defer an available runtime update
+
+- **WHEN** A user cancels the update confirmation
+- **THEN** The previous service keeps handling requests and can open a new
+  authenticated browser session.
+
+#### Scenario: Managed Agent settings require restoration
+
+- **WHEN** The user confirms removal with outstanding managed settings
+- **THEN** The native console directs the user to the Agent restore workflow
+  and the service and install remain available.
+
 ### Requirement: Recover interrupted user runtime publication
 
 The standalone installer SHALL durably record publication before changing

@@ -14,7 +14,9 @@ type Report = {
   code: string | null;
   logs_path: string;
   storage_recovery?: unknown;
+  operation_error?: string;
 };
+type UpdatePreview = { owner: string; installed: string; candidate: string };
 
 const linux = '__HIROUTE_LINUX_SHELL__' in window;
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
@@ -23,6 +25,7 @@ let dark = systemTheme.matches;
 let report: Report = { phase: 'starting', code: null, logs_path: '' };
 let active = false;
 let error = '';
+let update: UpdatePreview | undefined;
 const element = (id: string) => document.getElementById(id)!;
 const button = (id: string) => element(id) as HTMLButtonElement;
 const input = (id: string) => element(id) as HTMLInputElement;
@@ -37,6 +40,8 @@ function render() {
   const listener = failed && report.code === 'CONSOLE_LISTENER_UNAVAILABLE';
   const repair = failed && report.code === 'SHELL_INSTALL_RECOVERY_REQUIRED' && !report.storage_recovery;
   const setup = linux && failed && report.code === 'INSTALLATION_REQUIRED';
+  const canUpdate = linux && failed && report.code === 'CONSOLE_NATIVE_RELEASE_UNAVAILABLE';
+  const confirmation = canUpdate ? update : undefined;
   const browser = linux && failed && (report.code === 'CONSOLE_NATIVE_RELEASE_UNAVAILABLE' || report.code === 'CONSOLE_NATIVE_ASSETS_UNAVAILABLE');
   const foreign = linux && failed && ['SERVICE_OWNER_UNVERIFIED', 'SERVICE_RELEASE_UNVERIFIED'].includes(report.code ?? '');
   const platform = linux ? 'linux' : 'windows';
@@ -44,14 +49,17 @@ function render() {
   document.documentElement.lang = zh ? 'zh-CN' : 'en';
   element('root').dataset.theme = (linux ? preference.theme === 'system' ? systemTheme.matches : preference.theme === 'dark' : dark) ? 'dark' : 'light';
   element('root').classList.toggle('linux-startup', linux);
-  element('phase').textContent = setup ? text('设置 HiRoute', 'Set up HiRoute')
+  element('phase').textContent = confirmation ? text('更新后台服务', 'Update background service')
+    : setup ? text('设置 HiRoute', 'Set up HiRoute')
     : browser ? text('可在浏览器中继续', 'Continue in your browser')
     : repair ? text('安装尚未完成', 'Installation is incomplete')
     : foreign ? text('无法识别现有服务', 'Could not verify the existing service')
     : listener ? text('本机控制台尚未就绪', 'The local console is unavailable')
     : failed ? text('无法启动本机服务', 'Could not start the local service')
     : text('正在连接 HiRoute 服务', 'Connecting to HiRoute');
-  element('explanation').textContent = setup
+  element('explanation').textContent = confirmation
+    ? text(`从 ${confirmation.installed} 更新到 ${confirmation.candidate}。服务会重启，进行中的调用可能中断。保留设置、路由和历史记录。`, `Update from ${confirmation.installed} to ${confirmation.candidate}. The service will restart and may interrupt current requests. Settings, routes and history are kept.`)
+    : setup
     ? text('为当前用户安装后台服务和 CLI，并启用仅本机访问的控制台。安装使用软件包内的文件。', 'Install the background service and CLI for this account and enable a loopback console. Setup uses files already in the package.')
     : browser ? text('当前服务可以继续处理请求。要使用原生窗口，桌面包、后台服务和控制台需要来自同一构建。', 'Your background service can keep handling requests. The native window requires the Desktop package, service and console from the same build.')
     : foreign ? text('已安装的文件或服务归属无法校验。请检查现有安装及服务定义后再试。', 'The installed files or service ownership could not be verified. Check the existing installation and service definition, then try again.')
@@ -73,8 +81,11 @@ function render() {
     : text('如需恢复本机界面，请在 PowerShell 中运行以下命令，使用自动选择的本机端口：', 'To restore the local interface, run these commands in PowerShell to use an automatically selected local port:');
   element('recovery-warning').textContent = text('重启服务可能中断正在进行的调用和任务。完成后点击“重新检查”。', 'Restarting the service may interrupt active calls and tasks. Then select Recheck.');
   element('failure').textContent = failed && (!linux || !setup && !browser) ? report.code ?? '' : '';
-  element('action-error').hidden = !error;
-  element('action-error').textContent = error;
+  const actionError = error || report.operation_error;
+  element('action-error').hidden = !actionError;
+  element('action-error').textContent = actionError === 'RUNTIME_UPDATE_BLOCKED'
+    ? text('无法准备此更新。请检查服务和软件包后重新尝试，或先在浏览器中继续。', 'Could not prepare this update. Check the service and package before trying again, or continue in the browser.')
+    : actionError ?? '';
   element('logs-label').textContent = text('本机日志目录', 'Local log directory');
   input('logs').value = report.logs_path;
   element('logs-label').hidden = input('logs').hidden = linux && (!failed || setup || browser || !report.logs_path);
@@ -84,8 +95,14 @@ function render() {
   button('retry').textContent = setup ? text('安装后台服务', 'Install background service')
     : repair ? text('恢复安装', 'Recover installation')
     : listener ? text('重新检查', 'Recheck') : text('重试', 'Try again');
-  button('browser').hidden = !browser;
+  button('browser').hidden = !browser || !!confirmation;
   button('browser').textContent = text('在浏览器中打开', 'Open in browser');
+  button('update').hidden = !canUpdate || !!confirmation;
+  button('update').textContent = text('检查服务更新…', 'Check for service update…');
+  button('update-confirm').hidden = button('update-cancel').hidden = !confirmation;
+  button('update-confirm').textContent = text('更新并重启', 'Update and restart');
+  button('update-cancel').textContent = text('取消', 'Cancel');
+  button('update').disabled = button('update-confirm').disabled = button('update-cancel').disabled = active;
   button('retry').disabled = button('browser').disabled = active;
   button('language').textContent = zh ? 'English' : '中文';
   button('theme').hidden = linux;
@@ -98,12 +115,12 @@ function render() {
   choice.value = preference.theme;
 }
 
-async function action(command: string, args?: Record<string, unknown>) {
+async function action<T = void>(command: string, args?: Record<string, unknown>) {
   if (active) return;
   active = true;
   error = '';
   render();
-  try { await invoke(command, args); }
+  try { return await invoke<T>(command, args); }
   catch (cause) {
     error = typeof cause === 'string' && /^[A-Z_]+$/.test(cause) ? cause : 'SHELL_ACTION_UNAVAILABLE';
   } finally {
@@ -127,6 +144,28 @@ button('retry').onclick = () => {
   else void action('shell_retry_startup');
 };
 button('browser').onclick = () => void action('shell_open_legacy_browser');
+button('update').onclick = async () => {
+  update = await action<UpdatePreview>('shell_preview_runtime_update');
+  render();
+  if (update) button('update-cancel').focus();
+};
+button('update-confirm').onclick = async () => {
+  if (!update) return;
+  await action('shell_update_runtime', { owner: update.owner });
+  if (!error) report = { ...report, phase: 'starting', code: null };
+  update = undefined;
+  render();
+};
+function cancelUpdate() {
+  if (!update || active) return;
+  update = undefined;
+  render();
+  button('update').focus();
+}
+button('update-cancel').onclick = cancelUpdate;
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && update) cancelUpdate();
+});
 if (linux) {
   systemTheme.addEventListener('change', render);
   listenShellPresentation(render);

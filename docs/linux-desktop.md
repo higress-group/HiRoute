@@ -26,6 +26,20 @@ the system appearance for HiRoute and survive a restart. The window uses Wayland
 framing and the standard Omarchy launcher identity. The product UI shares the
 same controls and palette across Desktop and Web.
 
+## Update or remove the background service
+
+Install a newer Arch package with `pacman -U`. If the running service is an
+eligible earlier release, select **Check for service update…** on the startup screen.
+Review the versions and restart impact, then choose **Update and restart**.
+Choose **Open in browser** to keep using the existing service until you are ready.
+An update carries forward the existing listener, login-start setting and data.
+
+To remove the current user's runtime, open **Settings**, find **Desktop app**
+and choose **Remove service…**. Restore any HiRoute-managed settings in
+**Agents** first. Removing the service stops current requests and removes
+the owned CLI and user unit. Saved sources, Plans and history are available
+when you reinstall the runtime. The package and its launcher stay installed.
+
 ## Build a local candidate
 
 Use a native Arch build host for the target architecture. Build a verified

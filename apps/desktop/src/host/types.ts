@@ -12,6 +12,7 @@ export type HostCapabilities = {
   compositor_frame?: boolean;
   open_in_browser?: boolean;
   restart_service?: boolean;
+  remove_runtime?: boolean;
   reconnect?: boolean;
   native_clipboard?: boolean;
   presentation?: boolean;
