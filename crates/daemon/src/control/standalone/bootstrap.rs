@@ -168,6 +168,10 @@ pub(crate) fn run_all_standalone(
     let mut config = RoleAllConfig::new(storage_root, runtime_root, listen, lkg)
         .with_diagnostics(diagnostics.port())
         .with_released_commands_only();
+    #[cfg(target_os = "linux")]
+    {
+        config = config.with_standalone_agent_removal_lock(&layout);
+    }
     match (arguments.cpa_binary, arguments.cpa_sha256) {
         (Some(binary), Some(expected_sha256_hex)) => {
             config = config.with_cpa(RoleAllCpaConfig {

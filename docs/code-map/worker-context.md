@@ -35,6 +35,9 @@ projection in [Gateway authority](../../crates/gateway/src/request_plan/mod.rs);
 cover native and cross-protocol forwarding.
 Native defaults and collaboration stay independent;
 restoration must verify ownership rather than infer it from a provider name.
+The [Linux standalone Agent removal gate](../../crates/daemon/src/control/agent_removal.rs)
+coordinates settings Apply, Restore, retry and startup recovery with the
+[installer's exclusive teardown](../../scripts/install-standalone.py).
 [Native routing resources](../../crates/integrations/src/agents/routing_adapters.rs)
 use the same protected artifact journal as model settings. The
 [request-purpose boundary](../../crates/gateway/src/context_hold/routing.rs) admits
