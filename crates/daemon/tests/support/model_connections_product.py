@@ -494,10 +494,16 @@ def capability_intent_journey(product, upstream):
     inference = check_native(product, inference_draft)
     assert inference['inference'] == 'verified', inference
     assert inference['inference_model_id'] == MODEL, inference
-    assert inference['directory'] == 'available', inference
+    # An inference-only check probes exactly one model and does not read the
+    # directory, so its directory state stays not_run and no ID is observed here.
+    assert inference['directory'] == 'not_run', inference
+    assert inference.get('observed_model_ids', []) == [], inference
     with upstream.lock:
-        probed = [request for request in upstream.requests[before_inference:]
-                  if request['method'] == 'POST']
+        inference_requests = list(upstream.requests[before_inference:])
+    assert not [request for request in inference_requests
+                if request['method'] == 'GET'], inference_requests
+    probed = [request for request in inference_requests
+              if request['method'] == 'POST']
     assert probed and probed[-1]['body']['model'] == MODEL, probed
     assert probed[-1]['body'].get('tools'), probed
     upstream.function_tools = False
