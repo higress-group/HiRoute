@@ -136,6 +136,12 @@ pub(crate) fn command_payload(
         "compute.defaults.preview" => Some(request::<
             hiroute_application_api::ComputeSavePreviewRequestV3,
         >(options)),
+        "compute.budgets.get" => {
+            Some(request::<hiroute_application_api::ComputeKeyBudgetsQueryV1>(options))
+        }
+        "compute.budgets.preview" => Some(request::<
+            hiroute_application_api::ComputeKeyBudgetSaveRequestV1,
+        >(options)),
         "models.metadata.list" => Some(if options.is_empty() {
             empty::<hiroute_application_api::ListModelMetadataV1>(options)
         } else {
