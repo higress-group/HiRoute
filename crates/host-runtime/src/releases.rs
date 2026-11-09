@@ -277,17 +277,21 @@ impl WebsiteReleasesV2 {
 }
 
 #[cfg(test)]
+#[path = "../tests/support/website_release_feed.rs"]
+mod website_release_feed;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn current_website_catalog_is_the_upgrade_reader_contract() {
-        let bytes = include_bytes!("../../../apps/website/data/releases.json");
-        let projection = crate::WebsiteReleasesV3::parse(bytes)
+        let feed = website_release_feed::website_v3_feed_fixture();
+        let projection = crate::WebsiteReleasesV3::parse(&feed)
             .unwrap()
             .v2_projection()
             .unwrap();
         let catalog = WebsiteReleasesV2::parse(&projection).unwrap();
-        let original: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        let original: serde_json::Value = serde_json::from_slice(&projection).unwrap();
         for architecture in ["arm64", "x86_64"] {
             let update = catalog
                 .desktop_update("0.0.1", architecture)

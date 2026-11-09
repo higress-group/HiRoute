@@ -2,12 +2,13 @@
 #[allow(dead_code)]
 #[rustfmt::skip]
 mod released;
+#[path = "support/website_release_feed.rs"]
+mod website_release_feed;
 use hiroute_host_runtime::WebsiteReleasesV3;
 #[test]
 fn supported_macos_reader_accepts_the_current_v2_projection_and_selects_its_dmg() {
     let current =
-        WebsiteReleasesV3::parse(include_bytes!("../../../apps/website/data/releases.json"))
-            .unwrap();
+        WebsiteReleasesV3::parse(&website_release_feed::website_v3_feed_fixture()).unwrap();
     let bytes = current.v2_projection().unwrap();
     let old = released::WebsiteReleasesV2::parse(&bytes).unwrap();
     for architecture in ["arm64", "x86_64"] {
