@@ -185,7 +185,7 @@ replace them with the verified release facts before validating a record:
 The filename must be the exact output of `scripts/package-desktop.py`:
 `self-signed` uses the `-trial.dmg` output and `developer-id` uses
 `-developer-id.dmg`. Standalone filenames and companion manifests must be the
-exact outputs of `scripts/package-standalone.py`; Linux packages are unsigned and
+exact outputs of `scripts/package-standalone.py`; Linux standalone packages are unsigned and
 are described as checksum-verified, never code-signed. A development candidate is
 not public merely because the schema accepts its distribution; it still needs the
 reviews above. The website
@@ -209,6 +209,11 @@ The canonical manifest uses schema `hiroute.website.releases/v3`. Preparation em
 Windows artifacts for supported older macOS readers. Linux archives include the
 Web UI assets as well as the CLI and service; this does not change their
 `standalone` package kind.
+
+Omarchy Desktop records list a signed Arch package, its detached signature and
+its checksum file. These assets use their immutable filenames in the downloads
+page and in GitHub Releases. Both updater feed projections omit Omarchy
+packages, preserving their existing readers and artifact formats.
 
 The manifest intentionally has no
 release-level Git revision. A release record cannot contain the SHA of the commit

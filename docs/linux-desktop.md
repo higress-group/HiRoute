@@ -10,8 +10,23 @@ operation described in the [standalone CLI guide](standalone-cli.md).
 
 Download the `hiroute-desktop` package, its detached signature and checksums for
 your machine from the [HiRoute release](https://github.com/higress-group/HiRoute/releases).
-Verify the signature against the release's independently published signing-key
-fingerprint and check the package digest. Pass the downloaded package file to `sudo pacman -U`.
+Download the [HiRoute Omarchy release public key](../assets/packaging/omarchy-release-key.asc)
+from the repository. Use `gpg --show-keys --with-fingerprint omarchy-release-key.asc`
+to check its primary fingerprint against `CB5F8ADEDC272ED8879D206C5642FA57EA8DF169`.
+Keep the package, its `.sig` and its `.sha256` together and check the digest.
+Once you have verified the fingerprint, add and locally sign the release key
+in the pacman keyring, then install the downloaded package.
+
+```sh
+package=HiRoute-0.6.0-REVISION-omarchy-ARCH.pkg.tar.xz
+sha256sum --check "$package.sha256"
+sudo pacman-key --add omarchy-release-key.asc
+sudo pacman-key --lsign-key CB5F8ADEDC272ED8879D206C5642FA57EA8DF169
+sudo pacman -U "$package"
+```
+
+Set `package` to the exact downloaded filename. Pacman verifies the adjacent
+signature using its normal signature policy.
 
 Open **HiRoute** from the app launcher. On first run, **Install background service**
 sets up the current user's CLI, service and local console from the package. The
@@ -41,7 +56,8 @@ python3 scripts/package-linux-desktop.py \
 
 The build expects Rust, Node/npm, the GTK3 and WebKitGTK 4.1 development
 interfaces, and Arch package tooling. It produces a candidate package and
-checksum. Release signing and publication happen in the release process.
+checksum. The release process signs the final package and verifies that its
+embedded runtime and manifest match the separately qualified standalone files.
 
 For an interrupted user runtime install, use **Recover installation** on the
 startup screen or the [standalone recovery command](standalone-cli.md). Keep the

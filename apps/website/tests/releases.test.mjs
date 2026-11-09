@@ -105,6 +105,37 @@ const standalone = {
   manifest_sha256: 'd'.repeat(64), manifest_size: 3456,
 };
 
+test('Omarchy Desktop publishes signed companion files while preserving both updater feeds', () => {
+  const value = structuredClone(manifest);
+  value.schema = 'hiroute.website.releases/v3';
+  const current = value.releases[0];
+  current.version = '0.5.1';
+  current.artifacts[0].filename = artifact.filename.replace('1.2.3', current.version);
+  const original = structuredClone(value);
+  const filename = 'HiRoute-0.5.1-aaaaaaaaaaaa-omarchy-x86_64.pkg.tar.xz';
+  const omarchy = {
+    kind: 'desktop', platform: 'Omarchy', architecture: 'x86_64', format: 'pkg.tar.xz', distribution: 'openpgp',
+    filename, sha256: 'a'.repeat(64), size: 1024,
+    signature_filename: `${filename}.sig`, signature_sha256: 'b'.repeat(64), signature_size: 128,
+    checksum_filename: `${filename}.sha256`, checksum_sha256: 'c'.repeat(64), checksum_size: 140,
+  };
+  current.artifacts.push(omarchy);
+  assert.equal(validateReleaseManifest(value), value);
+  assert.deepEqual(projectReleaseManifest(value), original);
+  assert.deepEqual(projectReleaseManifest(value, LEGACY_RELEASE_SCHEMA), projectReleaseManifest(original, LEGACY_RELEASE_SCHEMA));
+  assert.equal(artifactUrl(current, omarchy), `https://hiroute.ai/releases/0.5.1/${filename}`);
+  assert.deepEqual(publicationAssets(current, omarchy).map(item => [item.filename, item.key]),
+    [filename, omarchy.signature_filename, omarchy.checksum_filename].map(name => [name, `releases/0.5.1/${name}`]));
+  for (const drift of [
+    { architecture: 'arm64' }, { distribution: 'unsigned' }, { signature_filename: 'other.sig' },
+    { checksum_sha256: 'invalid' }, { signature_size: 0 },
+  ]) {
+    const altered = structuredClone(value);
+    Object.assign(altered.releases[0].artifacts[1], drift);
+    assert.throws(() => validateReleaseManifest(altered));
+  }
+});
+
 test('release links use the immutable hiroute.ai version path', () => {
   assert.equal(validateReleaseManifest(manifest), manifest);
   assert.equal(artifactKey(release, artifact), `releases/1.2.3/${artifact.filename}`);

@@ -8,6 +8,14 @@ acceptance and does not by itself authorize publishing that target. All componen
 committed source revision, with CPA built from `vendor/cpa/source.json` and its
 checked patch.
 
+Omarchy Desktop uses a native Arch build from the same source revision with the
+already qualified standalone archive and manifest for its architecture. Sign
+the exact package and verify native installation with its detached signature
+using the [Omarchy guide](linux-desktop.md). Publish the Arch package, detached signature and
+SHA-256 file together. The publication workflow verifies the signature with
+the public key at the released revision and compares the embedded archive and
+manifest with the qualified inputs.
+
 The candidate builder must reject a host/target mismatch, dirty source, external
 Cargo targets, inconsistent component versions and wrong-architecture binaries.
 It must retain a separate output directory for every attempt, use checkout-local
@@ -288,6 +296,10 @@ product fixes and retain each result at its actual source revision.
    [short website download links](../apps/website/README.md#public-release-contract).
    Preserve historical records and regenerate website content twice, checking
    that the second run introduces no difference.
+   For Omarchy, use `HiRoute-<version>-<revision-prefix>-omarchy-<arch>.pkg.tar.xz`
+   or the `.pkg.tar.zst` equivalent. Include the measured archive, `.sig` and
+   `.sha256` records in the same catalog. The download page uses these records
+   and the existing updater feed projections exclude them.
    Complete the [documentation review](../apps/website/docs/release-reviews/README.md)
    for the exact built product SHA and final website contents in this same PR.
    Run its `check` command plus website tests/build before publishing the GitHub

@@ -107,14 +107,86 @@ def package(args):
             "version": version, "console_assets_sha256": fingerprint}
 
 
+def verify_member(tar, package_path, name, expected_sha256, expected_size):
+    digest = hashlib.sha256()
+    size = 0
+    with subprocess.Popen([tar, "-xOf", str(package_path), name], stdout=subprocess.PIPE) as reader:
+        for chunk in iter(lambda: reader.stdout.read(1024 * 1024), b""):
+            size += len(chunk)
+            if size > expected_size:
+                reader.kill()
+                raise ValueError(f"Omarchy package member exceeds its expected size: {name}")
+            digest.update(chunk)
+        if reader.wait() != 0 or size != expected_size or digest.hexdigest() != expected_sha256:
+            raise ValueError(f"Omarchy package member differs from the qualified runtime: {name}")
+
+
+def verify_package(args):
+    package_path = args.verify_package.resolve()
+    signature = package_path.with_name(package_path.name + ".sig")
+    with tempfile.TemporaryDirectory(prefix="hiroute-omarchy-verify-") as directory:
+        keyring = Path(directory) / "trusted.gpg"
+        subprocess.run(["gpg", "--no-options", "--homedir", directory, "--batch", "--dearmor",
+                        "--output", str(keyring), str(args.public_key.resolve())], check=True)
+        status = output("gpgv", "--homedir", directory, "--keyring", str(keyring), "--status-fd", "1",
+                        str(signature), str(package_path))
+    signers = [line.split()[-1] for line in status.splitlines() if line.startswith("[GNUPG:] VALIDSIG ")]
+    if len(signers) != 1 or not re.fullmatch(r"[0-9A-F]{40}", signers[0]):
+        raise ValueError("Omarchy package requires one trusted OpenPGP signature")
+
+    standalone = runpy.run_path(str(ROOT / "scripts/package-standalone.py"))
+    manifest = standalone["verify"](args.manifest, args.archive)
+    arch = manifest["target"].split("-", 1)[0]
+    if arch not in SUPPORTED or manifest["target"] != f"{arch}-unknown-linux-gnu":
+        raise ValueError("Omarchy package requires a supported Linux standalone runtime")
+    version = manifest["version"]
+    prefix = "usr/share/hiroute-desktop/standalone/"
+    runtime_name = f"{prefix}HiRoute-{version}-linux-{arch}.tar.gz"
+    manifest_name = f"{prefix}manifest.json"
+    required = {
+        ".PKGINFO", ".BUILDINFO", ".MTREE", "usr/bin/hiroute-desktop",
+        "usr/share/applications/ai.hiroute.desktop.desktop",
+        "usr/share/icons/hicolor/scalable/apps/ai.hiroute.desktop.svg",
+        "usr/share/licenses/hiroute-desktop/LICENSE",
+        f"{prefix}install-standalone.py", manifest_name, runtime_name,
+    }
+    tar = shutil.which("bsdtar") or "tar"
+    files = [name for name in output(tar, "-tf", str(package_path)).splitlines() if not name.endswith("/")]
+    if len(files) != len(required) or set(files) != required:
+        raise ValueError("Omarchy package has a different file inventory")
+    info = {}
+    for line in output(tar, "-xOf", str(package_path), ".PKGINFO").splitlines():
+        field, _, value = line.partition(" = ")
+        if field in {"pkgname", "arch", "pkgver"}:
+            if field in info:
+                raise ValueError(f"Omarchy package metadata repeats {field}")
+            info[field] = value
+    if (info.get("pkgname") != "hiroute-desktop" or info.get("arch") != arch
+            or not re.fullmatch(re.escape(version.replace("-", ".")) + r"-[0-9]+(?:\.[0-9]+)?", info.get("pkgver", ""))):
+        raise ValueError("Omarchy package metadata differs from the qualified runtime")
+    verify_member(tar, package_path, manifest_name, standalone["digest"](args.manifest), args.manifest.stat().st_size)
+    verify_member(tar, package_path, runtime_name, manifest["archive"]["sha256"], manifest["archive"]["size"])
+    return {"architecture": arch, "revision": manifest["revision"], "version": version,
+            "signing_fingerprint": signers[0], "sha256": standalone["digest"](package_path)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--binary", type=Path, help="use a prebuilt shell with the same compiled identity")
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path, help="destination for a new Arch package")
+    parser.add_argument("--verify-package", type=Path, help="verify a signed Arch package and its bundled runtime")
+    parser.add_argument("--public-key", type=Path, help="trusted OpenPGP public key for verification")
+    args = parser.parse_args()
+    if args.verify_package:
+        if not args.public_key or args.output or args.binary:
+            parser.error("--verify-package requires --public-key and does not build a package")
+    elif not args.output or args.public_key:
+        parser.error("--output is required to build a package")
     try:
-        print(json.dumps(package(parser.parse_args()), sort_keys=True))
+        result = verify_package(args) if args.verify_package else package(args)
+        print(json.dumps(result, sort_keys=True))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"Linux Desktop packaging failed: {error}\n")
 
