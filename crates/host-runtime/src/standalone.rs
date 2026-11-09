@@ -280,17 +280,7 @@ pub fn read_standalone_install_record(
 
 #[cfg(unix)]
 fn marker_file(path: &Path) -> Result<std::fs::File, StandaloneLayoutError> {
-    use std::os::unix::fs::OpenOptionsExt;
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(nix::libc::O_NOFOLLOW)
-        .open(path)
-        .map_err(|_| StandaloneLayoutError)?;
-    let metadata = file.metadata().map_err(|_| StandaloneLayoutError)?;
-    if !metadata.is_file() {
-        return Err(StandaloneLayoutError);
-    }
-    Ok(file)
+    hiroute_platform::private_fs::open_regular_file(path).map_err(|_| StandaloneLayoutError)
 }
 
 #[cfg(windows)]
@@ -311,6 +301,20 @@ pub struct StandaloneLayoutError;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(unix)]
+    fn standalone_record_refuses_fifo_without_a_writer() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("standalone.json");
+        nix::unistd::mkfifo(&path, nix::sys::stat::Mode::S_IRUSR).unwrap();
+        let (send, receive) = std::sync::mpsc::channel();
+        std::thread::spawn(move || send.send(read_standalone_install_record(&path)).ok());
+        assert!(matches!(
+            receive.recv_timeout(std::time::Duration::from_secs(1)),
+            Ok(Err(StandaloneLayoutError))
+        ));
+    }
 
     #[test]
     #[cfg(target_os = "linux")]

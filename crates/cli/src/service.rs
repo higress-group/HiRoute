@@ -15,9 +15,9 @@ use crate::LocalControlClient;
 const SERVICE_LABEL: &str = "ai.hiroute.cli";
 const MAX_LOG_BYTES: usize = 256 * 1024;
 
-#[cfg(windows)]
+#[cfg(any(target_os = "linux", windows))]
 mod restore_agents;
-#[cfg(any(windows, test))]
+#[cfg(any(target_os = "linux", windows, test))]
 mod restore_plan;
 #[cfg(windows)]
 mod windows;
@@ -446,6 +446,21 @@ fn installed() -> Result<(StandaloneLayout, StandaloneInstallRecordV1), ServiceF
     let record = hiroute_host_runtime::read_standalone_install_record(&layout.marker_path)
         .map_err(|_| ServiceFailure::Unavailable)?;
     Ok((layout, record))
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn require_restored_before_remove() -> u8 {
+    let Ok((layout, _)) = installed() else {
+        return 6;
+    };
+    if ensure_not_maintaining(&layout).is_err() {
+        return 6;
+    }
+    match restore_agents::require_restored(&layout) {
+        Ok(()) => 0,
+        Err(error) if error.to_string().starts_with("AGENT_RESTORE_REQUIRED:") => 3,
+        Err(_) => 6,
+    }
 }
 
 fn ensure_not_maintaining(layout: &StandaloneLayout) -> Result<(), ServiceFailure> {

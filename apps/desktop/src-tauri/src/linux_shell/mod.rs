@@ -25,6 +25,7 @@ struct Status {
     code: Option<&'static str>,
     logs_path: String,
     platform: &'static str,
+    operation_error: Option<&'static str>,
     storage_recovery: Option<StorageRecovery>,
 }
 
@@ -94,6 +95,7 @@ async fn authorize(
 enum Action {
     Connect,
     Install { login_start: bool },
+    Update { owner: String },
     Recover,
     Restart(NativeSession),
 }
@@ -103,7 +105,7 @@ fn start(
     host: Arc<Mutex<Host>>,
     action: Action,
 ) -> Result<(), &'static str> {
-    {
+    let previous_code = {
         let mut state = host.lock().map_err(|_| STATE_UNAVAILABLE)?;
         if state.busy {
             return Err("SHELL_ACTION_IN_PROGRESS");
@@ -111,9 +113,10 @@ fn start(
         state.busy = true;
         state.session = None;
         state.status.phase = "starting";
-        state.status.code = None;
+        state.status.operation_error = None;
         state.status.storage_recovery = None;
-    }
+        state.status.code.take()
+    };
     if !startup_url(&window_url(&window)?) {
         if window
             .navigate(Url::parse("tauri://localhost/").expect("bundled status URL"))
@@ -135,7 +138,11 @@ fn start(
                         runtime::enable_login_start().await?;
                     }
                 }
-                Action::Recover => runtime::install(true).await?,
+                Action::Recover => {
+                    runtime::install(true).await?;
+                    runtime::resume_recovered().await?;
+                }
+                Action::Update { owner } => runtime::update(&owner).await?,
                 Action::Restart(session) => session.restart().await?,
             }
             let live = LiveConsole::open().await?;
@@ -147,7 +154,15 @@ fn start(
         .await;
         if let Ok(mut state) = host.lock() {
             state.status.phase = if result.is_ok() { "ready" } else { "failed" };
-            state.status.code = result.err();
+            state.status.code = match result.err() {
+                Some(error @ ("RUNTIME_UPDATE_BLOCKED" | "PACKAGE_PAYLOAD_UNAVAILABLE"))
+                    if previous_code == Some("CONSOLE_NATIVE_RELEASE_UNAVAILABLE") =>
+                {
+                    state.status.operation_error = Some(error);
+                    previous_code
+                }
+                code => code,
+            };
             if state.status.code.is_some() {
                 state.session = None;
                 state.status.storage_recovery = runtime::layout().ok().and_then(|layout| {
@@ -198,6 +213,37 @@ fn shell_recover_runtime(window: WebviewWindow, host: HostState<'_>) -> Result<(
     start(window, host.inner().clone(), Action::Recover)
 }
 
+fn require_update_state(window: &WebviewWindow, host: &HostState<'_>) -> Result<(), &'static str> {
+    local(window)?;
+    let state = host.lock().map_err(|_| STATE_UNAVAILABLE)?;
+    if state.busy || state.status.code != Some("CONSOLE_NATIVE_RELEASE_UNAVAILABLE") {
+        return Err("RUNTIME_UPDATE_BLOCKED");
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn shell_preview_runtime_update(
+    window: WebviewWindow,
+    host: HostState<'_>,
+) -> Result<runtime::UpdatePreview, &'static str> {
+    require_update_state(&window, &host)?;
+    runtime::preview_update().await
+}
+
+#[tauri::command]
+fn shell_update_runtime(
+    window: WebviewWindow,
+    host: HostState<'_>,
+    owner: String,
+) -> Result<(), &'static str> {
+    require_update_state(&window, &host)?;
+    if owner.len() != 64 || !owner.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("RUNTIME_UPDATE_BLOCKED");
+    }
+    start(window, host.inner().clone(), Action::Update { owner })
+}
+
 #[tauri::command]
 async fn shell_open_legacy_browser(
     window: WebviewWindow,
@@ -227,7 +273,8 @@ async fn shell_capabilities(
         "cli_entry": false, "quit": false, "titlebar": false, "login_start": false,
         "directory_reveal": "native", "diagnostic_directory": layout.diagnostics_root(),
         "codex_desktop_launch": false, "compositor_frame": true, "open_in_browser": true,
-        "restart_service": true, "reconnect": true, "native_clipboard": true, "presentation": true
+        "restart_service": true, "remove_runtime": true, "reconnect": true,
+        "native_clipboard": true, "presentation": true
     }))
 }
 
@@ -363,6 +410,27 @@ async fn shell_restart_service(
 }
 
 #[tauri::command]
+async fn shell_remove_runtime(
+    window: WebviewWindow,
+    host: HostState<'_>,
+    bearer: String,
+) -> Result<(), &'static str> {
+    let bearer = Zeroizing::new(bearer);
+    let session = authorize(&window, &host, &bearer).await?;
+    {
+        let mut state = host.lock().map_err(|_| STATE_UNAVAILABLE)?;
+        if state.busy {
+            return Err("SHELL_ACTION_IN_PROGRESS");
+        }
+        state.busy = true;
+    }
+    let result = session.remove().await;
+    host.lock().map_err(|_| STATE_UNAVAILABLE)?.busy = false;
+    result?;
+    start(window, host.inner().clone(), Action::Connect)
+}
+
+#[tauri::command]
 fn shell_reconnect(window: WebviewWindow, host: HostState<'_>) -> Result<(), &'static str> {
     // Recovery after expiry only returns this window to bundled startup.
     session(&window, &host)?;
@@ -443,8 +511,9 @@ pub fn run() {
         .manage(host.clone())
         .invoke_handler(tauri::generate_handler![
             shell_status, shell_retry_startup, shell_install_runtime, shell_recover_runtime, shell_open_legacy_browser,
+            shell_preview_runtime_update, shell_update_runtime,
             shell_capabilities, shell_open_in_browser, shell_open_external_url, shell_save_classifier_openapi,
-            shell_restart_service, shell_reconnect, shell_open_diagnostic_directory, shell_write_clipboard,
+            shell_restart_service, shell_remove_runtime, shell_reconnect, shell_open_diagnostic_directory, shell_write_clipboard,
             shell_presentation_get, shell_presentation_set,
         ])
         .setup(move |app| {

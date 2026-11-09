@@ -439,6 +439,7 @@ class LinuxInstallPublicationTests(StandaloneFixture):
         driver = """
 import json, os, platform, runpy, signal, sys
 from pathlib import Path
+from types import SimpleNamespace
 script, interrupt, *arguments = sys.argv[1:]
 platform.system = lambda: "Linux"
 entry = runpy.run_path(script)["main"]
@@ -448,6 +449,24 @@ entry.__globals__["require_unused_user_service"] = lambda: None
 entry.__globals__["candidate_preflight"] = lambda *args: {
     "history_cutover_required": False, "required_bytes": 0,
 }
+if interrupt == "reload":
+    entry.__globals__["shutil"].which = lambda name: "/usr/bin/systemctl"
+    entry.__globals__["subprocess"].run = lambda *args, **kwargs: SimpleNamespace(returncode=0)
+    entry.__globals__["run_systemctl"] = lambda *args: SimpleNamespace(returncode=1)
+if interrupt == "concurrent-entry":
+    sync = entry.__globals__["sync_staged_component"]
+    def observed_sync(stage):
+        sync(stage)
+        if stage.parent == Path.home() / ".local/bin" and stage.name.startswith(".hiroute."):
+            (stage.parent / "hiroute").write_text("concurrent user entry")
+    entry.__globals__["sync_staged_component"] = observed_sync
+if interrupt in ("desktop-owner", "desktop-owner-changed"):
+    entry.__globals__["desktop_runtime_owner"] = lambda *args: interrupt
+    def observed_systemctl(action, *args, **kwargs):
+        with (Path.home() / "desktop-service-actions").open("a") as report:
+            report.write(action + chr(10))
+        return ""
+    entry.__globals__["desktop_systemctl"] = observed_systemctl
 replace = os.replace
 def observed_replace(source, destination):
     replace(source, destination)
@@ -492,6 +511,50 @@ entry()
         self.assertFalse((self.home / ".local/share/hiroute/standalone.json").exists())
 
     @patch.object(installer.platform, "system", return_value="Linux")
+    def test_first_run_keeps_an_entry_created_while_staging(self, _system):
+        manifest, archive = self.build()
+        refused = self.invoke("install", "--fresh", "--manifest", manifest, "--archive", archive,
+                              interrupt="concurrent-entry")
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("changed while staging", refused.stderr)
+        with self.environment():
+            paths = installer.layout(self.home)
+        self.assertEqual((paths["bin"] / "hiroute").read_text(), "concurrent user entry")
+        self.assertFalse(paths["marker"].exists())
+        self.assertFalse(installer.linux_install_journal(paths).exists())
+
+    @patch.object(installer.platform, "system", return_value="Linux")
+    def test_desktop_update_binds_live_owner_and_preserves_console(self, _system):
+        manifest, archive = self.build("0.5.3")
+        installed = self.invoke("install", "--manifest", manifest, "--archive", archive,
+                                "--console-mode", "loopback", "--console-port", "5839")
+        self.assertEqual(installed.returncode, 0, installed.stderr)
+        with self.environment():
+            paths = installer.layout(self.home)
+        marker = paths["marker"].read_bytes()
+        listener = paths["state"] / "console-listener.json"
+        settings = listener.read_bytes()
+        manifest, archive = self.build("0.6.0")
+        revision = json.loads(manifest.read_bytes())["revision"]
+        options = ("--manifest", manifest, "--archive", archive, "--desktop-revision", revision)
+        preview = self.invoke("install", *options, interrupt="desktop-owner")
+        self.assertEqual(preview.returncode, 0, preview.stderr)
+        review = json.loads(preview.stdout)
+        self.assertEqual((review["installed"], review["candidate"]), ("0.5.3", "0.6.0"))
+
+        apply = (*options, "--expect-owner", review["owner"])
+        changed = self.invoke("install", *apply, interrupt="desktop-owner-changed")
+        self.assertNotEqual(changed.returncode, 0)
+        self.assertEqual(paths["marker"].read_bytes(), marker)
+        self.assertFalse((self.home / "desktop-service-actions").exists())
+
+        updated = self.invoke("install", *apply, interrupt="desktop-owner")
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertEqual(json.loads(paths["marker"].read_bytes())["version"], "0.6.0")
+        self.assertEqual(listener.read_bytes(), settings)
+        self.assertEqual((self.home / "desktop-service-actions").read_text(), "stop\n")
+
+    @patch.object(installer.platform, "system", return_value="Linux")
     def test_recovery_restores_interrupted_publication_and_finishes_commit(self, _system):
         first_manifest, first_archive = self.build("0.5.1")
         first = self.invoke("install", "--manifest", first_manifest, "--archive", first_archive)
@@ -514,6 +577,12 @@ entry()
         self.assertIn(b"/0.5.3/hirouted", unit.read_bytes())
         self.assertNotEqual(self.invoke("uninstall").returncode, 0)
 
+        retained = journal.read_bytes()
+        failed_reload = self.invoke("recover", interrupt="reload")
+        self.assertNotEqual(failed_reload.returncode, 0)
+        self.assertIn("user service reload failed", failed_reload.stderr)
+        self.assertEqual(journal.read_bytes(), retained)
+        self.assertEqual((paths["marker"].read_bytes(), unit.read_bytes()), original)
         recovered = self.invoke("recover")
         self.assertEqual(recovered.returncode, 0, recovered.stderr)
         self.assertEqual(json.loads(recovered.stdout), {"recovered": True})
@@ -525,6 +594,11 @@ entry()
         committed = self.invoke("install", *options, interrupt="commit")
         self.assertEqual(committed.returncode, -signal.SIGKILL, committed.stderr)
         self.assertEqual(json.loads(journal.read_bytes())["phase"], "committed")
+        retained = journal.read_bytes()
+        failed_reload = self.invoke("recover", interrupt="reload")
+        self.assertNotEqual(failed_reload.returncode, 0)
+        self.assertIn("user service reload failed", failed_reload.stderr)
+        self.assertEqual(journal.read_bytes(), retained)
         finished = self.invoke("recover")
         self.assertEqual(finished.returncode, 0, finished.stderr)
         self.assertFalse(journal.exists())
