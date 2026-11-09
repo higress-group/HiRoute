@@ -990,7 +990,11 @@ mod tests {
         );
         // A saved local row is reconstructed from its stored facts. Same-ID catalog
         // candidates must not replace its label, membership or unknown capabilities.
-        for id in ["deepseek-v4-flash", "deepseek-v4.1-flash", "my-private-model"] {
+        for id in [
+            "deepseek-v4-flash",
+            "deepseek-v4.1-flash",
+            "my-private-model",
+        ] {
             let model = draft
                 .models
                 .iter()

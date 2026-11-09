@@ -189,7 +189,8 @@ mod tests {
         }
         assert!(candidates.iter().all(|model| {
             model.catalog_configuration_id.is_none()
-                && model.membership == hiroute_application_api::ComputeModelMembershipV2::UserDeclared
+                && model.membership
+                    == hiroute_application_api::ComputeModelMembershipV2::UserDeclared
                 && facts(&model.capabilities.tool) == (true, true)
                 && facts(&model.capabilities.vision) == (true, true)
                 && facts(&model.capabilities.streaming) == (true, true)
