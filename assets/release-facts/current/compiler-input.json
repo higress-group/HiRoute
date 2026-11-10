@@ -5688,7 +5688,7 @@
             "web": "supported"
           },
           "context_tokens": {
-            "state": "exact",
+            "state": "known",
             "value": 1050000
           },
           "context_variants": [],
@@ -5703,7 +5703,7 @@
           "max_output_note": null,
           "max_output_scope": null,
           "max_output_tokens": {
-            "state": "exact",
+            "state": "known",
             "value": 128000
           },
           "modalities": {
@@ -104052,7 +104052,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:f6812e47de40ff28549c1342ba784b53061949a65d0b4c9782dbca07b379c798"
+      "source_catalog_digest": "sha256:331273a638bb649010aafa6611e5ec3493380cbb1e0bb9e733f5ce1744d35577"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -106161,7 +106161,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 8,
+    "data_revision": 9,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",

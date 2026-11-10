@@ -55,6 +55,9 @@ class NovemberProductMetadataTests(unittest.TestCase):
 
     def test_terra_direct_limits_efforts_and_protocol_boundary(self):
         model = self.models[TERRA]
+        published = next(m for m in self.data['metadata_catalog']['canonical_models'] if m['model_key'] == TERRA)
+        self.assertEqual(published['context_tokens'], {'state': 'known', 'value': 1_050_000})
+        self.assertEqual(published['max_output_tokens'], {'state': 'known', 'value': 128_000})
         self.assertEqual((model['context_tokens'], model['max_input_tokens'], model['max_output_tokens']),
                          (1_050_000, 922_000, 128_000))
         self.assertEqual(model['reasoning']['profiles'], ['none', 'low', 'medium', 'high', 'xhigh', 'max'])

@@ -4767,9 +4767,7 @@
         "gpt-6.1-terra"
       ],
       "context_tokens": 1050000,
-      "context_state": "exact",
       "max_output_tokens": 128000,
-      "max_output_state": "exact",
       "modalities": {
         "text_input": "supported",
         "image_input": "supported",
