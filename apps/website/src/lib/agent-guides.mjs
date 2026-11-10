@@ -5,18 +5,18 @@ export const agentGuideHub = 'agent-integrations';
 export const agentGuides = {
   'codex-model-routing': {
     zh: 'Codex', en: 'Codex', native: true,
-    title: { zh: 'Codex 订阅模型路由与 Codex Desktop 接入教程', en: 'Codex subscription model routing and Desktop setup' },
+    title: { zh: 'Codex API 赠金与订阅路由', en: 'Codex API credits and subscription routing' },
     description: {
-      zh: '登录 ChatGPT 订阅并导入 Codex 模型，配置按难度分流，再接入 Codex Desktop 独立窗口或 CLI。每一步都有图文说明。',
-      en: 'Import Codex models from your ChatGPT subscription, configure difficulty routing, and connect Codex Desktop or CLI with step-by-step screenshots.',
+      zh: '在 Codex Desktop 或 CLI 使用 ChatGPT 订阅和 OpenAI API 赠金。把同名模型加入候选，选择订阅优先或赠金优先。',
+      en: 'Use OpenAI API credits and your ChatGPT subscription in Codex Desktop or CLI. Combine the same model from both sources and choose which comes first.',
     },
   },
   'claude-code-model-routing': {
     zh: 'Claude Code', en: 'Claude Code', native: true,
-    title: { zh: 'Claude Code 订阅模型导入与智能路由', en: 'Claude Code subscription setup and model routing' },
+    title: { zh: 'Claude Code API 赠金与订阅路由', en: 'Claude Code API credits and subscription routing' },
     description: {
-      zh: '登录 Claude 订阅并选择账号模型，配置常规组与主力组，再映射到 Claude Code 的 Opus、Sonnet 或 Haiku 预设，配有完整步骤和截图。',
-      en: 'Import models from your Claude subscription, configure difficulty routing and map it to the Opus, Sonnet or Haiku preset in Claude Code.',
+      zh: '在 Claude Code 使用订阅和 Claude API 赠金。把同名模型放入候选并设置备用顺序，再映射到 Opus、Sonnet 或 Haiku。',
+      en: 'Use Claude API credits with Claude Code. Pair subscription and API candidates for the same model, order the fallback and map an Opus, Sonnet or Haiku preset.',
     },
   },
   'qoder-model-routing': {

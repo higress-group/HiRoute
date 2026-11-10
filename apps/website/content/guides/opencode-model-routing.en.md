@@ -10,7 +10,7 @@ Already have an OpenCode provider? Reuse its API in HiRoute, use a fast model fo
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/opencode-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/opencode-model-routing/ and help me get models, configure smart routing and connect my Agent. Use this guide's lightweight Pi example to show how a scoped task can use fewer primary-model tokens. Enable delegation when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Discover and save APIs: hiroute compute scan · compute connection prepare / preview / apply
@@ -57,6 +57,10 @@ Restart OpenCode and select the new route with `/models`. Ask it to summarize a 
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-Before submitting code, ask Pi to look for missing tests while OpenCode continues the fix. Other main Agents can also delegate a task to OpenCode when its tools suit the work.
+Before renaming an API field, let lightweight Pi find the callers, docs and tests that refer to it. An economical model handles the repository search. OpenCode receives the affected locations and keeps its primary model focused on implementation and verification.
 
-To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Create a Fixed model route called “Pi rename impact”. Under **More settings → Task delegation**, allow delegation and choose Pi, describe its purpose and enable it. Then turn on **Agent → OpenCode → Task routing**.
+
+> Use HiRoute to ask “Pi rename impact” where this field is referenced. Group the paths and line numbers by callers, docs and tests.
+
+Start with one field and see whether the report gives your main Agent enough to start editing. [Set up lightweight Pi delegation](/en/docs/task-routing/#lightweight-pi)

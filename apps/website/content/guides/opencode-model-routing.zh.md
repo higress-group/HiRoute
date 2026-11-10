@@ -11,7 +11,7 @@
 
 ```text
 阅读 https://hiroute.ai/zh/docs/opencode-model-routing/
-请帮我按本页完成获取模型、配置智能路由和接入 Agent，再介绍任务委派的适用场景，按我的需要选择启用。CLI 参考：https://hiroute.ai/zh/docs/cli/
+请帮我按本页完成获取模型、配置智能路由和接入 Agent，再用本页的轻量 Pi 场景说明如何用更少的主力模型 token 完成独立任务。按我的需要启用委派。CLI 参考：https://hiroute.ai/zh/docs/cli/
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 发现和保存 API 来源：hiroute compute scan · compute connection prepare / preview / apply
@@ -58,6 +58,10 @@ OpenCode 的 `/models` 也可能显示动态发现或 OAuth 插件提供的模�
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 
-准备提交代码时，可以让 Pi 独立找测试缺口，同时让 OpenCode 继续修复。需要 OpenCode 的执行工具时，也可以让其他主 Agent 把一项任务交给它。
+给 API 字段改名时，先让轻量的 Pi 找出引用该字段的调用、文档和测试。用经济模型做代码库检索，OpenCode 只拿到需要修改的位置和风险提示，把主力模型的上下文留给实现和验证。
 
-想使用时，在路由的“更多设置 → 任务委派”中绑定执行 Agent，并在发起任务的主 Agent 上开启“任务路由”。执行方会按照这份计划选择模型，结果可在“Agent → 任务记录”查看。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)
+新建“Pi 改名影响检查”固定模型路由，在“更多设置 → 任务委派”中开启委派并选 Pi，填写用途并启用。再到“Agent → OpenCode → 任务路由”开启委派。
+
+> 用 HiRoute 把这个字段的改名影响交给“Pi 改名影响检查”。按调用、文档、测试三类列出路径和行号。
+
+从一处字段改名试起，看看委派结果是否足以让主 Agent 直接着手改动。[配置 Pi 轻量委派](/zh/docs/task-routing/#lightweight-pi)

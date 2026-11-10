@@ -1,8 +1,8 @@
-# Codex subscription model routing and Desktop setup
+# Codex API credits and subscription routing
 
-Connect your ChatGPT subscription and API models to HiRoute. Use an economical model for reading code and small changes, and a primary model for harder debugging. Follow the screenshots to import models, configure difficulty routing and use it in a separate Codex Desktop window or Codex CLI.
+Connect your ChatGPT subscription and the OpenAI API organization that received your credits. With two sources for the same GPT model, Codex can use API credits when the subscription reaches its limit, or use credits that are close to expiring first. Then select the route in a separate Codex Desktop window or in Codex CLI.
 
-[Download HiRoute](/en/download/) · [Browse Agent guides](/en/docs/agent-integrations/)
+[Download HiRoute](/en/download/) · [Browse Agent guides](/en/docs/agent-integrations/) · [Use your Codex subscription API credits](#api-credits)
 
 <aside class="agent-guide" id="agent-cli" aria-label="Instructions for an Agent">
 <div class="agent-guide-heading"><strong>Let an Agent follow this guide</strong></div>
@@ -10,9 +10,10 @@ Connect your ChatGPT subscription and API models to HiRoute. Use an economical m
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/codex-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/codex-model-routing/ and help me get models, configure smart routing and connect my Agent. Use this guide's lightweight Pi example to show how a scoped task can use fewer primary-model tokens. Enable delegation when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
+- If I have API credits, help me use the receiving organization's API connection and add the same model from both sources in my preferred order. See https://hiroute.ai/en/docs/codex-model-routing/#api-credits
 - Find Codex sources and the configuration target: hiroute compute scan · compute connection options · quickstart
 - Connect the client I use, Codex Desktop or Codex CLI. Create the route and preview the connection with routing preview / apply · agents connect preview / apply / status.
 - For Desktop, guide me to open the separate window from HiRoute. The agents desktop launch command also works in the local graphical session.
@@ -38,7 +39,7 @@ With a ChatGPT subscription, sign in and choose the Codex models available to yo
 </figure>
 
 3. When the card says **Signed in. Check and choose models**, click **Check and choose models**, then **Check subscription**. The available models appear when the check completes.
-4. Select the models you want and click **Save and connect**. Confirm they appear under **General models**, ready to add to your route.
+4. Select the models you want. To add credits as well, [enter the receiving organization's API key](#api-credits). Click **Save and connect** and confirm the models appear under **General models**.
 
 <figure class="guide-shot-dialog">
   <a href="/guide-assets/agent-guide-codex-subscription-models-en.webp"><img src="/guide-assets/agent-guide-codex-subscription-models-en.webp" alt="Selecting models from a checked Codex subscription before saving the connection" width="1200" height="900" loading="lazy" /></a>
@@ -46,6 +47,16 @@ With a ChatGPT subscription, sign in and choose the Codex models available to yo
 </figure>
 
 For an existing Codex setup, **Add models → Scan this device** can find supported subscription or API settings. Check and save the connection. Codex sign-in reuse supports credentials stored in a file. For a system keychain sign-in, use the independent **Connect subscription** flow above. You can also add an API key through **New API connection**.
+
+<h3 id="api-credits">Connect OpenAI API credits from your ChatGPT subscription</h3>
+
+Eligible ChatGPT Pro and Business subscribers can claim OpenAI API credits. Link your subscription to the API organization receiving the credits, then create a project API key in that organization. Pay-as-you-go requests through that key can draw on the credits. Check eligibility, balance and expiry in the [official OpenAI API credits guide](https://developers.openai.com/api/docs/guides/chatgpt-api-credits).
+
+1. Select the models in the checked subscription. Enter the receiving organization's key under **OpenAI API Key (optional)**, or choose a connection from that organization under **Use an existing API connection**.
+2. Click **Save and connect**. HiRoute imports the subscription models and their supported exact-ID counterparts from the API. For a saved subscription, select it in **General models → Connections**, then choose **Associate an API connection** or **Edit association** under **Subscription and API**.
+3. To budget API use around the credits, turn on **Limit API spending** during setup or later in the key's details. Use the provider's remaining credit amount and set a renewal schedule if the grant recurs. With model prices set, requests that exceed the local allowance can try the next available candidate. See [API key allowances](/en/docs/models/#api-key-allowance).
+
+Next, [put the subscription and API credit sources in one route](#credit-candidates).
 
 <h2 id="configure-routing">2. Configure smart routing</h2>
 
@@ -60,6 +71,15 @@ For an existing Codex setup, **Add models → Scan this device** can find suppor
 </figure>
 
 To adjust routing using execution feedback, select a decision model in the same section for stage scoring and low-score protection. [Learn about difficulty decisions](/en/docs/model-routing/#difficulty-routing)
+
+<h3 id="credit-candidates">Add the subscription and API credits as same-model candidates</h3>
+
+To use one model across the two sources, create a **Fixed model** route. Open **Models → General models** and switch to the **Models** view. Open the model from the source you want to use first. Click **Create routing**, then **Add together as candidates** in **Matching models found**. Check that the list contains the subscription and API sources you want. Set their order and enable the route. For an existing fixed route, new candidates are appended. Reorder them in the editor and publish the changes. Select the published route in Codex in the next step.
+
+- **Subscription first.** Put the subscription first and let the API use credits when subscription quota is unavailable.
+- **Credits first.** Put the API first when credits are close to expiring. Set a key allowance based on the credit balance so the subscription can take over when the allowance is too low.
+
+For difficulty routing, use **Add model** to choose the subscription and API entries for the same model. Put both in the same Regular or Primary group and order the sources within that group.
 
 <h2 id="connect-agent">3. Connect your Agent</h2>
 
@@ -104,6 +124,10 @@ Try a small task and inspect the actual model choices in HiRoute's session timel
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-While coding, you may want another Agent to investigate an error or check test coverage. Codex CLI can hand that scoped task to DSH or Pi and bring the result back to your conversation.
+When CI fails, let lightweight Pi sift through the logs while Codex focuses on diagnosing and fixing the problem. Give Pi an economical model that supports tool calls. The cheaper model processes the logs and tool output, and the main chat gets a short summary.
 
-Bind an executor in the plan under **More settings → Task delegation**, then enable it under **Agent → Codex → Task routing**. If you use the separate Desktop window, switch to Codex CLI to send delegated tasks. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Create a Fixed model route called “Pi log triage”. Under **More settings → Task delegation**, allow delegation and choose Pi, describe its purpose and enable the route. Turn on delegation under **Agent → Codex → Task routing**. If you use the separate Desktop window, send the task from [Codex CLI](#codex-cli).
+
+> Use HiRoute to send this CI log to “Pi log triage”. Return the first failure, the relevant files and one command to reproduce it.
+
+Ask Codex to retrieve the result. Confirm the executor in **Agent → Task history**, then check the model and usage in **Sessions → Routing timeline**. [Set up lightweight Pi delegation](/en/docs/task-routing/#lightweight-pi)

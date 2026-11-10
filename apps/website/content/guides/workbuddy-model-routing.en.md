@@ -10,7 +10,7 @@ Bring your WorkBuddy models into HiRoute. Route straightforward work to a Regula
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/workbuddy-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/workbuddy-model-routing/ and help me get models, configure smart routing and connect my Agent. Use this guide's lightweight Pi example to show how a scoped task can use fewer primary-model tokens. Enable delegation when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Inspect and save an API connection: hiroute compute list · compute connection options / test / preview / apply
@@ -92,6 +92,10 @@ You can also select the plan under **Agent → Codex → Model routing** and lau
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-When organizing research, ask Pi to read documents and Codex CLI to check their code examples, then combine the results in your main conversation. WorkBuddy supplies the models, and you choose an execution Agent to suit each task.
+While drafting a plan in Codex CLI, have lightweight Pi extract owners, deadlines and open questions from a set of documents. Give Pi an economical WorkBuddy model from step 1. Codex can work from the compact briefing while the WorkBuddy model handles the document reads.
 
-To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Create a Fixed model route called “Pi document scan” with the WorkBuddy model. Under **More settings → Task delegation**, allow delegation and choose Pi, describe its purpose and enable it. Turn on **Task routing** for the main Agent.
+
+> Use HiRoute to give these documents to “Pi document scan”. Return owners, deadlines, open questions and source references.
+
+Ask the main Agent to continue from the briefing, then check the executor and usage in task history and the session timeline. [Set up lightweight Pi delegation](/en/docs/task-routing/#lightweight-pi)

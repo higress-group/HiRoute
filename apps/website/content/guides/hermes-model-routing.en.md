@@ -10,7 +10,7 @@ Keep chatting and coordinating in Hermes. Reuse model sources from its active pr
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/hermes-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/hermes-model-routing/ and help me get models, configure smart routing and connect my Agent. Use this guide's lightweight Pi example to show how a scoped task can use fewer primary-model tokens. Enable delegation when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Confirm the profile and available sources: hiroute quickstart --hermes-root PATH · compute scan · compute connection prepare
@@ -57,6 +57,10 @@ Reload Hermes as prompted and open a new conversation. Ask it to organize a shor
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-Once you agree on a requirement in Hermes, send “Implement this change and run the relevant tests” to Codex CLI. Hermes can continue the discussion, coordinate the work and summarize the result.
+When Hermes writes a weekly update, send the release notes and working notes to lightweight Pi to extract changes, action items and sources. An economical model reads the documents. Hermes gets a short briefing and decides what belongs in the update.
 
-To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Create a Fixed model route called “Pi weekly briefing”. Under **More settings → Task delegation**, allow delegation and choose Pi, describe its purpose and enable it. Turn on **Task routing** for the Hermes profile you use.
+
+> Use HiRoute to send these notes to “Pi weekly briefing”. Return up to three changes and three action items with source references.
+
+Let Hermes use the briefing in its update. A separate route bound to Codex CLI can handle a focused implementation. [Set up lightweight Pi delegation](/en/docs/task-routing/#lightweight-pi)

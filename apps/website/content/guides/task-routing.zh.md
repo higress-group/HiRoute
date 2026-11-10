@@ -5,9 +5,10 @@
 | 你日常使用的主 Agent | 想使用的能力 | 可发布的任务路由示例 |
 | --- | --- | --- |
 | Codex | 用 DeepSeek Harness（DSH）运行 DeepSeek 模型 | “DSH 开发”：接入可用的 DeepSeek 模型，执行 Agent 选 DeepSeek Harness |
+| Codex CLI 或 Claude Code | 让经济模型先检查日志和测试 | [“Pi 快速检查”](#lightweight-pi)，选经济模型和 Pi 执行 Agent |
 | Hermes | 用 Codex 完成编码与测试 | “Codex 编码”：选好执行模型，执行 Agent 选 Codex CLI |
 
-两条能力可以独立启用。主 Agent 可以保留原来的模型与登录，只在需要时委派任务。下面以桌面应用说明，Linux Web UI 操作相同。
+主 Agent 可以保留原来的模型与登录，按需启用任务委派。下面以桌面应用说明，Linux Web UI 操作相同。
 
 **推荐通过产品内置委派技能使用任务路由。** 按下方步骤在“Agent → 任务路由”中启用，之后只需向主 Agent 说明任务目标，技能负责发现路由、委派和取回结果。配置路由也可以交给已[开启管理技能](/zh/docs/#management-skill)的 Agent；界面与 CLI 共用同一份配置和任务记录。
 
@@ -53,6 +54,21 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 委派适合目标、工作目录和交付物相对清楚、可以独立执行的工作，例如实现一个局部功能、检查一组测试失败或整理一份研究结果。主 Agent 负责发现已开放的计划、选择合适场景并取回结果。
 
 协调本身、计划发现、状态查询、等待和结果总结不应再次委派。执行 Agent 也不能递归发起另一层委派。
+
+<h3 id="lightweight-pi">用轻量 Pi 降低委派任务的 token 成本</h3>
+
+用 Pi 做日志初筛、找调用位置或整理测试缺口时，把明确的目标和相关文件交给独立执行任务。Pi 是轻量 Harness，可以用较短的系统提示开始工作。给它配支持工具调用的经济模型，大段输入和工具往返由低单价模型处理，主 Agent 只读所需的简短结果。对重复的日志和代码检查，这样能明显减少主力模型的 token 开销。[Pi 官方说明](https://pi.dev/)
+
+在 HiRoute 服务所在主机准备 Pi 和 Node.js。新建“Pi 快速检查”固定模型路由，选一个经济模型，再到“更多设置 → 任务委派”开启“允许委派任务给执行 Agent”，选 Pi 并检测安装。用途可填“读取指定文件，列出关键发现和来源位置”。启用路由后，[在主 Agent 开启任务路由](#delegation-skill)。
+
+<figure class="guide-shot-panel">
+  <a href="/guide-assets/agent-guide-pi-worker-zh.webp"><img src="/guide-assets/agent-guide-pi-worker-zh.webp" alt="HiRoute 智能路由中开启任务委派并选择 Pi 执行 Agent" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>开启任务委派，选择 Pi 执行，然后检测本机的 Pi 和 Node.js。</figcaption>
+</figure>
+
+> 使用 HiRoute，让“Pi 快速检查”读这次失败的测试日志。返回第一个错误、相关文件和复现命令。
+
+在“Agent → 任务记录”核对执行方，再到“会话 → 路由时间线”看主会话和委派任务各自使用的模型与 token。对比相似工作时，合计两边的用量和按量费用，找出最适合交给 Pi 的任务。
 
 ## 1. 配置一条可委派的路由
 

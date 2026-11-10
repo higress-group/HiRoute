@@ -10,7 +10,7 @@ Keep the DeepSeek Harness workflow. Use a fast model for straightforward questio
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/deepseek-harness-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/deepseek-harness-model-routing/ and help me get models, configure smart routing and connect my Agent. Use this guide's lightweight Pi example to show how a scoped task can use fewer primary-model tokens. Enable delegation when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Find DSH and importable models: hiroute quickstart · compute scan · compute connection prepare
@@ -57,6 +57,10 @@ Restart that client, select the route in its model picker and try a log-analysis
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-When analyzing a problem in DSH Web or CLI, hand a focused fix to Codex CLI. Another Agent can also delegate root-cause investigation to DSH.
+When investigating a failed request in DSH, have lightweight Pi pull a timeline and status codes from the gateway logs. Pi can process the raw logs with an economical model, leaving the primary model in DSH to reason from the evidence.
 
-Bind an executor in the plan under **More settings → Task delegation**. To delegate from DSH, enable **Task routing** in the **DeepSeek Harness Web** entry in HiRoute. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Create a Fixed model route called “Pi request timeline”. Under **More settings → Task delegation**, allow delegation and choose Pi, describe its purpose and enable it. To delegate from DSH Web or CLI, turn on **Task routing** in HiRoute's **DeepSeek Harness Web** entry.
+
+> Use HiRoute to ask “Pi request timeline” for the timestamps, status codes and first error line for this failed request. Report in five lines or fewer.
+
+Retrieve the summary for DSH to analyze, or hand a focused fix to a route bound to Codex CLI. [Set up lightweight Pi delegation](/en/docs/task-routing/#lightweight-pi)

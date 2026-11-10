@@ -11,7 +11,7 @@
 
 ```text
 阅读 https://hiroute.ai/zh/docs/pi-model-routing/
-请帮我按本页完成获取模型、配置智能路由和接入 Agent，再介绍任务委派的适用场景，按我的需要选择启用。CLI 参考：https://hiroute.ai/zh/docs/cli/
+请帮我按本页完成获取模型、配置智能路由和接入 Agent，再用本页的轻量 Pi 场景说明如何用更少的主力模型 token 完成独立任务。按我的需要启用委派。CLI 参考：https://hiroute.ai/zh/docs/cli/
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 扫描和检查可复用配置：hiroute compute scan · compute connection prepare / preview / apply
@@ -58,6 +58,10 @@
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 
-用 Pi 梳理完方案后，可以把“运行相关测试并汇总失败原因”交给 Codex CLI，自己继续讨论实现细节。也可以让其他主 Agent 把资料收集类任务交给 Pi。
+在主 Pi 会话里用主力模型设计方案时，可以让另一条轻量 Pi 执行计划去收集相关测试和调用位置。让经济模型处理文件读取和搜索，主 Pi 读一段索引后继续推理。需要实现复杂改动时，也可以选择绑定 Codex CLI 的计划。
 
-想使用时，在路由的“更多设置 → 任务委派”中绑定执行 Agent，并在发起任务的主 Agent 上开启“任务路由”。执行方会按照这份计划选择模型，结果可在“Agent → 任务记录”查看。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)
+建一条“Pi 快速检索”固定模型路由，在“更多设置 → 任务委派”中开启委派并选 Pi，填写用途并启用。然后在主 Agent 的“Pi → 任务路由”中开启委派。
+
+> 使用 HiRoute 把这个函数的测试检索交给“Pi 快速检索”。只返回测试文件、用例名和覆盖到的行为。
+
+在主会话和执行任务的时间线中分别核对实际模型和用量。[给 Pi 配置轻量执行计划](/zh/docs/task-routing/#lightweight-pi)

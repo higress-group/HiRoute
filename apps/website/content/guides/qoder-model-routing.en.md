@@ -10,7 +10,7 @@ Discover your Qoder subscription models through headless Magpie, then configure 
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/qoder-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/qoder-model-routing/ and help me get models, configure smart routing and connect my Agent. Use this guide's lightweight Pi example to show how a scoped task can use fewer primary-model tokens. Enable delegation when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Inspect the Magpie connection: hiroute compute list · compute scan · compute connection test / preview / apply
@@ -122,6 +122,10 @@ After changing route settings, quit this instance and open it again with the sam
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-When exploring a module in Qoder CLI or Pi, ask Codex CLI to check test coverage. If you use the separate Codex Desktop window above, switch to [Codex CLI](/en/docs/codex-model-routing/#codex-cli) to send a delegated task.
+Before adding a feature, let lightweight Pi find the module's entry points, callers and tests. An economical model handles repeated searches. Your Qoder conversation can start design work from a short index with file locations.
 
-To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Create a Fixed model route called “Pi module index”. Under **More settings → Task delegation**, allow delegation and choose Pi, give it a purpose and enable it. Turn on **Task routing** in the **Qoder** entry for Qoder CLI. If you use the separate Desktop setup above, send delegated tasks from [Codex CLI](/en/docs/codex-model-routing/#codex-cli).
+
+> Use HiRoute to hand this module to “Pi module index”. List its entry points, direct callers and relevant tests with file paths.
+
+Start with one module and compare usage in the main conversation and the delegated task. [Set up lightweight Pi delegation](/en/docs/task-routing/#lightweight-pi)

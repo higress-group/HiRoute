@@ -11,7 +11,7 @@
 
 ```text
 阅读 https://hiroute.ai/zh/docs/qoder-model-routing/
-请帮我按本页完成获取模型、配置智能路由和接入 Agent，再介绍任务委派的适用场景，按我的需要选择启用。CLI 参考：https://hiroute.ai/zh/docs/cli/
+请帮我按本页完成获取模型、配置智能路由和接入 Agent，再用本页的轻量 Pi 场景说明如何用更少的主力模型 token 完成独立任务。按我的需要启用委派。CLI 参考：https://hiroute.ai/zh/docs/cli/
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 检查 Magpie 模型接入：hiroute compute list · compute scan · compute connection test / preview / apply
@@ -123,6 +123,10 @@ curl -fsS -H 'Authorization: Bearer magpie' http://127.0.0.1:3425/v1/models
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 
-用 Qoder CLI 或 Pi 梳理模块时，可以把测试覆盖检查交给 Codex CLI。使用上面的 Codex Desktop 接入时，可切到 [Codex CLI](/zh/docs/codex-model-routing/#codex-cli) 发起委派。
+准备给一个模块加功能时，可以先让轻量的 Pi 找入口、调用方和相关测试。给 Pi 配一个经济模型来做多轮搜索，Qoder 主会话只需读一份带文件位置的索引，就能直接开始设计。
 
-想使用时，在路由的“更多设置 → 任务委派”中绑定执行 Agent，并在发起任务的主 Agent 上开启“任务路由”。执行方会按照这份计划选择模型，结果可在“Agent → 任务记录”查看。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)
+创建“Pi 模块索引”固定模型路由，在“更多设置 → 任务委派”中开启委派并选 Pi，写清用途并启用。用 Qoder CLI 时，在 HiRoute 的“Qoder”条目开启“任务路由”。使用上面的独立 Desktop 接入时，可从 [Codex CLI](/zh/docs/codex-model-routing/#codex-cli) 发起委派。
+
+> 用 HiRoute 把当前模块的梳理交给“Pi 模块索引”。列出入口、直接调用方和对应测试，附文件路径。
+
+先用一个模块试一下，再比较主会话与委派任务的用量。[配置 Pi 轻量委派](/zh/docs/task-routing/#lightweight-pi)
