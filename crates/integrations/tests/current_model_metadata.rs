@@ -112,7 +112,7 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         "incomplete bindings must not become executable capabilities"
     );
     assert_eq!(data.metadata_catalog.provider_records.len(), 105);
-    assert_eq!(data.metadata_catalog.model_records.len(), 769);
+    assert_eq!(data.metadata_catalog.model_records.len(), 771);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 190);
     for product_key in [
         "bailian-token-personal-cn-beijing",
@@ -447,6 +447,52 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
     )));
     let (manifest, registry, bytes) = encoded(&registry, &data);
     TrustedReleaseCatalog::load_release_facts(&manifest, &registry, &bytes).unwrap();
+}
+
+#[test]
+fn claude_52_metadata_survives_client_loading_without_promoting_executable_models() {
+    let (registry, data) = fixture();
+    let (manifest, registry_bytes, data_bytes) = encoded(&registry, &data);
+    let catalog =
+        TrustedReleaseCatalog::load_release_facts(&manifest, &registry_bytes, &data_bytes).unwrap();
+    let metadata = catalog.model_metadata();
+    for model_id in ["claude-fable-5-2", "claude-mythos-5-2"] {
+        let model = metadata
+            .canonical_models
+            .iter()
+            .find(|model| model.model_key == model_id)
+            .unwrap();
+        assert_eq!(model.context_tokens.value, Some(1_000_000));
+        assert_eq!(model.max_output_tokens.value, Some(128_000));
+        assert_eq!(model.reasoning.kind, "adaptive-fixed-on");
+        assert_eq!(model.reasoning.default.as_deref(), Some("high"));
+        let record = metadata
+            .model_records
+            .iter()
+            .find(|record| record.model_record_key == format!("official/anthropic-api/{model_id}"))
+            .unwrap();
+        assert!(
+            record
+                .usable_for
+                .contains(&MetadataUsageScenarioV1::CustomApiModelPrefill)
+        );
+        let bindings: Vec<_> = metadata
+            .endpoint_bindings
+            .iter()
+            .filter(|binding| binding.model_key == model_id)
+            .collect();
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].product_key, "anthropic-platform");
+        assert_eq!(bindings[0].upstream_model_id, model_id);
+        assert_eq!(bindings[0].availability.state, "conditional");
+        assert_eq!(bindings[0].protocol_qualification, "runtime-required");
+        assert!(
+            catalog.model_data().models.iter().all(|model| {
+                model.model_configuration_id != format!("model.anthropic.{model_id}")
+            }),
+            "published metadata must not create an executable model without qualification"
+        );
+    }
 }
 
 #[test]
