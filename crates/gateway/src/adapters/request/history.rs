@@ -29,6 +29,17 @@ pub(super) fn validate_message_shapes(
     target: IngressProtocol,
 ) -> Result<RequestProjectionLoss, ProtocolAdapterError> {
     validate_responses_options(request.responses_options.as_ref(), target)?;
+    if target != IngressProtocol::Messages
+        && matches!(
+            request.requested_reasoning.messages_thinking_display,
+            Some(MessagesThinkingDisplay::Summarized | MessagesThinkingDisplay::Updates)
+        )
+    {
+        return Err(ProtocolAdapterError::RequestUnrepresentable {
+            reason: RequestProjectionReason::NativeSemanticsUnsupported,
+            message_index: None,
+        });
+    }
     let mut loss = RequestProjectionLoss::default();
     if target != IngressProtocol::Responses {
         if let Some((index, _)) = request.responses_message_phases.iter().find(|(index, _)| {

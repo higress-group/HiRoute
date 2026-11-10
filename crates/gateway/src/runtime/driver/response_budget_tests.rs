@@ -23,7 +23,11 @@ fn cleanup_error_classification_requires_an_explicit_history_rejection() {
         retryable: None,
     };
     assert_eq!(
-        sanitized_provider_kind(&responses, &error("invalid_encrypted_content", "redacted")),
+        sanitized_provider_kind(
+            &responses,
+            &error("invalid_encrypted_content", "redacted"),
+            false
+        ),
         Some(ProviderFailureKind::ReasoningHistory)
     );
     assert_eq!(
@@ -32,7 +36,8 @@ fn cleanup_error_classification_requires_an_explicit_history_rejection() {
             &error(
                 "invalid_request_error",
                 "Invalid `signature` in `thinking` block"
-            )
+            ),
+            false,
         ),
         Some(ProviderFailureKind::ReasoningHistory)
     );
@@ -43,14 +48,15 @@ fn cleanup_error_classification_requires_an_explicit_history_rejection() {
         "unsupported tools",
     ] {
         assert_eq!(
-            sanitized_provider_kind(&messages, &error("invalid_request_error", message)),
+            sanitized_provider_kind(&messages, &error("invalid_request_error", message), false),
             Some(ProviderFailureKind::PermanentClient)
         );
     }
     assert_ne!(
         sanitized_provider_kind(
             &responses,
-            &error("invalid_request_error", "thinking failed")
+            &error("invalid_request_error", "thinking failed"),
+            false,
         ),
         Some(ProviderFailureKind::ReasoningHistory)
     );

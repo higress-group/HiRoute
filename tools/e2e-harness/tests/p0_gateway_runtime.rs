@@ -34,6 +34,8 @@ mod history_bypass;
 mod instruction_history;
 #[path = "p0_gateway_runtime/interrupted_input_boundary.rs"]
 mod interrupted_input_boundary;
+#[path = "p0_gateway_runtime/messages_system_role.rs"]
+mod messages_system_role;
 #[path = "p0_gateway_runtime/native_encrypted_continuation.rs"]
 mod native_encrypted_continuation;
 #[path = "p0_gateway_runtime/native_existing_turn.rs"]

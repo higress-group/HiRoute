@@ -1,6 +1,7 @@
 #[path = "response_prefix.rs"]
 mod prefix;
 
+use super::client_recovery::{self, ClientRecovery};
 use super::response_diagnostics;
 use hiroute_diagnostics::event::{
     ResponseFailureReason as FailureReason, ResponseFailureStage as FailureStage,
@@ -679,12 +680,16 @@ fn trusted_retry_after(
 fn sanitized_provider_kind(
     profile: &CandidateProtocolProfile,
     error: &ModelError,
+    messages_system_sent: bool,
 ) -> Option<ProviderFailureKind> {
     if !sealed_connector_semantics(profile) {
         return None;
     }
-    if super::context_overflow::matches(profile.capability.upstream_protocol, error) {
+    if client_recovery::matches_context_overflow(profile.capability.upstream_protocol, error) {
         return Some(ProviderFailureKind::ContextLength);
+    }
+    if messages_system_sent && client_recovery::rejects_messages_system_role(error) {
+        return Some(ProviderFailureKind::MessagesSystemRole);
     }
     let code = error.code.as_deref()?.to_ascii_lowercase();
     // Preserve a precise cause without guessing one for generic InvalidParameter.
@@ -774,7 +779,11 @@ fn classify_model_error(
     response_status: StatusCode,
 ) -> Result<PrecommitClassification<ProductionReadiness, ProductionDecodedSse>, Arc<str>> {
     response_diagnostics::model_error(&error, Some(response_status.as_u16()));
-    let kind = sanitized_provider_kind(&state.profile, &error);
+    let kind = sanitized_provider_kind(
+        &state.profile,
+        &error,
+        response_status == StatusCode::BAD_REQUEST && state.messages_system_in_history,
+    );
     let status = error.status.unwrap_or(response_status.as_u16());
     let raw = RawAttemptFailure::Http {
         status,
@@ -799,19 +808,17 @@ fn classify_state_failure(
     }
     let failure = classify_failure(&raw, connector_error_profile(&state.profile)?);
     let facts = failure_facts(&failure);
-    let context_overflow = failure.class == AttemptFailureClass::ContextLength;
-    state.classified_failure = Some(failure);
-    let body = if context_overflow {
-        super::context_overflow::BODY.to_vec()
-    } else {
-        serde_json::to_vec(&serde_json::json!({
-            "error": {
-                "type": "upstream_error",
-                "code": "UPSTREAM_ATTEMPT_FAILED"
-            }
-        }))
-        .map_err(|_| Arc::from("sanitized error serialization failed"))?
+    let recovery = match failure.class {
+        AttemptFailureClass::ContextLength => Some(ClientRecovery::ContextLength),
+        AttemptFailureClass::MessagesSystemRole => Some(ClientRecovery::MessagesSystemRole),
+        _ => None,
     };
+    state.classified_failure = Some(failure);
+    const UPSTREAM_FAILURE: &[u8] =
+        br#"{"error":{"code":"UPSTREAM_ATTEMPT_FAILED","type":"upstream_error"}}"#;
+    let body = recovery
+        .map_or(UPSTREAM_FAILURE, ClientRecovery::body)
+        .to_vec();
     let terminal_body =
         ChargedBytes::from_exact_vec(&state.budget, MemoryRole::ResponsePrefix, body)
             .map_err(safe_error)?;
@@ -1129,6 +1136,7 @@ pub(super) fn failure_facts(failure: &AttemptFailure) -> ProviderClassificationF
     ProviderClassificationFacts {
         error_class: Some(label(match failure.class {
             AttemptFailureClass::ContextLength => "context_length",
+            AttemptFailureClass::MessagesSystemRole => "messages_system_role",
             AttemptFailureClass::ReasoningHistory => "reasoning_history",
             AttemptFailureClass::Credential => "credential",
             AttemptFailureClass::Quota => "quota",

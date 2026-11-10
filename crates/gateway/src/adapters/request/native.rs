@@ -25,7 +25,7 @@ pub(super) fn controls(
         };
         body.insert(key.into(), json!(cap));
     }
-    render_reasoning(&mut body, reasoning, protocol)?;
+    render_reasoning(&mut body, reasoning, profile)?;
     Ok(Value::Object(body))
 }
 
@@ -179,44 +179,16 @@ pub(super) fn project(
         for field in reasoning.render.fields() {
             remove_assignment(object, &field.path);
         }
-        render_reasoning(object, reasoning, request.ingress_protocol)?;
+        render_reasoning(object, reasoning, profile)?;
         if request.ingress_protocol == IngressProtocol::Messages {
             normalize_messages_thinking(
                 object,
-                request.requested_reasoning.messages_omit_thinking,
+                request.requested_reasoning.messages_omit_thinking(),
             )?;
             normalize_messages_context_edits(object);
         }
     }
 
-    // Preserve the existing Claude instruction-reminder normalization.
-    if request.ingress_protocol == IngressProtocol::Messages
-        && object
-            .get("messages")
-            .and_then(Value::as_array)
-            .is_some_and(|messages| {
-                messages
-                    .iter()
-                    .any(|m| matches!(m["role"].as_str(), Some("system" | "developer")))
-            })
-    {
-        // Keep blocks separate: concatenating Replay markers into one string
-        // loses their exact replacement boundaries and rejects large histories.
-        let mut system = Vec::new();
-        append_instruction_blocks(&mut system, object.get("system"))?;
-        let messages = object
-            .get_mut("messages")
-            .and_then(Value::as_array_mut)
-            .expect("checked messages");
-        for message in messages
-            .iter()
-            .filter(|m| matches!(m["role"].as_str(), Some("system" | "developer")))
-        {
-            append_instruction_blocks(&mut system, message.get("content"))?;
-        }
-        messages.retain(|m| !matches!(m["role"].as_str(), Some("system" | "developer")));
-        object.insert("system".into(), Value::Array(system));
-    }
     // Status sidecars use the original canonical indexes. Normalize before
     // prefix cleanup removes reasoning items and shifts later native positions.
     normalize_codex_replay(&mut body, profile, request);
@@ -370,19 +342,6 @@ fn normalize_messages_context_edits(object: &mut Map<String, Value>) {
     if context.is_empty() {
         object.remove("context_management");
     }
-}
-
-fn append_instruction_blocks(
-    blocks: &mut Vec<Value>,
-    value: Option<&Value>,
-) -> Result<(), ProtocolAdapterError> {
-    match value {
-        None => (),
-        Some(Value::String(text)) => blocks.push(json!({"type":"text","text":text})),
-        Some(Value::Array(parts)) => blocks.extend(parts.iter().cloned()),
-        Some(_) => return Err(ModelIrError::InvalidField("instruction").into()),
-    }
-    Ok(())
 }
 
 fn remove_assignment(object: &mut Map<String, Value>, path: &[String]) {

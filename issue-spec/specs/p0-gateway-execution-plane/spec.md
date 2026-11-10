@@ -68,6 +68,9 @@ calls, using explicit reasons rather than losing all legal candidates.
 Cross-protocol instructions/message boundaries preserve actual order, including
 Messages mixed text/tool-call/tool-result blocks and multiple results in one user
 message. Chat tool messages and interleaved text/images remain in source order.
+Messages instructions carried inside the conversation stay at their original
+positions on native replay, with their content blocks and cache controls. A
+representable cross-protocol path carries them at the corresponding history position.
 Messages `tool_result.is_error` stays failure content; ordinary cache hints may be
 omitted only under their documented non-execution-hint projection. Model-generated
 native argument strings and IDs follow their payload contract, not an arbitrary
@@ -415,6 +418,16 @@ the static message `Input exceeds the context window.` Provider text and token
 counts never pass through. A later transport, preparation or response failure
 supersedes this cause. The cause neither quarantines a binding nor rotates a key;
 it does not reset budgets, bypass cancellation or perform Gateway compaction.
+
+For a native Messages request that sent an inline system message, a sealed
+Connector's HTTP 400 explicitly rejecting the `system` role retains a closed
+client-recoverable cause. If this is the final failure after ordinary candidate
+relay and before the original deadline, return a Messages HTTP 400 with
+`error.type=invalid_request_error` and a fixed message naming the unsupported
+`system` input message role so the native client can retry with a compatible
+history. Do not copy provider
+text or identifiers. A later failure supersedes the cause. The Gateway does not
+move or rewrite the instructions to perform this retry.
 
 When native `response_failed` or `response_incomplete` arrives after output has
 been delivered and downstream transport completes, the Attempt retains its

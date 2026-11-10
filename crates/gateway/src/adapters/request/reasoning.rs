@@ -5,8 +5,9 @@ use crate::server::core_runtime::profiles::ReasoningControlKind;
 pub(super) fn render_reasoning(
     body: &mut Map<String, Value>,
     reasoning: &ReasoningProfileCapability,
-    protocol: IngressProtocol,
+    profile: &CandidateProtocolProfile,
 ) -> Result<(), ProtocolAdapterError> {
+    let protocol = profile.capability.upstream_protocol;
     if reasoning
         .render
         .protocol()
@@ -52,7 +53,7 @@ pub(super) fn render_reasoning(
             }
             IngressProtocol::ChatCompletions => unreachable!(),
         }
-        return complete_messages_thinking(body, protocol);
+        return complete_messages_thinking(body, profile);
     }
     match &reasoning.render {
         NativeReasoningRender::NoControlParameter => {}
@@ -75,7 +76,7 @@ pub(super) fn render_reasoning(
             ));
         }
     }
-    complete_messages_thinking(body, protocol)
+    complete_messages_thinking(body, profile)
 }
 
 fn native_reasoning_value(value: &NativeReasoningValue) -> Value {
@@ -136,12 +137,17 @@ fn invalid(message: &str) -> ProtocolAdapterError {
 
 fn complete_messages_thinking(
     body: &mut Map<String, Value>,
-    protocol: IngressProtocol,
+    profile: &CandidateProtocolProfile,
 ) -> Result<(), ProtocolAdapterError> {
-    if protocol != IngressProtocol::Messages {
+    if profile.capability.upstream_protocol != IngressProtocol::Messages {
         return Ok(());
     }
     let max_tokens = body.get("max_tokens").and_then(Value::as_u64);
+    let has_effort = body
+        .get("output_config")
+        .and_then(|output| output.get("effort"))
+        .and_then(Value::as_str)
+        .is_some_and(|effort| !effort.is_empty());
     let Some(thinking) = body.get_mut("thinking").and_then(Value::as_object_mut) else {
         return Ok(());
     };
@@ -151,6 +157,11 @@ fn complete_messages_thinking(
         thinking.insert("type".into(), json!("enabled"));
     }
     match thinking.get("type").and_then(Value::as_str) {
+        Some("enabled") if has_effort && is_bailian_messages_endpoint(profile) => {
+            // Bailian enables thinking with either effort or a budget. Keep
+            // display and other controls, including Claude's progress updates.
+            thinking.remove("budget_tokens");
+        }
         Some("enabled") => {
             let budget = thinking
                 .entry("budget_tokens")
@@ -169,4 +180,49 @@ fn complete_messages_thinking(
         _ => {}
     }
     Ok(())
+}
+
+fn is_bailian_messages_endpoint(profile: &CandidateProtocolProfile) -> bool {
+    let Some(uri) = profile
+        .native_target
+        .as_ref()
+        .and_then(|target| target.operational_target.uri().parse::<http::Uri>().ok())
+    else {
+        return false;
+    };
+    if uri.scheme_str() != Some("https")
+        || uri.port_u16().unwrap_or(443) != 443
+        || uri.path_and_query().map(|value| value.as_str()) != Some("/apps/anthropic/v1/messages")
+    {
+        return false;
+    }
+    let host = uri.host().unwrap_or_default().to_ascii_lowercase();
+    if matches!(
+        host.as_str(),
+        "dashscope.aliyuncs.com"
+            | "dashscope-intl.aliyuncs.com"
+            | "cn-hongkong.dashscope.aliyuncs.com"
+            | "coding.dashscope.aliyuncs.com"
+            | "coding-intl.dashscope.aliyuncs.com"
+    ) {
+        return true;
+    }
+    let Some((workspace, region)) = host.split_once('.') else {
+        return false;
+    };
+    matches!(
+        region,
+        "cn-beijing.maas.aliyuncs.com"
+            | "cn-hongkong.maas.aliyuncs.com"
+            | "ap-southeast-1.maas.aliyuncs.com"
+            | "ap-northeast-1.maas.aliyuncs.com"
+            | "eu-central-1.maas.aliyuncs.com"
+            | "us-east-1.maas.aliyuncs.com"
+    ) && !workspace.is_empty()
+        && workspace.len() <= 63
+        && !workspace.starts_with('-')
+        && !workspace.ends_with('-')
+        && workspace
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }

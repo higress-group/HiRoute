@@ -638,7 +638,12 @@ pub(super) async fn materialize_attempt(
             served_model_alias,
             streaming,
             native_output,
-            omit_thinking: ir.requested_reasoning.messages_omit_thinking,
+            messages_system_in_history: native_output
+                && ir.ingress_protocol == crate::server::request_plan::IngressProtocol::Messages
+                && ir.messages.iter().any(|message| {
+                    message.role == crate::server::core_runtime::model_ir::MessageRole::System
+                }),
+            omit_thinking: ir.requested_reasoning.messages_omit_thinking(),
             chat_tool_projection,
             function_encoding_projection,
             chat_tool_projection_budget,

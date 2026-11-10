@@ -420,7 +420,7 @@ fn serialize_responses(
     }
     body.insert("input".into(), Value::Array(input));
     insert_responses_tools(&mut body, request)?;
-    render_reasoning(&mut body, reasoning, IngressProtocol::Responses)?;
+    render_reasoning(&mut body, reasoning, profile)?;
     if let Some(cap) = candidate_max_output(request, profile) {
         body.insert("max_output_tokens".into(), Value::from(cap));
     }
@@ -721,7 +721,7 @@ fn serialize_chat(
         body.insert("stream_options".into(), json!({"include_usage": true}));
     }
     insert_chat_tools(&mut body, request, tool_projection)?;
-    render_reasoning(&mut body, reasoning, IngressProtocol::ChatCompletions)?;
+    render_reasoning(&mut body, reasoning, profile)?;
     if let Some(cap) = candidate_max_output(request, profile) {
         body.insert("max_completion_tokens".into(), Value::from(cap));
     }
@@ -853,7 +853,7 @@ fn serialize_messages(
     }
     body.insert("messages".into(), Value::Array(messages));
     insert_messages_tools(&mut body, request)?;
-    render_reasoning(&mut body, reasoning, IngressProtocol::Messages)?;
+    render_reasoning(&mut body, reasoning, profile)?;
     Ok(Value::Object(body))
 }
 

@@ -79,8 +79,10 @@ fn native_messages_reminder_keeps_replay_boundaries_and_cache_fields() {
     let store = manager.begin_request(budget.clone()).unwrap();
     let text = "instruction ".repeat(2000);
     let system = json!({"type":"text","text":text,"cache_control":{"type":"ephemeral"}});
-    let body = json!({"model":"alias","max_tokens":128,"system":[system.clone()],"messages":[
-        {"role":"user","content":"hi"},{"role":"system","content":"reminder"}]});
+    let reminder = json!({"type":"text","text":"<total_tokens>12345 tokens left</total_tokens>",
+        "cache_control":{"type":"ephemeral"}});
+    let body = json!({"model":"alias","max_tokens":128,"system":[system],"messages":[
+        {"role":"user","content":"hi"},{"role":"system","content":[reminder]}]});
     let mut request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
     externalize_model_request(&mut request, &store, 8192).unwrap();
     let profile = exact_state_profile(IngressProtocol::Messages, IngressProtocol::Messages);
@@ -92,11 +94,8 @@ fn native_messages_reminder_keeps_replay_boundaries_and_cache_fields() {
         bytes.extend_from_slice(chunk.bytes());
     }
     let output: Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(
-        output["system"],
-        json!([system,{"type":"text","text":"reminder"}])
-    );
-    assert_eq!(output["messages"], json!([{"role":"user","content":"hi"}]));
+    assert_eq!(output["system"], body["system"]);
+    assert_eq!(output["messages"], body["messages"]);
     drop(reader);
     drop(store);
     drop(manager);

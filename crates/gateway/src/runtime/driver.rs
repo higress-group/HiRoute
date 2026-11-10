@@ -40,7 +40,7 @@ use super::state::{
     acquire_target_permit_status, confirm_success, record_failure, validate_attempt_permits,
 };
 
-mod context_overflow;
+mod client_recovery;
 mod key_spending;
 mod materialization;
 pub(crate) mod network;
@@ -208,6 +208,7 @@ pub struct ProductionAttemptState {
     served_model_alias: String,
     streaming: bool,
     native_output: bool,
+    messages_system_in_history: bool,
     omit_thinking: bool,
     chat_tool_projection: Option<adapters::ChatToolProjection>,
     function_encoding_projection: adapters::FunctionEncodingProjection,
