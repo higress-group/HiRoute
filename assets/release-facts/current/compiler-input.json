@@ -927,7 +927,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.openai.platform.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1793577600,
+        "last_verified_at": 1794268800,
         "logical_endpoint_group": "openai-platform",
         "protocol_endpoints": [
           {
@@ -961,7 +961,7 @@
         "revision": 1,
         "service_offering_id": "platform-api",
         "usage_scope": "account",
-        "verification_evidence": "sha256:a1f52cca5f1ee9c2925d546bf5f6c1594b4dc836892140087fadbb767c623e00"
+        "verification_evidence": "sha256:a61e834aa7ad890bb58cf36b094600230afc9315fe4b8ef79a4b2a0888b0500c"
       },
       {
         "endpoint_profile_id": "endpoint.openrouter.free.global.v1",
@@ -2845,7 +2845,8 @@
             "source-044",
             "source-045",
             "source-136",
-            "source-170"
+            "source-170",
+            "source-211"
           ],
           "interfaces": [
             {
@@ -2878,10 +2879,12 @@
           "product_kind": "credit-subscription",
           "provider": "Alibaba Cloud Model Studio",
           "quota_facts": [
-            "Lite: 11500 Credits/month",
-            "Essential: 25500 Credits/month",
-            "Standard: 45000 Credits/month",
-            "Pro: 180000 Credits/month"
+            "Lite: 20000 Credits/month",
+            "Essential: 45000 Credits/month",
+            "Standard: 80000 Credits/month",
+            "Pro: 200000 Credits/month",
+            "Effective 2026-11-09 20:00 Asia/Shanghai; existing monthly cycles receive the new quota without resetting used Credits",
+            "Credits reset each subscription month and do not roll over; usage pauses when exhausted unless a usage pack is available"
           ],
           "region_scope": "China, Beijing only",
           "restriction": "Personal plan; Credits and eligibility are not PAYG tokens"
@@ -3220,12 +3223,15 @@
           "documented_upstream_model_ids": [
             "k3",
             "k3-256k",
+            "k3.1-pro",
+            "k3.1-pro-highspeed",
             "kimi-for-coding",
             "kimi-for-coding-highspeed"
           ],
           "evidence_refs": [
             "source-074",
-            "source-075"
+            "source-075",
+            "source-219"
           ],
           "interfaces": [
             {
@@ -3242,6 +3248,14 @@
               "interface_key": "kimi-code-subscription/openai-chat",
               "protocol": "openai-chat",
               "request_path": "/chat/completions",
+              "request_path_template": null
+            },
+            {
+              "base_url": "https://api.kimi.com/coding/v1",
+              "base_url_template": null,
+              "interface_key": "kimi-code-subscription/openai-responses",
+              "protocol": "openai-responses",
+              "request_path": "/responses",
               "request_path_template": null
             }
           ],
@@ -3264,12 +3278,16 @@
             "kimi-k2.6",
             "kimi-k2.7-code",
             "kimi-k2.7-code-highspeed",
-            "kimi-k3"
+            "kimi-k3",
+            "kimi-k3.1-pro",
+            "kimi-k3.1-pro-highspeed"
           ],
           "evidence_refs": [
             "source-063",
             "source-064",
-            "source-142"
+            "source-142",
+            "source-215",
+            "source-217"
           ],
           "interfaces": [
             {
@@ -3301,11 +3319,15 @@
             "kimi-k2.6",
             "kimi-k2.7-code",
             "kimi-k2.7-code-highspeed",
-            "kimi-k3"
+            "kimi-k3",
+            "kimi-k3.1-pro",
+            "kimi-k3.1-pro-highspeed"
           ],
           "evidence_refs": [
             "source-062",
-            "source-143"
+            "source-143",
+            "source-216",
+            "source-218"
           ],
           "interfaces": [
             {
@@ -3490,11 +3512,14 @@
             "catalog-representable",
             "needs-runtime-qualification"
           ],
-          "documented_upstream_model_ids": [],
+          "documented_upstream_model_ids": [
+            "gpt-6.1-terra"
+          ],
           "evidence_refs": [
             "source-022",
             "source-023",
-            "source-199"
+            "source-199",
+            "source-214"
           ],
           "interfaces": [
             {
@@ -3763,11 +3788,14 @@
             "needs-runtime-qualification"
           ],
           "documented_upstream_model_ids": [
-            "doubao-seed-2-0-lite-260215"
+            "doubao-seed-2-0-lite-260428",
+            "doubao-seed-2-1-lite-260915"
           ],
           "evidence_refs": [
             "source-076",
-            "source-078"
+            "source-078",
+            "source-212",
+            "source-213"
           ],
           "interfaces": [
             {
@@ -4809,14 +4837,16 @@
             "value": null
           },
           "context_variants": [],
-          "data_note": "Runtime-required: hard caps and endpoint deployment identity must come from target inventory",
+          "data_note": "Historical identity doubao-seed-2-0-lite-260215 reached EOS on 2026-10-22 at 14:00 Asia/Shanghai, an exception to the batch notice date. The general model list still says approaching retirement; the specific dated notice establishes EOS. Recommended migration: doubao-seed-2-1-lite-260915. Automatic fallback for existing inference endpoints: doubao-seed-2-0-lite-260428 LTS. These are distinct model revisions, not aliases of this retired identity. Exact token caps remain runtime-required.",
           "display_name": "Doubao Seed 2.0 Lite",
           "evidence_refs": [
             "source-076",
-            "source-078"
+            "source-078",
+            "source-212",
+            "source-213"
           ],
-          "identity_stability": "unknown",
-          "lifecycle": "unknown",
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "retired",
           "max_input_tokens": null,
           "max_output_note": null,
           "max_output_scope": null,
@@ -4837,10 +4867,106 @@
             "note": null,
             "profiles": []
           },
-          "source_stability_note": "documented-example",
+          "source_stability_note": "dated-deprecation-notice-over-stale-model-list",
           "upstream_id_state": null,
           "upstream_ids": [
             "doubao-seed-2-0-lite-260215"
+          ]
+        },
+        {
+          "canonical_identity": "doubao-seed-2-0-lite-260428",
+          "capabilities": {
+            "streaming": "unknown",
+            "structured_output": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "context_variants": [],
+          "data_note": "Official model table notation: 256k context, 224k maximum input, 128k maximum answer (4k default), 128k maximum thinking. Exact integer token limits are not normalized from k without an explicit unit definition; target endpoint inventory remains required. LTS automatic migration destination for existing 260215 inference endpoints; not an alias of 260215.",
+          "display_name": "Doubao Seed 2.0 Lite 260428 LTS",
+          "evidence_refs": [
+            "source-212",
+            "source-213"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "modalities": {
+            "audio_input": "supported",
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "doubao-seed-2-0-lite-260428",
+          "publisher": "ByteDance / Volcano Engine",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "provider-documented-current-revision",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "doubao-seed-2-0-lite-260428"
+          ]
+        },
+        {
+          "canonical_identity": "doubao-seed-2-1-lite-260915",
+          "capabilities": {
+            "streaming": "unknown",
+            "structured_output": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "context_variants": [],
+          "data_note": "Official model table notation: 1024k context and maximum input, 256k maximum answer (4k default), 256k maximum thinking. Exact integer token limits are not normalized from k without an explicit unit definition; target endpoint inventory remains required. Recommended migration target for retired 260215 Lite/Mini endpoints; distinct from the LTS automatic fallback.",
+          "display_name": "Doubao Seed 2.1 Lite 260915",
+          "evidence_refs": [
+            "source-212",
+            "source-213"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "modalities": {
+            "audio_input": "supported",
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "doubao-seed-2-1-lite-260915",
+          "publisher": "ByteDance / Volcano Engine",
+          "reasoning": {
+            "default": null,
+            "kind": "toggle",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "provider-documented-current-revision",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "doubao-seed-2-1-lite-260915"
           ]
         },
         {
@@ -5553,43 +5679,49 @@
         {
           "canonical_identity": "gpt-6.1-terra",
           "capabilities": {
-            "computer": "unknown",
-            "file": "unknown",
-            "streaming": "unknown",
-            "tool": "unknown",
-            "web": "unknown"
+            "cache": "supported",
+            "computer": "supported",
+            "file": "supported",
+            "streaming": "supported",
+            "structured_output": "supported",
+            "tool": "supported",
+            "web": "supported"
           },
           "context_tokens": {
-            "state": "unknown",
-            "value": null
+            "state": "exact",
+            "value": 1050000
           },
           "context_variants": [],
-          "data_note": "Reviewed family inference (2026-10-31): GPT-6.1 Terra uses the same five effort levels as GPT-6.1 Sol, following explicit user confirmation. source-175 documents Sol only, not Terra directly. No Terra provider default is asserted. Model identity is independent of Sol. Limits, modalities, other capabilities, pricing, account availability and protocol qualification are not inherited.",
+          "data_note": "1,050,000 total context, maximum input 922,000 and maximum output 128,000 are separate limits. Knowledge cutoff 2026-06-01. Both Responses and Chat Completions are documented, but tools require Responses. Public API support does not establish Codex/ChatGPT subscription entitlement. Standard non-regional prices are recorded separately; Batch/Flex, Fast, regional processing and tool fees require their own conditions.",
           "display_name": "GPT-6.1 Terra",
           "evidence_refs": [
-            "source-175"
+            "source-214"
           ],
-          "identity_stability": "unknown",
-          "lifecycle": "unknown",
-          "max_input_tokens": null,
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": 922000,
           "max_output_note": null,
           "max_output_scope": null,
           "max_output_tokens": {
-            "state": "unknown",
-            "value": null
+            "state": "exact",
+            "value": 128000
           },
           "modalities": {
-            "image_input": "unknown",
-            "text_input": "unknown",
-            "text_output": "unknown"
+            "audio_input": "unsupported",
+            "audio_output": "unsupported",
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "unsupported"
           },
           "model_key": "gpt-6.1-terra",
           "publisher": "OpenAI",
           "reasoning": {
-            "default": null,
+            "default": "medium",
             "kind": "discrete",
-            "note": "Reviewed family inference (2026-10-31): GPT-6.1 Terra uses the same five effort levels as GPT-6.1 Sol, following explicit user confirmation. source-175 documents Sol only, not Terra directly. No Terra provider default is asserted.",
+            "note": "Direct Terra documentation supersedes the earlier Sol-family inference. Tool calling requires Responses; Chat Completions does not support tools.",
             "profiles": [
+              "none",
               "low",
               "medium",
               "high",
@@ -5597,7 +5729,7 @@
               "max"
             ]
           },
-          "source_stability_note": "Reasoning-only reviewed family inference; lifetime and other model properties remain unknown.",
+          "source_stability_note": "direct-provider-model-documentation",
           "upstream_id_state": null,
           "upstream_ids": [
             "gpt-6.1-terra"
@@ -6203,6 +6335,62 @@
             "k3",
             "k3-256k",
             "kimi-k3"
+          ]
+        },
+        {
+          "canonical_identity": "kimi-k3.1-pro",
+          "capabilities": {
+            "cache": "supported",
+            "streaming": "supported",
+            "structured_output": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "entitlement_dependent",
+            "value": 1048576
+          },
+          "context_variants": [],
+          "data_note": "Pro and Pro Highspeed have the same documented capabilities; Highspeed targets 2-3x throughput with different prices or subscription quota consumption. Platform and Code use distinct upstream IDs, credentials, balances and default effort. Code model access and 1M context depend on the plan; Platform limits are not evidence of Code entitlement.",
+          "display_name": "Kimi K3.1 Pro",
+          "evidence_refs": [
+            "source-215",
+            "source-216",
+            "source-219"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": "Platform default max_completion_tokens is 131072, not its 1048576 hard maximum. Do not apply the Platform cap to Code.",
+          "max_output_scope": "Kimi Platform maximum max_completion_tokens only; Kimi Code output cap remains runtime-required",
+          "max_output_tokens": {
+            "state": "entitlement_dependent",
+            "value": 1048576
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "kimi-k3-1-pro",
+          "publisher": "Moonshot AI",
+          "reasoning": {
+            "default": null,
+            "kind": "discrete-fixed-on",
+            "note": "Always on. Product-specific default: Kimi Platform max; Kimi Code high. No universal default is asserted.",
+            "profiles": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "source_stability_note": "provider-documented-platform-and-code-variants",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "k3.1-pro",
+            "k3.1-pro-highspeed",
+            "kimi-k3.1-pro",
+            "kimi-k3.1-pro-highspeed"
           ]
         },
         {
@@ -8960,6 +9148,52 @@
         },
         {
           "availability": {
+            "condition": "New Plus+ or legacy Moderato+ plans; 1M context requires new Pro+ or legacy Allegretto+. Maximum eligible context is 1048576, not a guarantee for every plan. Output cap requires target inventory; do not inherit Platform max_completion_tokens. Always-on reasoning_effort low/high/max defaults to high. Responses is recommended; account, region and each protocol require runtime qualification.",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-code-subscription/kimi-k3-1-pro/k3.1-pro",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-219"
+          ],
+          "interface_candidates": [
+            "kimi-code-subscription/anthropic-messages",
+            "kimi-code-subscription/openai-chat",
+            "kimi-code-subscription/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "kimi-k3-1-pro",
+          "product_key": "kimi-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "k3.1-pro"
+        },
+        {
+          "availability": {
+            "condition": "New Pro+ or legacy Allegretto+ plans; consumes approximately 2x regular Pro quota. Maximum eligible context is 1048576, not a guarantee for every plan. Output cap requires target inventory; do not inherit Platform max_completion_tokens. Always-on reasoning_effort low/high/max defaults to high. Responses is recommended; account, region and each protocol require runtime qualification.",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-code-subscription/kimi-k3-1-pro/k3.1-pro-highspeed",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-219"
+          ],
+          "interface_candidates": [
+            "kimi-code-subscription/anthropic-messages",
+            "kimi-code-subscription/openai-chat",
+            "kimi-code-subscription/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "kimi-k3-1-pro",
+          "product_key": "kimi-code-subscription",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "k3.1-pro-highspeed"
+        },
+        {
+          "availability": {
             "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -9078,6 +9312,56 @@
         },
         {
           "availability": {
+            "condition": "China Platform requires at least CNY 10 account recharge; the CNY 15 new-user voucher excludes Highspeed. Account, region, model access and protocol still require runtime qualification. Always-on reasoning_effort low/high/max defaults to max. max_completion_tokens defaults to 131072 and permits at most 1048576. Preserve full assistant messages across tool turns. Public image URLs are unsupported; use base64 or ms:// files.",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-cn/kimi-k3-1-pro/kimi-k3.1-pro",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 1048576
+          },
+          "evidence_refs": [
+            "source-215",
+            "source-217"
+          ],
+          "interface_candidates": [
+            "kimi-platform-cn/openai-chat"
+          ],
+          "lifecycle": "active",
+          "model_key": "kimi-k3-1-pro",
+          "product_key": "kimi-platform-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k3.1-pro"
+        },
+        {
+          "availability": {
+            "condition": "China Platform requires at least CNY 10 account recharge; the CNY 15 new-user voucher excludes Highspeed. Account, region, model access and protocol still require runtime qualification. Always-on reasoning_effort low/high/max defaults to max. max_completion_tokens defaults to 131072 and permits at most 1048576. Preserve full assistant messages across tool turns. Public image URLs are unsupported; use base64 or ms:// files.",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-cn/kimi-k3-1-pro/kimi-k3.1-pro-highspeed",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 1048576
+          },
+          "evidence_refs": [
+            "source-215",
+            "source-217"
+          ],
+          "interface_candidates": [
+            "kimi-platform-cn/openai-chat"
+          ],
+          "lifecycle": "active",
+          "model_key": "kimi-k3-1-pro",
+          "product_key": "kimi-platform-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k3.1-pro-highspeed"
+        },
+        {
+          "availability": {
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -9164,6 +9448,56 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "kimi-k2.7-code-highspeed"
+        },
+        {
+          "availability": {
+            "condition": "International Platform requires at least USD 1 account recharge; published USD prices exclude applicable taxes. Account, region, model access and protocol still require runtime qualification. Always-on reasoning_effort low/high/max defaults to max. max_completion_tokens defaults to 131072 and permits at most 1048576. Preserve full assistant messages across tool turns. Public image URLs are unsupported; use base64 or ms:// files.",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-global/kimi-k3-1-pro/kimi-k3.1-pro",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 1048576
+          },
+          "evidence_refs": [
+            "source-216",
+            "source-218"
+          ],
+          "interface_candidates": [
+            "kimi-platform-global/openai-chat"
+          ],
+          "lifecycle": "active",
+          "model_key": "kimi-k3-1-pro",
+          "product_key": "kimi-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k3.1-pro"
+        },
+        {
+          "availability": {
+            "condition": "International Platform requires at least USD 1 account recharge; published USD prices exclude applicable taxes. Account, region, model access and protocol still require runtime qualification. Always-on reasoning_effort low/high/max defaults to max. max_completion_tokens defaults to 131072 and permits at most 1048576. Preserve full assistant messages across tool turns. Public image URLs are unsupported; use base64 or ms:// files.",
+            "state": "conditional"
+          },
+          "binding_key": "kimi-platform-global/kimi-k3-1-pro/kimi-k3.1-pro-highspeed",
+          "capability_overrides": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 1048576
+          },
+          "evidence_refs": [
+            "source-216",
+            "source-218"
+          ],
+          "interface_candidates": [
+            "kimi-platform-global/openai-chat"
+          ],
+          "lifecycle": "active",
+          "model_key": "kimi-k3-1-pro",
+          "product_key": "kimi-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": null,
+          "upstream_model_id": "kimi-k3.1-pro-highspeed"
         },
         {
           "availability": {
@@ -9389,24 +9723,24 @@
         },
         {
           "availability": {
-            "condition": "Reasoning-only reviewed family inference from GPT-6.1 Sol. Terra account availability and each protocol require their own runtime qualification; tool, streaming, error and usage behavior are not inherited.",
+            "condition": "Documented OpenAI Platform API model; API project, usage tier, region and exact protocol require runtime qualification. Tool calling requires Responses and is unsupported on Chat Completions. Does not establish Codex or ChatGPT subscription entitlement.",
             "state": "conditional"
           },
           "binding_key": "openai-platform-global/gpt-6.1-terra/gpt-6.1-terra",
           "capability_overrides": {},
           "evidence_refs": [
-            "source-175"
+            "source-214"
           ],
           "interface_candidates": [
             "openai-platform-global/openai-chat",
             "openai-platform-global/openai-responses"
           ],
-          "lifecycle": "unknown",
+          "lifecycle": "active",
           "model_key": "gpt-6.1-terra",
           "product_key": "openai-platform-global",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
-          "upstream_identity_role": null,
+          "upstream_identity_role": "versioned-id",
           "upstream_model_id": "gpt-6.1-terra"
         },
         {
@@ -9815,25 +10149,71 @@
         },
         {
           "availability": {
-            "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
+            "condition": "Provider-documented current model; account, Beijing deployment identity, entitlement and Responses behavior still require runtime qualification. Official model table notation: 256k context, 224k maximum input, 128k maximum answer (4k default), 128k maximum thinking. Exact integer token limits are not normalized from k without an explicit unit definition; target endpoint inventory remains required. LTS automatic migration destination for existing 260215 inference endpoints; not an alias of 260215.",
             "state": "conditional"
+          },
+          "binding_key": "volcengine-ark-payg-cn/doubao-seed-2-0-lite-260428/doubao-seed-2-0-lite-260428",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-212",
+            "source-213"
+          ],
+          "interface_candidates": [
+            "volcengine-ark-payg-cn/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "doubao-seed-2-0-lite-260428",
+          "product_key": "volcengine-ark-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "doubao-seed-2-0-lite-260428"
+        },
+        {
+          "availability": {
+            "condition": "Historical identity doubao-seed-2-0-lite-260215 reached EOS on 2026-10-22 at 14:00 Asia/Shanghai, an exception to the batch notice date. The general model list still says approaching retirement; the specific dated notice establishes EOS. Recommended migration: doubao-seed-2-1-lite-260915. Automatic fallback for existing inference endpoints: doubao-seed-2-0-lite-260428 LTS. These are distinct model revisions, not aliases of this retired identity. Exact token caps remain runtime-required.",
+            "state": "unavailable"
           },
           "binding_key": "volcengine-ark-payg-cn/doubao-seed-2-0-lite/doubao-seed-2-0-lite-260215",
           "capability_overrides": {},
           "evidence_refs": [
             "source-076",
-            "source-078"
+            "source-078",
+            "source-212",
+            "source-213"
           ],
           "interface_candidates": [
             "volcengine-ark-payg-cn/openai-responses"
           ],
-          "lifecycle": null,
+          "lifecycle": "retired",
           "model_key": "doubao-seed-2-0-lite",
           "product_key": "volcengine-ark-payg-cn",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "doubao-seed-2-0-lite-260215"
+        },
+        {
+          "availability": {
+            "condition": "Provider-documented current model; account, Beijing deployment identity, entitlement and Responses behavior still require runtime qualification. Official model table notation: 1024k context and maximum input, 256k maximum answer (4k default), 256k maximum thinking. Exact integer token limits are not normalized from k without an explicit unit definition; target endpoint inventory remains required. Recommended migration target for retired 260215 Lite/Mini endpoints; distinct from the LTS automatic fallback.",
+            "state": "conditional"
+          },
+          "binding_key": "volcengine-ark-payg-cn/doubao-seed-2-1-lite-260915/doubao-seed-2-1-lite-260915",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-212",
+            "source-213"
+          ],
+          "interface_candidates": [
+            "volcengine-ark-payg-cn/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "doubao-seed-2-1-lite-260915",
+          "product_key": "volcengine-ark-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "doubao-seed-2-1-lite-260915"
         },
         {
           "availability": {
@@ -11952,6 +12332,87 @@
           "digest_state": "not-captured",
           "locator": "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention",
           "source_key": "source-210",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+          "source_key": "source-211",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.volcengine.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://docs.volcengine.com/docs/ark/model-deprecation-notice?lang=zh",
+          "source_key": "source-212",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.volcengine.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+          "source_key": "source-213",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": "sha256:6a73b3e2e941fbe3813636d5bd2d653ff190e49cc3692eaf8daa3bb125c877f8",
+          "collected_on": "2026-11-10",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6.1-terra.md",
+          "source_key": "source-214",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.kimi.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.kimi.com/docs/guide/kimi-k3-1-pro-quickstart",
+          "source_key": "source-215",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.kimi.ai",
+          "bytes_digest": "sha256:efae87f5f505bcf1bf6e2285d4a5e63969a8b77378b8cea10db7f65c95b8d765",
+          "collected_on": "2026-11-10",
+          "digest_state": "captured",
+          "locator": "https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart",
+          "source_key": "source-216",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.kimi.com",
+          "bytes_digest": "sha256:65560d5e61e291f018ea3d1acb9ac47a62a24c1037b6129cd146ee76be11f84e",
+          "collected_on": "2026-11-10",
+          "digest_state": "captured",
+          "locator": "https://platform.kimi.com/docs/pricing/chat",
+          "source_key": "source-217",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.kimi.ai",
+          "bytes_digest": "sha256:9dc1f20e7f3b46d81f32fcaad1de8677d4ca43acfa0b70be2b96b1ef6123fb58",
+          "collected_on": "2026-11-10",
+          "digest_state": "captured",
+          "locator": "https://platform.kimi.ai/docs/pricing/chat",
+          "source_key": "source-218",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "www.kimi.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://www.kimi.com/code/docs/en/kimi-code/models.html",
+          "source_key": "source-219",
           "source_kind": "provider-documentation"
         }
       ],
@@ -68348,6 +68809,514 @@
             "vision": "supported"
           },
           "context_tokens": {
+            "state": "entitlement_dependent",
+            "value": null
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Kimi K3.1 Pro (Code)",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/kimi-code/k3.1-pro",
+          "normalized_model_matches": [
+            "kimi-k3-1-pro"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-219"
+            }
+          ],
+          "provider_id": "kimi-code",
+          "provider_record_key": "official/kimi-code",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "k3.1-pro",
+          "usable_for": [
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "entitlement_dependent",
+            "value": null
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Kimi K3.1 Pro Highspeed (Code)",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/kimi-code/k3.1-pro-highspeed",
+          "normalized_model_matches": [
+            "kimi-k3-1-pro"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-219"
+            }
+          ],
+          "provider_id": "kimi-code",
+          "provider_record_key": "official/kimi-code",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "k3.1-pro-highspeed",
+          "usable_for": [
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "1.3",
+              "cacheWrite1h": "26",
+              "cacheWrite5m": "13",
+              "condition": "Standard Platform pricing; cache writes depend on TTL",
+              "currency": "CNY",
+              "input": "13",
+              "output": "68",
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "Kimi K3.1 Pro",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/kimi-platform-cn/kimi-k3.1-pro",
+          "normalized_model_matches": [
+            "kimi-k3-1-pro"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-215"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-217"
+            }
+          ],
+          "provider_id": "kimi-platform-cn",
+          "provider_record_key": "official/kimi-platform-cn",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "kimi-k3.1-pro",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "1.3",
+              "cacheWrite1h": "52",
+              "cacheWrite5m": "26",
+              "condition": "Standard Platform pricing; cache writes depend on TTL",
+              "currency": "CNY",
+              "input": "26",
+              "output": "136",
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "Kimi K3.1 Pro Highspeed",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/kimi-platform-cn/kimi-k3.1-pro-highspeed",
+          "normalized_model_matches": [
+            "kimi-k3-1-pro"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-215"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-217"
+            }
+          ],
+          "provider_id": "kimi-platform-cn",
+          "provider_record_key": "official/kimi-platform-cn",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "kimi-k3.1-pro-highspeed",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "0.2",
+              "cacheWrite1h": "4",
+              "cacheWrite5m": "2",
+              "condition": "Standard Platform pricing; cache writes depend on TTL",
+              "currency": "USD",
+              "input": "2",
+              "output": "10",
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "Kimi K3.1 Pro",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/kimi-platform-global/kimi-k3.1-pro",
+          "normalized_model_matches": [
+            "kimi-k3-1-pro"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-216"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-218"
+            }
+          ],
+          "provider_id": "kimi-platform-global",
+          "provider_record_key": "official/kimi-platform-global",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "kimi-k3.1-pro",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "0.2",
+              "cacheWrite1h": "8",
+              "cacheWrite5m": "4",
+              "condition": "Standard Platform pricing; cache writes depend on TTL",
+              "currency": "USD",
+              "input": "4",
+              "output": "20",
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "Kimi K3.1 Pro Highspeed",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/kimi-platform-global/kimi-k3.1-pro-highspeed",
+          "normalized_model_matches": [
+            "kimi-k3-1-pro"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-216"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-218"
+            }
+          ],
+          "provider_id": "kimi-platform-global",
+          "provider_record_key": "official/kimi-platform-global",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "kimi-k3.1-pro-highspeed",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
             "state": "known",
             "value": 1050000
           },
@@ -68834,6 +69803,95 @@
           ],
           "status_candidates": [],
           "upstream_model_id": "gpt-6.1-sol",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "0.05",
+              "cacheWrite12h": "2.5",
+              "cacheWrite30m": "1.25",
+              "condition": "Standard non-regional, input <=272000; cache writes depend on TTL; longer prompts use whole-request multipliers",
+              "currency": "USD",
+              "input": "1",
+              "output": "5",
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "GPT-6.1 Terra",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/openai-platform/gpt-6.1-terra",
+          "normalized_model_matches": [
+            "gpt-6.1-terra"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-214"
+            }
+          ],
+          "provider_id": "openai-platform",
+          "provider_record_key": "official/openai-platform",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "gpt-6.1-terra",
           "usable_for": [
             "context-limit-prefill",
             "cost-hint-display",
@@ -100165,6 +101223,136 @@
             "api_key"
           ],
           "base_url_candidates": [
+            "https://api.kimi.com/coding",
+            "https://api.kimi.com/coding/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "Kimi Code subscription",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "partial",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions",
+            "messages",
+            "responses"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-219"
+            }
+          ],
+          "provider_id": "kimi-code",
+          "provider_record_key": "official/kimi-code",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
+            "https://api.moonshot.cn/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "Kimi Platform China",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-215"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-217"
+            }
+          ],
+          "provider_id": "kimi-platform-cn",
+          "provider_record_key": "official/kimi-platform-cn",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
+            "https://api.moonshot.ai/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "Kimi Platform International",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-216"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-218"
+            }
+          ],
+          "provider_id": "kimi-platform-global",
+          "provider_record_key": "official/kimi-platform-global",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
             "https://api.openai.com/v1"
           ],
           "default_model_ids": [],
@@ -102864,7 +104052,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:96a058daba0a3b20e1ef2b34d2a3f46c5eccfb8695d09edde0a1392dfc9e9134"
+      "source_catalog_digest": "sha256:f6812e47de40ff28549c1342ba784b53061949a65d0b4c9782dbca07b379c798"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -104973,7 +106161,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 7,
+    "data_revision": 8,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
@@ -105306,6 +106494,210 @@
         ]
       },
       {
+        "pricing_key": "kimi-platform-cn/kimi-k3-1-pro/kimi-k3.1-pro",
+        "product_key": "kimi-platform-cn",
+        "model_key": "kimi-k3-1-pro",
+        "upstream_model_id": "kimi-k3.1-pro",
+        "currency": "CNY",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "13",
+              "output": "68",
+              "cache-read": "1.3"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-300s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "cache_ttl_seconds": 300
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "13"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-3600s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "cache_ttl_seconds": 3600
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "26"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-217"
+        ]
+      },
+      {
+        "pricing_key": "kimi-platform-cn/kimi-k3-1-pro/kimi-k3.1-pro-highspeed",
+        "product_key": "kimi-platform-cn",
+        "model_key": "kimi-k3-1-pro",
+        "upstream_model_id": "kimi-k3.1-pro-highspeed",
+        "currency": "CNY",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "26",
+              "output": "136",
+              "cache-read": "1.3"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-300s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "cache_ttl_seconds": 300
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "26"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-3600s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "cache_ttl_seconds": 3600
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "52"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-217"
+        ]
+      },
+      {
+        "pricing_key": "kimi-platform-global/kimi-k3-1-pro/kimi-k3.1-pro",
+        "product_key": "kimi-platform-global",
+        "model_key": "kimi-k3-1-pro",
+        "upstream_model_id": "kimi-k3.1-pro",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "2",
+              "output": "10",
+              "cache-read": "0.2"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-300s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "cache_ttl_seconds": 300
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "2"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-3600s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "cache_ttl_seconds": 3600
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "4"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-218"
+        ]
+      },
+      {
+        "pricing_key": "kimi-platform-global/kimi-k3-1-pro/kimi-k3.1-pro-highspeed",
+        "product_key": "kimi-platform-global",
+        "model_key": "kimi-k3-1-pro",
+        "upstream_model_id": "kimi-k3.1-pro-highspeed",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "4",
+              "output": "20",
+              "cache-read": "0.2"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-300s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "cache_ttl_seconds": 300
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "4"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-3600s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "cache_ttl_seconds": 3600
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "8"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-218"
+        ]
+      },
+      {
         "pricing_key": "openai-platform-global/gpt-6-luna/gpt-6-luna",
         "product_key": "openai-platform-global",
         "model_key": "gpt-6-luna",
@@ -105444,6 +106836,106 @@
         "evidence_refs": [
           "source-175",
           "source-176"
+        ]
+      },
+      {
+        "pricing_key": "openai-platform-global/gpt-6.1-terra/gpt-6.1-terra",
+        "product_key": "openai-platform-global",
+        "model_key": "gpt-6.1-terra",
+        "upstream_model_id": "gpt-6.1-terra",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "2",
+              "output": "7.5",
+              "cache-read": "0.10"
+            }
+          },
+          {
+            "schedule_key": "standard-long-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "2.50"
+            }
+          },
+          {
+            "schedule_key": "standard-long-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "5"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "1",
+              "output": "5",
+              "cache-read": "0.05"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "1.25"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "2.50"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-214"
         ]
       }
     ],

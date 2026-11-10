@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
   "as_of": "2026-11-10",
-  "catalog_digest_compared": "sha256:96a058daba0a3b20e1ef2b34d2a3f46c5eccfb8695d09edde0a1392dfc9e9134",
+  "catalog_digest_compared": "sha256:f6812e47de40ff28549c1342ba784b53061949a65d0b4c9782dbca07b379c798",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -11,26 +11,26 @@
     "determinate_outcome_closure_script": ".agents/skills/model-metadata-maintainer/scripts/close_model_metadata.py"
   },
   "materialization": {
-    "model_metadata_record_count": 771,
-    "provider_metadata_record_count": 105,
+    "model_metadata_record_count": 778,
+    "provider_metadata_record_count": 108,
     "scenario_eligible_record_counts": {
       "adapter-planning": 4,
-      "context-limit-prefill": 767,
-      "cost-hint-display": 235,
-      "credential-setup-hint": 105,
-      "custom-api-endpoint-prefill": 85,
-      "custom-api-model-prefill": 771,
-      "lifecycle-warning": 771,
-      "model-directory": 771,
+      "context-limit-prefill": 772,
+      "cost-hint-display": 240,
+      "credential-setup-hint": 108,
+      "custom-api-endpoint-prefill": 87,
+      "custom-api-model-prefill": 778,
+      "lifecycle-warning": 778,
+      "model-directory": 778,
       "model-discovery-setup": 102,
-      "output-limit-prefill": 740,
-      "provider-directory": 105,
-      "reasoning-capability-prefill": 767,
-      "reasoning-rendering-hint": 370,
-      "request-limit-prefill": 743,
-      "vision-capability-prefill": 769
+      "output-limit-prefill": 745,
+      "provider-directory": 108,
+      "reasoning-capability-prefill": 774,
+      "reasoning-rendering-hint": 377,
+      "request-limit-prefill": 748,
+      "vision-capability-prefill": 776
     },
-    "unique_upstream_model_id_count": 403
+    "unique_upstream_model_id_count": 408
   },
   "runs": [
     {
@@ -120,6 +120,12 @@
       "client_signal": "The authenticated Codex 0.159.0 directory advertises GPT-6.1 Sol and reasoning profiles; the previous current source only described the public API product.",
       "provider_resolution": "Keep the native directory default/max-window values as source assertions and project the documented public model ceiling through an explicit subscription inference. Preserve documented low..max wire efforts, the separately inferred output bound and absent subscription cost hints. Existing pinned client scans are unchanged; no new repository scan is claimed.",
       "catalog_result": "The existing Codex Responses offer gains the reviewed GPT-6.1 Sol definition and reasoning profiles. Account eligibility remains gated by current observed inventory."
+    },
+    {
+      "change_key": "november-personal-quotas-doubao-terra-kimi-pro",
+      "client_signal": "Scoped official-source refresh; existing pinned client repository scans are unchanged.",
+      "provider_resolution": "Reviewed Bailian Personal quotas, the specific Doubao EOS notice and current replacement table, the Terra model page, and region-specific Kimi Platform/Code documentation on 2026-11-10. Unrelated evidence dates and client-scan commits are unchanged.",
+      "catalog_result": "Correct Personal quotas; retire the historical 260215 Lite binding and add distinct current replacements; replace Terra family inference with direct parameters and conditional standard pricing; add product-scoped Kimi K3.1 Pro/Highspeed records, entitlement conditions and separate CNY/USD prices without executable or subscription-access promotion."
     },
     {
       "change_key": "tencent-hy-callable-ids",
