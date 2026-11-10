@@ -454,6 +454,7 @@ fn thinking_display_fixed_preserves_native_controls_and_unknown_values_stay_boun
     for display in [
         json!("omitted"),
         json!("summarized"),
+        json!("updates"),
         json!("future-mode"),
         json!(42),
         json!(null),
@@ -461,7 +462,10 @@ fn thinking_display_fixed_preserves_native_controls_and_unknown_values_stay_boun
         let mut body = display_request();
         body["thinking"]["display"] = display.clone();
         let mut request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
-        assert_eq!(request.native_only, display != "omitted");
+        assert_eq!(
+            request.native_only,
+            !matches!(display.as_str(), Some("omitted" | "summarized" | "updates"))
+        );
         request.requested_reasoning.disposition =
             RequestedReasoningDisposition::AppliedToFixedBinding;
         let native = project_candidate_request(&request, &display_profile("disabled")).unwrap();
@@ -540,7 +544,7 @@ fn thinking_display_policy_survives_replay_externalization() {
     let mut request =
         decode_ingress_request(IngressProtocol::Messages, &display_request()).unwrap();
     externalize_model_request(&mut request, &store, 0).unwrap();
-    assert!(request.requested_reasoning.messages_omit_thinking);
+    assert!(request.requested_reasoning.messages_omit_thinking());
     assert_ne!(
         request.native_body.as_ref().unwrap()["thinking"]["display"],
         "omitted"
@@ -549,7 +553,7 @@ fn thinking_display_policy_survives_replay_externalization() {
     let serialized = serde_json::to_value(&request).unwrap();
     assert!(
         serialized["requested_reasoning"]
-            .get("messages_omit_thinking")
+            .get("messages_thinking_display")
             .is_none()
     );
     drop(request);

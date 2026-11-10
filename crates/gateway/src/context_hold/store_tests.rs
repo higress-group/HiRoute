@@ -118,6 +118,55 @@ fn preference(id: &str) -> HoldPreferenceV1 {
 }
 
 #[test]
+fn messages_progress_display_and_appended_system_reminder_retain_context_hold() {
+    use crate::server::core_runtime::adapters::decode_ingress_request;
+    use serde_json::json;
+
+    let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
+    let now = Instant::now();
+    let decode =
+        |body: &serde_json::Value| decode_ingress_request(IngressProtocol::Messages, body).unwrap();
+    let mut body = json!({
+        "model": "agent/test",
+        "system": "stable instructions",
+        "thinking": {"type": "adaptive", "display": "updates"},
+        "messages": [
+            {"role": "user", "content": "read a fixture"},
+            {"role": "system", "content": "<total_tokens>10000 tokens left</total_tokens>"}
+        ]
+    });
+    let first_request = decode(&body);
+    let history = super::super::visible_history(&first_request, &HISTORY_KEY).unwrap();
+    let first = store.begin(key(1), &history, now).unwrap();
+    assert_eq!(
+        store.complete(&first, preference("main"), now),
+        HoldCompleteOutcome::Applied
+    );
+
+    body["messages"].as_array_mut().unwrap().extend([
+        json!({"role": "assistant", "content": [
+            {"type": "tool_use", "id": "toolu_1", "name": "read", "input": {}}
+        ]}),
+        json!({"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "fixture output"}
+        ]}),
+        json!({"role": "system", "content": "<total_tokens>9000 tokens left</total_tokens>"}),
+    ]);
+    let continued_request = decode(&body);
+    let history = super::super::visible_history(&continued_request, &HISTORY_KEY).unwrap();
+    let continued = store.begin(key(1), &history, now).unwrap();
+    assert_eq!(continued.hint.unwrap().candidate_id, "main");
+
+    body["messages"][1]["content"] = json!("replacement instructions");
+    let rewritten = decode(&body);
+    let history = super::super::visible_history(&rewritten, &HISTORY_KEY).unwrap();
+    assert!(store.begin(key(1), &history, now).unwrap().hint.is_none());
+
+    body["thinking"]["display"] = json!("unknown-display");
+    assert!(super::super::visible_history(&decode(&body), &HISTORY_KEY).is_none());
+}
+
+#[test]
 fn preparing_an_interleaved_history_cannot_invalidate_the_live_completion() {
     let store = ContextHoldStore::new(DEFAULT_MAX_MEMORY_BYTES, DEFAULT_IDLE_TTL);
     let now = Instant::now();

@@ -68,6 +68,9 @@ calls, using explicit reasons rather than losing all legal candidates.
 Cross-protocol instructions/message boundaries preserve actual order, including
 Messages mixed text/tool-call/tool-result blocks and multiple results in one user
 message. Chat tool messages and interleaved text/images remain in source order.
+Messages instructions carried inside the conversation stay at their original
+positions on native replay, with their content blocks and cache controls. A
+representable cross-protocol path carries them at the corresponding history position.
 Messages `tool_result.is_error` stays failure content; ordinary cache hints may be
 omitted only under their documented non-execution-hint projection. Model-generated
 native argument strings and IDs follow their payload contract, not an arbitrary
