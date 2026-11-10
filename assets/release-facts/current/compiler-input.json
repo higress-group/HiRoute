@@ -4008,7 +4008,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-10-31",
+      "as_of": "2026-11-10",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -4061,6 +4061,60 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "claude-fable-5-1"
+          ]
+        },
+        {
+          "canonical_identity": "claude-fable-5-2",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": "Released 2026-11-09; knowledge and training data cutoff June 2026; retirement not before 2027-11-09. Structured outputs and strict tool use are unavailable for organizations using customer-managed encryption keys.",
+          "display_name": "Claude Fable 5.2",
+          "evidence_refs": [
+            "source-203",
+            "source-205",
+            "source-207",
+            "source-208",
+            "source-209"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": "standard Claude API Messages",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "claude-fable-5-2",
+          "publisher": "Anthropic",
+          "reasoning": {
+            "default": "high",
+            "kind": "adaptive-fixed-on",
+            "note": "Adaptive thinking is always on; disabled thinking and manual thinking budgets are unsupported. Effort defaults to high.",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-platform",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "claude-fable-5-2"
           ]
         },
         {
@@ -4162,6 +4216,60 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "claude-haiku-5-5"
+          ]
+        },
+        {
+          "canonical_identity": "claude-mythos-5-2",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": "Released 2026-11-09; knowledge and training data cutoff June 2026; retirement not before 2027-11-09. Structured outputs and strict tool use are unavailable for organizations using customer-managed encryption keys.",
+          "display_name": "Claude Mythos 5.2",
+          "evidence_refs": [
+            "source-204",
+            "source-205",
+            "source-207",
+            "source-208",
+            "source-209"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": "standard Claude API Messages",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "claude-mythos-5-2",
+          "publisher": "Anthropic",
+          "reasoning": {
+            "default": "high",
+            "kind": "adaptive-fixed-on",
+            "note": "Adaptive thinking is always on; disabled thinking and manual thinking budgets are unsupported. Effort defaults to high.",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "active-verification-required",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "claude-mythos-5-2"
           ]
         },
         {
@@ -6790,6 +6898,30 @@
       "endpoint_bindings": [
         {
           "availability": {
+            "condition": "Claude API documented model; target account entitlement and wire behavior require qualification. A 30-day retention period applies unless Anthropic explicitly authorizes zero data retention. Adaptive thinking is always on; forced tool_choice any/tool is unsupported. Thinking blocks require unchanged conversation prefixes and may only be reused by Fable 5.2 or Mythos 5.2.",
+            "state": "conditional"
+          },
+          "binding_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-203",
+            "source-205",
+            "source-207",
+            "source-210"
+          ],
+          "interface_candidates": [
+            "anthropic-platform/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-fable-5-2",
+          "product_key": "anthropic-platform",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-fable-5-2"
+        },
+        {
+          "availability": {
             "condition": "Claude API documented model; account entitlement and wire behavior require qualification. Thinking may be disabled only at low/medium/high effort; forced tool_choice any/tool is supported. Thinking history is bound to its originating or linked account.",
             "state": "conditional"
           },
@@ -6811,6 +6943,30 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "versioned-id",
           "upstream_model_id": "claude-haiku-5-5"
+        },
+        {
+          "availability": {
+            "condition": "Claude API documented model; target account entitlement and wire behavior require qualification. Access requires organization approval through an Anthropic verification program. Adaptive thinking is always on; forced tool_choice any/tool is unsupported. Thinking blocks require unchanged conversation prefixes and may only be reused by Fable 5.2 or Mythos 5.2. A 30-day retention period applies unless Anthropic explicitly authorizes zero data retention.",
+            "state": "conditional"
+          },
+          "binding_key": "anthropic-platform/claude-mythos-5-2/claude-mythos-5-2",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-204",
+            "source-205",
+            "source-207",
+            "source-210"
+          ],
+          "interface_candidates": [
+            "anthropic-platform/anthropic-messages"
+          ],
+          "lifecycle": "active",
+          "model_key": "claude-mythos-5-2",
+          "product_key": "anthropic-platform",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "claude-mythos-5-2"
         },
         {
           "availability": {
@@ -11724,6 +11880,78 @@
           "digest_state": "not-captured",
           "locator": "https://openrouter.ai/blog/insights/what-is-jev/",
           "source_key": "source-202",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/fable-5-2/overview",
+          "source_key": "source-203",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/mythos-5-2/overview",
+          "source_key": "source-204",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/models/fable-5-2/whats-new-fable-5-2",
+          "source_key": "source-205",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/about-claude/pricing",
+          "source_key": "source-206",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions",
+          "source_key": "source-207",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/build-with-claude/effort",
+          "source_key": "source-208",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+          "source_key": "source-209",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.claude.com",
+          "bytes_digest": null,
+          "collected_on": "2026-11-10",
+          "digest_state": "not-captured",
+          "locator": "https://platform.claude.com/docs/en/manage-claude/api-and-data-retention",
+          "source_key": "source-210",
           "source_kind": "provider-documentation"
         }
       ],
@@ -67815,6 +68043,222 @@
           "cost_hints": [
             {
               "cacheRead": "0.2",
+              "cacheWrite1h": "16",
+              "cacheWrite5m": "10",
+              "condition": "standard global Claude API; cache writes depend on TTL; account access requires qualification",
+              "currency": "USD",
+              "input": "8",
+              "output": "40",
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "Claude Fable 5.2",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/anthropic-api/claude-fable-5-2",
+          "normalized_model_matches": [
+            "claude-fable-5-2"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-203"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-205"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-206"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-207"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-208"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-209"
+            }
+          ],
+          "provider_id": "anthropic-api",
+          "provider_record_key": "official/anthropic-api",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "claude-fable-5-2",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "0.2",
+              "cacheWrite1h": "16",
+              "cacheWrite5m": "10",
+              "condition": "standard global Claude API; cache writes depend on TTL; account access requires qualification",
+              "currency": "USD",
+              "input": "8",
+              "output": "40",
+              "unit": "per-1m-tokens"
+            }
+          ],
+          "display_name": "Claude Mythos 5.2",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "partial",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/anthropic-api/claude-mythos-5-2",
+          "normalized_model_matches": [
+            "claude-mythos-5-2"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-204"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-205"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-206"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-207"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-208"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-209"
+            }
+          ],
+          "provider_id": "anthropic-api",
+          "provider_record_key": "official/anthropic-api",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "claude-mythos-5-2",
+          "usable_for": [
+            "context-limit-prefill",
+            "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "cost_hint_state": "recorded",
+          "cost_hints": [
+            {
+              "cacheRead": "0.2",
               "cacheWrite1h": "8",
               "cacheWrite5m": "5",
               "condition": "standard Claude API; cache writes vary by TTL",
@@ -102420,7 +102864,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:437803d2fa489700c372639242cca54591f0d60dea52406d3464d4c82a98cfc6"
+      "source_catalog_digest": "sha256:96a058daba0a3b20e1ef2b34d2a3f46c5eccfb8695d09edde0a1392dfc9e9134"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -104529,8 +104973,63 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 6,
+    "data_revision": 7,
     "pricing_facts": [
+      {
+        "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
+        "product_key": "anthropic-platform",
+        "model_key": "claude-fable-5-2",
+        "upstream_model_id": "claude-fable-5-2",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-global",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "inference_geo": "global"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "8",
+              "output": "40",
+              "cache-read": "0.20"
+            }
+          },
+          {
+            "schedule_key": "standard-global-cache-write-300s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "inference_geo": "global",
+              "cache_ttl_seconds": 300
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "10"
+            }
+          },
+          {
+            "schedule_key": "standard-global-cache-write-3600s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "inference_geo": "global",
+              "cache_ttl_seconds": 3600
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "16"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-203",
+          "source-206"
+        ]
+      },
       {
         "pricing_key": "anthropic-platform/claude-haiku-5-5/claude-haiku-5-5",
         "product_key": "anthropic-platform",
@@ -104576,6 +105075,61 @@
         "evidence_refs": [
           "source-181",
           "source-184"
+        ]
+      },
+      {
+        "pricing_key": "anthropic-platform/claude-mythos-5-2/claude-mythos-5-2",
+        "product_key": "anthropic-platform",
+        "model_key": "claude-mythos-5-2",
+        "upstream_model_id": "claude-mythos-5-2",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-global",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "inference_geo": "global"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "8",
+              "output": "40",
+              "cache-read": "0.20"
+            }
+          },
+          {
+            "schedule_key": "standard-global-cache-write-300s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "inference_geo": "global",
+              "cache_ttl_seconds": 300
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "10"
+            }
+          },
+          {
+            "schedule_key": "standard-global-cache-write-3600s",
+            "condition": {
+              "kind": "service-tier",
+              "tier": "standard",
+              "inference_geo": "global",
+              "cache_ttl_seconds": 3600
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "16"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-204",
+          "source-206"
         ]
       },
       {

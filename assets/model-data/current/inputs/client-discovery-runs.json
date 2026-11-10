@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
-  "as_of": "2026-10-31",
-  "catalog_digest_compared": "sha256:437803d2fa489700c372639242cca54591f0d60dea52406d3464d4c82a98cfc6",
+  "as_of": "2026-11-10",
+  "catalog_digest_compared": "sha256:96a058daba0a3b20e1ef2b34d2a3f46c5eccfb8695d09edde0a1392dfc9e9134",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -11,26 +11,26 @@
     "determinate_outcome_closure_script": ".agents/skills/model-metadata-maintainer/scripts/close_model_metadata.py"
   },
   "materialization": {
-    "model_metadata_record_count": 769,
+    "model_metadata_record_count": 771,
     "provider_metadata_record_count": 105,
     "scenario_eligible_record_counts": {
       "adapter-planning": 4,
-      "context-limit-prefill": 765,
-      "cost-hint-display": 233,
+      "context-limit-prefill": 767,
+      "cost-hint-display": 235,
       "credential-setup-hint": 105,
       "custom-api-endpoint-prefill": 85,
-      "custom-api-model-prefill": 769,
-      "lifecycle-warning": 769,
-      "model-directory": 769,
+      "custom-api-model-prefill": 771,
+      "lifecycle-warning": 771,
+      "model-directory": 771,
       "model-discovery-setup": 102,
-      "output-limit-prefill": 738,
+      "output-limit-prefill": 740,
       "provider-directory": 105,
-      "reasoning-capability-prefill": 765,
-      "reasoning-rendering-hint": 368,
-      "request-limit-prefill": 741,
-      "vision-capability-prefill": 767
+      "reasoning-capability-prefill": 767,
+      "reasoning-rendering-hint": 370,
+      "request-limit-prefill": 743,
+      "vision-capability-prefill": 769
     },
-    "unique_upstream_model_id_count": 401
+    "unique_upstream_model_id_count": 403
   },
   "runs": [
     {
@@ -79,6 +79,12 @@
     }
   ],
   "resolved_catalog_changes": [
+    {
+      "change_key": "claude-fable-mythos-5-2-official-metadata",
+      "client_signal": "New official Claude API IDs are absent from the existing pinned client snapshots.",
+      "provider_resolution": "Reviewed Anthropic model, pricing, versioning and effort documentation on 2026-11-10 for the 2026-11-09 release. Existing client scans and unrelated source dates are unchanged; no account access was verified.",
+      "catalog_result": "Add Fable 5.2 and Mythos 5.2 canonical identities, official provider records, conditional API bindings and standard global pricing with TTL-specific cache-write schedules. Preserve Mythos verification and always-on adaptive-thinking constraints."
+    },
     {
       "change_key": "claude-subscription-registered-capabilities",
       "client_signal": "All Claude CPA models were missing executable endpoint capability joins and used the conservative text-only runtime fallback.",
