@@ -7,8 +7,8 @@ export const agentGuides = {
     zh: 'Codex', en: 'Codex', native: true,
     title: { zh: 'Codex API 赠金与订阅路由', en: 'Codex API credits and subscription routing' },
     description: {
-      zh: '在 Codex Desktop 或 CLI 使用 ChatGPT 订阅和 OpenAI API 赠金。把同名模型加入候选，选择订阅优先或赠金优先。',
-      en: 'Use OpenAI API credits and your ChatGPT subscription in Codex Desktop or CLI. Combine the same model from both sources and choose which comes first.',
+      zh: '在 Codex Desktop 或 CLI 使用 ChatGPT 订阅和 OpenAI API 赠金。组合同名候选，并复用赠金接入配置 OpenAI 决策模型。',
+      en: 'Use your ChatGPT subscription and OpenAI API credits in Codex Desktop or CLI. Combine same-model candidates and reuse the API connection for OpenAI Decisions.',
     },
   },
   'claude-code-model-routing': {

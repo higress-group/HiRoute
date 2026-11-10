@@ -15,6 +15,7 @@
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 有 API 赠金时，引导我添加领取赠金的组织 Key 或复用对应接入，再按我的优先顺序把订阅和 API 的同名模型加入候选。操作参考 https://hiroute.ai/zh/docs/codex-model-routing/#api-credits
+- 我需要用决策模型判断难度时，复用同一份 OpenAI API 接入。参考 decision connections options / list / apply / test 和 https://hiroute.ai/zh/docs/codex-model-routing/#openai-decision-model
 - 查找 Codex 接入和配置目标：hiroute compute scan · compute connection options · quickstart
 - 按我使用的客户端接入 Codex Desktop 或 Codex CLI。创建路由和预览接入用 routing preview / apply · agents connect preview / apply / status。
 - 接入 Desktop 后引导我从 HiRoute 启动独立窗口。也可在本机图形会话用 agents desktop launch。
@@ -57,7 +58,7 @@
 2. 点击“保存并接入”。HiRoute 会将订阅模型与 API 目录中支持的同 ID 模型一并接入。已经保存订阅时，可在“通用模型 → 按接入”选中订阅，在“订阅与 API”中点击“关联 API 接入”或“调整关联”。
 3. 想按赠金预算用 API，在接入时开启 **“限制 API 花费”**，或之后在该 Key 的详情中设置。按供应商显示的剩余额度填金额，赠金定期到账时可按实际更新日补充。核对模型价格后，已知价格的请求在额度不足时会尝试下一个可用候选。详见 [API Key 额度配置](/zh/docs/models/#api-key-allowance)。
 
-接下来[将订阅与赠金 API 放进同一条路由](#credit-candidates)。
+接下来可以[组合订阅与赠金的同名候选](#credit-candidates)，也可以[复用赠金接入配置 OpenAI 决策模型](#openai-decision-model)。
 
 <h2 id="configure-routing">2. 配置智能路由</h2>
 
@@ -71,7 +72,16 @@
   <figcaption>常规组负责日常步骤，主力组处理复杂轮次。图中的模型可替换为你第一步接入的模型。</figcaption>
 </figure>
 
-想根据执行表现进一步调整时，可在同一位置选择决策模型，使用阶段评分和低分保护。[了解难度路由的判断方式](/zh/docs/model-routing/#difficulty-routing)
+<h3 id="openai-decision-model">用赠金 API 接入 OpenAI 决策模型</h3>
+
+可以让 Codex 的订阅候选继续执行任务，同时用第一步的赠金 API 接入做难度判断和阶段评分。
+
+1. 打开上面创建的 **按难度分流** 路由。在“判断方式”中选择 **“决策模型”**，点击 **“添加决策模型”**。
+2. 在“凭据”选择 **“使用已有 API 接入”**，选第一步保存的 OpenAI 赠金接入。HiRoute 会复用这份接入中的 Key。
+3. 模型 ID 填 `gpt-6-luna`，完整地址填 `https://api.openai.com/v1/decisions`，协议选 **“OpenAI 决策接口”**。已有预填时核对这三项。取名“OpenAI 难度判断”，点击 **“保存并测试”**。[OpenAI Decisions 官方文档](https://developers.openai.com/api/docs/guides/decisions)
+4. 回到路由，确认“使用的决策模型”选中了这份连接，再点击 **“发布更改”**。接入 Codex 后发一个小任务，在“会话 → 路由时间线”查看难度判断和实际执行模型。
+
+决策调用计入这份接入对应的 OpenAI API 组织，可以用该组织的赠金抵扣。执行候选也使用同一个 Key 时，两边已知价格的用量计入同一份 [Key 花费额度](/zh/docs/models/#api-key-allowance)。[了解阶段评分和低分保护](/zh/docs/model-routing/#difficulty-routing)
 
 <h3 id="credit-candidates">把订阅与赠金 API 一起加入同名候选</h3>
 
