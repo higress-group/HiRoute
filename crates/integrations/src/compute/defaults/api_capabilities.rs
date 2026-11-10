@@ -173,22 +173,26 @@ fn metadata_defaults(
         // An explicit binding, including withdrawal/ambiguity, owns its complete scope.
         let models = bindings
             .iter()
+            // Another protocol's binding neither contributes nor conflicts. The
+            // explicit product/model scope still prevents provider-hint fallback
+            // when none of its bindings applies to the selected interface.
+            .filter(|binding| {
+                product.interfaces.iter().any(|interface| {
+                    interface.protocol == protocol
+                        && binding
+                            .interface_candidates
+                            .contains(&interface.interface_key)
+                        && interface
+                            .base_url
+                            .as_ref()
+                            .zip(interface.request_path.as_ref())
+                            .is_some_and(|(base, path)| {
+                                format!("{}{path}", base.trim_end_matches('/')) == wire_target
+                            })
+                })
+            })
             .map(|binding| {
-                if matches!(binding.lifecycle.as_deref(), Some("retired" | "deprecated"))
-                    || !product.interfaces.iter().any(|interface| {
-                        interface.protocol == protocol
-                            && binding
-                                .interface_candidates
-                                .contains(&interface.interface_key)
-                            && interface
-                                .base_url
-                                .as_ref()
-                                .zip(interface.request_path.as_ref())
-                                .is_some_and(|(base, path)| {
-                                    format!("{}{path}", base.trim_end_matches('/')) == wire_target
-                                })
-                    })
-                {
+                if matches!(binding.lifecycle.as_deref(), Some("retired" | "deprecated")) {
                     return None;
                 }
                 let publisher = if product.product_key == "openai-platform-global" {
@@ -229,6 +233,9 @@ fn metadata_defaults(
             context_tokens: fact(agreed(models.iter().map(|(b, m)| {
                 b.capability_overrides
                     .context_tokens
+                    // Native capability context_tokens is the input budget;
+                    // a published total window must not enlarge an exact input cap.
+                    .or(m.max_input_tokens)
                     .or_else(|| limit(&m.context_tokens))
             }))),
             max_output_tokens: fact(agreed(models.iter().map(|(b, m)| {
@@ -498,6 +505,66 @@ mod tests {
         );
         assert!(result.filled_fields.is_empty());
     }
+    #[test]
+    fn protocol_scoped_bindings_isolate_withdrawal_and_conflicting_tool_facts() {
+        let c = catalog();
+        let resolved = c
+            .resolve_connection_option("openai.platform.global.v1")
+            .unwrap();
+        let endpoint = |protocol| {
+            resolved
+                .endpoint_profile
+                .protocol_endpoints
+                .iter()
+                .find(|endpoint| endpoint.protocol == protocol)
+                .unwrap()
+        };
+        let chat = endpoint(UpstreamProtocol::ChatCompletions);
+        let responses = endpoint(UpstreamProtocol::Responses);
+        let mut metadata = c.model_metadata().clone();
+        let chat_index = metadata
+            .endpoint_bindings
+            .iter()
+            .position(|binding| {
+                binding.upstream_model_id == "gpt-6.1-terra"
+                    && binding.interface_candidates == ["openai-platform-global/openai-chat"]
+            })
+            .unwrap();
+        metadata.endpoint_bindings[chat_index].lifecycle = Some("retired".into());
+        let withdrawn = metadata_defaults(&metadata, chat, "gpt-6.1-terra");
+        assert_eq!(withdrawn.tool.value, None);
+        assert_eq!(withdrawn.context_tokens.value, None);
+        let other_protocol = metadata_defaults(&metadata, responses, "gpt-6.1-terra");
+        assert_eq!(other_protocol.tool.value, Some(true));
+        assert_eq!(other_protocol.context_tokens.value, Some(922_000));
+
+        metadata.endpoint_bindings[chat_index].lifecycle = Some("active".into());
+        let mut conflict = metadata.endpoint_bindings[chat_index].clone();
+        conflict.binding_key.push_str("/conflict");
+        conflict.capability_overrides.tool = Some(true);
+        metadata.endpoint_bindings.push(conflict);
+        let ambiguous = metadata_defaults(&metadata, chat, "gpt-6.1-terra");
+        assert_eq!(ambiguous.tool.value, None);
+        assert_eq!(ambiguous.context_tokens.value, Some(922_000));
+        assert_eq!(
+            metadata_defaults(&metadata, responses, "gpt-6.1-terra")
+                .tool
+                .value,
+            Some(true)
+        );
+
+        for binding in &mut metadata.endpoint_bindings {
+            if binding.upstream_model_id == "gpt-6.1-terra" {
+                binding
+                    .interface_candidates
+                    .retain(|key| !key.ends_with("/openai-chat"));
+            }
+        }
+        let unmatched = metadata_defaults(&metadata, chat, "gpt-6.1-terra");
+        assert_eq!(unmatched.tool.value, None);
+        assert_eq!(unmatched.context_tokens.value, None);
+    }
+
     #[test]
     fn conflicting_provider_fact_keeps_only_that_field_unknown() {
         let c = catalog();

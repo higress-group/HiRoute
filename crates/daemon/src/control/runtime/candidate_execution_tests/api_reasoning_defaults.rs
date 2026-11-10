@@ -377,3 +377,26 @@ fn terra_context_defaults_preserve_the_separate_input_and_total_limits() {
         assert_eq!(serde_json::to_vec(&fact.capabilities).unwrap(), before);
     }
 }
+
+#[test]
+fn terra_metadata_keeps_explicit_saved_tool_and_token_choices() {
+    let catalog = current_catalog();
+    for protocol in [
+        UpstreamProtocol::ChatCompletions,
+        UpstreamProtocol::Responses,
+    ] {
+        let fact = observed_api(
+            &catalog,
+            "openai.platform.global.v1",
+            protocol,
+            "gpt-6.1-terra",
+        );
+        let before = serde_json::to_vec(&fact.capabilities).unwrap();
+        let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
+        candidate.validate().unwrap();
+        assert!(candidate.model.capabilities.tool);
+        assert_eq!(candidate.model.capabilities.context_tokens, 32_768);
+        assert_eq!(candidate.model.capabilities.max_output_tokens, 4_096);
+        assert_eq!(serde_json::to_vec(&fact.capabilities).unwrap(), before);
+    }
+}

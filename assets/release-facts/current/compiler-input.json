@@ -9732,8 +9732,30 @@
             "source-214"
           ],
           "interface_candidates": [
-            "openai-platform-global/openai-chat",
             "openai-platform-global/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "gpt-6.1-terra",
+          "product_key": "openai-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "gpt-6.1-terra"
+        },
+        {
+          "availability": {
+            "condition": "Documented OpenAI Platform API model; API project, usage tier, region and exact protocol require runtime qualification. Tool calling requires Responses and is unsupported on Chat Completions. Does not establish Codex or ChatGPT subscription entitlement.",
+            "state": "conditional"
+          },
+          "binding_key": "openai-platform-global/gpt-6.1-terra/gpt-6.1-terra/chat-completions",
+          "capability_overrides": {
+            "tool": false
+          },
+          "evidence_refs": [
+            "source-214"
+          ],
+          "interface_candidates": [
+            "openai-platform-global/openai-chat"
           ],
           "lifecycle": "active",
           "model_key": "gpt-6.1-terra",
@@ -104052,7 +104074,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:331273a638bb649010aafa6611e5ec3493380cbb1e0bb9e733f5ce1744d35577"
+      "source_catalog_digest": "sha256:1f69329375bd72a1d98c7e2b49560f9154272614836c68c2880dd2838bd2f281"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -106161,7 +106183,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 9,
+    "data_revision": 10,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",

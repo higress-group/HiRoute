@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
   "as_of": "2026-11-10",
-  "catalog_digest_compared": "sha256:331273a638bb649010aafa6611e5ec3493380cbb1e0bb9e733f5ce1744d35577",
+  "catalog_digest_compared": "sha256:1f69329375bd72a1d98c7e2b49560f9154272614836c68c2880dd2838bd2f281",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -125,7 +125,7 @@
       "change_key": "november-personal-quotas-doubao-terra-kimi-pro",
       "client_signal": "Scoped official-source refresh; existing pinned client repository scans are unchanged.",
       "provider_resolution": "Reviewed Bailian Personal quotas, the specific Doubao EOS notice and current replacement table, the Terra model page, and region-specific Kimi Platform/Code documentation on 2026-11-10. Unrelated evidence dates and client-scan commits are unchanged.",
-      "catalog_result": "Correct Personal quotas; retire the historical 260215 Lite binding and add distinct current replacements; replace Terra family inference with direct parameters and conditional standard pricing; add product-scoped Kimi K3.1 Pro/Highspeed records, entitlement conditions and separate CNY/USD prices without executable or subscription-access promotion."
+      "catalog_result": "Correct Personal quotas; retire the historical 260215 Lite binding and add distinct current replacements; replace Terra family inference with direct parameters and conditional standard pricing; add product-scoped Kimi K3.1 Pro/Highspeed records, entitlement conditions and separate CNY/USD prices without executable or subscription-access promotion. Terra interface-specific tool support is represented by separate native protocol bindings; its independent input limit is retained for runtime default completion."
     },
     {
       "change_key": "tencent-hy-callable-ids",

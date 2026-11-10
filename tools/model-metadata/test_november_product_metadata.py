@@ -66,10 +66,16 @@ class NovemberProductMetadataTests(unittest.TestCase):
         self.assertEqual(model['modalities']['audio_input'], 'unsupported')
         self.assertEqual(model['modalities']['video_input'], 'unsupported')
         self.assertEqual(model['evidence_refs'], ['source-214'])
-        binding, = self.bindings(TERRA)
-        self.assertEqual(binding['product_key'], 'openai-platform-global')
-        self.assertIn('requires Responses', binding['availability']['condition'])
-        self.assertIn('unsupported on Chat Completions', binding['availability']['condition'])
+        bindings = self.bindings(TERRA)
+        self.assertEqual(len(bindings), 2)
+        by_interface = {b['interface_candidates'][0]: b for b in bindings}
+        for binding in bindings:
+            self.assertEqual(binding['product_key'], 'openai-platform-global')
+            self.assertEqual(len(binding['interface_candidates']), 1)
+            self.assertIn('requires Responses', binding['availability']['condition'])
+            self.assertIn('unsupported on Chat Completions', binding['availability']['condition'])
+        self.assertFalse(by_interface['openai-platform-global/openai-chat']['capability_overrides']['tool'])
+        self.assertNotIn('tool', by_interface['openai-platform-global/openai-responses'].get('capability_overrides', {}))
 
     def test_terra_whole_request_threshold_and_cache_retention_prices(self):
         price, = [p for p in self.source['pricing_facts'] if p['model_key'] == TERRA]

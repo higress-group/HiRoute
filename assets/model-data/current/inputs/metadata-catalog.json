@@ -8100,7 +8100,6 @@
       "upstream_model_id": "gpt-6.1-terra",
       "lifecycle": "active",
       "interface_candidates": [
-        "openai-platform-global/openai-chat",
         "openai-platform-global/openai-responses"
       ],
       "availability": {
@@ -8112,6 +8111,28 @@
         "source-214"
       ],
       "upstream_identity_role": "versioned-id"
+    },
+    {
+      "binding_key": "openai-platform-global/gpt-6.1-terra/gpt-6.1-terra/chat-completions",
+      "product_key": "openai-platform-global",
+      "model_key": "gpt-6.1-terra",
+      "upstream_model_id": "gpt-6.1-terra",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "openai-platform-global/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented OpenAI Platform API model; API project, usage tier, region and exact protocol require runtime qualification. Tool calling requires Responses and is unsupported on Chat Completions. Does not establish Codex or ChatGPT subscription entitlement."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-214"
+      ],
+      "upstream_identity_role": "versioned-id",
+      "capability_overrides": {
+        "tool": false
+      }
     },
     {
       "binding_key": "openrouter-credits-byok/jev-1.13/typesafe/jev-1.13/decision",
@@ -9677,7 +9698,7 @@
       "decision_key": "openai-gpt-6-1-terra-efforts",
       "status": "resolved_exact_and_metadata_shape",
       "subject": "Direct GPT-6.1 Terra parameters supersede prior Sol-family inference",
-      "decision": "Reviewed the official Terra model page on 2026-11-10: none/low/medium/high/xhigh/max with medium default; context 1050000, input 922000, output 128000. Record API-specific capabilities and conditional prices, including the whole-request >272000 input threshold and cache TTLs. Tools require Responses. Preserve manual settings; no Codex/ChatGPT entitlement, executable binding or benchmark rating is inferred."
+      "decision": "Reviewed the official Terra model page on 2026-11-10: none/low/medium/high/xhigh/max with medium default; context 1050000, input 922000, output 128000. Record API-specific capabilities and conditional prices, including the whole-request >272000 input threshold and cache TTLs. Tools require Responses. Preserve manual settings; no Codex/ChatGPT entitlement, executable binding or benchmark rating is inferred. Separate Chat Completions and Responses bindings so Chat explicitly disables tool capability. Native API defaults consume the documented 922000 input cap rather than treating the 1050000 total context as input; canonical total context remains unchanged."
     },
     {
       "decision_key": "openrouter-router-identity",
