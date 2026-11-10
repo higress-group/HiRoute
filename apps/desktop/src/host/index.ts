@@ -57,7 +57,8 @@ async function browserCall(command: string, args: Record<string, unknown>): Prom
     const caps = override?.capabilities() ?? consoleCapabilities();
     const path = command === 'open_diagnostic_directory' ? caps.diagnostic_directory : caps.recovery_directory;
     if (!path) throw { kind: 'native', code: 'APP_DATA_UNAVAILABLE' };
-    window.dispatchEvent(new CustomEvent('hiroute-host-path', { detail: path })); return;
+    const displayPath = caps.platform === 'windows' ? path.replaceAll('/', '\\') : path;
+    window.dispatchEvent(new CustomEvent('hiroute-host-path', { detail: displayPath })); return;
   }
   return consoleTransport.call(command, args);
 }
