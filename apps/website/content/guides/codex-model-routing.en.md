@@ -14,6 +14,7 @@ Read https://hiroute.ai/en/docs/codex-model-routing/ and help me get models, con
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - If I have API credits, help me use the receiving organization's API connection and add the same model from both sources in my preferred order. See https://hiroute.ai/en/docs/codex-model-routing/#api-credits
+- If I want a decision model for difficulty routing, reuse that OpenAI API connection. See decision connections options / list / apply / test and https://hiroute.ai/en/docs/codex-model-routing/#openai-decision-model
 - Find Codex sources and the configuration target: hiroute compute scan · compute connection options · quickstart
 - Connect the client I use, Codex Desktop or Codex CLI. Create the route and preview the connection with routing preview / apply · agents connect preview / apply / status.
 - For Desktop, guide me to open the separate window from HiRoute. The agents desktop launch command also works in the local graphical session.
@@ -56,7 +57,7 @@ Eligible ChatGPT Pro and Business subscribers can claim OpenAI API credits. Link
 2. Click **Save and connect**. HiRoute imports the subscription models and their supported exact-ID counterparts from the API. For a saved subscription, select it in **General models → Connections**, then choose **Associate an API connection** or **Edit association** under **Subscription and API**.
 3. To budget API use around the credits, turn on **Limit API spending** during setup or later in the key's details. Use the provider's remaining credit amount and set a renewal schedule if the grant recurs. With model prices set, requests that exceed the local allowance can try the next available candidate. See [API key allowances](/en/docs/models/#api-key-allowance).
 
-Next, [put the subscription and API credit sources in one route](#credit-candidates).
+You can [combine subscription and API candidates for the same model](#credit-candidates) and [reuse the credit-funded connection for OpenAI Decisions](#openai-decision-model).
 
 <h2 id="configure-routing">2. Configure smart routing</h2>
 
@@ -70,7 +71,16 @@ Next, [put the subscription and API credit sources in one route](#credit-candida
   <figcaption>Regular models handle routine work and Primary models handle harder turns. Replace the illustrated models with the ones you connected in step 1.</figcaption>
 </figure>
 
-To adjust routing using execution feedback, select a decision model in the same section for stage scoring and low-score protection. [Learn about difficulty decisions](/en/docs/model-routing/#difficulty-routing)
+<h3 id="openai-decision-model">Use API credits for an OpenAI decision model</h3>
+
+Codex can keep using subscription models to run tasks while the OpenAI API connection from step 1 handles difficulty judgments and stage scoring.
+
+1. Open the **Difficulty routing** plan you created above. Under **Decision method**, select **Decision model** and click **Add decision model**.
+2. Under **Credentials**, select **Use existing API connection** and choose the OpenAI connection that uses your credits. HiRoute reuses the keys in that connection.
+3. Set the model ID to `gpt-6-luna`, the complete URL to `https://api.openai.com/v1/decisions`, and the protocol to **OpenAI decisions**. Check any prefilled values. Name it “OpenAI difficulty judge” and click **Save and test**. [OpenAI Decisions documentation](https://developers.openai.com/api/docs/guides/decisions)
+4. Return to the route, confirm the saved decision model is selected, and click **Publish changes**. After connecting Codex, try a small task and check its difficulty judgment and execution model under **Sessions → Routing timeline**.
+
+Decision calls can draw on the API credits in the OpenAI organization linked to this connection. If an execution candidate uses the same key, priced usage from both counts toward its [key spending allowance](/en/docs/models/#api-key-allowance). [Learn about stage scoring and low-score protection](/en/docs/model-routing/#difficulty-routing)
 
 <h3 id="credit-candidates">Add the subscription and API credits as same-model candidates</h3>
 
