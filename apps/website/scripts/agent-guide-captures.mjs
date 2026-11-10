@@ -4,6 +4,7 @@ const agentEditors = {
   'agent-guide-claude': ['claude', 'Claude Code', 'Claude 日常开发', 'Claude daily coding'],
   'agent-guide-qoder': ['qoder', 'Qoder', 'Qoder 日常开发', 'Qoder daily coding'],
   'agent-guide-pi': ['pi', 'Pi', 'Pi 日常开发', 'Pi daily coding'],
+  'agent-guide-workbuddy-pi': ['pi', 'Pi', 'WorkBuddy 资料整理', 'WorkBuddy document review'],
   'agent-guide-dsh': ['dsh', 'DeepSeek Harness Web', 'DSH 分析', 'DSH analysis'],
   'agent-guide-opencode': ['opencode', 'OpenCode', 'OpenCode 代码审查', 'OpenCode code review'],
   'agent-guide-hermes': ['hermes', 'Hermes', 'Hermes 日常对话', 'Hermes daily chat'],
@@ -15,6 +16,9 @@ const workerPlans = {
 export const agentGuideCaptureStates = [
   ...Object.keys(agentEditors),
   'agent-guide-magpie-api', 'agent-guide-qoder-models', 'agent-guide-difficulty',
+  'agent-guide-subscription-login', 'agent-guide-codex-subscription-models',
+  'agent-guide-claude-subscription-models', 'agent-guide-codex-desktop',
+  'agent-guide-codex-desktop-launch',
   ...Object.keys(workerPlans),
 ];
 
@@ -139,8 +143,90 @@ async function seedQoderModels(client, language, worker) {
   })()`);
 }
 
+async function subscriptionCapture(client, language, state, click) {
+  const provider = state.includes('claude') ? 'claude' : 'codex';
+  const label = provider === 'codex' ? 'Codex' : 'Claude Code';
+  await evaluate(client, `(() => {
+    const c = window.productShell;
+    const provider = ${JSON.stringify(provider)};
+    const result = c.fixtureResponse('check_subscription', {});
+    const candidate = result.checked_candidate;
+    const pending = { ...c.fixtureResponse('compute_subscriptions', {}).candidates[0],
+      existing_source_id: undefined,
+      candidate: { candidate_ref: 'candidate/guide-' + provider, candidate_revision: 1 } };
+    candidate.display_name = ${JSON.stringify(label)} + ${JSON.stringify(translate(language, ' 订阅', ' subscription'))};
+    pending.display_name = candidate.display_name;
+    candidate.existing_source_id = undefined;
+    candidate.candidate = { ...pending.candidate, candidate_revision: 2 };
+    result.candidate = candidate.candidate;
+    candidate.models = (provider === 'codex'
+      ? [['gpt-6.1-sol', 'GPT-6.1-Sol'], ['gpt-6-astra', 'GPT-6-Astra']]
+      : [['claude-sonnet-example', 'Claude Sonnet'], ['claude-opus-example', 'Claude Opus']]
+    ).map(([id, name]) => ({ model_ref: 'model/' + id, upstream_model_id: id,
+      display_name: name, membership: 'observed', selectable: true }));
+    c.handlers.manage_subscription_login = ({ request }) => ({
+      schema: 'hiroute.subscription-login-result/v1',
+      sessions: ${state !== 'agent-guide-subscription-login'} && request.provider === provider
+        ? [{ provider, login_ref: 'login/guide', status: 'authorized', candidate: pending.candidate }] : [],
+    });
+    c.handlers.compute_subscriptions = () => ({ discovery_state: 'complete', candidates: [pending] });
+    c.handlers.check_subscription = () => result;
+    c.handlers.get_subscription_check_result = () => result;
+    c.remount();
+  })()`);
+  await click(translate(language, '模型', 'Models'));
+  await waitFor(client, `[...document.querySelectorAll('button')].some(button =>
+    button.textContent.trim() === ${JSON.stringify(translate(language, '添加模型', 'Add models'))} && !button.disabled)`);
+  await click(translate(language, '添加模型', 'Add models'));
+  await waitFor(client, 'Boolean(document.querySelector(".add-choice"))');
+  await click(translate(language, '连接订阅', 'Connect subscription'));
+  await waitFor(client, 'Boolean(document.querySelector(".oc-status-row button:not(:disabled)"))');
+  if (state === 'agent-guide-subscription-login') return;
+  await click(translate(language, '检查并选择模型', 'Check and choose models'));
+  await waitFor(client, `[...document.querySelectorAll('button')].some(button =>
+    button.textContent.trim() === ${JSON.stringify(translate(language, '检查订阅', 'Check subscription'))} && !button.disabled)`);
+  await click(translate(language, '检查订阅', 'Check subscription'));
+  await waitFor(client, 'Boolean(document.querySelector(".v3-catalog input[type=checkbox]"))');
+  await evaluate(client, `(() => {
+    for (const input of document.querySelectorAll('.v3-catalog input[type=checkbox]')) {
+      if (!input.checked && !input.disabled) input.click();
+    }
+  })()`);
+  await waitFor(client, `[...document.querySelectorAll('button')].some(button =>
+    button.textContent.trim() === ${JSON.stringify(translate(language, '保存并接入', 'Save and connect'))} && !button.disabled)`);
+}
+
+async function codexDesktopCapture(client, language, state, click) {
+  await evaluate(client, `(() => {
+    const c = window.productShell;
+    const plan = c.agents.plans.plans[0];
+    plan.desired.display_name = ${JSON.stringify(translate(language, '日常开发', 'Daily coding'))};
+    c.agents.plans.plans = [plan];
+    c.desktop.catalog.plans = [plan];
+    const desktop = c.agents.agents.find(agent => agent.agent_id === 'agent_codex_default');
+    desktop.agent_id = 'agent_codex_desktop';
+    desktop.context_id = 'agent-context/codex-desktop/sha256:' + 'a'.repeat(64);
+    desktop.available_surfaces = ['codex_desktop'];
+    desktop.codex_access = undefined;
+    desktop.codex_desktop = { codex_home: '/example/codex-desktop/codex',
+      user_data: '/example/codex-desktop/desktop', source_codex_home: '/example/codex',
+      shared_skills: '/example/skills' };
+    c.agents.agents = [desktop];
+    c.remount();
+  })()`);
+  await click('Agent');
+  await waitFor(client, `[...document.querySelectorAll('.native-list .list-row')].some(row => row.textContent.includes('Codex Desktop'))`);
+  await evaluate(client, `[...document.querySelectorAll('.native-list .list-row')].find(row => row.textContent.includes('Codex Desktop')).click()`);
+  await waitFor(client, 'Boolean(document.querySelector("[data-codex-desktop-launch]"))');
+  if (state === 'agent-guide-codex-desktop-launch') return;
+  await evaluate(client, 'document.querySelector("[data-agent-facet=model]").click()');
+  await waitFor(client, 'Boolean(document.querySelector("[role=dialog] input[type=checkbox]"))');
+}
+
 export async function openAgentGuideCapture(client, base, language, state, click) {
   await loadProduct(client, base, language, state);
+  if (state.includes('subscription-')) return subscriptionCapture(client, language, state, click);
+  if (state.startsWith('agent-guide-codex-desktop')) return codexDesktopCapture(client, language, state, click);
   if (agentEditors[state]) return agentEditor(client, language, click, agentEditors[state]);
   if (state === 'agent-guide-magpie-api') return magpieApi(client, language, click);
 

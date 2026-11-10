@@ -1,6 +1,6 @@
-# Claude Code model routing with Opus, Sonnet and Haiku presets
+# Claude Code subscription setup and model routing
 
-Keep coding in Claude Code and open a HiRoute route through a familiar model preset. Let an economical model handle easy turns and a primary model make the hard decisions. When you want an independent check, use Pi to run it.
+Import your Claude subscription models into HiRoute and use a familiar Opus, Sonnet or Haiku preset in Claude Code to select the route. Give routine edits to an economical model and complex debugging to a primary model.
 
 [Download HiRoute](/en/download/) · [Browse Agent guides](/en/docs/agent-integrations/)
 
@@ -10,7 +10,7 @@ Keep coding in Claude Code and open a HiRoute route through a familiar model pre
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/claude-code-model-routing/ and help me reuse Claude models and map a difficulty route to the preset I select. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/claude-code-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Find a subscription or API: hiroute compute scan · compute connection options / prepare
@@ -22,27 +22,57 @@ The UI and CLI share configuration and records. Let me authorize the connection.
 </details>
 </aside>
 
-## 1. Connect a Claude subscription or Anthropic API
+[1. Scan or sign in to get models](#get-models) · [2. Configure smart routing](#configure-routing) · [3. Connect your Agent](#connect-agent) · [4. Explore task delegation](#task-delegation)
 
-Open **Models → General models → Add models**. **Scan this device** can find supported Claude Code subscription and static API settings. Check a detected subscription when prompted, or sign in independently under **Connect a subscription**. If you have an Anthropic API key, use **New API connection**.
+<h2 id="get-models">1. Scan or sign in to get models</h2>
 
-Pick two models that suit your work. For example, use Haiku for routine code reading and Sonnet or Opus for a fix that needs deeper reasoning. Choose IDs available to your account. See [Anthropic's gateway documentation](https://code.claude.com/docs/en/llm-gateway) for its supported API scope.
+Import the models from your Claude subscription into HiRoute.
 
-## 2. Map the Sonnet preset to a difficulty route
-
-Under **Smart routing**, create “Claude daily coding” and choose **Difficulty routing**. Add your Regular and Primary models. Use **Heuristic rules**, or add a [decision model](/en/docs/model-routing/#difficulty-routing) for stage scoring. Publish the plan.
-
-In **Agent → Claude Code → Model routing**, expand **Advanced settings** and map Sonnet to this plan. The Opus, Sonnet and Haiku presets can each keep their native mapping or point at a plan you choose. Restart `claude`, select the mapped preset with `/model` and try a small task. See the actual model in HiRoute's **Sessions** view.
+1. Open **Models → General models → Add models → Connect subscription**.
+2. Click **Sign in** on the **Claude Code** card. Authorize with your Claude account in the browser, then return to HiRoute.
 
 <figure class="guide-shot-dialog">
-  <a href="/guide-assets/agent-guide-claude-en.webp"><img src="/guide-assets/agent-guide-claude-en.webp" alt="HiRoute model mappings for the Opus, Sonnet and Haiku presets in Claude Code" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>Start with one preset. You can leave the other presets on their usual models.</figcaption>
+  <a href="/guide-assets/agent-guide-subscription-login-en.webp"><img src="/guide-assets/agent-guide-subscription-login-en.webp" alt="Claude Code sign-in entry in HiRoute's subscription dialog" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Click Sign in on the Claude Code card, authorize your account and return to HiRoute.</figcaption>
 </figure>
 
-## 3. Ask Pi to investigate independently
+3. Click **Check and choose models**, then **Check subscription** to load the models available to your account.
+4. Select the models you want from your account's catalog, then click **Save and connect**. For example, pair Sonnet or Opus with an economical model you already use.
 
-Reuse your connected models in a “Pi code investigation” plan. Give file search and evidence gathering to Regular and cross-module analysis to Primary. Under **More settings → Task delegation**, select **Pi**, describe the purpose, check its CLI and Node setup and publish. Use a compatible protocol and models that support the tools you need.
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-claude-subscription-models-en.webp"><img src="/guide-assets/agent-guide-claude-subscription-models-en.webp" alt="Selecting Sonnet and Opus from a checked Claude Code subscription" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Choose models returned for your account and save them to HiRoute.</figcaption>
+</figure>
 
-[Enable Task routing](/en/docs/task-routing/#delegation-skill) in Claude Code and try: “Use HiRoute to delegate an investigation of the configuration loading path to Pi code investigation. Return entry points and links to the evidence.” Check Pi's result in **Agent → Task history**. The delegation plan also works while Claude Code keeps its native model.
+If you already signed in to Claude Code locally, use **Add models → Scan this device**, check the detected subscription and save its models. HiRoute can reuse file-based and macOS Keychain sign-ins. For an Anthropic API key, choose the service under **New API connection**, check it and save.
 
-Next: [Add a model route to Pi](/en/docs/pi-model-routing/) · [See the full delegation workflow](/en/docs/task-routing/)
+<h2 id="configure-routing">2. Configure smart routing</h2>
+
+1. Open **Smart routing → New smart routing**, name the plan “Claude daily coding” and choose **Difficulty routing**.
+2. Click **Add model** in **Regular models** and choose a fast or economical model from step 1 for reading files, finding definitions and gathering facts.
+3. Add a model to **Primary models** for complex analysis, planning or changes across several files. Combine available models from different subscriptions, APIs or local connections as needed.
+4. Start with **Heuristic rules** under **Decision method**, then click **Enable**. The published route becomes available in the Agent settings in the next step.
+
+<figure class="guide-shot-panel">
+  <a href="/guide-assets/agent-guide-difficulty-en.webp"><img src="/guide-assets/agent-guide-difficulty-en.webp" alt="HiRoute difficulty routing with a decision method and Regular and Primary model groups" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Regular models handle routine work and Primary models handle harder turns. Replace the illustrated models with the ones you connected in step 1.</figcaption>
+</figure>
+
+To adjust routing using execution feedback, select a decision model in the same section for stage scoring and low-score protection. [Learn about difficulty decisions](/en/docs/model-routing/#difficulty-routing)
+
+<h2 id="connect-agent">3. Connect your Agent</h2>
+
+Open **Agent → Claude Code → Model routing** and expand **Advanced settings**. Map the **Sonnet** preset to the “Claude daily coding” plan you published. You can also map Opus or Haiku to a route, then save.
+
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-claude-en.webp"><img src="/guide-assets/agent-guide-claude-en.webp" alt="Claude Code Opus, Sonnet and Haiku presets mapped to HiRoute plans" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Map the Sonnet preset to your published difficulty route.</figcaption>
+</figure>
+
+Restart `claude`, use `/model` to select the mapped preset and send a small task. HiRoute chooses between the route's Regular and Primary groups. See the actual model choices in **Sessions → Routing timeline**.
+
+<h2 id="task-delegation">4. Explore task delegation</h2>
+
+While fixing a problem in Claude Code, ask Pi to trace configuration loading or independently review a diff. Keep working in the main conversation and incorporate its findings when it finishes.
+
+To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)

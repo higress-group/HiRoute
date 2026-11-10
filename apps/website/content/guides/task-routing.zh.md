@@ -71,7 +71,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 
 <h2 id="delegation-skill">2. 开启主 Agent 的内置委派技能</h2>
 
-打开“Agent”，选择你日常使用的主 Agent，在“任务路由”中选择“启用”。Codex、Claude Code、Qoder、Pi、DeepSeek Harness、Hermes 和 OpenCode 都可以作为主 Agent；Hermes 需要先选择它实际使用的配置目录。
+打开“Agent”，选择日常使用的主 Agent，在“任务路由”中点击“启用”。Codex CLI 对应“Codex”，DSH Web 和 CLI 对应“DeepSeek Harness Web”。Claude Code、Qoder、Pi、Hermes 和 OpenCode 也可以发起委派。使用 Hermes 时，先选中它实际使用的配置目录。
 
 1. 选择“委派时机”：“仅在明确要求时”，只有你要求执行、委派或交给 Worker 时才启动任务；“默认由 Agent 判断”，Agent 可以主动委派适合执行的工作，你仍可明确要求只回答、不执行。
 2. 选择“启用任务路由”，并按提示完成任务委派技能检查。

@@ -1,6 +1,6 @@
 # Use WorkBuddy models in Pi with headless Magpie and HiRoute
 
-Bring the models your WorkBuddy account offers into HiRoute. Route straightforward work to a Regular model and harder decisions to a Primary model, then run the task with Pi or Codex CLI. WorkBuddy supplies the models. The plan picks the execution Agent.
+Bring your WorkBuddy models into HiRoute. Route straightforward work to a Regular model and harder decisions to a Primary model, then use the route in Pi or Codex CLI. WorkBuddy supplies the models while your preferred Agent reads files, edits code and organizes research.
 
 [Download HiRoute](/en/download/) · [Browse Agent guides](/en/docs/agent-integrations/)
 
@@ -10,51 +10,88 @@ Bring the models your WorkBuddy account offers into HiRoute. Route straightforwa
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/workbuddy-model-routing/ and use my WorkBuddy catalog through Magpie to set up difficulty routing with the executor I choose. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/workbuddy-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Inspect and save an API connection: hiroute compute list · compute connection options / test / preview / apply
-- Configure routing and the executor: routing options · routing preview / apply · worker executors
-- Check the task and actual models: worker result · sessions timeline
+- Configure smart routing and connect Pi: routing options · routing preview / apply · agents connect preview / apply
+- Inspect model choices; choose an executor when delegation is requested: sessions timeline · worker executors · worker result
 The UI and CLI share configuration and records. Let me authorize WorkBuddy and use IDs from my catalog. Follow installed --help and hiroute schema show --command-id COMMAND_ID --include-schema.
 ```
 
 </details>
 </aside>
 
-<h2 id="connect-workbuddy">1. Find WorkBuddy models through Magpie</h2>
+[1. Scan or sign in to get models](#connect-workbuddy) · [2. Configure smart routing](#configure-routing) · [3. Connect your Agent](#connect-agent) · [4. Explore task delegation](#task-delegation)
 
-[Start the headless Magpie service](/en/docs/magpie-model-sources/#start-magpie), or use your running instance. Then install the [WorkBuddy community plugin](https://github.com/magpie-community/plugins/blob/main/registry.json) and sign in:
+<h2 id="connect-workbuddy">1. Scan or sign in to get models</h2>
+
+[Install the Magpie CLI](https://usemagpie.ai/docs/start) on the host running HiRoute. Choose the startup method for your system.
+
+- On macOS or Linux with systemd, run `magpie daemon install --no-web`, then check the service with `magpie daemon status`. Run `magpie daemon start` to start an installed service.
+- On Windows or hosts without service installation, run `magpie serve` in a separate terminal and keep it running.
+
+If the gateway is already running, go straight to sign-in.
+
+Run `magpie plugin add @magpie-community/opencode-workbuddy-auth`, then sign in with the command for your account.
+
+- For a CodeBuddy plan in China, run `magpie plugin login workbuddy`.
+- For the international build, run `magpie plugin login workbuddy-ai`.
+
+Complete authorization in the browser, then query the catalog and keep the complete IDs you want. Use `curl.exe` in Windows PowerShell.
 
 ```sh
-magpie plugin add @magpie-community/opencode-workbuddy-auth
-magpie plugin login workbuddy
+curl -fsS -H 'Authorization: Bearer magpie' http://127.0.0.1:3425/v1/models
 ```
 
-Use `workbuddy` for the China build with a CodeBuddy plan. For the international build, run `magpie plugin login workbuddy-ai`. After authorization, [read the model catalog](/en/docs/magpie-model-sources/#model-catalog) and keep the complete IDs available to your account.
+In HiRoute, open **Models → General models → Add models → New API connection → Custom API** and fill in the connection.
 
-[Save the Magpie API in HiRoute](/en/docs/magpie-model-sources/#save-api) with the WorkBuddy models you want to use. If you already have a connection to that Magpie endpoint, add the models to it and continue to the routing step.
+| Setting | Value |
+| --- | --- |
+| Connection name | For example, “Magpie WorkBuddy” |
+| API base URL | `http://127.0.0.1:3425/v1`, or your gateway's address |
+| Protocol | Responses for the Pi or Codex CLI examples below |
+| API key | `magpie` for the default local gateway, or your configured key |
+| Models | Select from the returned catalog, keeping the full source prefix |
+
+Click **Check and continue**, select models and save. If the catalog does not appear, set the model directory path to `/v1/models` under **Advanced settings**, or enter the complete IDs you just retrieved. If a supported Agent configuration already points to this gateway, try **Scan this device** to find and reuse the connection.
 
 <figure class="guide-shot-dialog">
-  <a href="/guide-assets/agent-guide-magpie-api-en.webp"><img src="/guide-assets/agent-guide-magpie-api-en.webp" alt="The local Magpie API address for connecting WorkBuddy models in HiRoute" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>Add the local Magpie address in HiRoute and pick models from your account's catalog.</figcaption>
+  <a href="/guide-assets/agent-guide-magpie-api-en.webp"><img src="/guide-assets/agent-guide-magpie-api-en.webp" alt="Magpie API address and Responses protocol in HiRoute" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Save the Magpie API that supplies your WorkBuddy models.</figcaption>
 </figure>
 
-## 2. Set up a route for reading and analysis
+<h2 id="configure-routing">2. Configure smart routing</h2>
 
-Create a plan named “WorkBuddy document review” and choose **Difficulty routing**. Pick a Regular model for finding files and extracting facts, and a Primary model for comparing options and drawing conclusions. If your account offers just one suitable model, fill the other group from an [API, subscription or local connection](/en/docs/models/).
-
-Start with **Heuristic rules**, or add a decision model to [route using stage scores](/en/docs/model-routing/#difficulty-routing). Choose models that support the tools your task needs, then publish.
-
-## 3. Execute with Pi or Codex CLI
-
-Open **More settings → Task delegation** in the plan. Allow delegation, describe the purpose (“Read project documentation and extract key points”), choose **Pi**, check its dependencies and publish. For a task that needs Codex's tools, reuse the same models in a separate plan and choose **Codex CLI** as executor.
+1. Open **Smart routing → New smart routing**, name the plan “WorkBuddy document review” and choose **Difficulty routing**.
+2. Click **Add model** in **Regular models** and choose a fast or economical model from step 1 for reading files, finding definitions and gathering facts.
+3. Add a model to **Primary models** for complex analysis, planning or changes across several files. Combine available models from different subscriptions, APIs or local connections as needed.
+4. Start with **Heuristic rules** under **Decision method**, then click **Enable**. The published route becomes available in the Agent settings in the next step.
 
 <figure class="guide-shot-panel">
-  <a href="/guide-assets/agent-guide-pi-worker-en.webp"><img src="/guide-assets/agent-guide-pi-worker-en.webp" alt="A HiRoute delegation plan with Pi bound as its execution Agent" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>Choose the tool that runs the task here. The model groups above govern routing.</figcaption>
+  <a href="/guide-assets/agent-guide-difficulty-en.webp"><img src="/guide-assets/agent-guide-difficulty-en.webp" alt="HiRoute difficulty routing with a decision method and Regular and Primary model groups" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Regular models handle routine work and Primary models handle harder turns. Replace the illustrated models with the ones you connected in step 1.</figcaption>
 </figure>
 
-[Enable Task routing](/en/docs/task-routing/#delegation-skill) in the Agent you usually talk to. Try: “Use HiRoute to delegate a review of this project's README to WorkBuddy document review. Return three takeaways.” Check **Agent → Task history** for the result and the session's routing timeline for model choices.
+To adjust routing using execution feedback, select a decision model in the same section for stage scoring and low-score protection. [Learn about difficulty decisions](/en/docs/model-routing/#difficulty-routing)
 
-Next: [Connect Qoder models through Magpie](/en/docs/qoder-model-routing/) · [Add a route to Pi's model picker](/en/docs/pi-model-routing/)
+<h2 id="connect-agent">3. Connect your Agent</h2>
+
+### Use WorkBuddy models in Pi
+
+Open **Agent → Pi → Model routing** and check the “WorkBuddy document review” plan you published. Choose Responses to match the connection and save.
+
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-workbuddy-pi-en.webp"><img src="/guide-assets/agent-guide-workbuddy-pi-en.webp" alt="Pi model routing selection in HiRoute" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Select your newly created WorkBuddy route in Pi's connection settings.</figcaption>
+</figure>
+
+Restart Pi and choose the route with `/model`. Ask it to extract three takeaways from the project README. The models come from your WorkBuddy connection, and Pi handles actions such as reading files. Inspect the model choices in HiRoute's **Sessions → Routing timeline**.
+
+You can also select the plan under **Agent → Codex → Model routing** and launch it with the command from **On demand · CLI only**. See the [illustrated Codex CLI setup](/en/docs/codex-model-routing/#codex-cli).
+
+<h2 id="task-delegation">4. Explore task delegation</h2>
+
+When organizing research, ask Pi to read documents and Codex CLI to check their code examples, then combine the results in your main conversation. WorkBuddy supplies the models, and you choose an execution Agent to suit each task.
+
+To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)

@@ -1,4 +1,4 @@
-# DeepSeek Harness model routing and execution Agent setup
+# DeepSeek Harness model routing for Web and Desktop
 
 Keep the DeepSeek Harness workflow. Use a fast model for straightforward questions and a primary model for deeper analysis. Add a route to DSH Web or Desktop, or have another Agent delegate work to DSH.
 
@@ -10,7 +10,7 @@ Keep the DeepSeek Harness workflow. Use a fast model for straightforward questio
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/deepseek-harness-model-routing/ and reuse models, set up routing and configure delegation for the DSH entry I use. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/deepseek-harness-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Find DSH and importable models: hiroute quickstart · compute scan · compute connection prepare
@@ -22,27 +22,41 @@ The UI and CLI share configuration and records. Distinguish Web from Desktop and
 </details>
 </aside>
 
-## 1. Reuse DSH models or connect an API
+[1. Scan or sign in to get models](#get-models) · [2. Configure smart routing](#configure-routing) · [3. Connect your Agent](#connect-agent) · [4. Explore task delegation](#task-delegation)
 
-For an existing DSH Web/CLI setup, look for an eligible static provider under **Models → General models → Add models → Scan this device**. The provider needs explicit model declarations. Check the discovered connection and save the models you want.
+<h2 id="get-models">1. Scan or sign in to get models</h2>
 
-If there is nothing to import, add a DeepSeek API under **New API connection**, or reuse a source already in HiRoute, such as [Qoder, WorkBuddy or another API](/en/docs/agent-integrations/). Pick one model for fast analysis and another for harder reasoning.
+Open **Models → General models → Add models → Scan this device** and find static providers from your DSH Web/CLI setup. Select a connection with explicit model declarations, check it and save the models you want.
 
-## 2. Add a difficulty route to Web or Desktop
+To add a source, choose DeepSeek or Custom API under **New API connection**, enter its address and key, check it and save. You can also include imported subscription models in the same route.
 
-Under **Smart routing**, create “DSH analysis” with **Difficulty routing**. Use Regular to read code and extract logs, and Primary to diagnose the cause. Start with heuristic rules; for stage scores, add a [decision model](/en/docs/model-routing/#difficulty-routing). Publish and open **Agent → Model routing**.
+<h2 id="configure-routing">2. Configure smart routing</h2>
 
-Select **DeepSeek Harness Web** or **DeepSeek Harness Desktop** according to the client you use. Their settings are separate. Add the published route, restart that client and select the route in its model picker. Try a small task and confirm the route in **Sessions**.
+1. Open **Smart routing → New smart routing**, name the plan “DSH analysis” and choose **Difficulty routing**.
+2. Click **Add model** in **Regular models** and choose a fast or economical model from step 1 for reading files, finding definitions and gathering facts.
+3. Add a model to **Primary models** for complex analysis, planning or changes across several files. Combine available models from different subscriptions, APIs or local connections as needed.
+4. Start with **Heuristic rules** under **Decision method**, then click **Enable**. The published route becomes available in the Agent settings in the next step.
 
-<figure class="guide-shot-dialog">
-  <a href="/guide-assets/agent-guide-dsh-en.webp"><img src="/guide-assets/agent-guide-dsh-en.webp" alt="HiRoute model routing dialog for DeepSeek Harness Web" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>Add the route to the DSH entry you use. Web and Desktop have separate settings.</figcaption>
+<figure class="guide-shot-panel">
+  <a href="/guide-assets/agent-guide-difficulty-en.webp"><img src="/guide-assets/agent-guide-difficulty-en.webp" alt="HiRoute difficulty routing with a decision method and Regular and Primary model groups" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Regular models handle routine work and Primary models handle harder turns. Replace the illustrated models with the ones you connected in step 1.</figcaption>
 </figure>
 
-## 3. Send a fix to Codex or use DSH for analysis
+To adjust routing using execution feedback, select a decision model in the same section for stage scoring and low-score protection. [Learn about difficulty decisions](/en/docs/model-routing/#difficulty-routing)
 
-To delegate from DSH, use its Web/CLI entry with Task routing. Reuse your models in a “Codex scoped fix” plan. Under **More settings → Task delegation**, bind **Codex CLI**, describe its purpose, check dependencies and publish. [Enable Task routing](/en/docs/task-routing/#delegation-skill) for DSH, then ask it to hand off a well-scoped fix.
+<h2 id="connect-agent">3. Connect your Agent</h2>
 
-To delegate from Codex, Hermes or another main Agent to DSH, select **DeepSeek Harness** as the executor in a separate plan and prepare its CLI dependencies. Open **Agent → Task history** for the executor and outcome, and the session's routing timeline for the models used.
+In **Agent**, select **DeepSeek Harness Web** or **DeepSeek Harness Desktop**, matching the client you use. Open **Model routing**, check “DSH analysis” and save.
 
-Next: [Delegate to DSH from Codex](/en/docs/codex-model-routing/) · [Set up Hermes with a Codex execution plan](/en/docs/hermes-model-routing/)
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-dsh-en.webp"><img src="/guide-assets/agent-guide-dsh-en.webp" alt="DeepSeek Harness Web model routing settings" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Add the published route to the DSH client you use.</figcaption>
+</figure>
+
+Restart that client, select the route in its model picker and try a log-analysis or code-reading task. See the models used in HiRoute's **Sessions → Routing timeline**. Web and Desktop have separate route settings.
+
+<h2 id="task-delegation">4. Explore task delegation</h2>
+
+When analyzing a problem in DSH Web or CLI, hand a focused fix to Codex CLI. Another Agent can also delegate root-cause investigation to DSH.
+
+Bind an executor in the plan under **More settings → Task delegation**. To delegate from DSH, enable **Task routing** in the **DeepSeek Harness Web** entry in HiRoute. [Continue with the Agent routing guide](/en/docs/task-routing/)

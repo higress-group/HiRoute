@@ -71,7 +71,7 @@ A missing installation does not block saving the plan, but the chosen execution 
 
 <h2 id="delegation-skill">2. Enable the built-in delegation Skill for your main Agent</h2>
 
-Open Agent, choose the main agent you use every day, and select Enable under Task routing. Codex, Claude Code, Qoder, Pi, DeepSeek Harness, Hermes and OpenCode can all act as main agents; for Hermes, first select the configuration directory it actually uses.
+Open **Agent**, select the main Agent you use, and choose **Enable** under **Task routing**. Select **Codex** for Codex CLI or **DeepSeek Harness Web** for DSH Web and CLI. Claude Code, Qoder, Pi, Hermes and OpenCode can also send delegated tasks. For Hermes, select the configuration directory you use first.
 
 1. Choose **When to delegate**. With **Only when explicitly requested**, the agent starts a task only when you ask it to execute, delegate, or hand work to a Worker. With **Let the Agent decide by default**, the agent may delegate suitable work on its own, and you can still ask it to answer without execution.
 2. Select **Enable task routing** and complete the task delegation skill check when prompted.

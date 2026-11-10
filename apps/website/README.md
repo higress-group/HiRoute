@@ -86,8 +86,12 @@ from the integration overview and the docs navigation. List native connections
 on the homepage and in the first group of the overview. List extra sources such
 as WorkBuddy in the overview's model sources group. Use stable anchors when a
 guide needs one step from the shared Magpie setup.
-Keep reusable model and delegation procedures in their guides; each Agent page
-shows its own model discovery, selection and a concrete cross-Agent example.
+Each Agent walkthrough follows four steps: scan or sign in to get models,
+configure smart routing, connect the Agent, then explore task delegation.
+Repeat the complete difficulty-routing steps and screenshot in each page so the
+core setup can be followed without changing articles. Describe delegation through
+a short user scenario and link to the dedicated Agent routing guide for setup.
+Keep shared captions and screenshots consistent in both languages.
 
 `npm run check:guides` rejects missing language pairs, unregistered guide files and
 incomplete Agent handoffs. Rendering uses the same contract; the final build also

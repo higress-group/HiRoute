@@ -6,10 +6,12 @@
 
 ## 选你常用的 Agent
 
+每篇教程都按四步展开：获取模型、配置智能路由、接入 Agent、了解任务委派。路由配置步骤和截图直接放在各篇文档中，跟着一篇就能完成接入。
+
 <ul class="integration-catalog">
-  <li><a href="/zh/docs/codex-model-routing/">Codex 多模型路由</a><p>复用订阅或 API，用按需加载的 Codex CLI profile 试用路由。</p></li>
-  <li><a href="/zh/docs/claude-code-model-routing/">Claude Code 模型路由</a><p>给 Opus、Sonnet 或 Haiku 预设映射路由，让 Pi 独立完成一项调研。</p></li>
-  <li><a href="/zh/docs/qoder-model-routing/">Qoder CLI 路由与订阅模型</a><p>把路由加到 Qoder CLI，或用 Magpie 接入 Qoder 订阅模型。</p></li>
+  <li><a href="/zh/docs/codex-model-routing/">Codex 订阅路由与 Desktop 接入</a><p>登录订阅、配置路由，再打开 Codex Desktop 独立窗口或接入 CLI。</p></li>
+  <li><a href="/zh/docs/claude-code-model-routing/">Claude Code 订阅接入与模型路由</a><p>登录 Claude 订阅，再把路由映射到 Opus、Sonnet 或 Haiku 预设。</p></li>
+  <li><a href="/zh/docs/qoder-model-routing/">Qoder CLI 路由与订阅模型</a><p>用 Magpie 发现模型，配置分流，再接入 Qoder CLI 或 Codex Desktop。</p></li>
   <li><a href="/zh/docs/pi-model-routing/">Pi 多模型路由</a><p>导入 Pi 的模型，在 <code>/model</code> 里选路由，再交给 Codex CLI 独立验证。</p></li>
   <li><a href="/zh/docs/deepseek-harness-model-routing/">DeepSeek Harness 模型路由</a><p>在 Web 或桌面版选用路由，也可以让 DeepSeek Harness 执行委派任务。</p></li>
   <li><a href="/zh/docs/opencode-model-routing/">OpenCode 多模型路由</a><p>复用已有 API 配置，在 <code>/models</code> 里选路由，再让 Pi 独立检查。</p></li>
@@ -46,7 +48,8 @@
 
 1. **接入模型。** 从“模型 → 通用模型 → 添加模型”复用订阅、扫描本机受支持的配置或添加 API。Magpie 已经在运行时，可直接[添加本地 API](/zh/docs/magpie-model-sources/#save-api)。
 2. **按难度分流。** 在“智能路由”选择“按难度分流”，添加常规模型与主力模型。第一次可以用启发式规则；需要阶段评分和低分保护，再接入决策模型。见 [智能模型路由](/zh/docs/model-routing/#difficulty-routing)。
-3. **选择怎么用。** 想继续在当前 Agent 工作，就把发布后的路由映射到它的模型入口。想把一项独立任务交给别人，就在计划中绑定执行 Agent，并在日常使用的主 Agent 上开启“任务路由”。两条路径可以同时用，也可以分别启用。
+3. **接入 Agent。** 把发布后的路由映射到你日常使用的 Agent，再从该客户端的模型入口选用。
+4. **按需委派任务。** 在计划中绑定合适的执行 Agent，并在发起任务的主 Agent 中开启“任务路由”。
 
 <figure class="guide-shot-panel">
   <a href="/guide-assets/agent-guide-difficulty-zh.webp"><img src="/guide-assets/agent-guide-difficulty-zh.webp" alt="HiRoute 按难度分流计划中的常规模型与主力模型组" width="1200" height="900" loading="lazy" /></a>
