@@ -73,11 +73,17 @@ To adjust routing using execution feedback, select a decision model in the same 
 </figure>
 
 3. Back in the Codex Desktop details, click **Open separate window** in the **Separate window** section. HiRoute opens a desktop window configured to use your route.
-4. Choose a project in the new window, create a chat and confirm the route in the model picker. Try “Find this project's startup entry points and explain how they connect.” In HiRoute, open **Sessions → Routing timeline** to see the models selected.
 
 <figure class="guide-shot-panel">
   <a href="/guide-assets/agent-guide-codex-desktop-launch-en.webp"><img src="/guide-assets/agent-guide-codex-desktop-launch-en.webp" alt="Codex Desktop details in HiRoute with the Open separate window button" width="1200" height="900" loading="lazy" /></a>
   <figcaption>After saving the route, click Open separate window at the upper right and start work in the new window.</figcaption>
+</figure>
+
+4. Choose a project in the new window and click **New chat**. Confirm or choose your new route in the model picker at the bottom right of the composer. Try “Find this project’s startup entry points and explain how they connect.” In HiRoute, open **Sessions → Routing timeline** to see the models selected.
+
+<figure class="guide-shot-window">
+  <a href="/guide-assets/agent-guide-codex-desktop-window-en.webp"><img src="/guide-assets/agent-guide-codex-desktop-window-en.webp" alt="A new chat in the separate Codex Desktop window with Qoder Responses selected at the bottom right" width="2560" height="1640" loading="lazy" /></a>
+  <figcaption>In the separate window, confirm the route in the bottom-right model picker. This example uses “Qoder Responses”; choose the route you created.</figcaption>
 </figure>
 
 After changing route settings, quit this instance and open it again with the same button.

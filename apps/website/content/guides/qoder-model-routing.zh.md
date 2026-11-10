@@ -97,11 +97,17 @@ curl -fsS http://127.0.0.1:3425/v1/models \
 </figure>
 
 3. 回到 Codex Desktop 详情，在“独立窗口”区域点击 **“启动独立窗口”**。HiRoute 会打开使用这套路由的独立桌面窗口。
-4. 在新窗口选择项目，创建新对话，从模型选择器确认所选路由，再发一条任务，例如“找出这个项目的启动入口并说明调用关系”。到 HiRoute“会话 → 路由时间线”查看实际选用的模型。
 
 <figure class="guide-shot-panel">
   <a href="/guide-assets/agent-guide-codex-desktop-launch-zh.webp"><img src="/guide-assets/agent-guide-codex-desktop-launch-zh.webp" alt="HiRoute 的 Codex Desktop 详情页，显示启动独立窗口按钮" width="1200" height="900" loading="lazy" /></a>
   <figcaption>保存路由后，点击右上方的“启动独立窗口”，在新窗口中开始工作。</figcaption>
+</figure>
+
+4. 在新窗口选择项目，点击“新聊天”，在输入框右下角确认或选择刚创建的路由。再发一条任务，例如“找出这个项目的启动入口并说明调用关系”。到 HiRoute“会话 → 路由时间线”查看实际选用的模型。
+
+<figure class="guide-shot-window">
+  <a href="/guide-assets/agent-guide-codex-desktop-window-zh.webp"><img src="/guide-assets/agent-guide-codex-desktop-window-zh.webp" alt="Codex Desktop 独立窗口中的新聊天，右下角已选择 Qoder Responses 路由" width="2560" height="1640" loading="lazy" /></a>
+  <figcaption>独立窗口打开后，在右下角确认路由。图中选中的是“Qoder Responses”，使用时选择你刚创建的路由。</figcaption>
 </figure>
 
 更新路由设置后，退出这个独立实例，再用同一按钮重新启动。
