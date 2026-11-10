@@ -28,7 +28,7 @@ The UI and CLI share configuration and records. Follow installed --help and hiro
 
 Open **Models → General models → Add models → Scan this device** and find your Pi sources. HiRoute reads supported `models.json` declarations, API key sources and recognized installed model catalogs. Select a connection, check it and save the models you want.
 
-For models supplied by a runtime plugin, enter the corresponding API address and key under **New API connection**, check it and save. You can also use imported subscription models or [connect Qoder models through Magpie](/en/docs/qoder-model-routing/#connect-qoder).
+If a runtime plugin provides an API address and key, enter them under **New API connection**, check the connection and save. You can also import Codex or Claude Code models through **Connect subscription**, or [connect Qoder models through Magpie](/en/docs/qoder-model-routing/#connect-qoder).
 
 <h2 id="configure-routing">2. Configure smart routing</h2>
 

@@ -26,22 +26,29 @@ The UI and CLI share configuration and records. Let me authorize WorkBuddy and u
 
 <h2 id="connect-workbuddy">1. Scan or sign in to get models</h2>
 
-Sign in to WorkBuddy through headless Magpie, read your account's model catalog and connect it to HiRoute. [Install the Magpie CLI](https://usemagpie.ai/docs/start), then run these commands. With an existing background service, go straight to installing the plugin and signing in.
+[Install the Magpie CLI](https://usemagpie.ai/docs/start) on the host running HiRoute. Choose the startup method for your system.
+
+- On macOS or Linux with systemd, run `magpie daemon install --no-web`, then check the service with `magpie daemon status`. Run `magpie daemon start` to start an installed service.
+- On Windows or hosts without service installation, run `magpie serve` in a separate terminal and keep it running.
+
+If the gateway is already running, go straight to sign-in.
+
+Run `magpie plugin add @magpie-community/opencode-workbuddy-auth`, then sign in with the command for your account.
+
+- For a CodeBuddy plan in China, run `magpie plugin login workbuddy`.
+- For the international build, run `magpie plugin login workbuddy-ai`.
+
+Complete authorization in the browser, then query the catalog and keep the complete IDs you want. Use `curl.exe` in Windows PowerShell.
 
 ```sh
-magpie daemon install --no-web
-magpie plugin add @magpie-community/opencode-workbuddy-auth
-magpie plugin login workbuddy
-curl -fsS http://127.0.0.1:3425/v1/models \
-  -H 'Authorization: Bearer magpie'
+curl -fsS -H 'Authorization: Bearer magpie' http://127.0.0.1:3425/v1/models
 ```
-
-Use `workbuddy` for the China build with a CodeBuddy plan. For the international build, use `magpie plugin login workbuddy-ai`. After authorizing in the browser, query the catalog again and keep the complete IDs of the models you want.
 
 In HiRoute, open **Models → General models → Add models → New API connection → Custom API** and fill in the connection.
 
 | Setting | Value |
 | --- | --- |
+| Connection name | For example, “Magpie WorkBuddy” |
 | API base URL | `http://127.0.0.1:3425/v1`, or your gateway's address |
 | Protocol | Responses for the Pi or Codex CLI examples below |
 | API key | `magpie` for the default local gateway, or your configured key |
@@ -81,7 +88,7 @@ Open **Agent → Pi → Model routing** and check the “WorkBuddy document revi
 
 Restart Pi and choose the route with `/model`. Ask it to extract three takeaways from the project README. The models come from your WorkBuddy connection, and Pi handles actions such as reading files. Inspect the model choices in HiRoute's **Sessions → Routing timeline**.
 
-You can also select the plan under **Agent → Codex CLI → Model routing** and launch it with the command from **On demand · CLI only**. See the [illustrated Codex setup](/en/docs/codex-model-routing/#connect-agent).
+You can also select the plan under **Agent → Codex → Model routing** and launch it with the command from **On demand · CLI only**. See the [illustrated Codex CLI setup](/en/docs/codex-model-routing/#codex-cli).
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 

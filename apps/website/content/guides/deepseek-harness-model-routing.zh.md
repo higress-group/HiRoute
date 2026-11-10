@@ -1,4 +1,4 @@
-# DeepSeek Harness 模型路由：给 DSH 接入多模型与执行 Agent
+# DeepSeek Harness Web 与 Desktop 模型路由
 
 继续用 DeepSeek Harness 的工作流，为简单问题选更快的模型，为复杂分析保留主力。HiRoute 可以给 DSH Web 或 Desktop 添加路由，也可以让其他主 Agent 把任务交给 DSH 执行。
 
@@ -58,6 +58,6 @@
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 
-在 DSH Web/CLI 中分析问题时，可以把一项边界清楚的修复交给 Codex CLI。反过来，也可以从 Codex 或 Hermes 把根因调查交给 DSH，再让主 Agent 结合结果继续工作。
+在 DSH Web 或 CLI 中分析问题时，可以把一项范围明确的修复交给 Codex CLI。也可以让 DSH 替其他主 Agent 调查根因。
 
-想使用时，在路由的“更多设置 → 任务委派”中绑定执行 Agent，并在发起任务的主 Agent 上开启“任务路由”。执行方会按照这份计划选择模型，结果可在“Agent → 任务记录”查看。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)
+在路由的“更多设置 → 任务委派”中绑定执行 Agent。从 DSH 发起委派时，在 HiRoute 的“DeepSeek Harness Web”条目中启用“任务路由”。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)

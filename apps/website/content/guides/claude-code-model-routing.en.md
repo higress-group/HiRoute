@@ -1,6 +1,6 @@
-# Claude Code model routing with Opus, Sonnet and Haiku presets
+# Claude Code subscription setup and model routing
 
-Keep coding in Claude Code and open a HiRoute route through a familiar model preset. Let an economical model handle easy turns and a primary model make the hard decisions. When you want an independent check, use Pi to run it.
+Import your Claude subscription models into HiRoute and use a familiar Opus, Sonnet or Haiku preset in Claude Code to select the route. Give routine edits to an economical model and complex debugging to a primary model.
 
 [Download HiRoute](/en/download/) · [Browse Agent guides](/en/docs/agent-integrations/)
 

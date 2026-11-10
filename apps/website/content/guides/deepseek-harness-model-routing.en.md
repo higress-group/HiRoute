@@ -1,4 +1,4 @@
-# DeepSeek Harness model routing and execution Agent setup
+# DeepSeek Harness model routing for Web and Desktop
 
 Keep the DeepSeek Harness workflow. Use a fast model for straightforward questions and a primary model for deeper analysis. Add a route to DSH Web or Desktop, or have another Agent delegate work to DSH.
 
@@ -57,6 +57,6 @@ Restart that client, select the route in its model picker and try a log-analysis
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-When analyzing a problem in DSH Web/CLI, hand a well-scoped fix to Codex CLI. You can also delegate root-cause investigation from Codex or Hermes to DSH, then use the findings in the main conversation.
+When analyzing a problem in DSH Web or CLI, hand a focused fix to Codex CLI. Another Agent can also delegate root-cause investigation to DSH.
 
-To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Bind an executor in the plan under **More settings → Task delegation**. To delegate from DSH, enable **Task routing** in the **DeepSeek Harness Web** entry in HiRoute. [Continue with the Agent routing guide](/en/docs/task-routing/)

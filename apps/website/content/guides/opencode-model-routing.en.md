@@ -28,7 +28,7 @@ The UI and CLI share configuration and records. Inspect the current setup first 
 
 Open **Models → General models → Add models → Scan this device**. Select detected OpenCode static providers, model declarations and API key sources, then check and save them.
 
-OpenCode's `/models` may also include dynamically discovered or OAuth plugin models. If the scan does not find your source, enter its address and key under **New API connection**, check it and save. Existing HiRoute subscriptions or local model connections can also be used in the next step.
+OpenCode's `/models` may also include dynamically discovered or OAuth plugin models. If the scan misses a source that provides an API address and key, add them under **New API connection**, check the connection and save. You can also import Codex or Claude Code models through **Connect subscription**, or use models you already connected.
 
 <h2 id="configure-routing">2. Configure smart routing</h2>
 

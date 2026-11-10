@@ -27,22 +27,29 @@
 
 <h2 id="connect-workbuddy">1. 扫描或登录，获取模型</h2>
 
-通过 Magpie headless 登录 WorkBuddy，读取账号可用的模型目录，再接入 HiRoute。[安装 Magpie CLI](https://usemagpie.ai/docs/start) 后运行以下命令，已有后台服务时可以直接添加插件并登录。
+在 HiRoute 服务所在电脑[安装 Magpie CLI](https://usemagpie.ai/docs/start)。按系统选择启动方式。
+
+- macOS 或使用 systemd 的 Linux 运行 `magpie daemon install --no-web`，用 `magpie daemon status` 确认服务状态。需要启动已安装的服务时，运行 `magpie daemon start`。
+- Windows 或其他无法安装后台服务的环境，另开终端运行 `magpie serve` 并保持运行。
+
+已有网关时可直接登录。
+
+运行 `magpie plugin add @magpie-community/opencode-workbuddy-auth`，再按账号版本登录。
+
+- 国内版 CodeBuddy 套餐运行 `magpie plugin login workbuddy`。
+- 国际版运行 `magpie plugin login workbuddy-ai`。
+
+在浏览器完成授权后查询目录，记下要用的完整模型 ID。Windows PowerShell 中使用 `curl.exe`。
 
 ```sh
-magpie daemon install --no-web
-magpie plugin add @magpie-community/opencode-workbuddy-auth
-magpie plugin login workbuddy
-curl -fsS http://127.0.0.1:3425/v1/models \
-  -H 'Authorization: Bearer magpie'
+curl -fsS -H 'Authorization: Bearer magpie' http://127.0.0.1:3425/v1/models
 ```
-
-`workbuddy` 对应国内版的 CodeBuddy 套餐，国际版用 `magpie plugin login workbuddy-ai`。在浏览器完成账号授权后，重新查询目录，记下要用的完整模型 ID。
 
 在 HiRoute 打开“模型 → 通用模型 → 添加模型 → **新建 API 接入 → 自定义 API**”，按下面填写并检查。
 
 | 设置 | 填写内容 |
 | --- | --- |
+| 连接名称 | 例如“Magpie WorkBuddy” |
 | API 地址 | `http://127.0.0.1:3425/v1`，网关改过地址时用实际值 |
 | 协议 | Responses，适用于下面的 Pi 或 Codex CLI 示例 |
 | API Key | 默认本机网关为 `magpie`，改过 Key 时填自己的值 |
@@ -82,7 +89,7 @@ curl -fsS http://127.0.0.1:3425/v1/models \
 
 重启 Pi，输入 `/model` 选择这条路由，试着让它归纳项目 README 的三条要点。模型来自 WorkBuddy 接入，读文件等操作由 Pi 执行。在 HiRoute“会话 → 路由时间线”可查看实际模型。
 
-也可以把同一计划勾选到“Agent → Codex CLI → 模型路由”，用“按需使用 · 仅 CLI”给出的命令启动。图文步骤见 [Codex 接入教程](/zh/docs/codex-model-routing/#connect-agent)。
+也可以把同一计划勾选到“Agent → Codex → 模型路由”，用“按需使用 · 仅 CLI”给出的命令启动。图文步骤见 [Codex CLI 接入](/zh/docs/codex-model-routing/#codex-cli)。
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 

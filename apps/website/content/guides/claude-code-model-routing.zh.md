@@ -1,6 +1,6 @@
-# Claude Code 模型路由：用 Opus、Sonnet 和 Haiku 预设选择路由
+# Claude Code 订阅模型导入与智能路由
 
-继续在 Claude Code 写代码，用熟悉的模型预设进入 HiRoute 路由。一条路由里可以让更经济的模型处理简单轮次，关键决策用主力模型；要并行做一项独立检查时，可以让 Pi 负责执行。
+将 Claude 订阅中的模型导入 HiRoute，用 Claude Code 熟悉的 Opus、Sonnet 或 Haiku 预设选用路由。让经济模型处理常规修改，把复杂调试交给主力模型。
 
 [下载 HiRoute](/zh/download/) · [查看其他 Agent 教程](/zh/docs/agent-integrations/)
 

@@ -15,7 +15,7 @@ Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Inspect the Magpie connection: hiroute compute list · compute scan · compute connection test / preview / apply
 - Set the Regular and Primary groups: routing options · routing preview / apply
-- Add a route to Qoder CLI: agents connect preview / apply
+- Connect Qoder CLI if custom models are available. Otherwise use the separate Codex Desktop setup in this guide. Configure the connection with agents connect preview / apply. Open the separate window from HiRoute or use agents desktop launch in the local graphical session.
 - Inspect model choices, then choose an executor if delegation is requested: sessions timeline · worker executors · worker plans · worker result
 The UI and CLI share configuration and records. Let me sign in locally and use the IDs in my catalog. Follow installed --help and hiroute schema show --command-id COMMAND_ID --include-schema.
 ```
@@ -29,23 +29,30 @@ The UI and CLI share configuration and records. Let me sign in locally and use t
 
 Use headless Magpie to discover the models available to your Qoder subscription, then connect them to HiRoute. Magpie handles sign-in and exposes the local model API.
 
-[Install the Magpie CLI](https://usemagpie.ai/docs/start) on the HiRoute computer, start the background service and sign in to Qoder. If the service and account are already set up, query the catalog directly.
+[Install the Magpie CLI](https://usemagpie.ai/docs/start) on the host running HiRoute. Choose the startup method for your system.
+
+- On macOS or Linux with systemd, run `magpie daemon install --no-web`, then check the service with `magpie daemon status`. Run `magpie daemon start` to start an installed service.
+- On Windows or hosts without service installation, run `magpie serve` in a separate terminal and keep it running.
+
+If the gateway is already running, go straight to sign-in.
+
+Run `magpie login qoder`. If you use the community plugin, run `magpie plugin add @magpie-community/opencode-qoder-auth` followed by `magpie plugin login qoder`. For Qoder CN, use `magpie plugin login qoder-cn`.
+
+Complete authorization in the browser, then query the catalog. Use `curl.exe` in Windows PowerShell.
 
 ```sh
-magpie daemon install --no-web
-magpie login qoder
-curl -fsS http://127.0.0.1:3425/v1/models \
-  -H 'Authorization: Bearer magpie'
+curl -fsS -H 'Authorization: Bearer magpie' http://127.0.0.1:3425/v1/models
 ```
 
-Complete Qoder authorization in the browser. With the community plugin, first run `magpie plugin add @magpie-community/opencode-qoder-auth`, then `magpie plugin login qoder` (use `qoder-cn` for Qoder CN). The response lists the model IDs to use. For example, `qoder/dfmodel` is DeepSeek-Flash and `qoder/kmodel_latest` is Kimi-K3.1-Pro. Choose IDs returned for your account.
+Choose complete IDs returned for your account. For example, `qoder/dfmodel` is DeepSeek-Flash and `qoder/kmodel_latest` is Kimi-K3.1-Pro.
 
 In HiRoute, open **Models → General models → Add models → New API connection → Custom API** and fill in the connection.
 
 | Setting | Value |
 | --- | --- |
+| Connection name | For example, “Magpie Qoder” |
 | API base URL | `http://127.0.0.1:3425/v1`, or your gateway's address |
-| Protocol | Responses for the Codex Desktop or Pi examples below |
+| Protocol | Responses for the Codex Desktop setup below |
 | API key | `magpie` for the default local gateway, or your configured key |
 | Models | Select from the returned catalog, keeping the full source prefix |
 
@@ -72,7 +79,9 @@ To adjust routing using execution feedback, select a decision model in the same 
 
 <h2 id="use-in-qoder">3. Connect your Agent</h2>
 
-### Use Qoder CLI
+If custom models are available, [connect Qoder CLI](#qoder-cli). You can also [open this route in Codex Desktop](#codex-desktop).
+
+<h3 id="qoder-cli">Use Qoder CLI</h3>
 
 For a Qoder CLI setup that supports custom models / BYOK, sign in to Qoder first. In HiRoute, open **Agent → Qoder → Model routing**, check “Qoder daily coding” and save.
 
@@ -83,7 +92,7 @@ For a Qoder CLI setup that supports custom models / BYOK, sign in to Qoder first
 
 Restart Qoder CLI, select the route with `/model` and start a task. Inspect the routing choices in HiRoute's **Sessions → Routing timeline**.
 
-### Use Codex Desktop when Qoder has no BYOK entry
+<h3 id="codex-desktop">Use Codex Desktop when Qoder has no BYOK entry</h3>
 
 If your Qoder version or plan does not expose custom models / BYOK, use **Codex Desktop with the Qoder models and smart route you already connected**. Choose the “Qoder daily coding” plan in the steps below.
 
@@ -106,13 +115,13 @@ If your Qoder version or plan does not expose custom models / BYOK, use **Codex 
 
 <figure class="guide-shot-window">
   <a href="/guide-assets/agent-guide-codex-desktop-window-en.webp"><img src="/guide-assets/agent-guide-codex-desktop-window-en.webp" alt="A new chat in the separate Codex Desktop window with Qoder Responses selected at the bottom right" width="2560" height="1640" loading="lazy" /></a>
-  <figcaption>In the separate window, confirm the route in the bottom-right model picker. This example uses “Qoder Responses”; choose the route you created.</figcaption>
+  <figcaption>Confirm your route in the model picker at the bottom right. This example uses “Qoder Responses”. Click the screenshot to view it at full size.</figcaption>
 </figure>
 
 After changing route settings, quit this instance and open it again with the same button.
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-Once your Qoder models are connected, you can ask Pi to explore a module and Codex CLI to implement a change. Delegate research, code review or regression testing to another execution Agent while continuing the main conversation.
+When exploring a module in Qoder CLI or Pi, ask Codex CLI to check test coverage. If you use the separate Codex Desktop window above, switch to [Codex CLI](/en/docs/codex-model-routing/#codex-cli) to send a delegated task.
 
 To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)

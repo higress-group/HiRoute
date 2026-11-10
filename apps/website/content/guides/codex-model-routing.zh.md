@@ -15,9 +15,10 @@
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 查找 Codex 接入和配置目标：hiroute compute scan · compute connection options · quickstart
-- 创建难度路由并映射 Codex：routing preview / apply · agents connect preview / apply / status
-- 选择另一个执行方并核对任务：worker executors · worker plans · worker result
-界面和 CLI 共用配置和记录；先预览按需接入，参数以 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。
+- 按我使用的客户端接入 Codex Desktop 或 Codex CLI。创建路由和预览接入用 routing preview / apply · agents connect preview / apply / status。
+- 接入 Desktop 后引导我从 HiRoute 启动独立窗口。也可在本机图形会话用 agents desktop launch。
+- 需要委派时，用 worker executors · worker plans · worker result 选择执行方并核对结果。
+界面和 CLI 共用配置和记录。参数以 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。
 ```
 
 </details>
@@ -63,7 +64,9 @@
 
 <h2 id="connect-agent">3. 接入 Agent</h2>
 
-### 使用 Codex Desktop
+按你的使用方式选择 [Codex Desktop 独立窗口](#codex-desktop)或 [Codex CLI](#codex-cli)。
+
+<h3 id="codex-desktop">使用 Codex Desktop</h3>
 
 1. 在 macOS 或 Windows 上安装 ChatGPT / Codex 桌面应用，然后打开 **HiRoute 桌面应用 → Agent → Codex Desktop**。
 2. 点击“选择路由并启用”。已有接入时，点“模型路由”右侧的“调整”。勾选刚发布的计划。只有一条路由时会自动作为默认；选择多条时，在“默认选择”中选定常用路由。点击“启用”或“保存配置”。
@@ -84,14 +87,14 @@
 
 <figure class="guide-shot-window">
   <a href="/guide-assets/agent-guide-codex-desktop-window-zh.webp"><img src="/guide-assets/agent-guide-codex-desktop-window-zh.webp" alt="Codex Desktop 独立窗口中的新聊天，右下角已选择 Qoder Responses 路由" width="2560" height="1640" loading="lazy" /></a>
-  <figcaption>独立窗口打开后，在右下角确认路由。图中选中的是“Qoder Responses”，使用时选择你刚创建的路由。</figcaption>
+  <figcaption>在独立窗口的右下角确认路由。图中选中的是“Qoder Responses”，使用时选择你刚创建的路由。点击截图查看原图。</figcaption>
 </figure>
 
 更新路由设置后，退出这个独立实例，再用同一按钮重新启动。
 
-### 使用 Codex CLI
+<h3 id="codex-cli">使用 Codex CLI</h3>
 
-打开“Agent → Codex CLI → 模型路由”，选择 **“按需使用 · 仅 CLI”**，勾选刚发布的路由并设置默认。点击“启用并复制启动命令”，把复制的命令粘贴到项目终端中运行。
+打开“Agent → Codex → 模型路由”，在“高级设置”中确认 **“按需使用 · 仅 CLI”**。勾选刚发布的路由。若显示“默认选择”，选中这条路由。点击“启用并复制启动命令”，把命令粘贴到项目终端中运行。
 
 <figure class="guide-shot-dialog">
   <a href="/guide-assets/agent-editor-zh.webp"><img src="/guide-assets/agent-editor-zh.webp" alt="Codex CLI 的按需接入和默认路由配置" width="1200" height="900" loading="lazy" /></a>
@@ -104,4 +107,4 @@
 
 写代码时，想同时让另一种 Agent 调查报错原因或检查测试覆盖，可以让 Codex CLI 把这项独立工作交给 DSH 或 Pi，再把结果带回当前对话。
 
-想使用时，在路由的“更多设置 → 任务委派”中绑定执行 Agent，并在发起任务的主 Agent 上开启“任务路由”。执行方会按照这份计划选择模型，结果可在“Agent → 任务记录”查看。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)
+在路由的“更多设置 → 任务委派”中绑定执行 Agent，再打开 HiRoute 的“Agent → Codex → 任务路由”启用委派。使用独立 Desktop 窗口时，可切到 Codex CLI 发起任务。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)

@@ -14,9 +14,10 @@ Read https://hiroute.ai/en/docs/codex-model-routing/ and help me get models, con
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Find Codex sources and the configuration target: hiroute compute scan · compute connection options · quickstart
-- Create a difficulty route and map Codex: routing preview / apply · agents connect preview / apply / status
-- Choose another executor and check the run: worker executors · worker plans · worker result
-The UI and CLI share configuration and records. Preview the on-demand setup first. Follow installed --help and hiroute schema show --command-id COMMAND_ID --include-schema.
+- Connect the client I use, Codex Desktop or Codex CLI. Create the route and preview the connection with routing preview / apply · agents connect preview / apply / status.
+- For Desktop, guide me to open the separate window from HiRoute. The agents desktop launch command also works in the local graphical session.
+- For delegation, choose an executor and check the result with worker executors · worker plans · worker result.
+The UI and CLI share configuration and records. Follow installed --help and hiroute schema show --command-id COMMAND_ID --include-schema.
 ```
 
 </details>
@@ -62,7 +63,9 @@ To adjust routing using execution feedback, select a decision model in the same 
 
 <h2 id="connect-agent">3. Connect your Agent</h2>
 
-### Use Codex Desktop
+Choose the [separate Codex Desktop window](#codex-desktop) or [Codex CLI](#codex-cli) based on the client you use.
+
+<h3 id="codex-desktop">Use Codex Desktop</h3>
 
 1. Install the ChatGPT / Codex desktop app on macOS or Windows, then open **HiRoute Desktop → Agent → Codex Desktop**.
 2. Click **Choose routes and enable**. For an existing connection, click **Edit** beside **Model routing**. Check your published plan. A single route becomes the default automatically; if you choose several, pick your preferred route under **Default selection**. Click **Enable** or **Save settings**.
@@ -83,14 +86,14 @@ To adjust routing using execution feedback, select a decision model in the same 
 
 <figure class="guide-shot-window">
   <a href="/guide-assets/agent-guide-codex-desktop-window-en.webp"><img src="/guide-assets/agent-guide-codex-desktop-window-en.webp" alt="A new chat in the separate Codex Desktop window with Qoder Responses selected at the bottom right" width="2560" height="1640" loading="lazy" /></a>
-  <figcaption>In the separate window, confirm the route in the bottom-right model picker. This example uses “Qoder Responses”; choose the route you created.</figcaption>
+  <figcaption>Confirm your route in the model picker at the bottom right. This example uses “Qoder Responses”. Click the screenshot to view it at full size.</figcaption>
 </figure>
 
 After changing route settings, quit this instance and open it again with the same button.
 
-### Use Codex CLI
+<h3 id="codex-cli">Use Codex CLI</h3>
 
-Open **Agent → Codex CLI → Model routing**. Choose **On demand · CLI only**, check the route you published and make it the default. Click **Enable and copy launch command**, then run the copied command in a terminal in your project.
+Open **Agent → Codex → Model routing**. Confirm **On demand · CLI only** under **Advanced settings**, then check the route you published. If **Default selection** appears, choose your route. Click **Enable and copy launch command**, then run the command in a terminal in your project.
 
 <figure class="guide-shot-dialog">
   <a href="/guide-assets/agent-editor-en.webp"><img src="/guide-assets/agent-editor-en.webp" alt="On-demand Codex CLI access and default route settings" width="1200" height="900" loading="lazy" /></a>
@@ -103,4 +106,4 @@ Try a small task and inspect the actual model choices in HiRoute's session timel
 
 While coding, you may want another Agent to investigate an error or check test coverage. Codex CLI can hand that scoped task to DSH or Pi and bring the result back to your conversation.
 
-To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Bind an executor in the plan under **More settings → Task delegation**, then enable it under **Agent → Codex → Task routing**. If you use the separate Desktop window, switch to Codex CLI to send delegated tasks. [Continue with the Agent routing guide](/en/docs/task-routing/)

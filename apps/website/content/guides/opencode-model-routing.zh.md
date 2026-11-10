@@ -29,7 +29,7 @@
 
 打开“模型 → 通用模型 → 添加模型 → **扫描本机**”，选择发现的 OpenCode 静态 provider、模型与 API Key 来源，检查并保存。
 
-OpenCode 的 `/models` 也可能显示动态发现或 OAuth 插件提供的模型。如果扫描没有找到想要的来源，在“新建 API 接入”填写对应服务的地址与 Key，检查后保存。已有 HiRoute 订阅或本地模型也可以直接用于下一步。
+OpenCode 的 `/models` 也可能显示动态发现或 OAuth 插件提供的模型。如果扫描未找到来源，且该服务提供 API 地址与 Key，可从“新建 API 接入”填写并检查。你也可以在“连接订阅”导入 Codex 或 Claude Code 模型，或复用已接入的模型。
 
 <h2 id="configure-routing">2. 配置智能路由</h2>
 

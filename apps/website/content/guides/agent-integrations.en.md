@@ -10,7 +10,7 @@ Every guide follows the same four steps: get models, configure smart routing, co
 
 <ul class="integration-catalog">
   <li><a href="/en/docs/codex-model-routing/">Codex model routing and Desktop setup</a><p>Sign in to your subscription, configure a route and open a separate Codex Desktop window or CLI.</p></li>
-  <li><a href="/en/docs/claude-code-model-routing/">Claude Code model routing</a><p>Map a route to an Opus, Sonnet or Haiku preset and send a research task to Pi.</p></li>
+  <li><a href="/en/docs/claude-code-model-routing/">Claude Code subscription setup and model routing</a><p>Sign in to your Claude subscription and map a route to an Opus, Sonnet or Haiku preset.</p></li>
   <li><a href="/en/docs/qoder-model-routing/">Qoder CLI and subscription models</a><p>Discover models through Magpie, configure routing and use Qoder CLI or Codex Desktop.</p></li>
   <li><a href="/en/docs/pi-model-routing/">Pi model routing</a><p>Import models from Pi, select the route with <code>/model</code> and delegate verification to Codex CLI.</p></li>
   <li><a href="/en/docs/deepseek-harness-model-routing/">DeepSeek Harness model routing</a><p>Pick a route in Web or Desktop, or let DeepSeek Harness execute a delegated task.</p></li>
@@ -47,7 +47,8 @@ The UI and CLI share configuration and records. Reuse existing connections and f
 
 1. **Connect models.** In **Models → General models → Add models**, connect a subscription, scan supported configurations on the device or add an API. If Magpie is already running, [add its local API](/en/docs/magpie-model-sources/#save-api).
 2. **Route by difficulty.** Choose **Difficulty routing** under **Smart routing** and add Regular and Primary models. Start with heuristic rules if you want local decisions. Add a decision model for stage scoring and low-score protection. See [model routing](/en/docs/model-routing/#difficulty-routing).
-3. **Choose how to use the route.** Map the published route to your Agent's model selector for everyday work. To hand off an independent task, bind an executor in a plan and enable **Task routing** in the Agent you talk to. You can use both paths or enable either one by itself.
+3. **Connect your Agent.** Map the published route to your everyday Agent and select it in the client's model picker.
+4. **Delegate when needed.** Bind an executor in a plan and enable **Task routing** in the main Agent that sends the task.
 
 <figure class="guide-shot-panel">
   <a href="/guide-assets/agent-guide-difficulty-en.webp"><img src="/guide-assets/agent-guide-difficulty-en.webp" alt="Regular and Primary model groups in a HiRoute difficulty routing plan" width="1200" height="900" loading="lazy" /></a>

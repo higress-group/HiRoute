@@ -16,7 +16,7 @@
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 检查 Magpie 模型接入：hiroute compute list · compute scan · compute connection test / preview / apply
 - 配置常规组和主力组：routing options · routing preview / apply
-- 把路由加入 Qoder CLI：agents connect preview / apply
+- 有自定义模型入口时接入 Qoder CLI，否则按本页接入 Codex Desktop 独立窗口。配置用 agents connect preview / apply，独立窗口从 HiRoute 启动，也可在本机图形会话用 agents desktop launch。
 - 核对实际选模，需要任务委派时再选择执行方：sessions timeline · worker executors · worker plans · worker result
 界面和 CLI 共用配置和记录。由我在本机完成登录，模型以实际目录为准。参数按 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 确认。
 ```
@@ -30,23 +30,30 @@
 
 用 Magpie headless 读取 Qoder 订阅可用的模型，再把模型接入 HiRoute。Magpie 负责账号登录和提供本机模型 API。
 
-在 HiRoute 所在电脑[安装 Magpie CLI](https://usemagpie.ai/docs/start)，然后启动后台服务并登录 Qoder。已有服务和登录时，可直接查询模型目录。
+在 HiRoute 服务所在电脑[安装 Magpie CLI](https://usemagpie.ai/docs/start)。按系统选择启动方式。
+
+- macOS 或使用 systemd 的 Linux 运行 `magpie daemon install --no-web`，用 `magpie daemon status` 确认服务状态。需要启动已安装的服务时，运行 `magpie daemon start`。
+- Windows 或其他无法安装后台服务的环境，另开终端运行 `magpie serve` 并保持运行。
+
+已有网关时可直接登录。
+
+运行 `magpie login qoder`。使用社区插件时，先运行 `magpie plugin add @magpie-community/opencode-qoder-auth`，再运行 `magpie plugin login qoder`。Qoder CN 使用 `magpie plugin login qoder-cn`。
+
+在浏览器完成授权后查询目录。Windows PowerShell 中使用 `curl.exe`。
 
 ```sh
-magpie daemon install --no-web
-magpie login qoder
-curl -fsS http://127.0.0.1:3425/v1/models \
-  -H 'Authorization: Bearer magpie'
+curl -fsS -H 'Authorization: Bearer magpie' http://127.0.0.1:3425/v1/models
 ```
 
-在浏览器完成 Qoder 授权。使用社区插件时，先运行 `magpie plugin add @magpie-community/opencode-qoder-auth`，然后用 `magpie plugin login qoder` 登录，Qoder CN 则用 `qoder-cn`。查询结果就是后面要选用的模型目录。例如 `qoder/dfmodel` 对应 DeepSeek-Flash，`qoder/kmodel_latest` 对应 Kimi-K3.1-Pro，按自己账号返回的 ID 选择。
+按账号返回的完整 ID 选择模型。例如 `qoder/dfmodel` 对应 DeepSeek-Flash，`qoder/kmodel_latest` 对应 Kimi-K3.1-Pro。
 
 在 HiRoute 打开“模型 → 通用模型 → 添加模型 → **新建 API 接入 → 自定义 API**”，按下面填写并检查。
 
 | 设置 | 填写内容 |
 | --- | --- |
+| 连接名称 | 例如“Magpie Qoder” |
 | API 地址 | `http://127.0.0.1:3425/v1`，网关改过地址时用实际值 |
-| 协议 | Responses，适用于下面的 Codex Desktop 或 Pi 示例 |
+| 协议 | Responses，适用于下方的 Codex Desktop 接入 |
 | API Key | 默认本机网关为 `magpie`，改过 Key 时填自己的值 |
 | 模型 | 从返回目录选择，保留完整来源前缀 |
 
@@ -73,7 +80,9 @@ curl -fsS http://127.0.0.1:3425/v1/models \
 
 <h2 id="use-in-qoder">3. 接入 Agent</h2>
 
-### 在 Qoder CLI 使用
+有自定义模型入口时[接入 Qoder CLI](#qoder-cli)。也可以直接[用 Codex Desktop 打开这条路由](#codex-desktop)。
+
+<h3 id="qoder-cli">在 Qoder CLI 使用</h3>
 
 使用支持自定义模型 / BYOK 的 Qoder CLI 时，先完成 Qoder 原生登录。在 HiRoute 打开“Agent → Qoder → 模型路由”，勾选“Qoder 日常开发”并保存。
 
@@ -84,7 +93,7 @@ curl -fsS http://127.0.0.1:3425/v1/models \
 
 重启 Qoder CLI，输入 `/model` 选择路由，再开始一个任务。到 HiRoute“会话 → 路由时间线”查看分流结果。
 
-### Qoder 没有 BYOK 入口时，用 Codex Desktop
+<h3 id="codex-desktop">Qoder 没有 BYOK 入口时，用 Codex Desktop</h3>
 
 如果你使用的 Qoder 版本或套餐没有自定义模型 / BYOK 入口，可以让 **Codex Desktop 使用前面接入的 Qoder 模型和智能路由**。这里选择“Qoder 日常开发”计划即可。
 
@@ -107,13 +116,13 @@ curl -fsS http://127.0.0.1:3425/v1/models \
 
 <figure class="guide-shot-window">
   <a href="/guide-assets/agent-guide-codex-desktop-window-zh.webp"><img src="/guide-assets/agent-guide-codex-desktop-window-zh.webp" alt="Codex Desktop 独立窗口中的新聊天，右下角已选择 Qoder Responses 路由" width="2560" height="1640" loading="lazy" /></a>
-  <figcaption>独立窗口打开后，在右下角确认路由。图中选中的是“Qoder Responses”，使用时选择你刚创建的路由。</figcaption>
+  <figcaption>在独立窗口的右下角确认路由。图中选中的是“Qoder Responses”，使用时选择你刚创建的路由。点击截图查看原图。</figcaption>
 </figure>
 
 更新路由设置后，退出这个独立实例，再用同一按钮重新启动。
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 
-接入 Qoder 模型之后，还可以让 Pi 先梳理一个模块，再让 Codex CLI 实现其中的改动。适合把资料收集、代码审查或测试回归交给另一种执行 Agent，同时在主对话里继续推进工作。
+用 Qoder CLI 或 Pi 梳理模块时，可以把测试覆盖检查交给 Codex CLI。使用上面的 Codex Desktop 接入时，可切到 [Codex CLI](/zh/docs/codex-model-routing/#codex-cli) 发起委派。
 
 想使用时，在路由的“更多设置 → 任务委派”中绑定执行 Agent，并在发起任务的主 Agent 上开启“任务路由”。执行方会按照这份计划选择模型，结果可在“Agent → 任务记录”查看。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)

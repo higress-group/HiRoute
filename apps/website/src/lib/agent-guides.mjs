@@ -13,18 +13,18 @@ export const agentGuides = {
   },
   'claude-code-model-routing': {
     zh: 'Claude Code', en: 'Claude Code', native: true,
-    title: { zh: 'Claude Code 模型路由：映射 Opus、Sonnet 和 Haiku', en: 'Claude Code model routing with Opus, Sonnet and Haiku presets' },
+    title: { zh: 'Claude Code 订阅模型导入与智能路由', en: 'Claude Code subscription setup and model routing' },
     description: {
       zh: '登录 Claude 订阅并选择账号模型，配置常规组与主力组，再映射到 Claude Code 的 Opus、Sonnet 或 Haiku 预设，配有完整步骤和截图。',
-      en: 'Sign in to your Claude subscription, import models, configure difficulty routing and map it to Claude Code presets. Follow the screenshots for each step.',
+      en: 'Import models from your Claude subscription, configure difficulty routing and map it to the Opus, Sonnet or Haiku preset in Claude Code.',
     },
   },
   'qoder-model-routing': {
     zh: 'Qoder', en: 'Qoder', native: true,
     title: { zh: 'Qoder CLI 模型路由与订阅接入', en: 'Qoder CLI model routing and subscription setup' },
     description: {
-      zh: '通过 Magpie headless 发现 Qoder 订阅模型，配置难度路由并接入 Agent。Qoder 不支持 BYOK 时，也可按截图接入 Codex Desktop。',
-      en: 'Discover Qoder subscription models with headless Magpie, build a difficulty route and connect an Agent. Use Codex Desktop when Qoder BYOK is unavailable.',
+      zh: '通过 Magpie headless 导入 Qoder 订阅模型，配置按难度分流，并接入 Qoder CLI 或 Codex Desktop 独立窗口。',
+      en: 'Import Qoder subscription models through headless Magpie, route by task difficulty, and connect Qoder CLI or a separate Codex Desktop window.',
     },
   },
   'pi-model-routing': {
@@ -37,10 +37,10 @@ export const agentGuides = {
   },
   'deepseek-harness-model-routing': {
     zh: 'DeepSeek Harness', en: 'DeepSeek Harness', native: true,
-    title: { zh: 'DeepSeek Harness 多模型路由：接入已有模型并配置执行 Agent', en: 'DeepSeek Harness model routing and task delegation' },
+    title: { zh: 'DeepSeek Harness Web 与 Desktop 模型路由', en: 'DeepSeek Harness model routing for Web and Desktop' },
     description: {
-      zh: '复用 DeepSeek Harness 的静态模型配置，给 Web 或桌面版添加按难度分流路由，并用 DSH 或 Codex CLI 执行委派任务。',
-      en: 'Connect existing DeepSeek Harness model sources, add a difficulty route to Web or Desktop, and configure DSH or Codex CLI for delegated work.',
+      zh: '扫描 DeepSeek Harness 的现有模型，配置按难度分流，再在 Web 或 Desktop 的模型列表中选用 HiRoute 路由。',
+      en: 'Scan existing DeepSeek Harness model sources, configure difficulty routing and select your HiRoute route in the Web or Desktop model picker.',
     },
   },
   'opencode-model-routing': {

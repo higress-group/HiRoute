@@ -29,7 +29,7 @@
 
 打开“模型 → 通用模型 → 添加模型 → **扫描本机**”，找到 Pi 的模型来源。HiRoute 会读取支持的 `models.json` 声明、API Key 来源和可识别的已安装模型目录。选中接入，检查并保存要用的模型。
 
-如果模型由插件在运行时提供，可以从“新建 API 接入”填写对应 API 地址和 Key，检查后保存。也可以使用已经导入的订阅模型，或按 [Qoder 教程](/zh/docs/qoder-model-routing/#connect-qoder) 通过 Magpie 接入更多模型。
+如果插件提供了可用的 API 地址和 Key，可以从“新建 API 接入”填写并检查。也可以在“连接订阅”导入 Codex 或 Claude Code 模型，或[通过 Magpie 接入 Qoder 模型](/zh/docs/qoder-model-routing/#connect-qoder)。
 
 <h2 id="configure-routing">2. 配置智能路由</h2>
 
