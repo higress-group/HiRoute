@@ -341,29 +341,46 @@ mod tests {
             generation: 2,
             accepted_sequence: 1,
         });
-        let first = page(
-            catalog.clone(),
-            ListModelMetadataV1 {
-                kind: Some("price".into()),
-                page_size: Some(100),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert!(!first.complete);
-        assert!(serde_json::to_vec(&first).unwrap().len() <= RESPONSE_BUDGET);
-        let second = page(
-            catalog,
-            ListModelMetadataV1 {
-                kind: Some("price".into()),
-                cursor: first.next_cursor.clone(),
-                page_size: Some(100),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert!(second.complete);
-        assert_eq!(first.records.len() + second.records.len(), first.total);
+        let expected: BTreeSet<_> = records(&catalog)
+            .unwrap()
+            .into_iter()
+            .filter(|record| record.kind == "price")
+            .map(|record| record.key)
+            .collect();
+        let mut actual = BTreeSet::new();
+        let mut cursor = None;
+        let mut page_count = 0;
+        loop {
+            assert!(page_count < expected.len(), "pagination must make progress");
+            let response = page(
+                catalog.clone(),
+                ListModelMetadataV1 {
+                    kind: Some("price".into()),
+                    cursor: cursor.clone(),
+                    page_size: Some(100),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            page_count += 1;
+            assert_eq!(response.total, expected.len());
+            assert!(!response.records.is_empty());
+            assert!(serde_json::to_vec(&response).unwrap().len() <= RESPONSE_BUDGET);
+            // The byte budget, rather than the requested record count, splits this page.
+            assert!(response.records.len() < 100);
+            for record in response.records {
+                assert!(actual.insert(record.key), "duplicate price across pages");
+            }
+            if response.complete {
+                assert!(response.next_cursor.is_none());
+                break;
+            }
+            assert!(response.next_cursor.is_some());
+            assert_ne!(response.next_cursor, cursor);
+            cursor = response.next_cursor;
+        }
+        assert!(page_count > 1);
+        assert_eq!(actual, expected);
     }
     #[test]
     fn model_metadata_detail_accepts_full_compound_rating_identities() {
