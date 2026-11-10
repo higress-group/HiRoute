@@ -8,11 +8,13 @@ pub struct ApiCapabilityCompletion {
     pub inferred_fields: BTreeSet<ModelDefaultFieldV1>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn complete_missing_api_capabilities(
     catalog: &TrustedReleaseCatalog,
     provenance: &ComputeManagementProvenanceV2,
     target: &ComputeManagementTargetV2,
     authentication: &GatewayAuthenticationSemanticsV1,
+    additional_endpoints: &[ComputeNativeEndpointV3],
     upstream: &str,
     saved: &ComputeManagedCapabilitiesV2,
     preferences: &BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
@@ -22,9 +24,40 @@ pub fn complete_missing_api_capabilities(
         filled_fields: BTreeSet::new(),
         inferred_fields: BTreeSet::new(),
     };
-    let defaults = super::api_scope::api_endpoint(catalog, provenance, target, authentication)
-        .map(|endpoint| metadata_defaults(catalog.model_metadata(), &endpoint, upstream))
+    let primary = super::api_scope::api_endpoint(catalog, provenance, target, authentication);
+    let mut defaults = primary
+        .as_ref()
+        .map(|endpoint| metadata_defaults(catalog.model_metadata(), endpoint, upstream))
         .unwrap_or_else(unknown);
+    // Source-level tool availability is existential over its saved qualified
+    // interfaces. Each emitted wire profile resolves its own interface separately.
+    if primary.is_some() && !additional_endpoints.is_empty() {
+        let mut tools = vec![defaults.tool.clone()];
+        tools.extend(additional_endpoints.iter().filter_map(|extra| {
+            super::api_scope::api_endpoint(
+                catalog,
+                provenance,
+                &extra.target,
+                &extra.authentication,
+            )
+            .map(|endpoint| metadata_defaults(catalog.model_metadata(), &endpoint, upstream).tool)
+        }));
+        let value = if tools.iter().any(|tool| tool.value == Some(true)) {
+            Some(true)
+        } else if tools.iter().all(|tool| tool.value == Some(false)) {
+            Some(false)
+        } else {
+            None
+        };
+        defaults.tool = fact(value);
+        if value.is_some()
+            && tools.iter().any(|tool| {
+                tool.value == value && tool.basis == ComputeManagementFactBasisV2::RuntimeFallback
+            })
+        {
+            defaults.tool.basis = ComputeManagementFactBasisV2::RuntimeFallback;
+        }
+    }
     if matches!(
         preferences.get(&ModelDefaultFieldV1::NativeReasoning),
         Some(ModelDefaultPreferenceV1::FollowMetadata)
@@ -375,7 +408,7 @@ mod tests {
         p: &BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
     ) -> ApiCapabilityCompletion {
         let (origin, target, auth) = scope(c);
-        complete_missing_api_capabilities(c, &origin, &target, &auth, id, saved, p)
+        complete_missing_api_capabilities(c, &origin, &target, &auth, &[], id, saved, p)
     }
     #[test]
     fn api_defaults_complete_all_missing_fields_and_keep_source_bytes() {
@@ -499,12 +532,102 @@ mod tests {
             &origin,
             &target,
             &auth,
+            &[],
             "gpt-6-astra",
             &unknown(),
             &BTreeMap::new(),
         );
         assert!(result.filled_fields.is_empty());
     }
+    #[test]
+    fn saved_api_interfaces_share_availability_without_crossing_wire_or_manual_scope() {
+        let c = catalog();
+        let (origin, _, _) = scope(&c);
+        let resolved = c
+            .resolve_connection_option("openai.platform.global.v1")
+            .unwrap();
+        let endpoint = |protocol| {
+            let e = resolved
+                .endpoint_profile
+                .protocol_endpoints
+                .iter()
+                .find(|e| e.protocol == protocol)
+                .unwrap();
+            ComputeNativeEndpointV3 {
+                target: ComputeManagementTargetV2 {
+                    scheme: "https".into(),
+                    authority: e.base_url.strip_prefix("https://").unwrap().into(),
+                    port: 443,
+                    request_path: e.request_path.clone(),
+                    upstream_protocol: protocol,
+                    protocol_profile_id: e.adapter_ref.clone(),
+                    protocol_profile_revision: e.adapter_revision,
+                },
+                authentication: e.authentication_semantics.clone().unwrap(),
+                recheck: None,
+            }
+        };
+        for protocol in [
+            UpstreamProtocol::ChatCompletions,
+            UpstreamProtocol::Responses,
+        ] {
+            let primary = endpoint(protocol);
+            let other = endpoint(if protocol == UpstreamProtocol::Responses {
+                UpstreamProtocol::ChatCompletions
+            } else {
+                UpstreamProtocol::Responses
+            });
+            let project =
+                |model, saved: &ComputeManagedCapabilitiesV2, extra: &[ComputeNativeEndpointV3]| {
+                    complete_missing_api_capabilities(
+                        &c,
+                        &origin,
+                        &primary.target,
+                        &primary.authentication,
+                        extra,
+                        model,
+                        saved,
+                        &BTreeMap::new(),
+                    )
+                };
+            let single = project("gpt-6.1-terra", &unknown(), &[]);
+            assert_eq!(
+                single.capabilities.tool.value,
+                Some(protocol == UpstreamProtocol::Responses)
+            );
+            let both = project("gpt-6.1-terra", &unknown(), std::slice::from_ref(&other));
+            assert_eq!(both.capabilities.tool.value, Some(true));
+            assert_eq!(both.capabilities.context_tokens.value, Some(922_000));
+            let mut manual = unknown();
+            manual.tool = ComputeManagementFactValueV2 {
+                value: Some(false),
+                basis: ComputeManagementFactBasisV2::UserDeclared,
+            };
+            assert_eq!(
+                project("gpt-6.1-terra", &manual, std::slice::from_ref(&other))
+                    .capabilities
+                    .tool
+                    .value,
+                Some(false)
+            );
+            let inferred = project("gpt-6-astra", &unknown(), std::slice::from_ref(&other));
+            assert!(
+                inferred
+                    .inferred_fields
+                    .contains(&ModelDefaultFieldV1::Tool)
+            );
+            let mut unrelated = other;
+            unrelated.target.authority = "api.example.test/v1".into();
+            assert_eq!(
+                project("gpt-6.1-terra", &unknown(), &[unrelated])
+                    .capabilities
+                    .tool
+                    .value,
+                single.capabilities.tool.value
+            );
+        }
+    }
+
     #[test]
     fn protocol_scoped_bindings_isolate_withdrawal_and_conflicting_tool_facts() {
         let c = catalog();

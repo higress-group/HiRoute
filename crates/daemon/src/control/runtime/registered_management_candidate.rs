@@ -312,6 +312,7 @@ fn registered_native_protocol_profiles(
         ),
     };
     let mut faces = vec![ProtocolFace {
+        tool_override: None,
         protocol: primary_endpoint.protocol,
         request_path: primary_endpoint.request_path.clone(),
         authentication: primary_endpoint.authentication_semantics.clone()?,
@@ -334,6 +335,7 @@ fn registered_native_protocol_profiles(
                 )
             })?;
         faces.push(ProtocolFace {
+            tool_override: None,
             protocol: endpoint.protocol,
             request_path: endpoint.request_path.clone(),
             authentication: endpoint.authentication_semantics.clone()?,

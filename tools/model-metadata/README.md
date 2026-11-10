@@ -44,3 +44,9 @@ When a canonical model records an independent `max_input_tokens`, the Native API
 resolver uses it for the input budget before falling back to its context value.
 The canonical context window remains the provider's total window; saved custom
 values and frozen publications retain their existing authority.
+
+A saved registered API source can retain several native interfaces. Shared
+source-level tool availability includes its qualified saved interfaces, while
+candidate materialization resolves each emitted wire profile's own tool support
+before compiling request/response fidelity. Manual tool values retain precedence
+across the saved interfaces; metadata aggregation never authorizes another target.

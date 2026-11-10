@@ -180,6 +180,12 @@ The projection SHALL be shared by model/default reads, recheck prefill, routing
 options and new publication inputs. Only bindings for the selected exact wire interface
 SHALL contribute capability defaults; a withdrawn or conflicting binding on that
 interface SHALL remain unresolved without borrowing another interface's facts.
+For a saved source with several qualified native interfaces, shared source/default
+reads and routing eligibility SHALL report tools available when at least one
+interface supports them. Every emitted native wire profile SHALL retain its own
+model-support and tool request/response fidelity; an interface's positive support
+SHALL NOT enable tools on another interface. Explicit manual tool choices SHALL
+retain their authority across those saved interfaces.
 When a model documents separate input, output and total limits, Native API input
 budget defaults SHALL use its explicit input limit rather than the total window;
 publication SHALL preserve the resulting separate input/output/total budget.
@@ -222,6 +228,15 @@ otherwise bypass ordinary account/endpoint/model admission.
   exact selected interface, and new publication SHALL retain that distinction.
 - **AND** an explicit saved tool choice SHALL retain its meaning unless metadata-following
   is selected; withdrawal or ambiguity on one interface SHALL NOT contaminate another.
+
+#### Scenario: A saved source has both native API interfaces
+
+- **WHEN** an admitted source saves both Chat Completions and Responses for a model
+  whose tools are supported only on Responses, with either interface as primary
+- **THEN** shared default reads and routing eligibility SHALL retain Responses tool
+  availability, while Chat tool request/response fidelity SHALL remain unsupported.
+- **AND** choosing a manual tool value SHALL preserve that explicit value across
+  the emitted profiles without changing credentials, endpoints or saved membership.
 
 #### Scenario: Input capacity is smaller than the total context window
 

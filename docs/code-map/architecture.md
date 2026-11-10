@@ -397,7 +397,7 @@ qualifies installed execution without discarding descriptive records. The shared
 [capability resolver](../../crates/integrations/src/compute/defaults.rs) joins custom/follow-metadata intent
 and exact current endpoint/product facts. Its [API projection](../../crates/integrations/src/compute/defaults/api_capabilities.rs)
 selects interface-specific bindings and independent input limits; [candidate consumer scenarios](../../crates/daemon/src/control/runtime/candidate_execution_tests/api_reasoning_defaults.rs)
-verify tool support and input/output/total budgets. [Price projection](../../crates/daemon/src/control/runtime/prices/official.rs)
+verify saved multi-interface tool fidelity and input/output/total budgets. [Price projection](../../crates/daemon/src/control/runtime/prices/official.rs)
 uses the same scope with the existing valuation engine. [Source preference persistence](../../crates/local-storage/src/control/compute/management/defaults.rs)
 shares source revisions, effect activation and compensation. The [metadata query owner](../../crates/daemon/src/control/runtime/model_feed/metadata.rs)
 and [removal preview](../../crates/daemon/src/control/runtime/model_feed/removal.rs) provide bounded
