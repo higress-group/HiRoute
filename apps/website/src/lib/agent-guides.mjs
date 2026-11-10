@@ -5,26 +5,26 @@ export const agentGuideHub = 'agent-integrations';
 export const agentGuides = {
   'codex-model-routing': {
     zh: 'Codex', en: 'Codex', native: true,
-    title: { zh: 'Codex 多模型路由：接入订阅和 API，按难度选模', en: 'Codex model routing: combine subscriptions and APIs' },
+    title: { zh: 'Codex 订阅模型路由与 Codex Desktop 接入教程', en: 'Codex subscription model routing and Desktop setup' },
     description: {
-      zh: '复用 Codex 订阅或已有 API，配置按难度分流。用按需 profile 在 Codex CLI 中试用，并把独立任务委派给 DeepSeek Harness。',
-      en: 'Reuse a Codex subscription or API, route by task difficulty with an on-demand Codex CLI profile, and delegate scoped work to DeepSeek Harness.',
+      zh: '登录 ChatGPT 订阅并导入 Codex 模型，配置按难度分流，再接入 Codex Desktop 独立窗口或 CLI。每一步都有图文说明。',
+      en: 'Import Codex models from your ChatGPT subscription, configure difficulty routing, and connect Codex Desktop or CLI with step-by-step screenshots.',
     },
   },
   'claude-code-model-routing': {
     zh: 'Claude Code', en: 'Claude Code', native: true,
     title: { zh: 'Claude Code 模型路由：映射 Opus、Sonnet 和 Haiku', en: 'Claude Code model routing with Opus, Sonnet and Haiku presets' },
     description: {
-      zh: '复用 Claude Code 订阅或 Anthropic API，给原生模型预设映射难度路由，再把适合独立执行的工作交给 Pi。',
-      en: 'Connect Claude models, map a difficulty route to a native Claude Code preset, and send a scoped task to Pi when you need a second executor.',
+      zh: '登录 Claude 订阅并选择账号模型，配置常规组与主力组，再映射到 Claude Code 的 Opus、Sonnet 或 Haiku 预设，配有完整步骤和截图。',
+      en: 'Sign in to your Claude subscription, import models, configure difficulty routing and map it to Claude Code presets. Follow the screenshots for each step.',
     },
   },
   'qoder-model-routing': {
     zh: 'Qoder', en: 'Qoder', native: true,
     title: { zh: 'Qoder CLI 模型路由与订阅接入', en: 'Qoder CLI model routing and subscription setup' },
     description: {
-      zh: '把 HiRoute 难度路由加到 Qoder CLI，或通过 Magpie headless 接入 Qoder 订阅模型，组合 DeepSeek-Flash 和 Kimi-K3.1-Pro，再绑定 Pi 等执行 Agent。',
-      en: 'Add a HiRoute difficulty route to Qoder CLI or connect Qoder subscription models through headless Magpie and delegate tasks to Pi.',
+      zh: '通过 Magpie headless 发现 Qoder 订阅模型，配置难度路由并接入 Agent。Qoder 不支持 BYOK 时，也可按截图接入 Codex Desktop。',
+      en: 'Discover Qoder subscription models with headless Magpie, build a difficulty route and connect an Agent. Use Codex Desktop when Qoder BYOK is unavailable.',
     },
   },
   'pi-model-routing': {

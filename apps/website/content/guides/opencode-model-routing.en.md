@@ -10,7 +10,7 @@ Already have an OpenCode provider? Reuse its API in HiRoute, use a fast model fo
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/opencode-model-routing/ and reuse my eligible OpenCode API settings in a new difficulty route. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/opencode-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Discover and save APIs: hiroute compute scan · compute connection prepare / preview / apply
@@ -22,25 +22,41 @@ The UI and CLI share configuration and records. Inspect the current setup first 
 </details>
 </aside>
 
-## 1. Scan for APIs you already use in OpenCode
+[1. Scan or sign in to get models](#get-models) · [2. Configure smart routing](#configure-routing) · [3. Connect your Agent](#connect-agent) · [4. Explore task delegation](#task-delegation)
 
-Open **Models → General models → Add models → Scan this device**. Check a supported static OpenCode provider, model and API key source and save the models you want. OpenCode's own `/models` list may also include dynamically discovered models or models from OAuth plugins. If the scan misses one, [connect the corresponding API](/en/docs/models/) or use an existing subscription or local model.
+<h2 id="get-models">1. Scan or sign in to get models</h2>
 
-## 2. Add an OpenCode difficulty route
+Open **Models → General models → Add models → Scan this device**. Select detected OpenCode static providers, model declarations and API key sources, then check and save them.
 
-Create “OpenCode code review” with **Difficulty routing**. Give Regular the diff summary and file search, and Primary the impact and edge case analysis. Start with **Heuristic rules** or use a [decision model](/en/docs/model-routing/#difficulty-routing) to score stages. Publish.
+OpenCode's `/models` may also include dynamically discovered or OAuth plugin models. If the scan does not find your source, enter its address and key under **New API connection**, check it and save. Existing HiRoute subscriptions or local model connections can also be used in the next step.
 
-Under **Agent → OpenCode → Model routing**, select the plan and a compatible protocol. Save, restart OpenCode and select the route in `/models`. Your existing providers and default model stay available. Ask OpenCode to summarize a small diff, then check **Sessions → Routing timeline** in HiRoute.
+<h2 id="configure-routing">2. Configure smart routing</h2>
 
-<figure class="guide-shot-dialog">
-  <a href="/guide-assets/agent-guide-opencode-en.webp"><img src="/guide-assets/agent-guide-opencode-en.webp" alt="OpenCode model routing settings with a HiRoute plan selected" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>The route becomes another option in OpenCode's model picker.</figcaption>
+1. Open **Smart routing → New smart routing**, name the plan “OpenCode code review” and choose **Difficulty routing**.
+2. Click **Add model** in **Regular models** and choose a fast or economical model from step 1 for reading files, finding definitions and gathering facts.
+3. Add a model to **Primary models** for complex analysis, planning or changes across several files. Combine available models from different subscriptions, APIs or local connections as needed.
+4. Start with **Heuristic rules** under **Decision method**, then click **Enable**. The published route becomes available in the Agent settings in the next step.
+
+<figure class="guide-shot-panel">
+  <a href="/guide-assets/agent-guide-difficulty-en.webp"><img src="/guide-assets/agent-guide-difficulty-en.webp" alt="HiRoute difficulty routing with a decision method and Regular and Primary model groups" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Regular models handle routine work and Primary models handle harder turns. Replace the illustrated models with the ones you connected in step 1.</figcaption>
 </figure>
 
-## 3. Give Pi an independent check
+To adjust routing using execution feedback, select a decision model in the same section for stage scoring and low-score protection. [Learn about difficulty decisions](/en/docs/model-routing/#difficulty-routing)
 
-Reuse your models in a “Pi independent check” plan. Set the two model groups, open **More settings → Task delegation**, allow delegation and select **Pi**. Set the purpose, check dependencies and publish. [Enable Task routing](/en/docs/task-routing/#delegation-skill) in OpenCode.
+<h2 id="connect-agent">3. Connect your Agent</h2>
 
-Try: “Use HiRoute to delegate a test gap review of this diff to Pi independent check. Report the findings.” Open **Agent → Task history** for the executor and result. If you want another Agent to use OpenCode as its executor, select OpenCode in a separate delegation plan.
+Open **Agent → OpenCode → Model routing**, check “OpenCode code review”, choose a compatible protocol and save.
 
-Next: [Prepare Pi as an execution Agent](/en/docs/pi-model-routing/) · [Choose another integration](/en/docs/agent-integrations/)
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-opencode-en.webp"><img src="/guide-assets/agent-guide-opencode-en.webp" alt="Adding a published HiRoute route to OpenCode" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>The route appears in OpenCode's model list for selection through /models.</figcaption>
+</figure>
+
+Restart OpenCode and select the new route with `/models`. Ask it to summarize a small change, then inspect model choices in HiRoute's **Sessions → Routing timeline**.
+
+<h2 id="task-delegation">4. Explore task delegation</h2>
+
+Before submitting code, ask Pi to look for missing tests while OpenCode continues the fix. Other main Agents can also delegate a task to OpenCode when its tools suit the work.
+
+To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)

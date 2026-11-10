@@ -6,10 +6,12 @@ Keep the Agent you work in and combine your subscriptions, APIs or local models 
 
 ## Pick the Agent you use
 
+Every guide follows the same four steps: get models, configure smart routing, connect your Agent, and explore task delegation. Routing instructions and screenshots are included on each page.
+
 <ul class="integration-catalog">
-  <li><a href="/en/docs/codex-model-routing/">Codex model routing</a><p>Reuse a subscription or API and try a route with an on-demand Codex CLI profile.</p></li>
+  <li><a href="/en/docs/codex-model-routing/">Codex model routing and Desktop setup</a><p>Sign in to your subscription, configure a route and open a separate Codex Desktop window or CLI.</p></li>
   <li><a href="/en/docs/claude-code-model-routing/">Claude Code model routing</a><p>Map a route to an Opus, Sonnet or Haiku preset and send a research task to Pi.</p></li>
-  <li><a href="/en/docs/qoder-model-routing/">Qoder CLI and subscription models</a><p>Add a route to Qoder CLI or import your Qoder subscription models through Magpie.</p></li>
+  <li><a href="/en/docs/qoder-model-routing/">Qoder CLI and subscription models</a><p>Discover models through Magpie, configure routing and use Qoder CLI or Codex Desktop.</p></li>
   <li><a href="/en/docs/pi-model-routing/">Pi model routing</a><p>Import models from Pi, select the route with <code>/model</code> and delegate verification to Codex CLI.</p></li>
   <li><a href="/en/docs/deepseek-harness-model-routing/">DeepSeek Harness model routing</a><p>Pick a route in Web or Desktop, or let DeepSeek Harness execute a delegated task.</p></li>
   <li><a href="/en/docs/opencode-model-routing/">OpenCode model routing</a><p>Reuse existing API settings, add a route to <code>/models</code> and ask Pi for an independent check.</p></li>

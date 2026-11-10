@@ -64,6 +64,19 @@ Only those example configuration facts are carried into the screenshots.
 | `agent-guide-difficulty` | Heuristic rules and both model groups |
 | `agent-guide-pi-worker`, `agent-guide-dsh-worker` | Selecting the executor under Task delegation |
 
+The subscription and Desktop onboarding captures below use the production
+components at `51403b63ea71d14420ccd3a55a10485debd5e33c`. Subscription catalogs use example model labels and
+disposable host replies. The Desktop detail shows the route-selection and
+separate-window launch controls.
+
+| Asset | Where to look |
+| --- | --- |
+| `agent-guide-subscription-login` | Codex and Claude Code sign-in buttons |
+| `agent-guide-codex-subscription-models`, `agent-guide-claude-subscription-models` | Selecting subscription models and saving the connection |
+| `agent-guide-codex-desktop` | Selecting the only route for the separate Desktop |
+| `agent-guide-codex-desktop-launch` | Opening the configured Desktop window from HiRoute |
+| `agent-guide-workbuddy-pi` | Selecting the WorkBuddy route for Pi |
+
 Capture the full group after installing Desktop dependencies as above:
 
 ```sh

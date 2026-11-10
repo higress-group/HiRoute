@@ -1,6 +1,6 @@
-# Codex model routing: combine your subscription and APIs
+# Codex subscription model routing and Desktop setup
 
-Keep working in Codex. Send code reading and small edits to an economical model, and keep your primary model for difficult debugging. Try a HiRoute route in an on-demand Codex CLI profile before enabling it for your everyday setup.
+Connect your ChatGPT subscription and API models to HiRoute. Use an economical model for reading code and small changes, and a primary model for harder debugging. Follow the screenshots to import models, configure difficulty routing and use it in a separate Codex Desktop window or Codex CLI.
 
 [Download HiRoute](/en/download/) · [Browse Agent guides](/en/docs/agent-integrations/)
 
@@ -10,7 +10,7 @@ Keep working in Codex. Send code reading and small edits to an economical model,
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/codex-model-routing/ and reuse my Codex sources to set up an on-demand route. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/codex-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Find Codex sources and the configuration target: hiroute compute scan · compute connection options · quickstart
@@ -22,36 +22,79 @@ The UI and CLI share configuration and records. Preview the on-demand setup firs
 </details>
 </aside>
 
-## 1. Find the model sources you already use in Codex
+[1. Scan or sign in to get models](#get-models) · [2. Configure smart routing](#configure-routing) · [3. Connect your Agent](#connect-agent) · [4. Explore task delegation](#task-delegation)
 
-Open **Models → General models → Add models → Scan this device**. If the scan finds a Codex provider, check the connection and save the models you want. For a Codex subscription, reuse a supported file-based sign-in, or sign in independently under **Connect a subscription**. Use independent sign-in when Codex stores its credentials in the system keychain.
+<h2 id="get-models">1. Scan or sign in to get models</h2>
 
-To add an economical model, use **New API connection**. You can also use [Qoder models through Magpie](/en/docs/qoder-model-routing/) or [a local model you already connected](/en/docs/models/).
+With a ChatGPT subscription, sign in and choose the Codex models available to your account.
 
-## 2. Create a “Codex daily coding” route
-
-Open **Smart routing → New smart routing** and select **Difficulty routing**. Pick a Regular model for file search, test summaries and routine edits. Keep a familiar Codex subscription or API model in Primary. Start with **Heuristic rules** or add a [decision model](/en/docs/model-routing/#difficulty-routing) for stage scoring and low-score protection. Publish the route.
-
-Open **Agent → Codex → Model routing**. Choose **On demand · CLI only**, select the route and set it as the default for that profile. Launch Codex with the command from **Enable and copy launch command**. Ask it to find a module's test entry points, then give it a question that needs analysis across files. Open **Sessions → Routing timeline** to see which model ran.
+1. Open **Models → General models → Add models → Connect subscription**.
+2. Click **Sign in** on the **Codex** card. Complete authorization with your ChatGPT account in the browser, then return to HiRoute.
 
 <figure class="guide-shot-dialog">
-  <a href="/guide-assets/agent-editor-en.webp"><img src="/guide-assets/agent-editor-en.webp" alt="Codex model routing dialog with CLI access modes and available routes" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>Try the on-demand CLI profile first. Your everyday Codex entry keeps its own settings.</figcaption>
+  <a href="/guide-assets/agent-guide-subscription-login-en.webp"><img src="/guide-assets/agent-guide-subscription-login-en.webp" alt="Codex and Claude Code sign-in buttons in HiRoute's Connect subscription dialog" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Click Sign in on the Codex card and authorize with your ChatGPT subscription account.</figcaption>
 </figure>
 
-### Use the route in Codex Desktop
+3. When the card says **Signed in. Check and choose models**, click **Check and choose models**, then **Check subscription**. The available models appear when the check completes.
+4. Select the models you want and click **Save and connect**. Confirm they appear under **General models**, ready to add to your route.
 
-On macOS or Windows, select the separate **Codex Desktop** entry in HiRoute Desktop, save the route and choose **Launch separate window**. If you choose **Default · CLI and Desktop** instead, it affects the entries that share that configuration directory. Earlier sessions are filtered by provider; use **Find earlier sessions** to locate them.
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-codex-subscription-models-en.webp"><img src="/guide-assets/agent-guide-codex-subscription-models-en.webp" alt="Selecting models from a checked Codex subscription before saving the connection" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Select the models available to your account, then click Save and connect to import them.</figcaption>
+</figure>
 
-## 3. Stay in Codex and let DSH do an independent analysis
+For an existing Codex setup, **Add models → Scan this device** can find supported subscription or API settings. Check and save the connection. Codex sign-in reuse supports credentials stored in a file. For a system keychain sign-in, use the independent **Connect subscription** flow above. You can also add an API key through **New API connection**.
 
-Reuse your models in a plan named “DSH analysis” with its own Regular and Primary groups. Under **More settings → Task delegation**, allow delegation, describe the purpose, select **DeepSeek Harness**, check its dependencies and publish.
+<h2 id="configure-routing">2. Configure smart routing</h2>
+
+1. Open **Smart routing → New smart routing**, name the plan “Daily coding” and choose **Difficulty routing**.
+2. Click **Add model** in **Regular models** and choose a fast or economical model from step 1 for reading files, finding definitions and gathering facts.
+3. Add a model to **Primary models** for complex analysis, planning or changes across several files. Combine available models from different subscriptions, APIs or local connections as needed.
+4. Start with **Heuristic rules** under **Decision method**, then click **Enable**. The published route becomes available in the Agent settings in the next step.
 
 <figure class="guide-shot-panel">
-  <a href="/guide-assets/agent-guide-dsh-worker-en.webp"><img src="/guide-assets/agent-guide-dsh-worker-en.webp" alt="DeepSeek Harness selected as the execution Agent for a HiRoute task" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>Give the DSH plan a clear purpose so Codex can find it for the right work.</figcaption>
+  <a href="/guide-assets/agent-guide-difficulty-en.webp"><img src="/guide-assets/agent-guide-difficulty-en.webp" alt="HiRoute difficulty routing with a decision method and Regular and Primary model groups" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Regular models handle routine work and Primary models handle harder turns. Replace the illustrated models with the ones you connected in step 1.</figcaption>
 </figure>
 
-[Enable Task routing](/en/docs/task-routing/#delegation-skill) in Codex. Try: “Use HiRoute to delegate analysis of this test failure to DSH analysis. Return reproduction steps and a minimal fix proposal.” See the result in **Agent → Task history**. Both plans can use the same models, and you can enable delegation while Codex keeps its original model settings.
+To adjust routing using execution feedback, select a decision model in the same section for stage scoring and low-score protection. [Learn about difficulty decisions](/en/docs/model-routing/#difficulty-routing)
 
-Next: [Set up DeepSeek Harness](/en/docs/deepseek-harness-model-routing/) · [See other model sources](/en/docs/models/)
+<h2 id="connect-agent">3. Connect your Agent</h2>
+
+### Use Codex Desktop
+
+1. Install the ChatGPT / Codex desktop app on macOS or Windows, then open **HiRoute Desktop → Agent → Codex Desktop**.
+2. Click **Choose routes and enable**. For an existing connection, click **Edit** beside **Model routing**. Check your published plan. A single route becomes the default automatically; if you choose several, pick your preferred route under **Default selection**. Click **Enable** or **Save settings**.
+
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-codex-desktop-en.webp"><img src="/guide-assets/agent-guide-codex-desktop-en.webp" alt="Codex Desktop model routing dialog with the Daily coding route selected" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Select your new route. When it is the only route, the separate window uses it by default.</figcaption>
+</figure>
+
+3. Back in the Codex Desktop details, click **Open separate window** in the **Separate window** section. HiRoute opens a desktop window configured to use your route.
+4. Choose a project in the new window, create a chat and confirm the route in the model picker. Try “Find this project's startup entry points and explain how they connect.” In HiRoute, open **Sessions → Routing timeline** to see the models selected.
+
+<figure class="guide-shot-panel">
+  <a href="/guide-assets/agent-guide-codex-desktop-launch-en.webp"><img src="/guide-assets/agent-guide-codex-desktop-launch-en.webp" alt="Codex Desktop details in HiRoute with the Open separate window button" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>After saving the route, click Open separate window at the upper right and start work in the new window.</figcaption>
+</figure>
+
+After changing route settings, quit this instance and open it again with the same button.
+
+### Use Codex CLI
+
+Open **Agent → Codex CLI → Model routing**. Choose **On demand · CLI only**, check the route you published and make it the default. Click **Enable and copy launch command**, then run the copied command in a terminal in your project.
+
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-editor-en.webp"><img src="/guide-assets/agent-editor-en.webp" alt="On-demand Codex CLI access and default route settings" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Choose on-demand CLI access, then run the launch command provided by HiRoute.</figcaption>
+</figure>
+
+Try a small task and inspect the actual model choices in HiRoute's session timeline.
+
+<h2 id="task-delegation">4. Explore task delegation</h2>
+
+While coding, you may want another Agent to investigate an error or check test coverage. Codex CLI can hand that scoped task to DSH or Pi and bring the result back to your conversation.
+
+To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)

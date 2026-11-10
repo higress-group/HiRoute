@@ -6,10 +6,12 @@
 
 ## 选你常用的 Agent
 
+每篇教程都按四步展开：获取模型、配置智能路由、接入 Agent、了解任务委派。路由配置步骤和截图直接放在各篇文档中，跟着一篇就能完成接入。
+
 <ul class="integration-catalog">
-  <li><a href="/zh/docs/codex-model-routing/">Codex 多模型路由</a><p>复用订阅或 API，用按需加载的 Codex CLI profile 试用路由。</p></li>
+  <li><a href="/zh/docs/codex-model-routing/">Codex 订阅路由与 Desktop 接入</a><p>登录订阅、配置路由，再打开 Codex Desktop 独立窗口或接入 CLI。</p></li>
   <li><a href="/zh/docs/claude-code-model-routing/">Claude Code 模型路由</a><p>给 Opus、Sonnet 或 Haiku 预设映射路由，让 Pi 独立完成一项调研。</p></li>
-  <li><a href="/zh/docs/qoder-model-routing/">Qoder CLI 路由与订阅模型</a><p>把路由加到 Qoder CLI，或用 Magpie 接入 Qoder 订阅模型。</p></li>
+  <li><a href="/zh/docs/qoder-model-routing/">Qoder CLI 路由与订阅模型</a><p>用 Magpie 发现模型，配置分流，再接入 Qoder CLI 或 Codex Desktop。</p></li>
   <li><a href="/zh/docs/pi-model-routing/">Pi 多模型路由</a><p>导入 Pi 的模型，在 <code>/model</code> 里选路由，再交给 Codex CLI 独立验证。</p></li>
   <li><a href="/zh/docs/deepseek-harness-model-routing/">DeepSeek Harness 模型路由</a><p>在 Web 或桌面版选用路由，也可以让 DeepSeek Harness 执行委派任务。</p></li>
   <li><a href="/zh/docs/opencode-model-routing/">OpenCode 多模型路由</a><p>复用已有 API 配置，在 <code>/models</code> 里选路由，再让 Pi 独立检查。</p></li>
