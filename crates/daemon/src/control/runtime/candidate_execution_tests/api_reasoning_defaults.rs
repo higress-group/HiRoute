@@ -290,3 +290,90 @@ fn custom_unknown_and_following_missing_metadata_never_resurrect_saved_controls(
         );
     }
 }
+
+#[test]
+fn terra_tools_follow_the_exact_native_protocol() {
+    let catalog = current_catalog();
+    for (protocol, supports_tools) in [
+        (UpstreamProtocol::ChatCompletions, false),
+        (UpstreamProtocol::Responses, true),
+    ] {
+        for follow_metadata in [false, true] {
+            let mut fact = observed_api(
+                &catalog,
+                "openai.platform.global.v1",
+                protocol,
+                "gpt-6.1-terra",
+            );
+            fact.capabilities.tool = ComputeManagementFactValueV2 {
+                value: None,
+                basis: ComputeManagementFactBasisV2::Unknown,
+            };
+            if follow_metadata {
+                fact.capabilities.tool = user_fact(!supports_tools);
+                fact.default_preferences.insert(
+                    ModelDefaultFieldV1::Tool,
+                    ModelDefaultPreferenceV1::FollowMetadata,
+                );
+            }
+            let before = serde_json::to_vec(&fact.capabilities).unwrap();
+            let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
+            candidate.validate().unwrap();
+            assert_eq!(candidate.model.capabilities.tool, supports_tools);
+            assert!(!candidate.protocol_profiles.is_empty());
+            for profile in &candidate.protocol_profiles {
+                assert_eq!(profile.connector.upstream_protocol, protocol);
+                assert_eq!(
+                    profile.capability.model_support.tools.exact(),
+                    Some(&supports_tools)
+                );
+            }
+            assert_eq!(serde_json::to_vec(&fact.capabilities).unwrap(), before);
+        }
+    }
+}
+
+#[test]
+fn terra_context_defaults_preserve_the_separate_input_and_total_limits() {
+    let catalog = current_catalog();
+    for protocol in [
+        UpstreamProtocol::ChatCompletions,
+        UpstreamProtocol::Responses,
+    ] {
+        let mut fact = observed_api(
+            &catalog,
+            "openai.platform.global.v1",
+            protocol,
+            "gpt-6.1-terra",
+        );
+        fact.capabilities.context_tokens = ComputeManagementFactValueV2 {
+            value: None,
+            basis: ComputeManagementFactBasisV2::Unknown,
+        };
+        fact.capabilities.max_output_tokens = ComputeManagementFactValueV2 {
+            value: None,
+            basis: ComputeManagementFactBasisV2::Unknown,
+        };
+        let before = serde_json::to_vec(&fact.capabilities).unwrap();
+        let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
+        candidate.validate().unwrap();
+        assert_eq!(candidate.model.capabilities.context_tokens, 922_000);
+        assert_eq!(candidate.model.capabilities.max_output_tokens, 128_000);
+        assert!(!candidate.protocol_profiles.is_empty());
+        for profile in &candidate.protocol_profiles {
+            assert_eq!(
+                profile.capability.context.max_input_tokens.exact(),
+                Some(&922_000)
+            );
+            assert_eq!(
+                profile.capability.context.max_output_tokens.exact(),
+                Some(&128_000)
+            );
+            assert_eq!(
+                profile.capability.context.max_total_tokens.exact(),
+                Some(&Some(1_050_000))
+            );
+        }
+        assert_eq!(serde_json::to_vec(&fact.capabilities).unwrap(), before);
+    }
+}
