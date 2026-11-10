@@ -10,7 +10,7 @@ Select a HiRoute route in Pi's `/model` picker and keep your usual tools. Give f
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/pi-model-routing/ and help me get models, configure smart routing and connect my Agent. Explain when to use task delegation and enable it when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/pi-model-routing/ and help me get models, configure smart routing and connect my Agent. Use this guide's lightweight Pi example to show how a scoped task can use fewer primary-model tokens. Enable delegation when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Scan and check reusable settings: hiroute compute scan · compute connection prepare / preview / apply
@@ -57,6 +57,10 @@ Restart Pi, type `/model` and select the new HiRoute route. Ask it to find a fun
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 
-After planning in Pi, delegate “Run the relevant tests and summarize the failures” to Codex CLI while you continue discussing the implementation. Other main Agents can also send research tasks to Pi.
+When your main Pi chat uses a primary model for design work, send test discovery and call-site searches to a separate lightweight Pi route. Let the economical model handle file reads and searches, then use the short index in the main chat. For a larger implementation, you can also choose a route bound to Codex CLI.
 
-To get started, bind an execution Agent under **More settings → Task delegation** in a plan and enable **Task routing** in the main Agent that sends the task. The executor uses the plan's models, and results appear in **Agent → Task history**. [Continue with the Agent routing guide](/en/docs/task-routing/)
+Create a Fixed model route called “Pi quick search”. Under **More settings → Task delegation**, allow delegation and choose Pi, describe its purpose and enable it. Turn on **Task routing** in the main Pi entry.
+
+> Use HiRoute to delegate test discovery for this function to “Pi quick search”. Return the test files, case names and behaviors covered.
+
+Check the main chat and delegated task separately to see which models they use and how much each consumes. [Set up a lightweight Pi executor](/en/docs/task-routing/#lightweight-pi)

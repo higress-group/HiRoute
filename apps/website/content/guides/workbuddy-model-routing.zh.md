@@ -11,7 +11,7 @@
 
 ```text
 阅读 https://hiroute.ai/zh/docs/workbuddy-model-routing/
-请帮我按本页完成获取模型、配置智能路由和接入 Agent，再介绍任务委派的适用场景，按我的需要选择启用。CLI 参考：https://hiroute.ai/zh/docs/cli/
+请帮我按本页完成获取模型、配置智能路由和接入 Agent，再用本页的轻量 Pi 场景说明如何用更少的主力模型 token 完成独立任务。按我的需要启用委派。CLI 参考：https://hiroute.ai/zh/docs/cli/
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 读取和保存 API 接入：hiroute compute list · compute connection options / test / preview / apply
@@ -93,6 +93,10 @@ curl -fsS -H 'Authorization: Bearer magpie' http://127.0.0.1:3425/v1/models
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 
-整理资料时，可以让 Pi 批量阅读文档，让 Codex CLI 单独检查文档中的代码示例，再把两边结果汇总到主对话。WorkBuddy 提供模型，你可以按任务需要选择执行 Agent。
+用 Codex CLI 写方案时，可以让轻量的 Pi 先从一组文档整理负责人、截止日期和待确认事项。把第一步接入的 WorkBuddy 经济模型给 Pi，文档阅读用这套模型完成，Codex 主会话只需要处理结构化的简报。
 
-想使用时，在路由的“更多设置 → 任务委派”中绑定执行 Agent，并在发起任务的主 Agent 上开启“任务路由”。执行方会按照这份计划选择模型，结果可在“Agent → 任务记录”查看。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)
+用 WorkBuddy 模型创建“Pi 文档速读”固定模型路由，在“更多设置 → 任务委派”中开启委派并选 Pi，填写用途并启用。然后在主 Agent 的“任务路由”中开启委派。
+
+> 使用 HiRoute 让“Pi 文档速读”整理这几份文档，返回负责人、截止日期、待确认事项和出处。
+
+让主 Agent 根据简报继续写方案，并到任务记录和会话时间线核对执行方与用量。[配置 Pi 轻量委派](/zh/docs/task-routing/#lightweight-pi)

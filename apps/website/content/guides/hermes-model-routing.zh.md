@@ -11,7 +11,7 @@
 
 ```text
 阅读 https://hiroute.ai/zh/docs/hermes-model-routing/
-请帮我按本页完成获取模型、配置智能路由和接入 Agent，再介绍任务委派的适用场景，按我的需要选择启用。CLI 参考：https://hiroute.ai/zh/docs/cli/
+请帮我按本页完成获取模型、配置智能路由和接入 Agent，再用本页的轻量 Pi 场景说明如何用更少的主力模型 token 完成独立任务。按我的需要启用委派。CLI 参考：https://hiroute.ai/zh/docs/cli/
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 确认 profile 和可用接入：hiroute quickstart --hermes-root PATH · compute scan · compute connection prepare
@@ -58,6 +58,10 @@
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 
-在 Hermes 对话里确定了一个需求后，可以把“实现这项修改并运行相关测试”交给 Codex CLI，让 Hermes 继续负责讨论、协调和汇总结果。
+让 Hermes 整理项目周报时，可以把几份发布记录和工作笔记交给轻量的 Pi，先提取变更、待办和对应来源。Pi 用经济模型完成逐份阅读，Hermes 只需读简报，再判断哪些变化值得写进周报。
 
-想使用时，在路由的“更多设置 → 任务委派”中绑定执行 Agent，并在发起任务的主 Agent 上开启“任务路由”。执行方会按照这份计划选择模型，结果可在“Agent → 任务记录”查看。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)
+创建“Pi 周报素材”固定模型路由，在“更多设置 → 任务委派”中开启委派并选 Pi，填写用途并启用。回到当前 Hermes profile 的“任务路由”开启委派。
+
+> 使用 HiRoute，把这几份笔记交给“Pi 周报素材”。按变更、待办和出处汇总，每类最多三项。
+
+取回简报后让 Hermes 完成汇总。遇到要实现的独立改动，可以改选绑定 Codex CLI 的计划。[配置 Pi 轻量委派](/zh/docs/task-routing/#lightweight-pi)

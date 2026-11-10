@@ -89,8 +89,9 @@ guide needs one step from the shared Magpie setup.
 Each Agent walkthrough follows four steps: scan or sign in to get models,
 configure smart routing, connect the Agent, then explore task delegation.
 Repeat the complete difficulty-routing steps and screenshot in each page so the
-core setup can be followed without changing articles. Describe delegation through
-a short user scenario and link to the dedicated Agent routing guide for setup.
+core setup can be followed without changing articles. Give the delegation step a
+scoped task, a prompt to try and a reason to use a different executor or model.
+Link to the dedicated Agent routing guide for installation and usage checks.
 Keep shared captions and screenshots consistent in both languages.
 
 `npm run check:guides` rejects missing language pairs, unregistered guide files and

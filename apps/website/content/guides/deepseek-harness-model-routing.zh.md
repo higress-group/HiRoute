@@ -11,7 +11,7 @@
 
 ```text
 阅读 https://hiroute.ai/zh/docs/deepseek-harness-model-routing/
-请帮我按本页完成获取模型、配置智能路由和接入 Agent，再介绍任务委派的适用场景，按我的需要选择启用。CLI 参考：https://hiroute.ai/zh/docs/cli/
+请帮我按本页完成获取模型、配置智能路由和接入 Agent，再用本页的轻量 Pi 场景说明如何用更少的主力模型 token 完成独立任务。按我的需要启用委派。CLI 参考：https://hiroute.ai/zh/docs/cli/
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 查看 DSH 与可导入模型：hiroute quickstart · compute scan · compute connection prepare
@@ -58,6 +58,10 @@
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 
-在 DSH Web 或 CLI 中分析问题时，可以把一项范围明确的修复交给 Codex CLI。也可以让 DSH 替其他主 Agent 调查根因。
+用 DSH 分析请求失败时，可以先让轻量的 Pi 从网关日志抽出失败请求的时间线和状态码。Pi 搭配经济模型消化日志原文，DSH 根据提取出的证据判断根因，让主力模型把额度用在分析上。
 
-在路由的“更多设置 → 任务委派”中绑定执行 Agent。从 DSH 发起委派时，在 HiRoute 的“DeepSeek Harness Web”条目中启用“任务路由”。[继续阅读 Agent 智能路由教程](/zh/docs/task-routing/)
+创建“Pi 请求时间线”固定模型路由，在“更多设置 → 任务委派”中开启委派并选 Pi，填写用途并启用。要从 DSH Web 或 CLI 委派，在 HiRoute 的“DeepSeek Harness Web”条目开启“任务路由”。
+
+> 使用 HiRoute 让“Pi 请求时间线”提取这次失败请求的时间、状态码和最早的异常行。用五行以内汇报。
+
+取回摘要后再让 DSH 分析，或者把范围明确的修复交给绑定 Codex CLI 的计划。[配置 Pi 轻量委派](/zh/docs/task-routing/#lightweight-pi)

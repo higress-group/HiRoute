@@ -47,6 +47,8 @@ Create or edit a plan in Smart routing, then choose How to use models:
 | Custom branches | Tasks such as writing and reviewing need different models | Selects a task category, then regular or primary models within that branch |
 | Free first | You want free models attempted first | Tries free candidates in a fixed order, then either stops or uses an optional primary fallback |
 
+If your subscription and credit-funded API offer the same model, [create a Fixed model route from both candidates](/en/docs/models/#same-model-candidates) and choose which source comes first.
+
 Models → General models manages models that execute your tasks. Models → Decision models manages connections that judge and assess work, including self-hosted custom extensions. Decision models do not answer the task in place of execution models, and they do not select tools.
 
 ## 2. Connect a decision model for judgments and scores
