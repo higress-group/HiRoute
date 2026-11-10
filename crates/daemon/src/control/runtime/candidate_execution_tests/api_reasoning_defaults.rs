@@ -430,7 +430,10 @@ fn terra_with_saved_native_interfaces(
                 protocol_profile_revision: endpoint.adapter_revision,
             },
             authentication: endpoint.authentication_semantics.clone().unwrap(),
-            recheck: None,
+            recheck:
+                crate::control::runtime::model_connections::registered_endpoint_recheck_descriptor(
+                    &resolved, endpoint,
+                ),
         })
         .collect();
     let destinations = std::iter::once(&fact.target)
