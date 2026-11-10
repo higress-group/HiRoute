@@ -111,8 +111,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .all(|capability| !capability.capability_id.starts_with("cap.runtime.")),
         "incomplete bindings must not become executable capabilities"
     );
-    assert_eq!(data.metadata_catalog.provider_records.len(), 105);
-    assert_eq!(data.metadata_catalog.model_records.len(), 771);
+    assert_eq!(data.metadata_catalog.provider_records.len(), 108);
+    assert_eq!(data.metadata_catalog.model_records.len(), 778);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 190);
     for product_key in [
         "bailian-token-personal-cn-beijing",

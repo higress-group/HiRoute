@@ -177,7 +177,19 @@ and reasoning facts from one current
 metadata snapshot when the exact registered destination, protocol, authentication,
 product and upstream model ID match a supported native reasoning convention.
 The projection SHALL be shared by model/default reads, recheck prefill, routing
-options and new publication inputs. OpenAI effort and Anthropic adaptive effort
+options and new publication inputs. Only bindings for the selected exact wire interface
+SHALL contribute capability defaults; a withdrawn or conflicting binding on that
+interface SHALL remain unresolved without borrowing another interface's facts.
+For a saved source with several qualified native interfaces, shared source/default
+reads and routing eligibility SHALL report tools available when at least one
+interface supports them. Every emitted native wire profile SHALL retain its own
+model-support and tool request/response fidelity; an interface's positive support
+SHALL NOT enable tools on another interface. Explicit manual tool choices SHALL
+retain their authority across those saved interfaces.
+When a model documents separate input, output and total limits, Native API input
+budget defaults SHALL use its explicit input limit rather than the total window;
+publication SHALL preserve the resulting separate input/output/total budget.
+OpenAI effort and Anthropic adaptive effort
 SHALL retain their distinct native fields and required companion controls.
 Labels, another product's subscription membership, an unknown ID or an ambiguous
 mapping SHALL NOT establish these defaults. Where an API product has no exact
@@ -208,6 +220,31 @@ admission evidence or already published reasoning selections. The effective valu
 and its metadata origin SHALL be visible separately from a missing saved value.
 This control default SHALL NOT grant entitlement, prices, free qualification or
 otherwise bypass ordinary account/endpoint/model admission.
+
+#### Scenario: API protocols have different tool support
+
+- **WHEN** an admitted API model supports tools on Responses but not on Chat Completions
+- **THEN** missing or metadata-following tool facts SHALL resolve separately for the
+  exact selected interface, and new publication SHALL retain that distinction.
+- **AND** an explicit saved tool choice SHALL retain its meaning unless metadata-following
+  is selected; withdrawal or ambiguity on one interface SHALL NOT contaminate another.
+
+#### Scenario: A saved source has both native API interfaces
+
+- **WHEN** an admitted source saves both Chat Completions and Responses for a model
+  whose tools are supported only on Responses, with either interface as primary
+- **THEN** shared default reads and routing eligibility SHALL retain Responses tool
+  availability, while Chat tool request/response fidelity SHALL remain unsupported.
+- **AND** choosing a manual tool value SHALL preserve that explicit value across
+  the emitted profiles without changing credentials, endpoints or saved membership.
+
+#### Scenario: Input capacity is smaller than the total context window
+
+- **WHEN** a model documents a 1,050,000 total context, 922,000 maximum input and
+  128,000 maximum output, and the admitted source has no custom token limits
+- **THEN** Native API defaults and new publication SHALL use 922,000 input,
+  128,000 output and 1,050,000 total rather than adding output to the total window.
+- **AND** saved custom limits and already published revisions SHALL remain unchanged.
 
 #### Scenario: An existing API import has no reasoning fact
 

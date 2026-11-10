@@ -478,6 +478,7 @@
     {
       "authority_key": "volcano-engine",
       "allowed_https_prefixes": [
+        "https://docs.volcengine.com/docs/ark/",
         "https://www.volcengine.com/"
       ],
       "scope": [

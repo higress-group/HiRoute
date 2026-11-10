@@ -35,3 +35,18 @@ the documented official suffix. Provider names and unlisted aliases do not match
 The TypeSafe header destination remains an installed typed transport policy;
 remote metadata cannot authorize a new header destination. A saved resolved
 snapshot retains its catalog identity and is not refreshed at publication/runtime.
+
+Native API capability defaults match endpoint bindings to the selected exact wire
+interface. Represent protocol-specific capabilities with separate bindings and
+explicit overrides; an unrelated interface does not contribute or conflict, while
+an unmatched or withdrawn explicit binding cannot revive provider-prefill hints.
+When a canonical model records an independent `max_input_tokens`, the Native API
+resolver uses it for the input budget before falling back to its context value.
+The canonical context window remains the provider's total window; saved custom
+values and frozen publications retain their existing authority.
+
+A saved registered API source can retain several native interfaces. Shared
+source-level tool availability includes its qualified saved interfaces, while
+candidate materialization resolves each emitted wire profile's own tool support
+before compiling request/response fidelity. Manual tool values retain precedence
+across the saved interfaces; metadata aggregation never authorizes another target.

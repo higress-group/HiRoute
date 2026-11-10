@@ -8,11 +8,13 @@ pub struct ApiCapabilityCompletion {
     pub inferred_fields: BTreeSet<ModelDefaultFieldV1>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn complete_missing_api_capabilities(
     catalog: &TrustedReleaseCatalog,
     provenance: &ComputeManagementProvenanceV2,
     target: &ComputeManagementTargetV2,
     authentication: &GatewayAuthenticationSemanticsV1,
+    additional_endpoints: &[ComputeNativeEndpointV3],
     upstream: &str,
     saved: &ComputeManagedCapabilitiesV2,
     preferences: &BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
@@ -22,9 +24,40 @@ pub fn complete_missing_api_capabilities(
         filled_fields: BTreeSet::new(),
         inferred_fields: BTreeSet::new(),
     };
-    let defaults = super::api_scope::api_endpoint(catalog, provenance, target, authentication)
-        .map(|endpoint| metadata_defaults(catalog.model_metadata(), &endpoint, upstream))
+    let primary = super::api_scope::api_endpoint(catalog, provenance, target, authentication);
+    let mut defaults = primary
+        .as_ref()
+        .map(|endpoint| metadata_defaults(catalog.model_metadata(), endpoint, upstream))
         .unwrap_or_else(unknown);
+    // Source-level tool availability is existential over its saved qualified
+    // interfaces. Each emitted wire profile resolves its own interface separately.
+    if primary.is_some() && !additional_endpoints.is_empty() {
+        let mut tools = vec![defaults.tool.clone()];
+        tools.extend(additional_endpoints.iter().filter_map(|extra| {
+            super::api_scope::api_endpoint(
+                catalog,
+                provenance,
+                &extra.target,
+                &extra.authentication,
+            )
+            .map(|endpoint| metadata_defaults(catalog.model_metadata(), &endpoint, upstream).tool)
+        }));
+        let value = if tools.iter().any(|tool| tool.value == Some(true)) {
+            Some(true)
+        } else if tools.iter().all(|tool| tool.value == Some(false)) {
+            Some(false)
+        } else {
+            None
+        };
+        defaults.tool = fact(value);
+        if value.is_some()
+            && tools.iter().any(|tool| {
+                tool.value == value && tool.basis == ComputeManagementFactBasisV2::RuntimeFallback
+            })
+        {
+            defaults.tool.basis = ComputeManagementFactBasisV2::RuntimeFallback;
+        }
+    }
     if matches!(
         preferences.get(&ModelDefaultFieldV1::NativeReasoning),
         Some(ModelDefaultPreferenceV1::FollowMetadata)
@@ -173,22 +206,26 @@ fn metadata_defaults(
         // An explicit binding, including withdrawal/ambiguity, owns its complete scope.
         let models = bindings
             .iter()
+            // Another protocol's binding neither contributes nor conflicts. The
+            // explicit product/model scope still prevents provider-hint fallback
+            // when none of its bindings applies to the selected interface.
+            .filter(|binding| {
+                product.interfaces.iter().any(|interface| {
+                    interface.protocol == protocol
+                        && binding
+                            .interface_candidates
+                            .contains(&interface.interface_key)
+                        && interface
+                            .base_url
+                            .as_ref()
+                            .zip(interface.request_path.as_ref())
+                            .is_some_and(|(base, path)| {
+                                format!("{}{path}", base.trim_end_matches('/')) == wire_target
+                            })
+                })
+            })
             .map(|binding| {
-                if matches!(binding.lifecycle.as_deref(), Some("retired" | "deprecated"))
-                    || !product.interfaces.iter().any(|interface| {
-                        interface.protocol == protocol
-                            && binding
-                                .interface_candidates
-                                .contains(&interface.interface_key)
-                            && interface
-                                .base_url
-                                .as_ref()
-                                .zip(interface.request_path.as_ref())
-                                .is_some_and(|(base, path)| {
-                                    format!("{}{path}", base.trim_end_matches('/')) == wire_target
-                                })
-                    })
-                {
+                if matches!(binding.lifecycle.as_deref(), Some("retired" | "deprecated")) {
                     return None;
                 }
                 let publisher = if product.product_key == "openai-platform-global" {
@@ -229,6 +266,9 @@ fn metadata_defaults(
             context_tokens: fact(agreed(models.iter().map(|(b, m)| {
                 b.capability_overrides
                     .context_tokens
+                    // Native capability context_tokens is the input budget;
+                    // a published total window must not enlarge an exact input cap.
+                    .or(m.max_input_tokens)
                     .or_else(|| limit(&m.context_tokens))
             }))),
             max_output_tokens: fact(agreed(models.iter().map(|(b, m)| {
@@ -368,7 +408,7 @@ mod tests {
         p: &BTreeMap<ModelDefaultFieldV1, ModelDefaultPreferenceV1>,
     ) -> ApiCapabilityCompletion {
         let (origin, target, auth) = scope(c);
-        complete_missing_api_capabilities(c, &origin, &target, &auth, id, saved, p)
+        complete_missing_api_capabilities(c, &origin, &target, &auth, &[], id, saved, p)
     }
     #[test]
     fn api_defaults_complete_all_missing_fields_and_keep_source_bytes() {
@@ -492,12 +532,162 @@ mod tests {
             &origin,
             &target,
             &auth,
+            &[],
             "gpt-6-astra",
             &unknown(),
             &BTreeMap::new(),
         );
         assert!(result.filled_fields.is_empty());
     }
+    #[test]
+    fn saved_api_interfaces_share_availability_without_crossing_wire_or_manual_scope() {
+        let c = catalog();
+        let (origin, _, _) = scope(&c);
+        let resolved = c
+            .resolve_connection_option("openai.platform.global.v1")
+            .unwrap();
+        let endpoint = |protocol| {
+            let e = resolved
+                .endpoint_profile
+                .protocol_endpoints
+                .iter()
+                .find(|e| e.protocol == protocol)
+                .unwrap();
+            ComputeNativeEndpointV3 {
+                target: ComputeManagementTargetV2 {
+                    scheme: "https".into(),
+                    authority: e.base_url.strip_prefix("https://").unwrap().into(),
+                    port: 443,
+                    request_path: e.request_path.clone(),
+                    upstream_protocol: protocol,
+                    protocol_profile_id: e.adapter_ref.clone(),
+                    protocol_profile_revision: e.adapter_revision,
+                },
+                authentication: e.authentication_semantics.clone().unwrap(),
+                recheck: None,
+            }
+        };
+        for protocol in [
+            UpstreamProtocol::ChatCompletions,
+            UpstreamProtocol::Responses,
+        ] {
+            let primary = endpoint(protocol);
+            let other = endpoint(if protocol == UpstreamProtocol::Responses {
+                UpstreamProtocol::ChatCompletions
+            } else {
+                UpstreamProtocol::Responses
+            });
+            let project =
+                |model, saved: &ComputeManagedCapabilitiesV2, extra: &[ComputeNativeEndpointV3]| {
+                    complete_missing_api_capabilities(
+                        &c,
+                        &origin,
+                        &primary.target,
+                        &primary.authentication,
+                        extra,
+                        model,
+                        saved,
+                        &BTreeMap::new(),
+                    )
+                };
+            let single = project("gpt-6.1-terra", &unknown(), &[]);
+            assert_eq!(
+                single.capabilities.tool.value,
+                Some(protocol == UpstreamProtocol::Responses)
+            );
+            let both = project("gpt-6.1-terra", &unknown(), std::slice::from_ref(&other));
+            assert_eq!(both.capabilities.tool.value, Some(true));
+            assert_eq!(both.capabilities.context_tokens.value, Some(922_000));
+            let mut manual = unknown();
+            manual.tool = ComputeManagementFactValueV2 {
+                value: Some(false),
+                basis: ComputeManagementFactBasisV2::UserDeclared,
+            };
+            assert_eq!(
+                project("gpt-6.1-terra", &manual, std::slice::from_ref(&other))
+                    .capabilities
+                    .tool
+                    .value,
+                Some(false)
+            );
+            let inferred = project("gpt-6-astra", &unknown(), std::slice::from_ref(&other));
+            assert!(
+                inferred
+                    .inferred_fields
+                    .contains(&ModelDefaultFieldV1::Tool)
+            );
+            let mut unrelated = other;
+            unrelated.target.authority = "api.example.test/v1".into();
+            assert_eq!(
+                project("gpt-6.1-terra", &unknown(), &[unrelated])
+                    .capabilities
+                    .tool
+                    .value,
+                single.capabilities.tool.value
+            );
+        }
+    }
+
+    #[test]
+    fn protocol_scoped_bindings_isolate_withdrawal_and_conflicting_tool_facts() {
+        let c = catalog();
+        let resolved = c
+            .resolve_connection_option("openai.platform.global.v1")
+            .unwrap();
+        let endpoint = |protocol| {
+            resolved
+                .endpoint_profile
+                .protocol_endpoints
+                .iter()
+                .find(|endpoint| endpoint.protocol == protocol)
+                .unwrap()
+        };
+        let chat = endpoint(UpstreamProtocol::ChatCompletions);
+        let responses = endpoint(UpstreamProtocol::Responses);
+        let mut metadata = c.model_metadata().clone();
+        let chat_index = metadata
+            .endpoint_bindings
+            .iter()
+            .position(|binding| {
+                binding.upstream_model_id == "gpt-6.1-terra"
+                    && binding.interface_candidates == ["openai-platform-global/openai-chat"]
+            })
+            .unwrap();
+        metadata.endpoint_bindings[chat_index].lifecycle = Some("retired".into());
+        let withdrawn = metadata_defaults(&metadata, chat, "gpt-6.1-terra");
+        assert_eq!(withdrawn.tool.value, None);
+        assert_eq!(withdrawn.context_tokens.value, None);
+        let other_protocol = metadata_defaults(&metadata, responses, "gpt-6.1-terra");
+        assert_eq!(other_protocol.tool.value, Some(true));
+        assert_eq!(other_protocol.context_tokens.value, Some(922_000));
+
+        metadata.endpoint_bindings[chat_index].lifecycle = Some("active".into());
+        let mut conflict = metadata.endpoint_bindings[chat_index].clone();
+        conflict.binding_key.push_str("/conflict");
+        conflict.capability_overrides.tool = Some(true);
+        metadata.endpoint_bindings.push(conflict);
+        let ambiguous = metadata_defaults(&metadata, chat, "gpt-6.1-terra");
+        assert_eq!(ambiguous.tool.value, None);
+        assert_eq!(ambiguous.context_tokens.value, Some(922_000));
+        assert_eq!(
+            metadata_defaults(&metadata, responses, "gpt-6.1-terra")
+                .tool
+                .value,
+            Some(true)
+        );
+
+        for binding in &mut metadata.endpoint_bindings {
+            if binding.upstream_model_id == "gpt-6.1-terra" {
+                binding
+                    .interface_candidates
+                    .retain(|key| !key.ends_with("/openai-chat"));
+            }
+        }
+        let unmatched = metadata_defaults(&metadata, chat, "gpt-6.1-terra");
+        assert_eq!(unmatched.tool.value, None);
+        assert_eq!(unmatched.context_tokens.value, None);
+    }
+
     #[test]
     fn conflicting_provider_fact_keeps_only_that_field_unknown() {
         let c = catalog();
