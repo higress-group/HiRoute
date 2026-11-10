@@ -6,6 +6,13 @@ configuration, choose a Plan, retry a prompt, or replace a failed Continue with 
 new session. See the [Worker launcher](../local_worker/README.md) for process and
 temporary-material ownership.
 
+[The stdio transport](transport.rs) accepts incoming ACP frames up to 30 MiB,
+including image tool updates from adapters that send both raw and rendered
+output. Outgoing ACP frames and accumulated result text each have their own
+1 MiB limit. An inbound size rejection emits `ACP_FRAME_TOO_LARGE` through the
+Worker progress stream with the byte limit. The existing connection-loss path
+records the outcome and stops the owned process.
+
 The profile applies startup overrides, but those alone do not establish the
 session's model. Native resume and user model settings can change the adapter's
 effective selection. [Model selection](model.rs) therefore checks the `model`
