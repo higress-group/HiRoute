@@ -25,7 +25,7 @@ pub(super) fn controls(
         };
         body.insert(key.into(), json!(cap));
     }
-    render_reasoning(&mut body, reasoning, protocol)?;
+    render_reasoning(&mut body, reasoning, profile)?;
     Ok(Value::Object(body))
 }
 
@@ -179,7 +179,7 @@ pub(super) fn project(
         for field in reasoning.render.fields() {
             remove_assignment(object, &field.path);
         }
-        render_reasoning(object, reasoning, request.ingress_protocol)?;
+        render_reasoning(object, reasoning, profile)?;
         if request.ingress_protocol == IngressProtocol::Messages {
             normalize_messages_thinking(
                 object,

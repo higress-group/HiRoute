@@ -173,6 +173,11 @@ with 1024 tokens or disabled without budget. Explicit manual budgets are at leas
 1024 and below actual max_tokens. Adaptive profiles remain adaptive without guessed
 model-name rules. Supported released toggle projections normalize at the current
 wire boundary without changing stored profile/digest.
+For a selected effort on a verified Bailian HTTPS Messages endpoint, the Gateway
+renders enabled thinking with `output_config.effort` and omits the mutually
+exclusive budget. It preserves the client's supported thinking display and
+other native controls. Bailian profiles that select a budget use the usual
+Messages budget rules.
 
 `thinking.display=omitted` controls returned reasoning text, not computation.
 Plan-enabled/adaptive keeps representable omitted display; enabled uses plan budget,

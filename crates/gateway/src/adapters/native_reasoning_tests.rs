@@ -427,6 +427,58 @@ fn display_profile(mode: &str) -> CandidateProtocolProfile {
 }
 
 #[test]
+fn bailian_messages_effort_keeps_thinking_updates_without_a_budget() {
+    use hiroute_domain::{GatewayNativeProfileTargetV2, GatewayOperationalTargetV1};
+
+    let mut body = display_request();
+    body["thinking"]["display"] = json!("updates");
+    let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
+    let mut profile = display_profile("enabled");
+    profile.capability.native_model = "qwen3.8-flash".into();
+    let path = "/apps/anthropic/v1/messages";
+    profile.connector.request_path = path.into();
+    profile.native_target = Some(GatewayNativeProfileTargetV2 {
+        operational_target: GatewayOperationalTargetV1::UserConfiguredNative {
+            uri: format!("https://dashscope.aliyuncs.com{path}"),
+        },
+        credential_destination_ref: "compute-target/bailian-fixture".into(),
+    });
+    let budget = project_candidate_request(&request, &profile).unwrap().body;
+    assert_eq!(budget["thinking"], body["thinking"]);
+    assert!(budget["output_config"].get("effort").is_none());
+
+    profile.capability.selected_reasoning_profile_id = "low".into();
+    let reasoning = &mut profile.capability.reasoning_profiles[0];
+    reasoning.profile_id = "low".into();
+    let NativeReasoningRender::ExactFields { fields, .. } = &mut reasoning.render else {
+        panic!("enabled thinking has exact field assignments");
+    };
+    fields[1] = NativeReasoningFieldAssignment {
+        path: vec!["output_config".into(), "effort".into()],
+        value: NativeReasoningValue::String("low".into()),
+    };
+
+    let bailian = project_candidate_request(&request, &profile).unwrap().body;
+    assert_eq!(
+        bailian["thinking"],
+        json!({"type":"enabled","display":"updates"})
+    );
+    assert_eq!(bailian["output_config"]["effort"], "low");
+    assert_eq!(
+        bailian["output_config"]["format"],
+        body["output_config"]["format"]
+    );
+
+    profile.native_target.as_mut().unwrap().operational_target =
+        GatewayOperationalTargetV1::UserConfiguredNative {
+            uri: format!("https://dashscope.aliyuncs.com.example.org{path}"),
+        };
+    let other = project_candidate_request(&request, &profile).unwrap().body;
+    assert_eq!(other["thinking"], body["thinking"]);
+    assert_eq!(other["output_config"], bailian["output_config"]);
+}
+
+#[test]
 fn thinking_display_plan_modes_use_only_plan_budget_and_preserve_format() {
     let body = display_request();
     let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
