@@ -43,6 +43,7 @@ class Anthropic52MetadataTests(unittest.TestCase):
             self.assertEqual(binding['protocol_qualification'], 'runtime-required')
             self.assertIn('forced tool_choice any/tool is unsupported',
                           binding['availability']['condition'])
+            self.assertIn('30-day retention', binding['availability']['condition'])
             if model_id == 'claude-mythos-5-2':
                 self.assertIn('verification program', binding['availability']['condition'])
 
@@ -76,14 +77,21 @@ class Anthropic52MetadataTests(unittest.TestCase):
             self.assertEqual(record['source_assertions'][0]['released'], '2026-11-09')
 
     def test_complete_shared_data_contains_both_models_and_prices(self):
-        # Search the real generated publication input, not a synthetic fixture.
-        serialized = json.dumps(self.bundle)
+        data = self.bundle['data']
+        metadata = data['metadata_catalog']
+        models = {x['model_key']: x for x in metadata['canonical_models']}
+        records = {x['model_record_key']: x for x in metadata['model_records']}
         for model_id in IDS:
-            self.assertIn(f'official/anthropic-api/{model_id}', serialized)
-            self.assertIn(f'anthropic-platform/{model_id}/{model_id}', serialized)
-        prices = self.bundle['data']['pricing_facts'] if 'data' in self.bundle else self.bundle['pricing_facts']
-        for model_id in IDS:
-            self.assertEqual(len([p for p in prices if p['model_key'] == model_id]), 1)
+            self.assertEqual(models[model_id]['context_tokens'],
+                             {'state': 'known', 'value': 1_000_000})
+            self.assertEqual(models[model_id]['max_output_tokens'],
+                             {'state': 'known', 'value': 128_000})
+            self.assertIn(f'official/anthropic-api/{model_id}', records)
+            self.assertEqual(len([p for p in data['pricing_facts']
+                                  if p['model_key'] == model_id]), 1)
+            self.assertFalse(any(model_id in x['model_configuration_id']
+                                 for x in data['models']))
+
 
 
 if __name__ == '__main__':
