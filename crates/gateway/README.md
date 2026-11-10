@@ -125,12 +125,12 @@ Upstream authorization is rebuilt from the selected provider lease. The
 [listener scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/bearer_auth.rs)
 covers admission, rejection, token rotation and outbound isolation.
 
-[Context overflow classification](src/runtime/driver/context_overflow.rs)
-preserves a closed HTTP 400 cause for native compaction recovery after bounded
-candidate relay is exhausted. It emits static sanitized error text and does not
-infer overflow from generic errors or replay committed output. The
-[listener scenarios](../../tools/e2e-harness/tests/p0_gateway_runtime/context_overflow.rs)
-cover all three ingress protocols, successful relay and stale-cause rejection.
+[Client recovery classification](src/runtime/driver/client_recovery.rs) keeps
+closed HTTP 400 causes after bounded candidate relay is exhausted. It returns
+static text for [context overflow](../../tools/e2e-harness/tests/p0_gateway_runtime/context_overflow.rs)
+and for [native Messages role rejection](../../tools/e2e-harness/tests/p0_gateway_runtime/messages_system_role.rs)
+so the client can compact or retry its history. Provider text and request IDs
+remain private, and later failures supersede an earlier recovery cause.
 
 Branch candidates may use distinct execution keys for different reasoning settings
 on the same model. Publication freezes `source_binding_id` for their current Native

@@ -458,24 +458,39 @@ fn bailian_messages_effort_keeps_thinking_updates_without_a_budget() {
         value: NativeReasoningValue::String("low".into()),
     };
 
-    let bailian = project_candidate_request(&request, &profile).unwrap().body;
-    assert_eq!(
-        bailian["thinking"],
-        json!({"type":"enabled","display":"updates"})
-    );
-    assert_eq!(bailian["output_config"]["effort"], "low");
-    assert_eq!(
-        bailian["output_config"]["format"],
-        body["output_config"]["format"]
-    );
-
-    profile.native_target.as_mut().unwrap().operational_target =
-        GatewayOperationalTargetV1::UserConfiguredNative {
-            uri: format!("https://dashscope.aliyuncs.com.example.org{path}"),
+    for (authority, bailian) in [
+        ("dashscope.aliyuncs.com", true),
+        ("dashscope-intl.aliyuncs.com", true),
+        ("cn-hongkong.dashscope.aliyuncs.com", true),
+        ("coding.dashscope.aliyuncs.com", true),
+        ("coding-intl.dashscope.aliyuncs.com", true),
+        ("workspace-1.cn-beijing.maas.aliyuncs.com", true),
+        ("workspace.ap-southeast-1.maas.aliyuncs.com", true),
+        ("workspace.cn-hongkong.maas.aliyuncs.com", true),
+        ("workspace.eu-central-1.maas.aliyuncs.com", true),
+        ("workspace.us-east-1.maas.aliyuncs.com", true),
+        ("workspace.ap-northeast-1.maas.aliyuncs.com", true),
+        ("dashscope.aliyuncs.com.example.org", false),
+        ("a.b.cn-beijing.maas.aliyuncs.com", false),
+        ("dashscope.aliyuncs.com:8443", false),
+    ] {
+        profile.native_target.as_mut().unwrap().operational_target =
+            GatewayOperationalTargetV1::UserConfiguredNative {
+                uri: format!("https://{authority}{path}"),
+            };
+        let rendered = project_candidate_request(&request, &profile).unwrap().body;
+        let thinking = if bailian {
+            json!({"type":"enabled","display":"updates"})
+        } else {
+            body["thinking"].clone()
         };
-    let other = project_candidate_request(&request, &profile).unwrap().body;
-    assert_eq!(other["thinking"], body["thinking"]);
-    assert_eq!(other["output_config"], bailian["output_config"]);
+        assert_eq!(rendered["thinking"], thinking, "{authority}");
+        assert_eq!(rendered["output_config"]["effort"], "low");
+        assert_eq!(
+            rendered["output_config"]["format"],
+            body["output_config"]["format"]
+        );
+    }
 }
 
 #[test]

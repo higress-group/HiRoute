@@ -61,7 +61,7 @@ fn session(now: Instant, candidates: Vec<DecisionCandidateAuthority>) -> Product
         earliest_retry_at: None,
         non_temporary_block_seen: false,
         upstream_attempted: false,
-        last_context_overflow: false,
+        last_client_recovery: None,
         preparation_failure: None,
     }
 }
@@ -357,7 +357,7 @@ fn overflow_reply_requires_a_real_last_response_and_cannot_outlive_deadline_or_l
             .unwrap()
             .unwrap();
         session.decide_failure(&next, &failure).unwrap();
-        assert!(!session.last_context_overflow);
+        assert!(session.last_client_recovery.is_none());
         if promoted {
             assert!(session.exhaustion_local_reply(now).unwrap().is_none());
         }
@@ -398,7 +398,7 @@ fn retryable_quota_advances_exact_credential_before_binding() {
         earliest_retry_at: None,
         non_temporary_block_seen: false,
         upstream_attempted: false,
-        last_context_overflow: false,
+        last_client_recovery: None,
         preparation_failure: None,
     };
     let first = session
@@ -619,7 +619,7 @@ fn unknown_or_nonretryable_materialization_never_advances_selection() {
         earliest_retry_at: None,
         non_temporary_block_seen: false,
         upstream_attempted: false,
-        last_context_overflow: false,
+        last_client_recovery: None,
         preparation_failure: None,
     };
     for retryability in [RetryabilityFact::Unknown, RetryabilityFact::NonRetryable] {

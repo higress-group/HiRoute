@@ -28,6 +28,7 @@ impl ConnectorErrorProfile {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderFailureKind {
     ContextLength,
+    MessagesSystemRole,
     ReasoningHistory,
     Credential,
     Quota,
@@ -81,6 +82,7 @@ pub enum PreOutputStreamClass {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AttemptFailureClass {
     ContextLength,
+    MessagesSystemRole,
     ReasoningHistory,
     Credential,
     Quota,
@@ -148,6 +150,7 @@ impl AttemptFailure {
                 PreOutputStreamClass::BindingOverload | PreOutputStreamClass::Transient,
             ) => Some(FailureStateScope::Binding),
             AttemptFailureClass::ContextLength
+            | AttemptFailureClass::MessagesSystemRole
             | AttemptFailureClass::Protocol
             | AttemptFailureClass::ReasoningHistory
             | AttemptFailureClass::PermanentClient
@@ -229,6 +232,9 @@ fn classify_http(
             Some(ProviderFailureKind::ContextLength) if status == 400 => {
                 AttemptFailureClass::ContextLength
             }
+            Some(ProviderFailureKind::MessagesSystemRole) if status == 400 => {
+                AttemptFailureClass::MessagesSystemRole
+            }
             Some(ProviderFailureKind::ReasoningHistory) if status == 400 => {
                 AttemptFailureClass::ReasoningHistory
             }
@@ -238,7 +244,9 @@ fn classify_http(
         },
         500..=599 => AttemptFailureClass::Transient,
         _ => match kind {
-            Some(ProviderFailureKind::ContextLength) => AttemptFailureClass::Unclassified,
+            Some(ProviderFailureKind::ContextLength | ProviderFailureKind::MessagesSystemRole) => {
+                AttemptFailureClass::Unclassified
+            }
             Some(ProviderFailureKind::ReasoningHistory) => AttemptFailureClass::Unclassified,
             Some(ProviderFailureKind::Protocol) => AttemptFailureClass::Protocol,
             Some(ProviderFailureKind::PermanentClient) => AttemptFailureClass::PermanentClient,
@@ -258,7 +266,9 @@ fn classify_http(
 
 fn stream_class(kind: ProviderFailureKind) -> PreOutputStreamClass {
     match kind {
-        ProviderFailureKind::ContextLength => PreOutputStreamClass::PermanentClient,
+        ProviderFailureKind::ContextLength | ProviderFailureKind::MessagesSystemRole => {
+            PreOutputStreamClass::PermanentClient
+        }
         ProviderFailureKind::ReasoningHistory => PreOutputStreamClass::PermanentClient,
         ProviderFailureKind::Credential => PreOutputStreamClass::Credential,
         ProviderFailureKind::Quota => PreOutputStreamClass::Quota,

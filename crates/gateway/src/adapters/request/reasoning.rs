@@ -197,9 +197,32 @@ fn is_bailian_messages_endpoint(profile: &CandidateProtocolProfile) -> bool {
         return false;
     }
     let host = uri.host().unwrap_or_default().to_ascii_lowercase();
-    matches!(
+    if matches!(
         host.as_str(),
-        "dashscope.aliyuncs.com" | "coding.dashscope.aliyuncs.com"
-    ) || host.ends_with(".cn-beijing.maas.aliyuncs.com")
-        || host.ends_with(".ap-southeast-1.maas.aliyuncs.com")
+        "dashscope.aliyuncs.com"
+            | "dashscope-intl.aliyuncs.com"
+            | "cn-hongkong.dashscope.aliyuncs.com"
+            | "coding.dashscope.aliyuncs.com"
+            | "coding-intl.dashscope.aliyuncs.com"
+    ) {
+        return true;
+    }
+    let Some((workspace, region)) = host.split_once('.') else {
+        return false;
+    };
+    matches!(
+        region,
+        "cn-beijing.maas.aliyuncs.com"
+            | "cn-hongkong.maas.aliyuncs.com"
+            | "ap-southeast-1.maas.aliyuncs.com"
+            | "ap-northeast-1.maas.aliyuncs.com"
+            | "eu-central-1.maas.aliyuncs.com"
+            | "us-east-1.maas.aliyuncs.com"
+    ) && !workspace.is_empty()
+        && workspace.len() <= 63
+        && !workspace.starts_with('-')
+        && !workspace.ends_with('-')
+        && workspace
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }

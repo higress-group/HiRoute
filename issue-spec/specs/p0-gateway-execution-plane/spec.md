@@ -419,6 +419,16 @@ counts never pass through. A later transport, preparation or response failure
 supersedes this cause. The cause neither quarantines a binding nor rotates a key;
 it does not reset budgets, bypass cancellation or perform Gateway compaction.
 
+For a native Messages request that sent an inline system message, a sealed
+Connector's HTTP 400 explicitly rejecting the `system` role retains a closed
+client-recoverable cause. If this is the final failure after ordinary candidate
+relay and before the original deadline, return a Messages HTTP 400 with
+`error.type=invalid_request_error` and a fixed message naming the unsupported
+`system` input message role so the native client can retry with a compatible
+history. Do not copy provider
+text or identifiers. A later failure supersedes the cause. The Gateway does not
+move or rewrite the instructions to perform this retry.
+
 When native `response_failed` or `response_incomplete` arrives after output has
 been delivered and downstream transport completes, the Attempt retains its
 `accepted` transport identity and accepted ordinal. Its provider failure class

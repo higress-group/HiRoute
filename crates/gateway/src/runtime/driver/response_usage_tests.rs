@@ -110,6 +110,7 @@ async fn attempt_state(ingress: IngressProtocol) -> ProductionAttemptState {
         served_model_alias: "alias".into(),
         streaming: false,
         native_output,
+        messages_system_in_history: false,
         omit_thinking: false,
         chat_tool_projection: None,
         function_encoding_projection: Default::default(),
