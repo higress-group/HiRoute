@@ -87,6 +87,12 @@ const checkedDecision = () => ({ schema: 'hiroute.decision-service-test-result/v
   state_revision: 'network/2/epoch/1', failure: null,
 } }, failure: null });
 
+test('an incomplete decision test reply keeps a response error instead of a current pass', () => {
+  const checked = checkedDecision();
+  assert.throws(() => networkTestRecord({ ...checked, check: null }, 100), { code: 'RESPONSE_DATA_INVALID' });
+  assert.throws(() => networkTestRecord({ ...checked, network: {} }, 100), { code: 'RESPONSE_DATA_INVALID' });
+});
+
 test('decision passes are invalidated by a source route or service environment change without altering credential identity', () => {
   const checked = checkedDecision(), record = networkTestRecord(checked, 100);
   assert.equal(testPresentation(record, shared, false, true, checked.network.route), 'passed');

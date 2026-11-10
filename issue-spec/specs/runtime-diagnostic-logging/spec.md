@@ -109,6 +109,19 @@ evidence cannot be reported as complete replay. Read chunks are not original TCP
 packets. A successful sample without the actual historical failure cannot establish
 that its cause was fixed. This private artifact is never normal product logging.
 
+### Requirement: Saved decision tests identify the failure boundary
+
+The authenticated console SHALL distinguish a request rejection or missing product
+reply from a completed save, readback, or test command. A completed Local Control
+call SHALL distinguish a failed saved-revision test from a passed test, including
+rejections before provider I/O. Actual decision exchange failures SHALL identify the
+observed stage, including credential preparation, target resolution, proxy and
+transport failures, HTTP rejection, and response framing or decoding. Failure
+records SHALL be available at Warn and use closed codes. Service revision and
+request correlation SHALL use irreversible local tokens. Diagnostic observations
+SHALL preserve test semantics and never record request inputs, endpoints, header
+values, or provider response bodies.
+
 ### Requirement: Subscription validation identifies the unmet condition
 
 CPA subscription discovery SHALL distinguish inventory/account reads, control

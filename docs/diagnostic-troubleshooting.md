@@ -66,6 +66,29 @@ upstream execution, change `reasoning_cleanup`, or replace original history/scor
 facts. Unknown affected-item counts remain null. The event contains no source text,
 IDs or control values; correlation uses the existing request/binding HMAC tokens.
 
+## Saved decision connection tests
+
+For a reproducible connection failure, switch the diagnostic level to Debug,
+run **Test connection** once, and note the local time and visible code. In Windows
+Desktop, open **Settings → Records & diagnostics → Show directory path**, then copy
+the JSONL files under the `daemon` subdirectory. Start with `current.jsonl` and
+include the preceding file if the test spans a rotation.
+
+- `decision_console_end` records the HTTP status and safe rejection for the
+  console's save, readback, or test. `command_returned` tells whether that HTTP
+  request received a product command result.
+- `control_call_end` records Local Control submission and envelope errors.
+  `decision_test_end` records the saved test result even when Local Control
+  succeeded, including revision, source, credential and configuration rejections.
+- `decision_exchange_failure` records the observed exchange phase. Match its
+  `request_token` to `upstream_wire` for HTTP status, protocol and closed provider
+  error. Use the time and `service_token` to find exchanges for the same saved
+  revision. A shared service token alone does not identify a particular call.
+
+Failure records are available at Warn. Debug adds the successful console and test
+results and the prepared and received wire observations. A missing phase can mean
+that execution never reached it or that diagnostic evidence was lost.
+
 ## Gateway listener fixture failures
 
 The black-box `RuntimeFixture` retains its private temporary root after an unexpected assertion panic and prints its location. Its child is still stopped and reaped. Use `launch_rest_classified_with_diagnostics` when current boot and request diagnostics are needed; inspect the publication, native daemon output and applied diagnostic level before retrying. A successful rerun does not explain the original failure.

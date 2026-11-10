@@ -52,7 +52,9 @@ async function browserCall(command: string, args: Record<string, unknown>): Prom
     window.setTimeout(() => URL.revokeObjectURL(url), 0); return 'saved';
   }
   if (command === 'open_diagnostic_directory' || command === 'open_startup_recovery_directory') {
-    const caps = hostCapabilities(); const path = command === 'open_diagnostic_directory' ? caps.diagnostic_directory : caps.recovery_directory;
+    // Paths belong to the authenticated console's service host, even inside the Windows shell.
+    const caps = override?.capabilities() ?? consoleCapabilities();
+    const path = command === 'open_diagnostic_directory' ? caps.diagnostic_directory : caps.recovery_directory;
     if (!path) throw { kind: 'native', code: 'APP_DATA_UNAVAILABLE' };
     window.dispatchEvent(new CustomEvent('hiroute-host-path', { detail: path })); return;
   }
