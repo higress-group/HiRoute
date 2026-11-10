@@ -400,3 +400,117 @@ fn terra_metadata_keeps_explicit_saved_tool_and_token_choices() {
         assert_eq!(serde_json::to_vec(&fact.capabilities).unwrap(), before);
     }
 }
+
+fn terra_with_saved_native_interfaces(
+    primary: UpstreamProtocol,
+) -> (TrustedReleaseCatalog, ComputeManagementCompilationFactV2) {
+    let catalog = current_catalog();
+    let mut fact = observed_api(
+        &catalog,
+        "openai.platform.global.v1",
+        primary,
+        "gpt-6.1-terra",
+    );
+    let resolved = catalog
+        .resolve_connection_option("openai.platform.global.v1")
+        .unwrap();
+    fact.additional_native_endpoints = resolved
+        .endpoint_profile
+        .protocol_endpoints
+        .iter()
+        .filter(|endpoint| endpoint.protocol != primary)
+        .map(|endpoint| hiroute_domain::ComputeNativeEndpointV3 {
+            target: hiroute_domain::ComputeManagementTargetV2 {
+                scheme: "https".into(),
+                authority: endpoint.base_url.strip_prefix("https://").unwrap().into(),
+                port: 443,
+                request_path: endpoint.request_path.clone(),
+                upstream_protocol: endpoint.protocol,
+                protocol_profile_id: endpoint.adapter_ref.clone(),
+                protocol_profile_revision: endpoint.adapter_revision,
+            },
+            authentication: endpoint.authentication_semantics.clone().unwrap(),
+            recheck: None,
+        })
+        .collect();
+    let destinations = std::iter::once(&fact.target)
+        .chain(
+            fact.additional_native_endpoints
+                .iter()
+                .map(|endpoint| &endpoint.target),
+        )
+        .map(|target| target.credential_destination().unwrap())
+        .collect::<Vec<_>>();
+    fact.credential = ComputeManagementCredentialCompilationV2::Native {
+        ordered: vec![hiroute_domain::ComputeCredentialSelectionV2::Credential {
+            credential_ref: hiroute_domain::CredentialRefV1::new(
+                "credential/scoped-api",
+                format!("source/{}", fact.source_id),
+                "hirouted",
+                "provider-auth",
+                destinations,
+                1,
+            )
+            .unwrap(),
+        }],
+    };
+    (catalog, fact)
+}
+
+#[test]
+fn terra_saved_native_interfaces_keep_separate_tool_contracts() {
+    for primary in [
+        UpstreamProtocol::Responses,
+        UpstreamProtocol::ChatCompletions,
+    ] {
+        let (catalog, mut fact) = terra_with_saved_native_interfaces(primary);
+        fact.capabilities.tool = ComputeManagementFactValueV2 {
+            value: None,
+            basis: ComputeManagementFactBasisV2::Unknown,
+        };
+        let before = serde_json::to_vec(&fact.capabilities).unwrap();
+        let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
+        candidate.validate().unwrap();
+        assert!(
+            candidate.model.capabilities.tool,
+            "the saved Responses interface remains usable for tools"
+        );
+        for profile in &candidate.protocol_profiles {
+            let supported = profile.connector.upstream_protocol == UpstreamProtocol::Responses;
+            assert_eq!(
+                profile.capability.model_support.tools.exact(),
+                Some(&supported)
+            );
+            let fidelity = if supported {
+                hiroute_domain::GatewayFidelityV1::Exact
+            } else {
+                hiroute_domain::GatewayFidelityV1::Unsupported
+            };
+            assert_eq!(profile.capability.request.function_tools, fidelity);
+            assert_eq!(profile.capability.response.tool_calls, fidelity);
+        }
+        assert_eq!(serde_json::to_vec(&fact.capabilities).unwrap(), before);
+    }
+}
+
+#[test]
+fn terra_saved_native_interfaces_preserve_explicit_manual_tool_choices() {
+    for primary in [
+        UpstreamProtocol::Responses,
+        UpstreamProtocol::ChatCompletions,
+    ] {
+        for supported in [false, true] {
+            let (catalog, mut fact) = terra_with_saved_native_interfaces(primary);
+            fact.capabilities.tool = user_fact(supported);
+            let candidate = materialize_management_candidate(&fact, Some(&catalog)).unwrap();
+            candidate.validate().unwrap();
+            assert_eq!(candidate.model.capabilities.tool, supported);
+            for profile in &candidate.protocol_profiles {
+                assert_eq!(
+                    profile.capability.model_support.tools.exact(),
+                    Some(&supported)
+                );
+            }
+        }
+    }
+}
