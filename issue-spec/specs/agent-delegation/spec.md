@@ -468,6 +468,12 @@ It contains no user input, tool parameters/output, or reasoning. Fixed clearly m
 host explanations may appear but are not model Result. Progress does not change
 Result, native history, Continue materials, or introduce an instance disk quota.
 
+Worker ACP checks the inbound frame size before parsing. Valid tool updates
+within that bound allow assistant text capture and native prompt completion to
+proceed. When the size limit closes the connection, the Worker emits a fixed
+progress diagnostic containing the limit. If the prompt was sent and its
+terminal response was unobserved, the outcome remains uncertain.
+
 No cursor reads the current window; a valid cursor reads a contiguous UTF-8-safe
 increment without duplicate/missing in-window data. Normal later eviction does not
 invalidate an already consistent page, but privacy is rechecked. An evicted cursor
