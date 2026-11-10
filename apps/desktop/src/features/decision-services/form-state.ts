@@ -282,6 +282,8 @@ export function testRecord(result: DecisionServiceTestResult, at: number): TestR
     tested_configuration_digest: result.tested_configuration_digest, tested_credential_state_revision: result.tested_credential_state_revision };
 }
 export function networkTestRecord(result: DecisionServiceNetworkTestResult, at: number): TestRecord {
+  if (!result?.check || !['passed', 'failed'].includes(result.check.outcome)
+    || (result.network && !result.network.route)) throw { code: 'RESPONSE_DATA_INVALID' };
   return {
     ...testRecord(result.check, at),
     tested_network_state_revision: result.network?.route.state_revision ?? null,

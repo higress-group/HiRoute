@@ -31,6 +31,7 @@ use std::os::unix::net::{UnixListener as LocalListener, UnixStream as LocalStrea
 pub(crate) mod agent_removal;
 #[cfg(test)]
 mod capacity_tests;
+mod decision_diagnostics;
 #[cfg(any(unix, windows))]
 mod managed;
 pub(crate) mod runtime;
@@ -273,7 +274,14 @@ impl LocalControlDaemon {
         let request_token = self
             .diagnostics
             .token(CorrelationDomain::ControlRequest, &request.request_id);
+        let decision_test = operation == ControlOperation::TestDecisionService;
+        let service_token = if decision_test {
+            decision_diagnostics::service_token(&self.diagnostics, &request.payload)
+        } else {
+            None
+        };
         let response = self.dispatch_wire_inner(request);
+        let elapsed_ms = started.elapsed().as_millis() as u64;
         self.diagnostics
             .try_emit(DiagnosticEvent::ControlCallEnd(ControlCallEnd {
                 client_name: self.diagnostic_client,
@@ -284,8 +292,17 @@ impl LocalControlDaemon {
                     .error
                     .as_ref()
                     .map(|error| category_event_code(error.category)),
-                elapsed_ms: started.elapsed().as_millis() as u64,
+                elapsed_ms,
             }));
+        if decision_test {
+            decision_diagnostics::record_test_end(
+                &self.diagnostics,
+                &response,
+                request_token,
+                service_token,
+                elapsed_ms,
+            );
+        }
         response
     }
 
