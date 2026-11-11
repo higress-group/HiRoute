@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
-"""Install hosted Ubuntu build prerequisites with bounded network operations."""
+"""Check hosted Ubuntu build prerequisites or install them with bounded network operations."""
+import argparse
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+
+
+def prerequisites_available():
+    for command in (('cmake', '--version'), ('clang', '--version'), ('pkg-config', '--exists', 'openssl')):
+        try:
+            subprocess.run(command, check=True, timeout=10,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
+            print(f'Native prerequisite check failed: {" ".join(command)}', flush=True)
+            return False
+    print('Native prerequisites: using preinstalled build tools', flush=True)
+    return True
 
 
 def configure_ubuntu_sources(apt_root):
@@ -55,6 +68,10 @@ def install_prerequisites(apt_root=Path('/etc/apt')):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='check build tools without running APT')
+    if parser.parse_args().check:
+        sys.exit(0 if prerequisites_available() else 1)
     try:
         install_prerequisites()
     except subprocess.CalledProcessError as error:
