@@ -4,6 +4,7 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -13,10 +14,43 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ActionTests(unittest.TestCase):
+    def run_native_setup(self, missing=None):
+        action = (ROOT / '.github/actions/ci-setup/action.yml').read_text()
+        step = action.split('name: Native build prerequisites\n', 1)[1]
+        command = step.split('      run: ', 1)[1].splitlines()[0]
+        with tempfile.TemporaryDirectory() as temp:
+            bin_dir = Path(temp)
+            (bin_dir / 'python3').symlink_to(sys.executable)
+            commands = {
+                'cmake': 'exit 0',
+                'clang': 'exit 0',
+                'pkg-config': 'test "$2" != openssl' if missing == 'openssl' else 'exit 0',
+                'sudo': 'echo "package mirror unavailable" >&2; exit 100',
+            }
+            for name, script in commands.items():
+                if name != missing:
+                    path = bin_dir / name
+                    path.write_text(f'#!/bin/sh\n{script}\n')
+                    path.chmod(0o755)
+            return subprocess.run(['/bin/bash', '-e', '-o', 'pipefail', '-c', command],
+                                  cwd=ROOT, env={'PATH': temp}, capture_output=True,
+                                  text=True, timeout=15)
+
     def test_composite_action_uses_the_bounded_installer(self):
         action = (ROOT / '.github/actions/ci-setup/action.yml').read_text()
-        self.assertIn('run: sudo python3 scripts/ci-prerequisites.py', action)
+        self.assertIn('sudo python3 scripts/ci-prerequisites.py', action)
         self.assertNotIn('run: sudo apt-get update', action)
+
+    def test_preinstalled_tools_do_not_require_package_mirrors(self):
+        result = self.run_native_setup()
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_missing_prerequisite_preserves_install_failure(self):
+        for missing in ('cmake', 'clang', 'pkg-config', 'openssl'):
+            with self.subTest(missing=missing):
+                result = self.run_native_setup(missing)
+                self.assertEqual(result.returncode, 100, result.stderr)
+                self.assertIn('package mirror unavailable', result.stderr)
 
 
 class PrerequisiteTests(unittest.TestCase):

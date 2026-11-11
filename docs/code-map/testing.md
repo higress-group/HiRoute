@@ -377,11 +377,12 @@ HTTP path or old restore fixture does not prove route revocation or native execu
 Use [HiRoute validation](../../.agents/skills/hiroute-validation/SKILL.md) for the
 current selection, execution, failure or handoff operation. Its routes lead to
 the owning guides; branch convergence remains a separate integration responsibility.
-Hosted prerequisite installation belongs to
+Hosted prerequisite checks and installation belong to
 [`ci-prerequisites.py`](../../scripts/ci-prerequisites.py), invoked by the shared
 [`ci-setup` action](../../.github/actions/ci-setup/action.yml).
-[`test-ci-setup.py`](../../scripts/test-ci-setup.py) covers Ubuntu source selection
-and bounded failure handling; the real hosted matrix verifies package installation.
+[`test-ci-setup.py`](../../scripts/test-ci-setup.py) covers use of preinstalled tools,
+Ubuntu source selection and bounded failure handling. The real hosted matrix
+verifies that the selected tools can build the workspace.
 
 Hosted shard inventory and harness policy belong to
 [ci-shards.py](../../scripts/ci-shards.py); [ci-run.py](../../scripts/ci-run.py)
