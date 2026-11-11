@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[3]
 HERE = Path(__file__).resolve().parent
 CURRENT_PRODUCT_RELEASE = "mvp-current"
+MAX_RELEASE_MODEL_DATA_BYTES = 8 * 1024 * 1024
 
 _subscription_spec = importlib.util.spec_from_file_location(
     "hiroute_current_subscription_projection", HERE / "subscription_projection.py")
@@ -1146,8 +1147,8 @@ def compile_candidate():
         "rating_snapshot": snapshot,
         "metadata_catalog": project_metadata_catalog(metadata_catalog, client_runs)}
     payload = canonical(bundle) + b"\n"
-    if len(payload) > 2 * 1024 * 1024:
-        raise ValueError("candidate exceeds existing release limit")
+    if len(payload) > MAX_RELEASE_MODEL_DATA_BYTES:
+        raise ValueError("candidate exceeds 8 MiB model-data limit")
     return {"model-data.json": payload, "runtime-projection.json": canonical(runtime_projection) + b"\n",
         "coverage.json": canonical({
         "schema": "hiroute.model-coverage/v1", "snapshot_digest": snapshot["digest"],

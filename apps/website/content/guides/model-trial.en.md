@@ -84,6 +84,8 @@ Begin with a well-scoped task, then watch the routing timeline in **Sessions**: 
 
 ## Adjust trust with evidence
 
+To have your Agent analyze suitable regular-model stages and project-specific prompt changes, see [Review and optimize model routing](/en/docs/optimize-model-routing/). The following explains the built-in trust suggestions.
+
 Trust is a difficulty bar: further right sends more simple work to the new model. Besides the five presets, **Trial, Familiar, Trusted, Hands-off** and **Entrusted**, you can enter an exact value. Applicable low-score protection still applies even at **Entrusted**.
 
 When you adjust **Trust** in the route editor, **Replay this setting on your records** uses the active version's history to estimate how many stages would go to the regular model at the new level. It estimates past allocation; it is not a prediction.

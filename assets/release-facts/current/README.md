@@ -25,6 +25,13 @@ exact manifest bytes in the same build and then validates the registry/model-dat
 product identity, and cross-reference digest before exposing any catalog fact. Missing, stale, or
 modified bytes fail closed.
 
+The loader bounds the complete model-data file at 8 MiB (8,388,608 bytes),
+independently of the 2 MiB registry and rating-snapshot limits and the 16 KiB
+manifest limit. The model generator enforces the same 8 MiB file budget. The model
+and registry file guards count decoded JSON bytes, including whitespace, before
+parsing. They are separate from HTTP compression and the complete feed's 16 MiB
+decoded limit; ratings retain their serialized-snapshot validation budget.
+
 `compiler-input.json` includes only the additional documented pricing facts, public connection hints
 and semantic revision beside the shared model/rating/metadata input. Both compilers emit the same
 `bundle/official-model-data.json` from those inputs for

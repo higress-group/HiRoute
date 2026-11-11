@@ -82,7 +82,7 @@ Start here to address model costs or try a new model on real work.
   <figcaption>Start a trial from a new-model card on Home. Whether you need a connection depends on the models you already have.</figcaption>
 </figure>
 
-Continue with [Try a new model](/en/docs/model-trial/) or [Configure model routing](/en/docs/model-routing/). Actual savings depend on prices, task mix and fallback frequency; use your own execution records to assess them.
+Continue with [Try a new model](/en/docs/model-trial/), [Configure model routing](/en/docs/model-routing/) or [Let your Agent review and optimize routing](/en/docs/optimize-model-routing/). Actual savings depend on prices, task mix and fallback frequency; use your own execution records to assess them.
 
 ## Path two: delegate work to another Agent
 

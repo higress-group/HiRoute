@@ -80,7 +80,9 @@ Codex can keep using subscription models to run tasks while the OpenAI API conne
 3. Set the model ID to `gpt-6-luna`, the complete URL to `https://api.openai.com/v1/decisions`, and the protocol to **OpenAI decisions**. Check any prefilled values. Name it “OpenAI difficulty judge” and click **Save and test**. [OpenAI Decisions documentation](https://developers.openai.com/api/docs/guides/decisions)
 4. Return to the route, confirm the saved decision model is selected, and click **Publish changes**. After connecting Codex, try a small task and check its difficulty judgment and execution model under **Sessions → Routing timeline**.
 
-Decision calls can draw on the API credits in the OpenAI organization linked to this connection. If an execution candidate uses the same key, priced usage from both counts toward its [key spending allowance](/en/docs/models/#api-key-allowance). [Learn about stage scoring and low-score protection](/en/docs/model-routing/#difficulty-routing)
+Decision calls can draw on the API credits in the OpenAI organization linked to this connection. Even if an execution candidate uses the same key, decision calls do not consume HiRoute's [local key spending allowance](/en/docs/models/#api-key-allowance). [Learn about stage scoring and low-score protection](/en/docs/model-routing/#difficulty-routing)
+
+After a task, [ask your Agent to review model switches and tune decision prompts and trust](/en/docs/optimize-model-routing/) to check whether the primary allowance went to stages that needed it.
 
 <h3 id="credit-candidates">Add the subscription and API credits as same-model candidates</h3>
 

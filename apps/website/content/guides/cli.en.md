@@ -364,6 +364,8 @@ can revoke the caller's grant. Native loading/selection remains a separate repor
 
 ## Analyze historical conversations and estimated API savings
 
+For a task-oriented walkthrough with copyable Agent instructions, see [Review model routing and tune decision prompts and trust](/en/docs/optimize-model-routing/).
+
 The installed CLI uses the authenticated same-OS-user Local Control socket. Explicit content and search reads do not need a separate Desktop-created read grant. A supplied grant is still validated; a model Gateway key grants no management access. Start with:
 
 ```sh

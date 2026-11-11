@@ -371,6 +371,8 @@ hiroute routing show PLAN_ID --output json
 
 ## 分析历史会话和 API 等价省钱效果
 
+想从一次大任务直接开始，参考[让 Agent 复盘模型路由、优化提示词与信任度](/zh/docs/optimize-model-routing/)，其中包含可复制的完整操作指引。
+
 本机 CLI 复用同一系统用户的 Local Control 权限。显式读取消息、工具内容和搜索不再需要另一个 Desktop 授权票据；显式传入的票据仍会校验。模型网关凭证不能用于管理。先查询：
 
 ```sh

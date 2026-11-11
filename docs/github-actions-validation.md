@@ -189,11 +189,13 @@ have their own runtime scenario evidence.
 The shared Linux setup installs build prerequisites through
 `scripts/ci-prerequisites.py`. Known Ubuntu direct sources and runner mirror-list
 references use the official Ubuntu HTTPS endpoints, retaining suites, components
-and signing keys. Package-index refresh fails on any source error and is limited
-to three minutes; installation is limited to five minutes. Both stages retain
-bounded network retries and fail the job on timeout or package failure, before
-Rust validation starts. `scripts/test-ci-setup.py` covers source formats,
-mirror indirection and failure propagation without privileged package operations.
+and signing keys. Package-index refresh skips translation indexes and requires
+every source to succeed. A refresh has a three-minute limit per attempt and
+retries once on an APT error or timeout. A successful refresh starts one
+installation attempt with a five-minute limit. Both stages use bounded network
+retries and stop the job on final failure before Rust validation starts.
+`scripts/test-ci-setup.py` covers source formats, mirror indirection, retry and
+failure propagation without privileged package operations.
 Setup changes require the complete hosted matrix.
 
 The toolchain comes from `rust-toolchain.toml`. Cargo sources are cached, not

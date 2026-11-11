@@ -32,6 +32,7 @@ const sourceGuides = [...Object.keys(agentGuides).filter(slug => !agentGuides[sl
     <a aria-current={active === 'models' ? 'page' : undefined} href={`${prefix}/docs/models/`}>{en ? 'Connect models' : '接入模型'}</a>
     <a aria-current={active === 'model-trial' ? 'page' : undefined} href={`${prefix}/docs/model-trial/`}>{en ? 'Try a new model' : '试用新模型'}</a>
     <a aria-current={active === 'model-routing' ? 'page' : undefined} href={`${prefix}/docs/model-routing/`}>{en ? 'Smart model routing' : '智能模型路由'}</a>
+    <a aria-current={active === 'optimize-model-routing' ? 'page' : undefined} href={`${prefix}/docs/optimize-model-routing/`}>{en ? 'Review and optimize routing' : '复盘与优化路由'}</a>
     <span>{en ? 'TASK DELEGATION' : '任务委派'}</span>
     <a aria-current={active === 'task-routing' ? 'page' : undefined} href={`${prefix}/docs/task-routing/`}>{en ? 'Delegate across Agents' : '跨 Agent 委派任务'}</a>
     <span>{en ? 'AGENT GUIDES' : 'Agent 接入教程'}</span>
