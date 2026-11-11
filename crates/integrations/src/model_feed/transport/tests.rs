@@ -216,10 +216,17 @@ fn model_feed_decodes_all_gzip_members_and_rejects_trailing_garbage() {
 
 #[test]
 fn model_feed_bounds_encoded_gzip_headers_before_decoded_output_exists() {
-    // A gzip filename has no decoded output and must not bypass the transport bound.
-    let header: [u8; 10] = [0x1f, 0x8b, 8, 8, 0, 0, 0, 0, 0, 255];
-    let body = header.as_slice().chain(std::io::repeat(b'x'));
-    assert_eq!(read_gzip(body).unwrap_err().kind, FeedFailureKind::Size);
+    // Valid empty members can carry large headers without producing any decoded bytes.
+    let encoder = flate2::GzBuilder::new()
+        .extra(vec![0; u16::MAX as usize])
+        .write(Vec::new(), Compression::fast());
+    let member = encoder.finish().unwrap();
+    let body = member.repeat(MAX_ENCODED_MODEL_FEED_BYTES as usize / member.len() + 1);
+    assert!(body.len() as u64 > MAX_ENCODED_MODEL_FEED_BYTES);
+    assert_eq!(
+        read_gzip(body.as_slice()).unwrap_err().kind,
+        FeedFailureKind::Size
+    );
 }
 
 #[test]
