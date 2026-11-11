@@ -54,6 +54,8 @@ pub const RELEASE_FACTS_SCHEMA_V2: &str = "hiroute.release-facts/v2";
 pub const AGENT_PROFILES_ARTIFACT_SCHEMA_V1: &str = "hiroute.agent-profiles-artifact/v1";
 pub const COMPUTE_STATE_SCHEMA_V1: &str = "hiroute.compute-state/v1";
 pub const MAX_RELEASE_BUNDLE_BYTES: usize = 2 * 1024 * 1024;
+/// Model metadata has a separate budget from the executable registry and rating snapshot.
+pub const MAX_RELEASE_MODEL_DATA_BYTES: usize = 8 * 1024 * 1024;
 
 #[cfg(test)]
 mod catalog_tests;
