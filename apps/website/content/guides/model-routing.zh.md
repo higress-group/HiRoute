@@ -170,6 +170,8 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 
 新草稿不能改写历史选择或阈值。未评分和部分证据应连同覆盖范围理解，HiRoute 不会根据一次低分自动改写计划。
 
+想让 Agent 根据这些记录改进选模，继续看[复盘与优化模型路由](/zh/docs/optimize-model-routing/)：提炼工程案例，调整决策提示词和信任度，再用新任务验证质量、时间与费用。
+
 ## 进阶设置与运行规则
 
 <details>
