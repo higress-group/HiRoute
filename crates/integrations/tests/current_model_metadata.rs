@@ -1003,24 +1003,23 @@ fn november_provider_limits_and_price_boundaries_survive_official_snapshot_loadi
     );
     let snapshot = serde_json::to_value(catalog.official_snapshot()).unwrap();
     let prices = snapshot["data"]["pricing_facts"].as_array().unwrap();
-    for (key, low, high) in [("grok-4-7", "< 200k", ">= 200k")] {
-        let price = prices.iter().find(|p| p["model_key"] == key).unwrap();
-        let schedules = price["schedules"].as_array().unwrap();
-        let short = schedules
-            .iter()
-            .find(|s| s["schedule_key"] == "standard-short-context")
-            .unwrap();
-        let long = schedules
-            .iter()
-            .find(|s| s["schedule_key"] == "standard-long-context")
-            .unwrap();
-        assert_eq!(short["condition"]["provider_threshold"], low);
-        assert_eq!(long["condition"]["provider_threshold"], high);
-        for schedule in schedules {
-            assert_eq!(schedule["application"], "whole-request");
-            assert_eq!(schedule["condition"]["threshold_token_unit"], "unresolved");
-            assert!(schedule["condition"].get("maximum_input_tokens").is_none());
-            assert!(schedule["condition"].get("minimum_input_tokens").is_none());
-        }
+    let (key, low, high) = ("grok-4-7", "< 200k", ">= 200k");
+    let price = prices.iter().find(|p| p["model_key"] == key).unwrap();
+    let schedules = price["schedules"].as_array().unwrap();
+    let short = schedules
+        .iter()
+        .find(|s| s["schedule_key"] == "standard-short-context")
+        .unwrap();
+    let long = schedules
+        .iter()
+        .find(|s| s["schedule_key"] == "standard-long-context")
+        .unwrap();
+    assert_eq!(short["condition"]["provider_threshold"], low);
+    assert_eq!(long["condition"]["provider_threshold"], high);
+    for schedule in schedules {
+        assert_eq!(schedule["application"], "whole-request");
+        assert_eq!(schedule["condition"]["threshold_token_unit"], "unresolved");
+        assert!(schedule["condition"].get("maximum_input_tokens").is_none());
+        assert!(schedule["condition"].get("minimum_input_tokens").is_none());
     }
 }
