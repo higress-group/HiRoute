@@ -81,7 +81,7 @@
 3. 模型 ID 填 `gpt-6-luna`，完整地址填 `https://api.openai.com/v1/decisions`，协议选 **“OpenAI 决策接口”**。已有预填时核对这三项。取名“OpenAI 难度判断”，点击 **“保存并测试”**。[OpenAI Decisions 官方文档](https://developers.openai.com/api/docs/guides/decisions)
 4. 回到路由，确认“使用的决策模型”选中了这份连接，再点击 **“发布更改”**。接入 Codex 后发一个小任务，在“会话 → 路由时间线”查看难度判断和实际执行模型。
 
-决策调用计入这份接入对应的 OpenAI API 组织，可以用该组织的赠金抵扣。执行候选也使用同一个 Key 时，两边已知价格的用量计入同一份 [Key 花费额度](/zh/docs/models/#api-key-allowance)。[了解阶段评分和低分保护](/zh/docs/model-routing/#difficulty-routing)
+决策调用计入这份接入对应的 OpenAI API 组织，可以用该组织的赠金抵扣。即使执行候选也使用同一个 Key，决策调用也不占用 HiRoute 的 [本地 Key 花费额度](/zh/docs/models/#api-key-allowance)。[了解阶段评分和低分保护](/zh/docs/model-routing/#difficulty-routing)
 
 <h3 id="credit-candidates">把订阅与赠金 API 一起加入同名候选</h3>
 

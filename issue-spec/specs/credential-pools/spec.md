@@ -101,9 +101,9 @@ binding-local and cannot silently cool unrelated inference models. See
 ### Requirement: Keys may share a persistent local spending budget
 
 An API Key MAY have no local limit, an independent budget, or an explicit link to
-a shared budget. All admitted models, routes and source-reusing decision requests
-using that Key MUST consume the same budget. Different sources or equal secret
-strings MUST NOT be joined implicitly. Existing Keys remain unlimited by default.
+a shared budget. All admitted ordinary inference using that Key MUST consume the
+same budget. Different sources or equal secret strings MUST NOT be joined
+implicitly. Existing Keys remain unlimited by default.
 The subscription/API Key form MUST offer optional budget configuration, use the
 same saved policy as Key management, and retain one primary save. The policy MUST
 be committed before the newly enabled Key can serve a request.
@@ -142,16 +142,16 @@ indexed bounded reads, independent of unrelated history size. Currency conversio
 is not implicit. All amounts are exact integer currency micros.
 
 Source-reusing decision requests, including explicit connection tests, SHALL
-reserve and settle against the same Key budget as ordinary inference. Capture
-the exact decision endpoint/codec/model price once per call; ordinary inference
-prices MUST NOT silently price another interface. A complete provider usage
-record settles independently of decision-answer validity. Proven unsent attempts
-release their reservation; cancellation, incomplete usage and uncertain delivery
-retain pending state. Unknown decision prices follow the default-allow rule.
-Saved-Key inference probes without a complete price/usage contract also follow
-that rule. Directory/authentication-only checks remain available.
+reuse the admitted Key for authentication only. They MUST NOT consult, reserve
+or settle against its ordinary inference budget, or add unpriced records to its
+ledger. They retain current source and Key permissions, credential failover and
+upstream quota behavior. This change applies to new decision attempts; retained
+Key allowances and accounting records keep their existing values.
+Saved-Key inference probes without a complete price/usage contract follow the
+default-allow rule for unknown prices. Directory/authentication-only checks remain
+available.
 
-An exhausted Key MUST be skipped through the existing admitted
+For ordinary inference, an exhausted Key MUST be skipped through the existing admitted
 Key order and candidate fallback contracts, without altering user-disabled state,
 reordering candidates or cancelling already committed responses. A due renewal
 restores budget eligibility. Management MUST show configured allowance, actual
@@ -160,10 +160,9 @@ MUST identify these as HiRoute local estimates for traffic it controls, rather
 than a fetched provider credit balance. Provider credit eligibility remains in
 the existing subscription guidance.
 
-Explicit decision diagnostics SHALL distinguish local allowance exhaustion and
-local budget-authority failure from missing/disabled credentials and upstream
-authentication or network errors. Released test calls retain their original
-result shape; current callers may request the detailed local cause.
+Released decision test calls retain their original result shape. Exhaustion or
+unavailability of the ordinary inference budget cannot produce a failure in a
+new decision test.
 
 #### Scenario: A fixed allowance is shared by several models
 
@@ -171,6 +170,14 @@ result shape; current callers may request the detailed local cause.
 - **THEN** only reservations covered by the shared available balance are admitted
 - **AND** exhaustion proceeds through saved Key/candidate order, with no new call
   on the exhausted Key and no new model binding per Key.
+
+#### Scenario: A decision reuses a Key with an exhausted inference allowance
+
+- **WHEN** the first eligible Key has no remaining local inference allowance
+- **THEN** a routed decision and an explicit decision connection test can still
+  use that Key, without creating a record or changing any allowance balance
+- **AND** ordinary inference still skips that Key and uses the next eligible
+  Key or the existing candidate fallback.
 
 #### Scenario: Calendar renewal while the application was closed
 
