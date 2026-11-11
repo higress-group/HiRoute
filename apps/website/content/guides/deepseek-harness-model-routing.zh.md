@@ -17,7 +17,7 @@
 - 查看 DSH 与可导入模型：hiroute quickstart · compute scan · compute connection prepare
 - 发布计划并接入正确入口：routing preview / apply · agents connect preview / apply
 - 检查执行器与实际模型：worker executors · worker result · sessions timeline
-界面和 CLI 共用配置和记录；区分 Web 与 Desktop 目标，以 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。
+界面和 CLI 共用配置和记录。接入 Desktop 时，从 agents scan 选择 agent_dsh_desktop 对应的 context_id。以 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。
 ```
 
 </details>
@@ -55,6 +55,8 @@
 </figure>
 
 重启所选客户端，从模型选择器选中这条路由，再试一次日志分析或代码阅读。打开 HiRoute“会话 → 路由时间线”查看实际模型。Web 和 Desktop 的路由配置分别保存。
+
+如果保存时提示 Desktop profile 使用了自定义组合包或依赖，请检查其 `package.json` 里的插件配置。HiRoute 的模型路由接入要求默认组合包且没有额外依赖。如果提示内置 CLI 的默认配置检查失败，请检查 DeepSeek Harness Desktop 的安装后重试。
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 

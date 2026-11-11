@@ -60,6 +60,8 @@ struct CodexRestoreModelFacts {
 
 mod class;
 pub(super) use class::SettingsAgentClass;
+#[cfg(any(unix, windows))]
+use class::dsh_desktop_model_check_failure;
 
 impl LocalControlAdapter {
     pub(super) fn settings_context_for_agent(&self, agent_id: &str) -> Option<String> {
@@ -156,14 +158,15 @@ impl LocalControlAdapter {
             SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop
         ) && matches!(spec.model, AgentFacetIntent::Configure { .. })
         {
-            Some(
-                (if class == SettingsAgentClass::DshDesktop {
-                    self.scanner.check_dsh_desktop_model_configuration()
-                } else {
-                    self.scanner.check_dsh_model_configuration()
-                })
-                .map_err(|_| ControlReadError::Unavailable)?,
-            )
+            Some(if class == SettingsAgentClass::DshDesktop {
+                self.scanner
+                    .check_dsh_desktop_model_configuration()
+                    .map_err(dsh_desktop_model_check_failure)?
+            } else {
+                self.scanner
+                    .check_dsh_model_configuration()
+                    .map_err(|_| ControlReadError::Unavailable)?
+            })
         } else {
             None
         };
@@ -174,10 +177,12 @@ impl LocalControlAdapter {
             && !(if class == SettingsAgentClass::DshDesktop {
                 self.scanner
                     .dsh_desktop_model_configuration_is_current(checked)
+                    .is_ok_and(|current| current)
             } else {
-                self.scanner.dsh_model_configuration_is_current(checked)
+                self.scanner
+                    .dsh_model_configuration_is_current(checked)
+                    .is_ok_and(|current| current)
             })
-            .map_err(|_| ControlReadError::SnapshotChanged)?
         {
             return Err(ControlReadError::SnapshotChanged);
         }

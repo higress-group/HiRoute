@@ -340,6 +340,8 @@ Settings discovery reads native files without a version subprocess. The
 [facts capture](../../crates/daemon/src/control/runtime/settings_facts.rs) owns one
 public composition probe per capture and checks its dependencies after both native
 snapshots; Preview, Apply and locked admission keep independent proofs.
+[Agent settings responses](../../crates/application/src/control_plane/agent_settings.rs)
+carry the Desktop admission reason in the error envelope for CLI and Desktop.
 
 The [Worker profile](../../crates/daemon/src/delegation/profile/README.md#dsh-public-composition)
 adds a final run-owned patch while preserving borrowed resource roots. Continue

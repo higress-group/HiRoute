@@ -912,6 +912,7 @@ fn map_control_error(error: control::ControlReadError) -> ErrorCode {
         control::ControlReadError::NotFound => ErrorCode::ResourceNotFound,
         control::ControlReadError::SnapshotChanged => ErrorCode::ChangePreviewStale,
         control::ControlReadError::ClientVersionRequired => ErrorCode::SchemaIncompatible,
+        control::ControlReadError::DshDesktopModelCheckFailed(_) => ErrorCode::ActionRequired,
         control::ControlReadError::Unavailable | control::ControlReadError::Corrupt => {
             ErrorCode::DaemonUnavailable
         }

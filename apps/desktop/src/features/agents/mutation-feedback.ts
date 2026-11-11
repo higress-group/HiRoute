@@ -77,9 +77,40 @@ export function agentSettingsFailureMessage(error: unknown, language: 'zh' | 'en
     || !('envelope' in error) || !error.envelope || typeof error.envelope !== 'object'
     || !('error' in error.envelope)) return null;
   const detail = error.envelope.error;
-  if (!detail || typeof detail !== 'object' || !('code' in detail) || detail.code !== 'CAPABILITY_DENIED'
-    || !('message_key' in detail) || detail.message_key !== 'error.codex_profile_conflict') return null;
-  return language === 'zh'
-    ? 'Codex 配置无法安全合并，尚未保存。请检查配置文件格式、访问权限及已有的同名 HiRoute 配置。当前选择已保留，处理冲突后再保存。'
-    : 'Codex settings cannot be merged safely. Nothing was saved. Check the file format, access permissions and existing HiRoute names. Your choices are retained; resolve the conflict before saving again.';
+  if (!detail || typeof detail !== 'object' || !('code' in detail) || !('message_key' in detail)) return null;
+  const zh = language === 'zh';
+  if (detail.code === 'CAPABILITY_DENIED' && detail.message_key === 'error.codex_profile_conflict') {
+    return zh
+      ? 'Codex 配置无法安全合并，尚未保存。请检查配置文件格式、访问权限及已有的同名 HiRoute 配置。当前选择已保留，处理冲突后再保存。'
+      : 'Codex settings cannot be merged safely. Nothing was saved. Check the file format, access permissions and existing HiRoute names. Your choices are retained; resolve the conflict before saving again.';
+  }
+  if (detail.code !== 'ACTION_REQUIRED') return null;
+  switch (detail.message_key) {
+    case 'error.dsh_desktop_patch_invalid':
+      return zh
+        ? 'DeepSeek Harness Desktop 配置校验失败。请检查用户目录和 Desktop profile 下的 cordis.patch.yml 的格式和访问权限。'
+        : 'DeepSeek Harness Desktop settings failed validation. Check the format and permissions of cordis.patch.yml in the DSH home and Desktop profile.';
+    case 'error.dsh_desktop_manifest_invalid':
+      return zh
+        ? 'DeepSeek Harness Desktop 的 profile 清单无效。请检查 Desktop profile 下的 package.json 的格式和访问权限。'
+        : 'DeepSeek Harness Desktop could not verify the profile manifest. Check the format and permissions of package.json in the Desktop profile.';
+    case 'error.dsh_desktop_custom_profile':
+      return zh
+        ? '模型路由接入要求 DeepSeek Harness Desktop 使用默认组合包，且没有额外依赖。请检查 Desktop profile 的插件配置。'
+        : 'Model routing requires the default DeepSeek Harness Desktop bundles with no extra dependencies. Check the plugins configured in the Desktop profile.';
+    case 'error.dsh_desktop_runtime_unavailable':
+      return zh
+        ? 'DeepSeek Harness Desktop 的安装文件无法验证。请检查安装后重新扫描。'
+        : 'DeepSeek Harness Desktop installation files could not be verified. Check the installation and scan again.';
+    case 'error.dsh_desktop_probe_failed':
+      return zh
+        ? 'DeepSeek Harness Desktop 内置 CLI 的默认配置检查失败。请检查安装后重试。'
+        : 'The bundled DeepSeek Harness Desktop CLI could not check the default configuration. Check the installation and try again.';
+    case 'error.dsh_desktop_model_adapter_missing':
+      return zh
+        ? 'DeepSeek Harness Desktop 的默认配置缺少模型适配器 llm-pi-ai。请检查客户端版本。'
+        : 'The default DeepSeek Harness Desktop configuration is missing the llm-pi-ai model adapter. Check the client version.';
+    default:
+      return null;
+  }
 }

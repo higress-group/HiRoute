@@ -33,6 +33,7 @@ use super::{
 mod claude_settings;
 #[path = "dsh_desktop.rs"]
 mod dsh_desktop;
+pub use dsh_desktop::DshDesktopModelCheckError;
 #[path = "dsh_native.rs"]
 mod dsh_native;
 #[path = "claude_observation.rs"]
