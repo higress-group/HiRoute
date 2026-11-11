@@ -479,7 +479,11 @@ fn unpublished_source_rejects_changed_embedded_data_without_a_revision_increase(
         .insert("en".into(), "A reviewed metadata correction.".into());
     snapshot.data_digest = CanonicalDigest::of(&snapshot.data).unwrap();
     let write = |snapshot: &hiroute_domain::OfficialModelSnapshotV1| {
-        std::fs::write(&file, crate::canonical_sorted_json_line(snapshot).unwrap()).unwrap();
+        std::fs::write(
+            &file,
+            crate::canonical_sorted_json_document(snapshot).unwrap(),
+        )
+        .unwrap();
     };
     write(&snapshot);
     assert!(build(root, true).unwrap_err().contains("data revision"));
@@ -525,12 +529,20 @@ fn unpublished_source_rejects_an_embedded_revision_rollback_with_unchanged_conte
     let mut snapshot: hiroute_domain::OfficialModelSnapshotV1 =
         serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
     snapshot.data_revision += 1;
-    std::fs::write(&file, crate::canonical_sorted_json_line(&snapshot).unwrap()).unwrap();
+    std::fs::write(
+        &file,
+        crate::canonical_sorted_json_document(&snapshot).unwrap(),
+    )
+    .unwrap();
     repository_git(root, &["add", "."]);
     repository_git(root, &["commit", "-m", "Advance embedded data revision"]);
     let base = repository_git(root, &["rev-parse", "HEAD"]);
     snapshot.data_revision -= 1;
-    std::fs::write(&file, crate::canonical_sorted_json_line(&snapshot).unwrap()).unwrap();
+    std::fs::write(
+        &file,
+        crate::canonical_sorted_json_document(&snapshot).unwrap(),
+    )
+    .unwrap();
     assert!(
         build_against(root, true, Some(&base))
             .unwrap_err()

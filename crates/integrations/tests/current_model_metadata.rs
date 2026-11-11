@@ -111,8 +111,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .all(|capability| !capability.capability_id.starts_with("cap.runtime.")),
         "incomplete bindings must not become executable capabilities"
     );
-    assert_eq!(data.metadata_catalog.provider_records.len(), 108);
-    assert_eq!(data.metadata_catalog.model_records.len(), 778);
+    assert_eq!(data.metadata_catalog.provider_records.len(), 115);
+    assert_eq!(data.metadata_catalog.model_records.len(), 791);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 190);
     for product_key in [
         "bailian-token-personal-cn-beijing",
@@ -855,5 +855,171 @@ fn connection_templates_cover_current_api_and_free_options_without_inventory_gat
                 .iter()
                 .any(|endpoint| endpoint.authentication_semantics.is_some())
         );
+    }
+}
+
+#[test]
+fn qwen4_preview_survives_client_loading_without_promoting_paid_execution() {
+    let (registry, data) = fixture();
+    let (manifest, registry_bytes, data_bytes) = encoded(&registry, &data);
+    let catalog =
+        TrustedReleaseCatalog::load_release_facts(&manifest, &registry_bytes, &data_bytes)
+            .unwrap()
+            .with_embedded_official_data(
+                serde_json::from_slice(include_bytes!(
+                    "../../../assets/release-facts/current/bundle/official-model-data.json"
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+    let snapshot = catalog.official_snapshot();
+    let metadata = catalog.model_metadata();
+    let model = metadata
+        .canonical_models
+        .iter()
+        .find(|m| m.model_key == "qwen-4-max-preview")
+        .unwrap();
+    assert_eq!(model.lifecycle, "preview");
+    assert_eq!(model.context_tokens.state, MetadataTokenStateV1::Unknown);
+    assert_eq!(model.max_output_tokens.value, Some(393_216));
+    let bindings: Vec<_> = metadata
+        .endpoint_bindings
+        .iter()
+        .filter(|b| b.model_key == model.model_key)
+        .collect();
+    assert_eq!(bindings.len(), 8);
+    for binding in bindings {
+        assert!(binding.product_key.starts_with("bailian-token-"));
+        assert_eq!(binding.interface_candidates.len(), 1);
+        assert_eq!(binding.availability.state, "conditional");
+        assert_eq!(binding.protocol_qualification, "runtime-required");
+        assert!(
+            binding
+                .availability
+                .condition
+                .contains("2026-11-25T16:00:00Z")
+        );
+    }
+    let record = metadata
+        .model_records
+        .iter()
+        .find(|r| {
+            r.model_record_key == "official/bailian-token-personal-cn-beijing/qwen4-max-preview"
+        })
+        .unwrap();
+    assert_eq!(
+        record.context_tokens.state,
+        MetadataTokenStateV1::RuntimeRequired
+    );
+    assert!(
+        !record
+            .usable_for
+            .contains(&MetadataUsageScenarioV1::RequestLimitPrefill)
+    );
+    assert!(
+        record
+            .usable_for
+            .contains(&MetadataUsageScenarioV1::OutputLimitPrefill)
+    );
+    let note = model.data_note.as_deref().unwrap();
+    for detail in [
+        "thinking and answer",
+        "reasoning_content",
+        "preserve_thinking defaults true",
+        "max_tokens equals max_completion_tokens",
+    ] {
+        assert!(
+            note.contains(detail),
+            "missing public contract detail: {detail}"
+        );
+    }
+    let published = serde_json::to_value(&snapshot.data).unwrap();
+    assert!(
+        published["pricing_facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["model_key"] != "qwen-4-max-preview")
+    );
+    assert_eq!(catalog.model_data().models.len(), 30);
+    assert!(
+        catalog
+            .model_data()
+            .models
+            .iter()
+            .all(|m| !m.model_configuration_id.contains("qwen-4"))
+    );
+}
+
+#[test]
+fn november_provider_limits_and_price_boundaries_survive_official_snapshot_loading() {
+    let (registry, data) = fixture();
+    let (manifest, registry_bytes, data_bytes) = encoded(&registry, &data);
+    let catalog =
+        TrustedReleaseCatalog::load_release_facts(&manifest, &registry_bytes, &data_bytes)
+            .unwrap()
+            .with_embedded_official_data(
+                serde_json::from_slice(include_bytes!(
+                    "../../../assets/release-facts/current/bundle/official-model-data.json"
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+    let metadata = catalog.model_metadata();
+    for key in ["gemini-4-argon", "gemini-4-carbon"] {
+        let model = metadata
+            .canonical_models
+            .iter()
+            .find(|m| m.model_key == key)
+            .unwrap();
+        assert_eq!(model.context_tokens.value, Some(1_048_576));
+        assert_eq!(
+            model.max_output_tokens.state,
+            MetadataTokenStateV1::SharedTotalBudget
+        );
+        let record = metadata
+            .model_records
+            .iter()
+            .find(|r| r.upstream_model_id == key && r.provider_record_key == "official/gemini-api")
+            .unwrap();
+        assert!(
+            !record
+                .usable_for
+                .contains(&MetadataUsageScenarioV1::OutputLimitPrefill)
+        );
+    }
+    let old = metadata
+        .canonical_models
+        .iter()
+        .find(|m| m.model_key == "mistral-large-3")
+        .unwrap();
+    assert_eq!(old.lifecycle, "deprecated");
+    assert_eq!(old.upstream_ids, ["mistral-large-2512"]);
+    assert!(
+        metadata
+            .endpoint_bindings
+            .iter()
+            .all(|b| b.upstream_model_id != "mistral-large-3-25-12")
+    );
+    let snapshot = serde_json::to_value(catalog.official_snapshot()).unwrap();
+    let prices = snapshot["data"]["pricing_facts"].as_array().unwrap();
+    for (key, low, high) in [
+        ("grok-4-7", 199_999, 200_000),
+        ("muse-ember-1-0", 200_000, 200_001),
+    ] {
+        let price = prices.iter().find(|p| p["model_key"] == key).unwrap();
+        let schedules = price["schedules"].as_array().unwrap();
+        let short = schedules
+            .iter()
+            .find(|s| s["schedule_key"] == "standard-short-context")
+            .unwrap();
+        let long = schedules
+            .iter()
+            .find(|s| s["schedule_key"] == "standard-long-context")
+            .unwrap();
+        assert_eq!(short["condition"]["maximum_input_tokens"], low);
+        assert_eq!(long["condition"]["minimum_input_tokens"], high);
+        assert_eq!(short["application"], "whole-request");
+        assert_eq!(long["application"], "whole-request");
     }
 }

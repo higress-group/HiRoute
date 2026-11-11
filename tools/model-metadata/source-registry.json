@@ -32,6 +32,8 @@
     {
       "authority_key": "alibaba-model-studio",
       "allowed_https_prefixes": [
+        "https://docs.bailian.console.aliyun.com/en/model-studio/",
+        "https://docs.qwencloud.com/developer-guides/",
         "https://help.aliyun.com/"
       ],
       "scope": [
@@ -193,6 +195,7 @@
       "authority_key": "google",
       "allowed_https_prefixes": [
         "https://ai.google.dev/",
+        "https://aistudio.google.com/docs/",
         "https://cloud.google.com/",
         "https://developers.google.com/"
       ],
@@ -249,7 +252,8 @@
       "authority_key": "meta",
       "description": "Primary provider documentation for meta",
       "allowed_https_prefixes": [
-        "https://ai.developer.meta.com/"
+        "https://ai.developer.meta.com/",
+        "https://dev.meta.ai/docs/"
       ],
       "evidence_scope": "provider identity, model capability, endpoint, authentication and discovery facts",
       "refresh_days": 14

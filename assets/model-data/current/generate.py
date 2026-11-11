@@ -19,6 +19,11 @@ _subscription_spec = importlib.util.spec_from_file_location(
 _subscription_projection = importlib.util.module_from_spec(_subscription_spec)
 _subscription_spec.loader.exec_module(_subscription_projection)
 
+_document_spec = importlib.util.spec_from_file_location(
+    "hiroute_json_document", ROOT / "tools/model-metadata/json_document.py")
+_document = importlib.util.module_from_spec(_document_spec)
+_document_spec.loader.exec_module(_document)
+
 def canonical(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()
 
@@ -1146,7 +1151,7 @@ def compile_candidate():
     bundle = {"schema": "hiroute.release-model-data/v2", "data": data,
         "rating_snapshot": snapshot,
         "metadata_catalog": project_metadata_catalog(metadata_catalog, client_runs)}
-    payload = canonical(bundle) + b"\n"
+    payload = _document.document(bundle)
     if len(payload) > MAX_RELEASE_MODEL_DATA_BYTES:
         raise ValueError("candidate exceeds 8 MiB model-data limit")
     return {"model-data.json": payload, "runtime-projection.json": canonical(runtime_projection) + b"\n",
